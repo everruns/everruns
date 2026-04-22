@@ -9,7 +9,9 @@ mod tests {
     use crate::storage::StorageBackend;
     use crate::storage::models::*;
     use everruns_core::budget::BudgetAction;
+    use everruns_core::{AgentId, PrincipalId, org_public_id_from_internal};
     use std::sync::Arc;
+    use uuid::Uuid;
 
     fn make_db() -> Arc<StorageBackend> {
         Arc::new(StorageBackend::in_memory())
@@ -19,6 +21,38 @@ mod tests {
         let db = make_db();
         let svc = BudgetService::new(db.clone());
         (svc, db)
+    }
+
+    async fn create_session_with_owner(
+        db: &Arc<StorageBackend>,
+        org_id: i64,
+        agent_id: Option<AgentId>,
+        resolved_owner_user_id: Option<Uuid>,
+    ) -> SessionRow {
+        db.create_session(CreateSessionRow {
+            org_id,
+            harness_id: None,
+            agent_id,
+            agent_identity_id: None,
+            owner_principal_id: PrincipalId::new(),
+            resolved_owner_user_id,
+            title: Some("Budget test session".into()),
+            locale: None,
+            tags: vec![],
+            model_id: None,
+            capabilities: serde_json::json!({}),
+            tools: serde_json::json!([]),
+            mcp_servers: serde_json::json!([]),
+            system_prompt: None,
+            initial_files: serde_json::json!({}),
+            hints: None,
+            network_access: None,
+            max_iterations: None,
+            blueprint_id: None,
+            blueprint_config: None,
+        })
+        .await
+        .unwrap()
     }
 
     fn make_budget_row(
@@ -352,6 +386,45 @@ mod tests {
             .unwrap();
         assert_eq!(entry.amount, 3.0);
         assert_eq!(updated.balance, 7.0);
+    }
+
+    #[tokio::test]
+    async fn test_budget_ledger_entry_creates_usage_journal_link() {
+        let db = make_db();
+        let budget = db
+            .create_budget(CreateBudgetRow {
+                org_id: 1,
+                subject_type: "session".into(),
+                subject_id: "s1".into(),
+                currency: "usd".into(),
+                limit: 10.0,
+                soft_limit: None,
+                period: None,
+                metadata: None,
+            })
+            .await
+            .unwrap();
+        let (entry, _) = db
+            .create_budget_ledger_entry(CreateBudgetLedgerRow {
+                budget_id: budget.id,
+                amount: 3.0,
+                meter_source: "llm_tokens".into(),
+                ref_type: Some("llm_generation".into()),
+                ref_id: Some(uuid::Uuid::now_v7()),
+                session_id: None,
+                description: Some("test debit".into()),
+            })
+            .await
+            .unwrap();
+
+        let journal = db
+            .get_usage_journal(entry.journal_id)
+            .await
+            .unwrap()
+            .expect("journal should be created");
+        assert_eq!(journal.kind, "budget_adjustment");
+        assert_eq!(journal.org_id, budget.org_id);
+        assert_eq!(journal.measures["amount"], serde_json::json!(3.0));
     }
 
     #[tokio::test]
@@ -807,6 +880,91 @@ mod tests {
         assert_eq!(result.action, "stop");
     }
 
+    #[tokio::test]
+    async fn test_list_budgets_for_session_hierarchy_resolves_user_and_org_from_session() {
+        let (svc, db) = make_service();
+        let user_id = Uuid::now_v7();
+        let agent_id = AgentId::new();
+        let session = create_session_with_owner(&db, 1, Some(agent_id), Some(user_id)).await;
+        let session_public_id = session.id.to_string();
+        let org_public_id = org_public_id_from_internal(session.org_id);
+
+        for (subject_type, subject_id) in [
+            ("session", session_public_id.clone()),
+            ("agent", agent_id.to_string()),
+            ("user", user_id.to_string()),
+            ("org", org_public_id.clone()),
+        ] {
+            db.create_budget(CreateBudgetRow {
+                org_id: session.org_id,
+                subject_type: subject_type.into(),
+                subject_id,
+                currency: "usd".into(),
+                limit: 25.0,
+                soft_limit: None,
+                period: None,
+                metadata: None,
+            })
+            .await
+            .unwrap();
+        }
+
+        let budgets = svc
+            .list_budgets_for_session_hierarchy(session.org_id, &session_public_id, None)
+            .await;
+
+        let subjects: Vec<(&str, &str)> = budgets
+            .iter()
+            .map(|budget| (budget.subject_type.as_str(), budget.subject_id.as_str()))
+            .collect();
+        assert!(subjects.contains(&("session", session_public_id.as_str())));
+        assert!(subjects.contains(&("agent", agent_id.to_string().as_str())));
+        assert!(subjects.contains(&("user", user_id.to_string().as_str())));
+        assert!(subjects.contains(&("org", org_public_id.as_str())));
+    }
+
+    #[tokio::test]
+    async fn test_check_budgets_respects_user_budget_from_session_hierarchy() {
+        let (svc, db) = make_service();
+        let user_id = Uuid::now_v7();
+        let session = create_session_with_owner(&db, 1, None, Some(user_id)).await;
+        let session_public_id = session.id.to_string();
+
+        let budget = db
+            .create_budget(CreateBudgetRow {
+                org_id: session.org_id,
+                subject_type: "user".into(),
+                subject_id: user_id.to_string(),
+                currency: "usd".into(),
+                limit: 10.0,
+                soft_limit: None,
+                period: None,
+                metadata: None,
+            })
+            .await
+            .unwrap();
+
+        db.create_budget_ledger_entry(CreateBudgetLedgerRow {
+            budget_id: budget.id,
+            amount: 10.0,
+            meter_source: "llm_tokens".into(),
+            ref_type: None,
+            ref_id: None,
+            session_id: Some(session.id.uuid()),
+            description: None,
+        })
+        .await
+        .unwrap();
+        db.set_budget_status(budget.id, "exhausted").await.unwrap();
+
+        let result = svc
+            .check_budgets_for_session(session.org_id, &session_public_id, None)
+            .await;
+
+        assert_eq!(result.action, "stop");
+        assert_eq!(result.error_code.as_deref(), Some("budget_exhausted"));
+    }
+
     // ========================================================================
     // Set budget status + DTO conversion tests
     // ========================================================================
@@ -859,13 +1017,21 @@ mod tests {
     fn test_row_to_ledger_entry_dto() {
         let row = BudgetLedgerRow {
             id: uuid::Uuid::now_v7(),
-            budget_id: uuid::Uuid::now_v7(),
+            journal_id: uuid::Uuid::now_v7(),
+            budget_id: Some(uuid::Uuid::now_v7()),
+            org_id: 1,
+            session_id: None,
+            user_id: None,
+            principal_id: None,
+            agent_id: None,
+            harness_id: None,
+            currency: "usd".into(),
             amount: 5.5,
             meter_source: "llm_tokens".into(),
             ref_type: Some("llm_generation".into()),
             ref_id: Some(uuid::Uuid::now_v7()),
-            session_id: None,
             description: Some("test".into()),
+            rating_metadata: None,
             created_at: chrono::Utc::now(),
         };
         let dto = BudgetService::row_to_ledger_entry(&row);

@@ -3748,29 +3748,14 @@ impl WorkerService for WorkerServiceImpl {
     ) -> Result<Response<CheckBudgetsForSessionResponse>, Status> {
         let req = request.into_inner();
 
-        // Get the full budget rows for detailed response
-        let session_budgets = self
-            .db
-            .list_budgets(req.org_id, Some("session"), Some(&req.session_id))
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to list session budgets: {}", e);
-                Status::internal("Failed to list session budgets")
-            })?;
-
-        let mut all_budgets = session_budgets;
-        if let Some(ref agent_id) = req.agent_id {
-            match self
-                .db
-                .list_budgets(req.org_id, Some("agent"), Some(agent_id))
-                .await
-            {
-                Ok(agent_budgets) => all_budgets.extend(agent_budgets),
-                Err(e) => {
-                    tracing::error!("Failed to list agent budgets for {agent_id}: {e}");
-                }
-            }
-        }
+        let all_budgets = self
+            .budget_service
+            .list_budgets_for_session_hierarchy(
+                req.org_id,
+                &req.session_id,
+                req.agent_id.as_deref(),
+            )
+            .await;
 
         if all_budgets.is_empty() {
             return Ok(Response::new(CheckBudgetsForSessionResponse {

@@ -1,6 +1,7 @@
 // Budget storage (PostgreSQL)
 
 use anyhow::Result;
+use everruns_core::{AgentId, SessionId};
 use uuid::Uuid;
 
 use crate::storage::Database;
@@ -178,61 +179,130 @@ impl Database {
     }
 
     // ============================================
-    // Budget Ledger
+    // Usage Journal + Ledger
     // ============================================
 
-    /// Record a ledger entry and atomically update the budget balance.
-    /// Returns the updated budget row.
-    pub async fn create_budget_ledger_entry(
+    pub async fn create_usage_journal_entry(
         &self,
-        input: CreateBudgetLedgerRow,
-    ) -> Result<(BudgetLedgerRow, BudgetRow)> {
+        input: CreateUsageJournalRow,
+    ) -> Result<UsageJournalRow> {
+        let row = sqlx::query_as::<_, UsageJournalRow>(
+            r#"
+            INSERT INTO usage_journal (
+                org_id, kind, source_type, source_id, event_id, session_id, turn_id,
+                user_id, principal_id, agent_id, harness_id, measures, metadata
+            ) VALUES (
+                $1, $2, $3, $4, $5, $6, $7,
+                $8, $9, $10, $11, $12, $13
+            )
+            RETURNING id, org_id, kind, source_type, source_id, event_id, session_id, turn_id,
+                      user_id, principal_id, agent_id, harness_id, measures, metadata, created_at
+            "#,
+        )
+        .bind(input.org_id)
+        .bind(&input.kind)
+        .bind(input.source_type.as_deref())
+        .bind(input.source_id.as_deref())
+        .bind(input.event_id)
+        .bind(input.session_id)
+        .bind(input.turn_id)
+        .bind(input.user_id)
+        .bind(input.principal_id)
+        .bind(input.agent_id)
+        .bind(input.harness_id)
+        .bind(&input.measures)
+        .bind(&input.metadata)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(row)
+    }
+
+    pub async fn get_usage_journal(&self, id: Uuid) -> Result<Option<UsageJournalRow>> {
+        let row = sqlx::query_as::<_, UsageJournalRow>(
+            r#"
+            SELECT id, org_id, kind, source_type, source_id, event_id, session_id, turn_id,
+                   user_id, principal_id, agent_id, harness_id, measures, metadata, created_at
+            FROM usage_journal
+            WHERE id = $1
+            "#,
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row)
+    }
+
+    /// Record a rated ledger entry and update any attached budget snapshot atomically.
+    pub async fn create_usage_ledger_entry(
+        &self,
+        input: CreateUsageLedgerRow,
+    ) -> Result<(UsageLedgerRow, Option<BudgetRow>)> {
         let mut tx = self.pool.begin().await?;
 
-        // Lock budget row
-        let _budget = sqlx::query_as::<_, BudgetRow>(
-            r#"
-            SELECT id, org_id, subject_type, subject_id, currency, "limit", soft_limit,
-                   balance, period, metadata, status, created_at, updated_at
-            FROM budgets
-            WHERE id = $1
-            FOR UPDATE
-            "#,
-        )
-        .bind(input.budget_id)
-        .fetch_one(&mut *tx)
-        .await?;
+        let updated_budget = if let Some(budget_id) = input.budget_id {
+            let _budget = sqlx::query_as::<_, BudgetRow>(
+                r#"
+                SELECT id, org_id, subject_type, subject_id, currency, "limit", soft_limit,
+                       balance, period, metadata, status, created_at, updated_at
+                FROM budgets
+                WHERE id = $1
+                FOR UPDATE
+                "#,
+            )
+            .bind(budget_id)
+            .fetch_one(&mut *tx)
+            .await?;
 
-        // Insert ledger entry
-        let entry = sqlx::query_as::<_, BudgetLedgerRow>(
+            Some(
+                sqlx::query_as::<_, BudgetRow>(
+                    r#"
+                    UPDATE budgets
+                    SET balance = balance - $2
+                    WHERE id = $1
+                    RETURNING id, org_id, subject_type, subject_id, currency, "limit", soft_limit,
+                              balance, period, metadata, status, created_at, updated_at
+                    "#,
+                )
+                .bind(budget_id)
+                .bind(input.amount)
+                .fetch_one(&mut *tx)
+                .await?,
+            )
+        } else {
+            None
+        };
+
+        let entry = sqlx::query_as::<_, UsageLedgerRow>(
             r#"
-            INSERT INTO budget_ledger (budget_id, amount, meter_source, ref_type, ref_id, session_id, description)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
-            RETURNING id, budget_id, amount, meter_source, ref_type, ref_id, session_id, description, created_at
+            INSERT INTO usage_ledger (
+                journal_id, budget_id, org_id, session_id, user_id, principal_id,
+                agent_id, harness_id, currency, amount, meter_source, ref_type,
+                ref_id, description, rating_metadata
+            ) VALUES (
+                $1, $2, $3, $4, $5, $6,
+                $7, $8, $9, $10, $11, $12,
+                $13, $14, $15
+            )
+            RETURNING id, journal_id, budget_id, org_id, session_id, user_id, principal_id,
+                      agent_id, harness_id, currency, amount, meter_source, ref_type, ref_id,
+                      description, rating_metadata, created_at
             "#,
         )
+        .bind(input.journal_id)
         .bind(input.budget_id)
+        .bind(input.org_id)
+        .bind(input.session_id)
+        .bind(input.user_id)
+        .bind(input.principal_id)
+        .bind(input.agent_id)
+        .bind(input.harness_id)
+        .bind(&input.currency)
         .bind(input.amount)
         .bind(&input.meter_source)
         .bind(input.ref_type.as_deref())
         .bind(input.ref_id)
-        .bind(input.session_id)
         .bind(input.description.as_deref())
-        .fetch_one(&mut *tx)
-        .await?;
-
-        // Update balance (subtract debit, add credit)
-        let updated_budget = sqlx::query_as::<_, BudgetRow>(
-            r#"
-            UPDATE budgets
-            SET balance = balance - $2
-            WHERE id = $1
-            RETURNING id, org_id, subject_type, subject_id, currency, "limit", soft_limit,
-                      balance, period, metadata, status, created_at, updated_at
-            "#,
-        )
-        .bind(input.budget_id)
-        .bind(input.amount)
+        .bind(&input.rating_metadata)
         .fetch_one(&mut *tx)
         .await?;
 
@@ -240,17 +310,96 @@ impl Database {
         Ok((entry, updated_budget))
     }
 
-    pub async fn list_budget_ledger(
+    /// Record a ledger entry and atomically update the budget balance.
+    /// Returns the updated budget row.
+    pub async fn create_budget_ledger_entry(
+        &self,
+        input: CreateBudgetLedgerRow,
+    ) -> Result<(BudgetLedgerRow, BudgetRow)> {
+        let budget = sqlx::query_as::<_, BudgetRow>(
+            r#"
+            SELECT id, org_id, subject_type, subject_id, currency, "limit", soft_limit,
+                   balance, period, metadata, status, created_at, updated_at
+            FROM budgets
+            WHERE id = $1
+            "#,
+        )
+        .bind(input.budget_id)
+        .fetch_one(&self.pool)
+        .await?;
+        let (session_id, user_id, agent_id) = scope_from_budget(&budget, input.session_id);
+        let journal_kind = if input.amount < 0.0 || input.ref_type.as_deref() == Some("top_up") {
+            "top_up"
+        } else {
+            "budget_adjustment"
+        };
+        let journal = self
+            .create_usage_journal_entry(CreateUsageJournalRow {
+                org_id: budget.org_id,
+                kind: journal_kind.to_string(),
+                source_type: Some("budget_ledger_compat".to_string()),
+                source_id: Some(Uuid::now_v7().to_string()),
+                event_id: None,
+                session_id,
+                turn_id: None,
+                user_id,
+                principal_id: None,
+                agent_id,
+                harness_id: None,
+                measures: serde_json::json!({
+                    "amount": input.amount,
+                    "currency": budget.currency,
+                }),
+                metadata: serde_json::json!({
+                    "budget_id": budget.id,
+                    "ref_type": input.ref_type,
+                    "ref_id": input.ref_id,
+                    "description": input.description,
+                }),
+            })
+            .await?;
+
+        let (entry, updated_budget) = self
+            .create_usage_ledger_entry(CreateUsageLedgerRow {
+                journal_id: journal.id,
+                budget_id: Some(budget.id),
+                org_id: budget.org_id,
+                session_id,
+                user_id,
+                principal_id: None,
+                agent_id,
+                harness_id: None,
+                currency: budget.currency.clone(),
+                amount: input.amount,
+                meter_source: input.meter_source,
+                ref_type: input.ref_type,
+                ref_id: input.ref_id,
+                description: input.description,
+                rating_metadata: Some(serde_json::json!({
+                    "ruleset_version": "v1",
+                    "compatibility_wrapper": true,
+                })),
+            })
+            .await?;
+
+        Ok((
+            entry,
+            updated_budget.expect("budget ledger compatibility path always updates a budget"),
+        ))
+    }
+
+    pub async fn list_usage_ledger_for_budget(
         &self,
         budget_id: Uuid,
         limit: i64,
         offset: i64,
-    ) -> Result<Vec<BudgetLedgerRow>> {
-        let rows = sqlx::query_as::<_, BudgetLedgerRow>(
+    ) -> Result<Vec<UsageLedgerRow>> {
+        let rows = sqlx::query_as::<_, UsageLedgerRow>(
             r#"
-            SELECT id, budget_id, amount, meter_source, ref_type, ref_id, session_id,
-                   description, created_at
-            FROM budget_ledger
+            SELECT id, journal_id, budget_id, org_id, session_id, user_id, principal_id,
+                   agent_id, harness_id, currency, amount, meter_source, ref_type, ref_id,
+                   description, rating_metadata, created_at
+            FROM usage_ledger
             WHERE budget_id = $1
             ORDER BY created_at DESC
             LIMIT $2 OFFSET $3
@@ -262,6 +411,16 @@ impl Database {
         .fetch_all(&self.pool)
         .await?;
         Ok(rows)
+    }
+
+    pub async fn list_budget_ledger(
+        &self,
+        budget_id: Uuid,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<BudgetLedgerRow>> {
+        self.list_usage_ledger_for_budget(budget_id, limit, offset)
+            .await
     }
 
     /// Update budget status (used by rules engine).
@@ -280,4 +439,26 @@ impl Database {
         .await?;
         Ok(row)
     }
+}
+
+fn scope_from_budget(
+    budget: &BudgetRow,
+    explicit_session_id: Option<Uuid>,
+) -> (Option<Uuid>, Option<Uuid>, Option<Uuid>) {
+    let session_id = explicit_session_id.or_else(|| {
+        (budget.subject_type == "session")
+            .then(|| {
+                SessionId::parse(&budget.subject_id)
+                    .ok()
+                    .map(|id| id.uuid())
+            })
+            .flatten()
+    });
+    let user_id = (budget.subject_type == "user")
+        .then(|| Uuid::parse_str(&budget.subject_id).ok())
+        .flatten();
+    let agent_id = (budget.subject_type == "agent")
+        .then(|| AgentId::parse(&budget.subject_id).ok().map(|id| id.uuid()))
+        .flatten();
+    (session_id, user_id, agent_id)
 }
