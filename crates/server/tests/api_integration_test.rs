@@ -3242,6 +3242,69 @@ async fn test_create_app_missing_agent_returns_not_found() {
 }
 
 #[tokio::test]
+async fn test_create_app_schedule_and_webhook_channels_persist_in_postgres() {
+    let server = TestServer::new().await;
+
+    let agent: Value = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "app-invocation-postgres-agent",
+                "display_name": "Invocation Agent",
+                "system_prompt": "Test"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let schedule_app: Value = server
+        .post(
+            "/v1/apps",
+            json!({
+                "name": "Scheduled Repo Check",
+                "harness_id": server.seed_generic_harness_id,
+                "agent_id": agent["id"],
+                "channel_type": "schedule",
+                "channel_config": {
+                    "cron_expression": "0 15 * * * * *",
+                    "timezone": "UTC",
+                    "session_mode": "shared_session",
+                    "message": "check repo"
+                }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    assert_eq!(schedule_app["channel_type"], "schedule");
+    assert_eq!(schedule_app["channels"][0]["type"], "schedule");
+
+    let webhook_app: Value = server
+        .post(
+            "/v1/apps",
+            json!({
+                "name": "Webhook Repo Check",
+                "harness_id": server.seed_generic_harness_id,
+                "agent_id": agent["id"],
+                "channel_type": "webhook",
+                "channel_config": {
+                    "token": "secret-token",
+                    "session_mode": "session_per_invocation",
+                    "message": "check webhook"
+                }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    assert_eq!(webhook_app["channel_type"], "webhook");
+    assert_eq!(webhook_app["channels"][0]["type"], "webhook");
+}
+
+#[tokio::test]
 async fn test_update_app_missing_harness_returns_not_found() {
     let server = TestServer::new().await;
 
