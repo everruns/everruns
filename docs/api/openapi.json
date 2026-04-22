@@ -7892,7 +7892,7 @@
           },
           "id": {
             "type": "string",
-            "format": "uuid"
+            "example": "img_01933b5a00007000800000000000001"
           },
           "metadata": {},
           "size_bytes": {
@@ -7924,7 +7924,7 @@
           },
           "id": {
             "type": "string",
-            "format": "uuid"
+            "example": "img_01933b5a00007000800000000000001"
           },
           "size_bytes": {
             "type": "integer",
