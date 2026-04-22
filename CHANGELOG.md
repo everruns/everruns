@@ -13,7 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Highlights
 
-- **App invocation channels** - Apps can now be invoked via schedules and webhooks, expanding deployment options beyond agents and chat channels ([#1431](https://github.com/everruns/everruns/pull/1431), [#1415](https://github.com/everruns/everruns/pull/1415))
+- **App invocation channels** - Apps can now be invoked via schedules and webhooks, expanding deployment options beyond agents and chat channels ([#1431](https://github.com/everruns/everruns/pull/1431))
+- **Draft apps** - Apps can be created and saved without committing to an agent or channel, enabling staged authoring ([#1415](https://github.com/everruns/everruns/pull/1415))
 - **Budget usage journal & ledger** - New extensible budgeting backbone tracks LLM and tool usage with a journal and ledger for fine-grained cost accounting ([#1434](https://github.com/everruns/everruns/pull/1434))
 - **MCP read-only query tool & metadata** - Standardized MCP server tool metadata and added a read-only query tool for safe data access ([#1435](https://github.com/everruns/everruns/pull/1435), [#1418](https://github.com/everruns/everruns/pull/1418))
 - **Claude Code MCP plugin** - New Everruns MCP plugin and marketplace entry for direct integration with Claude Code ([#1406](https://github.com/everruns/everruns/pull/1406))
