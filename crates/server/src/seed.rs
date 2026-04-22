@@ -2304,6 +2304,27 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_coding_container_harness_capabilities_are_registered() {
+        let registry = everruns_core::capabilities::CapabilityRegistry::with_builtins_for_grade(
+            everruns_core::DeploymentGrade::Dev,
+        );
+
+        let built_in_harnesses = built_in_harnesses();
+        let coding_container = built_in_harnesses
+            .iter()
+            .find(|h| h.name == "coding-container")
+            .expect("Coding (Container) harness should exist");
+
+        for cap in &coding_container.capabilities {
+            assert!(
+                registry.has(&cap.id),
+                "Capability '{}' referenced by Coding (Container) harness must be registered",
+                cap.id
+            );
+        }
+    }
+
     /// Regression test for "Tool not found: bash" bug.
     ///
     /// When a session uses the Generic Harness without an agent, the worker must
