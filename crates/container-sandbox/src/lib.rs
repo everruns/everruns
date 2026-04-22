@@ -32,7 +32,7 @@ use tools::{
 inventory::submit! {
     IntegrationPlugin {
         experimental_only: false,
-        feature_flag: None,
+        feature_flag: Some("container_sandbox"),
         factory: || Box::new(ContainerSandboxCapability),
     }
 }
