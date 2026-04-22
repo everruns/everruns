@@ -10,17 +10,119 @@ use everruns_core::session_sandbox::{
 use everruns_core::tools::ToolExecutionResult;
 use everruns_core::traits::ToolContext;
 use serde_json::json;
+use std::time::Duration;
 use tracing::{debug, warn};
 
 use crate::client::DaytonaClient;
 use crate::naming::create_sandbox_with_unique_name;
-use crate::state::{SandboxState, get_api_key, release_sandbox_lease, touch_sandbox_lease};
+use crate::state::{
+    SandboxInfo, SandboxState, get_api_key, release_sandbox_lease, touch_sandbox_lease,
+};
 use crate::{
     AUTO_ARCHIVE_INTERVAL_MINUTES, AUTO_DELETE_INTERVAL_MINUTES, AUTO_STOP_INTERVAL_MINUTES,
     DAYTONA_WORKSPACE_PATH, EXEC_TIMEOUT_MS, LEASE_HEARTBEAT_INTERVAL,
 };
 
 pub struct DaytonaSessionSandboxProvider;
+
+const DAYTONA_STATE_POLL_INTERVAL: Duration = Duration::from_secs(1);
+const DAYTONA_STATE_POLL_ATTEMPTS: usize = 20;
+
+fn is_transition_state(state: &str) -> bool {
+    matches!(state, "starting" | "stopping")
+}
+
+fn is_state_change_in_progress(err: &str) -> bool {
+    err.contains("409 Conflict") && err.contains("state change in progress")
+}
+
+async fn wait_for_sandbox_state(
+    client: &DaytonaClient,
+    sandbox_id: &str,
+    desired_state: &str,
+) -> Result<SandboxInfo, ToolExecutionResult> {
+    let mut last_state = None;
+
+    for _ in 0..DAYTONA_STATE_POLL_ATTEMPTS {
+        let info = client
+            .get_sandbox(sandbox_id)
+            .await
+            .map_err(ToolExecutionResult::tool_error)?;
+        if info.state == desired_state {
+            return Ok(info);
+        }
+        last_state = Some(info.state);
+        tokio::time::sleep(DAYTONA_STATE_POLL_INTERVAL).await;
+    }
+
+    Err(ToolExecutionResult::tool_error(format!(
+        "Daytona sandbox did not reach '{desired_state}' state (last state: {})",
+        last_state.unwrap_or_else(|| "unknown".to_string())
+    )))
+}
+
+async fn ensure_sandbox_started(
+    client: &DaytonaClient,
+    sandbox_id: &str,
+) -> Result<SandboxInfo, ToolExecutionResult> {
+    let mut last_state = None;
+
+    for _ in 0..DAYTONA_STATE_POLL_ATTEMPTS {
+        let info = client
+            .get_sandbox(sandbox_id)
+            .await
+            .map_err(ToolExecutionResult::tool_error)?;
+        last_state = Some(info.state.clone());
+
+        if info.state == "started" {
+            return Ok(info);
+        }
+        if is_transition_state(&info.state) {
+            tokio::time::sleep(DAYTONA_STATE_POLL_INTERVAL).await;
+            continue;
+        }
+
+        match client.start_sandbox(sandbox_id).await {
+            Ok(()) => {
+                if let Err(err) = client.wait_for_ready(sandbox_id).await {
+                    warn!(
+                        sandbox_id = %sandbox_id,
+                        error = %err,
+                        "Daytona sandbox readiness check failed after start"
+                    );
+                }
+            }
+            Err(err) if is_state_change_in_progress(&err) => {}
+            Err(err) => return Err(ToolExecutionResult::tool_error(err)),
+        }
+
+        tokio::time::sleep(DAYTONA_STATE_POLL_INTERVAL).await;
+    }
+
+    Err(ToolExecutionResult::tool_error(format!(
+        "Daytona sandbox '{sandbox_id}' did not reach 'started' state (last state: {})",
+        last_state.unwrap_or_else(|| "unknown".to_string())
+    )))
+}
+
+async fn delete_sandbox_with_retry(
+    client: &DaytonaClient,
+    sandbox_id: &str,
+) -> Result<(), ToolExecutionResult> {
+    for _ in 0..DAYTONA_STATE_POLL_ATTEMPTS {
+        match client.delete_sandbox(sandbox_id).await {
+            Ok(()) => return Ok(()),
+            Err(err) if is_state_change_in_progress(&err) => {
+                tokio::time::sleep(DAYTONA_STATE_POLL_INTERVAL).await;
+            }
+            Err(err) => return Err(ToolExecutionResult::tool_error(err)),
+        }
+    }
+
+    Err(ToolExecutionResult::tool_error(format!(
+        "Daytona sandbox delete remained in transition for sandbox {sandbox_id}"
+    )))
+}
 
 #[async_trait::async_trait]
 impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
@@ -133,21 +235,7 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
     ) -> Result<SessionSandboxInstance, ToolExecutionResult> {
         let api_key = get_api_key(context).await?;
         let client = build_client(api_key, config);
-        let info = client
-            .get_sandbox(&instance.external_id)
-            .await
-            .map_err(ToolExecutionResult::tool_error)?;
-
-        if info.state != "started" {
-            client
-                .start_sandbox(&instance.external_id)
-                .await
-                .map_err(ToolExecutionResult::tool_error)?;
-            client
-                .wait_for_ready(&instance.external_id)
-                .await
-                .map_err(ToolExecutionResult::tool_error)?;
-        }
+        let info = ensure_sandbox_started(&client, &instance.external_id).await?;
 
         let workspace_path = instance
             .workspace_path
@@ -181,9 +269,10 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
             .stop_sandbox(&instance.external_id)
             .await
             .map_err(ToolExecutionResult::tool_error)?;
+        let info = wait_for_sandbox_state(&client, &instance.external_id, "stopped").await?;
 
         Ok(SessionSandboxInstance {
-            metadata: json!({ "remote_state": "stopped" }),
+            metadata: json!({ "remote_state": info.state }),
             ..instance.clone()
         })
     }
@@ -196,10 +285,7 @@ impl SessionSandboxProvider for DaytonaSessionSandboxProvider {
     ) -> Result<(), ToolExecutionResult> {
         let api_key = get_api_key(context).await?;
         let client = build_client(api_key, config);
-        client
-            .delete_sandbox(&instance.external_id)
-            .await
-            .map_err(ToolExecutionResult::tool_error)?;
+        delete_sandbox_with_retry(&client, &instance.external_id).await?;
         release_sandbox_lease(context, &instance.external_id).await?;
         Ok(())
     }

@@ -344,30 +344,26 @@ pub async fn ensure_session_sandbox_running(
                 )));
             }
 
-            match existing.status {
-                SessionSandboxStatus::Running => Ok(existing),
-                SessionSandboxStatus::Paused => {
-                    let instance = provider.resume(context, config, &existing.instance).await?;
-                    let mut state = SessionSandboxState {
-                        provider: config.provider.clone(),
-                        status: SessionSandboxStatus::Running,
-                        instance,
-                        init_completed_at: existing.init_completed_at.clone(),
-                        last_init_error: None,
-                        created_at: existing.created_at.clone(),
-                        updated_at: now_rfc3339(),
-                    };
-                    save_session_sandbox_state(context, &state).await?;
-                    run_session_sandbox_init_if_needed(
-                        context,
-                        provider.as_ref(),
-                        config,
-                        &mut state,
-                    )
-                    .await?;
-                    Ok(state)
+            let mut state = existing;
+            let needs_resume = match state.status {
+                SessionSandboxStatus::Paused => true,
+                SessionSandboxStatus::Running => {
+                    let status = provider.status(context, config, &state).await?;
+                    status.session_status != SessionSandboxStatus::Running
                 }
+            };
+
+            if needs_resume {
+                state.instance = provider.resume(context, config, &state.instance).await?;
+                state.status = SessionSandboxStatus::Running;
+                state.last_init_error = None;
+                state.updated_at = now_rfc3339();
+                save_session_sandbox_state(context, &state).await?;
             }
+
+            run_session_sandbox_init_if_needed(context, provider.as_ref(), config, &mut state)
+                .await?;
+            Ok(state)
         }
         None => {
             let instance = provider.create(context, config).await?;
@@ -538,7 +534,7 @@ mod tests {
     use async_trait::async_trait;
     use chrono::Utc;
     use std::collections::HashMap;
-    use std::sync::{Arc, Mutex};
+    use std::sync::{Arc, LazyLock, Mutex};
 
     #[derive(Clone, Default)]
     struct MemorySecrets {
@@ -685,5 +681,278 @@ mod tests {
         assert_eq!(loaded.provider, "daytona");
         assert_eq!(loaded.instance.external_id, "sb_test");
         assert_eq!(loaded.status, SessionSandboxStatus::Running);
+    }
+
+    #[derive(Clone)]
+    struct TestProviderSandboxState {
+        remote_status: SessionSandboxStatus,
+        resume_calls: usize,
+        exec_commands: Vec<String>,
+    }
+
+    #[derive(Default)]
+    struct TestProviderState {
+        sandboxes: HashMap<String, TestProviderSandboxState>,
+    }
+
+    static TEST_PROVIDER_STATE: LazyLock<Mutex<TestProviderState>> =
+        LazyLock::new(|| Mutex::new(TestProviderState::default()));
+
+    fn sandbox_state_mut<'a>(
+        state: &'a mut TestProviderState,
+        external_id: &str,
+    ) -> &'a mut TestProviderSandboxState {
+        state
+            .sandboxes
+            .entry(external_id.to_string())
+            .or_insert_with(|| TestProviderSandboxState {
+                remote_status: SessionSandboxStatus::Running,
+                resume_calls: 0,
+                exec_commands: Vec::new(),
+            })
+    }
+
+    fn test_provider_state(external_id: &str) -> TestProviderSandboxState {
+        TEST_PROVIDER_STATE
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .sandboxes
+            .get(external_id)
+            .cloned()
+            .unwrap_or(TestProviderSandboxState {
+                remote_status: SessionSandboxStatus::Running,
+                resume_calls: 0,
+                exec_commands: Vec::new(),
+            })
+    }
+
+    fn reset_test_provider_state(external_id: &str, remote_status: SessionSandboxStatus) {
+        let mut state = TEST_PROVIDER_STATE
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        state.sandboxes.insert(
+            external_id.to_string(),
+            TestProviderSandboxState {
+                remote_status,
+                resume_calls: 0,
+                exec_commands: Vec::new(),
+            },
+        );
+    }
+
+    struct CoreTestSessionSandboxProvider;
+
+    inventory::submit! {
+        SessionSandboxProviderPlugin {
+            factory: || Box::new(CoreTestSessionSandboxProvider),
+        }
+    }
+
+    #[async_trait]
+    impl SessionSandboxProvider for CoreTestSessionSandboxProvider {
+        fn id(&self) -> &str {
+            "core-test-session-sandbox"
+        }
+
+        async fn create(
+            &self,
+            _context: &ToolContext,
+            _config: &SessionSandboxConfig,
+        ) -> Result<SessionSandboxInstance, ToolExecutionResult> {
+            let instance = test_instance("sb_created");
+            let mut state = TEST_PROVIDER_STATE
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            sandbox_state_mut(&mut state, &instance.external_id).remote_status =
+                SessionSandboxStatus::Running;
+            Ok(instance)
+        }
+
+        async fn resume(
+            &self,
+            _context: &ToolContext,
+            _config: &SessionSandboxConfig,
+            instance: &SessionSandboxInstance,
+        ) -> Result<SessionSandboxInstance, ToolExecutionResult> {
+            let mut state = TEST_PROVIDER_STATE
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            let sandbox_state = sandbox_state_mut(&mut state, &instance.external_id);
+            sandbox_state.resume_calls += 1;
+            sandbox_state.remote_status = SessionSandboxStatus::Running;
+
+            let mut resumed = instance.clone();
+            resumed.metadata = json!({ "resumed": true });
+            Ok(resumed)
+        }
+
+        async fn pause(
+            &self,
+            _context: &ToolContext,
+            _config: &SessionSandboxConfig,
+            instance: &SessionSandboxInstance,
+        ) -> Result<SessionSandboxInstance, ToolExecutionResult> {
+            Ok(instance.clone())
+        }
+
+        async fn delete(
+            &self,
+            _context: &ToolContext,
+            _config: &SessionSandboxConfig,
+            _instance: &SessionSandboxInstance,
+        ) -> Result<(), ToolExecutionResult> {
+            Ok(())
+        }
+
+        async fn exec(
+            &self,
+            _context: &ToolContext,
+            _config: &SessionSandboxConfig,
+            _instance: &SessionSandboxInstance,
+            request: &SessionSandboxExecRequest,
+        ) -> Result<SessionSandboxExecResponse, ToolExecutionResult> {
+            let mut state = TEST_PROVIDER_STATE
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            sandbox_state_mut(&mut state, &_instance.external_id)
+                .exec_commands
+                .push(request.command.clone());
+
+            Ok(SessionSandboxExecResponse {
+                exit_code: 0,
+                stdout: "ok".to_string(),
+                stderr: String::new(),
+                success: true,
+                truncated: false,
+                total_lines: 1,
+                raw_output: Some("ok".to_string()),
+                hint: None,
+            })
+        }
+
+        async fn read_file(
+            &self,
+            _context: &ToolContext,
+            _config: &SessionSandboxConfig,
+            _instance: &SessionSandboxInstance,
+            path: &str,
+        ) -> Result<SessionSandboxReadFileResponse, ToolExecutionResult> {
+            Ok(SessionSandboxReadFileResponse {
+                path: path.to_string(),
+                content: "data".to_string(),
+                encoding: "text".to_string(),
+            })
+        }
+
+        async fn write_file(
+            &self,
+            _context: &ToolContext,
+            _config: &SessionSandboxConfig,
+            _instance: &SessionSandboxInstance,
+            path: &str,
+            content: &str,
+        ) -> Result<SessionSandboxWriteFileResponse, ToolExecutionResult> {
+            Ok(SessionSandboxWriteFileResponse {
+                path: path.to_string(),
+                bytes_written: content.len(),
+            })
+        }
+
+        async fn status(
+            &self,
+            _context: &ToolContext,
+            _config: &SessionSandboxConfig,
+            state: &SessionSandboxState,
+        ) -> Result<SessionSandboxStatusResponse, ToolExecutionResult> {
+            let provider_state = test_provider_state(&state.instance.external_id);
+
+            Ok(SessionSandboxStatusResponse {
+                provider: state.provider.clone(),
+                session_status: provider_state.remote_status,
+                external_id: state.instance.external_id.clone(),
+                display_name: state.instance.display_name.clone(),
+                workspace_path: state.instance.workspace_path.clone(),
+                metadata: json!({ "remote_status": provider_state.remote_status }),
+            })
+        }
+    }
+
+    fn test_instance(external_id: &str) -> SessionSandboxInstance {
+        SessionSandboxInstance {
+            external_id: external_id.to_string(),
+            display_name: Some("Core Test Sandbox".to_string()),
+            workspace_path: Some("/workspace".to_string()),
+            provider_state: json!({}),
+            metadata: json!({}),
+        }
+    }
+
+    fn test_config_with_init(commands: Vec<&str>) -> SessionSandboxConfig {
+        SessionSandboxConfig {
+            provider: "core-test-session-sandbox".to_string(),
+            auto_start: true,
+            idle_pause_after_seconds: 180,
+            provider_config: json!({}),
+            init: SessionSandboxInitConfig {
+                commands: commands.into_iter().map(ToString::to_string).collect(),
+            },
+        }
+    }
+
+    #[tokio::test]
+    async fn ensure_running_resumes_when_remote_status_drifted_to_paused() {
+        let external_id = "sb_drifted";
+        reset_test_provider_state(external_id, SessionSandboxStatus::Paused);
+
+        let storage = Arc::new(MemorySecrets::default());
+        let context = ToolContext::with_storage_store(crate::SessionId::new(), storage);
+        let state = SessionSandboxState {
+            provider: "core-test-session-sandbox".to_string(),
+            status: SessionSandboxStatus::Running,
+            instance: test_instance(external_id),
+            init_completed_at: Some(now_rfc3339()),
+            last_init_error: None,
+            created_at: now_rfc3339(),
+            updated_at: now_rfc3339(),
+        };
+        save_session_sandbox_state(&context, &state).await.unwrap();
+
+        let resolved = ensure_session_sandbox_running(&context, &test_config_with_init(vec![]))
+            .await
+            .unwrap();
+
+        let provider_state = test_provider_state(external_id);
+        assert_eq!(provider_state.resume_calls, 1);
+        assert_eq!(resolved.status, SessionSandboxStatus::Running);
+        assert_eq!(resolved.instance.metadata, json!({ "resumed": true }));
+    }
+
+    #[tokio::test]
+    async fn ensure_running_retries_init_when_state_is_running_but_init_unfinished() {
+        let external_id = "sb_init_retry";
+        reset_test_provider_state(external_id, SessionSandboxStatus::Running);
+
+        let storage = Arc::new(MemorySecrets::default());
+        let context = ToolContext::with_storage_store(crate::SessionId::new(), storage);
+        let state = SessionSandboxState {
+            provider: "core-test-session-sandbox".to_string(),
+            status: SessionSandboxStatus::Running,
+            instance: test_instance(external_id),
+            init_completed_at: None,
+            last_init_error: Some("previous failure".to_string()),
+            created_at: now_rfc3339(),
+            updated_at: now_rfc3339(),
+        };
+        save_session_sandbox_state(&context, &state).await.unwrap();
+
+        let resolved =
+            ensure_session_sandbox_running(&context, &test_config_with_init(vec!["echo ready"]))
+                .await
+                .unwrap();
+
+        let provider_state = test_provider_state(external_id);
+        assert_eq!(provider_state.exec_commands, vec!["echo ready"]);
+        assert!(resolved.init_completed_at.is_some());
+        assert_eq!(resolved.last_init_error, None);
     }
 }
