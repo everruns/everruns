@@ -52,13 +52,19 @@ See `specs/localization.md` for how schedule timezone interacts with session and
 
 See `crates/server/migrations/002_durable_execution.sql` for the full schema. Key fields: `id` (UUIDv7), `name` (unique), `cron_expression`, `timezone` (IANA, default UTC), `target_type` (workflow/activity), `target_name`, `target_input` (JSONB), `enabled`, `max_concurrent`, `catch_up_missed`, `retry_policy`, `next_trigger_at` (indexed for polling).
 
+### App-Owned Schedule Bindings
+
+App `schedule` channels are one consumer of the durable scheduler. The scheduler stores them in the same `durable_schedules` table, but their lifecycle is owned by the app domain rather than the generic schedules API.
+
+See [app-invocation-channels.md](app-invocation-channels.md) for the product-level behavior and ownership rules.
+
 ### ScheduleExecution
 
 See `crates/server/migrations/002_durable_execution.sql` for the full schema. Tracks each trigger attempt with `schedule_id`, `scheduled_at`, `status` (pending/running/completed/failed/skipped), linked `workflow_id` or `task_id`, and `duration_ms`.
 
 ### Cron Expression Format
 
-Standard 5-field cron with optional 6th field for seconds. Parsed via the `cron` crate. Examples: `*/30 * * * *` (every 30 min), `0 9 * * MON-FRI` (9 AM weekdays).
+Cron expressions follow the durable scheduler's current parser format. In practice this codebase uses 7-field expressions in APIs and tests. Examples: `0 * * * * * *` (every minute), `0 */30 * * * * *` (every 30 minutes).
 
 ## Timezone Semantics
 
@@ -98,6 +104,8 @@ For the complete request/response schemas (`CreateScheduleRequest`, `ScheduleTar
 ### DurableScheduler
 
 The `DurableScheduler` component polls for due schedules on a configurable interval. For each due schedule it: checks `max_concurrent`, creates an execution record, triggers the target (workflow or activity), and updates the execution status. See `crates/durable/src/scheduler.rs` for implementation.
+
+App-owned schedule bindings still execute through the same scheduler machinery, but the app-specific activity contract is specified in [app-invocation-channels.md](app-invocation-channels.md).
 
 ### Multi-Instance Safety
 

@@ -65,6 +65,8 @@ pub enum ChannelType {
     Slack,
     #[serde(rename = "ag_ui")]
     AgUi,
+    Schedule,
+    Webhook,
 }
 
 impl std::fmt::Display for ChannelType {
@@ -72,6 +74,8 @@ impl std::fmt::Display for ChannelType {
         match self {
             ChannelType::Slack => write!(f, "slack"),
             ChannelType::AgUi => write!(f, "ag_ui"),
+            ChannelType::Schedule => write!(f, "schedule"),
+            ChannelType::Webhook => write!(f, "webhook"),
         }
     }
 }
@@ -81,6 +85,8 @@ impl ChannelType {
         match s {
             "slack" => Some(ChannelType::Slack),
             "ag_ui" => Some(ChannelType::AgUi),
+            "schedule" => Some(ChannelType::Schedule),
+            "webhook" => Some(ChannelType::Webhook),
             _ => None,
         }
     }
@@ -197,6 +203,24 @@ impl AppChannel {
         }
         serde_json::from_value(self.channel_config.clone()).ok()
     }
+
+    /// Parse channel_config as ScheduleChannelConfig. Returns None if not a
+    /// schedule channel or if the config is invalid.
+    pub fn schedule_config(&self) -> Option<ScheduleChannelConfig> {
+        if self.channel_type != ChannelType::Schedule {
+            return None;
+        }
+        serde_json::from_value(self.channel_config.clone()).ok()
+    }
+
+    /// Parse channel_config as WebhookChannelConfig. Returns None if not a
+    /// webhook channel or if the config is invalid.
+    pub fn webhook_config(&self) -> Option<WebhookChannelConfig> {
+        if self.channel_type != ChannelType::Webhook {
+            return None;
+        }
+        serde_json::from_value(self.channel_config.clone()).ok()
+    }
 }
 
 impl App {
@@ -212,6 +236,20 @@ impl App {
         self.channels
             .iter()
             .find(|ch| ch.channel_type == ChannelType::AgUi && ch.enabled)
+    }
+
+    /// Find the first enabled schedule channel on this app.
+    pub fn schedule_channel(&self) -> Option<&AppChannel> {
+        self.channels
+            .iter()
+            .find(|ch| ch.channel_type == ChannelType::Schedule && ch.enabled)
+    }
+
+    /// Find the first enabled webhook channel on this app.
+    pub fn webhook_channel(&self) -> Option<&AppChannel> {
+        self.channels
+            .iter()
+            .find(|ch| ch.channel_type == ChannelType::Webhook && ch.enabled)
     }
 
     /// Find a channel by its public ID.
@@ -331,6 +369,57 @@ pub struct AgUiChannelConfig {
     pub anonymous: bool,
 }
 
+/// How app-triggered invocations route into sessions.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum InvocationSessionMode {
+    /// Reuse a single durable session for every invocation of the channel.
+    #[default]
+    SharedSession,
+    /// Create a fresh session for every invocation.
+    SessionPerInvocation,
+}
+
+/// Typed schedule channel configuration.
+///
+/// `message` is also the template body. `{{path.to.value}}` placeholders are
+/// expanded at invocation time.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct ScheduleChannelConfig {
+    /// Cron expression that drives the durable schedule.
+    pub cron_expression: String,
+    /// IANA timezone identifier for cron evaluation.
+    #[serde(default = "default_timezone")]
+    pub timezone: String,
+    /// Whether invocations reuse a stable session or create a new one.
+    #[serde(default)]
+    pub session_mode: InvocationSessionMode,
+    /// Message content or template sent when the schedule fires.
+    pub message: String,
+}
+
+/// Typed webhook channel configuration.
+///
+/// `message` is also the template body. `{{path.to.value}}` placeholders are
+/// expanded against the incoming webhook payload and metadata.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct WebhookChannelConfig {
+    /// Shared secret required from the incoming webhook request.
+    pub token: String,
+    /// Whether invocations reuse a stable session or create a new one.
+    #[serde(default)]
+    pub session_mode: InvocationSessionMode,
+    /// Message content or template sent when the webhook arrives.
+    pub message: String,
+}
+
+fn default_timezone() -> String {
+    "UTC".to_string()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -365,12 +454,22 @@ mod tests {
     fn test_channel_type_display() {
         assert_eq!(ChannelType::Slack.to_string(), "slack");
         assert_eq!(ChannelType::AgUi.to_string(), "ag_ui");
+        assert_eq!(ChannelType::Schedule.to_string(), "schedule");
+        assert_eq!(ChannelType::Webhook.to_string(), "webhook");
     }
 
     #[test]
     fn test_channel_type_from_str_opt() {
         assert_eq!(ChannelType::from_str_opt("slack"), Some(ChannelType::Slack));
         assert_eq!(ChannelType::from_str_opt("ag_ui"), Some(ChannelType::AgUi));
+        assert_eq!(
+            ChannelType::from_str_opt("schedule"),
+            Some(ChannelType::Schedule)
+        );
+        assert_eq!(
+            ChannelType::from_str_opt("webhook"),
+            Some(ChannelType::Webhook)
+        );
         assert_eq!(ChannelType::from_str_opt("unknown"), None);
         assert_eq!(ChannelType::from_str_opt(""), None);
     }
@@ -386,6 +485,16 @@ mod tests {
         assert_eq!(json, r#""ag_ui""#);
         let parsed: ChannelType = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed, ChannelType::AgUi);
+
+        let json = serde_json::to_string(&ChannelType::Schedule).unwrap();
+        assert_eq!(json, r#""schedule""#);
+        let parsed: ChannelType = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, ChannelType::Schedule);
+
+        let json = serde_json::to_string(&ChannelType::Webhook).unwrap();
+        assert_eq!(json, r#""webhook""#);
+        let parsed: ChannelType = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, ChannelType::Webhook);
     }
 
     #[test]
@@ -498,6 +607,31 @@ mod tests {
         assert!(parsed.anonymous);
     }
 
+    #[test]
+    fn test_invocation_session_mode_defaults_to_shared_session() {
+        assert_eq!(
+            InvocationSessionMode::default(),
+            InvocationSessionMode::SharedSession
+        );
+    }
+
+    #[test]
+    fn test_schedule_channel_config_defaults() {
+        let config: ScheduleChannelConfig =
+            serde_json::from_str(r#"{"cron_expression":"0 * * * * * *","message":"Run checks"}"#)
+                .unwrap();
+        assert_eq!(config.timezone, "UTC");
+        assert_eq!(config.session_mode, InvocationSessionMode::SharedSession);
+    }
+
+    #[test]
+    fn test_webhook_channel_config_defaults() {
+        let config: WebhookChannelConfig =
+            serde_json::from_str(r#"{"token":"top-secret","message":"{{payload.action}}"}"#)
+                .unwrap();
+        assert_eq!(config.session_mode, InvocationSessionMode::SharedSession);
+    }
+
     fn test_app(channels: Vec<AppChannel>) -> App {
         App {
             public_id: AppId::from_uuid(Uuid::nil()),
@@ -578,6 +712,58 @@ mod tests {
         let ch = test_channel(ChannelType::AgUi, serde_json::json!({"anonymous": true}));
         let app = test_app(vec![ch]);
         assert!(app.ag_ui_channel().is_some());
+    }
+
+    #[test]
+    fn test_app_channel_schedule_config_valid() {
+        let ch = test_channel(
+            ChannelType::Schedule,
+            serde_json::json!({
+                "cron_expression": "0 * * * * * *",
+                "message": "Run checks"
+            }),
+        );
+        let config = ch.schedule_config().unwrap();
+        assert_eq!(config.message, "Run checks");
+    }
+
+    #[test]
+    fn test_app_schedule_channel_lookup() {
+        let ch = test_channel(
+            ChannelType::Schedule,
+            serde_json::json!({
+                "cron_expression": "0 * * * * * *",
+                "message": "Run checks"
+            }),
+        );
+        let app = test_app(vec![ch]);
+        assert!(app.schedule_channel().is_some());
+    }
+
+    #[test]
+    fn test_app_channel_webhook_config_valid() {
+        let ch = test_channel(
+            ChannelType::Webhook,
+            serde_json::json!({
+                "token": "secret",
+                "message": "{{payload.ref}}"
+            }),
+        );
+        let config = ch.webhook_config().unwrap();
+        assert_eq!(config.token, "secret");
+    }
+
+    #[test]
+    fn test_app_webhook_channel_lookup() {
+        let ch = test_channel(
+            ChannelType::Webhook,
+            serde_json::json!({
+                "token": "secret",
+                "message": "{{payload.ref}}"
+            }),
+        );
+        let app = test_app(vec![ch]);
+        assert!(app.webhook_channel().is_some());
     }
 
     #[test]

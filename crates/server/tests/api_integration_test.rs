@@ -3217,8 +3217,7 @@ async fn test_create_app_missing_harness_returns_not_found() {
             json!({
                 "name": "Test App",
                 "harness_id": "harness_ffffffffffffffffffffffffffffffff",
-                "agent_id": agent["id"],
-                "channel_type": "slack"
+                "agent_id": agent["id"]
             }),
         )
         .await
@@ -3235,12 +3234,112 @@ async fn test_create_app_missing_agent_returns_not_found() {
             json!({
                 "name": "Test App",
                 "harness_id": server.seed_generic_harness_id,
-                "agent_id": "agent_ffffffffffffffffffffffffffffffff",
-                "channel_type": "slack"
+                "agent_id": "agent_ffffffffffffffffffffffffffffffff"
             }),
         )
         .await
         .assert_status(StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_create_app_schedule_and_webhook_channels_persist_in_postgres() {
+    let server = TestServer::new().await;
+
+    let agent: Value = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "app-invocation-postgres-agent",
+                "display_name": "Invocation Agent",
+                "system_prompt": "Test"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let schedule_app: Value = server
+        .post(
+            "/v1/apps",
+            json!({
+                "name": "Scheduled Repo Check",
+                "harness_id": server.seed_generic_harness_id,
+                "agent_id": agent["id"],
+                "channel_type": "schedule",
+                "channel_config": {
+                    "cron_expression": "0 15 * * * * *",
+                    "timezone": "UTC",
+                    "session_mode": "shared_session",
+                    "message": "check repo"
+                }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let stored_schedule_app: Value = server
+        .get(&format!(
+            "/v1/apps/{}",
+            schedule_app["id"].as_str().unwrap()
+        ))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+
+    assert_eq!(stored_schedule_app["channels"].as_array().unwrap().len(), 1);
+    assert_eq!(
+        stored_schedule_app["channels"][0]["channel_type"],
+        "schedule"
+    );
+    assert_eq!(
+        stored_schedule_app["channels"][0]["channel_config"]["cron_expression"],
+        "0 15 * * * * *"
+    );
+    assert_eq!(
+        stored_schedule_app["channels"][0]["channel_config"]["session_mode"],
+        "shared_session"
+    );
+    assert_eq!(
+        stored_schedule_app["channels"][0]["channel_config"]["message"],
+        "check repo"
+    );
+
+    let webhook_app: Value = server
+        .post(
+            "/v1/apps",
+            json!({
+                "name": "Webhook Repo Check",
+                "harness_id": server.seed_generic_harness_id,
+                "agent_id": agent["id"],
+                "channel_type": "webhook",
+                "channel_config": {
+                    "token": "secret-token",
+                    "session_mode": "session_per_invocation",
+                    "message": "check webhook"
+                }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let stored_webhook_app: Value = server
+        .get(&format!("/v1/apps/{}", webhook_app["id"].as_str().unwrap()))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+
+    assert_eq!(stored_webhook_app["channels"].as_array().unwrap().len(), 1);
+    assert_eq!(stored_webhook_app["channels"][0]["channel_type"], "webhook");
+    assert_eq!(
+        stored_webhook_app["channels"][0]["channel_config"]["session_mode"],
+        "session_per_invocation"
+    );
+    assert_eq!(
+        stored_webhook_app["channels"][0]["channel_config"]["message"],
+        "check webhook"
+    );
 }
 
 #[tokio::test]
@@ -3262,8 +3361,7 @@ async fn test_update_app_missing_harness_returns_not_found() {
             json!({
                 "name": "Test App",
                 "harness_id": server.seed_generic_harness_id,
-                "agent_id": agent["id"],
-                "channel_type": "slack"
+                "agent_id": agent["id"]
             }),
         )
         .await
@@ -3298,8 +3396,7 @@ async fn test_update_app_missing_agent_returns_not_found() {
             json!({
                 "name": "Test App",
                 "harness_id": server.seed_generic_harness_id,
-                "agent_id": agent["id"],
-                "channel_type": "slack"
+                "agent_id": agent["id"]
             }),
         )
         .await

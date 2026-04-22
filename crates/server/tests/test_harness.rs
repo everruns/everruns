@@ -36,7 +36,7 @@ use everruns_server::{
     api, auth, seed, services,
     storage::{EncryptionService, StorageBackend},
 };
-use everruns_worker::{RunnerBackend, create_runner_with_backend};
+use everruns_worker::{AgentRunner, RunnerBackend, create_runner_with_backend};
 
 pub fn extract_cookie(headers: &HeaderMap, name: &str) -> String {
     headers
@@ -83,9 +83,11 @@ pub async fn create_test_pool() -> PgPool {
 pub struct TestServer {
     router: Router,
     pub db: Arc<StorageBackend>,
+    pub encryption: Option<Arc<EncryptionService>>,
     pub pool: PgPool,
     pub virtual_registry:
         Arc<everruns_server::services::virtual_mount_registry::VirtualMountRegistry>,
+    pub runner: Arc<dyn AgentRunner>,
     /// Public ID of the built-in `base` harness for the default org (resolved
     /// at construction time; no hardcoded UUIDs).
     pub seed_base_harness_id: String,
@@ -412,6 +414,7 @@ impl TestServer {
         let apps_state = api::apps::AppState::new(
             db.clone(),
             None,
+            Some(durable_store.clone()),
             capability_service.clone(),
             auth_state.clone(),
         );
@@ -420,6 +423,13 @@ impl TestServer {
             None, // No encryption in tests
             runner.clone(),
             None, // No delivery dispatcher in tests
+            feature_flags.notifications,
+            event_delivery.clone(),
+        );
+        let app_webhooks_state = api::app_webhooks::AppWebhookState::new(
+            db.clone(),
+            None, // No encryption in tests
+            runner.clone(),
             feature_flags.notifications,
             event_delivery.clone(),
         );
@@ -439,9 +449,9 @@ impl TestServer {
             feature_flags.notifications,
             event_delivery.clone(),
             None, // No encryption in tests
+            Some(durable_store.clone()),
             capability_service.clone(),
             Some(sqldb_store.clone()),
-            Some(durable_store.clone()),
         )
         .with_virtual_registry(virtual_registry.clone());
 
@@ -479,6 +489,7 @@ impl TestServer {
             .merge(api::user_connections::routes(user_connections_state))
             .merge(api::ag_ui::routes(ag_ui_state))
             .merge(api::slack_events::routes(slack_state))
+            .merge(api::app_webhooks::routes(app_webhooks_state))
             .merge(auth::routes(auth_backend.clone()))
             .merge(auth::cli_auth::cli_auth_routes(
                 auth::cli_auth::CliAuthState {
@@ -537,8 +548,10 @@ impl TestServer {
         Self {
             router,
             db,
+            encryption,
             pool,
             virtual_registry,
+            runner,
             seed_base_harness_id,
             seed_generic_harness_id,
             seed_chat_harness_id,

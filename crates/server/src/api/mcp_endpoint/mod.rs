@@ -186,12 +186,12 @@ pub struct AppState {
     pub runner: Arc<dyn AgentRunner>,
     pub auth: AuthState,
     pub encryption: Option<Arc<crate::storage::encryption::EncryptionService>>,
+    pub workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
     pub fallback_base_harness_name: Option<String>,
     pub fallback_default_harness_name: Option<String>,
     pub chat_harness_name: Option<String>,
     pub chat_session_title: Option<String>,
     pub sqldb_store: Option<Arc<dyn SessionSqlDbStore>>,
-    pub workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
 }
 
 impl AppState {
@@ -204,9 +204,9 @@ impl AppState {
         notifications_enabled: bool,
         event_delivery: crate::event_delivery::EventDelivery,
         encryption: Option<Arc<crate::storage::encryption::EncryptionService>>,
+        workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
         capability_service: Arc<CapabilityService>,
         sqldb_store: Option<Arc<dyn SessionSqlDbStore>>,
-        workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
     ) -> Self {
         Self {
             session_service: Arc::new(SessionService::with_registry(
@@ -228,6 +228,7 @@ impl AppState {
             runner,
             auth,
             encryption,
+            workflow_store,
             fallback_base_harness_name: platform_definition
                 .harness_for_role(everruns_core::BuiltInHarnessRole::Base)
                 .map(|h| h.name.clone()),
@@ -241,7 +242,6 @@ impl AppState {
                 .harness_for_role(everruns_core::BuiltInHarnessRole::Chat)
                 .map(|h| h.display_name.clone()),
             sqldb_store,
-            workflow_store,
         }
     }
 

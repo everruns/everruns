@@ -6,11 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { QueryStateWrapper } from "@/components/query-state-wrapper";
-import { Plus, Rocket, Globe, GlobeLock, Copy } from "lucide-react";
+import { Plus, Rocket, Globe, GlobeLock, Copy, Clock3 } from "lucide-react";
 import { ArchiveFilter } from "@/components/archive-filter";
 import { CopyButton } from "@/components/ui/copy-button";
 import Link from "next/link";
-import type { App } from "@/lib/api/types";
+import type { App, AppChannel, ScheduleChannelConfig } from "@/lib/api/types";
 import { ExperimentalPageBadge } from "@/components/ui/experimental-badge";
 import { getEntityNameClassName, getEntityStatusBadgeVariant } from "@/lib/entity-lifecycle";
 import { getChannelTypeDisplayName } from "@/lib/app-channels";
@@ -63,15 +63,7 @@ function AppCard({ app }: { app: App }) {
   const isPublished = app.status === "published";
   const isArchived = app.status === "archived";
   const primaryChannel = app.channels.find((channel) => channel.enabled) ?? app.channels[0];
-  const primaryUrl = !primaryChannel
-    ? null
-    : typeof window !== "undefined"
-      ? primaryChannel.channel_type === "ag_ui"
-        ? `${window.location.origin}/api/v1/apps/${app.id}/ag-ui`
-        : `${window.location.origin}/api/v1/apps/${app.id}/slack/events`
-      : primaryChannel.channel_type === "ag_ui"
-        ? `/api/v1/apps/${app.id}/ag-ui`
-        : `/api/v1/apps/${app.id}/slack/events`;
+  const primaryAccess = getPrimaryChannelAccess(app.id, primaryChannel);
 
   return (
     <Link href={`/apps/${app.id}`}>
@@ -99,20 +91,26 @@ function AppCard({ app }: { app: App }) {
             {app.channels.length === 0 && <span>No channels</span>}
           </div>
 
-          {isPublished && primaryUrl && (
+          {isPublished && primaryAccess && (
             <div className="flex items-center gap-1 text-xs text-muted-foreground bg-muted p-2 rounded">
-              <Globe className="w-3 h-3 shrink-0" />
-              <span className="truncate font-mono">{primaryUrl}</span>
-              <button
-                className="shrink-0 ml-1 hover:text-foreground"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  navigator.clipboard.writeText(primaryUrl);
-                }}
-              >
-                <Copy className="w-3 h-3" />
-              </button>
+              {primaryAccess.kind === "schedule" ? (
+                <Clock3 className="w-3 h-3 shrink-0" />
+              ) : (
+                <Globe className="w-3 h-3 shrink-0" />
+              )}
+              <span className="truncate font-mono">{primaryAccess.value}</span>
+              {primaryAccess.copyable && (
+                <button
+                  className="shrink-0 ml-1 hover:text-foreground"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    navigator.clipboard.writeText(primaryAccess.value);
+                  }}
+                >
+                  <Copy className="w-3 h-3" />
+                </button>
+              )}
             </div>
           )}
 
@@ -160,7 +158,7 @@ function EmptyState() {
       <h3 className="text-lg font-semibold mb-2">No Apps Yet</h3>
       <p className="text-muted-foreground mb-4 max-w-md">
         Apps deploy your agents to channels like Slack and AG-UI. Create an app to connect an agent
-        to the interface you need.
+        to the interface you need, or trigger it from schedules and authenticated webhooks.
       </p>
       <Link href="/apps/new">
         <Button variant="accent">
@@ -170,4 +168,45 @@ function EmptyState() {
       </Link>
     </div>
   );
+}
+
+function getPrimaryChannelAccess(appId: string, channel: AppChannel | undefined) {
+  if (!channel) {
+    return null;
+  }
+
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+
+  switch (channel.channel_type) {
+    case "ag_ui":
+      return {
+        kind: "url" as const,
+        value: origin ? `${origin}/api/v1/apps/${appId}/ag-ui` : `/api/v1/apps/${appId}/ag-ui`,
+        copyable: true,
+      };
+    case "slack":
+      return {
+        kind: "url" as const,
+        value: origin
+          ? `${origin}/api/v1/apps/${appId}/slack/events`
+          : `/api/v1/apps/${appId}/slack/events`,
+        copyable: true,
+      };
+    case "webhook":
+      return {
+        kind: "url" as const,
+        value: origin
+          ? `${origin}/api/v1/apps/${appId}/webhooks/${channel.id}`
+          : `/api/v1/apps/${appId}/webhooks/${channel.id}`,
+        copyable: true,
+      };
+    case "schedule": {
+      const config = channel.channel_config as ScheduleChannelConfig;
+      return {
+        kind: "schedule" as const,
+        value: `${config.cron_expression} (${config.timezone ?? "UTC"})`,
+        copyable: false,
+      };
+    }
+  }
 }

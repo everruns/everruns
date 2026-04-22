@@ -110,6 +110,12 @@ async fn test_list_commands_includes_platform_management_commands() {
             .iter()
             .any(|command| command.name == "list_harnesses" && command.api_version == "v1")
     );
+    assert!(
+        response
+            .commands
+            .iter()
+            .any(|command| command.name == "create_app" && command.api_version == "v1")
+    );
 }
 
 #[tokio::test]

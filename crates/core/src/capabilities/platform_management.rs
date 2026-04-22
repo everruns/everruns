@@ -10,6 +10,7 @@
 //           access to Everruns documentation without DB writes per session.
 
 use super::{Capability, CapabilityStatus, MountPoint};
+use crate::app::{App, AppChannel, ChannelType};
 use crate::capability_types::{MountAccess, MountSource, VirtualFileTree};
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
@@ -89,7 +90,7 @@ impl Capability for PlatformManagementCapability {
     }
 
     fn description(&self) -> &str {
-        "Tools to manage harnesses, agents, and sessions. Create, list, update, delete entities and interact with sessions programmatically."
+        "Tools to manage harnesses, agents, apps, channels, and sessions. Create, list, update, delete entities and interact with sessions programmatically."
     }
 
     fn status(&self) -> CapabilityStatus {
@@ -135,6 +136,9 @@ consult these docs before answering.
             Box::new(ManageHarnessesTool),
             Box::new(ReadAgentsTool),
             Box::new(ManageAgentsTool),
+            Box::new(ReadAppsTool),
+            Box::new(ManageAppsTool),
+            Box::new(ManageAppChannelsTool),
             Box::new(ReadSessionsTool),
             Box::new(ManageSessionsTool),
             Box::new(SessionSendMessageTool),
@@ -181,6 +185,47 @@ fn get_str<'a>(args: &'a Value, key: &str) -> Option<&'a str> {
 fn require_str<'a>(args: &'a Value, key: &str) -> Result<&'a str, ToolExecutionResult> {
     get_str(args, key).ok_or_else(|| {
         ToolExecutionResult::tool_error(format!("Missing required parameter: {key}"))
+    })
+}
+
+fn parse_channel_type(value: &str, field: &str) -> Result<ChannelType, ToolExecutionResult> {
+    serde_json::from_value(Value::String(value.to_string()))
+        .map_err(|_| ToolExecutionResult::tool_error(format!("Invalid {field}: {value}")))
+}
+
+fn channel_json(channel: &AppChannel, include_config: bool) -> Value {
+    let mut json = json!({
+        "id": channel.public_id.to_string(),
+        "channel_type": channel.channel_type.to_string(),
+        "enabled": channel.enabled,
+        "created_at": channel.created_at.to_rfc3339(),
+        "updated_at": channel.updated_at.to_rfc3339(),
+    });
+    if include_config {
+        json["channel_config"] = channel.channel_config.clone();
+    }
+    json
+}
+
+fn app_json(app: &App, base_url: &str, include_channel_config: bool) -> Value {
+    json!({
+        "id": app.public_id.to_string(),
+        "name": app.name,
+        "description": app.description,
+        "status": app.status.to_string(),
+        "harness_id": app.harness_id.to_string(),
+        "agent_id": app.agent_id.as_ref().map(|id| id.to_string()),
+        "agent_identity_id": app.agent_identity_id.as_ref().map(|id| id.to_string()),
+        "published_at": app.published_at.map(|value| value.to_rfc3339()),
+        "created_at": app.created_at.to_rfc3339(),
+        "updated_at": app.updated_at.to_rfc3339(),
+        "channel_count": app.channels.len(),
+        "channels": app
+            .channels
+            .iter()
+            .map(|channel| channel_json(channel, include_channel_config))
+            .collect::<Vec<_>>(),
+        "ui_link": format!("{}/apps/{}", base_url, app.public_id),
     })
 }
 
@@ -892,6 +937,664 @@ impl Tool for ManageAgentsTool {
 
             _ => ToolExecutionResult::tool_error(format!(
                 "Unknown operation: {operation}. Valid: create, update, delete"
+            )),
+        }
+    }
+
+    fn requires_context(&self) -> bool {
+        true
+    }
+}
+
+// =============================================================================
+// Tool: read_apps (read-only: get by ID or list/filter)
+// =============================================================================
+
+pub struct ReadAppsTool;
+
+#[async_trait]
+impl Tool for ReadAppsTool {
+    fn name(&self) -> &str {
+        "read_apps"
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some("Read Apps")
+    }
+
+    fn description(&self) -> &str {
+        "Read apps by ID or list/filter. When id is provided returns full app detail including channels."
+    }
+
+    fn parameters_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "id": {
+                    "type": "string",
+                    "description": "Optional app ID to get a single app with channel details"
+                },
+                "search": {
+                    "type": "string",
+                    "description": "Optional case-insensitive search by app name or description"
+                },
+                "include_archived": {
+                    "type": "boolean",
+                    "description": "Include archived apps in list results (default: false)"
+                }
+            },
+            "additionalProperties": false
+        })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_idempotent(true)
+    }
+
+    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
+        ToolExecutionResult::tool_error(
+            "read_apps requires context. This tool must be executed with session context.",
+        )
+    }
+
+    async fn execute_with_context(
+        &self,
+        arguments: Value,
+        context: &ToolContext,
+    ) -> ToolExecutionResult {
+        let store = match get_platform_store(context) {
+            Ok(s) => s,
+            Err(e) => return e,
+        };
+
+        let base_url = store.base_url();
+
+        if let Some(id_str) = get_str(&arguments, "id") {
+            let id = match id_str.parse::<crate::typed_id::AppId>() {
+                Ok(id) => id,
+                Err(_) => {
+                    return ToolExecutionResult::tool_error(format!("Invalid app id: {id_str}"));
+                }
+            };
+            match store.get_app(id).await {
+                Ok(Some(app)) => ToolExecutionResult::success(app_json(&app, base_url, true)),
+                Ok(None) => ToolExecutionResult::tool_error(format!("App not found: {id_str}")),
+                Err(e) => ToolExecutionResult::tool_error(format!("Failed to get app: {e}")),
+            }
+        } else {
+            let search = get_str(&arguments, "search");
+            let include_archived = arguments
+                .get("include_archived")
+                .and_then(|value| value.as_bool())
+                .unwrap_or(false);
+            match store.list_apps(search, include_archived).await {
+                Ok(apps) => {
+                    let items = apps
+                        .iter()
+                        .map(|app| app_json(app, base_url, false))
+                        .collect::<Vec<_>>();
+                    ToolExecutionResult::success(json!({"apps": items, "count": items.len()}))
+                }
+                Err(e) => ToolExecutionResult::tool_error(format!("Failed to list apps: {e}")),
+            }
+        }
+    }
+
+    fn requires_context(&self) -> bool {
+        true
+    }
+}
+
+// =============================================================================
+// Tool: manage_apps (mutations: create, update, delete, destroy, publish, unpublish)
+// =============================================================================
+
+pub struct ManageAppsTool;
+
+#[async_trait]
+impl Tool for ManageAppsTool {
+    fn name(&self) -> &str {
+        "manage_apps"
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some("Manage Apps")
+    }
+
+    fn description(&self) -> &str {
+        "App mutations: create, update, delete (archive), destroy, publish, unpublish."
+    }
+
+    fn parameters_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "operation": {
+                    "type": "string",
+                    "enum": ["create", "update", "delete", "destroy", "publish", "unpublish"],
+                    "description": "The mutation to perform"
+                },
+                "app_id": {
+                    "type": "string",
+                    "description": "App ID (required for update/delete/destroy/publish/unpublish)"
+                },
+                "name": {
+                    "type": "string",
+                    "description": "App name (required for create)"
+                },
+                "description": {
+                    "type": "string",
+                    "description": "App description (optional)"
+                },
+                "harness_id": {
+                    "type": "string",
+                    "description": "Harness ID (required for create)"
+                },
+                "agent_id": {
+                    "type": "string",
+                    "description": "Optional agent ID"
+                },
+                "agent_identity_id": {
+                    "type": ["string", "null"],
+                    "description": "Optional agent identity ID. Pass null on update to clear it."
+                },
+                "channel_type": {
+                    "type": "string",
+                    "enum": ["slack", "ag_ui", "schedule", "webhook"],
+                    "description": "Optional initial channel type for create"
+                },
+                "channel_config": {
+                    "type": "object",
+                    "description": "Optional initial channel configuration for create"
+                }
+            },
+            "required": ["operation"],
+            "additionalProperties": false
+        })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default().with_narration_noun("app")
+    }
+
+    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
+        ToolExecutionResult::tool_error(
+            "manage_apps requires context. This tool must be executed with session context.",
+        )
+    }
+
+    async fn execute_with_context(
+        &self,
+        arguments: Value,
+        context: &ToolContext,
+    ) -> ToolExecutionResult {
+        let store = match get_platform_store(context) {
+            Ok(s) => s,
+            Err(e) => return e,
+        };
+
+        let operation = match require_str(&arguments, "operation") {
+            Ok(op) => op,
+            Err(e) => return e,
+        };
+
+        let base_url = store.base_url();
+
+        match operation {
+            "create" => {
+                let name = match require_str(&arguments, "name") {
+                    Ok(s) => s,
+                    Err(e) => return e,
+                };
+                let harness_id_str = match require_str(&arguments, "harness_id") {
+                    Ok(s) => s,
+                    Err(e) => return e,
+                };
+                let harness_id = match harness_id_str.parse::<crate::typed_id::HarnessId>() {
+                    Ok(id) => id,
+                    Err(_) => {
+                        return ToolExecutionResult::tool_error(format!(
+                            "Invalid harness_id: {harness_id_str}"
+                        ));
+                    }
+                };
+                let description = get_str(&arguments, "description");
+                let agent_id = match get_str(&arguments, "agent_id") {
+                    Some(value) => match value.parse::<crate::typed_id::AgentId>() {
+                        Ok(id) => Some(id),
+                        Err(_) => {
+                            return ToolExecutionResult::tool_error(format!(
+                                "Invalid agent_id: {value}"
+                            ));
+                        }
+                    },
+                    None => None,
+                };
+                let agent_identity_id = if let Some(value) = arguments.get("agent_identity_id") {
+                    if value.is_null() {
+                        None
+                    } else if let Some(value) = value.as_str() {
+                        match value.parse::<crate::typed_id::AgentIdentityId>() {
+                            Ok(id) => Some(id),
+                            Err(_) => {
+                                return ToolExecutionResult::tool_error(format!(
+                                    "Invalid agent_identity_id: {value}"
+                                ));
+                            }
+                        }
+                    } else {
+                        return ToolExecutionResult::tool_error(
+                            "agent_identity_id must be a string or null",
+                        );
+                    }
+                } else {
+                    None
+                };
+                let channel_type = match get_str(&arguments, "channel_type") {
+                    Some(value) => match parse_channel_type(value, "channel_type") {
+                        Ok(channel_type) => Some(channel_type),
+                        Err(error) => return error,
+                    },
+                    None => None,
+                };
+                let channel_config = arguments.get("channel_config");
+
+                match store
+                    .create_app(
+                        name,
+                        description,
+                        harness_id,
+                        agent_id,
+                        agent_identity_id,
+                        channel_type,
+                        channel_config,
+                    )
+                    .await
+                {
+                    Ok(app) => {
+                        let mut response = app_json(&app, base_url, true);
+                        response["message"] = Value::String("App created successfully".to_string());
+                        ToolExecutionResult::success(response)
+                    }
+                    Err(e) => ToolExecutionResult::tool_error(format!("Failed to create app: {e}")),
+                }
+            }
+
+            "update" => {
+                let app_id_str = match require_str(&arguments, "app_id") {
+                    Ok(s) => s,
+                    Err(e) => return e,
+                };
+                let app_id = match app_id_str.parse::<crate::typed_id::AppId>() {
+                    Ok(id) => id,
+                    Err(_) => {
+                        return ToolExecutionResult::tool_error(format!(
+                            "Invalid app_id: {app_id_str}"
+                        ));
+                    }
+                };
+                let harness_id = match get_str(&arguments, "harness_id") {
+                    Some(value) => match value.parse::<crate::typed_id::HarnessId>() {
+                        Ok(id) => Some(id),
+                        Err(_) => {
+                            return ToolExecutionResult::tool_error(format!(
+                                "Invalid harness_id: {value}"
+                            ));
+                        }
+                    },
+                    None => None,
+                };
+                let agent_id = match get_str(&arguments, "agent_id") {
+                    Some(value) => match value.parse::<crate::typed_id::AgentId>() {
+                        Ok(id) => Some(id),
+                        Err(_) => {
+                            return ToolExecutionResult::tool_error(format!(
+                                "Invalid agent_id: {value}"
+                            ));
+                        }
+                    },
+                    None => None,
+                };
+                let agent_identity_id = if let Some(value) = arguments.get("agent_identity_id") {
+                    if value.is_null() {
+                        Some(None)
+                    } else if let Some(value) = value.as_str() {
+                        match value.parse::<crate::typed_id::AgentIdentityId>() {
+                            Ok(id) => Some(Some(id)),
+                            Err(_) => {
+                                return ToolExecutionResult::tool_error(format!(
+                                    "Invalid agent_identity_id: {value}"
+                                ));
+                            }
+                        }
+                    } else {
+                        return ToolExecutionResult::tool_error(
+                            "agent_identity_id must be a string or null",
+                        );
+                    }
+                } else {
+                    None
+                };
+
+                match store
+                    .update_app(
+                        app_id,
+                        get_str(&arguments, "name"),
+                        get_str(&arguments, "description"),
+                        harness_id,
+                        agent_id,
+                        agent_identity_id,
+                    )
+                    .await
+                {
+                    Ok(app) => {
+                        let mut response = app_json(&app, base_url, true);
+                        response["message"] = Value::String("App updated successfully".to_string());
+                        ToolExecutionResult::success(response)
+                    }
+                    Err(e) => ToolExecutionResult::tool_error(format!("Failed to update app: {e}")),
+                }
+            }
+
+            "delete" => {
+                let app_id_str = match require_str(&arguments, "app_id") {
+                    Ok(s) => s,
+                    Err(e) => return e,
+                };
+                let app_id = match app_id_str.parse::<crate::typed_id::AppId>() {
+                    Ok(id) => id,
+                    Err(_) => {
+                        return ToolExecutionResult::tool_error(format!(
+                            "Invalid app_id: {app_id_str}"
+                        ));
+                    }
+                };
+                match store.delete_app(app_id).await {
+                    Ok(()) => ToolExecutionResult::success(json!({
+                        "app_id": app_id_str,
+                        "message": "App archived successfully"
+                    })),
+                    Err(e) => {
+                        ToolExecutionResult::tool_error(format!("Failed to archive app: {e}"))
+                    }
+                }
+            }
+
+            "destroy" => {
+                let app_id_str = match require_str(&arguments, "app_id") {
+                    Ok(s) => s,
+                    Err(e) => return e,
+                };
+                let app_id = match app_id_str.parse::<crate::typed_id::AppId>() {
+                    Ok(id) => id,
+                    Err(_) => {
+                        return ToolExecutionResult::tool_error(format!(
+                            "Invalid app_id: {app_id_str}"
+                        ));
+                    }
+                };
+                match store.destroy_app(app_id).await {
+                    Ok(()) => ToolExecutionResult::success(json!({
+                        "app_id": app_id_str,
+                        "message": "App destroyed successfully"
+                    })),
+                    Err(e) => {
+                        ToolExecutionResult::tool_error(format!("Failed to destroy app: {e}"))
+                    }
+                }
+            }
+
+            "publish" => {
+                let app_id_str = match require_str(&arguments, "app_id") {
+                    Ok(s) => s,
+                    Err(e) => return e,
+                };
+                let app_id = match app_id_str.parse::<crate::typed_id::AppId>() {
+                    Ok(id) => id,
+                    Err(_) => {
+                        return ToolExecutionResult::tool_error(format!(
+                            "Invalid app_id: {app_id_str}"
+                        ));
+                    }
+                };
+                match store.publish_app(app_id).await {
+                    Ok(app) => {
+                        let mut response = app_json(&app, base_url, true);
+                        response["message"] =
+                            Value::String("App published successfully".to_string());
+                        ToolExecutionResult::success(response)
+                    }
+                    Err(e) => {
+                        ToolExecutionResult::tool_error(format!("Failed to publish app: {e}"))
+                    }
+                }
+            }
+
+            "unpublish" => {
+                let app_id_str = match require_str(&arguments, "app_id") {
+                    Ok(s) => s,
+                    Err(e) => return e,
+                };
+                let app_id = match app_id_str.parse::<crate::typed_id::AppId>() {
+                    Ok(id) => id,
+                    Err(_) => {
+                        return ToolExecutionResult::tool_error(format!(
+                            "Invalid app_id: {app_id_str}"
+                        ));
+                    }
+                };
+                match store.unpublish_app(app_id).await {
+                    Ok(app) => {
+                        let mut response = app_json(&app, base_url, true);
+                        response["message"] =
+                            Value::String("App unpublished successfully".to_string());
+                        ToolExecutionResult::success(response)
+                    }
+                    Err(e) => {
+                        ToolExecutionResult::tool_error(format!("Failed to unpublish app: {e}"))
+                    }
+                }
+            }
+
+            _ => ToolExecutionResult::tool_error(format!(
+                "Unknown operation: {operation}. Valid: create, update, delete, destroy, publish, unpublish"
+            )),
+        }
+    }
+
+    fn requires_context(&self) -> bool {
+        true
+    }
+}
+
+// =============================================================================
+// Tool: manage_app_channels (mutations: add, update, delete)
+// =============================================================================
+
+pub struct ManageAppChannelsTool;
+
+#[async_trait]
+impl Tool for ManageAppChannelsTool {
+    fn name(&self) -> &str {
+        "manage_app_channels"
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some("Manage App Channels")
+    }
+
+    fn description(&self) -> &str {
+        "App channel mutations: add, update, delete."
+    }
+
+    fn parameters_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "operation": {
+                    "type": "string",
+                    "enum": ["add", "update", "delete"],
+                    "description": "The channel mutation to perform"
+                },
+                "app_id": {
+                    "type": "string",
+                    "description": "App ID"
+                },
+                "channel_id": {
+                    "type": "string",
+                    "description": "Channel ID (required for update/delete)"
+                },
+                "channel_type": {
+                    "type": "string",
+                    "enum": ["slack", "ag_ui", "schedule", "webhook"],
+                    "description": "Channel type (required for add, optional for update)"
+                },
+                "channel_config": {
+                    "type": "object",
+                    "description": "Channel-specific configuration object"
+                },
+                "enabled": {
+                    "type": "boolean",
+                    "description": "Whether the channel is enabled"
+                }
+            },
+            "required": ["operation", "app_id"],
+            "additionalProperties": false
+        })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default().with_narration_noun("app channel")
+    }
+
+    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
+        ToolExecutionResult::tool_error(
+            "manage_app_channels requires context. This tool must be executed with session context.",
+        )
+    }
+
+    async fn execute_with_context(
+        &self,
+        arguments: Value,
+        context: &ToolContext,
+    ) -> ToolExecutionResult {
+        let store = match get_platform_store(context) {
+            Ok(s) => s,
+            Err(e) => return e,
+        };
+
+        let operation = match require_str(&arguments, "operation") {
+            Ok(op) => op,
+            Err(e) => return e,
+        };
+
+        let app_id_str = match require_str(&arguments, "app_id") {
+            Ok(s) => s,
+            Err(e) => return e,
+        };
+        let app_id = match app_id_str.parse::<crate::typed_id::AppId>() {
+            Ok(id) => id,
+            Err(_) => {
+                return ToolExecutionResult::tool_error(format!("Invalid app_id: {app_id_str}"));
+            }
+        };
+        let base_url = store.base_url();
+
+        match operation {
+            "add" => {
+                let channel_type_str = match require_str(&arguments, "channel_type") {
+                    Ok(s) => s,
+                    Err(e) => return e,
+                };
+                let channel_type = match parse_channel_type(channel_type_str, "channel_type") {
+                    Ok(channel_type) => channel_type,
+                    Err(error) => return error,
+                };
+                let channel_config = arguments.get("channel_config");
+                let enabled = arguments.get("enabled").and_then(|value| value.as_bool());
+                match store
+                    .add_app_channel(app_id, channel_type, channel_config, enabled)
+                    .await
+                {
+                    Ok(channel) => ToolExecutionResult::success(json!({
+                        "app_id": app_id_str,
+                        "channel": channel_json(&channel, true),
+                        "ui_link": format!("{}/apps/{}", base_url, app_id),
+                        "message": "App channel added successfully"
+                    })),
+                    Err(e) => {
+                        ToolExecutionResult::tool_error(format!("Failed to add app channel: {e}"))
+                    }
+                }
+            }
+
+            "update" => {
+                let channel_id_str = match require_str(&arguments, "channel_id") {
+                    Ok(s) => s,
+                    Err(e) => return e,
+                };
+                let channel_id = match channel_id_str.parse::<crate::typed_id::AppChannelId>() {
+                    Ok(id) => id,
+                    Err(_) => {
+                        return ToolExecutionResult::tool_error(format!(
+                            "Invalid channel_id: {channel_id_str}"
+                        ));
+                    }
+                };
+                let channel_type = match get_str(&arguments, "channel_type") {
+                    Some(value) => match parse_channel_type(value, "channel_type") {
+                        Ok(channel_type) => Some(channel_type),
+                        Err(error) => return error,
+                    },
+                    None => None,
+                };
+                let channel_config = arguments.get("channel_config");
+                let enabled = arguments.get("enabled").and_then(|value| value.as_bool());
+                match store
+                    .update_app_channel(app_id, channel_id, channel_type, channel_config, enabled)
+                    .await
+                {
+                    Ok(channel) => ToolExecutionResult::success(json!({
+                        "app_id": app_id_str,
+                        "channel": channel_json(&channel, true),
+                        "ui_link": format!("{}/apps/{}", base_url, app_id),
+                        "message": "App channel updated successfully"
+                    })),
+                    Err(e) => ToolExecutionResult::tool_error(format!(
+                        "Failed to update app channel: {e}"
+                    )),
+                }
+            }
+
+            "delete" => {
+                let channel_id_str = match require_str(&arguments, "channel_id") {
+                    Ok(s) => s,
+                    Err(e) => return e,
+                };
+                let channel_id = match channel_id_str.parse::<crate::typed_id::AppChannelId>() {
+                    Ok(id) => id,
+                    Err(_) => {
+                        return ToolExecutionResult::tool_error(format!(
+                            "Invalid channel_id: {channel_id_str}"
+                        ));
+                    }
+                };
+                match store.delete_app_channel(app_id, channel_id).await {
+                    Ok(()) => ToolExecutionResult::success(json!({
+                        "app_id": app_id_str,
+                        "channel_id": channel_id_str,
+                        "message": "App channel deleted successfully"
+                    })),
+                    Err(e) => ToolExecutionResult::tool_error(format!(
+                        "Failed to delete app channel: {e}"
+                    )),
+                }
+            }
+
+            _ => ToolExecutionResult::tool_error(format!(
+                "Unknown operation: {operation}. Valid: add, update, delete"
             )),
         }
     }
@@ -1648,16 +2351,19 @@ mod tests {
     }
 
     #[test]
-    fn capability_provides_ten_tools() {
+    fn capability_provides_thirteen_tools() {
         let cap = PlatformManagementCapability;
         let tools = cap.tools();
-        assert_eq!(tools.len(), 10);
+        assert_eq!(tools.len(), 13);
         let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
         assert!(names.contains(&"read_capabilities"));
         assert!(names.contains(&"read_harnesses"));
         assert!(names.contains(&"manage_harnesses"));
         assert!(names.contains(&"read_agents"));
         assert!(names.contains(&"manage_agents"));
+        assert!(names.contains(&"read_apps"));
+        assert!(names.contains(&"manage_apps"));
+        assert!(names.contains(&"manage_app_channels"));
         assert!(names.contains(&"read_sessions"));
         assert!(names.contains(&"manage_sessions"));
         assert!(names.contains(&"session_send_message"));
@@ -1999,6 +2705,197 @@ mod tests {
     }
 
     // =========================================================================
+    // ReadAppsTool tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn read_apps_list_returns_apps() {
+        let ctx = mock_context();
+        let tool = ReadAppsTool;
+        let result = tool.execute_with_context(json!({}), &ctx).await;
+        match result {
+            ToolExecutionResult::Success(v) => {
+                assert_eq!(v["count"], 1);
+                assert!(
+                    v["apps"].as_array().unwrap()[0]["ui_link"]
+                        .as_str()
+                        .unwrap()
+                        .contains("/apps/")
+                );
+            }
+            other => panic!("expected success, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn read_apps_get_by_id_returns_channels() {
+        let ctx = mock_context();
+        let tool = ReadAppsTool;
+        let result = tool
+            .execute_with_context(json!({"id": crate::AppId::new().to_string()}), &ctx)
+            .await;
+        match result {
+            ToolExecutionResult::Success(v) => {
+                assert_eq!(v["name"], "test-app");
+                assert_eq!(v["channels"].as_array().unwrap().len(), 1);
+            }
+            other => panic!("expected success, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn read_apps_invalid_id_returns_error() {
+        let ctx = mock_context();
+        let tool = ReadAppsTool;
+        let result = tool.execute_with_context(json!({"id": "bad"}), &ctx).await;
+        match result {
+            ToolExecutionResult::ToolError(msg) => assert!(msg.contains("Invalid app id")),
+            other => panic!("expected tool error, got: {other:?}"),
+        }
+    }
+
+    // =========================================================================
+    // ManageAppsTool tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn manage_apps_create_returns_new_app() {
+        let ctx = mock_context();
+        let tool = ManageAppsTool;
+        let result = tool
+            .execute_with_context(
+                json!({
+                    "operation": "create",
+                    "name": "repo-checker",
+                    "harness_id": HarnessId::new().to_string(),
+                    "channel_type": "schedule",
+                    "channel_config": {
+                        "cron_expression": "0 * * * * * *",
+                        "timezone": "UTC",
+                        "message": "run checks"
+                    }
+                }),
+                &ctx,
+            )
+            .await;
+        match result {
+            ToolExecutionResult::Success(v) => {
+                assert_eq!(v["name"], "repo-checker");
+                assert_eq!(v["channels"].as_array().unwrap().len(), 1);
+            }
+            other => panic!("expected success, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn manage_apps_publish_returns_published_app() {
+        let ctx = mock_context();
+        let tool = ManageAppsTool;
+        let result = tool
+            .execute_with_context(
+                json!({"operation": "publish", "app_id": crate::AppId::new().to_string()}),
+                &ctx,
+            )
+            .await;
+        match result {
+            ToolExecutionResult::Success(v) => assert_eq!(v["status"], "published"),
+            other => panic!("expected success, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn manage_apps_update_accepts_null_agent_identity() {
+        let ctx = mock_context();
+        let tool = ManageAppsTool;
+        let result = tool
+            .execute_with_context(
+                json!({
+                    "operation": "update",
+                    "app_id": crate::AppId::new().to_string(),
+                    "agent_identity_id": null
+                }),
+                &ctx,
+            )
+            .await;
+        match result {
+            ToolExecutionResult::Success(v) => assert!(v["agent_identity_id"].is_null()),
+            other => panic!("expected success, got: {other:?}"),
+        }
+    }
+
+    // =========================================================================
+    // ManageAppChannelsTool tests
+    // =========================================================================
+
+    #[tokio::test]
+    async fn manage_app_channels_add_returns_channel() {
+        let ctx = mock_context();
+        let tool = ManageAppChannelsTool;
+        let result = tool
+            .execute_with_context(
+                json!({
+                    "operation": "add",
+                    "app_id": crate::AppId::new().to_string(),
+                    "channel_type": "webhook",
+                    "channel_config": {
+                        "token": "secret-1",
+                        "message": "process payload"
+                    }
+                }),
+                &ctx,
+            )
+            .await;
+        match result {
+            ToolExecutionResult::Success(v) => {
+                assert_eq!(v["channel"]["channel_type"], "webhook");
+            }
+            other => panic!("expected success, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn manage_app_channels_delete_succeeds() {
+        let ctx = mock_context();
+        let tool = ManageAppChannelsTool;
+        let result = tool
+            .execute_with_context(
+                json!({
+                    "operation": "delete",
+                    "app_id": crate::AppId::new().to_string(),
+                    "channel_id": crate::AppChannelId::new().to_string()
+                }),
+                &ctx,
+            )
+            .await;
+        match result {
+            ToolExecutionResult::Success(v) => {
+                assert!(v["message"].as_str().unwrap().contains("deleted"));
+            }
+            other => panic!("expected success, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn manage_app_channels_invalid_channel_type_returns_error() {
+        let ctx = mock_context();
+        let tool = ManageAppChannelsTool;
+        let result = tool
+            .execute_with_context(
+                json!({
+                    "operation": "add",
+                    "app_id": crate::AppId::new().to_string(),
+                    "channel_type": "pagerduty"
+                }),
+                &ctx,
+            )
+            .await;
+        match result {
+            ToolExecutionResult::ToolError(msg) => assert!(msg.contains("Invalid channel_type")),
+            other => panic!("expected tool error, got: {other:?}"),
+        }
+    }
+
+    // =========================================================================
     // ReadSessionsTool tests
     // =========================================================================
 
@@ -2274,6 +3171,9 @@ mod tests {
         assert!(ManageHarnessesTool.requires_context());
         assert!(ReadAgentsTool.requires_context());
         assert!(ManageAgentsTool.requires_context());
+        assert!(ReadAppsTool.requires_context());
+        assert!(ManageAppsTool.requires_context());
+        assert!(ManageAppChannelsTool.requires_context());
         assert!(ReadSessionsTool.requires_context());
         assert!(ManageSessionsTool.requires_context());
         assert!(SessionSendMessageTool.requires_context());
@@ -2290,6 +3190,9 @@ mod tests {
             "manage_harnesses",
             "read_agents",
             "manage_agents",
+            "read_apps",
+            "manage_apps",
+            "manage_app_channels",
             "read_sessions",
             "manage_sessions",
             "session_send_message",
@@ -2308,6 +3211,13 @@ mod tests {
                 "manage_agents" => {
                     ManageAgentsTool
                         .execute(json!({"operation": "create"}))
+                        .await
+                }
+                "read_apps" => ReadAppsTool.execute(json!({})).await,
+                "manage_apps" => ManageAppsTool.execute(json!({"operation": "create"})).await,
+                "manage_app_channels" => {
+                    ManageAppChannelsTool
+                        .execute(json!({"operation": "add", "app_id": "app_1"}))
                         .await
                 }
                 "read_sessions" => ReadSessionsTool.execute(json!({})).await,

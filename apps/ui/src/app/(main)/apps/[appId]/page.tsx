@@ -26,9 +26,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -50,14 +52,19 @@ import {
 import { ArrowLeft, Globe, GlobeLock, Trash2, Pencil, Check, X, Rocket, Plus } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
 import { AgUiSetupGuidance } from "@/components/apps/ag-ui-setup-guidance";
+import { ScheduleSetupGuidance } from "@/components/apps/schedule-setup-guidance";
 import { SlackSetupGuidance } from "@/components/apps/slack-setup-guidance";
+import { WebhookSetupGuidance } from "@/components/apps/webhook-setup-guidance";
 import type {
   AgUiChannelConfig,
   AppChannel,
   ChannelType,
+  InvocationSessionMode,
+  ScheduleChannelConfig,
   SessionStrategy,
   SlackChannelConfig,
   SlackReplyMode,
+  WebhookChannelConfig,
 } from "@/lib/api/types";
 import {
   getDisplayName,
@@ -67,7 +74,13 @@ import {
   getEntityStatusBadgeVariant,
   isReadOnlyStatus,
 } from "@/lib/entity-lifecycle";
-import { getChannelTypeDisplayName } from "@/lib/app-channels";
+import { getChannelTypeDisplayName, getInvocationSessionModeDisplayName } from "@/lib/app-channels";
+
+type ChannelConfigInput =
+  | SlackChannelConfig
+  | AgUiChannelConfig
+  | ScheduleChannelConfig
+  | WebhookChannelConfig;
 
 export default function AppDetailPage({ params }: { params: Promise<{ appId: string }> }) {
   const { appId } = use(params);
@@ -104,6 +117,13 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
   const [editTeamId, setEditTeamId] = useState("");
   const [editSessionStrategy, setEditSessionStrategy] = useState<SessionStrategy>("per_thread");
   const [editReplyMode, setEditReplyMode] = useState<SlackReplyMode>("all_messages");
+  const [editScheduleCronExpression, setEditScheduleCronExpression] = useState("0 * * * * * *");
+  const [editScheduleTimezone, setEditScheduleTimezone] = useState("UTC");
+  const [editInvocationSessionMode, setEditInvocationSessionMode] =
+    useState<InvocationSessionMode>("shared_session");
+  const [editChannelMessage, setEditChannelMessage] = useState("");
+  const [editWebhookToken, setEditWebhookToken] = useState("");
+  const [editChannelEnabled, setEditChannelEnabled] = useState(true);
 
   const [creatingSlackApp, setCreatingSlackApp] = useState(false);
 
@@ -116,11 +136,13 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
     mutationFn: async ({
       channelId,
       config,
+      enabled,
     }: {
       channelId: string;
-      config: SlackChannelConfig | AgUiChannelConfig;
+      config: ChannelConfigInput;
+      enabled: boolean;
     }) => {
-      return apiUpdateChannel(appId, channelId, { channel_config: config });
+      return apiUpdateChannel(appId, channelId, { channel_config: config, enabled });
     },
     onSuccess: invalidateApp,
   });
@@ -129,13 +151,16 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
     mutationFn: async ({
       channelType,
       config,
+      enabled,
     }: {
       channelType: ChannelType;
-      config: SlackChannelConfig | AgUiChannelConfig;
+      config: ChannelConfigInput;
+      enabled: boolean;
     }) => {
       return apiAddChannel(appId, {
         channel_type: channelType,
         channel_config: config,
+        enabled,
       });
     },
     onSuccess: () => {
@@ -167,9 +192,30 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
   );
   const agUiConfig = agUiChannel?.channel_config as AgUiChannelConfig | undefined;
   const hasAgUiConfig = agUiConfig?.anonymous ?? !!agUiChannel;
-  const canPublishApp = !!hasSlackConfig || hasAgUiConfig;
+  const canPublishApp =
+    app?.channels?.some((channel) => {
+      if (!channel.enabled) {
+        return false;
+      }
+      switch (channel.channel_type) {
+        case "slack": {
+          const config = channel.channel_config as SlackChannelConfig;
+          return !!config?.signing_secret && !!config?.bot_token;
+        }
+        case "ag_ui":
+          return true;
+        case "schedule": {
+          const config = channel.channel_config as ScheduleChannelConfig;
+          return !!config?.cron_expression && !!config?.message;
+        }
+        case "webhook": {
+          const config = channel.channel_config as WebhookChannelConfig;
+          return !!config?.token && !!config?.message;
+        }
+      }
+    }) ?? false;
 
-  const webhookUrl =
+  const slackWebhookUrl =
     typeof window !== "undefined"
       ? `${window.location.origin}/api/v1/apps/${appId}/slack/events`
       : `/api/v1/apps/${appId}/slack/events`;
@@ -181,7 +227,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
   const isLocalhost =
     typeof window !== "undefined" &&
     (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
-  const webhookPath = `/api/v1/apps/${appId}/slack/events`;
+  const slackWebhookPath = `/api/v1/apps/${appId}/slack/events`;
 
   const handleCreateSlackApp = useCallback(async () => {
     setCreatingSlackApp(true);
@@ -220,8 +266,68 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
     setEditingBasic(false);
   };
 
+  const resetChannelForm = (channelType: ChannelType) => {
+    setEditingChannelType(channelType);
+    setAddChannelType(channelType);
+    setEditSigningSecret("");
+    setEditBotToken("");
+    setEditChannelIdField("");
+    setEditTeamId("");
+    setEditSessionStrategy("per_thread");
+    setEditReplyMode("all_messages");
+    setEditScheduleCronExpression("0 * * * * * *");
+    setEditScheduleTimezone("UTC");
+    setEditInvocationSessionMode("shared_session");
+    setEditChannelMessage("");
+    setEditWebhookToken("");
+    setEditChannelEnabled(true);
+  };
+
+  const buildChannelConfig = (channelType: ChannelType): ChannelConfigInput => {
+    switch (channelType) {
+      case "ag_ui":
+        return { anonymous: true };
+      case "schedule":
+        return {
+          cron_expression: editScheduleCronExpression,
+          timezone: editScheduleTimezone || "UTC",
+          session_mode: editInvocationSessionMode,
+          message: editChannelMessage,
+        };
+      case "webhook":
+        return {
+          token: editWebhookToken,
+          session_mode: editInvocationSessionMode,
+          message: editChannelMessage,
+        };
+      case "slack":
+        return {
+          signing_secret: editSigningSecret,
+          bot_token: editBotToken,
+          session_strategy: editSessionStrategy,
+          reply_mode: editReplyMode,
+          ...(editChannelIdField ? { channel_id: editChannelIdField } : {}),
+          ...(editTeamId ? { team_id: editTeamId } : {}),
+        };
+    }
+  };
+
+  const isChannelConfigValid = (channelType: ChannelType) => {
+    switch (channelType) {
+      case "ag_ui":
+        return true;
+      case "schedule":
+        return !!editScheduleCronExpression && !!editChannelMessage;
+      case "webhook":
+        return !!editWebhookToken && !!editChannelMessage;
+      case "slack":
+        return !!editSigningSecret && !!editBotToken;
+    }
+  };
+
   const startEditChannel = (channel: AppChannel) => {
-    setEditingChannelType(channel.channel_type);
+    resetChannelForm(channel.channel_type);
+    setEditChannelEnabled(channel.enabled);
     if (channel.channel_type === "slack") {
       const config = channel.channel_config as SlackChannelConfig;
       setEditSigningSecret(config?.signing_secret ?? "");
@@ -230,18 +336,23 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
       setEditTeamId(config?.team_id ?? "");
       setEditSessionStrategy(config?.session_strategy ?? "per_thread");
       setEditReplyMode(config?.reply_mode ?? "all_messages");
+    } else if (channel.channel_type === "schedule") {
+      const config = channel.channel_config as ScheduleChannelConfig;
+      setEditScheduleCronExpression(config?.cron_expression ?? "0 * * * * * *");
+      setEditScheduleTimezone(config?.timezone ?? "UTC");
+      setEditInvocationSessionMode(config?.session_mode ?? "shared_session");
+      setEditChannelMessage(config?.message ?? "");
+    } else if (channel.channel_type === "webhook") {
+      const config = channel.channel_config as WebhookChannelConfig;
+      setEditWebhookToken(config?.token ?? "");
+      setEditInvocationSessionMode(config?.session_mode ?? "shared_session");
+      setEditChannelMessage(config?.message ?? "");
     }
     setEditingChannelId(channel.id);
   };
 
   const startAddChannel = () => {
-    setAddChannelType("slack");
-    setEditSigningSecret("");
-    setEditBotToken("");
-    setEditChannelIdField("");
-    setEditTeamId("");
-    setEditSessionStrategy("per_thread");
-    setEditReplyMode("all_messages");
+    resetChannelForm("slack");
     setShowAddChannel(true);
   };
 
@@ -249,17 +360,8 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
     if (!editingChannelId) return;
     await updateChannelMutation.mutateAsync({
       channelId: editingChannelId,
-      config:
-        editingChannelType === "ag_ui"
-          ? { anonymous: true }
-          : {
-              signing_secret: editSigningSecret,
-              bot_token: editBotToken,
-              session_strategy: editSessionStrategy,
-              reply_mode: editReplyMode,
-              ...(editChannelIdField ? { channel_id: editChannelIdField } : {}),
-              ...(editTeamId ? { team_id: editTeamId } : {}),
-            },
+      config: buildChannelConfig(editingChannelType),
+      enabled: editChannelEnabled,
     });
     setEditingChannelId(null);
   };
@@ -267,17 +369,8 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
   const saveNewChannel = async () => {
     await addChannelMutation.mutateAsync({
       channelType: addChannelType,
-      config:
-        addChannelType === "ag_ui"
-          ? { anonymous: true }
-          : {
-              signing_secret: editSigningSecret,
-              bot_token: editBotToken,
-              session_strategy: editSessionStrategy,
-              reply_mode: editReplyMode,
-              ...(editChannelIdField ? { channel_id: editChannelIdField } : {}),
-              ...(editTeamId ? { team_id: editTeamId } : {}),
-            },
+      config: buildChannelConfig(addChannelType),
+      enabled: editChannelEnabled,
     });
   };
 
@@ -326,7 +419,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
             <Label htmlFor={`channel_type_${formId}`}>Channel Type</Label>
             <Select
               value={addChannelType}
-              onValueChange={(v) => setAddChannelType(v as ChannelType)}
+              onValueChange={(v) => resetChannelForm(v as ChannelType)}
             >
               <SelectTrigger id={`channel_type_${formId}`}>
                 <SelectValue />
@@ -334,40 +427,31 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
               <SelectContent>
                 <SelectItem value="slack">Slack</SelectItem>
                 <SelectItem value="ag_ui">AG-UI</SelectItem>
+                <SelectItem value="schedule">Schedule</SelectItem>
+                <SelectItem value="webhook">Webhook</SelectItem>
               </SelectContent>
             </Select>
           </div>
         )}
 
-        {formChannelType === "ag_ui" ? (
-          <div className="space-y-4">
-            <div className="rounded-md border p-3 text-sm text-muted-foreground">
-              AG-UI requests are accepted anonymously for now. Publish the app, then point an AG-UI
-              client at the endpoint shown on this page.
-            </div>
-            <div className="flex gap-2 pt-2">
-              <Button
-                size="sm"
-                onClick={editingChannelId ? saveChannel : saveNewChannel}
-                disabled={isSaving}
-              >
-                <Check className="w-3 h-3 mr-1" />
-                {isSaving ? "Saving..." : "Save"}
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  setEditingChannelId(null);
-                  setShowAddChannel(false);
-                }}
-              >
-                <X className="w-3 h-3 mr-1" />
-                Cancel
-              </Button>
-            </div>
+        <div className="flex items-center justify-between rounded-md border p-3">
+          <div className="space-y-1">
+            <p className="text-sm font-medium">Enabled</p>
+            <p className="text-xs text-muted-foreground">
+              Disabled channels stay attached to the app but do not accept or emit new invocations.
+            </p>
           </div>
-        ) : (
+          <Switch checked={editChannelEnabled} onCheckedChange={setEditChannelEnabled} />
+        </div>
+
+        {formChannelType === "ag_ui" && (
+          <div className="rounded-md border p-3 text-sm text-muted-foreground">
+            AG-UI requests are accepted anonymously for now. Publish the app, then point an AG-UI
+            client at the endpoint shown on this page.
+          </div>
+        )}
+
+        {formChannelType === "slack" && (
           <>
             <div>
               <Label htmlFor={`signing_secret_${formId}`}>Signing Secret</Label>
@@ -379,7 +463,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
                 placeholder="Your Slack app's signing secret"
                 required
               />
-              <p className="text-xs text-muted-foreground mt-1">
+              <p className="mt-1 text-xs text-muted-foreground">
                 Found in your Slack app &rarr; Settings &rarr; Basic Information &rarr; App
                 Credentials
               </p>
@@ -395,7 +479,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
                 placeholder="xoxb-..."
                 required
               />
-              <p className="text-xs text-muted-foreground mt-1">
+              <p className="mt-1 text-xs text-muted-foreground">
                 Found in your Slack app &rarr; OAuth &amp; Permissions &rarr; Bot User OAuth Token
               </p>
             </div>
@@ -430,16 +514,8 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
                 value={editSessionStrategy}
                 onValueChange={(v) => setEditSessionStrategy(v as SessionStrategy)}
               >
-                <SelectTrigger>
-                  <SelectValue>
-                    {
-                      {
-                        per_thread: "Per Thread (default)",
-                        per_channel: "Per Channel",
-                        per_user: "Per User",
-                      }[editSessionStrategy]
-                    }
-                  </SelectValue>
+                <SelectTrigger id={`session_strategy_${formId}`}>
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="per_thread">Per Thread (default)</SelectItem>
@@ -455,15 +531,8 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
                 value={editReplyMode}
                 onValueChange={(v) => setEditReplyMode(v as SlackReplyMode)}
               >
-                <SelectTrigger>
-                  <SelectValue>
-                    {
-                      {
-                        all_messages: "All Assistant Messages",
-                        report_progress_only: "Report Progress Only",
-                      }[editReplyMode]
-                    }
-                  </SelectValue>
+                <SelectTrigger id={`reply_mode_${formId}`}>
+                  <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all_messages">All Assistant Messages</SelectItem>
@@ -471,30 +540,126 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
                 </SelectContent>
               </Select>
             </div>
+          </>
+        )}
 
-            <div className="flex gap-2 pt-2">
-              <Button
-                size="sm"
-                onClick={editingChannelId ? saveChannel : saveNewChannel}
-                disabled={isSaving || !editSigningSecret || !editBotToken}
+        {formChannelType === "schedule" && (
+          <>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor={`schedule_cron_${formId}`}>Cron Expression</Label>
+                <Input
+                  id={`schedule_cron_${formId}`}
+                  value={editScheduleCronExpression}
+                  onChange={(e) => setEditScheduleCronExpression(e.target.value)}
+                  placeholder="0 * * * * * *"
+                />
+              </div>
+              <div>
+                <Label htmlFor={`schedule_timezone_${formId}`}>Timezone</Label>
+                <Input
+                  id={`schedule_timezone_${formId}`}
+                  value={editScheduleTimezone}
+                  onChange={(e) => setEditScheduleTimezone(e.target.value)}
+                  placeholder="UTC"
+                />
+              </div>
+            </div>
+            <div>
+              <Label htmlFor={`schedule_session_mode_${formId}`}>Invocation Session Mode</Label>
+              <Select
+                value={editInvocationSessionMode}
+                onValueChange={(v) => setEditInvocationSessionMode(v as InvocationSessionMode)}
               >
-                <Check className="w-3 h-3 mr-1" />
-                {isSaving ? "Saving..." : "Save"}
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  setEditingChannelId(null);
-                  setShowAddChannel(false);
-                }}
-              >
-                <X className="w-3 h-3 mr-1" />
-                Cancel
-              </Button>
+                <SelectTrigger id={`schedule_session_mode_${formId}`}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="shared_session">
+                    {getInvocationSessionModeDisplayName("shared_session")}
+                  </SelectItem>
+                  <SelectItem value="session_per_invocation">
+                    {getInvocationSessionModeDisplayName("session_per_invocation")}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor={`schedule_message_${formId}`}>Invocation Message</Label>
+              <Textarea
+                id={`schedule_message_${formId}`}
+                value={editChannelMessage}
+                onChange={(e) => setEditChannelMessage(e.target.value)}
+                placeholder="Run repository checks for {{app.name}}"
+              />
             </div>
           </>
         )}
+
+        {formChannelType === "webhook" && (
+          <>
+            <div>
+              <Label htmlFor={`webhook_token_${formId}`}>Webhook Token</Label>
+              <Input
+                id={`webhook_token_${formId}`}
+                type="password"
+                value={editWebhookToken}
+                onChange={(e) => setEditWebhookToken(e.target.value)}
+                placeholder="shared-secret"
+              />
+            </div>
+            <div>
+              <Label htmlFor={`webhook_session_mode_${formId}`}>Invocation Session Mode</Label>
+              <Select
+                value={editInvocationSessionMode}
+                onValueChange={(v) => setEditInvocationSessionMode(v as InvocationSessionMode)}
+              >
+                <SelectTrigger id={`webhook_session_mode_${formId}`}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="shared_session">
+                    {getInvocationSessionModeDisplayName("shared_session")}
+                  </SelectItem>
+                  <SelectItem value="session_per_invocation">
+                    {getInvocationSessionModeDisplayName("session_per_invocation")}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor={`webhook_message_${formId}`}>Invocation Message</Label>
+              <Textarea
+                id={`webhook_message_${formId}`}
+                value={editChannelMessage}
+                onChange={(e) => setEditChannelMessage(e.target.value)}
+                placeholder="Process webhook payload for {{payload.repo.name}}"
+              />
+            </div>
+          </>
+        )}
+
+        <div className="flex gap-2 pt-2">
+          <Button
+            size="sm"
+            onClick={editingChannelId ? saveChannel : saveNewChannel}
+            disabled={isSaving || !isChannelConfigValid(formChannelType)}
+          >
+            <Check className="w-3 h-3 mr-1" />
+            {isSaving ? "Saving..." : "Save"}
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setEditingChannelId(null);
+              setShowAddChannel(false);
+            }}
+          >
+            <X className="w-3 h-3 mr-1" />
+            Cancel
+          </Button>
+        </div>
       </div>
     );
   };
@@ -508,6 +673,43 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
             endpointUrl={agUiEndpointUrl}
             isPublished={isPublished}
             anonymousEnabled={config?.anonymous ?? true}
+            onConfigure={() => startEditChannel(channel)}
+          />
+        </div>
+      );
+    }
+
+    if (channel.channel_type === "schedule") {
+      const config = channel.channel_config as ScheduleChannelConfig;
+      return (
+        <div key={channel.id} className="space-y-4">
+          <ScheduleSetupGuidance
+            cronExpression={config?.cron_expression ?? ""}
+            timezone={config?.timezone ?? "UTC"}
+            sessionMode={config?.session_mode ?? "shared_session"}
+            message={config?.message ?? ""}
+            isPublished={isPublished}
+            onConfigure={() => startEditChannel(channel)}
+          />
+        </div>
+      );
+    }
+
+    if (channel.channel_type === "webhook") {
+      const config = channel.channel_config as WebhookChannelConfig;
+      const endpointUrl =
+        typeof window !== "undefined"
+          ? `${window.location.origin}/api/v1/apps/${appId}/webhooks/${channel.id}`
+          : `/api/v1/apps/${appId}/webhooks/${channel.id}`;
+
+      return (
+        <div key={channel.id} className="space-y-4">
+          <WebhookSetupGuidance
+            endpointUrl={endpointUrl}
+            sessionMode={config?.session_mode ?? "shared_session"}
+            message={config?.message ?? ""}
+            tokenConfigured={!!config?.token}
+            isPublished={isPublished}
             onConfigure={() => startEditChannel(channel)}
           />
         </div>
@@ -576,8 +778,8 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
               isPublished={isPublished}
               webhookVerified={chWebhookVerified}
               firstMessageReceived={chFirstMsg}
-              webhookUrl={webhookUrl}
-              webhookPath={webhookPath}
+              webhookUrl={slackWebhookUrl}
+              webhookPath={slackWebhookPath}
               isLocalhost={isLocalhost}
               onCreateSlackApp={handleCreateSlackApp}
               creatingSlackApp={creatingSlackApp}
@@ -590,8 +792,8 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
             isPublished={isPublished}
             webhookVerified={chWebhookVerified}
             firstMessageReceived={chFirstMsg}
-            webhookUrl={webhookUrl}
-            webhookPath={webhookPath}
+            webhookUrl={slackWebhookUrl}
+            webhookPath={slackWebhookPath}
             isLocalhost={isLocalhost}
             onCreateSlackApp={handleCreateSlackApp}
             creatingSlackApp={creatingSlackApp}
@@ -761,7 +963,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
                         2. Copy your Request URL:
                       </p>
                       <code className="text-xs block">
-                        https://&lt;your-id&gt;.ngrok-free.app{webhookPath}
+                        https://&lt;your-id&gt;.ngrok-free.app{slackWebhookPath}
                       </code>
                     </div>
                   </>
@@ -773,8 +975,8 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
                     </p>
                     <div className="flex items-center gap-2 bg-muted p-3">
                       <Globe className="w-4 h-4 shrink-0 text-muted-foreground" />
-                      <code className="text-sm flex-1 truncate">{webhookUrl}</code>
-                      <CopyButton value={webhookUrl} />
+                      <code className="text-sm flex-1 truncate">{slackWebhookUrl}</code>
+                      <CopyButton value={slackWebhookUrl} />
                     </div>
                   </>
                 )}

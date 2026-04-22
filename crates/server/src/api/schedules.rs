@@ -81,7 +81,7 @@ impl ScheduleAppState {
             is_internal: false,
         };
         Ok(Ctx::minimal(caller, self.db.clone(), None)
-            .with_workflow_store(self.get_store()?.clone()))
+            .with_workflow_store(Some(self.get_store()?.clone())))
     }
 }
 

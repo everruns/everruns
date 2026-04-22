@@ -1842,6 +1842,77 @@ mod tests {
         async fn delete_agent(&self, _id: AgentId) -> crate::Result<()> {
             Ok(())
         }
+        async fn list_apps(
+            &self,
+            _search: Option<&str>,
+            _include_archived: bool,
+        ) -> crate::Result<Vec<crate::App>> {
+            Ok(Vec::new())
+        }
+        async fn get_app(&self, _id: crate::AppId) -> crate::Result<Option<crate::App>> {
+            Ok(None)
+        }
+        async fn create_app(
+            &self,
+            _name: &str,
+            _description: Option<&str>,
+            _harness_id: HarnessId,
+            _agent_id: Option<AgentId>,
+            _agent_identity_id: Option<crate::AgentIdentityId>,
+            _channel_type: Option<crate::ChannelType>,
+            _channel_config: Option<&serde_json::Value>,
+        ) -> crate::Result<crate::App> {
+            unreachable!()
+        }
+        async fn update_app(
+            &self,
+            _id: crate::AppId,
+            _name: Option<&str>,
+            _description: Option<&str>,
+            _harness_id: Option<HarnessId>,
+            _agent_id: Option<AgentId>,
+            _agent_identity_id: Option<Option<crate::AgentIdentityId>>,
+        ) -> crate::Result<crate::App> {
+            unreachable!()
+        }
+        async fn delete_app(&self, _id: crate::AppId) -> crate::Result<()> {
+            Ok(())
+        }
+        async fn destroy_app(&self, _id: crate::AppId) -> crate::Result<()> {
+            Ok(())
+        }
+        async fn publish_app(&self, _id: crate::AppId) -> crate::Result<crate::App> {
+            unreachable!()
+        }
+        async fn unpublish_app(&self, _id: crate::AppId) -> crate::Result<crate::App> {
+            unreachable!()
+        }
+        async fn add_app_channel(
+            &self,
+            _app_id: crate::AppId,
+            _channel_type: crate::ChannelType,
+            _channel_config: Option<&serde_json::Value>,
+            _enabled: Option<bool>,
+        ) -> crate::Result<crate::AppChannel> {
+            unreachable!()
+        }
+        async fn update_app_channel(
+            &self,
+            _app_id: crate::AppId,
+            _channel_id: crate::AppChannelId,
+            _channel_type: Option<crate::ChannelType>,
+            _channel_config: Option<&serde_json::Value>,
+            _enabled: Option<bool>,
+        ) -> crate::Result<crate::AppChannel> {
+            unreachable!()
+        }
+        async fn delete_app_channel(
+            &self,
+            _app_id: crate::AppId,
+            _channel_id: crate::AppChannelId,
+        ) -> crate::Result<()> {
+            Ok(())
+        }
         async fn list_sessions(
             &self,
             _limit: Option<usize>,

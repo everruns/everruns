@@ -114,6 +114,8 @@ use everruns_internal_protocol::proto::{
     HeartbeatDurableTaskResponse,
     HeartbeatDurableWorkerRequest,
     HeartbeatDurableWorkerResponse,
+    InvokeScheduledAppChannelRequest,
+    InvokeScheduledAppChannelResponse,
     ListCommandsRequest,
     ListCommandsResponse,
     ListSessionLeasedResourcesRequest,
@@ -363,6 +365,8 @@ pub struct WorkerServiceImpl {
     task_broadcaster: Option<Arc<TaskBroadcaster>>,
     /// Storage backend for image resolution
     db: Arc<StorageBackend>,
+    /// Encryption service for domains that decrypt stored config blobs.
+    encryption: Option<Arc<EncryptionService>>,
     /// Session storage store for key/value and secret operations
     session_storage_store: Option<Arc<dyn everruns_core::traits::SessionStorageStore>>,
     /// Session SQL database store for session-scoped databases
@@ -492,6 +496,7 @@ impl WorkerServiceImpl {
             durable_store,
             task_broadcaster: None, // Set via set_task_broadcaster() after async initialization
             db,
+            encryption,
             session_storage_store,
             sqldb_store,
             runner,
@@ -525,7 +530,12 @@ impl WorkerServiceImpl {
             everruns_core::Caller::internal(org_id),
             self.db.clone(),
             self.capability_service.clone(),
-            None,
+            self.encryption.clone(),
+        )
+        .with_workflow_store(
+            self.durable_store
+                .clone()
+                .map(|store| store as Arc<dyn WorkflowEventStore + Send + Sync>),
         )
     }
 

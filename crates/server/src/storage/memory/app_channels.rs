@@ -24,6 +24,7 @@ impl InMemoryDatabase {
             channel_type: input.channel_type,
             channel_config: input.channel_config,
             channel_config_encrypted: input.channel_config_encrypted,
+            durable_schedule_id: input.durable_schedule_id,
             enabled: input.enabled,
             created_at: now,
             updated_at: now,
@@ -72,6 +73,7 @@ impl InMemoryDatabase {
         if let Some(encrypted) = input.channel_config_encrypted {
             ch.channel_config_encrypted = Some(encrypted);
         }
+        input.durable_schedule_id.apply(&mut ch.durable_schedule_id);
         if let Some(enabled) = input.enabled {
             ch.enabled = enabled;
         }

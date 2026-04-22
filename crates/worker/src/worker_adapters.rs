@@ -274,6 +274,14 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         None
     }
 
+    /// Invoke an app schedule channel when a durable schedule fires.
+    async fn invoke_scheduled_app_channel(
+        &self,
+        org_id: i64,
+        app_id: &str,
+        channel_id: &str,
+    ) -> Result<serde_json::Value>;
+
     /// Claim due leased resources for cleanup work.
     ///
     /// This is the control-plane entry point used by the durable cleanup

@@ -34,6 +34,27 @@ fn command_error_to_proto(error: crate::domains::common::CommandError) -> ProtoC
     }
 }
 
+fn command_error_to_status(error: crate::domains::common::CommandError) -> Status {
+    match error {
+        crate::domains::common::CommandError::BadRequest(message) => {
+            Status::invalid_argument(message)
+        }
+        crate::domains::common::CommandError::Unprocessable(message) => {
+            Status::failed_precondition(message)
+        }
+        crate::domains::common::CommandError::Forbidden(message) => {
+            Status::permission_denied(message)
+        }
+        crate::domains::common::CommandError::NotFound(message) => Status::not_found(message),
+        crate::domains::common::CommandError::Conflict(message) => {
+            Status::failed_precondition(message)
+        }
+        crate::domains::common::CommandError::Internal(inner) => {
+            Status::internal(inner.to_string())
+        }
+    }
+}
+
 fn command_schema_hash(
     meta: &crate::domains::common::CommandMeta,
     positional_arg: Option<&str>,
@@ -3575,6 +3596,40 @@ impl WorkerService for WorkerServiceImpl {
         }
 
         Ok(Response::new(PlatformSendMessageResponse {}))
+    }
+
+    async fn invoke_scheduled_app_channel(
+        &self,
+        request: Request<InvokeScheduledAppChannelRequest>,
+    ) -> Result<Response<InvokeScheduledAppChannelResponse>, Status> {
+        let req = request.into_inner();
+        let runner = self
+            .runner
+            .clone()
+            .ok_or_else(|| Status::unavailable("Agent runner not available"))?;
+        let message_service = crate::services::MessageService::new(
+            self.db.clone(),
+            runner,
+            false,
+            self.event_service.event_delivery().clone(),
+        );
+
+        let result = crate::domains::apps::invoke_scheduled_app_channel(
+            &self.db,
+            self.encryption.as_ref(),
+            &self.session_service,
+            &message_service,
+            req.org_id,
+            &req.app_id,
+            &req.channel_id,
+        )
+        .await
+        .map_err(command_error_to_status)?;
+
+        Ok(Response::new(InvokeScheduledAppChannelResponse {
+            session_id: result.session_id.to_string(),
+            created_session: result.created_session,
+        }))
     }
 
     async fn platform_get_messages(

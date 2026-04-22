@@ -596,6 +596,96 @@
         }
       }
     },
+    "/v1/apps/{app_id}/webhooks/{channel_id}": {
+      "post": {
+        "tags": [
+          "apps"
+        ],
+        "operationId": "invoke_webhook",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "description": "App ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "channel_id",
+            "in": "path",
+            "description": "Webhook channel ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Webhook accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookInvocationResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid or missing webhook token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "App is not published or channel disabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "App or channel not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/capabilities": {
       "get": {
         "tags": [
@@ -15391,6 +15481,25 @@
           "skill_md": {
             "type": "string",
             "description": "SKILL.md content to validate"
+          }
+        }
+      },
+      "WebhookInvocationResponse": {
+        "type": "object",
+        "required": [
+          "accepted",
+          "session_id",
+          "created_session"
+        ],
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "created_session": {
+            "type": "boolean"
+          },
+          "session_id": {
+            "type": "string"
           }
         }
       },

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -19,8 +20,13 @@ import { AgentIdentitySelect } from "@/components/agent-identity/agent-identity-
 import { HarnessSelect } from "@/components/harness/harness-select";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import type { ChannelType } from "@/lib/api/types";
-import { getChannelTypeDisplayName } from "@/lib/app-channels";
+import type {
+  ChannelType,
+  InvocationSessionMode,
+  SessionStrategy,
+  SlackReplyMode,
+} from "@/lib/api/types";
+import { getChannelTypeDisplayName, getInvocationSessionModeDisplayName } from "@/lib/app-channels";
 
 export default function NewAppPage() {
   const router = useRouter();
@@ -32,6 +38,60 @@ export default function NewAppPage() {
   const [harnessId, setHarnessId] = useState("");
   const [agentIdentityId, setAgentIdentityId] = useState("");
   const [channelType, setChannelType] = useState<ChannelType | "">("");
+  const [slackSigningSecret, setSlackSigningSecret] = useState("");
+  const [slackBotToken, setSlackBotToken] = useState("");
+  const [slackTeamId, setSlackTeamId] = useState("");
+  const [slackChannelId, setSlackChannelId] = useState("");
+  const [slackSessionStrategy, setSlackSessionStrategy] = useState<SessionStrategy>("per_thread");
+  const [slackReplyMode, setSlackReplyMode] = useState<SlackReplyMode>("all_messages");
+  const [scheduleCronExpression, setScheduleCronExpression] = useState("0 * * * * * *");
+  const [scheduleTimezone, setScheduleTimezone] = useState("UTC");
+  const [invocationSessionMode, setInvocationSessionMode] =
+    useState<InvocationSessionMode>("shared_session");
+  const [channelMessage, setChannelMessage] = useState("");
+  const [webhookToken, setWebhookToken] = useState("");
+
+  const buildChannelConfig = () => {
+    switch (channelType) {
+      case "ag_ui":
+        return { anonymous: true };
+      case "slack":
+        return {
+          signing_secret: slackSigningSecret,
+          bot_token: slackBotToken,
+          session_strategy: slackSessionStrategy,
+          reply_mode: slackReplyMode,
+          ...(slackTeamId ? { team_id: slackTeamId } : {}),
+          ...(slackChannelId ? { channel_id: slackChannelId } : {}),
+        };
+      case "schedule":
+        return {
+          cron_expression: scheduleCronExpression,
+          timezone: scheduleTimezone || "UTC",
+          session_mode: invocationSessionMode,
+          message: channelMessage,
+        };
+      case "webhook":
+        return {
+          token: webhookToken,
+          session_mode: invocationSessionMode,
+          message: channelMessage,
+        };
+      default:
+        return undefined;
+    }
+  };
+
+  const isChannelConfigValid =
+    channelType === ""
+      ? true
+      : channelType === "ag_ui"
+        ? true
+        : channelType === "slack"
+          ? !!slackSigningSecret && !!slackBotToken
+          : channelType === "schedule"
+            ? !!scheduleCronExpression && !!channelMessage
+            : !!webhookToken && !!channelMessage;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,7 +104,7 @@ export default function NewAppPage() {
         agent_identity_id: agentIdentityId || undefined,
         harness_id: harnessId,
         channel_type: channelType || undefined,
-        channel_config: channelType === "ag_ui" ? { anonymous: true } : undefined,
+        channel_config: channelType ? buildChannelConfig() : undefined,
       });
 
       // Redirect to the detail page for channel-specific setup.
@@ -127,20 +187,211 @@ export default function NewAppPage() {
                   <SelectItem value="__none__">Choose later</SelectItem>
                   <SelectItem value="slack">Slack</SelectItem>
                   <SelectItem value="ag_ui">AG-UI</SelectItem>
+                  <SelectItem value="schedule">Schedule</SelectItem>
+                  <SelectItem value="webhook">Webhook</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
+            {channelType === "slack" && (
+              <div className="space-y-4 rounded-md border p-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="slack_signing_secret">Signing Secret</Label>
+                    <Input
+                      id="slack_signing_secret"
+                      type="password"
+                      value={slackSigningSecret}
+                      onChange={(e) => setSlackSigningSecret(e.target.value)}
+                      placeholder="Slack signing secret"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="slack_bot_token">Bot Token</Label>
+                    <Input
+                      id="slack_bot_token"
+                      type="password"
+                      value={slackBotToken}
+                      onChange={(e) => setSlackBotToken(e.target.value)}
+                      placeholder="xoxb-..."
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="slack_team_id">Workspace ID (optional)</Label>
+                    <Input
+                      id="slack_team_id"
+                      value={slackTeamId}
+                      onChange={(e) => setSlackTeamId(e.target.value)}
+                      placeholder="T0123456789"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="slack_channel_id">Channel ID (optional)</Label>
+                    <Input
+                      id="slack_channel_id"
+                      value={slackChannelId}
+                      onChange={(e) => setSlackChannelId(e.target.value)}
+                      placeholder="C0123456789"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="slack_session_strategy">Session Strategy</Label>
+                    <Select
+                      value={slackSessionStrategy}
+                      onValueChange={(value) => setSlackSessionStrategy(value as SessionStrategy)}
+                    >
+                      <SelectTrigger id="slack_session_strategy">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="per_thread">Per Thread</SelectItem>
+                        <SelectItem value="per_channel">Per Channel</SelectItem>
+                        <SelectItem value="per_user">Per User</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="slack_reply_mode">Reply Mode</Label>
+                    <Select
+                      value={slackReplyMode}
+                      onValueChange={(value) => setSlackReplyMode(value as SlackReplyMode)}
+                    >
+                      <SelectTrigger id="slack_reply_mode">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all_messages">All Assistant Messages</SelectItem>
+                        <SelectItem value="report_progress_only">Report Progress Only</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {channelType === "schedule" && (
+              <div className="space-y-4 rounded-md border p-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="schedule_cron_expression">Cron Expression</Label>
+                    <Input
+                      id="schedule_cron_expression"
+                      value={scheduleCronExpression}
+                      onChange={(e) => setScheduleCronExpression(e.target.value)}
+                      placeholder="0 * * * * * *"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="schedule_timezone">Timezone</Label>
+                    <Input
+                      id="schedule_timezone"
+                      value={scheduleTimezone}
+                      onChange={(e) => setScheduleTimezone(e.target.value)}
+                      placeholder="UTC"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="schedule_session_mode">Invocation Session Mode</Label>
+                  <Select
+                    value={invocationSessionMode}
+                    onValueChange={(value) =>
+                      setInvocationSessionMode(value as InvocationSessionMode)
+                    }
+                  >
+                    <SelectTrigger id="schedule_session_mode">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="shared_session">
+                        {getInvocationSessionModeDisplayName("shared_session")}
+                      </SelectItem>
+                      <SelectItem value="session_per_invocation">
+                        {getInvocationSessionModeDisplayName("session_per_invocation")}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="schedule_message">Invocation Message</Label>
+                  <Textarea
+                    id="schedule_message"
+                    value={channelMessage}
+                    onChange={(e) => setChannelMessage(e.target.value)}
+                    placeholder="Run repository checks for {{app.name}}"
+                  />
+                </div>
+              </div>
+            )}
+
+            {channelType === "webhook" && (
+              <div className="space-y-4 rounded-md border p-4">
+                <div className="space-y-2">
+                  <Label htmlFor="webhook_token">Webhook Token</Label>
+                  <Input
+                    id="webhook_token"
+                    type="password"
+                    value={webhookToken}
+                    onChange={(e) => setWebhookToken(e.target.value)}
+                    placeholder="shared-secret"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="webhook_session_mode">Invocation Session Mode</Label>
+                  <Select
+                    value={invocationSessionMode}
+                    onValueChange={(value) =>
+                      setInvocationSessionMode(value as InvocationSessionMode)
+                    }
+                  >
+                    <SelectTrigger id="webhook_session_mode">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="shared_session">
+                        {getInvocationSessionModeDisplayName("shared_session")}
+                      </SelectItem>
+                      <SelectItem value="session_per_invocation">
+                        {getInvocationSessionModeDisplayName("session_per_invocation")}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="webhook_message">Invocation Message</Label>
+                  <Textarea
+                    id="webhook_message"
+                    value={channelMessage}
+                    onChange={(e) => setChannelMessage(e.target.value)}
+                    placeholder="Process webhook payload for {{payload.repo.name}}"
+                  />
+                </div>
+              </div>
+            )}
+
             <p className="text-sm text-muted-foreground">
               {channelType === "slack"
-                ? "After creating the app, you'll be able to generate a Slack App manifest and create the Slack bot on the detail page."
+                ? "Slack needs credentials up front. You can still refine webhook setup and manifest details on the app detail page."
                 : channelType === "ag_ui"
                   ? "After creating the app, publish it and point your AG-UI client at the channel endpoint on the detail page."
-                  : `Create the draft now, then assign an agent or add ${getChannelTypeDisplayName("slack")} or ${getChannelTypeDisplayName("ag_ui")} later from the detail page.`}
+                  : channelType === "schedule"
+                    ? "This creates an app-level scheduled invocation channel. It activates only when the app is published."
+                    : channelType === "webhook"
+                      ? "This creates an authenticated app webhook channel. The detail page will show the endpoint URL to call."
+                      : `Create the draft now, then assign an agent or add ${getChannelTypeDisplayName("slack")}, ${getChannelTypeDisplayName("ag_ui")}, ${getChannelTypeDisplayName("schedule")}, or ${getChannelTypeDisplayName("webhook")} later from the detail page.`}
             </p>
 
             <div className="flex gap-4">
-              <Button type="submit" disabled={createApp.isPending || !name || !harnessId}>
+              <Button
+                type="submit"
+                disabled={createApp.isPending || !name || !harnessId || !isChannelConfigValid}
+              >
                 {createApp.isPending ? "Creating..." : "Create App"}
               </Button>
               <Button type="button" variant="outline" onClick={() => router.back()}>

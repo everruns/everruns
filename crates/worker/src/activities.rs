@@ -19,6 +19,7 @@ use everruns_runtime::{
     execute_input_activity as runtime_execute_input_activity,
     execute_reason_activity as runtime_execute_reason_activity,
 };
+use serde::{Deserialize, Serialize};
 
 use crate::grpc_adapters::GrpcClient;
 use crate::grpc_worker_adapters::GrpcWorkerAdapters;
@@ -28,6 +29,13 @@ use crate::runtime_host::WorkerRuntimeHost;
 pub use everruns_core::atoms::{
     ActInput, ActResult, InputAtomInput, InputAtomResult, ReasonInput, ReasonResult, ToolCallResult,
 };
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScheduledAppChannelInput {
+    pub org_id: i64,
+    pub app_id: String,
+    pub channel_id: String,
+}
 
 // ============================================================================
 // Activity Implementations
@@ -154,6 +162,7 @@ pub mod activity_types {
     pub const INPUT: &str = "input";
     pub const REASON: &str = "reason";
     pub const ACT: &str = "act";
+    pub const INVOKE_SCHEDULED_APP_CHANNEL: &str = "invoke_scheduled_app_channel";
 }
 
 // ============================================================================

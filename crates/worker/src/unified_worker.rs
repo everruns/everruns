@@ -32,6 +32,7 @@ use crate::durable_runner::DurableTurnInput;
 use crate::runtime_host::WorkerRuntimeHost;
 use crate::task_error::summarize_task_failure;
 use crate::worker_adapters::WorkerAdapters;
+use crate::{activities::ScheduledAppChannelInput, activities::activity_types};
 
 // Re-export atom types
 pub use everruns_core::atoms::{InputAtomInput, ReasonInput, ReasonResult};
@@ -66,6 +67,7 @@ impl Default for TaskWorkerConfig {
                 "reason".to_string(),
                 "act".to_string(),
                 "leased_resource_cleanup".to_string(),
+                activity_types::INVOKE_SCHEDULED_APP_CHANNEL.to_string(),
             ],
             max_concurrent_tasks: 1000,
             poll_interval: Duration::from_millis(100),
@@ -480,6 +482,15 @@ where
             let res =
                 crate::leased_resource_cleanup::execute_cleanup_activity(adapters, &cleanup_input)
                     .await;
+            (res, None)
+        }
+        activity_types::INVOKE_SCHEDULED_APP_CHANNEL => {
+            let input: ScheduledAppChannelInput = serde_json::from_value(task.input.clone())
+                .map_err(|e| anyhow::anyhow!("Failed to parse scheduled app input: {}", e))?;
+            let res = adapters
+                .invoke_scheduled_app_channel(input.org_id, &input.app_id, &input.channel_id)
+                .await
+                .map_err(anyhow::Error::from);
             (res, None)
         }
         _ => (
