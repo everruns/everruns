@@ -21,6 +21,7 @@ pub fn definition() -> BuiltInHarnessDefinition {
         BuiltInCapabilityDefinition::new("session_storage"),
         BuiltInCapabilityDefinition::new("session"),
         BuiltInCapabilityDefinition::new("session_schedule"),
+        BuiltInCapabilityDefinition::new("btw"),
         BuiltInCapabilityDefinition::new("agent_instructions"),
         BuiltInCapabilityDefinition::new("skills"),
         BuiltInCapabilityDefinition::new("infinity_context"),

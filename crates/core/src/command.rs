@@ -8,6 +8,7 @@
 // Skills marked user-invocable appear in the command palette alongside
 // system commands. The UI fetches available commands and renders autocomplete.
 
+use crate::message::Controls;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "openapi")]
@@ -50,6 +51,20 @@ pub struct CommandArg {
     /// Whether the argument is required
     #[serde(default)]
     pub required: bool,
+}
+
+/// Request payload for executing a system command
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct ExecuteCommandRequest {
+    /// Command name without the leading slash
+    pub name: String,
+    /// Raw argument text after the command token
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub arguments: Option<String>,
+    /// Optional per-invocation runtime controls
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub controls: Option<Controls>,
 }
 
 /// Result of executing a system command

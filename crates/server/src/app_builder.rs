@@ -679,6 +679,22 @@ impl ServerAppBuilder {
             encryption.clone(),
             platform_definition.capability_registry().clone(),
         ));
+        let mcp_server_service = Arc::new(crate::domains::mcp_servers::McpServerService::new(
+            db.clone(),
+            encryption.clone(),
+        ));
+        let command_service = Arc::new(
+            services::SessionCommandService::new(
+                db.clone(),
+                event_service.clone(),
+                llm_resolver.clone(),
+                mcp_server_service.clone(),
+                platform_definition.capability_registry().clone(),
+                driver_registry.as_ref().clone(),
+                sqldb_store.clone(),
+            )
+            .with_virtual_registry(virtual_registry.clone()),
+        );
         let mcp_servers_state = api::mcp_servers::AppState::new(
             db.clone(),
             encryption.clone(),
@@ -695,8 +711,11 @@ impl ServerAppBuilder {
             capability_service.clone(),
             auth_state.clone(),
         );
-        let commands_state =
-            api::commands::AppState::new(capability_service.clone(), auth_state.clone());
+        let commands_state = api::commands::AppState::new(
+            capability_service.clone(),
+            command_service,
+            auth_state.clone(),
+        );
         let grade = everruns_core::DeploymentGrade::from_env();
         let agent_examples_state = api::agent_examples::AppState {
             auth: auth_state.clone(),
@@ -836,10 +855,7 @@ impl ServerAppBuilder {
             auth_state.clone(),
             auth_config.clone(),
             platform_definition.connection_providers().clone(),
-            Arc::new(crate::domains::mcp_servers::McpServerService::new(
-                db.clone(),
-                encryption.clone(),
-            )),
+            mcp_server_service,
         );
         let session_schedule_service =
             Arc::new(crate::services::SessionScheduleService::new(db.clone()));

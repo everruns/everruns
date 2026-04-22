@@ -2254,13 +2254,14 @@ mod tests {
             .expect("Generic harness should exist");
 
         let cap_ids: Vec<&str> = generic.capabilities.iter().map(|c| c.id.as_str()).collect();
-        assert_eq!(cap_ids.len(), 14);
+        assert_eq!(cap_ids.len(), 15);
         assert!(cap_ids.contains(&"session_file_system"));
         assert!(cap_ids.contains(&"virtual_bash"));
         assert!(cap_ids.contains(&"web_fetch"));
         assert!(cap_ids.contains(&"session_storage"));
         assert!(cap_ids.contains(&"session"));
         assert!(cap_ids.contains(&"session_schedule"));
+        assert!(cap_ids.contains(&"btw"));
         assert!(cap_ids.contains(&"agent_instructions"));
         assert!(cap_ids.contains(&"skills"));
         assert!(cap_ids.contains(&"infinity_context"));

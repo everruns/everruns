@@ -1,5 +1,7 @@
 // Command types
 
+import type { Controls } from "./message-types";
+
 export type CommandSource = "system" | "skill";
 
 export interface CommandArg {
@@ -17,4 +19,15 @@ export interface CommandDescriptor {
 
 export interface CommandsResponse {
   commands: CommandDescriptor[];
+}
+
+export interface ExecuteCommandRequest {
+  name: string;
+  arguments?: string;
+  controls?: Controls;
+}
+
+export interface CommandResult {
+  success: boolean;
+  message: string;
 }

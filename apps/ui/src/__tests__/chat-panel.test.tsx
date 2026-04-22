@@ -1,8 +1,9 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import React from "react";
 import { ChatPanel } from "@/components/chat/chat-panel";
 
 const mockUseSessionCommands = jest.fn();
+const mockExecuteSessionCommand = jest.fn();
 const mockSelectTrigger = jest.fn(
   ({
     children,
@@ -80,10 +81,14 @@ jest.mock("@/hooks", () => ({
 }));
 
 jest.mock("@tanstack/react-query", () => ({
-  useMutation: () => ({
-    mutateAsync: jest.fn(),
+  useMutation: ({ mutationFn }: { mutationFn: (...args: unknown[]) => unknown }) => ({
+    mutateAsync: mutationFn,
     isPending: false,
   }),
+}));
+
+jest.mock("@/lib/api/commands", () => ({
+  executeSessionCommand: (...args: unknown[]) => mockExecuteSessionCommand(...args),
 }));
 
 jest.mock("@/lib/api/messages", () => ({
@@ -122,6 +127,22 @@ jest.mock("@/components/ui/select", () => ({
     render?: React.ReactElement;
   }) => mockSelectTrigger(props),
   SelectValue: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
+}));
+
+jest.mock("@/components/ui/dialog", () => ({
+  Dialog: ({
+    children,
+    open,
+  }: {
+    children: React.ReactNode;
+    open?: boolean;
+    onOpenChange?: (open: boolean) => void;
+  }) => (open ? <div>{children}</div> : null),
+  DialogContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DialogDescription: ({ children }: { children?: React.ReactNode }) => <div>{children}</div>,
+  DialogFooter: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DialogHeader: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DialogTitle: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
 
 jest.mock("@/components/chat/message-info-icon", () => ({
@@ -173,6 +194,7 @@ describe("ChatPanel compaction divider", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockSelectTrigger.mockClear();
+    mockExecuteSessionCommand.mockReset();
     mockSessionContext.chatEvents = [];
     mockSessionContext.llmModel = null;
     mockSessionContext.reasoningEffort = "";
@@ -332,5 +354,44 @@ describe("ChatPanel placeholder", () => {
       expect(React.isValidElement(triggerProps?.render)).toBe(true);
       expect(triggerProps?.render.type).toBe("div");
     }
+  });
+
+  it("executes /btw without sending a chat message and shows the overlay answer", async () => {
+    mockUseSessionCommands.mockReturnValue({
+      data: {
+        commands: [
+          {
+            name: "btw",
+            description: "Ask a side question",
+            source: "system",
+            args: [{ name: "question", description: "The side question", required: true }],
+          },
+        ],
+      },
+    });
+    mockExecuteSessionCommand.mockResolvedValue({
+      success: true,
+      message: "Side answer",
+    });
+
+    render(<ChatPanel />);
+
+    const textarea = screen.getByPlaceholderText(
+      "Type a message or / for commands... (Enter to send)",
+    );
+    fireEvent.change(textarea, { target: { value: "/btw why is this running" } });
+    fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
+
+    await waitFor(() =>
+      expect(mockExecuteSessionCommand).toHaveBeenCalledWith("session-1", {
+        name: "btw",
+        arguments: "why is this running",
+        controls: { locale: "en-US" },
+      }),
+    );
+
+    expect(mockSessionContext.sendMessage.mutateAsync).not.toHaveBeenCalled();
+    expect(await screen.findByText("Side answer")).toBeInTheDocument();
+    expect(screen.getByText("/btw")).toBeInTheDocument();
   });
 });
