@@ -4,6 +4,7 @@ argument-hint: "<query> | --all"
 ---
 
 Call the `discover` MCP tool. With `--all`, pass `all: true`; otherwise pass
-the text as `query`. See the `everruns` skill for examples.
+the text as `query`. Use `query` for read-only operations and `execute` for
+mutating workflows. See the `everruns` skill for examples.
 
 Arguments: `$ARGUMENTS`

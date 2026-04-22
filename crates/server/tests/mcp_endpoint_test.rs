@@ -296,7 +296,7 @@ async fn test_mcp_tools_list() {
     let tools = resp["result"]["tools"]
         .as_array()
         .expect("Expected tools array");
-    assert_eq!(tools.len(), 8, "Expected 8 MCP tools");
+    assert_eq!(tools.len(), 9, "Expected 9 MCP tools");
 
     let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
     assert!(names.contains(&"me"), "Missing me");
@@ -318,6 +318,7 @@ async fn test_mcp_tools_list() {
         "Missing session_get_status"
     );
     assert!(names.contains(&"discover"), "Missing discover");
+    assert!(names.contains(&"query"), "Missing query");
     assert!(names.contains(&"execute"), "Missing execute");
 
     // Verify each tool has inputSchema
@@ -356,6 +357,24 @@ async fn test_mcp_tools_list() {
     );
     assert!(discover.as_object().unwrap().get("outputSchema").is_none());
     assert!(discover.as_object().unwrap().get("_meta").is_none());
+
+    let query = tools.iter().find(|tool| tool["name"] == "query").unwrap();
+    assert_eq!(query["title"], "Query Commands");
+    assert_eq!(query["annotations"]["readOnlyHint"], true);
+    assert_eq!(query["annotations"]["destructiveHint"], false);
+    assert_eq!(query["annotations"]["idempotentHint"], true);
+    assert_eq!(query["annotations"]["openWorldHint"], false);
+    assert!(query.as_object().unwrap().get("outputSchema").is_none());
+    assert!(query.as_object().unwrap().get("_meta").is_none());
+
+    let execute = tools.iter().find(|tool| tool["name"] == "execute").unwrap();
+    assert_eq!(execute["title"], "Execute Commands");
+    assert_eq!(execute["annotations"]["readOnlyHint"], false);
+    assert_eq!(execute["annotations"]["destructiveHint"], true);
+    assert_eq!(execute["annotations"]["idempotentHint"], false);
+    assert_eq!(execute["annotations"]["openWorldHint"], true);
+    assert!(execute.as_object().unwrap().get("outputSchema").is_none());
+    assert!(execute.as_object().unwrap().get("_meta").is_none());
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -990,8 +1009,66 @@ async fn test_mcp_discover_capabilities() {
 }
 
 // ============================================================================
-// Tier 2: execute — requires a real TCP server for HTTP callbacks
+// Tier 2: query/execute scripted tools
 // ============================================================================
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_query_list_harnesses() {
+    let server = TestServer::in_memory().await;
+    let resp = mcp_tool_call(&server, "query", json!({ "commands": "list_harnesses" })).await;
+    assert!(
+        !tool_is_error(&resp),
+        "query list_harnesses failed: {}",
+        tool_text(&resp)
+    );
+
+    let result = tool_json(&resp);
+    let harnesses = result.as_array().expect("Expected harnesses array");
+    assert!(!harnesses.is_empty(), "Should have seed harnesses");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_query_allows_read_only_post_helpers() {
+    let server = TestServer::in_memory().await;
+    let resp = mcp_tool_call(
+        &server,
+        "query",
+        json!({ "commands": "preview_agent --system_prompt 'Preview via query'" }),
+    )
+    .await;
+    assert!(
+        !tool_is_error(&resp),
+        "query preview_agent failed: {}",
+        tool_text(&resp)
+    );
+
+    let result = tool_json(&resp);
+    assert_eq!(result["system_prompt"], "Preview via query");
+    assert!(result["tools"].is_array());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_query_rejects_mutating_commands() {
+    let server = TestServer::in_memory().await;
+    let resp = mcp_tool_call(
+        &server,
+        "query",
+        json!({
+            "commands": "create_agent --name 'query-should-fail' --display_name 'Query Should Fail' --system_prompt 'nope'"
+        }),
+    )
+    .await;
+    assert!(
+        tool_is_error(&resp),
+        "query create_agent unexpectedly succeeded"
+    );
+
+    let text = tool_text(&resp);
+    assert!(
+        text.contains("create_agent"),
+        "Expected command name in error, got: {text}"
+    );
+}
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_mcp_execute_health_check() {

@@ -11,6 +11,12 @@ pub struct CatalogContext {
     pub caller: everruns_core::permissions::Caller,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ToolsetMode {
+    Full,
+    ReadOnly,
+}
+
 impl CatalogContext {
     /// Convert to a domain Ctx for inventory-registered command dispatch.
     pub fn to_domain_ctx(&self) -> crate::domains::common::Ctx {
@@ -42,9 +48,12 @@ impl CatalogContext {
 }
 
 /// Build a ScriptingToolSet from inventory-registered commands only.
-pub fn build_toolset(ctx: CatalogContext) -> ScriptingToolSet {
+pub fn build_toolset(ctx: CatalogContext, mode: ToolsetMode) -> ScriptingToolSet {
     let mut builder = ScriptingToolSet::builder("everruns")
-        .short_description("Everruns API operations as bash builtins")
+        .short_description(match mode {
+            ToolsetMode::Full => "Everruns API operations as bash builtins",
+            ToolsetMode::ReadOnly => "Read-only Everruns API operations as bash builtins",
+        })
         .limits(
             bashkit::ExecutionLimits::new()
                 .max_commands(500)
@@ -56,6 +65,9 @@ pub fn build_toolset(ctx: CatalogContext) -> ScriptingToolSet {
         );
 
     for desc in inventory::iter::<crate::domains::common::CommandDescriptor> {
+        if mode == ToolsetMode::ReadOnly && !(desc.read_only)() {
+            continue;
+        }
         let def = command_descriptor_to_def(desc);
         let callback = make_inventory_callback(desc, ctx.clone());
         builder = builder.async_tool(def, callback);

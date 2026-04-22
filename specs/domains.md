@@ -123,14 +123,19 @@ inventory::collect!(CommandDescriptor);
 Adding a new command: implement `Command` for a struct, add `inventory::submit!`
 at the bottom. The catalog auto-updates. No other files to touch.
 
-### MCP `execute` positional args
+### MCP `query`/`execute` positional args
 
 `Command::positional_arg()` lets a command opt in to accepting one positional
-argument under MCP's `execute` tool (bashkit). Returning `Some("id")` on
+argument under MCP's scripted MCP tools (`query` and `execute`, both backed by
+bashkit). Returning `Some("id")` on
 `get_agent` means callers can write `get_agent <id>` instead of
 `get_agent --id <id>`; the mcp_endpoint rewrites the command string at
 statement boundaries before bashkit's flag parser runs. Only opt in when the
 command has exactly one required primary-key-like parameter. See EVE-323.
+
+`Command::read_only()` controls whether the command is exposed through the
+read-only MCP `query` tool. The default is GET-only; override it for safe
+POST-style commands such as previews or structured search helpers.
 
 ## Writing a Command
 
@@ -216,10 +221,12 @@ automatic HTTP error mapping.
 ## MCP Dispatch
 
 Domain commands are exposed automatically as bash builtins inside the MCP
-`execute` tool. The MCP `build_toolset` function in
+scripted tools. The MCP `build_toolset` function in
 `crates/server/src/api/mcp_endpoint/catalog.rs` iterates inventory-registered
 descriptors:
 
+- `query` filters the command registry to commands whose `read_only()` returns
+  true; `execute` exposes the full catalog.
 - `CatalogContext::to_domain_ctx()` constructs the domain `Ctx` from the
   MCP `AppState` (db, capability_service, encryption).
 - Adding `inventory::submit! { CommandDescriptor::of::<Cmd>() }` makes the

@@ -6,6 +6,8 @@ Claude Code and Codex.
 It wires the [Everruns](https://everruns.com) agent platform into local agent
 tools over MCP. The shared payload is the Everruns MCP server config, the
 `everruns` skill, and the slash commands for common session workflows.
+Use `query` for read-only inspection and `execute` for workflows that create,
+update, delete, or otherwise have side effects.
 
 - Product: <https://everruns.com>
 - Docs: <https://docs.everruns.com>

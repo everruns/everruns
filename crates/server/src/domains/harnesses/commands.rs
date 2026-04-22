@@ -699,6 +699,10 @@ impl Command for PreviewHarness {
         }
     }
 
+    fn read_only() -> bool {
+        true
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<HarnessPreview, CommandError> {
         let parent = match self.parent_harness_id {
             Some(parent_id) => q::resolve_effective(ctx.db.as_ref(), ctx.org_id(), parent_id)

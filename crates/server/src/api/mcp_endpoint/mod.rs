@@ -4,10 +4,11 @@
 // - JSON-RPC 2.0 over POST /mcp (Streamable HTTP, per MCP spec)
 // - Tier 1 tools: agent_run, session_send_message, session_get_status
 //   → Direct service calls, first-class support for the agent conversation loop
-// - Tier 2 tools: discover, execute
-//   → Backed by bashkit ScriptedTool with all API operations as builtins
+// - Tier 2 tools: discover, query, execute
+//   → Backed by bashkit ScriptedTool with API operations exposed as builtins
 //   → discover: uses ScriptedTool's built-in `discover` command
-//   → execute: runs bash scripts through ScriptedTool (all API ops available as commands)
+//   → query: runs bash scripts with the read-only subset of API ops
+//   → execute: runs bash scripts with the full API surface, including writes
 // - Tier 0 tools: me, list_organizations, switch_organization
 //   → Identity & org context tools for multi-org OAuth flows
 //   → MCP clients can't set cookies, so org selection is via explicit tool calls
@@ -599,6 +600,10 @@ async fn handle_tools_call(
                     Ok(org) => tool_discover(&arguments, &org, state).await,
                     Err(e) => Err(e),
                 },
+                "query" => match resolve_org_override(&arguments, auth_user, org, state).await {
+                    Ok(org) => tool_query(&arguments, &org, state).await,
+                    Err(e) => Err(e),
+                },
                 "execute" => match resolve_org_override(&arguments, auth_user, org, state).await {
                     Ok(org) => tool_execute(&arguments, &org, state).await,
                     Err(e) => Err(e),
@@ -1047,15 +1052,28 @@ async fn tool_discover(
         format!("discover --search '{}'", query.replace('\'', "'\\''"))
     };
 
-    let toolset = build_toolset(org, state);
+    let toolset = build_toolset(org, state, catalog::ToolsetMode::Full);
     execute_script(&toolset, &command, 10_000).await
 }
 
 // ============================================================================
-// Tier 2: execute — delegates to ScriptedTool
+// Tier 2: query/execute — delegate to ScriptedTool
 // ============================================================================
 
+async fn tool_query(args: &Value, org: &ResolvedOrg, state: &AppState) -> Result<String, String> {
+    tool_script(args, org, state, catalog::ToolsetMode::ReadOnly).await
+}
+
 async fn tool_execute(args: &Value, org: &ResolvedOrg, state: &AppState) -> Result<String, String> {
+    tool_script(args, org, state, catalog::ToolsetMode::Full).await
+}
+
+async fn tool_script(
+    args: &Value,
+    org: &ResolvedOrg,
+    state: &AppState,
+    mode: catalog::ToolsetMode,
+) -> Result<String, String> {
     let command = args
         .get("commands")
         .and_then(|v| v.as_str())
@@ -1071,7 +1089,7 @@ async fn tool_execute(args: &Value, org: &ResolvedOrg, state: &AppState) -> Resu
     // callers don't hit bashkit's "expected --flag" rejection.
     let rewritten = positional::rewrite(command, positional::positional_map());
 
-    let toolset = build_toolset(org, state);
+    let toolset = build_toolset(org, state, mode);
     execute_script(&toolset, &rewritten, timeout_ms).await
 }
 
@@ -1089,8 +1107,12 @@ fn catalog_context(org: &ResolvedOrg, state: &AppState) -> catalog::CatalogConte
 
 /// Build a ScriptingToolSet for the given org context.
 /// All scripted tools dispatch inventory-registered domain commands — no HTTP.
-fn build_toolset(org: &ResolvedOrg, state: &AppState) -> ScriptingToolSet {
-    catalog::build_toolset(catalog_context(org, state))
+fn build_toolset(
+    org: &ResolvedOrg,
+    state: &AppState,
+    mode: catalog::ToolsetMode,
+) -> ScriptingToolSet {
+    catalog::build_toolset(catalog_context(org, state), mode)
 }
 
 /// Execute a script through a ScriptingToolSet and return formatted output.
