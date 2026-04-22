@@ -45,7 +45,14 @@ const ALLOWED_CONTENT_TYPES: &[&str] = &["image/png", "image/jpeg", "image/gif",
 /// Image metadata (without binary data)
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ImageInfo {
-    #[schema(value_type = String, example = "img_01933b5a00007000800000000000001")]
+    /// ID of the uploaded image (format: img_{32-hex})
+    #[schema(
+        value_type = String,
+        pattern = "^img_[0-9a-fA-F]{32}$",
+        min_length = 36,
+        max_length = 36,
+        example = "img_01933b5a00007000800000000000001"
+    )]
     pub id: ImageId,
     pub filename: String,
     pub content_type: String,
@@ -57,7 +64,14 @@ pub struct ImageInfo {
 /// Image upload response
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ImageUploadResponse {
-    #[schema(value_type = String, example = "img_01933b5a00007000800000000000001")]
+    /// ID of the uploaded image (format: img_{32-hex})
+    #[schema(
+        value_type = String,
+        pattern = "^img_[0-9a-fA-F]{32}$",
+        min_length = 36,
+        max_length = 36,
+        example = "img_01933b5a00007000800000000000001"
+    )]
     pub id: ImageId,
     pub filename: String,
     pub content_type: String,

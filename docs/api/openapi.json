@@ -7892,6 +7892,10 @@
           },
           "id": {
             "type": "string",
+            "description": "ID of the uploaded image (format: img_{32-hex})",
+            "pattern": "^img_[0-9a-fA-F]{32}$",
+            "maxLength": 36,
+            "minLength": 36,
             "example": "img_01933b5a00007000800000000000001"
           },
           "metadata": {},
@@ -7924,6 +7928,10 @@
           },
           "id": {
             "type": "string",
+            "description": "ID of the uploaded image (format: img_{32-hex})",
+            "pattern": "^img_[0-9a-fA-F]{32}$",
+            "maxLength": 36,
+            "minLength": 36,
             "example": "img_01933b5a00007000800000000000001"
           },
           "size_bytes": {
