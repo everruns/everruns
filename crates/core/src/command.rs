@@ -2,7 +2,8 @@
 //
 // Commands are user-invocable actions triggered via /slash syntax.
 // Two sources:
-// 1. System commands — from capabilities, execute directly (no LLM)
+// 1. System commands — from capabilities, execute through a dedicated handler
+//    without persisting a chat message
 // 2. Skill commands — from skills with user-invocable: true, expand to prompt
 //
 // Skills marked user-invocable appear in the command palette alongside
@@ -34,7 +35,8 @@ pub struct CommandDescriptor {
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum CommandSource {
-    /// Built-in system command from a capability (no LLM, direct action)
+    /// Built-in system command from a capability, executed out-of-band from the
+    /// main chat history. Handlers may call the model or do direct work.
     System,
     /// From a skill with user-invocable: true (expands to prompt, triggers LLM)
     Skill,

@@ -324,7 +324,7 @@ impl SessionCommandService {
 
         Ok(Some(everruns_core::traits::ModelWithProvider {
             model: resolved.model_id,
-            provider_type: provider_type_from_str(&resolved.provider_type)?,
+            provider_type: parse_llm_provider_type(&resolved.provider_type)?,
             api_key: resolved.api_key,
             base_url: resolved.base_url,
         }))
@@ -349,7 +349,7 @@ fn provider_type_from_llm(provider_type: LlmProviderType) -> Result<ProviderType
     })
 }
 
-fn provider_type_from_str(provider_type: &str) -> Result<LlmProviderType> {
+fn parse_llm_provider_type(provider_type: &str) -> Result<LlmProviderType> {
     provider_type
         .parse::<LlmProviderType>()
         .map_err(|error| anyhow!(error))

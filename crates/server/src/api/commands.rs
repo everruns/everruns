@@ -1,8 +1,9 @@
 // Commands API
 //
-// Provides endpoint for discovering slash commands.
+// Provides endpoints for discovering and executing slash commands.
 // Commands come from two sources:
-// 1. System commands — from capabilities (no LLM, direct action)
+// 1. System commands — from capabilities, executed without persisting a chat
+//    message
 // 2. Skill commands — from skills with user-invocable: true (prompt expansion)
 
 use crate::auth::{AuthState, ResolvedOrg};

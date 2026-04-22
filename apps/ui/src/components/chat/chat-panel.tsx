@@ -36,7 +36,6 @@ import { useLocale } from "@/providers/locale-provider";
 interface ParsedSystemCommand {
   command: CommandDescriptor;
   argumentsText: string;
-  missingRequiredArgs: boolean;
 }
 
 interface BtwOverlayState {
@@ -66,7 +65,6 @@ function parseSystemCommandInvocation(
   return {
     command,
     argumentsText,
-    missingRequiredArgs: commandRequiresArguments(command) && argumentsText.length === 0,
   };
 }
 
@@ -204,15 +202,14 @@ export function ChatPanel() {
     if (!btwOverlay) return;
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" && event.key !== "Enter" && event.key !== " ") {
+      if (event.key !== "Escape") {
         return;
       }
-      event.preventDefault();
       closeBtwOverlay();
     };
 
-    document.addEventListener("keydown", handleKeyDown, true);
-    return () => document.removeEventListener("keydown", handleKeyDown, true);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
   }, [btwOverlay, closeBtwOverlay]);
 
   const runSystemCommand = useCallback(

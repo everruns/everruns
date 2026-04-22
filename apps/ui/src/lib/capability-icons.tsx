@@ -24,6 +24,7 @@ import {
   FileText,
   Container,
   Infinity as InfinityIcon,
+  MessageCircle,
   type LucideIcon,
 } from "lucide-react";
 
@@ -132,6 +133,7 @@ export const capabilityIconMap: Record<string, IconComponent> = {
   "file-text": FileText,
   container: Container,
   infinity: InfinityIcon,
+  "message-circle": MessageCircle,
   // Additional capability icons
   cloud: Cloud,
   users: Users,
