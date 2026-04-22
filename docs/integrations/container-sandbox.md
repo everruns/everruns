@@ -26,11 +26,11 @@ Set `CONTAINER_SANDBOX_DOCKER_HOST` to override the default Docker host.
 
 ### 2. Enable the Feature and Assign the Capability
 
-Set `FEATURE_CONTAINER_SANDBOX=true` on the server to enable the capability and built-in **Coding (Container)** harness.
+Set `FEATURE_CONTAINER_SANDBOX=true` anywhere capabilities are registered or executed to enable the capability and built-in **Coding (Container)** harness. In most deployments, that means both the server and any workers.
 
-For legacy deployments, `FEATURE_DOCKER_CAPABILITY=true` still enables the same feature until operators switch to the new flag name.
+For legacy deployments, `FEATURE_DOCKER_CAPABILITY=true` still enables the same feature until operators switch to the new flag name, and it must be enabled in the same places.
 
-Once enabled, add the `container_sandbox` capability to a custom harness or use the built-in **Coding (Container)** harness.
+Once the flag is enabled in the relevant processes, add the `container_sandbox` capability to a custom harness or use the built-in **Coding (Container)** harness.
 
 ### 3. Use in Sessions
 

@@ -2217,6 +2217,32 @@ mod tests {
 
     static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
+    struct EnvVarGuard {
+        previous: Vec<(&'static str, Option<String>)>,
+    }
+
+    impl EnvVarGuard {
+        fn capture(keys: &[&'static str]) -> Self {
+            Self {
+                previous: keys
+                    .iter()
+                    .map(|&key| (key, std::env::var(key).ok()))
+                    .collect(),
+            }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            for (key, value) in self.previous.drain(..) {
+                match value {
+                    Some(value) => unsafe { std::env::set_var(key, value) },
+                    None => unsafe { std::env::remove_var(key) },
+                }
+            }
+        }
+    }
+
     fn lock_env() -> std::sync::MutexGuard<'static, ()> {
         ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())
     }
@@ -2313,6 +2339,8 @@ mod tests {
     #[test]
     fn test_coding_container_harness_capabilities_are_registered_when_flag_enabled() {
         let _lock = lock_env();
+        let _env_guard =
+            EnvVarGuard::capture(&["FEATURE_CONTAINER_SANDBOX", "FEATURE_DOCKER_CAPABILITY"]);
         unsafe { std::env::set_var("FEATURE_CONTAINER_SANDBOX", "true") };
         unsafe { std::env::remove_var("FEATURE_DOCKER_CAPABILITY") };
 
@@ -2333,13 +2361,13 @@ mod tests {
                 cap.id
             );
         }
-
-        unsafe { std::env::remove_var("FEATURE_CONTAINER_SANDBOX") };
     }
 
     #[test]
     fn test_coding_container_harness_hidden_when_flag_disabled() {
         let _lock = lock_env();
+        let _env_guard =
+            EnvVarGuard::capture(&["FEATURE_CONTAINER_SANDBOX", "FEATURE_DOCKER_CAPABILITY"]);
         unsafe { std::env::remove_var("FEATURE_CONTAINER_SANDBOX") };
         unsafe { std::env::remove_var("FEATURE_DOCKER_CAPABILITY") };
 

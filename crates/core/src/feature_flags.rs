@@ -77,7 +77,9 @@ pub struct InternalFeatureFlags {
     pub docker_capability: bool,
     /// Self-hosted container sandbox capability and coding harness.
     /// Disabled by default on all envs.
-    /// Enable via `FEATURE_CONTAINER_SANDBOX=true`.
+    /// Enable via `FEATURE_CONTAINER_SANDBOX=true`, or via the legacy
+    /// fallback `FEATURE_DOCKER_CAPABILITY=true` when
+    /// `FEATURE_CONTAINER_SANDBOX` is unset.
     pub container_sandbox: bool,
     /// Managed session-owned sandbox capability and lifecycle orchestration.
     /// Experimental and disabled by default.
@@ -87,12 +89,11 @@ pub struct InternalFeatureFlags {
 impl InternalFeatureFlags {
     /// Compute internal feature flags from environment variables.
     pub fn from_env() -> Self {
+        let docker_capability = standard_flag("FEATURE_DOCKER_CAPABILITY", false);
+
         Self {
-            docker_capability: standard_flag("FEATURE_DOCKER_CAPABILITY", false),
-            container_sandbox: standard_flag(
-                "FEATURE_CONTAINER_SANDBOX",
-                standard_flag("FEATURE_DOCKER_CAPABILITY", false),
-            ),
+            docker_capability,
+            container_sandbox: standard_flag("FEATURE_CONTAINER_SANDBOX", docker_capability),
             session_sandbox: standard_flag("FEATURE_SESSION_SANDBOX", false),
         }
     }
