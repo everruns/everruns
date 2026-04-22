@@ -1,0 +1,188 @@
+// Session sandbox HTTP routes.
+//
+// Exposes the managed session-owned sandbox lifecycle surface.
+
+use crate::auth::{AuthState, ResolvedOrg};
+use crate::domains::common::{Command, Ctx};
+use crate::domains::session_sandbox::{GetSessionSandbox, ManageSessionSandbox};
+use crate::services::{SessionSandboxService, SessionService};
+use crate::storage::StorageBackend;
+use axum::{
+    Json, Router,
+    extract::{Path, State},
+    routing::get,
+};
+use everruns_core::Caller;
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use utoipa::ToSchema;
+
+use super::common::{ApiResult, impl_auth_state};
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionSandboxStatusValue {
+    Running,
+    Paused,
+}
+
+impl From<everruns_core::SessionSandboxStatus> for SessionSandboxStatusValue {
+    fn from(status: everruns_core::SessionSandboxStatus) -> Self {
+        match status {
+            everruns_core::SessionSandboxStatus::Running => Self::Running,
+            everruns_core::SessionSandboxStatus::Paused => Self::Paused,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionSandboxAction {
+    Pause,
+    Resume,
+    Delete,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct GetSessionSandboxResponse {
+    pub configured: bool,
+    pub exists: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_status: Option<SessionSandboxStatusValue>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub external_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workspace_path: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Object)]
+    pub metadata: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub init_completed_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_init_error: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct ManageSessionSandboxRequest {
+    pub action: SessionSandboxAction,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ManageSessionSandboxResponse {
+    pub action: SessionSandboxAction,
+    pub exists: bool,
+    pub deleted: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_status: Option<SessionSandboxStatusValue>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub external_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workspace_path: Option<String>,
+}
+
+#[derive(Clone)]
+pub struct AppState {
+    pub db: Arc<StorageBackend>,
+    pub session_service: Arc<SessionService>,
+    pub session_sandbox_service: Arc<SessionSandboxService>,
+    pub auth: AuthState,
+}
+
+impl AppState {
+    pub fn new(
+        db: Arc<StorageBackend>,
+        session_service: Arc<SessionService>,
+        session_sandbox_service: Arc<SessionSandboxService>,
+        auth: AuthState,
+    ) -> Self {
+        Self {
+            db,
+            session_service,
+            session_sandbox_service,
+            auth,
+        }
+    }
+
+    fn ctx(&self, org: &ResolvedOrg) -> Ctx {
+        Ctx::minimal(Caller::from(org), self.db.clone(), None)
+            .with_session_service(self.session_service.clone())
+            .with_session_sandbox_service(self.session_sandbox_service.clone())
+    }
+}
+
+impl_auth_state!(AppState);
+
+pub fn routes(state: AppState) -> Router {
+    Router::new()
+        .route(
+            "/v1/sessions/{session_id}/sandbox",
+            get(get_sandbox).post(manage_sandbox),
+        )
+        .with_state(state)
+}
+
+#[utoipa::path(
+    get,
+    path = "/v1/sessions/{session_id}/sandbox",
+    params(
+        ("session_id" = String, Path, description = "Session ID")
+    ),
+    responses(
+        (status = 200, description = "Managed sandbox status", body = GetSessionSandboxResponse),
+        (status = 404, description = "Session not found"),
+    ),
+    tag = "session-sandbox"
+)]
+pub async fn get_sandbox(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(session_id): Path<String>,
+) -> ApiResult<GetSessionSandboxResponse> {
+    Ok(Json(
+        GetSessionSandbox { session_id }
+            .execute(&state.ctx(&org))
+            .await?,
+    ))
+}
+
+#[utoipa::path(
+    post,
+    path = "/v1/sessions/{session_id}/sandbox",
+    params(
+        ("session_id" = String, Path, description = "Session ID")
+    ),
+    request_body = ManageSessionSandboxRequest,
+    responses(
+        (status = 200, description = "Managed sandbox lifecycle updated", body = ManageSessionSandboxResponse),
+        (status = 400, description = "Invalid action or sandbox not configured"),
+        (status = 404, description = "Session not found"),
+    ),
+    tag = "session-sandbox"
+)]
+pub async fn manage_sandbox(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(session_id): Path<String>,
+    Json(body): Json<ManageSessionSandboxRequest>,
+) -> ApiResult<ManageSessionSandboxResponse> {
+    Ok(Json(
+        ManageSessionSandbox {
+            session_id,
+            action: body.action,
+        }
+        .execute(&state.ctx(&org))
+        .await?,
+    ))
+}

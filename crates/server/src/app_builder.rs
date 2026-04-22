@@ -599,6 +599,14 @@ impl ServerAppBuilder {
             session_service = session_service.with_session_sandbox_service(service.clone());
         }
         sessions_state.session_service = Arc::new(session_service);
+        let session_sandbox_state = session_sandbox_service.as_ref().map(|sandbox_service| {
+            api::session_sandbox::AppState::new(
+                db.clone(),
+                sessions_state.session_service.clone(),
+                sandbox_service.clone(),
+                auth_state.clone(),
+            )
+        });
         let messages_state = api::messages::AppState::new(
             db.clone(),
             runner.clone(),
@@ -861,6 +869,11 @@ impl ServerAppBuilder {
             durable_store.clone(),
         )
         .with_virtual_registry(virtual_registry.clone());
+        let mcp_endpoint_state = if let Some(service) = &session_sandbox_service {
+            mcp_endpoint_state.with_session_sandbox_service(service.clone())
+        } else {
+            mcp_endpoint_state
+        };
 
         let health_state = HealthState {
             auth_mode: format!("{:?}", auth_config.mode),
@@ -956,6 +969,10 @@ impl ServerAppBuilder {
             api_routes = api_routes.merge(api::evals::routes(evals_state));
         } else {
             tracing::info!("Evals disabled via feature flag");
+        }
+
+        if let Some(session_sandbox_state) = session_sandbox_state {
+            api_routes = api_routes.merge(api::session_sandbox::routes(session_sandbox_state));
         }
 
         // API key CRUD — auth-provider-agnostic, always mounted

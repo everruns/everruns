@@ -15,7 +15,7 @@ use std::collections::HashMap;
 use std::sync::OnceLock;
 
 /// Positional map shared across all `tool_execute` calls. Built once from
-/// inventory + the static catalog; both are fixed at compile time.
+/// inventory-registered commands.
 static POSITIONAL_MAP: OnceLock<HashMap<&'static str, &'static str>> = OnceLock::new();
 
 /// Return the cached positional map. The map key is a command name; the value
@@ -29,25 +29,9 @@ fn build_positional_map() -> HashMap<&'static str, &'static str> {
     let mut map: HashMap<&'static str, &'static str> = HashMap::new();
 
     // Inventory-registered commands that opt in via Command::positional_arg.
-    // Inventory takes precedence — the static catalog fills in anything that
-    // inventory doesn't already own.
     for desc in inventory::iter::<crate::domains::common::CommandDescriptor> {
         if let Some(flag) = (desc.positional_arg)() {
             map.insert((desc.meta)().name, flag);
-        }
-    }
-
-    // Static CATALOG: a command is rewritable when it declares exactly one
-    // `path` parameter (its primary key). Multiple path params (e.g. {id,
-    // channel_id}) stay flag-only because positional ordering is ambiguous.
-    for op in super::catalog::CATALOG {
-        if map.contains_key(op.name) {
-            continue;
-        }
-        let path_params: Vec<&super::catalog::Param> =
-            op.params.iter().filter(|p| p.typ == "path").collect();
-        if path_params.len() == 1 {
-            map.insert(op.name, path_params[0].name);
         }
     }
 
@@ -463,9 +447,9 @@ mod tests {
         // Inventory commands with id: at least get_agent, get_capability.
         assert_eq!(map.get("get_agent").copied(), Some("id"));
         assert_eq!(map.get("get_capability").copied(), Some("id"));
-        // Static catalog with single path param: get_session → session_id.
+        // Inventory command with a single primary identifier: get_session → session_id.
         assert_eq!(map.get("get_session").copied(), Some("session_id"));
-        // Static catalog with single path param `id`: get_model → id.
+        // Inventory command with `id` as the primary identifier.
         assert_eq!(map.get("get_model").copied(), Some("id"));
         // List endpoints have no path params — must not be present.
         assert!(!map.contains_key("list_agents"));
@@ -476,11 +460,10 @@ mod tests {
     }
 
     #[test]
-    fn inventory_takes_precedence_over_catalog() {
+    fn inventory_commands_publish_their_positional_arg() {
         let map = build_positional_map();
-        // get_agent is in the inventory with positional_arg=Some("id"). If it
-        // also appears in the static catalog with a different flag, inventory
-        // must win — the catalog entry would shadow it otherwise.
+        // get_agent publishes positional_arg=Some("id"), so execute callers
+        // can say `get_agent <id>` instead of `get_agent --id <id>`.
         assert_eq!(map.get("get_agent").copied(), Some("id"));
     }
 }

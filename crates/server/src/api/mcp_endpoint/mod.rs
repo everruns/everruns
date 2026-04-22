@@ -15,14 +15,13 @@
 // - No MCP session state — stateless request/response per JSON-RPC call
 // - Multi-org: all tools accept optional `organization_id` to override the default org
 
-mod handlers;
 mod tool_registry;
 
 use crate::auth::middleware::AuthUser;
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::services::{
     BudgetService, CapabilityService, EventService, MessageService, SessionFileService,
-    SessionService,
+    SessionSandboxService, SessionService,
 };
 use crate::storage::StorageBackend;
 use axum::{
@@ -180,6 +179,7 @@ pub struct AppState {
     pub message_service: Arc<MessageService>,
     pub event_service: Arc<EventService>,
     pub session_file_service: Arc<SessionFileService>,
+    pub session_sandbox_service: Option<Arc<SessionSandboxService>>,
     pub capability_service: Arc<CapabilityService>,
     pub budget_service: Arc<BudgetService>,
     pub runner: Arc<dyn AgentRunner>,
@@ -220,6 +220,7 @@ impl AppState {
             )),
             event_service: Arc::new(EventService::new(db.clone(), event_delivery)),
             session_file_service: Arc::new(SessionFileService::new(db.clone())),
+            session_sandbox_service: None,
             capability_service,
             budget_service: Arc::new(BudgetService::new(db.clone())),
             db,
@@ -249,6 +250,11 @@ impl AppState {
     ) -> Self {
         self.session_file_service =
             Arc::new(SessionFileService::new(self.db.clone()).with_virtual_registry(registry));
+        self
+    }
+
+    pub fn with_session_sandbox_service(mut self, service: Arc<SessionSandboxService>) -> Self {
+        self.session_sandbox_service = Some(service);
         self
     }
 }
@@ -799,6 +805,23 @@ async fn tool_switch_organization(
     .unwrap())
 }
 
+async fn dispatch_command(
+    name: &str,
+    params: Value,
+    org: &ResolvedOrg,
+    state: &AppState,
+) -> Result<Value, String> {
+    let ctx = catalog_context(org, state).to_domain_ctx();
+    let result = crate::domains::common::dispatch(name, params, &ctx)
+        .await
+        .map_err(|e| e.to_string())?;
+    serde_json::from_str(&result).map_err(|e| format!("Internal error: {e}"))
+}
+
+fn pretty_json(value: &Value) -> Result<String, String> {
+    serde_json::to_string_pretty(value).map_err(|e| format!("Internal error: {e}"))
+}
+
 // ============================================================================
 // Tier 1: agent_run
 // ============================================================================
@@ -813,18 +836,13 @@ async fn tool_agent_run(
         .and_then(|v| v.as_str())
         .ok_or("Missing required parameter: message")?;
 
-    let ctx = catalog_context(org, state);
-
-    // Create session via catalog handler
     let session_params = json!({
         "agent_id": args.get("agent_id"),
         "harness_id": args.get("harness_id"),
         "title": args.get("title"),
         "model_id": args.get("model_id"),
     });
-    let session_json = handlers::create_session(&session_params, &ctx).await?;
-    let session: Value =
-        serde_json::from_str(&session_json).map_err(|e| format!("Internal error: {e}"))?;
+    let session = dispatch_command("create_session", session_params, org, state).await?;
     let session_id = session["id"]
         .as_str()
         .ok_or("Internal error: no session ID in response")?;
@@ -841,26 +859,16 @@ async fn tool_agent_run(
             );
         }
         let budget_params = json!({
-            "org_id": org.org_id,
             "subject_type": "session",
             "subject_id": session_id,
             "currency": args.get("budget_currency").and_then(|v| v.as_str()).unwrap_or("usd"),
             "limit": budget_limit,
             "soft_limit": budget_soft_limit,
         });
-        let budget_json = handlers::create_budget(&budget_params, &ctx)
+        let budget = dispatch_command("create_budget", budget_params, org, state)
             .await
             .map_err(|e| format!("Session created but budget creation failed: {e}"))?;
-        let budget: Value =
-            serde_json::from_str(&budget_json).map_err(|e| format!("Internal error: {e}"))?;
-        // Wrap raw UUID as typed BudgetId for consistent API output
-        budget["id"].as_str().map(|raw| {
-            if let Ok(uuid) = raw.parse::<uuid::Uuid>() {
-                everruns_core::typed_id::BudgetId::from_uuid(uuid).to_string()
-            } else {
-                raw.to_string()
-            }
-        })
+        budget["id"].as_str().map(ToString::to_string)
     } else {
         None
     };
@@ -873,8 +881,7 @@ async fn tool_agent_run(
             "content": [{"type": "text", "text": message_text}]
         }
     });
-    let msg_json = handlers::create_message(&msg_params, &ctx).await?;
-    let msg: Value = serde_json::from_str(&msg_json).map_err(|e| format!("Internal error: {e}"))?;
+    let msg = dispatch_command("create_message", msg_params, org, state).await?;
 
     let mut result = json!({
         "session_id": session_id,
@@ -886,7 +893,7 @@ async fn tool_agent_run(
         result["budget_id"] = json!(bid);
     }
 
-    Ok(serde_json::to_string_pretty(&result).unwrap())
+    pretty_json(&result)
 }
 
 // ============================================================================
@@ -908,8 +915,6 @@ async fn tool_session_send_message(
         .and_then(|v| v.as_str())
         .ok_or("Missing required parameter: message")?;
 
-    let ctx = catalog_context(org, state);
-
     let msg_params = json!({
         "session_id": session_id,
         "message": {
@@ -917,21 +922,17 @@ async fn tool_session_send_message(
             "content": [{"type": "text", "text": message_text}]
         }
     });
-    let msg_json = handlers::create_message(&msg_params, &ctx).await?;
-    let msg: Value = serde_json::from_str(&msg_json).map_err(|e| format!("Internal error: {e}"))?;
+    let msg = dispatch_command("create_message", msg_params, org, state).await?;
 
     // Fetch session to get current status (create_message returns message, not session)
     let session_params = json!({ "session_id": session_id });
-    let session_json = handlers::get_session(&session_params, &ctx).await?;
-    let session: Value =
-        serde_json::from_str(&session_json).map_err(|e| format!("Internal error: {e}"))?;
+    let session = dispatch_command("get_session", session_params, org, state).await?;
 
-    Ok(serde_json::to_string_pretty(&json!({
+    pretty_json(&json!({
         "message_id": msg["id"],
         "session_status": session["status"],
         "hint": "Use session_get_status to poll for completion"
     }))
-    .unwrap())
 }
 
 // ============================================================================
@@ -948,13 +949,8 @@ async fn tool_session_get_status(
         .and_then(|v| v.as_str())
         .ok_or("Missing required parameter: session_id")?;
 
-    let ctx = catalog_context(org, state);
-
-    // Get session via handler
     let session_params = json!({ "session_id": session_id });
-    let session_json = handlers::get_session(&session_params, &ctx).await?;
-    let session: Value =
-        serde_json::from_str(&session_json).map_err(|e| format!("Internal error: {e}"))?;
+    let session = dispatch_command("get_session", session_params, org, state).await?;
 
     // Get recent events via handler
     let event_types: Vec<String> = args
@@ -967,27 +963,27 @@ async fn tool_session_get_status(
         })
         .unwrap_or_default();
 
-    // Parse since_event_id as typed EventId and extract UUID for the handler
-    let since_id_uuid = args
+    let since_event_id = args
         .get("since_event_id")
         .and_then(|v| v.as_str())
         .map(|s| {
             s.parse::<everruns_core::typed_id::EventId>()
-                .map(|id| id.uuid().to_string())
-                .or_else(|_| s.parse::<uuid::Uuid>().map(|u| u.to_string()))
+                .map(|id| id.to_string())
+                .or_else(|_| {
+                    s.parse::<uuid::Uuid>()
+                        .map(|u| everruns_core::typed_id::EventId::from_uuid(u).to_string())
+                })
                 .map_err(|_| format!("Invalid since_event_id: {s}"))
         })
         .transpose()?;
 
     let event_params = json!({
         "session_id": session_id,
-        "since_id": since_id_uuid,
-        "types": if event_types.is_empty() { None } else { Some(event_types.join(",")) },
+        "since_id": since_event_id,
+        "types": event_types,
         "limit": 50,
     });
-    let events_json = handlers::list_events(&event_params, &ctx).await?;
-    let events_data: Value =
-        serde_json::from_str(&events_json).map_err(|e| format!("Internal error: {e}"))?;
+    let events_data = dispatch_command("list_events", event_params, org, state).await?;
     let events = events_data["data"].as_array();
 
     // Extract latest output from events
@@ -1012,7 +1008,7 @@ async fn tool_session_get_status(
         .last()
         .and_then(|e| e.get("id").and_then(|v| v.as_str()));
 
-    Ok(serde_json::to_string_pretty(&json!({
+    pretty_json(&json!({
         "session_id": session_id,
         "status": session["status"],
         "agent_id": session["agent_id"],
@@ -1026,7 +1022,6 @@ async fn tool_session_get_status(
             "ts": e["ts"],
         })).collect::<Vec<_>>()
     }))
-    .unwrap())
 }
 
 // ============================================================================
@@ -1089,13 +1084,11 @@ fn catalog_context(org: &ResolvedOrg, state: &AppState) -> catalog::CatalogConte
     catalog::CatalogContext {
         state: state.clone(),
         caller: Caller::from(org),
-        org_id: org.org_id,
-        user_id: org.user_id,
     }
 }
 
 /// Build a ScriptingToolSet for the given org context.
-/// All catalog operations are direct service calls — no HTTP.
+/// All scripted tools dispatch inventory-registered domain commands — no HTTP.
 fn build_toolset(org: &ResolvedOrg, state: &AppState) -> ScriptingToolSet {
     catalog::build_toolset(catalog_context(org, state))
 }

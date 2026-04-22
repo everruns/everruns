@@ -146,7 +146,7 @@ impl SessionSandboxService {
         Ok(())
     }
 
-    async fn config_for_session(
+    pub async fn config_for_session(
         &self,
         session_id: SessionId,
     ) -> anyhow::Result<Option<SessionSandboxConfig>> {
@@ -208,7 +208,7 @@ impl SessionSandboxService {
             })
     }
 
-    fn tool_context(&self, session_id: SessionId) -> ToolContext {
+    pub fn tool_context(&self, session_id: SessionId) -> ToolContext {
         let mut context = ToolContext::new(session_id);
         context.storage_store = Some(self.storage_store.clone());
         context.leased_resource_store = Some(self.leased_resource_store.clone());
