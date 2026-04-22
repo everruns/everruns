@@ -53,6 +53,9 @@ type ApiKeyExpiryOption = (typeof API_KEY_EXPIRY_OPTIONS)[number];
 type ApiKeyExpiryValue = ApiKeyExpiryOption["value"];
 
 const DEFAULT_API_KEY_EXPIRY: ApiKeyExpiryValue = "90";
+const DEFAULT_API_KEY_EXPIRY_OPTION =
+  API_KEY_EXPIRY_OPTIONS.find((option) => option.value === DEFAULT_API_KEY_EXPIRY) ??
+  API_KEY_EXPIRY_OPTIONS[0];
 
 function ApiKeyRow({
   apiKey,
@@ -113,7 +116,7 @@ function CreateApiKeyDialog({
   const createApiKey = useCreateApiKey();
   const selectedExpiryOption =
     API_KEY_EXPIRY_OPTIONS.find((option) => option.value === expiryPreset) ??
-    API_KEY_EXPIRY_OPTIONS[2];
+    DEFAULT_API_KEY_EXPIRY_OPTION;
 
   const resetForm = () => {
     setName("");
