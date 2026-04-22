@@ -879,10 +879,11 @@ impl ServerAppBuilder {
             auth_state.clone(),
         );
 
-        // MCP endpoint: derive API base URL from addr config or MCP_API_BASE_URL env var
+        // MCP endpoint: derive the protected-resource metadata URL from
+        // auth_config.base_url so it matches `/.well-known/oauth-protected-resource`.
         let mcp_resource_metadata_url = format!(
             "{}/.well-known/oauth-protected-resource",
-            auth::root_url_from_api_base(&auth_config.base_url).trim_end_matches('/')
+            auth::builtin::root_url_from_api_base(&auth_config.base_url)
         );
         let mcp_endpoint_state = api::mcp_endpoint::AppState::new(
             db.clone(),

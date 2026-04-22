@@ -283,16 +283,16 @@ pub fn routes(state: AppState) -> Router {
     let router = Router::new()
         .route("/mcp", post(handle_mcp))
         .with_state(state);
-    match metadata_url {
-        Some(url) => {
-            let header_value = build_www_authenticate_value(&url);
-            router.layer(axum::middleware::from_fn(
-                move |req: Request, next: Next| {
-                    let header_value = header_value.clone();
-                    async move { inject_www_authenticate(req, next, header_value).await }
-                },
-            ))
-        }
+    match metadata_url
+        .as_deref()
+        .and_then(parse_www_authenticate_value)
+    {
+        Some(header_value) => router.layer(axum::middleware::from_fn(
+            move |req: Request, next: Next| {
+                let header_value = header_value.clone();
+                async move { inject_www_authenticate(req, next, header_value).await }
+            },
+        )),
         None => router,
     }
 }
@@ -301,18 +301,31 @@ fn build_www_authenticate_value(resource_metadata_url: &str) -> String {
     format!("Bearer realm=\"mcp\", resource_metadata=\"{resource_metadata_url}\"")
 }
 
+/// Build the static header value once at router construction time. Returns
+/// `None` when the configured URL cannot produce a valid `HeaderValue`
+/// (malformed config), which disables the layer rather than paying parse
+/// cost per request.
+fn parse_www_authenticate_value(resource_metadata_url: &str) -> Option<axum::http::HeaderValue> {
+    build_www_authenticate_value(resource_metadata_url)
+        .parse()
+        .ok()
+}
+
 /// Adds `WWW-Authenticate: Bearer resource_metadata="..."` to 401 responses
 /// from the MCP endpoint so clients can discover the authorization server
 /// via RFC 9728 protected-resource metadata.
-async fn inject_www_authenticate(req: Request, next: Next, header_value: String) -> Response {
+async fn inject_www_authenticate(
+    req: Request,
+    next: Next,
+    header_value: axum::http::HeaderValue,
+) -> Response {
     let mut response = next.run(req).await;
     if response.status() == StatusCode::UNAUTHORIZED
         && !response.headers().contains_key(header::WWW_AUTHENTICATE)
-        && let Ok(value) = header_value.parse()
     {
         response
             .headers_mut()
-            .insert(header::WWW_AUTHENTICATE, value);
+            .insert(header::WWW_AUTHENTICATE, header_value);
     }
     response
 }
@@ -1217,7 +1230,7 @@ mod www_authenticate_tests {
     const METADATA_URL: &str = "https://example.com/.well-known/oauth-protected-resource";
 
     fn app_with_layer(status: StatusCode) -> Router {
-        let header_value = build_www_authenticate_value(METADATA_URL);
+        let header_value = parse_www_authenticate_value(METADATA_URL).expect("valid header");
         Router::new()
             .route("/mcp", any(move || async move { status.into_response() }))
             .layer(axum::middleware::from_fn(
@@ -1278,7 +1291,7 @@ mod www_authenticate_tests {
 
     #[tokio::test]
     async fn preserves_existing_header() {
-        let header_value = build_www_authenticate_value(METADATA_URL);
+        let header_value = parse_www_authenticate_value(METADATA_URL).expect("valid header");
         let app = Router::new()
             .route(
                 "/mcp",
