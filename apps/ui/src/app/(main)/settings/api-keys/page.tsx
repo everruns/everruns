@@ -22,6 +22,41 @@ import { useAuth } from "@/providers/auth-provider";
 import { Plus, Key, Trash2, Copy, Check, Clock, ShieldAlert } from "lucide-react";
 import type { ApiKeyListItem, CreateApiKeyRequest } from "@/lib/api/types";
 
+const API_KEY_EXPIRY_OPTIONS = [
+  {
+    value: "1",
+    label: "1 day",
+    expiresInDays: 1,
+    description: "Short-lived key for temporary use.",
+  },
+  {
+    value: "30",
+    label: "30 days",
+    expiresInDays: 30,
+    description: "Reasonable default for ongoing integration work.",
+  },
+  {
+    value: "90",
+    label: "90 days",
+    expiresInDays: 90,
+    description: "Recommended balance between longevity and rotation.",
+  },
+  {
+    value: "unrestricted",
+    label: "Unrestricted (not recommended)",
+    expiresInDays: undefined,
+    description: "This key never expires. Use only when you own the rotation process.",
+  },
+] as const;
+
+type ApiKeyExpiryOption = (typeof API_KEY_EXPIRY_OPTIONS)[number];
+type ApiKeyExpiryValue = ApiKeyExpiryOption["value"];
+
+const DEFAULT_API_KEY_EXPIRY: ApiKeyExpiryValue = "90";
+const DEFAULT_API_KEY_EXPIRY_OPTION =
+  API_KEY_EXPIRY_OPTIONS.find((option) => option.value === DEFAULT_API_KEY_EXPIRY) ??
+  API_KEY_EXPIRY_OPTIONS[0];
+
 function ApiKeyRow({
   apiKey,
   onDelete,
@@ -76,24 +111,38 @@ function CreateApiKeyDialog({
   onKeyCreated: (key: string) => void;
 }) {
   const [name, setName] = useState("");
-  const [expiresInDays, setExpiresInDays] = useState("");
+  const [expiryPreset, setExpiryPreset] = useState<ApiKeyExpiryValue>(DEFAULT_API_KEY_EXPIRY);
 
   const createApiKey = useCreateApiKey();
+  const selectedExpiryOption =
+    API_KEY_EXPIRY_OPTIONS.find((option) => option.value === expiryPreset) ??
+    DEFAULT_API_KEY_EXPIRY_OPTION;
+
+  const resetForm = () => {
+    setName("");
+    setExpiryPreset(DEFAULT_API_KEY_EXPIRY);
+  };
+
+  const handleOpenChange = (nextOpen: boolean) => {
+    onOpenChange(nextOpen);
+    if (!nextOpen) {
+      resetForm();
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const data: CreateApiKeyRequest = {
       name,
-      expires_in_days: expiresInDays ? parseInt(expiresInDays) : undefined,
+      expires_in_days: selectedExpiryOption.expiresInDays,
     };
     const result = await createApiKey.mutateAsync(data);
     onKeyCreated(result.key);
-    setName("");
-    setExpiresInDays("");
+    resetForm();
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Create API Key</DialogTitle>
@@ -114,21 +163,28 @@ function CreateApiKeyDialog({
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="expires-in">Expires In (days, optional)</Label>
-            <Input
-              id="expires-in"
-              type="number"
-              value={expiresInDays}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                setExpiresInDays(e.target.value)
-              }
-              placeholder="30"
-              min="1"
-            />
-            <p className="text-xs text-muted-foreground">Leave empty for no expiration</p>
+            <Label>Expiration</Label>
+            <div className="grid grid-cols-2 gap-2" role="group" aria-label="Expiration">
+              {API_KEY_EXPIRY_OPTIONS.map((option) => {
+                const selected = option.value === expiryPreset;
+                return (
+                  <Button
+                    key={option.value}
+                    type="button"
+                    variant={selected ? "default" : "outline"}
+                    aria-pressed={selected}
+                    className="h-auto justify-start whitespace-normal px-3 py-2 text-left"
+                    onClick={() => setExpiryPreset(option.value)}
+                  >
+                    {option.label}
+                  </Button>
+                );
+              })}
+            </div>
+            <p className="text-xs text-muted-foreground">{selectedExpiryOption.description}</p>
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+            <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
               Cancel
             </Button>
             <Button type="submit" disabled={createApiKey.isPending || !name}>

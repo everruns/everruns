@@ -23,7 +23,7 @@ Verify that an API key created through the UI grants access to all organizations
 2. Navigate to Settings > API Keys
 3. Verify the "Full account access" warning banner is visible
 4. Click "Create API Key"
-5. Enter name `user-scoped-key`, leave expiration empty
+5. Enter name `user-scoped-key`, keep the default `90 days` expiration
 6. Click "Create API Key"
 7. Copy the full API key from the "API Key Created" dialog
 8. Click "Done"
@@ -40,6 +40,7 @@ Verify that an API key created through the UI grants access to all organizations
 ## Expected Result
 
 - Step 3: Warning banner says API keys grant access to all organizations
+- Step 5: `90 days` is selected by default in the expiration presets
 - Steps 10-11: Both agents created successfully (same key, different orgs)
 - Step 12: Only org A's agent appears
 - Step 13: Only org B's agent appears

@@ -48,15 +48,6 @@ impl Database {
         Ok(row)
     }
 
-    /// Count API keys for a user (for resource limits).
-    pub async fn count_api_keys_for_user(&self, user_id: Uuid) -> Result<i64> {
-        let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM api_keys WHERE user_id = $1")
-            .bind(user_id)
-            .fetch_one(&self.pool)
-            .await?;
-        Ok(row.0)
-    }
-
     pub async fn list_api_keys_for_user(&self, user_id: Uuid) -> Result<Vec<ApiKeyRow>> {
         let rows = sqlx::query_as::<_, ApiKeyRow>(
             r#"

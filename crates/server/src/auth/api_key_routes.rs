@@ -19,7 +19,6 @@ use super::api_key::generate_api_key;
 use super::audit;
 use super::middleware::{AuthError, AuthMethod, AuthState, AuthUser};
 use crate::api::common::ListResponse;
-use crate::server::ResourceLimitsConfig;
 use crate::storage::StorageBackend;
 use crate::storage::models::CreateApiKeyRow;
 
@@ -30,7 +29,6 @@ use crate::storage::models::CreateApiKeyRow;
 pub struct ApiKeyState {
     pub db: Arc<StorageBackend>,
     pub auth: AuthState,
-    pub resource_limits: ResourceLimitsConfig,
 }
 
 /// Enable AuthUser extractor when ApiKeyState is the route state.
@@ -132,28 +130,6 @@ async fn create_api_key(
         return Err(AuthError::forbidden(
             "Cannot create API key using API key authentication",
         ));
-    }
-
-    // Enforce API key limit per user
-    let key_count = state
-        .db
-        .count_api_keys_for_user(user.id)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to count API keys: {e}");
-            AuthError {
-                error: "Internal server error".to_string(),
-                status: StatusCode::INTERNAL_SERVER_ERROR,
-            }
-        })?;
-    if key_count >= state.resource_limits.max_api_keys_per_user {
-        return Err(AuthError {
-            error: format!(
-                "API key limit reached (max {})",
-                state.resource_limits.max_api_keys_per_user
-            ),
-            status: StatusCode::CONFLICT,
-        });
     }
 
     let generated = generate_api_key();

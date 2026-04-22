@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactNode } from "react";
 import ApiKeysPage from "@/app/(main)/settings/api-keys/page";
@@ -180,6 +180,77 @@ describe("ApiKeysPage", () => {
       expect(
         screen.getByText(/Create a personal API key for programmatic access/),
       ).toBeInTheDocument();
+    });
+  });
+
+  it("shows fixed expiration presets with 90 days selected by default", async () => {
+    render(<ApiKeysPage />, { wrapper });
+
+    fireEvent.click(screen.getAllByRole("button", { name: /Create API Key/i })[0]);
+
+    const dialog = await screen.findByRole("dialog");
+
+    expect(within(dialog).getByRole("button", { name: "1 day" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "30 days" })).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "90 days" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(
+      within(dialog).getByRole("button", { name: /Unrestricted \(not recommended\)/i }),
+    ).toBeInTheDocument();
+  });
+
+  it("submits the default 90 day expiration when creating a key", async () => {
+    const mutateAsync = jest.fn().mockResolvedValue({ key: "evr_secret_test" });
+    mockUseCreateApiKey.mockReturnValue({
+      mutateAsync,
+      isPending: false,
+    });
+
+    render(<ApiKeysPage />, { wrapper });
+
+    fireEvent.click(screen.getAllByRole("button", { name: /Create API Key/i })[0]);
+
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Name"), {
+      target: { value: "Test Key" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: /^Create API Key$/i }));
+
+    await waitFor(() => {
+      expect(mutateAsync).toHaveBeenCalledWith({
+        name: "Test Key",
+        expires_in_days: 90,
+      });
+    });
+  });
+
+  it("omits expiration when unrestricted is selected", async () => {
+    const mutateAsync = jest.fn().mockResolvedValue({ key: "evr_secret_test" });
+    mockUseCreateApiKey.mockReturnValue({
+      mutateAsync,
+      isPending: false,
+    });
+
+    render(<ApiKeysPage />, { wrapper });
+
+    fireEvent.click(screen.getAllByRole("button", { name: /Create API Key/i })[0]);
+
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Name"), {
+      target: { value: "Unlimited Key" },
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: /Unrestricted \(not recommended\)/i }),
+    );
+    fireEvent.click(within(dialog).getByRole("button", { name: /^Create API Key$/i }));
+
+    await waitFor(() => {
+      expect(mutateAsync).toHaveBeenCalledWith({
+        name: "Unlimited Key",
+        expires_in_days: undefined,
+      });
     });
   });
 
