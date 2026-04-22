@@ -3217,8 +3217,7 @@ async fn test_create_app_missing_harness_returns_not_found() {
             json!({
                 "name": "Test App",
                 "harness_id": "harness_ffffffffffffffffffffffffffffffff",
-                "agent_id": agent["id"],
-                "channel_type": "slack"
+                "agent_id": agent["id"]
             }),
         )
         .await
@@ -3235,8 +3234,7 @@ async fn test_create_app_missing_agent_returns_not_found() {
             json!({
                 "name": "Test App",
                 "harness_id": server.seed_generic_harness_id,
-                "agent_id": "agent_ffffffffffffffffffffffffffffffff",
-                "channel_type": "slack"
+                "agent_id": "agent_ffffffffffffffffffffffffffffffff"
             }),
         )
         .await
@@ -3262,8 +3260,7 @@ async fn test_update_app_missing_harness_returns_not_found() {
             json!({
                 "name": "Test App",
                 "harness_id": server.seed_generic_harness_id,
-                "agent_id": agent["id"],
-                "channel_type": "slack"
+                "agent_id": agent["id"]
             }),
         )
         .await
@@ -3298,8 +3295,7 @@ async fn test_update_app_missing_agent_returns_not_found() {
             json!({
                 "name": "Test App",
                 "harness_id": server.seed_generic_harness_id,
-                "agent_id": agent["id"],
-                "channel_type": "slack"
+                "agent_id": agent["id"]
             }),
         )
         .await
