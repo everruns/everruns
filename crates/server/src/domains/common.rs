@@ -158,6 +158,7 @@ pub struct Ctx {
     pub message_service: Option<Arc<crate::services::MessageService>>,
     pub event_service: Option<Arc<crate::services::EventService>>,
     pub session_file_service: Option<Arc<crate::services::SessionFileService>>,
+    pub session_sandbox_service: Option<Arc<crate::services::SessionSandboxService>>,
     pub session_resource_service: Option<Arc<crate::services::SessionResourceService>>,
     pub session_schedule_service: Option<Arc<crate::services::SessionScheduleService>>,
     pub notification_service: Option<Arc<crate::services::NotificationService>>,
@@ -198,6 +199,7 @@ impl Ctx {
             message_service: None,
             event_service: None,
             session_file_service: None,
+            session_sandbox_service: None,
             session_resource_service: None,
             session_schedule_service: None,
             notification_service: None,
@@ -244,6 +246,14 @@ impl Ctx {
         service: Arc<crate::services::SessionFileService>,
     ) -> Self {
         self.session_file_service = Some(service);
+        self
+    }
+
+    pub fn with_session_sandbox_service(
+        mut self,
+        service: Arc<crate::services::SessionSandboxService>,
+    ) -> Self {
+        self.session_sandbox_service = Some(service);
         self
     }
 

@@ -4526,6 +4526,85 @@
         }
       }
     },
+    "/v1/sessions/{session_id}/sandbox": {
+      "get": {
+        "tags": [
+          "session-sandbox"
+        ],
+        "operationId": "get_sandbox",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Managed sandbox status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GetSessionSandboxResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Session not found"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "session-sandbox"
+        ],
+        "operationId": "manage_sandbox",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManageSessionSandboxRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Managed sandbox lifecycle updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ManageSessionSandboxResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid action or sandbox not configured"
+          },
+          "404": {
+            "description": "Session not found"
+          }
+        }
+      }
+    },
     "/v1/sessions/{session_id}/sse": {
       "get": {
         "tags": [
@@ -7326,6 +7405,82 @@
           }
         ],
         "description": "Unified response for GET that can be file or directory listing"
+      },
+      "GetSessionSandboxResponse": {
+        "type": "object",
+        "required": [
+          "configured",
+          "exists"
+        ],
+        "properties": {
+          "configured": {
+            "type": "boolean"
+          },
+          "created_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "exists": {
+            "type": "boolean"
+          },
+          "external_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "init_completed_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_init_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "metadata": {
+            "type": "object"
+          },
+          "provider": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "session_status": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SessionSandboxStatusValue"
+              }
+            ]
+          },
+          "updated_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "workspace_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
       },
       "GitCommitInfo": {
         "type": "object",
@@ -10754,6 +10909,70 @@
           }
         }
       },
+      "ManageSessionSandboxRequest": {
+        "type": "object",
+        "required": [
+          "action"
+        ],
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/SessionSandboxAction"
+          }
+        }
+      },
+      "ManageSessionSandboxResponse": {
+        "type": "object",
+        "required": [
+          "action",
+          "exists",
+          "deleted"
+        ],
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/SessionSandboxAction"
+          },
+          "deleted": {
+            "type": "boolean"
+          },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "exists": {
+            "type": "boolean"
+          },
+          "external_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "provider": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "session_status": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SessionSandboxStatusValue"
+              }
+            ]
+          },
+          "workspace_path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "McpServer": {
         "type": "object",
         "description": "MCP Server configuration.\nRepresents a remote MCP server that can provide tools and resources.",
@@ -13387,6 +13606,21 @@
           "completed",
           "failed",
           "released"
+        ]
+      },
+      "SessionSandboxAction": {
+        "type": "string",
+        "enum": [
+          "pause",
+          "resume",
+          "delete"
+        ]
+      },
+      "SessionSandboxStatusValue": {
+        "type": "string",
+        "enum": [
+          "running",
+          "paused"
         ]
       },
       "SessionStartedData": {
@@ -16427,6 +16661,10 @@
     {
       "name": "session-resources",
       "description": "Session leased-resource visibility endpoints"
+    },
+    {
+      "name": "session-sandbox",
+      "description": "Managed session sandbox lifecycle endpoints"
     },
     {
       "name": "mcp-servers",
