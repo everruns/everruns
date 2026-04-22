@@ -16,15 +16,18 @@ use everruns_core::BuiltInHarnessDefinition;
 
 /// All built-in harness definitions in provisioning order.
 pub fn built_in_harnesses() -> Vec<BuiltInHarnessDefinition> {
+    let internal_flags = everruns_core::InternalFeatureFlags::from_env();
     let mut harnesses = vec![
         base::definition(),
         generic::definition(),
         data_analyst::definition(),
         coding_daytona::definition(),
-        coding_container::definition(),
-        platform_chat::definition(),
     ];
-    if everruns_core::InternalFeatureFlags::from_env().session_sandbox {
+    if internal_flags.container_sandbox {
+        harnesses.push(coding_container::definition());
+    }
+    harnesses.push(platform_chat::definition());
+    if internal_flags.session_sandbox {
         harnesses.push(coding_session_sandbox::definition());
     }
     harnesses
