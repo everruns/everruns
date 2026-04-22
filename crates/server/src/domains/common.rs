@@ -357,6 +357,14 @@ pub trait Command: DeserializeOwned + Send + 'static + CommandSchema {
     /// Static metadata — drives MCP catalog generation.
     fn meta() -> CommandMeta;
 
+    /// Whether this command is read-only when exposed through scripted MCP tools.
+    ///
+    /// Defaults to GET-only. Override for read-only POST-style helpers such as
+    /// previews or search operations that accept structured bodies.
+    fn read_only() -> bool {
+        matches!(Self::meta().method, "GET")
+    }
+
     /// Policy to check before execution. None = public/no auth.
     fn policy() -> Option<&'static Policy> {
         None
@@ -507,6 +515,7 @@ type DispatchFn =
 
 pub struct CommandDescriptor {
     pub meta: fn() -> CommandMeta,
+    pub read_only: fn() -> bool,
     pub positional_arg: fn() -> Option<&'static str>,
     pub param_schema: fn() -> Value,
     pub dispatch: DispatchFn,
@@ -519,6 +528,7 @@ impl CommandDescriptor {
     pub const fn of<C: Command>() -> Self {
         Self {
             meta: C::meta,
+            read_only: C::read_only,
             positional_arg: C::positional_arg,
             param_schema: <C as Command>::param_schema,
             dispatch: dispatch_for::<C>,

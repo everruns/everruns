@@ -823,6 +823,10 @@ impl Command for PreviewAgent {
         }
     }
 
+    fn read_only() -> bool {
+        true
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<AgentPreview, CommandError> {
         crate::services::scoped_mcp::validate_scoped_mcp_servers(&self.mcp_servers)
             .map_err(classify_anyhow)?;

@@ -456,6 +456,10 @@ impl Command for GrepSessionFiles {
         }
     }
 
+    fn read_only() -> bool {
+        true
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<Vec<GrepResult>, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
         q::verify_session(ctx, session_id).await?;
@@ -499,6 +503,10 @@ impl Command for StatSessionFile {
             method: "POST",
             path: "/v1/sessions/{session_id}/fs/_/stat",
         }
+    }
+
+    fn read_only() -> bool {
+        true
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<FileStat, CommandError> {

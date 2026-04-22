@@ -48,7 +48,7 @@ SSE responses under `/api/*` must disable proxy buffering.
 |--------|------|-------------|
 | POST | `/mcp` | MCP server (Streamable HTTP transport, JSON-RPC 2.0) |
 
-Exposes Everruns as an MCP server. Tier 1 tools (`agent_run`, `session_send_message`, `session_get_status`) handle the agent conversation loop via direct service calls. Tier 2 tools (`discover`, `execute`) are backed by a bashkit `ScriptedTool` with all API operations registered as builtins — run `discover --categories` to list them, or call them directly in bash scripts via `execute`. See `crates/server/src/api/mcp_endpoint/mod.rs` for implementation.
+Exposes Everruns as an MCP server. Tier 1 tools (`agent_run`, `session_send_message`, `session_get_status`) handle the agent conversation loop via direct service calls. Tier 2 tools (`discover`, `query`, `execute`) are backed by a bashkit `ScriptedTool`: `query` exposes the read-only subset of API operations, while `execute` exposes the full catalog including writes. Run `discover --categories` to list them. See `crates/server/src/api/mcp_endpoint/mod.rs` for implementation.
 
 ### Well-Known Endpoints
 

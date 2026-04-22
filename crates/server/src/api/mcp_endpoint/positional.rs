@@ -1,4 +1,4 @@
-// Positional-argument rewriter for MCP `execute` commands.
+// Positional-argument rewriter for MCP `query`/`execute` commands.
 //
 // bashkit's flag parser rejects positional arguments (`expected --flag, got: X`).
 // LLMs naturally type `get_agent <id>` instead of `get_agent --id <id>`,
@@ -14,7 +14,7 @@
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
-/// Positional map shared across all `tool_execute` calls. Built once from
+/// Positional map shared across all scripted MCP calls. Built once from
 /// inventory-registered commands.
 static POSITIONAL_MAP: OnceLock<HashMap<&'static str, &'static str>> = OnceLock::new();
 

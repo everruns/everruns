@@ -1,7 +1,7 @@
 {
   "name": "everruns",
   "version": "0.1.0",
-  "description": "Interact with the Everruns agent platform from Codex over MCP.",
+  "description": "Interact with the Everruns agent platform from Codex over MCP, with read-only `query` and full-access `execute` workflows.",
   "author": {
     "name": "Everruns",
     "url": "https://everruns.com"
@@ -20,8 +20,8 @@
   "mcpServers": "./.mcp.json",
   "interface": {
     "displayName": "Everruns",
-    "shortDescription": "Create and run Everruns agents from Codex over MCP",
-    "longDescription": "Bring the Everruns agent platform into Codex. Create and run agents, manage harnesses and sessions, browse the API catalog, and drive the full Everruns API through the bundled skill, slash commands, and MCP connection.",
+    "shortDescription": "Query or execute Everruns workflows from Codex over MCP",
+    "longDescription": "Bring the Everruns agent platform into Codex. Query Everruns state through the read-only `query` tool, use `execute` for workflows with side effects, manage harnesses and sessions, browse the API catalog, and drive the full platform through the bundled skill, slash commands, and MCP connection.",
     "developerName": "Everruns",
     "category": "Coding",
     "capabilities": [

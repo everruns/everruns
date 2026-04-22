@@ -1,7 +1,7 @@
 {
   "name": "everruns",
   "version": "0.1.0",
-  "description": "Interact with the Everruns agent platform — create and run agents, manage harnesses and sessions, browse the API catalog.",
+  "description": "Interact with the Everruns agent platform — inspect state with read-only queries, run side-effecting workflows, and manage agents, harnesses, and sessions.",
   "author": {
     "name": "Everruns",
     "url": "https://everruns.com"

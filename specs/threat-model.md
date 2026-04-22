@@ -409,7 +409,7 @@ fn authorizer(action: AuthAction) -> Authorization {
 | TM-TOOL-016 | Browserless timeout DoS | Medium | All wait/timeout values capped at 120s; prevents unbounded resource consumption | MITIGATED |
 | TM-TOOL-017 | Browserless API token in logs | Medium | CDP debug logging redacts token from WebSocket URLs before logging | MITIGATED |
 | TM-TOOL-018 | MCP server SSRF via configured server URL | High | MCP server URLs are validated on create/update and re-validated at execution time; private/internal hosts and metadata endpoints blocked | MITIGATED |
-| TM-TOOL-019 | MCP `execute` positional-arg rewrite injection | Low | Rewriter only inserts compile-time `--<flag>` tokens at statement-start boundaries, respects quotes/escapes/comments, and never modifies or reorders user bytes. Flag names come from the command registry, not user input. See EVE-323. | MITIGATED |
+| TM-TOOL-019 | MCP `query`/`execute` positional-arg rewrite injection | Low | Rewriter only inserts compile-time `--<flag>` tokens at statement-start boundaries, respects quotes/escapes/comments, and never modifies or reorders user bytes. Flag names come from the command registry, not user input. See EVE-323. | MITIGATED |
 
 ### Mitigation Details
 

@@ -52,6 +52,7 @@ pub fn tool_definitions(
         session_send_message_tool(protocol_version, org_id_description),
         session_get_status_tool(protocol_version, org_id_description),
         discover_tool(protocol_version, org_id_description),
+        query_tool(protocol_version, org_id_description),
         execute_tool(protocol_version, org_id_description),
     ]
 }
@@ -365,7 +366,7 @@ fn discover_tool(protocol_version: &str, org_id_description: &str) -> McpEndpoin
         protocol_version,
         "discover",
         "Discover Operations",
-        "Search the Everruns API catalog to find available operations. Returns matching operations with description and parameters. Use all: true to list every operation grouped by category. The discovered operations are available as bash builtins in the execute tool.",
+        "Search the Everruns API catalog to find available operations. Returns matching operations with description and parameters. Use all: true to list every operation grouped by category. Read-only operations are available as bash builtins in query; the full catalog is available in execute.",
         object_schema(
             vec![
                 (
@@ -399,12 +400,54 @@ fn discover_tool(protocol_version: &str, org_id_description: &str) -> McpEndpoin
     )
 }
 
+fn query_tool(protocol_version: &str, org_id_description: &str) -> McpEndpointToolDefinition {
+    tool(
+        protocol_version,
+        "query",
+        "Query Commands",
+        "Execute a bash script in an environment where only read-only Everruns API operations are available as built-in commands. Supports pipes, variables, loops, conditionals, jq, and direct access to safe builtins. Mutating commands are intentionally unavailable.",
+        object_schema(
+            vec![
+                (
+                    "commands",
+                    json!({
+                        "type": "string",
+                        "description": "Bash script to execute. Only read-only API operations are available as built-in commands.",
+                        "minLength": 1
+                    }),
+                ),
+                (
+                    "timeout_ms",
+                    json!({
+                        "type": "integer",
+                        "description": "Execution timeout in milliseconds (default: 30000, max: 60000).",
+                        "minimum": 1,
+                        "maximum": 60000
+                    }),
+                ),
+                (
+                    "organization_id",
+                    json!({
+                        "type": "string",
+                        "description": org_id_description,
+                        "pattern": "^org_[0-9a-f]{32}$"
+                    }),
+                ),
+            ],
+            vec!["commands"],
+        ),
+        None,
+        Some(read_only_annotations()),
+        65_000,
+    )
+}
+
 fn execute_tool(protocol_version: &str, org_id_description: &str) -> McpEndpointToolDefinition {
     tool(
         protocol_version,
         "execute",
         "Execute Commands",
-        "Execute a bash script in an environment where every Everruns API operation is a built-in command. Supports pipes, variables, loops, conditionals, jq, and direct access to the catalog builtins. Use discover first if you need to find command names.",
+        "Execute a bash script in an environment where every Everruns API operation is a built-in command, including operations with side effects. Supports pipes, variables, loops, conditionals, jq, and direct access to the full builtin set. Prefer query for read-only inspection; use execute when you need create/update/delete or other mutating operations.",
         object_schema(
             vec![
                 (
