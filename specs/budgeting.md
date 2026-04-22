@@ -19,25 +19,33 @@ See source files for full definitions:
 - Service: `crates/server/src/services/budget.rs`
 - API: `crates/server/src/api/budgets.rs`
 - Capability: `crates/core/src/capabilities/budgeting.rs`
-- Migration: `crates/server/migrations/011_budgeting.sql`
+- Migrations: `crates/server/migrations/010_v0.8.9.sql`, `crates/server/migrations/020_budget_journal_ledger.sql`
 
 ## Concepts
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│                    Budget                             │
-│  subject: (session | agent | user | org)             │
-│  currency: (usd | tokens | credits | custom)        │
-│  limit: f64                                          │
-│  soft_limit: Option<f64>  (pause/warn threshold)     │
-│  period: Option<Period>   (rolling/calendar)         │
-│  balance: denormalized from ledger                   │
+│                Usage Journal                        │
+│  kind: llm_generation | top_up | ...               │
+│  scope: org/user/principal/session/agent/harness    │
+│  source: event_id or synthetic source_id            │
+│  measures: raw facts JSONB                          │
+│  metadata: trace / model / provider / notes         │
 └──────────────┬──────────────────────────────────────┘
-               │ 1:N
+               │ 1:N rated postings
 ┌──────────────▼──────────────────────────────────────┐
-│                 Ledger Entry                          │
-│  budget_id, amount, meter_source, ref_id, timestamp  │
-│  (append-only — no UPDATE/DELETE)                    │
+│                 Usage Ledger                        │
+│  journal_id, budget_id?, currency, amount           │
+│  meter_source, ref_id, rating_metadata, timestamp   │
+│  (append-only — no UPDATE/DELETE)                   │
+└──────────────┬──────────────────────────────────────┘
+               │ projected into
+┌──────────────▼──────────────────────────────────────┐
+│                    Budget                           │
+│  subject: (session | agent | user | org)            │
+│  currency: (usd | tokens | credits | custom)        │
+│  limit / soft_limit / period                        │
+│  balance: denormalized current snapshot             │
 └─────────────────────────────────────────────────────┘
 
 ┌─────────────────────────┐    ┌──────────────────────┐
@@ -59,13 +67,21 @@ A spending cap bound to a **subject** (who) in a **currency** (what unit). Multi
 
 **Currencies**: Strings (not enum) — new currencies added without migrations. Built-in: `usd` (via LlmModelProfile cost lookup), `tokens` (raw count), `credits` (1 credit = 1000 tokens).
 
-**Balance**: `limit - SUM(debits) + SUM(credits)`. Denormalized on `budgets.balance`, updated atomically with each ledger insert (Postgres: `SELECT ... FOR UPDATE` in transaction; in-memory: lock + update).
+**Balance**: `limit - SUM(debits) + SUM(credits)`. Denormalized on `budgets.balance`, updated atomically with each budget-scoped ledger insert (Postgres: transaction + `SELECT ... FOR UPDATE`; in-memory: lock + update).
 
 **Status lifecycle**: `active` → `paused` (soft limit reached) → `exhausted` (balance ≤ 0) → `disabled` (soft-deleted). Budget can be resumed by top-up or limit increase.
 
-### Ledger Entry
+### Usage Journal
 
-Immutable, append-only record of consumption or credit. Positive = debit, negative = credit (top-up/refund). Protected by `prevent_event_mutation()` trigger in Postgres.
+Immutable raw activity fact. Current writers:
+- `llm_generation` from `llm.generation` events
+- synthetic adjustment rows for budget top-ups / manual compatibility writes
+
+The journal stores scope (`org_id`, `user_id`, `principal_id`, `session_id`, `agent_id`, `harness_id`) plus raw `measures` and free-form `metadata`.
+
+### Usage Ledger
+
+Immutable, append-only rated posting derived from a journal row. Positive = debit, negative = credit (top-up/refund). Each ledger row links back to `journal_id`; budget-scoped postings also carry `budget_id`. Protected by append-only triggers in Postgres.
 
 ## Evaluation Pipeline
 
@@ -78,7 +94,9 @@ llm.generation event arrives
 BudgetService.on_event() (EventListener)
   │
   ▼
-Extract tokens: input_tokens + output_tokens
+INSERT usage_journal row
+  kind=llm_generation
+  measures={input_tokens, output_tokens, total_tokens}
   │
   ▼
 Look up session → find active budgets in hierarchy
@@ -91,7 +109,8 @@ compute_debit(currency, tokens, model, provider)
   │  "credits" → tokens / 1000
   │
   ▼
-INSERT ledger entry + UPDATE budget.balance (atomic)
+INSERT usage_ledger row (journal_id -> budget_id)
+  + UPDATE budget.balance (atomic)
   │
   ▼
 evaluate_rules(budget)
@@ -106,7 +125,7 @@ Execute action (set budget status)
 
 **Post-hoc enforcement**: Budget checks happen after each metered event, not before. This avoids blocking the LLM hot path. Minor overshoot on the last generation is acceptable and expected.
 
-**Worker integration**: The worker checks `BudgetCheckResult` between atoms via gRPC. When a budget is `paused` or `exhausted`, the turn loop stops scheduling the next atom.
+**Worker integration**: The worker checks `BudgetCheckResult` between atoms via gRPC. When a budget is `paused` or `exhausted`, the turn loop stops scheduling the next atom. Current implementation resolves all four hierarchy levels (`session`, `agent`, `user`, `org`) from the session owner and org context before checking.
 
 ## Soft Enforcement: Pause
 
@@ -212,7 +231,7 @@ Everruns distinguishes two orthogonal concerns:
 
 | Concern | Capability | Source of truth | Enforcement |
 |---------|-----------|-----------------|-------------|
-| Platform-enforced limit | `budgeting` | Budgets table / ledger | Session paused/stopped automatically at exhaustion |
+| Platform-enforced limit | `budgeting` | Budgets table / usage ledger | Session paused/stopped automatically at exhaustion |
 | User-requested indicative target ("you have $7") | `self_budget` | Session cumulative usage (`get_session_info`) | None — agent adapts behavior via prompt guidance |
 
 The `self_budget` capability contributes prompt-only guidance. It ships no tools (cumulative usage is already exposed by `get_session_info` from the `session` capability, which is present in the Generic harness). The prompt:
@@ -234,7 +253,8 @@ File: `crates/core/src/capabilities/self_budget.rs`.
 | Question | Decision | Rationale |
 |----------|----------|-----------|
 | Pre-check vs post-check | Post-check (after event) | Avoids blocking hot path; minor overshoot acceptable |
-| Balance storage | Denormalized on `budgets` + append-only ledger | Fast reads; ledger is source of truth for reconciliation |
+| Raw activity vs rated usage | Split into `usage_journal` then `usage_ledger` | Preserves raw facts, enables replay/backfill, keeps pricing/rating separate |
+| Balance storage | Denormalized on `budgets` + append-only usage ledger | Fast reads; ledger is source of truth for reconciliation |
 | Currency as enum vs string | String | Extensible without migrations |
 | Budget scope | Per-subject with hierarchy | Flexible: session, agent, user, or org level |
 | Pause mechanism | Session status + turn loop yield | Reuses existing session lifecycle; non-destructive |
@@ -246,6 +266,7 @@ File: `crates/core/src/capabilities/self_budget.rs`.
 ## Future Work
 
 - **ToolCallMeter**, **DataProcessedMeter** — additional meters
+- **Externalized rating rules** — replace hardcoded Rust rating with configurable scripts/expressions
 - **Rolling/calendar period support** — balance resets on period boundary
 - **Valkey-cached balance** — for high-throughput without DB round-trip per check
 - **Budget analytics dashboard** — spend by model, by agent, over time

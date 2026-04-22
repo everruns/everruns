@@ -55,9 +55,43 @@ Timeline:
 
 ## Data Model
 
-### llm_generations Table (Source of Truth)
+### usage_journal / usage_ledger (Generic Metering Path)
 
-Every LLM call is recorded in the `llm_generations` table:
+Budgeting and future cross-resource metering use a generic raw-fact journal plus rated ledger:
+
+```sql
+CREATE TABLE usage_journal (
+    id UUID PRIMARY KEY,
+    org_id BIGINT NOT NULL,
+    kind TEXT NOT NULL,            -- llm_generation, top_up, ...
+    event_id UUID,
+    session_id UUID,
+    user_id UUID,
+    principal_id UUID,
+    agent_id UUID,
+    harness_id UUID,
+    measures JSONB NOT NULL,       -- raw usage facts
+    metadata JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE TABLE usage_ledger (
+    id UUID PRIMARY KEY,
+    journal_id UUID NOT NULL REFERENCES usage_journal(id),
+    budget_id UUID,                -- set for budget-scoped postings
+    org_id BIGINT NOT NULL,
+    currency TEXT NOT NULL,        -- usd, tokens, credits, ...
+    amount DOUBLE PRECISION NOT NULL,
+    meter_source TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL
+);
+```
+
+`usage_journal` captures raw facts. `usage_ledger` stores rated postings derived from those facts. Budget balances are projections over budget-scoped ledger rows.
+
+### llm_generations Table (LLM Analytics Projection)
+
+LLM analytics still maintain a specialized `llm_generations` table for token-centric querying and denormalized session/agent totals:
 
 ```sql
 CREATE TABLE llm_generations (
@@ -94,10 +128,12 @@ total_cache_creation_tokens BIGINT DEFAULT 0
 ### Data Flow
 
 ```
-LLM Response → llm.generation event → Trigger:
-  1. INSERT into llm_generations (source of truth)
-  2. UPDATE sessions totals
-  3. UPDATE agents totals
+LLM Response → llm.generation event → Listeners:
+  1. INSERT into usage_journal (raw metering fact)
+  2. Rate into usage_ledger when budgets/metering apply
+  3. INSERT into llm_generations (LLM analytics projection)
+  4. UPDATE sessions totals
+  5. UPDATE agents totals
 ```
 
 ## API Response

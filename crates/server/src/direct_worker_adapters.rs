@@ -55,7 +55,6 @@ fn name_from_path(path: &str) -> String {
 }
 
 struct DirectBudgetChecker {
-    db: Arc<StorageBackend>,
     budget_service: Arc<BudgetService>,
     org_id: i64,
     agent_id: Option<String>,
@@ -169,25 +168,10 @@ impl ProviderCredentialStore for DirectProviderCredentialStore {
 #[async_trait]
 impl BudgetChecker for DirectBudgetChecker {
     async fn check_budgets(&self, session_id: &str) -> Result<BudgetToolResponse> {
-        let session_budgets = self
-            .db
-            .list_budgets(self.org_id, Some("session"), Some(session_id))
-            .await
-            .map_err(|e| store_error(format!("Failed to list session budgets: {e}")))?;
-
-        let mut all_budgets = session_budgets;
-        if let Some(agent_id) = self.agent_id.as_deref() {
-            match self
-                .db
-                .list_budgets(self.org_id, Some("agent"), Some(agent_id))
-                .await
-            {
-                Ok(agent_budgets) => all_budgets.extend(agent_budgets),
-                Err(error) => {
-                    tracing::error!(agent_id, error = %error, "Failed to list agent budgets");
-                }
-            }
-        }
+        let all_budgets = self
+            .budget_service
+            .list_budgets_for_session_hierarchy(self.org_id, session_id, self.agent_id.as_deref())
+            .await;
 
         if all_budgets.is_empty() {
             return Ok(BudgetToolResponse {
@@ -1354,7 +1338,6 @@ impl WorkerAdapters for DirectWorkerAdapters {
     ) -> Option<Arc<dyn BudgetChecker>> {
         self.budget_service.as_ref().map(|budget_service| {
             Arc::new(DirectBudgetChecker {
-                db: self.db.clone(),
                 budget_service: budget_service.clone(),
                 org_id,
                 agent_id: agent_id.map(|id| id.to_string()),

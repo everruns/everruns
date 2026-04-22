@@ -1,6 +1,7 @@
 // In-memory budget storage
 
 use anyhow::Result;
+use everruns_core::{AgentId, SessionId};
 use uuid::Uuid;
 
 use super::InMemoryDatabase;
@@ -136,41 +137,167 @@ impl InMemoryDatabase {
     }
 
     // ============================================
-    // Budget Ledger
+    // Usage Journal + Ledger
     // ============================================
+
+    pub async fn create_usage_journal_entry(
+        &self,
+        input: CreateUsageJournalRow,
+    ) -> Result<UsageJournalRow> {
+        let now = Self::now();
+        let row = UsageJournalRow {
+            id: Uuid::now_v7(),
+            org_id: input.org_id,
+            kind: input.kind,
+            source_type: input.source_type,
+            source_id: input.source_id,
+            event_id: input.event_id,
+            session_id: input.session_id,
+            turn_id: input.turn_id,
+            user_id: input.user_id,
+            principal_id: input.principal_id,
+            agent_id: input.agent_id,
+            harness_id: input.harness_id,
+            measures: input.measures,
+            metadata: input.metadata,
+            created_at: now,
+        };
+        self.usage_journal.write().insert(row.id, row.clone());
+        Ok(row)
+    }
+
+    pub async fn get_usage_journal(&self, id: Uuid) -> Result<Option<UsageJournalRow>> {
+        Ok(self.usage_journal.read().get(&id).cloned())
+    }
+
+    pub async fn create_usage_ledger_entry(
+        &self,
+        input: CreateUsageLedgerRow,
+    ) -> Result<(UsageLedgerRow, Option<BudgetRow>)> {
+        let now = Self::now();
+        let entry = UsageLedgerRow {
+            id: Uuid::now_v7(),
+            journal_id: input.journal_id,
+            budget_id: input.budget_id,
+            org_id: input.org_id,
+            session_id: input.session_id,
+            user_id: input.user_id,
+            principal_id: input.principal_id,
+            agent_id: input.agent_id,
+            harness_id: input.harness_id,
+            currency: input.currency,
+            amount: input.amount,
+            meter_source: input.meter_source,
+            ref_type: input.ref_type,
+            ref_id: input.ref_id,
+            description: input.description,
+            rating_metadata: input.rating_metadata,
+            created_at: now,
+        };
+        self.usage_ledger.write().push(entry.clone());
+
+        let updated_budget = match input.budget_id {
+            Some(budget_id) => {
+                let mut budgets = self.budgets.write();
+                let budget = budgets
+                    .get_mut(&budget_id)
+                    .ok_or_else(|| anyhow::anyhow!("Budget not found: {}", budget_id))?;
+                budget.balance -= input.amount;
+                budget.updated_at = now;
+                Some(budget.clone())
+            }
+            None => None,
+        };
+
+        Ok((entry, updated_budget))
+    }
 
     pub async fn create_budget_ledger_entry(
         &self,
         input: CreateBudgetLedgerRow,
     ) -> Result<(BudgetLedgerRow, BudgetRow)> {
-        let now = Self::now();
-        let entry_id = Uuid::now_v7();
-
-        // Update budget balance
-        let updated_budget = {
-            let mut budgets = self.budgets.write();
-            let budget = budgets
-                .get_mut(&input.budget_id)
-                .ok_or_else(|| anyhow::anyhow!("Budget not found: {}", input.budget_id))?;
-            budget.balance -= input.amount;
-            budget.updated_at = now;
-            budget.clone()
+        let budget = self
+            .get_budget_for_ledger(input.budget_id)
+            .ok_or_else(|| anyhow::anyhow!("Budget not found: {}", input.budget_id))?;
+        let (session_id, user_id, agent_id) = self.scope_from_budget(&budget, input.session_id);
+        let journal_kind = if input.amount < 0.0 || input.ref_type.as_deref() == Some("top_up") {
+            "top_up"
+        } else {
+            "budget_adjustment"
         };
+        let journal = self
+            .create_usage_journal_entry(CreateUsageJournalRow {
+                org_id: budget.org_id,
+                kind: journal_kind.to_string(),
+                source_type: Some("budget_ledger_compat".to_string()),
+                source_id: Some(Uuid::now_v7().to_string()),
+                event_id: None,
+                session_id,
+                turn_id: None,
+                user_id,
+                principal_id: None,
+                agent_id,
+                harness_id: None,
+                measures: serde_json::json!({
+                    "amount": input.amount,
+                    "currency": budget.currency,
+                }),
+                metadata: serde_json::json!({
+                    "budget_id": budget.id,
+                    "ref_type": input.ref_type,
+                    "ref_id": input.ref_id,
+                    "description": input.description,
+                }),
+            })
+            .await?;
 
-        let entry = BudgetLedgerRow {
-            id: entry_id,
-            budget_id: input.budget_id,
-            amount: input.amount,
-            meter_source: input.meter_source,
-            ref_type: input.ref_type,
-            ref_id: input.ref_id,
-            session_id: input.session_id,
-            description: input.description,
-            created_at: now,
-        };
-        self.budget_ledger.write().push(entry.clone());
+        let (entry, updated_budget) = self
+            .create_usage_ledger_entry(CreateUsageLedgerRow {
+                journal_id: journal.id,
+                budget_id: Some(budget.id),
+                org_id: budget.org_id,
+                session_id,
+                user_id,
+                principal_id: None,
+                agent_id,
+                harness_id: None,
+                currency: budget.currency.clone(),
+                amount: input.amount,
+                meter_source: input.meter_source,
+                ref_type: input.ref_type,
+                ref_id: input.ref_id,
+                description: input.description,
+                rating_metadata: Some(serde_json::json!({
+                    "ruleset_version": "v1",
+                    "compatibility_wrapper": true,
+                })),
+            })
+            .await?;
 
-        Ok((entry, updated_budget))
+        Ok((
+            entry,
+            updated_budget.expect("budget ledger compatibility path always updates a budget"),
+        ))
+    }
+
+    pub async fn list_usage_ledger_for_budget(
+        &self,
+        budget_id: Uuid,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<UsageLedgerRow>> {
+        let ledger = self.usage_ledger.read();
+        let mut entries: Vec<UsageLedgerRow> = ledger
+            .iter()
+            .filter(|e| e.budget_id == Some(budget_id))
+            .cloned()
+            .collect();
+        entries.sort_by_key(|entry| std::cmp::Reverse(entry.created_at));
+        Ok(entries
+            .into_iter()
+            .skip(offset as usize)
+            .take(limit as usize)
+            .collect())
     }
 
     pub async fn list_budget_ledger(
@@ -179,19 +306,8 @@ impl InMemoryDatabase {
         limit: i64,
         offset: i64,
     ) -> Result<Vec<BudgetLedgerRow>> {
-        let ledger = self.budget_ledger.read();
-        let mut entries: Vec<BudgetLedgerRow> = ledger
-            .iter()
-            .filter(|e| e.budget_id == budget_id)
-            .cloned()
-            .collect();
-        entries.sort_by_key(|entry| std::cmp::Reverse(entry.created_at));
-        let result = entries
-            .into_iter()
-            .skip(offset as usize)
-            .take(limit as usize)
-            .collect();
-        Ok(result)
+        self.list_usage_ledger_for_budget(budget_id, limit, offset)
+            .await
     }
 
     pub async fn set_budget_status(&self, id: Uuid, status: &str) -> Result<Option<BudgetRow>> {
@@ -203,5 +319,32 @@ impl InMemoryDatabase {
         } else {
             Ok(None)
         }
+    }
+
+    fn get_budget_for_ledger(&self, id: Uuid) -> Option<BudgetRow> {
+        self.budgets.read().get(&id).cloned()
+    }
+
+    fn scope_from_budget(
+        &self,
+        budget: &BudgetRow,
+        explicit_session_id: Option<Uuid>,
+    ) -> (Option<Uuid>, Option<Uuid>, Option<Uuid>) {
+        let session_id = explicit_session_id.or_else(|| {
+            (budget.subject_type == "session")
+                .then(|| {
+                    SessionId::parse(&budget.subject_id)
+                        .ok()
+                        .map(|id| id.uuid())
+                })
+                .flatten()
+        });
+        let user_id = (budget.subject_type == "user")
+            .then(|| Uuid::parse_str(&budget.subject_id).ok())
+            .flatten();
+        let agent_id = (budget.subject_type == "agent")
+            .then(|| AgentId::parse(&budget.subject_id).ok().map(|id| id.uuid()))
+            .flatten();
+        (session_id, user_id, agent_id)
     }
 }

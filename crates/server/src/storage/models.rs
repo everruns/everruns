@@ -1855,21 +1855,87 @@ pub struct UpdateBudgetRow {
     pub metadata: Option<serde_json::Value>,
 }
 
-/// Budget ledger entry row (maps to `budget_ledger` table).
+/// Immutable activity journal row (maps to `usage_journal` table).
 #[derive(Debug, Clone, sqlx::FromRow, serde::Serialize)]
-pub struct BudgetLedgerRow {
+pub struct UsageJournalRow {
     pub id: Uuid,
-    pub budget_id: Uuid,
+    pub org_id: i64,
+    pub kind: String,
+    pub source_type: Option<String>,
+    pub source_id: Option<String>,
+    pub event_id: Option<Uuid>,
+    pub session_id: Option<Uuid>,
+    pub turn_id: Option<Uuid>,
+    pub user_id: Option<Uuid>,
+    pub principal_id: Option<Uuid>,
+    pub agent_id: Option<Uuid>,
+    pub harness_id: Option<Uuid>,
+    pub measures: sqlx::types::JsonValue,
+    pub metadata: sqlx::types::JsonValue,
+    pub created_at: DateTime<Utc>,
+}
+
+/// Input for creating a journal row.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct CreateUsageJournalRow {
+    pub org_id: i64,
+    pub kind: String,
+    pub source_type: Option<String>,
+    pub source_id: Option<String>,
+    pub event_id: Option<Uuid>,
+    pub session_id: Option<Uuid>,
+    pub turn_id: Option<Uuid>,
+    pub user_id: Option<Uuid>,
+    pub principal_id: Option<Uuid>,
+    pub agent_id: Option<Uuid>,
+    pub harness_id: Option<Uuid>,
+    pub measures: serde_json::Value,
+    pub metadata: serde_json::Value,
+}
+
+/// Rated ledger row (maps to `usage_ledger` table).
+#[derive(Debug, Clone, sqlx::FromRow, serde::Serialize)]
+pub struct UsageLedgerRow {
+    pub id: Uuid,
+    pub journal_id: Uuid,
+    pub budget_id: Option<Uuid>,
+    pub org_id: i64,
+    pub session_id: Option<Uuid>,
+    pub user_id: Option<Uuid>,
+    pub principal_id: Option<Uuid>,
+    pub agent_id: Option<Uuid>,
+    pub harness_id: Option<Uuid>,
+    pub currency: String,
     pub amount: f64,
     pub meter_source: String,
     pub ref_type: Option<String>,
     pub ref_id: Option<Uuid>,
-    pub session_id: Option<Uuid>,
     pub description: Option<String>,
+    pub rating_metadata: Option<sqlx::types::JsonValue>,
     pub created_at: DateTime<Utc>,
 }
 
-/// Input for creating a ledger entry.
+/// Input for creating a rated ledger row.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct CreateUsageLedgerRow {
+    pub journal_id: Uuid,
+    pub budget_id: Option<Uuid>,
+    pub org_id: i64,
+    pub session_id: Option<Uuid>,
+    pub user_id: Option<Uuid>,
+    pub principal_id: Option<Uuid>,
+    pub agent_id: Option<Uuid>,
+    pub harness_id: Option<Uuid>,
+    pub currency: String,
+    pub amount: f64,
+    pub meter_source: String,
+    pub ref_type: Option<String>,
+    pub ref_id: Option<Uuid>,
+    pub description: Option<String>,
+    pub rating_metadata: Option<serde_json::Value>,
+}
+
+/// Compatibility input for callers that still think in budget-specific postings.
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct CreateBudgetLedgerRow {
     pub budget_id: Uuid,
@@ -1880,3 +1946,6 @@ pub struct CreateBudgetLedgerRow {
     pub session_id: Option<Uuid>,
     pub description: Option<String>,
 }
+
+/// Compatibility alias for budget-scoped ledger reads.
+pub type BudgetLedgerRow = UsageLedgerRow;

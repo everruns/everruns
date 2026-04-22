@@ -2279,14 +2279,41 @@ impl StorageBackend {
     }
 
     // ============================================
-    // Budget Ledger
+    // Usage Journal + Ledger
     // ============================================
+
+    pub async fn create_usage_journal_entry(
+        &self,
+        input: CreateUsageJournalRow,
+    ) -> Result<UsageJournalRow> {
+        dispatch!(self, create_usage_journal_entry, input)
+    }
+
+    pub async fn get_usage_journal(&self, id: Uuid) -> Result<Option<UsageJournalRow>> {
+        dispatch!(self, get_usage_journal, id)
+    }
+
+    pub async fn create_usage_ledger_entry(
+        &self,
+        input: CreateUsageLedgerRow,
+    ) -> Result<(UsageLedgerRow, Option<BudgetRow>)> {
+        dispatch!(self, create_usage_ledger_entry, input)
+    }
 
     pub async fn create_budget_ledger_entry(
         &self,
         input: CreateBudgetLedgerRow,
     ) -> Result<(BudgetLedgerRow, BudgetRow)> {
         dispatch!(self, create_budget_ledger_entry, input)
+    }
+
+    pub async fn list_usage_ledger_for_budget(
+        &self,
+        budget_id: Uuid,
+        limit: i64,
+        offset: i64,
+    ) -> Result<Vec<UsageLedgerRow>> {
+        dispatch!(self, list_usage_ledger_for_budget, budget_id, limit, offset)
     }
 
     pub async fn list_budget_ledger(
