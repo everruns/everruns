@@ -45,6 +45,16 @@ impl InMemoryDatabase {
             .cloned())
     }
 
+    /// Look up the owning org for an eval by its public_id (cross-org resolver).
+    pub async fn get_eval_organization_id(&self, public_id: &str) -> Result<Option<i64>> {
+        Ok(self
+            .evals
+            .read()
+            .values()
+            .find(|e| e.public_id == public_id)
+            .map(|e| e.org_id))
+    }
+
     pub async fn list_evals(
         &self,
         org_id: i64,

@@ -6,6 +6,7 @@ use super::build_search_sql;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use everruns_core::AgentIdentityId;
+use everruns_core::PrincipalId;
 use everruns_core::typed_id::{AgentId, SessionId};
 use uuid::Uuid;
 
@@ -208,6 +209,33 @@ impl Database {
             "#,
         )
         .bind(org_id)
+        .bind(tags)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    /// Find a single session matching ALL given tags + owner within an org.
+    pub async fn find_session_by_tags_and_owner(
+        &self,
+        org_id: i64,
+        owner_principal_id: PrincipalId,
+        tags: &[String],
+    ) -> Result<Option<SessionRow>> {
+        let row = sqlx::query_as::<_, SessionRow>(
+            r#"
+            SELECT id, org_id, harness_id, agent_id, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, status, created_at, updated_at, started_at, finished_at,
+                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status,
+                   blueprint_id, blueprint_config
+            FROM sessions
+            WHERE org_id = $1 AND owner_principal_id = $2 AND tags @> $3
+            ORDER BY created_at ASC
+            LIMIT 1
+            "#,
+        )
+        .bind(org_id)
+        .bind(owner_principal_id)
         .bind(tags)
         .fetch_optional(&self.pool)
         .await?;
