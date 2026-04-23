@@ -14,6 +14,14 @@ use crate::traits::ToolContext;
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
+const INTERNAL_SECRET_PREFIXES: &[&str] = &["browserless_internal:"];
+
+fn is_internal_secret_name(name: &str) -> bool {
+    INTERNAL_SECRET_PREFIXES
+        .iter()
+        .any(|prefix| name.starts_with(prefix))
+}
+
 /// Session Storage capability - provides key/value and secret storage for sessions
 pub struct SessionStorageCapability;
 
@@ -342,6 +350,11 @@ impl Tool for SecretStoreTool {
                         "Secret name must be 255 characters or less",
                     );
                 }
+                if is_internal_secret_name(name) {
+                    return ToolExecutionResult::tool_error(
+                        "Secret name is reserved for internal system use",
+                    );
+                }
                 match storage_store
                     .set_secret(context.session_id, name, value)
                     .await
@@ -372,6 +385,9 @@ impl Tool for SecretStoreTool {
                         );
                     }
                 };
+                if is_internal_secret_name(name) {
+                    return ToolExecutionResult::tool_error("Secret not found");
+                }
                 match storage_store.get_secret(context.session_id, name).await {
                     Ok(Some(value)) => ToolExecutionResult::success(json!({
                         "operation": "get",
@@ -406,6 +422,11 @@ impl Tool for SecretStoreTool {
                         );
                     }
                 };
+                if is_internal_secret_name(name) {
+                    return ToolExecutionResult::tool_error(
+                        "Secret name is reserved for internal system use",
+                    );
+                }
                 match storage_store.delete_secret(context.session_id, name).await {
                     Ok(deleted) => ToolExecutionResult::success(json!({
                         "operation": "delete",
@@ -419,6 +440,7 @@ impl Tool for SecretStoreTool {
                 Ok(secrets) => {
                     let secret_list: Vec<Value> = secrets
                         .iter()
+                        .filter(|s| !is_internal_secret_name(&s.name))
                         .map(|s| {
                             json!({
                                 "name": s.name,
@@ -460,6 +482,12 @@ impl Tool for SecretStoreTool {
 mod tests {
     use super::*;
     use crate::typed_id::SessionId;
+
+    #[test]
+    fn test_internal_secret_name_filtering() {
+        assert!(is_internal_secret_name("browserless_internal:cookies"));
+        assert!(!is_internal_secret_name("api_key"));
+    }
 
     #[test]
     fn test_capability_metadata() {

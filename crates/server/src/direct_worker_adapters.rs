@@ -32,6 +32,7 @@ use crate::domains::budgets::BudgetService;
 use crate::domains::mcp_servers::McpServerService;
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
+use crate::max_iterations;
 use crate::org_init;
 use crate::services::scoped_mcp::{
     build_scoped_mcp_tool_definitions, resolve_scoped_mcp_server, validate_scoped_mcp_servers,
@@ -490,7 +491,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
                     .network_access
                     .and_then(|v| serde_json::from_value(v).ok()),
                 hints: r.hints.and_then(|v| serde_json::from_value(v).ok()),
-                max_iterations: r.max_iterations.map(|v| v as usize),
+                max_iterations: max_iterations::from_db(r.max_iterations),
                 status: match r.status.as_str() {
                     "started" => SessionStatus::Started,
                     "active" => SessionStatus::Active,
@@ -1574,7 +1575,7 @@ impl DirectWorkerAdapters {
             network_access: r
                 .network_access
                 .and_then(|v| serde_json::from_value(v).ok()),
-            max_iterations: r.max_iterations.map(|v| v as usize),
+            max_iterations: max_iterations::from_db(r.max_iterations),
             tools: serde_json::from_value(r.tools).unwrap_or_default(),
             status: match r.status.as_str() {
                 "active" => AgentStatus::Active,
@@ -1851,7 +1852,7 @@ impl DirectPlatformStore {
             network_access: row
                 .network_access
                 .and_then(|v| serde_json::from_value(v).ok()),
-            max_iterations: row.max_iterations.map(|v| v as usize),
+            max_iterations: max_iterations::from_db(row.max_iterations),
             tools: serde_json::from_value(row.tools).unwrap_or_default(),
             status: AgentStatus::from(row.status.as_str()),
             created_at: row.created_at,
@@ -1899,7 +1900,7 @@ impl DirectPlatformStore {
                 .network_access
                 .and_then(|v| serde_json::from_value(v).ok()),
             hints: row.hints.and_then(|v| serde_json::from_value(v).ok()),
-            max_iterations: row.max_iterations.map(|v| v as usize),
+            max_iterations: max_iterations::from_db(row.max_iterations),
             status: SessionStatus::from(row.status.as_str()),
             created_at: row.created_at,
             updated_at: row.updated_at,
