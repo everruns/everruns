@@ -1505,6 +1505,23 @@ impl Tool for DaytonaGitCredentialsTool {
             ));
         }
 
+        // Restrict credential file permissions to owner-only read/write.
+        let chmod_cmd = "chmod 600 /tmp/.git-credentials";
+        match client.exec(sandbox_id, chmod_cmd, None, None, |_| {}).await {
+            Ok(r) if r.exit_code == 0 => {}
+            Ok(r) => {
+                return ToolExecutionResult::tool_error(format!(
+                    "Failed to secure credentials file permissions (exit {}): {}",
+                    r.exit_code, r.result
+                ));
+            }
+            Err(e) => {
+                return ToolExecutionResult::tool_error(format!(
+                    "Failed to secure credentials file permissions: {e}"
+                ));
+            }
+        }
+
         // Configure git to use the credential store
         let config_cmd =
             "git config --global credential.helper 'store --file=/tmp/.git-credentials'";
