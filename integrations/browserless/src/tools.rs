@@ -83,6 +83,12 @@ fn cap_wait_ms(ms: u64) -> u64 {
     ms.min(MAX_WAIT_MS)
 }
 
+/// THREAT: Never return DOM content when secret references were resolved in
+/// interact steps. Typed secrets can be reflected into DOM/outerHTML.
+fn should_suppress_interact_content(requested_content: bool, resolved_secret_count: usize) -> bool {
+    requested_content && resolved_secret_count > 0
+}
+
 // ============================================================================
 // BrowserlessScreenshotTool
 // ============================================================================
@@ -821,10 +827,13 @@ impl Tool for BrowserlessInteractTool {
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
         // If neither flag is set, default to returning content
-        let (want_screenshot, want_content) = match (return_screenshot, return_content) {
+        let (want_screenshot, requested_content) = match (return_screenshot, return_content) {
             (false, false) => (false, true),
             other => other,
         };
+        let suppress_content_for_secrets =
+            should_suppress_interact_content(requested_content, resolved_secrets.len());
+        let want_content = requested_content && !suppress_content_for_secrets;
 
         // Try CDP session first
         if let Some(mut session) = try_get_cdp_session(context).await {
@@ -938,6 +947,10 @@ impl Tool for BrowserlessInteractTool {
                 "url": final_url,
                 "session": "cdp"
             });
+            if suppress_content_for_secrets {
+                result["content_redacted"] = json!(true);
+                result["content_redaction_reason"] = json!("secrets_used_in_steps");
+            }
             if want_screenshot {
                 match session.screenshot(true).await {
                     Ok(b64) => {
@@ -995,6 +1008,13 @@ impl Tool for BrowserlessInteractTool {
                             }
                             if let Some(obj) = data.as_object_mut() {
                                 obj.remove("__cookies");
+                                if suppress_content_for_secrets {
+                                    obj.insert("content_redacted".to_string(), json!(true));
+                                    obj.insert(
+                                        "content_redaction_reason".to_string(),
+                                        json!("secrets_used_in_steps"),
+                                    );
+                                }
                             }
                             ToolExecutionResult::Success(data)
                         }
@@ -1498,6 +1518,13 @@ mod tests {
             code.contains("screenshot") && code.contains("content"),
             "return object should include both fields"
         );
+    }
+
+    #[test]
+    fn test_should_suppress_interact_content_when_secrets_present() {
+        assert!(should_suppress_interact_content(true, 1));
+        assert!(!should_suppress_interact_content(false, 1));
+        assert!(!should_suppress_interact_content(true, 0));
     }
 
     #[tokio::test]
