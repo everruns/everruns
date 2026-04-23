@@ -207,6 +207,7 @@ fn app_session_tags(app: &App, channel: &AppChannel) -> Vec<String> {
         format!("app:{}", app.public_id),
         format!("app_channel:{}", channel.public_id),
         format!("app_channel_type:{}", channel.channel_type),
+        "__internal:app_invocation".to_string(),
     ]
 }
 
@@ -465,7 +466,7 @@ async fn find_or_create_invocation_session(
     let shared_tags = app_session_tags(app, channel);
     if session_mode == InvocationSessionMode::SharedSession
         && let Some(existing) = db
-            .find_session_by_tags(app.org_id, &shared_tags)
+            .find_session_by_tags_and_owner(app.org_id, app.owner_principal_id, &shared_tags)
             .await
             .map_err(classify_anyhow)?
     {

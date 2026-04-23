@@ -23,8 +23,8 @@ export function createServerQueryClient() {
 }
 
 export function getRequestOrigin(headersList: Headers): string {
-  const host = headersList.get("x-forwarded-host") ?? headersList.get("host") ?? "localhost";
-  const proto = headersList.get("x-forwarded-proto") ?? "http";
+  const host = headersList.get("host") ?? "localhost";
+  const proto = process.env.NODE_ENV === "production" ? "https" : "http";
   return `${proto}://${host}`;
 }
 
