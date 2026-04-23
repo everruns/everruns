@@ -826,6 +826,13 @@ impl BraintrustListener {
         }
     }
 
+    fn include_tool_call_labels(&self) -> bool {
+        !matches!(
+            self.state.config.content.tool_args_mode,
+            BraintrustPayloadMode::Redacted | BraintrustPayloadMode::None
+        )
+    }
+
     fn serialize_tool_call_for_llm(
         &self,
         id: &str,
@@ -1367,11 +1374,13 @@ impl BraintrustListener {
             "success": data.success,
             "status": data.status,
         });
-        if let Some(display_name) = &data.display_name {
-            metadata["display_name"] = serde_json::json!(display_name);
-        }
-        if let Some(narration) = &data.narration {
-            metadata["narration"] = serde_json::json!(narration);
+        if self.include_tool_call_labels() {
+            if let Some(display_name) = &data.display_name {
+                metadata["display_name"] = serde_json::json!(display_name);
+            }
+            if let Some(narration) = &data.narration {
+                metadata["narration"] = serde_json::json!(narration);
+            }
         }
 
         self.annotate_metadata(
@@ -1959,11 +1968,13 @@ impl BraintrustListener {
             "tool_name": data.tool_call.name,
             "tool_call_id": data.tool_call.id,
         });
-        if let Some(display_name) = &data.display_name {
-            metadata["display_name"] = serde_json::json!(display_name);
-        }
-        if let Some(narration) = &data.narration {
-            metadata["narration"] = serde_json::json!(narration);
+        if self.include_tool_call_labels() {
+            if let Some(display_name) = &data.display_name {
+                metadata["display_name"] = serde_json::json!(display_name);
+            }
+            if let Some(narration) = &data.narration {
+                metadata["narration"] = serde_json::json!(narration);
+            }
         }
 
         self.annotate_metadata(
@@ -3357,6 +3368,35 @@ mod tests {
                 .iter()
                 .any(|value| value == "secret")
         );
+        assert!(bt_event.metadata.get("display_name").is_none());
+        assert!(bt_event.metadata.get("narration").is_none());
+    }
+
+    #[test]
+    fn test_tool_started_includes_labels_when_tool_args_full() {
+        let mut config = test_config();
+        config.content.tool_args_mode = BraintrustPayloadMode::Full;
+        let listener = BraintrustListener::new(config);
+        let turn_id = TurnId::new();
+        let event = Event::new(
+            SessionId::new(),
+            EventContext::turn(turn_id, MessageId::new()),
+            EventData::ToolStarted(ToolStartedData {
+                tool_call: ToolCall {
+                    id: "call_1".to_string(),
+                    name: "exec".to_string(),
+                    arguments: json!({"secret": "value", "path": "/tmp/test"}),
+                },
+                display_name: Some("Execute".to_string()),
+                narration: Some("Running exec".to_string()),
+            }),
+        );
+
+        let data = match &event.data {
+            EventData::ToolStarted(data) => data.clone(),
+            _ => unreachable!(),
+        };
+        let bt_event = listener.convert_tool_call_started(&event, &data);
         assert_eq!(bt_event.metadata["display_name"], "Execute");
         assert_eq!(bt_event.metadata["narration"], "Running exec");
     }

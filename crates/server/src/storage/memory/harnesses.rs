@@ -112,6 +112,14 @@ impl InMemoryDatabase {
             .cloned())
     }
 
+    /// Look up the owning org for a harness by its prefixed public id.
+    pub async fn get_harness_organization_id(&self, public_id: &str) -> Result<Option<i64>> {
+        let Ok(id) = public_id.parse::<HarnessId>() else {
+            return Ok(None);
+        };
+        Ok(self.harnesses.read().get(&id).map(|h| h.org_id))
+    }
+
     pub async fn get_harness_by_name(&self, org_id: i64, name: &str) -> Result<Option<HarnessRow>> {
         Ok(self
             .harnesses
