@@ -20,6 +20,8 @@ reqwest = { workspace = true }
 # Serialization
 serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
+hex.workspace = true
 
 # Tar archive encoding/decoding (Docker /archive endpoints)
 tar = "0.4"

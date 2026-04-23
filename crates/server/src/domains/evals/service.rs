@@ -7,8 +7,8 @@ use crate::api::evals::{
     BulkUpdateEvalRunScoresRequest, CreateEvalCaseRequest, CreateEvalRequest, CreateEvalRunRequest,
     ExternalScoreStatus, UpdateEvalCaseRequest, UpdateEvalRequest, UpdateEvalResultScoresRequest,
 };
+use crate::domains::evals::runner::{EvalRunContext, spawn_eval_run};
 use crate::errors::{BadRequestError, ResourceNotFoundError};
-use crate::services::eval_runner::{EvalRunContext, spawn_eval_run};
 use crate::storage::StorageBackend;
 use crate::storage::models::{
     CreateEvalCaseResultRow, CreateEvalCaseRow, CreateEvalRow, CreateEvalRunRow,
@@ -18,7 +18,6 @@ use anyhow::Result;
 use everruns_core::eval::*;
 use everruns_core::typed_id::{EvalCaseId, EvalId, EvalResultId, EvalRunId, SessionId};
 use everruns_core::{Caller, Permission, Policy, Rule};
-use everruns_macros::policy;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -29,10 +28,22 @@ pub const EVAL_VIEW: Policy = Policy {
     rules: &[Rule::UserHasPermission(Permission::OrgAgentsManage)],
 };
 
-/// Policy: Manage evals (create, update, run).
+/// Policy: Manage evals (create, update, metadata operations).
 pub const EVAL_MANAGE: Policy = Policy {
     id: "eval.manage",
     rules: &[Rule::UserHasPermission(Permission::OrgAgentsManage)],
+};
+
+/// Policy: Start eval runs.
+///
+/// Runs create real sessions in the background eval runner, so require both
+/// eval-management and session-management permissions.
+pub const EVAL_RUN: Policy = Policy {
+    id: "eval.run",
+    rules: &[
+        Rule::UserHasPermission(Permission::OrgAgentsManage),
+        Rule::UserHasPermission(Permission::OrgSessionsManage),
+    ],
 };
 
 pub struct EvalService {
@@ -72,7 +83,6 @@ impl EvalService {
     // Eval CRUD
     // ============================================
 
-    #[policy(EVAL_MANAGE)]
     pub async fn create(&self, caller: &Caller, req: CreateEvalRequest) -> Result<Eval> {
         validate_target(&req.target)?;
 
@@ -94,7 +104,6 @@ impl EvalService {
         self.row_to_eval(row).await
     }
 
-    #[policy(EVAL_VIEW)]
     pub async fn get_by_public_id(&self, caller: &Caller, public_id: &str) -> Result<Option<Eval>> {
         let row = self
             .db
@@ -106,7 +115,6 @@ impl EvalService {
         }
     }
 
-    #[policy(EVAL_VIEW)]
     pub async fn list(
         &self,
         caller: &Caller,
@@ -124,7 +132,6 @@ impl EvalService {
         Ok(evals)
     }
 
-    #[policy(EVAL_MANAGE)]
     pub async fn update(
         &self,
         caller: &Caller,
@@ -160,7 +167,6 @@ impl EvalService {
         }
     }
 
-    #[policy(EVAL_MANAGE)]
     pub async fn delete(&self, caller: &Caller, public_id: &str) -> Result<bool> {
         let existing = self
             .db
@@ -176,7 +182,6 @@ impl EvalService {
     // Eval Case CRUD
     // ============================================
 
-    #[policy(EVAL_MANAGE)]
     pub async fn create_case(
         &self,
         caller: &Caller,
@@ -224,7 +229,6 @@ impl EvalService {
         Ok(case_row_to_case(row))
     }
 
-    #[policy(EVAL_VIEW)]
     pub async fn list_cases(&self, caller: &Caller, eval_public_id: &str) -> Result<Vec<EvalCase>> {
         let eval = self
             .db
@@ -236,7 +240,6 @@ impl EvalService {
         Ok(rows.into_iter().map(case_row_to_case).collect())
     }
 
-    #[policy(EVAL_VIEW)]
     pub async fn get_case(
         &self,
         caller: &Caller,
@@ -256,7 +259,6 @@ impl EvalService {
         Ok(row.map(case_row_to_case))
     }
 
-    #[policy(EVAL_MANAGE)]
     pub async fn update_case(
         &self,
         caller: &Caller,
@@ -301,7 +303,6 @@ impl EvalService {
         Ok(row.map(case_row_to_case))
     }
 
-    #[policy(EVAL_MANAGE)]
     pub async fn delete_case(
         &self,
         caller: &Caller,
@@ -328,7 +329,6 @@ impl EvalService {
     // Eval Run
     // ============================================
 
-    #[policy(EVAL_MANAGE)]
     pub async fn create_run(
         &self,
         caller: &Caller,
@@ -411,7 +411,6 @@ impl EvalService {
         Ok(run_row_to_run(run_row, vec![]))
     }
 
-    #[policy(EVAL_VIEW)]
     pub async fn list_runs(&self, caller: &Caller, eval_public_id: &str) -> Result<Vec<EvalRun>> {
         let eval = self
             .db
@@ -426,7 +425,6 @@ impl EvalService {
             .collect())
     }
 
-    #[policy(EVAL_VIEW)]
     pub async fn get_run(
         &self,
         caller: &Caller,
@@ -469,7 +467,6 @@ impl EvalService {
         Ok(Some(run_row_to_run(run_row, results)))
     }
 
-    #[policy(EVAL_MANAGE)]
     pub async fn cancel_run(
         &self,
         caller: &Caller,
@@ -506,7 +503,6 @@ impl EvalService {
         Ok(updated.map(|r| run_row_to_run(r, vec![])))
     }
 
-    #[policy(EVAL_MANAGE)]
     pub async fn update_result_scores(
         &self,
         caller: &Caller,
@@ -562,7 +558,6 @@ impl EvalService {
         Ok(Some(result_row_to_result(updated, case_name)))
     }
 
-    #[policy(EVAL_MANAGE)]
     pub async fn bulk_update_run_scores(
         &self,
         caller: &Caller,

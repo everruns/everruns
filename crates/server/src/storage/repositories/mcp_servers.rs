@@ -6,6 +6,7 @@ use super::super::models::*;
 use super::Database;
 use super::build_search_sql;
 use anyhow::Result;
+use everruns_core::typed_id::McpServerId;
 use uuid::Uuid;
 
 impl Database {
@@ -90,6 +91,20 @@ impl Database {
         .await?;
 
         Ok(row)
+    }
+
+    /// Look up the owning org for an MCP server by its public id. See
+    /// specs/multitenancy.md (Cross-Org Resource Resolution).
+    pub async fn get_mcp_server_organization_id(&self, public_id: &str) -> Result<Option<i64>> {
+        let Ok(id) = public_id.parse::<McpServerId>() else {
+            return Ok(None);
+        };
+        let row: Option<(i64,)> =
+            sqlx::query_as("SELECT org_id FROM mcp_servers WHERE id = $1 LIMIT 1")
+                .bind(id.uuid())
+                .fetch_optional(&self.pool)
+                .await?;
+        Ok(row.map(|(org_id,)| org_id))
     }
 
     pub async fn get_mcp_server(&self, org_id: i64, id: Uuid) -> Result<Option<McpServerRow>> {

@@ -14,14 +14,14 @@ const SECOND_ORG: OrganizationMembership = {
 };
 
 describe("server-query", () => {
-  it("uses forwarded host and proto when present", () => {
+  it("uses host header and ignores forwarded headers", () => {
     const headers = new Headers({
       host: "localhost:9100",
       "x-forwarded-host": "app.everruns.com",
       "x-forwarded-proto": "https",
     });
 
-    expect(getRequestOrigin(headers)).toBe("https://app.everruns.com");
+    expect(getRequestOrigin(headers)).toBe("http://localhost:9100");
   });
 
   it("falls back to host header when forwarded headers are missing", () => {

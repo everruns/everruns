@@ -6,7 +6,7 @@ use base64::Engine;
 use everruns_core::ImageId;
 use everruns_core::capabilities::{Capability, CapabilityStatus, IntegrationPlugin};
 use everruns_core::session_file::SessionFile;
-use everruns_core::tool_types::ToolHints;
+use everruns_core::tool_types::{DeferrablePolicy, ToolDefinition, ToolHints};
 use everruns_core::tools::{Tool, ToolExecutionResult, ToolResultImage};
 use everruns_core::traits::{CreateStoredImage, ToolContext};
 use serde::Deserialize;
@@ -14,7 +14,10 @@ use serde_json::{Value, json};
 use std::sync::LazyLock;
 
 const GPT_IMAGE_GEN_CAPABILITY_ID: &str = "gpt_image_gen";
-const OPENAI_IMAGE_MODEL: &str = "gpt-image-1";
+// Default to OpenAI's ChatGPT Images 2.0 API model (`gpt-image-2`), while
+// keeping the legacy GPT Image 1 path available as an explicit opt-in.
+const DEFAULT_OPENAI_IMAGE_MODEL: ImageGenerationModel = ImageGenerationModel::GptImage2;
+const DEFAULT_OPENAI_IMAGE_QUALITY: ImageGenerationQuality = ImageGenerationQuality::Medium;
 const DEFAULT_OUTPUT_DIR: &str = "/workspace/.outputs/images";
 const DEFAULT_GENERATE_PREFIX: &str = "generated-image";
 const DEFAULT_EDIT_PREFIX: &str = "edited-image";
@@ -32,9 +35,17 @@ inventory::submit! {
 
 static SYSTEM_PROMPT: LazyLock<String> = LazyLock::new(|| {
     r#"Use `generate_image` for raster image generation and `edit_image` to transform existing images.
+If the user asks for image generation or editing and those tools are present in the tool list, call them directly.
+Do not claim the tools are unavailable when `generate_image` or `edit_image` are listed as available tools.
+For straightforward image requests, avoid unrelated metadata or bookkeeping tools before the image tool call.
+When the user asks for multiple new images, make one `generate_image` call per requested concept unless they explicitly ask for a batch in one call.
+Unless the user says otherwise, set `save_to_session_fs` to true, keep `persist_artifact` enabled, and save under `/workspace/.outputs/images`.
+Prefer PNG output and rely on the capability default quality unless the user requests a specific quality.
+Do not stop at writing prompts, suggesting external tools, or describing environment limitations unless an actual image tool call fails.
 
 Store per-session OpenAI overrides in `secret_store` under `OPENAI_API_KEY` and optionally `OPENAI_BASE_URL`.
-When saving files, write under `/workspace/.outputs/images` unless the user requests another directory."#
+When saving files, write under `/workspace/.outputs/images` unless the user requests another directory.
+Prefer medium quality unless the user explicitly asks for higher fidelity."#
         .to_string()
 });
 
@@ -70,7 +81,31 @@ impl Capability for GptImageGenCapability {
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {
-        vec![Box::new(GenerateImageTool), Box::new(EditImageTool)]
+        self.tools_with_config(&json!({}))
+    }
+
+    fn tools_with_config(&self, config: &Value) -> Vec<Box<dyn Tool>> {
+        vec![
+            Box::new(GenerateImageTool {
+                config: config.clone(),
+            }),
+            Box::new(EditImageTool {
+                config: config.clone(),
+            }),
+        ]
+    }
+
+    fn tool_definitions(&self) -> Vec<ToolDefinition> {
+        self.tools()
+            .into_iter()
+            .map(|tool| {
+                let mut definition = tool.to_definition();
+                if let ToolDefinition::Builtin(builtin) = &mut definition {
+                    builtin.deferrable = DeferrablePolicy::Never;
+                }
+                definition
+            })
+            .collect()
     }
 
     fn dependencies(&self) -> Vec<&'static str> {
@@ -78,7 +113,9 @@ impl Capability for GptImageGenCapability {
     }
 }
 
-pub struct GenerateImageTool;
+pub struct GenerateImageTool {
+    config: Value,
+}
 
 #[async_trait]
 impl Tool for GenerateImageTool {
@@ -91,7 +128,7 @@ impl Tool for GenerateImageTool {
     }
 
     fn description(&self) -> &str {
-        "Generate raster images with OpenAI's GPT Image API and optionally persist them as artifacts or session files."
+        "Server-side image generation tool. Call this directly for user image requests; it generates the image in this session and can persist results as artifacts or session files."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -107,7 +144,7 @@ impl Tool for GenerateImageTool {
                 "quality": {
                     "type": "string",
                     "enum": ["low", "medium", "high", "auto"],
-                    "description": "Generation quality. Defaults to auto."
+                    "description": "Generation quality. Defaults to the capability default quality (medium unless overridden)."
                 },
                 "background": {
                     "type": "string",
@@ -167,6 +204,11 @@ impl Tool for GenerateImageTool {
         if let Err(message) = validate_output_options(&args.common) {
             return ToolExecutionResult::tool_error(message);
         }
+        let capability_config = match parse_capability_config(&self.config) {
+            Ok(config) => config,
+            Err(result) => return result,
+        };
+        let model = capability_config.model.as_str();
 
         let client = match build_client(context).await {
             Ok(client) => client,
@@ -175,10 +217,13 @@ impl Tool for GenerateImageTool {
 
         let response = match client
             .generate(GenerateImageRequest {
-                model: OPENAI_IMAGE_MODEL.to_string(),
+                model: model.to_string(),
                 prompt: args.prompt.clone(),
                 size: args.common.size.clone(),
-                quality: args.common.quality.clone(),
+                quality: Some(resolve_quality(
+                    args.common.quality.as_deref(),
+                    capability_config.default_quality,
+                )),
                 background: args.common.background.clone(),
                 output_format: args.common.format.clone(),
                 count: args.common.count(),
@@ -186,7 +231,7 @@ impl Tool for GenerateImageTool {
             .await
         {
             Ok(response) => response,
-            Err(error) => return ToolExecutionResult::internal_error_msg(error.to_string()),
+            Err(error) => return ToolExecutionResult::internal_error_msg(format!("{error:#}")),
         };
 
         materialize_outputs(
@@ -194,6 +239,7 @@ impl Tool for GenerateImageTool {
             &args.prompt,
             None,
             &args.common,
+            model,
             response.data,
             args.common
                 .filename_prefix
@@ -204,7 +250,9 @@ impl Tool for GenerateImageTool {
     }
 }
 
-pub struct EditImageTool;
+pub struct EditImageTool {
+    config: Value,
+}
 
 #[async_trait]
 impl Tool for EditImageTool {
@@ -217,7 +265,7 @@ impl Tool for EditImageTool {
     }
 
     fn description(&self) -> &str {
-        "Edit one or more source images from a stored image artifact and/or a session file path."
+        "Server-side image editing tool. Call this directly when the user wants an existing image revised using a stored artifact and/or a session file path."
     }
 
     fn parameters_schema(&self) -> Value {
@@ -241,7 +289,7 @@ impl Tool for EditImageTool {
                 "quality": {
                     "type": "string",
                     "enum": ["low", "medium", "high", "auto"],
-                    "description": "Generation quality. Defaults to auto."
+                    "description": "Generation quality. Defaults to the capability default quality (medium unless overridden)."
                 },
                 "background": {
                     "type": "string",
@@ -290,6 +338,11 @@ impl Tool for EditImageTool {
         if let Err(message) = validate_output_options(&args.common) {
             return ToolExecutionResult::tool_error(message);
         }
+        let capability_config = match parse_capability_config(&self.config) {
+            Ok(config) => config,
+            Err(result) => return result,
+        };
+        let model = capability_config.model.as_str();
 
         let sources = match collect_edit_sources(context, &args).await {
             Ok(sources) => sources,
@@ -302,11 +355,14 @@ impl Tool for EditImageTool {
 
         let response = match client
             .edit(EditImageRequest {
-                model: OPENAI_IMAGE_MODEL.to_string(),
+                model: model.to_string(),
                 prompt: args.prompt.clone(),
                 images: sources,
                 size: args.common.size.clone(),
-                quality: args.common.quality.clone(),
+                quality: Some(resolve_quality(
+                    args.common.quality.as_deref(),
+                    capability_config.default_quality,
+                )),
                 background: args.common.background.clone(),
                 output_format: args.common.format.clone(),
                 count: args.common.count(),
@@ -314,7 +370,7 @@ impl Tool for EditImageTool {
             .await
         {
             Ok(response) => response,
-            Err(error) => return ToolExecutionResult::internal_error_msg(error.to_string()),
+            Err(error) => return ToolExecutionResult::internal_error_msg(format!("{error:#}")),
         };
 
         materialize_outputs(
@@ -325,6 +381,7 @@ impl Tool for EditImageTool {
                 "path": args.path,
             })),
             &args.common,
+            model,
             response.data,
             args.common
                 .filename_prefix
@@ -416,11 +473,97 @@ struct ResolvedClientConfig {
     base_url: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+enum ImageGenerationModel {
+    #[serde(rename = "gpt-image-2")]
+    GptImage2,
+    #[serde(rename = "gpt-image-1")]
+    GptImage1,
+}
+
+impl ImageGenerationModel {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::GptImage2 => "gpt-image-2",
+            Self::GptImage1 => "gpt-image-1",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+enum ImageGenerationQuality {
+    #[serde(rename = "low")]
+    Low,
+    #[serde(rename = "medium")]
+    Medium,
+    #[serde(rename = "high")]
+    High,
+    #[serde(rename = "auto")]
+    Auto,
+}
+
+impl ImageGenerationQuality {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::High => "high",
+            Self::Auto => "auto",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct GptImageGenCapabilityConfig {
+    #[serde(default = "default_openai_image_model")]
+    model: ImageGenerationModel,
+    #[serde(default = "default_openai_image_quality")]
+    default_quality: ImageGenerationQuality,
+}
+
+impl Default for GptImageGenCapabilityConfig {
+    fn default() -> Self {
+        Self {
+            model: default_openai_image_model(),
+            default_quality: default_openai_image_quality(),
+        }
+    }
+}
+
+fn default_openai_image_model() -> ImageGenerationModel {
+    DEFAULT_OPENAI_IMAGE_MODEL
+}
+
+fn default_openai_image_quality() -> ImageGenerationQuality {
+    DEFAULT_OPENAI_IMAGE_QUALITY
+}
+
+fn resolve_quality(
+    explicit_quality: Option<&str>,
+    default_quality: ImageGenerationQuality,
+) -> String {
+    explicit_quality
+        .unwrap_or(default_quality.as_str())
+        .to_string()
+}
+
 fn parse_arguments<T: for<'de> Deserialize<'de>>(
     arguments: Value,
 ) -> Result<T, ToolExecutionResult> {
     serde_json::from_value(arguments)
         .map_err(|error| ToolExecutionResult::tool_error(format!("Invalid arguments: {error}")))
+}
+
+fn parse_capability_config(
+    config: &Value,
+) -> Result<GptImageGenCapabilityConfig, ToolExecutionResult> {
+    if config.is_null() {
+        return Ok(GptImageGenCapabilityConfig::default());
+    }
+
+    serde_json::from_value::<GptImageGenCapabilityConfig>(config.clone()).map_err(|error| {
+        ToolExecutionResult::tool_error(format!("Invalid gpt_image_gen config: {error}"))
+    })
 }
 
 async fn build_client(context: &ToolContext) -> Result<OpenAiImageClient, ToolExecutionResult> {
@@ -430,7 +573,7 @@ async fn build_client(context: &ToolContext) -> Result<OpenAiImageClient, ToolEx
     };
 
     OpenAiImageClient::new(config.api_key, config.base_url)
-        .map_err(|error| ToolExecutionResult::internal_error_msg(error.to_string()))
+        .map_err(|error| ToolExecutionResult::internal_error_msg(format!("{error:#}")))
 }
 
 async fn resolve_client_config(
@@ -445,7 +588,11 @@ async fn resolve_client_config(
         .await
         {
             Ok(api_key) => api_key,
-            Err(error) => return Err(ToolExecutionResult::internal_error_msg(error.to_string())),
+            Err(error) => {
+                return Err(ToolExecutionResult::internal_error_msg(format!(
+                    "{error:#}"
+                )));
+            }
         };
         let base_url = match get_first_secret(
             storage_store.as_ref(),
@@ -455,32 +602,14 @@ async fn resolve_client_config(
         .await
         {
             Ok(base_url) => base_url,
-            Err(error) => return Err(ToolExecutionResult::internal_error_msg(error.to_string())),
+            Err(error) => {
+                return Err(ToolExecutionResult::internal_error_msg(format!(
+                    "{error:#}"
+                )));
+            }
         };
         if let Some(api_key) = api_key {
             return Ok(ResolvedClientConfig { api_key, base_url });
-        }
-
-        if let Some(base_url) = base_url {
-            let Some(provider_store) = &context.provider_credential_store else {
-                return Err(ToolExecutionResult::tool_error(
-                    "OpenAI credentials are not configured. Store OPENAI_API_KEY via secret_store or configure an OpenAI provider.",
-                ));
-            };
-
-            return match provider_store
-                .get_default_provider_credentials("openai")
-                .await
-            {
-                Ok(Some(credentials)) => Ok(ResolvedClientConfig {
-                    api_key: credentials.api_key,
-                    base_url: Some(base_url),
-                }),
-                Ok(None) => Err(ToolExecutionResult::tool_error(
-                    "OpenAI credentials are not configured. Store OPENAI_API_KEY via secret_store or configure an OpenAI provider.",
-                )),
-                Err(error) => Err(ToolExecutionResult::internal_error(error)),
-            };
         }
     }
 
@@ -626,6 +755,7 @@ async fn materialize_outputs(
     prompt: &str,
     source: Option<Value>,
     common: &CommonImageArgs,
+    model: &str,
     images: Vec<ImageApiImage>,
     filename_prefix: String,
 ) -> ToolExecutionResult {
@@ -661,7 +791,7 @@ async fn materialize_outputs(
                     data: bytes.clone(),
                     metadata: json!({
                         "provider": "openai",
-                        "model": OPENAI_IMAGE_MODEL,
+                        "model": model,
                         "prompt": prompt,
                         "revised_prompt": image.revised_prompt,
                     }),
@@ -717,7 +847,7 @@ async fn materialize_outputs(
     ToolExecutionResult::success_with_images(
         json!({
             "provider": "openai",
-            "model": OPENAI_IMAGE_MODEL,
+            "model": model,
             "prompt": prompt,
             "count": rendered_results.len(),
             "source": source,
@@ -801,6 +931,85 @@ fn infer_image_content_type(path: &str) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use async_trait::async_trait;
+    use everruns_core::Result;
+    use everruns_core::traits::{
+        KeyInfo, ProviderCredentialStore, ProviderCredentials, SecretInfo, SessionStorageStore,
+    };
+    use everruns_core::typed_id::SessionId;
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex};
+
+    struct MockSessionStorageStore {
+        secrets: Mutex<HashMap<String, String>>,
+    }
+
+    impl MockSessionStorageStore {
+        fn with_secrets(secrets: &[(&str, &str)]) -> Self {
+            let mut map = HashMap::new();
+            for (key, value) in secrets {
+                map.insert((*key).to_string(), (*value).to_string());
+            }
+            Self {
+                secrets: Mutex::new(map),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl SessionStorageStore for MockSessionStorageStore {
+        async fn set_value(&self, _session_id: SessionId, _key: &str, _value: &str) -> Result<()> {
+            unreachable!("unused in tests")
+        }
+
+        async fn get_value(&self, _session_id: SessionId, _key: &str) -> Result<Option<String>> {
+            unreachable!("unused in tests")
+        }
+
+        async fn delete_value(&self, _session_id: SessionId, _key: &str) -> Result<bool> {
+            unreachable!("unused in tests")
+        }
+
+        async fn list_keys(&self, _session_id: SessionId) -> Result<Vec<KeyInfo>> {
+            unreachable!("unused in tests")
+        }
+
+        async fn set_secret(
+            &self,
+            _session_id: SessionId,
+            _name: &str,
+            _value: &str,
+        ) -> Result<()> {
+            unreachable!("unused in tests")
+        }
+
+        async fn get_secret(&self, _session_id: SessionId, name: &str) -> Result<Option<String>> {
+            Ok(self.secrets.lock().expect("poisoned").get(name).cloned())
+        }
+
+        async fn delete_secret(&self, _session_id: SessionId, _name: &str) -> Result<bool> {
+            unreachable!("unused in tests")
+        }
+
+        async fn list_secrets(&self, _session_id: SessionId) -> Result<Vec<SecretInfo>> {
+            unreachable!("unused in tests")
+        }
+    }
+
+    struct MockProviderCredentialStore {
+        credentials: ProviderCredentials,
+    }
+
+    #[async_trait]
+    impl ProviderCredentialStore for MockProviderCredentialStore {
+        async fn get_default_provider_credentials(
+            &self,
+            provider_type: &str,
+        ) -> Result<Option<ProviderCredentials>> {
+            assert_eq!(provider_type, "openai");
+            Ok(Some(self.credentials.clone()))
+        }
+    }
 
     #[test]
     fn normalize_workspace_paths() {
@@ -831,5 +1040,145 @@ mod tests {
             capability.dependencies(),
             vec!["session_file_system", "session_storage"]
         );
+    }
+
+    #[tokio::test]
+    async fn uses_session_base_url_when_session_api_key_present() {
+        let session_id = SessionId::new();
+        let storage = Arc::new(MockSessionStorageStore::with_secrets(&[
+            ("OPENAI_API_KEY", "session-key"),
+            ("OPENAI_BASE_URL", "https://session.example/v1"),
+        ]));
+        let provider = Arc::new(MockProviderCredentialStore {
+            credentials: ProviderCredentials {
+                api_key: "provider-key".to_string(),
+                base_url: Some("https://provider.example/v1".to_string()),
+            },
+        });
+        let context = ToolContext {
+            session_id,
+            storage_store: Some(storage),
+            provider_credential_store: Some(provider),
+            ..ToolContext::new(session_id)
+        };
+
+        let resolved = resolve_client_config(&context)
+            .await
+            .expect("resolve config");
+
+        assert_eq!(resolved.api_key, "session-key");
+        assert_eq!(
+            resolved.base_url,
+            Some("https://session.example/v1".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn ignores_session_base_url_when_falling_back_to_provider_credentials() {
+        let session_id = SessionId::new();
+        let storage = Arc::new(MockSessionStorageStore::with_secrets(&[(
+            "OPENAI_BASE_URL",
+            "https://attacker.example/v1",
+        )]));
+        let provider = Arc::new(MockProviderCredentialStore {
+            credentials: ProviderCredentials {
+                api_key: "provider-key".to_string(),
+                base_url: Some("https://provider.example/v1".to_string()),
+            },
+        });
+        let context = ToolContext {
+            session_id,
+            storage_store: Some(storage),
+            provider_credential_store: Some(provider),
+            ..ToolContext::new(session_id)
+        };
+
+        let resolved = resolve_client_config(&context)
+            .await
+            .expect("resolve config");
+
+        assert_eq!(resolved.api_key, "provider-key");
+        assert_eq!(
+            resolved.base_url,
+            Some("https://provider.example/v1".to_string())
+        );
+    }
+
+    #[test]
+    fn capability_config_defaults_to_gpt_image_2() {
+        let config = parse_capability_config(&json!({})).unwrap();
+        assert_eq!(config.model, ImageGenerationModel::GptImage2);
+        assert_eq!(config.default_quality, ImageGenerationQuality::Medium);
+    }
+
+    #[test]
+    fn capability_config_accepts_legacy_model_override() {
+        let config = parse_capability_config(&json!({
+            "model": "gpt-image-1",
+            "default_quality": "low"
+        }))
+        .unwrap();
+        assert_eq!(config.model, ImageGenerationModel::GptImage1);
+        assert_eq!(config.default_quality, ImageGenerationQuality::Low);
+    }
+
+    #[test]
+    fn capability_config_ignores_unknown_fields() {
+        let config = parse_capability_config(&json!({
+            "model": "gpt-image-1",
+            "default_quality": "high",
+            "future_field": true
+        }))
+        .unwrap();
+        assert_eq!(config.model, ImageGenerationModel::GptImage1);
+        assert_eq!(config.default_quality, ImageGenerationQuality::High);
+    }
+
+    #[test]
+    fn capability_config_rejects_unknown_model_override() {
+        let result = parse_capability_config(&json!({
+            "model": "chatgpt-image-latest"
+        }));
+        let error = result.unwrap_err();
+        match error {
+            ToolExecutionResult::ToolError(message) => {
+                assert!(message.contains("Invalid gpt_image_gen config"));
+            }
+            other => panic!("expected tool error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn resolve_quality_prefers_explicit_argument() {
+        assert_eq!(
+            resolve_quality(Some("high"), ImageGenerationQuality::Medium),
+            "high"
+        );
+    }
+
+    #[test]
+    fn resolve_quality_uses_capability_default_when_omitted() {
+        assert_eq!(
+            resolve_quality(None, ImageGenerationQuality::Medium),
+            "medium"
+        );
+    }
+
+    #[test]
+    fn system_prompt_marks_image_tools_as_directly_invokable() {
+        let prompt = GptImageGenCapability.system_prompt_addition().unwrap();
+        assert!(prompt.contains("call them directly"));
+        assert!(prompt.contains("Do not claim the tools are unavailable"));
+        assert!(prompt.contains("Do not stop at writing prompts"));
+    }
+
+    #[test]
+    fn image_tools_are_never_deferred_for_tool_search() {
+        for definition in GptImageGenCapability.tool_definitions() {
+            let ToolDefinition::Builtin(builtin) = definition else {
+                panic!("expected builtin tool definition");
+            };
+            assert_eq!(builtin.deferrable, DeferrablePolicy::Never);
+        }
     }
 }

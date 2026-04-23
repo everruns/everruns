@@ -33,6 +33,17 @@ impl Database {
         Ok(row)
     }
 
+    /// Look up the owning org for an eval by its public_id. See
+    /// specs/multitenancy.md (Cross-Org Resource Resolution).
+    pub async fn get_eval_organization_id(&self, public_id: &str) -> Result<Option<i64>> {
+        let row: Option<(i64,)> =
+            sqlx::query_as("SELECT org_id FROM evals WHERE public_id = $1 LIMIT 1")
+                .bind(public_id)
+                .fetch_optional(&self.pool)
+                .await?;
+        Ok(row.map(|(org_id,)| org_id))
+    }
+
     pub async fn get_eval_by_public_id(
         &self,
         org_id: i64,

@@ -11,6 +11,7 @@ use crate::domains::harnesses::queries::resolve_effective as resolve_effective_h
 use crate::domains::session_files::{CreateFileInput, SessionFileService};
 use crate::domains::session_sandbox::SessionSandboxService;
 use crate::errors::ResourceNotFoundError;
+use crate::max_iterations;
 use crate::org_init;
 use crate::services::PrincipalService;
 use crate::storage::{
@@ -26,7 +27,6 @@ use everruns_core::{
     merge_capabilities, merge_initial_files, normalize_initial_file_path,
 };
 use everruns_durable::UpdateField;
-use everruns_macros::policy;
 use std::collections::HashSet;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -88,7 +88,7 @@ impl SessionService {
     /// Attach a virtual mount registry to the internal session file service.
     pub fn with_virtual_registry(
         mut self,
-        registry: Arc<crate::services::virtual_mount_registry::VirtualMountRegistry>,
+        registry: Arc<crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry>,
     ) -> Self {
         self.session_file_service =
             SessionFileService::new(self.db.clone()).with_virtual_registry(registry);
@@ -100,7 +100,6 @@ impl SessionService {
         self
     }
 
-    #[policy(SESSION_MANAGE)]
     pub async fn create(
         &self,
         caller: &Caller,
@@ -169,7 +168,7 @@ impl SessionService {
             });
 
         // Validate session-level capability refs before persisting
-        crate::services::capability_validation::validate_capability_refs(
+        crate::domains::capabilities::validation::validate_capability_refs(
             &self.db,
             org_id,
             &req.capabilities,
@@ -188,7 +187,9 @@ impl SessionService {
             scoped_mcp_layers.push(agent_mcp_servers);
         }
         scoped_mcp_layers.push(&req.mcp_servers);
-        crate::services::scoped_mcp::validate_merged_scoped_mcp_servers(scoped_mcp_layers)?;
+        crate::domains::mcp_servers::scoped_mcp::validate_merged_scoped_mcp_servers(
+            scoped_mcp_layers,
+        )?;
 
         // Serialize capabilities to JSON for storage
         let capabilities_json = serde_json::to_value(&req.capabilities)?;
@@ -197,6 +198,11 @@ impl SessionService {
             .hints
             .as_ref()
             .map(|h| serde_json::to_value(h).unwrap_or_default());
+
+        if !caller.is_internal && req.tags.iter().any(|tag| tag.starts_with("__internal:")) {
+            anyhow::bail!("Tags with '__internal:' prefix are reserved");
+        }
+
         let owner_principal = self
             .principal_service
             .default_owner_principal(caller, agent_identity_id)
@@ -223,7 +229,7 @@ impl SessionService {
                 .network_access
                 .as_ref()
                 .map(|na| serde_json::to_value(na).unwrap()),
-            max_iterations: req.max_iterations.map(|v| v as i32),
+            max_iterations: max_iterations::to_db(req.max_iterations)?,
             blueprint_id: None,
             blueprint_config: None,
         };
@@ -297,7 +303,7 @@ impl SessionService {
         )
         .await?
         .ok_or_else(|| ResourceNotFoundError::new("Harness"))?;
-        crate::services::scoped_mcp::validate_merged_scoped_mcp_servers([
+        crate::domains::mcp_servers::scoped_mcp::validate_merged_scoped_mcp_servers([
             &effective_harness.mcp_servers,
             &req.mcp_servers,
         ])?;
@@ -327,7 +333,7 @@ impl SessionService {
                 .network_access
                 .as_ref()
                 .map(|na| serde_json::to_value(na).unwrap()),
-            max_iterations: req.max_iterations.map(|v| v as i32),
+            max_iterations: max_iterations::to_db(req.max_iterations)?,
             blueprint_id: Some(blueprint_id),
             blueprint_config,
         };
@@ -557,7 +563,6 @@ impl SessionService {
         Ok(Some(model_id))
     }
 
-    #[policy(SESSION_VIEW)]
     pub async fn get(
         &self,
         caller: &Caller,
@@ -593,7 +598,6 @@ impl SessionService {
     }
 
     /// Get session counts grouped by status for an organization.
-    #[policy(SESSION_VIEW)]
     pub async fn stats(&self, caller: &Caller) -> Result<SessionStats> {
         let counts = self.db.count_sessions_by_status(caller.org_id).await?;
         let mut stats = SessionStats::default();
@@ -614,7 +618,6 @@ impl SessionService {
     /// List sessions for an organization with optional agent filter.
     /// Returns (sessions, total_count).
     /// Sessions include preview text from first user message and last assistant response.
-    #[policy(SESSION_VIEW)]
     pub async fn list(
         &self,
         caller: &Caller,
@@ -682,7 +685,6 @@ impl SessionService {
         Ok((sessions, total))
     }
 
-    #[policy(SESSION_MANAGE)]
     pub async fn update(
         &self,
         caller: &Caller,
@@ -790,7 +792,6 @@ impl SessionService {
     }
 
     /// Update session status (used by worker via gRPC)
-    #[policy(SESSION_MANAGE)]
     pub async fn update_status(
         &self,
         caller: &Caller,
@@ -825,7 +826,6 @@ impl SessionService {
     /// Get or create the global chat session for a user.
     /// Uses tags for per-user singleton: `["global-chat", "user:{user_id}"]`.
     /// Creates with the Platform Chat harness if no existing session is found.
-    #[policy(SESSION_MANAGE)]
     pub async fn get_or_create_chat_session(
         &self,
         caller: &Caller,
@@ -934,7 +934,6 @@ impl SessionService {
         Ok(session)
     }
 
-    #[policy(SESSION_MANAGE)]
     pub async fn delete(&self, caller: &Caller, id: Uuid) -> Result<bool> {
         let deleted = self
             .db
@@ -949,16 +948,15 @@ impl SessionService {
     }
 
     /// Pin a session for a user
-    #[policy(SESSION_MANAGE)]
     pub async fn pin(&self, caller: &Caller, user_id: Uuid, session_id: Uuid) -> Result<()> {
         self.db
             .pin_session(user_id, SessionId::from_uuid(session_id), caller.org_id)
             .await
     }
 
-    /// Unpin a session for a user
-    #[policy(SESSION_MANAGE)]
-    pub async fn unpin(&self, caller: &Caller, user_id: Uuid, session_id: Uuid) -> Result<bool> {
+    /// Unpin a session for a user. `_caller` kept for signature symmetry;
+    /// authorization is enforced at `Command::run` via `UnpinSession::policy`.
+    pub async fn unpin(&self, _caller: &Caller, user_id: Uuid, session_id: Uuid) -> Result<bool> {
         self.db
             .unpin_session(user_id, SessionId::from_uuid(session_id))
             .await
@@ -1158,7 +1156,7 @@ impl SessionService {
                 .network_access
                 .and_then(|v| serde_json::from_value(v).ok()),
             hints: row.hints.and_then(|v| serde_json::from_value(v).ok()),
-            max_iterations: row.max_iterations.map(|v| v as usize),
+            max_iterations: max_iterations::from_db(row.max_iterations),
             status: SessionStatus::from(row.status.as_str()),
             created_at: row.created_at,
             updated_at: row.updated_at,
@@ -1207,7 +1205,13 @@ mod tests {
 
     fn test_ctx(caller: Caller, db: Arc<StorageBackend>) -> Ctx {
         let capability_service = Arc::new(CapabilityService::new(db.clone(), None));
-        Ctx::new(caller, db, capability_service, None)
+        Ctx::new(
+            caller,
+            db,
+            capability_service,
+            None,
+            Arc::new(everruns_core::DefaultPermissionResolver),
+        )
     }
 
     fn build_create_request(

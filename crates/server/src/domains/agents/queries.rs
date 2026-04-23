@@ -3,6 +3,7 @@
 // No policy checks, no input validation. Pure data access + mapping.
 
 use crate::domains::common::CommandError;
+use crate::max_iterations;
 use crate::storage::StorageBackend;
 use everruns_core::typed_id::AgentId;
 use everruns_core::{Agent, AgentCapabilityConfig, AgentStatus, InitialFile, TokenUsage};
@@ -55,7 +56,7 @@ pub fn row_to_agent(row: AgentRow, capabilities: Vec<AgentCapabilityConfig>) -> 
         network_access: row
             .network_access
             .and_then(|v| serde_json::from_value(v).ok()),
-        max_iterations: row.max_iterations.map(|v| v as usize),
+        max_iterations: max_iterations::from_db(row.max_iterations),
         tools: serde_json::from_value(row.tools).unwrap_or_default(),
         status: AgentStatus::from(row.status.as_str()),
         created_at: row.created_at,
