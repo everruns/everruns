@@ -234,6 +234,10 @@ impl StorageBackend {
         dispatch!(self, delete_expired_cli_auth_sessions)
     }
 
+    pub async fn delete_cli_auth_session(&self, id: Uuid) -> Result<bool> {
+        dispatch!(self, delete_cli_auth_session, id)
+    }
+
     // ============================================
     // Refresh Tokens
     // ============================================
