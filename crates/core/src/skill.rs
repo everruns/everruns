@@ -15,9 +15,6 @@ use tracing::warn;
 static INDEXED_ARGS_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\$ARGUMENTS\[([0-9]+)\]").unwrap());
 
-/// Cached regex for ``!`command` `` dynamic command injection syntax.
-static COMMAND_INJECTION_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"!`([^`]+)`").unwrap());
-
 use crate::typed_id::SkillId;
 
 #[cfg(feature = "openapi")]
@@ -662,7 +659,7 @@ pub fn substitute_activation_vars(content: &str, session_id: &str, skill_dir: &s
 }
 
 // ============================================================================
-// Dynamic Context Injection: !`command` preprocessing
+// Dynamic Context Injection: !`command` preprocessing (disabled for safety)
 // ============================================================================
 
 /// Result of executing a shell command during skill preprocessing.
@@ -673,8 +670,8 @@ pub struct CommandResult {
 
 /// Trait for executing shell commands during skill preprocessing.
 ///
-/// Commands in `!`...`` syntax are executed before the skill content
-/// is sent to the model, replacing each placeholder with command output.
+/// Command execution from skill content is disabled for untrusted, user-uploaded
+/// skills. This trait remains for API compatibility and future trusted-only use.
 #[async_trait::async_trait]
 pub trait CommandExecutor: Send + Sync {
     async fn execute_command(&self, command: &str) -> CommandResult;
@@ -735,58 +732,13 @@ impl CommandExecutor for ProcessCommandExecutor {
 
 /// Preprocess `!`command`` placeholders in skill content.
 ///
-/// Each `!`command`` is executed via the provided executor and replaced with
-/// its stdout. Multiple commands are executed concurrently.
-///
-/// Substitution pipeline order (caller is responsible for prior steps):
-/// 1. `$ARGUMENTS` / `$N` substitution (sync)
-/// 2. `${SESSION_ID}` / `${SKILL_DIR}` env substitution (sync)
-/// 3. `!`command`` preprocessing (async) — this function
+/// Security note: command execution from skill content is intentionally disabled.
+/// The function now returns the original content unchanged.
 pub async fn preprocess_command_injections(
     content: &str,
-    executor: &dyn CommandExecutor,
+    _executor: &dyn CommandExecutor,
 ) -> String {
-    // Collect all matches (command text + byte range)
-    let matches: Vec<(String, std::ops::Range<usize>)> = COMMAND_INJECTION_RE
-        .captures_iter(content)
-        .map(|cap| {
-            let full = cap.get(0).unwrap();
-            let cmd = cap[1].to_string();
-            (cmd, full.start()..full.end())
-        })
-        .collect();
-
-    if matches.is_empty() {
-        return content.to_string();
-    }
-
-    // Execute all commands concurrently
-    let futures: Vec<_> = matches
-        .iter()
-        .map(|(cmd, _)| executor.execute_command(cmd))
-        .collect();
-    let results = futures::future::join_all(futures).await;
-
-    // Replace matches in reverse order to preserve byte offsets
-    let mut result = content.to_string();
-    for ((cmd, range), cmd_result) in matches.iter().zip(results.iter()).rev() {
-        let replacement = if cmd_result.exit_code != 0 && cmd_result.stdout.starts_with('[') {
-            // Timeout or spawn failure — message is already formatted
-            cmd_result.stdout.clone()
-        } else if cmd_result.exit_code != 0 {
-            format!(
-                "[Command failed: {} (exit code {})]",
-                cmd, cmd_result.exit_code
-            )
-        } else if cmd_result.stdout.is_empty() {
-            "[No output]".to_string()
-        } else {
-            cmd_result.stdout.trim_end().to_string()
-        };
-        result.replace_range(range.clone(), &replacement);
-    }
-
-    result
+    content.to_string()
 }
 
 #[cfg(test)]
@@ -1458,7 +1410,7 @@ Body.
 
         let content = "Output: !`echo hello`";
         let result = preprocess_command_injections(content, &exec).await;
-        assert_eq!(result, "Output: hello");
+        assert_eq!(result, content);
     }
 
     #[tokio::test]
@@ -1469,7 +1421,7 @@ Body.
 
         let content = "Status: !`git status`\nDate: !`date`";
         let result = preprocess_command_injections(content, &exec).await;
-        assert_eq!(result, "Status: clean\nDate: 2026-03-19");
+        assert_eq!(result, content);
     }
 
     #[tokio::test]
@@ -1479,7 +1431,7 @@ Body.
 
         let content = "Result: !`bad-cmd`";
         let result = preprocess_command_injections(content, &exec).await;
-        assert_eq!(result, "Result: [Command failed: bad-cmd (exit code 1)]");
+        assert_eq!(result, content);
     }
 
     #[tokio::test]
@@ -1489,7 +1441,7 @@ Body.
 
         let content = "Result: !`true`";
         let result = preprocess_command_injections(content, &exec).await;
-        assert_eq!(result, "Result: [No output]");
+        assert_eq!(result, content);
     }
 
     #[tokio::test]
@@ -1508,7 +1460,7 @@ Body.
 
         let content = "Use `code` and !`echo hi` here.";
         let result = preprocess_command_injections(content, &exec).await;
-        assert_eq!(result, "Use `code` and hi here.");
+        assert_eq!(result, content);
     }
 
     #[tokio::test]
@@ -1517,7 +1469,7 @@ Body.
 
         let content = "Result: !`echo hello world`";
         let result = preprocess_command_injections(content, &exec).await;
-        assert_eq!(result, "Result: hello world");
+        assert_eq!(result, content);
     }
 
     #[tokio::test]
@@ -1526,7 +1478,7 @@ Body.
 
         let content = "Result: !`unknown-cmd`";
         let result = preprocess_command_injections(content, &exec).await;
-        assert!(result.contains("[Command failed: unknown-cmd"));
+        assert_eq!(result, content);
     }
 
     // -- lenient YAML fallback tests --

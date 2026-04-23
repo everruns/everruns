@@ -18,6 +18,7 @@
 
 mod tool_registry;
 
+use crate::auth::AuthMethod;
 use crate::auth::middleware::AuthUser;
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::budgets::BudgetService;
@@ -724,7 +725,24 @@ async fn resolve_org_override(
         None => return Ok(default_org.clone()),
     };
 
+    enforce_org_override_auth_scope(org_public_id, auth_user, default_org)?;
+    if org_public_id == default_org.public_id {
+        return Ok(default_org.clone());
+    }
+
     resolve_org_by_id(org_public_id, auth_user, state).await
+}
+
+fn enforce_org_override_auth_scope(
+    org_public_id: &str,
+    auth_user: &AuthUser,
+    default_org: &ResolvedOrg,
+) -> Result<(), String> {
+    if auth_user.auth_method == AuthMethod::ApiKey && org_public_id != default_org.public_id {
+        return Err("organization_id override is not allowed for API key authentication".into());
+    }
+
+    Ok(())
 }
 
 /// Resolve and validate an organization by public ID for the given user.
@@ -1217,6 +1235,68 @@ async fn execute_script(
             }
         }
         Err(_) => Err(format!("Command timed out after {timeout_ms}ms")),
+    }
+}
+
+#[cfg(test)]
+mod org_override_scope_tests {
+    use super::*;
+    use everruns_core::OrgMembership;
+    use uuid::Uuid;
+
+    fn test_auth_user(auth_method: AuthMethod) -> AuthUser {
+        AuthUser {
+            id: Uuid::new_v4(),
+            email: "user@example.com".to_string(),
+            name: "Test User".to_string(),
+            roles: vec!["member".to_string()],
+            is_platform_user: false,
+            auth_method,
+            organizations: vec![OrgMembership {
+                org_id: 1,
+                public_id: "org_default_12345678".to_string(),
+                name: "Default".to_string(),
+                role: OrgRole::Member,
+            }],
+        }
+    }
+
+    fn default_org() -> ResolvedOrg {
+        ResolvedOrg {
+            org_id: 1,
+            public_id: "org_default_12345678".to_string(),
+            name: "Default".to_string(),
+            user_id: Some(Uuid::new_v4()),
+            role: OrgRole::Member,
+            is_platform_user: false,
+        }
+    }
+
+    #[test]
+    fn api_key_auth_rejects_cross_org_override() {
+        let auth_user = test_auth_user(AuthMethod::ApiKey);
+        let result =
+            enforce_org_override_auth_scope("org_other_12345678", &auth_user, &default_org());
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn api_key_auth_allows_default_org_override() {
+        let auth_user = test_auth_user(AuthMethod::ApiKey);
+        let org = default_org();
+        let result = enforce_org_override_auth_scope(&org.public_id, &auth_user, &org);
+
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn jwt_auth_allows_cross_org_override() {
+        let auth_user = test_auth_user(AuthMethod::Jwt);
+        let result =
+            enforce_org_override_auth_scope("org_other_12345678", &auth_user, &default_org());
+
+        assert!(result.is_ok());
     }
 }
 
