@@ -1,5 +1,5 @@
 use super::types::CreateBudgetRequest;
-use super::{BUDGET_MANAGE, queries as q};
+use super::{BUDGET_MANAGE, BUDGET_VIEW, queries as q};
 use crate::domains::common::*;
 use crate::storage::models::{CreateBudgetLedgerRow, CreateBudgetRow, UpdateBudgetRow};
 use everruns_core::Policy;
@@ -114,6 +114,10 @@ impl Command for ListBudgets {
         }
     }
 
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&BUDGET_VIEW)
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<Vec<Budget>, CommandError> {
         let rows = ctx
             .db
@@ -150,6 +154,10 @@ impl Command for GetBudget {
 
     fn positional_arg() -> Option<&'static str> {
         Some("budget_id")
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&BUDGET_VIEW)
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<Budget, CommandError> {
@@ -356,6 +364,10 @@ impl Command for ListBudgetLedger {
         }
     }
 
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&BUDGET_VIEW)
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<Vec<LedgerEntry>, CommandError> {
         let budget_id = q::parse_budget_id(&self.budget_id)?;
         ctx.db
@@ -390,6 +402,10 @@ impl Command for CheckBudget {
             method: "GET",
             path: "/v1/budgets/{budget_id}/check",
         }
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&BUDGET_VIEW)
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<BudgetCheckResult, CommandError> {
@@ -435,6 +451,10 @@ impl Command for ListSessionBudgets {
         Some("session_id")
     }
 
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&BUDGET_VIEW)
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<Vec<Budget>, CommandError> {
         let rows = ctx
             .db
@@ -467,6 +487,10 @@ impl Command for CheckSessionBudgets {
 
     fn positional_arg() -> Option<&'static str> {
         Some("session_id")
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&BUDGET_VIEW)
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<BudgetCheckResult, CommandError> {
@@ -553,7 +577,13 @@ mod tests {
     fn ctx_for_role(role: OrgRole) -> Ctx {
         let db = Arc::new(StorageBackend::in_memory());
         let capability_service = Arc::new(CapabilityService::new(db.clone(), None));
-        Ctx::new(caller_with_role(role), db, capability_service, None)
+        Ctx::new(
+            caller_with_role(role),
+            db,
+            capability_service,
+            None,
+            Arc::new(everruns_core::DefaultPermissionResolver),
+        )
     }
 
     #[tokio::test]
