@@ -3766,6 +3766,52 @@
         }
       }
     },
+    "/v1/sessions/{session_id}/fs/_/download/{path}": {
+      "get": {
+        "tags": [
+          "filesystem"
+        ],
+        "summary": "GET /fs/_/download/*path - Download raw file bytes",
+        "operationId": "download_path",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID (prefixed, e.g., sess_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "path",
+            "in": "path",
+            "description": "File path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Raw file bytes",
+            "content": {
+              "application/octet-stream": {}
+            }
+          },
+          "400": {
+            "description": "Invalid session ID or path points to a directory"
+          },
+          "404": {
+            "description": "File not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
     "/v1/sessions/{session_id}/fs/_/grep": {
       "post": {
         "tags": [

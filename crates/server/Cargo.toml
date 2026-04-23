@@ -64,6 +64,7 @@ moka.workspace = true
 zip = { version = "2", default-features = false, features = ["deflate"] }
 urlencoding = "2"
 git2.workspace = true
+mime_guess = "2"
 
 bashkit = { git = "https://github.com/everruns/bashkit", tag = "v0.1.18", features = ["scripted_tool", "jq"] }
 
