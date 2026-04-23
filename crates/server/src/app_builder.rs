@@ -1028,6 +1028,7 @@ impl ServerAppBuilder {
         api_routes = api_routes.merge(crate::auth::api_key_routes(crate::auth::ApiKeyState {
             db: db.clone(),
             auth: auth_state.clone(),
+            resource_limits: crate::server::ResourceLimitsConfig::from_env(),
         }));
 
         // Auth-specific routes (login, register, OAuth — provider-dependent)
