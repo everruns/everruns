@@ -70,6 +70,7 @@ use utoipa::OpenApi;
         api::users::list_users,
         api::session_files::get_root,
         api::session_files::get_path,
+        api::session_files::download_path,
         api::session_files::create_path,
         api::session_files::update_path,
         api::session_files::delete_path,

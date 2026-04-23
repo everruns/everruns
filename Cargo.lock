@@ -2061,6 +2061,7 @@ dependencies = [
  "jsonwebtoken",
  "metrics",
  "metrics-exporter-prometheus",
+ "mime_guess",
  "moka",
  "parking_lot",
  "prost",
