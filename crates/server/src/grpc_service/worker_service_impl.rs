@@ -3607,7 +3607,7 @@ impl WorkerService for WorkerServiceImpl {
             .runner
             .clone()
             .ok_or_else(|| Status::unavailable("Agent runner not available"))?;
-        let message_service = crate::services::MessageService::new(
+        let message_service = crate::domains::messages::MessageService::new(
             self.db.clone(),
             runner,
             false,

@@ -29,8 +29,8 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::domains::budgets::BudgetService;
-use crate::domains::messages::MessageService;
 use crate::domains::mcp_servers::McpServerService;
+use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
 use crate::org_init;
 use crate::services::scoped_mcp::{

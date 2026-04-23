@@ -9,8 +9,9 @@ use test_harness::TestServer;
 use everruns_core::DEFAULT_ORG_ID;
 use everruns_server::api::common::Pagination;
 use everruns_server::domains::apps::invoke_scheduled_app_channel;
+use everruns_server::domains::messages::MessageService;
+use everruns_server::domains::sessions::SessionService;
 use everruns_server::event_delivery::EventDelivery;
-use everruns_server::services::{MessageService, SessionService};
 
 async fn create_app(
     server: &TestServer,

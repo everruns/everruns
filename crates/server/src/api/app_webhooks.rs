@@ -19,8 +19,9 @@ use utoipa::ToSchema;
 use crate::api::common::ErrorResponse;
 use crate::domains::apps::{WebhookInvocationRequest, invoke_webhook_app_channel};
 use crate::domains::common::CommandError;
+use crate::domains::messages::MessageService;
+use crate::domains::sessions::SessionService;
 use crate::middleware::RequestId;
-use crate::services::{MessageService, SessionService};
 use crate::storage::{EncryptionService, StorageBackend};
 
 const REDACTED_HEADER_VALUE: &str = "[REDACTED]";
