@@ -352,6 +352,30 @@ impl Database {
         Ok(row.map(|(id,)| id))
     }
 
+    /// Resolve owning user for a provider installation ID.
+    pub async fn get_user_id_by_installation_id(
+        &self,
+        provider: &str,
+        installation_id: i64,
+    ) -> Result<Option<Uuid>> {
+        let row: Option<(Uuid,)> = sqlx::query_as(
+            r#"
+            SELECT user_id
+            FROM user_connections
+            WHERE provider = $1
+              AND installation_id = $2
+            ORDER BY created_at DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(provider)
+        .bind(installation_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.map(|(user_id,)| user_id))
+    }
+
     /// Delete a user's connection for a specific provider
     pub async fn delete_user_connection(&self, user_id: Uuid, provider: &str) -> Result<bool> {
         let result =
