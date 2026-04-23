@@ -29,6 +29,9 @@ use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use crate::traits::{SessionFileStore, ToolContext};
 use crate::typed_id::SessionId;
 
+/// Max bytes persisted per output stream file to avoid storage exhaustion.
+const MAX_PERSISTED_STREAM_BYTES: usize = 1 * 1024 * 1024; // 1 MiB
+
 /// Result of persisting large exec output to session VFS.
 pub struct PersistResult {
     /// Path to the persisted stdout file in session VFS form
@@ -75,10 +78,11 @@ pub async fn persist_large_output(
 
     // Persist stdout
     if stdout.len() > EXEC_OUTPUT_BUDGET {
+        let stdout_to_persist = truncate_for_persistence(stdout, MAX_PERSISTED_STREAM_BYTES);
         let path = format!("/.outputs/{safe_id}.stdout");
         result.stdout_total_lines = stdout.lines().count();
         if file_store
-            .write_file(session_id, &path, stdout, "utf-8")
+            .write_file(session_id, &path, &stdout_to_persist, "utf-8")
             .await
             .is_ok()
         {
@@ -88,9 +92,10 @@ pub async fn persist_large_output(
 
     // Persist stderr separately if large
     if stderr.len() > 4096 {
+        let stderr_to_persist = truncate_for_persistence(stderr, MAX_PERSISTED_STREAM_BYTES);
         let path = format!("/.outputs/{safe_id}.stderr");
         if file_store
-            .write_file(session_id, &path, stderr, "utf-8")
+            .write_file(session_id, &path, &stderr_to_persist, "utf-8")
             .await
             .is_ok()
         {
@@ -104,6 +109,22 @@ pub async fn persist_large_output(
     } else {
         None
     }
+}
+
+/// Truncate persisted stream content to a bounded size with a clear marker.
+fn truncate_for_persistence(text: &str, max_bytes: usize) -> String {
+    if text.len() <= max_bytes {
+        return text.to_string();
+    }
+
+    // Keep valid UTF-8 boundary at or below the byte cap.
+    let mut end = max_bytes;
+    while end > 0 && !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    let mut truncated = text[..end].to_string();
+    truncated.push_str("\n\n[output truncated before persistence due to size limit]");
+    truncated
 }
 
 /// Build the annotated truncated stdout string with file reference.
@@ -377,6 +398,21 @@ mod tests {
         assert!(annotated.contains("read_file with offset/limit"));
     }
 
+    #[test]
+    fn test_truncate_for_persistence_noop_when_under_limit() {
+        let text = "hello";
+        assert_eq!(truncate_for_persistence(text, 1024), text);
+    }
+
+    #[test]
+    fn test_truncate_for_persistence_adds_marker_when_over_limit() {
+        let text = "x".repeat(128);
+        let out = truncate_for_persistence(&text, 32);
+        assert!(out.len() > 32);
+        assert!(out.starts_with(&"x".repeat(32)));
+        assert!(out.contains("output truncated before persistence"));
+    }
+
     // --- persist_large_output tests ---
 
     use crate::error::Result;
@@ -497,6 +533,18 @@ mod tests {
             mock.content("/.outputs/call-2.stdout").unwrap().len(),
             large.len()
         );
+    }
+
+    #[tokio::test]
+    async fn test_persist_large_output_caps_persisted_stdout_size() {
+        let mock = Arc::new(MockFileStore::default());
+        let store: Arc<dyn SessionFileStore> = mock.clone();
+        let huge = "x".repeat(MAX_PERSISTED_STREAM_BYTES + 2048);
+        let result = persist_large_output(&store, test_session_id(), "call-cap", &huge, "").await;
+        assert!(result.is_some());
+        let persisted = mock.content("/.outputs/call-cap.stdout").unwrap();
+        assert!(persisted.len() < huge.len());
+        assert!(persisted.contains("output truncated before persistence"));
     }
 
     #[tokio::test]
