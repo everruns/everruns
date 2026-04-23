@@ -52,7 +52,7 @@ AuthState::new(config, backend)
 AuthState::with_resolver(config, backend, Arc::new(MyResolver))
 ```
 
-The `#[policy]` macro continues to call `Policy::evaluate()`, which uses `DefaultPermissionResolver`. Custom resolvers are opt-in at explicit call sites (config endpoints, or manual `evaluate_with()` calls); the macro behavior does not change.
+Enforcement uses the resolver threaded through `Ctx` — every `Command::run` calls `Policy::evaluate_with(ctx.permission_resolver.as_ref(), &caller)`, so SaaS-custom resolvers apply uniformly across HTTP/MCP/gRPC/platform callers. Config endpoints (`/v1/{resource}/config`) use `evaluate_policies_with(resolver, caller, policies)` for UI gating hints.
 
 ### Platform User Contract
 
@@ -86,18 +86,9 @@ impl Command for CreateAgent {
 
 **Inventory coverage test.** `crates/server/tests/command_policy_enforcement_test.rs` iterates `inventory::iter::<CommandDescriptor>` and asserts every non-GET command declares a policy. New mutating commands that forget `policy()` fail the build.
 
-### Legacy `#[policy]` Macro (Being Retired)
+### Retired: `#[policy]` Macro
 
-The `#[policy(...)]` attribute macro (`crates/macros/src/lib.rs`) is the historical enforcement mechanism — it injects `POLICY.evaluate(caller)?;` at the top of a service method. Some hybrid domains still use it (`sessions`, `mcp_servers`, `llm_models`, `llm_providers`, `evals`) as defense in depth alongside `Command::run`. Remove it as each service is absorbed into `commands.rs` / `queries.rs`.
-
-**Key behaviors of the macro** (preserved for existing usage):
-
-- Accepts a path to a `Policy` constant (e.g., `HARNESS_MANAGE`).
-- Compile error if no `caller: &Caller` parameter is found.
-- Multiple `#[policy]` attributes stack.
-- Uses `DefaultPermissionResolver` directly; custom resolvers are **not** consulted by the macro.
-
-Because the macro hardcodes `DefaultPermissionResolver`, it breaks the SaaS enforcement contract for any caller it's the primary check for. `Command::run` uses `evaluate_with(ctx.permission_resolver, &caller)` and is the only path that honors custom resolvers during enforcement.
+The `#[policy(...)]` attribute macro has been removed. It was the historical enforcement mechanism (inject `POLICY.evaluate(caller)?;` at the top of a service method) and hardcoded `DefaultPermissionResolver` — which bypassed the SaaS resolver contract (TM-AUTHZ-008). `Command::run` is now the single enforcement point and uses `evaluate_with(ctx.permission_resolver, caller)`. Service methods no longer perform policy checks; the authorization check happens at the command boundary.
 
 ### Durable Ownership
 
@@ -161,15 +152,15 @@ pub async fn harness_config(org: ResolvedOrg) -> Json<ResourceConfigResponse> {
 
 ## Policy Requirements for New Features
 
-All new service methods MUST have `#[policy]` enforcement with a `Caller` parameter. No service method should accept raw `org_id` — use `Caller` to carry auth context. New features without policy enforcement will not pass review.
+Every non-GET domain command MUST declare `Command::policy() -> Option<&'static Policy>`. The command runner enforces the declared policy via `evaluate_with(ctx.permission_resolver, caller)` before `execute`. `crates/server/tests/command_policy_enforcement_test.rs::every_non_readonly_command_declares_policy` walks `inventory::iter::<CommandDescriptor>` at test time and fails the build for any mutating command without a policy declaration.
 
 ### Checklist for New Resources
 
-1. Define view + manage policies (and dangerous if applicable)
-2. Add `#[policy]` to all service methods
-3. Use `Caller` parameter instead of `org_id`
-4. Add `GET /v1/{resource}/config` endpoint returning `ResourceConfigResponse`
-5. Wire UI with `usePolicies(resource)` hook
+1. Define view + manage policies (and dangerous if applicable) as `pub const` in the domain's `mod.rs`.
+2. Declare `fn policy() -> Option<&'static Policy>` on every `Command` impl that isn't a plain GET read.
+3. Thread the resolver through `AppState.ctx()`: pass `self.auth.permission_resolver.clone()` to `Ctx::new` / `Ctx::minimal`.
+4. Add `GET /v1/{resource}/config` endpoint returning `ResourceConfigResponse` for UI gating.
+5. Wire UI with `usePolicies(resource)` hook.
 
 ## Migration Path
 
@@ -194,7 +185,8 @@ All new service methods MUST have `#[policy]` enforcement with a `Caller` parame
 | File | Purpose |
 |------|---------|
 | `crates/core/src/permissions.rs` | Permission enum, Rule, Policy, Caller, evaluation logic |
-| `crates/macros/src/lib.rs` | `#[policy]` proc macro |
-| `crates/server/src/services/*.rs` | `#[policy(..)]` on service methods |
-| `crates/server/src/api/*_config.rs` | Config endpoints returning policy results |
-| `crates/server/src/auth/middleware.rs` | Caller extraction from ResolvedOrg |
+| `crates/server/src/domains/common.rs` | `Command::run`, `Ctx.permission_resolver`, dispatch |
+| `crates/server/src/domains/*/mod.rs` | Per-domain `Policy` constants |
+| `crates/server/src/domains/*/commands.rs` | `Command::policy()` declarations |
+| `crates/server/tests/command_policy_enforcement_test.rs` | Inventory coverage test + resolver enforcement tests |
+| `crates/server/src/auth/middleware.rs` | `Caller` extraction from `ResolvedOrg`, `AuthState.permission_resolver` |

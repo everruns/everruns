@@ -230,7 +230,7 @@ Phase 1 assigns `OrgRole::Owner` as the default for all users. This means no per
 `Caller::internal(org_id)` is used exclusively in `grpc_service.rs` for worker-to-server calls. The gRPC endpoint requires a bearer token in production (`TM-DURABLE-002`). HTTP handlers always construct `Caller` from `ResolvedOrg` with the user's actual role.
 
 **TM-AUTHZ-004 — Command Runner as Single Enforcement Point:**
-`Command::run` (`crates/server/src/domains/common.rs`) evaluates `Command::policy()` against the active `PermissionResolver` before dispatching to `execute`. HTTP adapters call `run`; MCP and gRPC `ExecuteCommand` route through `dispatch()` which calls `run`. Coverage is enforced by iterating `inventory::iter::<CommandDescriptor>` in a test, so new mutating commands that forget `policy()` fail the build. The legacy `#[policy]` attribute macro remains in a few service methods as defense in depth but is slated for removal as services are absorbed into commands.
+`Command::run` (`crates/server/src/domains/common.rs`) evaluates `Command::policy()` against the active `PermissionResolver` before dispatching to `execute`. HTTP adapters call `run`; MCP and gRPC `ExecuteCommand` route through `dispatch()` which calls `run`. Coverage is enforced by iterating `inventory::iter::<CommandDescriptor>` in a test, so new mutating commands that forget `policy()` fail the build. The legacy `#[policy]` attribute macro was removed — service-layer checks were redundant with `Command::run` and hardcoded `DefaultPermissionResolver`, re-introducing `TM-AUTHZ-008`.
 
 **TM-AUTHZ-007 / TM-AUTHZ-008 — Historical gap:**
 Prior to the command runner, only MCP/gRPC `dispatch` evaluated `Command::policy()`, and the evaluation used `Policy::evaluate` (default resolver only). HTTP adapters called `Command::execute` directly, so role-based restrictions and SaaS custom resolvers were not enforced on HTTP writes for fully-migrated domains. The runner closes both gaps in a single code path.
@@ -1044,7 +1044,7 @@ Session A cannot access Session B's container:
 | Control | Category | Implementation |
 |---------|----------|----------------|
 | Authentication | TM-AUTH | JWT (15 min), API keys (SHA-256), OAuth, Argon2id passwords |
-| Authorization | TM-TENANT, TM-AUTHZ | Org-scoped queries, ResolvedOrg extractor, 404 on cross-org; `#[policy]` macro enforcement, role→permission mapping |
+| Authorization | TM-TENANT, TM-AUTHZ | Org-scoped queries, ResolvedOrg extractor, 404 on cross-org; `Command::run` enforcement via `evaluate_with(ctx.permission_resolver, caller)`, role→permission mapping |
 | Encryption at rest | TM-CRYPTO | AES-256-GCM envelope encryption for API keys |
 | Encryption in transit | TM-LLM | HTTPS for all external communication |
 | Input validation | TM-API | Size limits, path validation, regex constraints |
