@@ -80,8 +80,13 @@ impl ScheduleAppState {
             is_platform_user: auth.0.is_platform_user,
             is_internal: false,
         };
-        Ok(Ctx::minimal(caller, self.db.clone(), None)
-            .with_workflow_store(Some(self.get_store()?.clone())))
+        Ok(Ctx::minimal(
+            caller,
+            self.db.clone(),
+            None,
+            self.auth.permission_resolver.clone(),
+        )
+        .with_workflow_store(Some(self.get_store()?.clone())))
     }
 }
 
@@ -426,7 +431,7 @@ pub async fn create_schedule(
     State(state): State<ScheduleAppState>,
     Json(req): Json<CreateScheduleRequest>,
 ) -> Result<(StatusCode, Json<ScheduleResponse>), (StatusCode, Json<ErrorResponse>)> {
-    let schedule = CreateSchedule(req).execute(&state.ctx(&auth)?).await?;
+    let schedule = CreateSchedule(req).run(&state.ctx(&auth)?).await?;
     Ok((StatusCode::CREATED, Json(schedule)))
 }
 
@@ -458,7 +463,7 @@ pub async fn list_schedules(
         offset: query.offset,
         limit: query.limit,
     }
-    .execute(&state.ctx(&auth)?)
+    .run(&state.ctx(&auth)?)
     .await?;
     Ok(Json(schedules))
 }
@@ -483,9 +488,7 @@ pub async fn get_schedule(
     State(state): State<ScheduleAppState>,
     Path(schedule_id): Path<Uuid>,
 ) -> ApiResult<ScheduleResponse> {
-    let schedule = GetSchedule { schedule_id }
-        .execute(&state.ctx(&auth)?)
-        .await?;
+    let schedule = GetSchedule { schedule_id }.run(&state.ctx(&auth)?).await?;
     Ok(Json(schedule))
 }
 
@@ -513,7 +516,7 @@ pub async fn update_schedule(
     Json(req): Json<UpdateScheduleRequest>,
 ) -> ApiResult<ScheduleResponse> {
     let schedule = UpdateScheduleCmd { schedule_id, req }
-        .execute(&state.ctx(&auth)?)
+        .run(&state.ctx(&auth)?)
         .await?;
     Ok(Json(schedule))
 }
@@ -539,7 +542,7 @@ pub async fn delete_schedule(
     Path(schedule_id): Path<Uuid>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     DeleteSchedule { schedule_id }
-        .execute(&state.ctx(&auth)?)
+        .run(&state.ctx(&auth)?)
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -565,7 +568,7 @@ pub async fn pause_schedule(
     Path(schedule_id): Path<Uuid>,
 ) -> ApiResult<ScheduleResponse> {
     let schedule = PauseSchedule { schedule_id }
-        .execute(&state.ctx(&auth)?)
+        .run(&state.ctx(&auth)?)
         .await?;
     Ok(Json(schedule))
 }
@@ -591,7 +594,7 @@ pub async fn resume_schedule(
     Path(schedule_id): Path<Uuid>,
 ) -> ApiResult<ScheduleResponse> {
     let schedule = ResumeSchedule { schedule_id }
-        .execute(&state.ctx(&auth)?)
+        .run(&state.ctx(&auth)?)
         .await?;
     Ok(Json(schedule))
 }
@@ -617,7 +620,7 @@ pub async fn trigger_schedule(
     Path(schedule_id): Path<Uuid>,
 ) -> ApiResult<TriggerResponse> {
     let response = TriggerSchedule { schedule_id }
-        .execute(&state.ctx(&auth)?)
+        .run(&state.ctx(&auth)?)
         .await?;
     Ok(Json(response))
 }
@@ -652,7 +655,7 @@ pub async fn list_schedule_executions(
         offset: query.offset,
         limit: query.limit,
     }
-    .execute(&state.ctx(&auth)?)
+    .run(&state.ctx(&auth)?)
     .await?;
     Ok(Json(executions))
 }
@@ -678,7 +681,7 @@ pub async fn get_execution(
     Path(execution_id): Path<Uuid>,
 ) -> ApiResult<ScheduleExecutionResponse> {
     let execution = GetExecution { execution_id }
-        .execute(&state.ctx(&auth)?)
+        .run(&state.ctx(&auth)?)
         .await?;
     Ok(Json(execution))
 }
@@ -704,7 +707,7 @@ pub async fn get_schedule_stats(
     Path(schedule_id): Path<Uuid>,
 ) -> ApiResult<ScheduleStatsResponse> {
     let stats = GetScheduleStats { schedule_id }
-        .execute(&state.ctx(&auth)?)
+        .run(&state.ctx(&auth)?)
         .await?;
     Ok(Json(stats))
 }

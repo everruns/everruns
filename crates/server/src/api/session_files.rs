@@ -159,7 +159,7 @@ impl AppState {
 
     pub fn with_virtual_registry(
         mut self,
-        registry: Arc<crate::services::virtual_mount_registry::VirtualMountRegistry>,
+        registry: Arc<crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry>,
     ) -> Self {
         self.file_service =
             Arc::new(SessionFileService::new(self.db.clone()).with_virtual_registry(registry));
@@ -167,9 +167,14 @@ impl AppState {
     }
 
     fn ctx(&self, org: &ResolvedOrg) -> Ctx {
-        Ctx::minimal(Caller::from(org), self.db.clone(), None)
-            .with_session_file_service(self.file_service.clone())
-            .with_event_service(self.event_service.clone())
+        Ctx::minimal(
+            Caller::from(org),
+            self.db.clone(),
+            None,
+            self.auth.permission_resolver.clone(),
+        )
+        .with_session_file_service(self.file_service.clone())
+        .with_event_service(self.event_service.clone())
     }
 }
 
@@ -398,7 +403,7 @@ pub async fn get_root(
         session_id,
         recursive: query.recursive,
     }
-    .execute(&state.ctx(&org))
+    .run(&state.ctx(&org))
     .await
     .map_err(file_error)?;
     Ok(Json(response))
@@ -433,7 +438,7 @@ pub async fn get_path(
         path,
         recursive: query.recursive,
     }
-    .execute(&state.ctx(&org))
+    .run(&state.ctx(&org))
     .await
     .map_err(file_error)?;
 
@@ -476,7 +481,7 @@ pub async fn download_path(
         path,
         recursive: false,
     }
-    .execute(&state.ctx(&org))
+    .run(&state.ctx(&org))
     .await
     .map_err(file_error)?;
 
@@ -525,7 +530,7 @@ pub async fn create_path(
         path,
         req,
     }
-    .execute(&state.ctx(&org))
+    .run(&state.ctx(&org))
     .await
     .map_err(file_error)?;
     Ok((StatusCode::CREATED, Json(file)))
@@ -559,7 +564,7 @@ pub async fn update_path(
         path,
         req,
     }
-    .execute(&state.ctx(&org))
+    .run(&state.ctx(&org))
     .await
     .map_err(file_error)?;
     Ok(Json(file))
@@ -601,7 +606,7 @@ pub async fn delete_path(
         path,
         recursive: query.recursive,
     }
-    .execute(&state.ctx(&org))
+    .run(&state.ctx(&org))
     .await
     .map_err(file_error)?;
     Ok(Json(response))
@@ -631,7 +636,7 @@ pub async fn move_file(
     Json(req): Json<MoveFileRequest>,
 ) -> Result<Json<SessionFile>, (StatusCode, String)> {
     let file = MoveSessionFile { session_id, req }
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await
         .map_err(file_error)?;
     Ok(Json(file))
@@ -661,7 +666,7 @@ pub async fn copy_file(
     Json(req): Json<CopyFileRequest>,
 ) -> Result<(StatusCode, Json<SessionFile>), (StatusCode, String)> {
     let file = CopySessionFile { session_id, req }
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await
         .map_err(file_error)?;
     Ok((StatusCode::CREATED, Json(file)))
@@ -689,7 +694,7 @@ pub async fn grep_files(
     Json(req): Json<GrepRequest>,
 ) -> Result<Json<ListResponse<GrepResult>>, (StatusCode, String)> {
     let results = GrepSessionFiles { session_id, req }
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await
         .map_err(file_error)?;
     Ok(Json(ListResponse::new(results)))
@@ -718,7 +723,7 @@ pub async fn stat_file(
     Json(req): Json<StatRequest>,
 ) -> Result<Json<FileStat>, (StatusCode, String)> {
     let stat = StatSessionFile { session_id, req }
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await
         .map_err(file_error)?;
     Ok(Json(stat))

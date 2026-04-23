@@ -136,6 +136,10 @@ impl InMemoryDatabase {
         Ok((before - sessions.len()) as u64)
     }
 
+    pub async fn delete_cli_auth_session(&self, id: Uuid) -> Result<bool> {
+        Ok(self.cli_auth_sessions.write().remove(&id).is_some())
+    }
+
     // ============================================
     // Refresh Tokens
     // ============================================

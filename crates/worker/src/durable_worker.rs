@@ -1279,7 +1279,13 @@ impl DurableWorker {
         {
             let mut store_guard = store.lock().await;
             let is_llm_failure = match &result {
-                Ok(reason_result) => !reason_result.success,
+                Ok(reason_result) => {
+                    // Dependency blockers (archived/deleted harness/agent) return
+                    // success=false before any LLM call. Do not count them as
+                    // provider outages for the circuit breaker.
+                    !reason_result.success
+                        && reason_result.error.as_deref() != Some("dependency_unavailable")
+                }
                 Err(_) => true,
             };
 

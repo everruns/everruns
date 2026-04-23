@@ -44,6 +44,7 @@ impl AppState {
             self.db.clone(),
             self.service.clone(),
             None,
+            self.auth.permission_resolver.clone(),
         )
     }
 }
@@ -89,7 +90,7 @@ pub async fn list_capabilities(
         offset: query.offset,
         limit: query.limit,
     }
-    .execute(&state.ctx(&org))
+    .run(&state.ctx(&org))
     .await
     .map_err(|e| e.status())?;
 
@@ -119,7 +120,7 @@ pub async fn get_capability(
     Path(capability_id): Path<String>,
 ) -> Result<Json<WithUrls<CapabilityInfo>>, StatusCode> {
     let capability = crate::domains::capabilities::GetCapability { id: capability_id }
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await
         .map_err(|e| e.status())?;
 

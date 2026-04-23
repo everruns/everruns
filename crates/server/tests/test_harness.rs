@@ -86,7 +86,7 @@ pub struct TestServer {
     pub encryption: Option<Arc<EncryptionService>>,
     pub pool: PgPool,
     pub virtual_registry:
-        Arc<everruns_server::services::virtual_mount_registry::VirtualMountRegistry>,
+        Arc<everruns_server::domains::session_files::virtual_mount_registry::VirtualMountRegistry>,
     pub runner: Arc<dyn AgentRunner>,
     /// Public ID of the built-in `base` harness for the default org (resolved
     /// at construction time; no hardcoded UUIDs).
@@ -277,7 +277,7 @@ impl TestServer {
         );
         let llm_models_state = api::llm_models::AppState::new(db.clone(), auth_state.clone(), None);
         let virtual_registry = Arc::new(
-            everruns_server::services::virtual_mount_registry::VirtualMountRegistry::new(),
+            everruns_server::domains::session_files::virtual_mount_registry::VirtualMountRegistry::new(),
         );
         // Session SQL database store (in-memory for all test modes)
         let sqldb_backend = Arc::new(everruns_session_sqldb::InMemorySqlDbBackend::new());
