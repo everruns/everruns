@@ -6,5 +6,6 @@
 pub mod commands;
 pub mod queries;
 pub mod types;
+pub mod validation;
 
 pub use commands::*;

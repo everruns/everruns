@@ -153,14 +153,14 @@ impl Command for CreateAgent {
             req.capabilities.clone(),
             !req.initial_files.is_empty(),
         );
-        crate::services::capability_validation::validate_capability_refs(
+        crate::domains::capabilities::validation::validate_capability_refs(
             &ctx.db,
             ctx.org_id(),
             &caps,
         )
         .await
         .map_err(classify_anyhow)?;
-        crate::services::scoped_mcp::validate_scoped_mcp_servers(&req.mcp_servers)
+        crate::domains::mcp_servers::scoped_mcp::validate_scoped_mcp_servers(&req.mcp_servers)
             .map_err(classify_anyhow)?;
         let default_model_id = q::validate_model_id(&ctx.db, ctx.org_id(), req.default_model_id)
             .await
@@ -422,7 +422,7 @@ impl Command for UpdateAgentCmd {
             None => None,
         };
         if let Some(ref caps) = capabilities_override {
-            crate::services::capability_validation::validate_capability_refs(
+            crate::domains::capabilities::validation::validate_capability_refs(
                 &ctx.db,
                 ctx.org_id(),
                 caps,
@@ -431,7 +431,7 @@ impl Command for UpdateAgentCmd {
             .map_err(classify_anyhow)?;
         }
         if let Some(ref servers) = req.mcp_servers {
-            crate::services::scoped_mcp::validate_scoped_mcp_servers(servers)
+            crate::domains::mcp_servers::scoped_mcp::validate_scoped_mcp_servers(servers)
                 .map_err(classify_anyhow)?;
         }
         let default_model_id = q::validate_model_id(&ctx.db, ctx.org_id(), req.default_model_id)
@@ -595,14 +595,14 @@ impl Command for UpsertAgent {
             req.capabilities.clone(),
             !req.initial_files.is_empty(),
         );
-        crate::services::capability_validation::validate_capability_refs(
+        crate::domains::capabilities::validation::validate_capability_refs(
             &ctx.db,
             ctx.org_id(),
             &caps,
         )
         .await
         .map_err(classify_anyhow)?;
-        crate::services::scoped_mcp::validate_scoped_mcp_servers(&req.mcp_servers)
+        crate::domains::mcp_servers::scoped_mcp::validate_scoped_mcp_servers(&req.mcp_servers)
             .map_err(classify_anyhow)?;
         let default_model_id = q::validate_model_id(&ctx.db, ctx.org_id(), req.default_model_id)
             .await
@@ -839,7 +839,7 @@ impl Command for PreviewAgent {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<AgentPreview, CommandError> {
-        crate::services::scoped_mcp::validate_scoped_mcp_servers(&self.mcp_servers)
+        crate::domains::mcp_servers::scoped_mcp::validate_scoped_mcp_servers(&self.mcp_servers)
             .map_err(classify_anyhow)?;
         let (prompt, mut tools) = ctx
             .capability_service
@@ -851,9 +851,11 @@ impl Command for PreviewAgent {
             .await
             .map_err(classify_anyhow)?;
         tools.extend(
-            crate::services::scoped_mcp::build_scoped_mcp_tool_definitions(&self.mcp_servers)
-                .await
-                .map_err(classify_anyhow)?,
+            crate::domains::mcp_servers::scoped_mcp::build_scoped_mcp_tool_definitions(
+                &self.mcp_servers,
+            )
+            .await
+            .map_err(classify_anyhow)?,
         );
         tools.extend(self.tools);
         Ok(AgentPreview {

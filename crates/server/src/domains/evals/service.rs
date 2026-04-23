@@ -7,8 +7,8 @@ use crate::api::evals::{
     BulkUpdateEvalRunScoresRequest, CreateEvalCaseRequest, CreateEvalRequest, CreateEvalRunRequest,
     ExternalScoreStatus, UpdateEvalCaseRequest, UpdateEvalRequest, UpdateEvalResultScoresRequest,
 };
+use crate::domains::evals::runner::{EvalRunContext, spawn_eval_run};
 use crate::errors::{BadRequestError, ResourceNotFoundError};
-use crate::services::eval_runner::{EvalRunContext, spawn_eval_run};
 use crate::storage::StorageBackend;
 use crate::storage::models::{
     CreateEvalCaseResultRow, CreateEvalCaseRow, CreateEvalRow, CreateEvalRunRow,

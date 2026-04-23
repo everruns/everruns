@@ -30,13 +30,13 @@ use uuid::Uuid;
 
 use crate::domains::budgets::BudgetService;
 use crate::domains::mcp_servers::McpServerService;
+use crate::domains::mcp_servers::scoped_mcp::{
+    build_scoped_mcp_tool_definitions, resolve_scoped_mcp_server, validate_scoped_mcp_servers,
+};
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
 use crate::max_iterations;
 use crate::org_init;
-use crate::services::scoped_mcp::{
-    build_scoped_mcp_tool_definitions, resolve_scoped_mcp_server, validate_scoped_mcp_servers,
-};
 use crate::services::{EventService, LlmResolverService, PrincipalService};
 use crate::storage::models::{AgentCapabilityRow, AgentRow, UpdateSession};
 use crate::storage::{EncryptionService, StorageBackend};
@@ -266,7 +266,8 @@ pub struct DirectWorkerAdapters {
     runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
     encryption: Option<Arc<EncryptionService>>,
     workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
-    virtual_registry: Option<Arc<crate::services::virtual_mount_registry::VirtualMountRegistry>>,
+    virtual_registry:
+        Option<Arc<crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry>>,
 }
 
 impl DirectWorkerAdapters {
@@ -322,7 +323,7 @@ impl DirectWorkerAdapters {
     /// Set the virtual mount registry for serving files from memory
     pub fn with_virtual_registry(
         mut self,
-        registry: Arc<crate::services::virtual_mount_registry::VirtualMountRegistry>,
+        registry: Arc<crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry>,
     ) -> Self {
         self.virtual_registry = Some(registry);
         self
@@ -1223,11 +1224,12 @@ impl WorkerAdapters for DirectWorkerAdapters {
             .await?;
 
         let local_mcp_tool_definitions = if let Some(ref harness) = harness {
-            let effective = crate::services::scoped_mcp::merge_effective_scoped_mcp_servers(
-                harness,
-                agent.as_ref(),
-                &session,
-            );
+            let effective =
+                crate::domains::mcp_servers::scoped_mcp::merge_effective_scoped_mcp_servers(
+                    harness,
+                    agent.as_ref(),
+                    &session,
+                );
 
             if let Err(error) = validate_scoped_mcp_servers(&effective) {
                 tracing::warn!(error = %error, "Invalid scoped MCP server config, skipping");
