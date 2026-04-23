@@ -19,6 +19,7 @@ use crate::storage::{
     models::{CreateSessionRow, UpdateSession},
 };
 use anyhow::Result;
+use everruns_core::session_sandbox::SESSION_SANDBOX_CAPABILITY_ID;
 use everruns_core::{
     AgentCapabilityConfig, AgentId, Caller, CapabilityRegistry, HarnessId, InitialFile, ModelId,
     MountPoint, Permission, Policy, Rule, Session, SessionId, SessionStatus, SubagentStatus,
@@ -167,11 +168,13 @@ impl SessionService {
                     .or(effective_harness.default_model_id)
             });
 
+        let session_capabilities = sanitize_session_capabilities(req.capabilities);
+
         // Validate session-level capability refs before persisting
         crate::domains::capabilities::validation::validate_capability_refs(
             &self.db,
             org_id,
-            &req.capabilities,
+            &session_capabilities,
         )
         .await?;
         let mut scoped_mcp_layers = vec![&effective_harness.mcp_servers];
@@ -184,7 +187,7 @@ impl SessionService {
         )?;
 
         // Serialize capabilities to JSON for storage
-        let capabilities_json = serde_json::to_value(&req.capabilities)?;
+        let capabilities_json = serde_json::to_value(&session_capabilities)?;
 
         let hints_json = req
             .hints
@@ -240,7 +243,7 @@ impl SessionService {
             org_id,
             harness_id.uuid(),
             agent_id.map(|a| a.uuid()),
-            &req.capabilities,
+            &session_capabilities,
             session.id.uuid(),
         )
         .await?;
@@ -266,7 +269,7 @@ impl SessionService {
                 Vec::new()
             };
             let merged = merge_capabilities(&effective_harness.capabilities, &agent_capabilities);
-            let merged = merge_capabilities(&merged, &req.capabilities);
+            let merged = merge_capabilities(&merged, &session_capabilities);
             service
                 .auto_start_for_capabilities(session.id, &merged)
                 .await;
@@ -1145,6 +1148,31 @@ impl SessionService {
     }
 }
 
+fn sanitize_session_capabilities(
+    capabilities: Vec<AgentCapabilityConfig>,
+) -> Vec<AgentCapabilityConfig> {
+    capabilities
+        .into_iter()
+        .map(|mut capability| {
+            if capability.capability_id() == SESSION_SANDBOX_CAPABILITY_ID
+                && let Some(provider_config) = capability
+                    .config
+                    .get_mut("provider_config")
+                    .and_then(serde_json::Value::as_object_mut)
+            {
+                let removed_api_base = provider_config.remove("api_base").is_some();
+                let removed_toolbox_base = provider_config.remove("toolbox_base").is_some();
+                if removed_api_base || removed_toolbox_base {
+                    tracing::warn!(
+                        "Ignoring session-level session_sandbox provider_config base URL overrides"
+                    );
+                }
+            }
+            capability
+        })
+        .collect()
+}
+
 // normalize_initial_file_path is imported from everruns_core::config_layer
 
 #[cfg(test)]
@@ -1159,6 +1187,52 @@ mod tests {
         CreateLlmModelRow, CreateLlmProviderRow, CreateOrganizationRow, StorageBackend,
     };
     use everruns_core::{Caller, DEFAULT_ORG_ID, InitialFile};
+
+    #[test]
+    fn sanitize_session_capabilities_removes_daytona_base_url_overrides() {
+        let capabilities = vec![AgentCapabilityConfig::with_config(
+            SESSION_SANDBOX_CAPABILITY_ID,
+            serde_json::json!({
+                "provider": "daytona",
+                "provider_config": {
+                    "api_base": "https://attacker.example",
+                    "toolbox_base": "https://attacker.example/toolbox",
+                    "workspace_path": "/home/daytona/workspace",
+                }
+            }),
+        )];
+
+        let sanitized = sanitize_session_capabilities(capabilities);
+        let provider_config = sanitized[0]
+            .config
+            .get("provider_config")
+            .and_then(serde_json::Value::as_object)
+            .expect("provider_config should be object");
+
+        assert!(!provider_config.contains_key("api_base"));
+        assert!(!provider_config.contains_key("toolbox_base"));
+        assert_eq!(
+            provider_config
+                .get("workspace_path")
+                .and_then(serde_json::Value::as_str),
+            Some("/home/daytona/workspace")
+        );
+    }
+
+    #[test]
+    fn sanitize_session_capabilities_keeps_non_sandbox_capabilities() {
+        let capabilities = vec![AgentCapabilityConfig::with_config(
+            "shell",
+            serde_json::json!({
+                "provider_config": {
+                    "api_base": "https://example.com"
+                }
+            }),
+        )];
+
+        let sanitized = sanitize_session_capabilities(capabilities.clone());
+        assert_eq!(sanitized, capabilities);
+    }
 
     fn test_ctx(caller: Caller, db: Arc<StorageBackend>) -> Ctx {
         let capability_service = Arc::new(CapabilityService::new(db.clone(), None));
