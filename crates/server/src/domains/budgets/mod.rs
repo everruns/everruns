@@ -7,6 +7,8 @@ use everruns_core::{Permission, Policy, Rule};
 pub mod commands;
 pub mod queries;
 pub mod service;
+#[cfg(test)]
+mod tests;
 pub mod types;
 
 pub use commands::*;

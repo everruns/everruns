@@ -88,7 +88,7 @@ impl SessionService {
     /// Attach a virtual mount registry to the internal session file service.
     pub fn with_virtual_registry(
         mut self,
-        registry: Arc<crate::services::virtual_mount_registry::VirtualMountRegistry>,
+        registry: Arc<crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry>,
     ) -> Self {
         self.session_file_service =
             SessionFileService::new(self.db.clone()).with_virtual_registry(registry);
@@ -168,7 +168,7 @@ impl SessionService {
             });
 
         // Validate session-level capability refs before persisting
-        crate::services::capability_validation::validate_capability_refs(
+        crate::domains::capabilities::validation::validate_capability_refs(
             &self.db,
             org_id,
             &req.capabilities,
@@ -179,7 +179,9 @@ impl SessionService {
             scoped_mcp_layers.push(agent_mcp_servers);
         }
         scoped_mcp_layers.push(&req.mcp_servers);
-        crate::services::scoped_mcp::validate_merged_scoped_mcp_servers(scoped_mcp_layers)?;
+        crate::domains::mcp_servers::scoped_mcp::validate_merged_scoped_mcp_servers(
+            scoped_mcp_layers,
+        )?;
 
         // Serialize capabilities to JSON for storage
         let capabilities_json = serde_json::to_value(&req.capabilities)?;
@@ -293,7 +295,7 @@ impl SessionService {
         )
         .await?
         .ok_or_else(|| ResourceNotFoundError::new("Harness"))?;
-        crate::services::scoped_mcp::validate_merged_scoped_mcp_servers([
+        crate::domains::mcp_servers::scoped_mcp::validate_merged_scoped_mcp_servers([
             &effective_harness.mcp_servers,
             &req.mcp_servers,
         ])?;

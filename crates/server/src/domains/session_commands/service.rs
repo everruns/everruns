@@ -42,7 +42,8 @@ pub struct SessionCommandService {
     capability_registry: CapabilityRegistry,
     driver_registry: DriverRegistry,
     sqldb_store: everruns_core::traits::SessionSqlDbStoreRef,
-    virtual_registry: Option<Arc<crate::services::virtual_mount_registry::VirtualMountRegistry>>,
+    virtual_registry:
+        Option<Arc<crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry>>,
 }
 
 impl SessionCommandService {
@@ -70,7 +71,7 @@ impl SessionCommandService {
 
     pub fn with_virtual_registry(
         mut self,
-        registry: Arc<crate::services::virtual_mount_registry::VirtualMountRegistry>,
+        registry: Arc<crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry>,
     ) -> Self {
         self.virtual_registry = Some(registry);
         self

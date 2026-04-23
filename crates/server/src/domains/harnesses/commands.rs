@@ -137,7 +137,7 @@ impl Command for CreateHarness {
             req.capabilities.clone(),
             !req.initial_files.is_empty(),
         );
-        crate::services::capability_validation::validate_capability_refs(
+        crate::domains::capabilities::validation::validate_capability_refs(
             &ctx.db,
             ctx.org_id(),
             &caps,
@@ -159,8 +159,10 @@ impl Command for CreateHarness {
             scoped_mcp_layers.push(&parent.mcp_servers);
         }
         scoped_mcp_layers.push(&req.mcp_servers);
-        crate::services::scoped_mcp::validate_merged_scoped_mcp_servers(scoped_mcp_layers)
-            .map_err(classify_anyhow)?;
+        crate::domains::mcp_servers::scoped_mcp::validate_merged_scoped_mcp_servers(
+            scoped_mcp_layers,
+        )
+        .map_err(classify_anyhow)?;
         let default_model_id = q::validate_model_id(&ctx.db, ctx.org_id(), req.default_model_id)
             .await
             .map_err(classify_anyhow)?;
@@ -377,7 +379,7 @@ impl Command for UpdateHarnessCmd {
             None => None,
         };
         if let Some(ref caps) = capabilities_override {
-            crate::services::capability_validation::validate_capability_refs(
+            crate::domains::capabilities::validation::validate_capability_refs(
                 &ctx.db,
                 ctx.org_id(),
                 caps,
@@ -414,8 +416,10 @@ impl Command for UpdateHarnessCmd {
             scoped_mcp_layers.push(&parent.mcp_servers);
         }
         scoped_mcp_layers.push(&updated_mcp_servers);
-        crate::services::scoped_mcp::validate_merged_scoped_mcp_servers(scoped_mcp_layers)
-            .map_err(classify_anyhow)?;
+        crate::domains::mcp_servers::scoped_mcp::validate_merged_scoped_mcp_servers(
+            scoped_mcp_layers,
+        )
+        .map_err(classify_anyhow)?;
 
         // Persist
         let input = UpdateHarness {
@@ -714,7 +718,7 @@ impl Command for PreviewHarness {
                 .map_err(classify_anyhow)?,
             None => None,
         };
-        crate::services::scoped_mcp::validate_scoped_mcp_servers(&self.mcp_servers)
+        crate::domains::mcp_servers::scoped_mcp::validate_scoped_mcp_servers(&self.mcp_servers)
             .map_err(classify_anyhow)?;
         let (system_prompt, capabilities) = q::merge_preview_layer(
             parent.as_ref(),
@@ -728,17 +732,21 @@ impl Command for PreviewHarness {
                 .unwrap_or_default(),
             &self.mcp_servers,
         );
-        crate::services::scoped_mcp::validate_scoped_mcp_servers(&effective_mcp_servers)
-            .map_err(classify_anyhow)?;
+        crate::domains::mcp_servers::scoped_mcp::validate_scoped_mcp_servers(
+            &effective_mcp_servers,
+        )
+        .map_err(classify_anyhow)?;
         let (system_prompt, mut tools) = ctx
             .capability_service
             .preview(ctx.org_id(), &system_prompt, &capabilities)
             .await
             .map_err(classify_anyhow)?;
         tools.extend(
-            crate::services::scoped_mcp::build_scoped_mcp_tool_definitions(&effective_mcp_servers)
-                .await
-                .map_err(classify_anyhow)?,
+            crate::domains::mcp_servers::scoped_mcp::build_scoped_mcp_tool_definitions(
+                &effective_mcp_servers,
+            )
+            .await
+            .map_err(classify_anyhow)?,
         );
         Ok(HarnessPreview {
             system_prompt,
