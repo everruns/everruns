@@ -55,7 +55,7 @@ const CODE_EXTENSIONS = new Set([
   "svelte",
 ]);
 
-const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico"]);
+const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "ico"]);
 
 // Map file extensions to Shiki language identifiers
 const EXTENSION_TO_LANG: Record<string, string> = {
@@ -349,7 +349,6 @@ export function ImagePreview({
       jpeg: "image/jpeg",
       gif: "image/gif",
       webp: "image/webp",
-      svg: "image/svg+xml",
       bmp: "image/bmp",
       ico: "image/x-icon",
     };
