@@ -65,17 +65,17 @@ The recommended default harness. Bundles the core capabilities needed for genera
 
 ### Platform Chat
 
-Conversational harness for the global chat interface. Extends Generic capabilities with platform management tools, tagged separately to support the per-user singleton session pattern.
+Conversational harness for the global chat interface. Inherits Generic capabilities and is tagged separately to support the per-user singleton session pattern.
 
 | Property | Value |
 |----------|-------|
 | Name | `platform-chat` |
 | Display Name | Platform Chat |
 | Parent | `generic` |
-| System Prompt | See `crates/server/src/seed.rs` (CHAT_HARNESS) for full prompt |
+| System Prompt | See `crates/server/src/harnesses/platform_chat.rs` for full prompt |
 | Tags | `chat`, `built-in` |
 
-**Effective capabilities:** Generic capabilities plus `platform_management`. See `crates/server/src/seed.rs` for details.
+**Effective capabilities:** Inherits Generic harness capabilities with no additional local capabilities. See `crates/server/src/harnesses/platform_chat.rs` for details.
 
 **System prompt guidance includes:**
 - "Run agent" workflow: create session → send message → wait for idle → get results
@@ -85,7 +85,6 @@ Conversational harness for the global chat interface. Extends Generic capabiliti
 **Use cases:**
 - Global chat interface (web UI at `/chat`)
 - Per-user singleton sessions via tag-based lookup
-- Managing Everruns entities (harnesses, agents, sessions) directly from chat
 
 ## Design Decisions
 

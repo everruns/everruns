@@ -3106,7 +3106,7 @@ async fn test_chat_harness_exists_in_seed() {
 }
 
 #[tokio::test]
-async fn test_chat_harness_has_platform_management() {
+async fn test_chat_harness_does_not_include_platform_management() {
     let server = TestServer::new().await;
 
     let harness: Harness = server
@@ -3128,14 +3128,9 @@ async fn test_chat_harness_has_platform_management() {
         .map(|c| c.capability_id())
         .collect();
 
-    assert_eq!(
-        cap_ids.len(),
-        1,
-        "Platform Chat should only store its local capability set"
-    );
     assert!(
-        cap_ids.contains(&"platform_management"),
-        "Platform Chat should store platform_management locally"
+        cap_ids.is_empty(),
+        "Platform Chat should not store local capabilities"
     );
 
     let preview: Value = server
@@ -3163,8 +3158,8 @@ async fn test_chat_harness_has_platform_management() {
         "Platform Chat preview should include inherited Generic tools"
     );
     assert!(
-        tool_names.contains(&"manage_harnesses"),
-        "Platform Chat preview should include platform management tools"
+        !tool_names.contains(&"manage_harnesses"),
+        "Platform Chat preview should not include platform management tools"
     );
 }
 

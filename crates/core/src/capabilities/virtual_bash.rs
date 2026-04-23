@@ -32,6 +32,7 @@ use bashkit::{
 };
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, LazyLock};
 use std::time::SystemTime;
 
@@ -473,12 +474,19 @@ impl BackgroundExecutableTool for BashTool {
             .trace_mode(TraceMode::Redacted);
         let mut bash = install_observability_hooks(builder, context.session_id).build();
 
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<(String, String)>();
+        let (tx, mut rx) = tokio::sync::mpsc::channel::<(String, String)>(128);
         let (partial_tx, partial_rx) = tokio::sync::mpsc::channel::<(String, String)>(128);
         let sink_for_output = sink.clone();
+        let dropped_chunks = Arc::new(AtomicUsize::new(0));
+        let dropped_chunks_for_callback = dropped_chunks.clone();
         let output_callback: OutputCallback =
             Box::new(move |stdout_chunk: &str, stderr_chunk: &str| {
-                let _ = tx.send((stdout_chunk.to_string(), stderr_chunk.to_string()));
+                if tx
+                    .try_send((stdout_chunk.to_string(), stderr_chunk.to_string()))
+                    .is_err()
+                {
+                    dropped_chunks_for_callback.fetch_add(1, Ordering::Relaxed);
+                }
                 let _ = partial_tx.try_send((stdout_chunk.to_string(), stderr_chunk.to_string()));
             });
 
@@ -503,6 +511,17 @@ impl BackgroundExecutableTool for BashTool {
         .await;
         let exec_duration = exec_start.elapsed();
         let _ = emit_task.await;
+        let dropped_chunks = dropped_chunks.load(Ordering::Relaxed);
+        if dropped_chunks > 0 {
+            let _ = sink
+                .output(
+                    "stderr",
+                    &format!(
+                        "[system] dropped {dropped_chunks} background output chunk(s) due to backpressure\n"
+                    ),
+                )
+                .await;
+        }
 
         match result {
             Ok(Ok(output)) => {
