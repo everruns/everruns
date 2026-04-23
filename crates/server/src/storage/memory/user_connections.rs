@@ -276,6 +276,19 @@ impl InMemoryDatabase {
             .and_then(|c| c.installation_id))
     }
 
+    pub async fn get_user_id_by_installation_id(
+        &self,
+        provider: &str,
+        installation_id: i64,
+    ) -> Result<Option<Uuid>> {
+        Ok(self
+            .user_connections
+            .read()
+            .values()
+            .find(|c| c.provider == provider && c.installation_id == Some(installation_id))
+            .map(|c| c.user_id))
+    }
+
     pub async fn delete_user_connection(&self, user_id: Uuid, provider: &str) -> Result<bool> {
         let mut connections = self.user_connections.write();
         let before = connections.len();
