@@ -1760,11 +1760,15 @@ impl DirectPlatformStore {
     }
 
     fn command_ctx(&self) -> crate::domains::common::Ctx {
+        // Internal gRPC/worker path — uses DefaultPermissionResolver so
+        // internal ops are never subject to SaaS custom restrictions.
+        // `Caller::internal` already carries role:Owner + is_internal.
         crate::domains::common::Ctx::new(
             Caller::internal(self.org_id),
             self.db.clone(),
             self.capability_service.clone(),
             self.encryption.clone(),
+            std::sync::Arc::new(everruns_core::DefaultPermissionResolver),
         )
         .with_workflow_store(self.workflow_store.clone())
     }

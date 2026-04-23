@@ -41,6 +41,7 @@ impl CatalogContext {
             self.state.db.clone(),
             self.state.capability_service.clone(),
             self.state.encryption.clone(),
+            self.state.auth.permission_resolver.clone(),
         )
         .with_session_service(self.state.session_service.clone())
         .with_message_service(self.state.message_service.clone())

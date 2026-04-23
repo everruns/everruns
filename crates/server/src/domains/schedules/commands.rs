@@ -35,6 +35,10 @@ impl Command for CreateSchedule {
         }
     }
 
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&super::SCHEDULE_MANAGE)
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<ScheduleResponse, CommandError> {
         q::ensure_platform_user(ctx)?;
         let store = q::store(ctx)?;
@@ -187,6 +191,10 @@ impl Command for UpdateScheduleCmd {
         }
     }
 
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&super::SCHEDULE_MANAGE)
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<ScheduleResponse, CommandError> {
         q::ensure_platform_user(ctx)?;
         let store = q::store(ctx)?;
@@ -255,6 +263,10 @@ impl Command for DeleteSchedule {
         }
     }
 
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&super::SCHEDULE_MANAGE)
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<bool, CommandError> {
         q::ensure_platform_user(ctx)?;
         q::store(ctx)?
@@ -283,6 +295,10 @@ impl Command for PauseSchedule {
             method: "POST",
             path: "/v1/durable/schedules/{schedule_id}/pause",
         }
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&super::SCHEDULE_MANAGE)
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<ScheduleResponse, CommandError> {
@@ -330,6 +346,10 @@ impl Command for ResumeSchedule {
             method: "POST",
             path: "/v1/durable/schedules/{schedule_id}/resume",
         }
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&super::SCHEDULE_MANAGE)
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<ScheduleResponse, CommandError> {
@@ -380,6 +400,10 @@ impl Command for TriggerSchedule {
             method: "POST",
             path: "/v1/durable/schedules/{schedule_id}/trigger",
         }
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&super::SCHEDULE_MANAGE)
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<TriggerResponse, CommandError> {

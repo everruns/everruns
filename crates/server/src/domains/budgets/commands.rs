@@ -1,5 +1,5 @@
 use super::types::CreateBudgetRequest;
-use super::{BUDGET_MANAGE, queries as q};
+use super::{BUDGET_MANAGE, BUDGET_VIEW, queries as q};
 use crate::domains::common::*;
 use crate::storage::models::{CreateBudgetLedgerRow, CreateBudgetRow, UpdateBudgetRow};
 use everruns_core::Policy;

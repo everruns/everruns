@@ -124,6 +124,10 @@ impl Command for BatchSetSessionSecrets {
         }
     }
 
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&crate::domains::sessions::SESSION_MANAGE)
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<BatchSetSecretsResponse, CommandError> {
         let session_id = q::parse_owned_session_id(&self.session_id)?;
         q::verify_session_ownership(&ctx.db, ctx.org_id(), session_id).await?;

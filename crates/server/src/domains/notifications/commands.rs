@@ -76,6 +76,10 @@ impl Command for MarkNotificationViewed {
         Some("notification_id")
     }
 
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&super::NOTIFICATION_ACCESS)
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<Notification, CommandError> {
         let user_id = require_user_id(ctx)?;
         let notification_id: NotificationId = self

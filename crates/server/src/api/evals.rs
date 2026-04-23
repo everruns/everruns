@@ -58,8 +58,13 @@ impl AppState {
     }
 
     fn ctx(&self, org: &ResolvedOrg) -> Ctx {
-        Ctx::minimal(Caller::from(org), self.db.clone(), None)
-            .with_eval_service(self.service.clone())
+        Ctx::minimal(
+            Caller::from(org),
+            self.db.clone(),
+            None,
+            self.auth.permission_resolver.clone(),
+        )
+        .with_eval_service(self.service.clone())
     }
 }
 
@@ -263,7 +268,7 @@ async fn create_eval(
     State(state): State<AppState>,
     Json(req): Json<CreateEvalRequest>,
 ) -> Result<(StatusCode, Json<Eval>), (StatusCode, Json<ErrorResponse>)> {
-    let eval = CreateEval(req).execute(&state.ctx(&org)).await?;
+    let eval = CreateEval(req).run(&state.ctx(&org)).await?;
     Ok((StatusCode::CREATED, Json(eval)))
 }
 
@@ -276,7 +281,7 @@ async fn list_evals(
         search: query.search,
         include_archived: query.include_archived.unwrap_or(false),
     }
-    .execute(&state.ctx(&org))
+    .run(&state.ctx(&org))
     .await?;
     Ok(Json(ListResponse::new(evals)))
 }
@@ -286,7 +291,7 @@ async fn get_eval(
     State(state): State<AppState>,
     Path(eval_id): Path<String>,
 ) -> ApiResult<Eval> {
-    let eval = GetEval { eval_id }.execute(&state.ctx(&org)).await?;
+    let eval = GetEval { eval_id }.run(&state.ctx(&org)).await?;
     Ok(Json(eval))
 }
 
@@ -296,9 +301,7 @@ async fn update_eval(
     Path(eval_id): Path<String>,
     Json(req): Json<UpdateEvalRequest>,
 ) -> ApiResult<Eval> {
-    let eval = UpdateEval { eval_id, req }
-        .execute(&state.ctx(&org))
-        .await?;
+    let eval = UpdateEval { eval_id, req }.run(&state.ctx(&org)).await?;
     Ok(Json(eval))
 }
 
@@ -307,7 +310,7 @@ async fn delete_eval(
     State(state): State<AppState>,
     Path(eval_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    DeleteEval { eval_id }.execute(&state.ctx(&org)).await?;
+    DeleteEval { eval_id }.run(&state.ctx(&org)).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -322,7 +325,7 @@ async fn create_case(
     Json(req): Json<CreateEvalCaseRequest>,
 ) -> Result<(StatusCode, Json<EvalCase>), (StatusCode, Json<ErrorResponse>)> {
     let case = CreateEvalCase { eval_id, req }
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await?;
     Ok((StatusCode::CREATED, Json(case)))
 }
@@ -332,7 +335,7 @@ async fn list_cases(
     State(state): State<AppState>,
     Path(eval_id): Path<String>,
 ) -> ApiResult<ListResponse<EvalCase>> {
-    let cases = ListEvalCases { eval_id }.execute(&state.ctx(&org)).await?;
+    let cases = ListEvalCases { eval_id }.run(&state.ctx(&org)).await?;
     Ok(Json(ListResponse::new(cases)))
 }
 
@@ -342,7 +345,7 @@ async fn get_case(
     Path((eval_id, case_id)): Path<(String, String)>,
 ) -> ApiResult<EvalCase> {
     let case = GetEvalCase { eval_id, case_id }
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await?;
     Ok(Json(case))
 }
@@ -358,7 +361,7 @@ async fn update_case(
         case_id,
         req,
     }
-    .execute(&state.ctx(&org))
+    .run(&state.ctx(&org))
     .await?;
     Ok(Json(case))
 }
@@ -369,7 +372,7 @@ async fn delete_case(
     Path((eval_id, case_id)): Path<(String, String)>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     DeleteEvalCase { eval_id, case_id }
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -384,9 +387,7 @@ async fn create_run(
     Path(eval_id): Path<String>,
     Json(req): Json<CreateEvalRunRequest>,
 ) -> Result<(StatusCode, Json<EvalRun>), (StatusCode, Json<ErrorResponse>)> {
-    let run = CreateEvalRun { eval_id, req }
-        .execute(&state.ctx(&org))
-        .await?;
+    let run = CreateEvalRun { eval_id, req }.run(&state.ctx(&org)).await?;
     Ok((StatusCode::CREATED, Json(run)))
 }
 
@@ -395,7 +396,7 @@ async fn list_runs(
     State(state): State<AppState>,
     Path(eval_id): Path<String>,
 ) -> ApiResult<ListResponse<EvalRun>> {
-    let runs = ListEvalRuns { eval_id }.execute(&state.ctx(&org)).await?;
+    let runs = ListEvalRuns { eval_id }.run(&state.ctx(&org)).await?;
     Ok(Json(ListResponse::new(runs)))
 }
 
@@ -404,9 +405,7 @@ async fn get_run(
     State(state): State<AppState>,
     Path((eval_id, run_id)): Path<(String, String)>,
 ) -> ApiResult<EvalRun> {
-    let run = GetEvalRun { eval_id, run_id }
-        .execute(&state.ctx(&org))
-        .await?;
+    let run = GetEvalRun { eval_id, run_id }.run(&state.ctx(&org)).await?;
     Ok(Json(run))
 }
 
@@ -416,7 +415,7 @@ async fn export_run_artifacts(
     Path((eval_id, run_id)): Path<(String, String)>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ErrorResponse>)> {
     let export = ExportEvalRunArtifacts { eval_id, run_id }
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await?;
     let body = Body::from(Bytes::from(export.body));
 
@@ -436,7 +435,7 @@ async fn cancel_run(
     Path((eval_id, run_id)): Path<(String, String)>,
 ) -> ApiResult<EvalRun> {
     let run = CancelEvalRun { eval_id, run_id }
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await?;
     Ok(Json(run))
 }
@@ -453,7 +452,7 @@ async fn update_result_scores(
         result_id,
         req,
     }
-    .execute(&state.ctx(&org))
+    .run(&state.ctx(&org))
     .await?;
     Ok(Json(result))
 }
@@ -469,7 +468,7 @@ async fn bulk_update_run_scores(
         run_id,
         req,
     }
-    .execute(&state.ctx(&org))
+    .run(&state.ctx(&org))
     .await?;
     Ok(Json(ListResponse::new(results)))
 }
