@@ -130,6 +130,14 @@ impl InMemoryDatabase {
             .cloned())
     }
 
+    /// Look up the owning org for an MCP server by its public id.
+    pub async fn get_mcp_server_organization_id(&self, public_id: &str) -> Result<Option<i64>> {
+        let Ok(id) = public_id.parse::<McpServerId>() else {
+            return Ok(None);
+        };
+        Ok(self.mcp_servers.read().get(&id).map(|s| s.org_id))
+    }
+
     /// Batch fetch multiple MCP servers by IDs.
     pub async fn get_mcp_servers_batch(
         &self,

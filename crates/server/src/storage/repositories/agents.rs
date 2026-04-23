@@ -116,6 +116,19 @@ impl Database {
         Ok(row)
     }
 
+    /// Look up the owning org for an agent by its public_id, without scoping
+    /// to a caller-supplied org. Used exclusively by the cross-org resolver
+    /// (see specs/multitenancy.md). Callers MUST gate the result on user
+    /// membership before revealing it — this method does NOT.
+    pub async fn get_agent_organization_id(&self, public_id: &str) -> Result<Option<i64>> {
+        let row: Option<(i64,)> =
+            sqlx::query_as("SELECT org_id FROM agents WHERE public_id = $1 LIMIT 1")
+                .bind(public_id)
+                .fetch_optional(&self.pool)
+                .await?;
+        Ok(row.map(|(org_id,)| org_id))
+    }
+
     pub async fn get_agent_by_public_id(
         &self,
         org_id: i64,
