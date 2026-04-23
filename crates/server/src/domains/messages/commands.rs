@@ -1,7 +1,7 @@
 use super::queries as q;
 use crate::api::messages::Message;
 use crate::domains::common::*;
-use crate::services::CreateMessageContext;
+use crate::domains::messages::CreateMessageContext;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 

@@ -1,5 +1,6 @@
 use crate::domains::common::{CommandError, Ctx};
-use crate::services::{MessageService, SessionService};
+use crate::domains::messages::MessageService;
+use crate::domains::sessions::SessionService;
 use everruns_core::typed_id::SessionId;
 use std::sync::Arc;
 

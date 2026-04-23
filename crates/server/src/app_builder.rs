@@ -406,16 +406,18 @@ impl ServerAppBuilder {
         };
 
         // =====================================================================
-        // Phase 4: Event listeners & services
+        // Phase 4: Event listeners & domain/infra helpers
         // =====================================================================
         let otel_listener: Arc<dyn EventListener> = Arc::new(OtelEventListener::new());
         let usage_listener: Arc<dyn EventListener> =
             Arc::new(services::UsageTrackingListener::new(db.clone()));
-        let budget_service = Arc::new(services::BudgetService::new(db.clone()));
+        let budget_service = Arc::new(crate::domains::budgets::BudgetService::new(db.clone()));
         let budget_listener: Arc<dyn EventListener> = budget_service.clone();
         let mut event_listeners: Vec<Arc<dyn EventListener>> =
             vec![otel_listener, usage_listener, budget_listener];
-        let session_sandbox_service = if internal_feature_flags.session_sandbox {
+        let session_sandbox_service: Option<
+            Arc<crate::domains::session_sandbox::SessionSandboxService>,
+        > = if internal_feature_flags.session_sandbox {
             match db.as_ref() {
                 crate::storage::StorageBackend::Postgres(database) => match &encryption {
                     Some(enc) => {
@@ -438,14 +440,17 @@ impl ServerAppBuilder {
                                 github_app_minter,
                             ))
                                 as Arc<dyn everruns_core::traits::UserConnectionResolver>);
-                        let service = Arc::new(services::SessionSandboxService::new(
-                            db.clone(),
-                            storage_store,
-                            connection_resolver,
+                        let service =
+                            Arc::new(crate::domains::session_sandbox::SessionSandboxService::new(
+                                db.clone(),
+                                storage_store,
+                                connection_resolver,
+                            ));
+                        event_listeners.push(Arc::new(
+                            crate::domains::session_sandbox::SessionSandboxEventListener::new(
+                                service.clone(),
+                            ),
                         ));
-                        event_listeners.push(Arc::new(services::SessionSandboxEventListener::new(
-                            service.clone(),
-                        )));
                         Some(service)
                     }
                     None => {
@@ -470,30 +475,37 @@ impl ServerAppBuilder {
                         ))
                             as Arc<dyn everruns_core::traits::UserConnectionResolver>
                     });
-                    let service = Arc::new(services::SessionSandboxService::new(
-                        db.clone(),
-                        mem_db.clone(),
-                        connection_resolver,
+                    let service =
+                        Arc::new(crate::domains::session_sandbox::SessionSandboxService::new(
+                            db.clone(),
+                            mem_db.clone(),
+                            connection_resolver,
+                        ));
+                    event_listeners.push(Arc::new(
+                        crate::domains::session_sandbox::SessionSandboxEventListener::new(
+                            service.clone(),
+                        ),
                     ));
-                    event_listeners.push(Arc::new(services::SessionSandboxEventListener::new(
-                        service.clone(),
-                    )));
                     Some(service)
                 }
             }
         } else {
             None
         };
-        let notification_service = if notifications_enabled {
-            let service = Arc::new(services::NotificationService::new(db.clone()));
-            let notification_listener: Arc<dyn EventListener> =
-                Arc::new(services::NotificationEventListener::new(service.clone()));
-            event_listeners.push(notification_listener);
-            Some(service)
-        } else {
-            tracing::info!("Notifications disabled via feature flag");
-            None
-        };
+        let notification_service: Option<Arc<crate::domains::notifications::NotificationService>> =
+            if notifications_enabled {
+                let service = Arc::new(crate::domains::notifications::NotificationService::new(
+                    db.clone(),
+                ));
+                let notification_listener: Arc<dyn EventListener> = Arc::new(
+                    crate::domains::notifications::NotificationEventListener::new(service.clone()),
+                );
+                event_listeners.push(notification_listener);
+                Some(service)
+            } else {
+                tracing::info!("Notifications disabled via feature flag");
+                None
+            };
 
         if prometheus_handle.is_some() {
             event_listeners.push(
@@ -590,7 +602,7 @@ impl ServerAppBuilder {
             platform_definition.as_ref(),
             event_delivery.clone(),
         );
-        let mut session_service = services::SessionService::with_registry(
+        let mut session_service = crate::domains::sessions::SessionService::with_registry(
             db.clone(),
             platform_definition.capability_registry().clone(),
         )
@@ -637,7 +649,7 @@ impl ServerAppBuilder {
         let events_state = api::events::AppState {
             db: db.clone(),
             session_service: Arc::new(
-                services::SessionService::with_registry(
+                crate::domains::sessions::SessionService::with_registry(
                     db.clone(),
                     platform_definition.capability_registry().clone(),
                 )
@@ -684,7 +696,7 @@ impl ServerAppBuilder {
             encryption.clone(),
         ));
         let command_service = Arc::new(
-            services::SessionCommandService::new(
+            crate::domains::session_commands::SessionCommandService::new(
                 db.clone(),
                 event_service.clone(),
                 llm_resolver.clone(),
@@ -743,10 +755,10 @@ impl ServerAppBuilder {
         let eval_run_ctx = Arc::new(services::eval_runner::EvalRunContext {
             db: db.clone(),
             session_service: Arc::new(
-                services::SessionService::new(db.clone())
+                crate::domains::sessions::SessionService::new(db.clone())
                     .with_virtual_registry(virtual_registry.clone()),
             ),
-            message_service: Arc::new(services::MessageService::new(
+            message_service: Arc::new(crate::domains::messages::MessageService::new(
                 db.clone(),
                 runner.clone(),
                 notifications_enabled,
@@ -866,13 +878,13 @@ impl ServerAppBuilder {
             mcp_server_service,
         );
         let session_schedule_service =
-            Arc::new(crate::services::SessionScheduleService::new(db.clone()));
+            Arc::new(crate::domains::session_schedules::SessionScheduleService::new(db.clone()));
         let session_schedules_state = api::session_schedules::AppState::new(
             session_schedule_service.clone(),
             auth_state.clone(),
         );
         let session_resource_service =
-            Arc::new(crate::services::SessionResourceService::new(db.clone()));
+            Arc::new(crate::domains::session_resources::SessionResourceService::new(db.clone()));
         let session_resources_state = api::session_resources::AppState::new(
             db.clone(),
             session_resource_service,

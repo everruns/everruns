@@ -133,7 +133,7 @@ async fn timeout_session(
 
     // Update session status to active
     let caller = everruns_core::Caller::internal(org_id);
-    let session_service = crate::services::SessionService::new(db.clone());
+    let session_service = crate::domains::sessions::SessionService::new(db.clone());
     if let Err(e) = session_service
         .update_status(&caller, session_id.uuid(), "active".to_string())
         .await

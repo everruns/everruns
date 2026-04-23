@@ -76,7 +76,7 @@ impl Command for GetSessionSandbox {
     }
 
     fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::services::session::SESSION_VIEW)
+        Some(&crate::domains::sessions::SESSION_VIEW)
     }
 
     fn positional_arg() -> Option<&'static str> {
@@ -153,7 +153,7 @@ impl Command for ManageSessionSandbox {
     }
 
     fn policy() -> Option<&'static everruns_core::Policy> {
-        Some(&crate::services::session::SESSION_MANAGE)
+        Some(&crate::domains::sessions::SESSION_MANAGE)
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<ManageSessionSandboxResponse, CommandError> {
@@ -220,7 +220,8 @@ inventory::submit! { CommandDescriptor::of::<ManageSessionSandbox>() }
 mod tests {
     use super::*;
     use crate::domains::common::Ctx;
-    use crate::services::{SessionSandboxService, SessionService};
+    use crate::domains::session_sandbox::SessionSandboxService;
+    use crate::domains::sessions::SessionService;
     use crate::storage::{CreateHarnessRow, CreateSessionRow, StorageBackend};
     use everruns_core::session_sandbox::{
         SessionSandboxConfig, SessionSandboxExecRequest, SessionSandboxExecResponse,

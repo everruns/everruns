@@ -17,7 +17,7 @@ use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, CommandError, Ctx};
 use crate::domains::session_files::{
     CopySessionFile, CreateSessionFile, DeleteSessionFile, GetSessionFile, GrepSessionFiles,
-    ListSessionFiles, MoveSessionFile, StatSessionFile, UpdateSessionFile,
+    ListSessionFiles, MoveSessionFile, SessionFileService, StatSessionFile, UpdateSessionFile,
 };
 use crate::storage::StorageBackend;
 use axum::{
@@ -30,7 +30,6 @@ use everruns_core::Caller;
 use everruns_core::{FileInfo, FileStat, GrepResult, SessionFile};
 
 use super::common::{ListResponse, impl_auth_state};
-use crate::services::session_file::SessionFileService;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::ToSchema;

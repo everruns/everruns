@@ -4,7 +4,9 @@ use std::sync::Arc;
 
 pub use crate::domains::sessions::queries::parse_session_id;
 
-pub fn session_service(ctx: &Ctx) -> Result<&Arc<crate::services::SessionService>, CommandError> {
+pub fn session_service(
+    ctx: &Ctx,
+) -> Result<&Arc<crate::domains::sessions::SessionService>, CommandError> {
     ctx.session_service
         .as_ref()
         .ok_or_else(|| CommandError::Internal(anyhow::anyhow!("Session service not configured")))

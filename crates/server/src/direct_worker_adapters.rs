@@ -1,10 +1,10 @@
 // Direct implementation of WorkerAdapters for in-process worker
 //
-// Decision: Uses StorageBackend and services directly (no gRPC)
+// Decision: Uses StorageBackend, domains, and infra helpers directly (no gRPC)
 // Decision: Used by in-process worker in DEV_MODE
 //
 // This implementation provides the same interface as GrpcWorkerAdapters
-// but with direct access to the storage backend and services.
+// but with direct access to the storage backend, domains, and infra helpers.
 
 use async_trait::async_trait;
 use everruns_core::budget::{BudgetSummary, BudgetToolResponse};
@@ -28,15 +28,15 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
 
+use crate::domains::budgets::BudgetService;
 use crate::domains::mcp_servers::McpServerService;
+use crate::domains::messages::MessageService;
+use crate::domains::sessions::SessionService;
 use crate::org_init;
 use crate::services::scoped_mcp::{
     build_scoped_mcp_tool_definitions, resolve_scoped_mcp_server, validate_scoped_mcp_servers,
 };
-use crate::services::{
-    BudgetService, EventService, LlmResolverService, MessageService, PrincipalService,
-    SessionService,
-};
+use crate::services::{EventService, LlmResolverService, PrincipalService};
 use crate::storage::models::{AgentCapabilityRow, AgentRow, UpdateSession};
 use crate::storage::{EncryptionService, StorageBackend};
 use everruns_durable::WorkflowEventStore;
@@ -1051,7 +1051,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
         pattern: &str,
         path_pattern: Option<&str>,
     ) -> Result<Vec<GrepMatch>> {
-        let results = crate::services::session_file::grep_session_files(
+        let results = crate::domains::session_files::grep_session_files(
             &self.db,
             session_id,
             pattern,
@@ -3204,7 +3204,9 @@ mod tests {
 
     fn test_adapters_with_budget_service() -> DirectWorkerAdapters {
         let adapters = test_adapters();
-        let budget_service = Arc::new(crate::services::BudgetService::new(adapters.db.clone()));
+        let budget_service = Arc::new(crate::domains::budgets::BudgetService::new(
+            adapters.db.clone(),
+        ));
         adapters.with_budget_service(budget_service)
     }
 

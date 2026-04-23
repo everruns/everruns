@@ -12,7 +12,7 @@ use everruns_core::{
 
 use super::backend::StorageBackend;
 use super::models::{CreateSessionScheduleRow, SessionScheduleRow, UpdateSessionScheduleRow};
-use crate::services::session_schedule::compute_next_trigger;
+use crate::domains::session_schedules::compute_next_trigger;
 
 use std::sync::Arc;
 

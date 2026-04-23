@@ -6,9 +6,11 @@ use everruns_core::{Permission, Policy, Rule};
 
 pub mod commands;
 pub mod queries;
+pub mod service;
 pub mod types;
 
 pub use commands::*;
+pub use service::*;
 
 pub const LLM_PROVIDER_VIEW: Policy = Policy {
     id: "llm_provider.view",

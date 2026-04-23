@@ -8,7 +8,7 @@ use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
 use crate::domains::llm_models::{
     CreateModel, DeleteModel, GetModel, LLM_MODEL_MANAGE, LLM_MODEL_VIEW, ListModels,
-    ListProviderModels, UpdateModel,
+    ListProviderModels, LlmModelService, UpdateModel,
 };
 use crate::storage::StorageBackend;
 use axum::{
@@ -25,7 +25,7 @@ use serde::Deserialize;
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
-use crate::services::{LlmModelService, LlmResolverService};
+use crate::services::LlmResolverService;
 
 #[derive(Clone)]
 pub struct AppState {

@@ -257,10 +257,12 @@ impl TestServer {
         ));
         let events_state = api::events::AppState {
             db: db.clone(),
-            session_service: Arc::new(services::SessionService::with_registry(
-                db.clone(),
-                platform_definition.capability_registry().clone(),
-            )),
+            session_service: Arc::new(
+                everruns_server::domains::sessions::SessionService::with_registry(
+                    db.clone(),
+                    platform_definition.capability_registry().clone(),
+                ),
+            ),
             event_service: event_service.clone(),
             sse_tracker: sse_tracker.clone(),
             event_broadcaster: None,
@@ -316,7 +318,7 @@ impl TestServer {
         let commands_state = api::commands::AppState::new(
             capability_service.clone(),
             Arc::new(
-                services::SessionCommandService::new(
+                everruns_server::domains::session_commands::SessionCommandService::new(
                     db.clone(),
                     event_service.clone(),
                     llm_resolver,
@@ -374,13 +376,19 @@ impl TestServer {
             platform_definition.built_in_harnesses().to_vec(),
         );
         let session_schedules_state = api::session_schedules::AppState::new(
-            Arc::new(services::SessionScheduleService::new(db.clone())),
+            Arc::new(
+                everruns_server::domains::session_schedules::SessionScheduleService::new(
+                    db.clone(),
+                ),
+            ),
             auth_state.clone(),
         );
         let notifications_state = if feature_flags.notifications {
             Some(api::notifications::AppState {
                 db: db.clone(),
-                notification_service: Arc::new(services::NotificationService::new(db.clone())),
+                notification_service: Arc::new(
+                    everruns_server::domains::notifications::NotificationService::new(db.clone()),
+                ),
                 sse_tracker: sse_tracker.clone(),
                 notification_broadcaster: None,
                 auth: auth_state.clone(),

@@ -155,18 +155,21 @@ pub struct Ctx {
     pub db: Arc<StorageBackend>,
     pub capability_service: Arc<crate::services::CapabilityService>,
     pub encryption: Option<Arc<crate::storage::encryption::EncryptionService>>,
-    pub session_service: Option<Arc<crate::services::SessionService>>,
-    pub message_service: Option<Arc<crate::services::MessageService>>,
+    pub session_service: Option<Arc<crate::domains::sessions::SessionService>>,
+    pub message_service: Option<Arc<crate::domains::messages::MessageService>>,
     pub event_service: Option<Arc<crate::services::EventService>>,
-    pub session_file_service: Option<Arc<crate::services::SessionFileService>>,
-    pub session_sandbox_service: Option<Arc<crate::services::SessionSandboxService>>,
-    pub session_resource_service: Option<Arc<crate::services::SessionResourceService>>,
-    pub session_schedule_service: Option<Arc<crate::services::SessionScheduleService>>,
-    pub notification_service: Option<Arc<crate::services::NotificationService>>,
-    pub llm_model_service: Option<Arc<crate::services::LlmModelService>>,
-    pub llm_provider_service: Option<Arc<crate::services::LlmProviderService>>,
+    pub session_file_service: Option<Arc<crate::domains::session_files::SessionFileService>>,
+    pub session_sandbox_service:
+        Option<Arc<crate::domains::session_sandbox::SessionSandboxService>>,
+    pub session_resource_service:
+        Option<Arc<crate::domains::session_resources::SessionResourceService>>,
+    pub session_schedule_service:
+        Option<Arc<crate::domains::session_schedules::SessionScheduleService>>,
+    pub notification_service: Option<Arc<crate::domains::notifications::NotificationService>>,
+    pub llm_model_service: Option<Arc<crate::domains::llm_models::LlmModelService>>,
+    pub llm_provider_service: Option<Arc<crate::domains::llm_providers::LlmProviderService>>,
     pub model_sync_service: Option<Arc<crate::services::ModelSyncService>>,
-    pub eval_service: Option<Arc<crate::services::EvalService>>,
+    pub eval_service: Option<Arc<crate::domains::evals::EvalService>>,
     pub sqldb_store: Option<Arc<dyn everruns_core::session_sqldb::SessionSqlDbStore>>,
     pub workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
     pub runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
@@ -227,12 +230,18 @@ impl Ctx {
         Self::new(caller, db, capability_service, encryption)
     }
 
-    pub fn with_session_service(mut self, service: Arc<crate::services::SessionService>) -> Self {
+    pub fn with_session_service(
+        mut self,
+        service: Arc<crate::domains::sessions::SessionService>,
+    ) -> Self {
         self.session_service = Some(service);
         self
     }
 
-    pub fn with_message_service(mut self, service: Arc<crate::services::MessageService>) -> Self {
+    pub fn with_message_service(
+        mut self,
+        service: Arc<crate::domains::messages::MessageService>,
+    ) -> Self {
         self.message_service = Some(service);
         self
     }
@@ -244,7 +253,7 @@ impl Ctx {
 
     pub fn with_session_file_service(
         mut self,
-        service: Arc<crate::services::SessionFileService>,
+        service: Arc<crate::domains::session_files::SessionFileService>,
     ) -> Self {
         self.session_file_service = Some(service);
         self
@@ -252,7 +261,7 @@ impl Ctx {
 
     pub fn with_session_sandbox_service(
         mut self,
-        service: Arc<crate::services::SessionSandboxService>,
+        service: Arc<crate::domains::session_sandbox::SessionSandboxService>,
     ) -> Self {
         self.session_sandbox_service = Some(service);
         self
@@ -260,7 +269,7 @@ impl Ctx {
 
     pub fn with_session_resource_service(
         mut self,
-        service: Arc<crate::services::SessionResourceService>,
+        service: Arc<crate::domains::session_resources::SessionResourceService>,
     ) -> Self {
         self.session_resource_service = Some(service);
         self
@@ -268,7 +277,7 @@ impl Ctx {
 
     pub fn with_session_schedule_service(
         mut self,
-        service: Arc<crate::services::SessionScheduleService>,
+        service: Arc<crate::domains::session_schedules::SessionScheduleService>,
     ) -> Self {
         self.session_schedule_service = Some(service);
         self
@@ -276,7 +285,7 @@ impl Ctx {
 
     pub fn with_notification_service(
         mut self,
-        service: Arc<crate::services::NotificationService>,
+        service: Arc<crate::domains::notifications::NotificationService>,
     ) -> Self {
         self.notification_service = Some(service);
         self
@@ -284,7 +293,7 @@ impl Ctx {
 
     pub fn with_llm_model_service(
         mut self,
-        service: Arc<crate::services::LlmModelService>,
+        service: Arc<crate::domains::llm_models::LlmModelService>,
     ) -> Self {
         self.llm_model_service = Some(service);
         self
@@ -292,7 +301,7 @@ impl Ctx {
 
     pub fn with_llm_provider_service(
         mut self,
-        service: Arc<crate::services::LlmProviderService>,
+        service: Arc<crate::domains::llm_providers::LlmProviderService>,
     ) -> Self {
         self.llm_provider_service = Some(service);
         self
@@ -306,7 +315,7 @@ impl Ctx {
         self
     }
 
-    pub fn with_eval_service(mut self, service: Arc<crate::services::EvalService>) -> Self {
+    pub fn with_eval_service(mut self, service: Arc<crate::domains::evals::EvalService>) -> Self {
         self.eval_service = Some(service);
         self
     }

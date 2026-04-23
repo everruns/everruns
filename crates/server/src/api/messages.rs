@@ -31,7 +31,8 @@ use utoipa::ToSchema;
 
 use everruns_core::Caller;
 
-use crate::services::{MessageService, SessionService};
+use crate::domains::messages::MessageService;
+use crate::domains::sessions::SessionService;
 
 // Re-export core types with ToSchema for OpenAPI
 #[allow(unused_imports)]

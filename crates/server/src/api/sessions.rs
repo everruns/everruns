@@ -6,10 +6,10 @@ use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
 use crate::domains::sessions::{
     CancelSession, CreateSession, DeleteSession, GetOrCreateChatSession, GetSession,
-    GetSessionStats, ListSessions, PinSession, UnpinSession, UpdateSessionCmd,
+    GetSessionStats, ListSessions, PinSession, SESSION_MANAGE, SESSION_VIEW, SessionService,
+    UnpinSession, UpdateSessionCmd,
 };
-use crate::services::session::{SESSION_MANAGE, SESSION_VIEW};
-use crate::services::{EventService, SessionService};
+use crate::services::EventService;
 use crate::storage::StorageBackend;
 use axum::{
     Json, Router,

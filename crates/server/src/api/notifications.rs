@@ -3,9 +3,9 @@
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
+use crate::domains::notifications::NotificationService;
 use crate::domains::notifications::{ListNotifications, MarkNotificationViewed};
 use crate::notification_notifications::NotificationNotificationBroadcaster;
-use crate::services::NotificationService;
 use crate::storage::StorageBackend;
 use axum::{
     Json, Router,

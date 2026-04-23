@@ -32,7 +32,7 @@ impl Command for ListNotifications {
     async fn execute(self, ctx: &Ctx) -> Result<ListNotificationsResponse, CommandError> {
         let user_id = require_user_id(ctx)?;
         let limit = self.limit.unwrap_or(50).clamp(1, 100);
-        let service = crate::services::NotificationService::new(ctx.db.clone());
+        let service = crate::domains::notifications::NotificationService::new(ctx.db.clone());
         let notifications = service
             .list(ctx.org_id(), user_id, limit)
             .await
@@ -82,7 +82,7 @@ impl Command for MarkNotificationViewed {
             .notification_id
             .parse()
             .map_err(|e| CommandError::bad_request(format!("Invalid notification ID: {e}")))?;
-        let notification = crate::services::NotificationService::new(ctx.db.clone())
+        let notification = crate::domains::notifications::NotificationService::new(ctx.db.clone())
             .mark_viewed(ctx.org_id(), user_id, notification_id)
             .await
             .map_err(classify_anyhow)?

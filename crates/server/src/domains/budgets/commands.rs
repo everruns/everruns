@@ -378,7 +378,7 @@ impl Command for CheckBudget {
                 "Budget check only supported for session-scoped budgets via this endpoint",
             ));
         }
-        Ok(crate::services::BudgetService::new(ctx.db.clone())
+        Ok(crate::domains::budgets::BudgetService::new(ctx.db.clone())
             .check_budgets_for_session(ctx.org_id(), &budget.subject_id, None)
             .await)
     }
@@ -443,7 +443,7 @@ impl Command for CheckSessionBudgets {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<BudgetCheckResult, CommandError> {
-        Ok(crate::services::BudgetService::new(ctx.db.clone())
+        Ok(crate::domains::budgets::BudgetService::new(ctx.db.clone())
             .check_budgets_for_session(ctx.org_id(), &self.session_id, None)
             .await)
     }

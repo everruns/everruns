@@ -7,7 +7,6 @@
 use crate::api;
 use crate::api::{ListResponse, PaginatedResponse};
 use crate::domains;
-use crate::services;
 use everruns_core::llm_models::LlmProvider;
 use everruns_core::{
     Agent, AgentStatus, CapabilityInfo, Event, EventContext, EventData, FileInfo, FileStat,
@@ -214,9 +213,9 @@ use utoipa::OpenApi;
             api::session_git::CommitRequest, api::session_git::LogQuery,
             api::session_git::DiffQuery, api::session_git::CreateBranchRequest,
             api::session_git::SuccessResponse,
-            services::session_git::CommitResult, services::session_git::GitCommitInfo,
-            services::session_git::GitDiff, services::session_git::GitDiffEntry,
-            services::session_git::GitDiffStats, services::session_git::GitRefInfo,
+            domains::session_git::CommitResult, domains::session_git::GitCommitInfo,
+            domains::session_git::GitDiff, domains::session_git::GitDiffEntry,
+            domains::session_git::GitDiffStats, domains::session_git::GitRefInfo,
             // Tool types
             ToolCall,
             everruns_core::ToolDefinition, everruns_core::BuiltinTool, everruns_core::ClientSideTool,

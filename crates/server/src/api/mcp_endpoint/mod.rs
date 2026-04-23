@@ -20,10 +20,12 @@ mod tool_registry;
 
 use crate::auth::middleware::AuthUser;
 use crate::auth::{AuthState, ResolvedOrg};
-use crate::services::{
-    BudgetService, CapabilityService, EventService, MessageService, SessionFileService,
-    SessionSandboxService, SessionService,
-};
+use crate::domains::budgets::BudgetService;
+use crate::domains::messages::MessageService;
+use crate::domains::session_files::SessionFileService;
+use crate::domains::session_sandbox::SessionSandboxService;
+use crate::domains::sessions::SessionService;
+use crate::services::{CapabilityService, EventService};
 use crate::storage::StorageBackend;
 use axum::{
     Json, Router,

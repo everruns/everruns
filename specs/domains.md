@@ -30,7 +30,13 @@ crates/server/src/domains/
     ...
 ```
 
-Each domain directory contains three files:
+User-facing domains normally expose `commands.rs`, `queries.rs`, and `types.rs`.
+Some internal-only domains exist purely to house shared orchestration, in which
+case they may only export `service.rs` (or another helper module) until they
+gain user-facing commands. In both cases, the helper code stays under the
+owning domain rather than a global business-logic layer.
+
+The standard files are:
 
 | File | Purpose | Who calls it |
 |------|---------|--------------|
@@ -291,7 +297,9 @@ the logic. Once all callers are migrated, the service file is removed.
    each with `inventory::submit! { CommandDescriptor::of::<Cmd>() }`
 5. Wire HTTP adapter to call commands via `cmd.execute(&ctx).await`
    (MCP integration is automatic via inventory)
-6. Once all callers migrated, delete the old `services/{name}.rs`
+6. If orchestration still needs to be shared, keep it as a helper under
+   `domains/{name}/` (for example `service.rs` or `helpers.rs`)
+7. Once all callers migrated, delete the old top-level `services/{name}.rs`
 
 ### When NOT to use this pattern
 
@@ -314,9 +322,9 @@ the logic. Once all callers are migrated, the service file is removed.
 
 1. Create `domains/{name}/` with `mod.rs`, `commands.rs`, `queries.rs`, `types.rs`
 2. Move request types from `api/{name}.rs` to `types.rs`
-3. Move business logic from `services/{name}.rs` to `commands.rs`
+3. Move business logic from `services/{name}.rs` into `domains/{name}/`
 4. Extract shared DB helpers to `queries.rs`
 5. Each command: `inventory::submit! { CommandDescriptor::of::<Cmd>() }`
 6. Update `api/{name}.rs` to call commands (thin adapter)
-7. Remove old service file once all callers migrated
+7. Remove old top-level service file once all callers migrated
 8. Verify `just pre-push` passes
