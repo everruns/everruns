@@ -10,7 +10,13 @@ description: Generate and edit raster images with OpenAI's GPT Image API, persis
 | **Features** | None |
 | **Dependencies** | [`session_file_system`](/capabilities/file-system/), [`session_storage`](/capabilities/session-storage/) |
 
-Generate new raster images and edit existing ones with OpenAI's `gpt-image-1` model.
+Generate new raster images and edit existing ones with OpenAI's ChatGPT Images 2.0 API model, `gpt-image-2`, by default.
+
+If you need the previous generation model for compatibility, set capability config to:
+
+```json
+{ "model": "gpt-image-1" }
+```
 
 This capability resolves credentials server-side, persists durable image artifacts, and can also write generated outputs into the session filesystem under `/workspace/.outputs/images/`.
 

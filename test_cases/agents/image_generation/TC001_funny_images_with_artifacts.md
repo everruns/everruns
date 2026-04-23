@@ -9,7 +9,7 @@ This case is based on the real 2026-04-22 live run captured in `EVE-385`. It exi
 ## Preconditions
 
 - Control-plane running (`just start-dev` or `just start-all`)
-- OpenAI credentials configured so `gpt_image_gen` can call `gpt-image-1`
+- OpenAI credentials configured so `gpt_image_gen` can call `gpt-image-2` (default)
 - OpenAI `gpt-5.4` model available in the org
 - Agent can enable these capabilities:
   - `gpt_image_gen`
