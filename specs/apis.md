@@ -249,11 +249,12 @@ Virtual filesystem scoped to each session. See [session-filesystem.md](session-f
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/v1/sessions/{session_id}/fs` | List root directory |
-| GET | `/v1/sessions/{session_id}/fs/{path}` | Read file or list directory |
+| GET | `/v1/sessions/{session_id}/fs/{path}` | Read file or list directory; `Accept: application/octet-stream` returns raw file bytes |
 | POST | `/v1/sessions/{session_id}/fs/{path}` | Create file or directory |
 | PUT | `/v1/sessions/{session_id}/fs/{path}` | Update file content |
 | DELETE | `/v1/sessions/{session_id}/fs/{path}` | Delete file |
 | DELETE | `/v1/sessions/{session_id}/fs/{path}?recursive=true` | Delete directory recursively |
+| GET | `/v1/sessions/{session_id}/fs/_/download/{path}` | Download raw file bytes |
 | POST | `/v1/sessions/{session_id}/fs/_/stat` | Get file metadata |
 | POST | `/v1/sessions/{session_id}/fs/_/move` | Move/rename file |
 | POST | `/v1/sessions/{session_id}/fs/_/copy` | Copy file |
