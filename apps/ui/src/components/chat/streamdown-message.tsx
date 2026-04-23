@@ -25,8 +25,12 @@ let mermaidLoading: Promise<DiagramPlugin> | null = null;
 function loadMermaidPlugin(): Promise<DiagramPlugin> {
   if (!mermaidLoading) {
     mermaidLoading = import("@streamdown/mermaid").then((m) => {
-      mermaidCache = m.mermaid;
-      return m.mermaid;
+      mermaidCache = m.createMermaidPlugin({
+        config: {
+          securityLevel: "strict",
+        },
+      });
+      return mermaidCache;
     });
   }
   return mermaidLoading;

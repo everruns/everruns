@@ -15,7 +15,15 @@ jest.mock("@streamdown/code", () => ({
   code: { name: "mock-code-plugin" },
 }));
 
+const mockCreateMermaidPlugin = jest.fn(() => ({
+  name: "mermaid",
+  type: "diagram",
+  language: "mermaid",
+  getMermaid: jest.fn(),
+}));
+
 jest.mock("@streamdown/mermaid", () => ({
+  createMermaidPlugin: mockCreateMermaidPlugin,
   mermaid: { name: "mermaid", type: "diagram", language: "mermaid", getMermaid: jest.fn() },
 }));
 
@@ -110,6 +118,11 @@ describe("StreamdownMessage", () => {
 
     const plugins = capturedStreamdownProps.plugins as Record<string, unknown>;
     expect(plugins.mermaid).toMatchObject({ name: "mermaid", type: "diagram" });
+    expect(mockCreateMermaidPlugin).toHaveBeenCalledWith({
+      config: {
+        securityLevel: "strict",
+      },
+    });
   });
 
   it("enables code highlighting by default", () => {

@@ -217,36 +217,38 @@ impl WorkerService for WorkerServiceImpl {
         // Append org-scoped tool definitions first so scoped definitions win on
         // name collisions when RuntimeAgentBuilder deduplicates with last-wins.
         let local_mcp_tool_definitions = if let Some(ref harness) = harness {
-            let effective = crate::services::scoped_mcp::merge_effective_scoped_mcp_servers(
-                harness,
-                agent.as_ref(),
-                &session,
-            );
+            let effective =
+                crate::domains::mcp_servers::scoped_mcp::merge_effective_scoped_mcp_servers(
+                    harness,
+                    agent.as_ref(),
+                    &session,
+                );
 
-            if let Err(error) = crate::services::scoped_mcp::validate_scoped_mcp_servers(&effective)
+            if let Err(error) =
+                crate::domains::mcp_servers::scoped_mcp::validate_scoped_mcp_servers(&effective)
             {
                 tracing::warn!(error = %error, "Invalid scoped MCP server config, skipping");
                 vec![]
             } else {
-                crate::services::scoped_mcp::build_scoped_mcp_tool_definitions(&effective)
-                    .await
-                    .map(|defs| {
-                        defs.into_iter()
-                            .map(|tool| McpToolDef {
-                                name: tool.name().to_string(),
-                                description: tool.description().to_string(),
-                                parameters: Some(
-                                    everruns_internal_protocol::json_to_proto_struct(
-                                        tool.parameters(),
-                                    ),
-                                ),
-                            })
-                            .collect()
-                    })
-                    .unwrap_or_else(|error| {
-                        tracing::warn!(error = %error, "Failed to build scoped MCP tool definitions");
-                        vec![]
-                    })
+                crate::domains::mcp_servers::scoped_mcp::build_scoped_mcp_tool_definitions(
+                    &effective,
+                )
+                .await
+                .map(|defs| {
+                    defs.into_iter()
+                        .map(|tool| McpToolDef {
+                            name: tool.name().to_string(),
+                            description: tool.description().to_string(),
+                            parameters: Some(everruns_internal_protocol::json_to_proto_struct(
+                                tool.parameters(),
+                            )),
+                        })
+                        .collect()
+                })
+                .unwrap_or_else(|error| {
+                    tracing::warn!(error = %error, "Failed to build scoped MCP tool definitions");
+                    vec![]
+                })
             }
         } else {
             vec![]
@@ -2176,7 +2178,7 @@ impl WorkerService for WorkerServiceImpl {
                     None
                 };
 
-                if let Some(r) = crate::services::scoped_mcp::resolve_scoped_mcp_server(
+                if let Some(r) = crate::domains::mcp_servers::scoped_mcp::resolve_scoped_mcp_server(
                     &harness,
                     agent.as_ref(),
                     &session,

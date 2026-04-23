@@ -35,6 +35,10 @@ impl Command for CreateEval {
         }
     }
 
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&crate::domains::evals::EVAL_MANAGE)
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<Eval, CommandError> {
         q::service(ctx)
             .create(&ctx.caller, self.0)
@@ -135,6 +139,10 @@ impl Command for UpdateEval {
         }
     }
 
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&crate::domains::evals::EVAL_MANAGE)
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<Eval, CommandError> {
         let eval_id = q::parse_eval_id(&self.eval_id)?;
         q::service(ctx)
@@ -163,6 +171,10 @@ impl Command for DeleteEval {
             method: "DELETE",
             path: "/v1/evals/{eval_id}",
         }
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&crate::domains::evals::EVAL_MANAGE)
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<bool, CommandError> {
@@ -199,6 +211,10 @@ impl Command for CreateEvalCase {
             method: "POST",
             path: "/v1/evals/{eval_id}/cases",
         }
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&crate::domains::evals::EVAL_MANAGE)
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<EvalCase, CommandError> {
@@ -294,6 +310,10 @@ impl Command for UpdateEvalCase {
         }
     }
 
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&crate::domains::evals::EVAL_MANAGE)
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<EvalCase, CommandError> {
         let eval_id = q::parse_eval_id(&self.eval_id)?;
         let case_id = q::parse_case_id(&self.case_id)?;
@@ -331,6 +351,10 @@ impl Command for DeleteEvalCase {
         }
     }
 
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&crate::domains::evals::EVAL_MANAGE)
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<bool, CommandError> {
         let eval_id = q::parse_eval_id(&self.eval_id)?;
         let case_id = q::parse_case_id(&self.case_id)?;
@@ -366,6 +390,10 @@ impl Command for CreateEvalRun {
             method: "POST",
             path: "/v1/evals/{eval_id}/runs",
         }
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&crate::domains::evals::EVAL_MANAGE)
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<EvalRun, CommandError> {
@@ -501,6 +529,10 @@ impl Command for CancelEvalRun {
         }
     }
 
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&crate::domains::evals::EVAL_MANAGE)
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<EvalRun, CommandError> {
         let eval_id = q::parse_eval_id(&self.eval_id)?;
         let run_id = q::parse_run_id(&self.run_id)?;
@@ -534,6 +566,10 @@ impl Command for UpdateEvalResultScores {
             method: "PATCH",
             path: "/v1/evals/{eval_id}/runs/{run_id}/results/{result_id}/scores",
         }
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&crate::domains::evals::EVAL_MANAGE)
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<EvalCaseResult, CommandError> {
@@ -575,6 +611,10 @@ impl Command for BulkUpdateEvalRunScores {
             method: "PATCH",
             path: "/v1/evals/{eval_id}/runs/{run_id}/scores",
         }
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&crate::domains::evals::EVAL_MANAGE)
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<EvalCaseResult>, CommandError> {

@@ -31,19 +31,13 @@ pub async fn invite_member(&self, caller: &Caller, req: InviteRequest) -> Result
 ```
 
 The macro:
-1. Finds `&Caller` parameter (same as `#[policy]`)
+1. Finds the `&Caller` parameter by type
 2. Finds `&self` to access `self.audit_logger()` (must return a concrete cloneable `AuditLogger` type)
 3. Wraps the function body: executes original, on `Ok` emits audit event via fire-and-forget `tokio::spawn`
 4. When `target_type` is specified, the target ID is extracted from the `Ok` result via `HasAuditTargetId` trait
 5. When `target_type` is omitted, no target is recorded
 
-Composes with `#[policy]`: policy checks run first (injected at top), audit fires after success.
-
-```rust
-#[policy(MEMBER_MANAGE)]
-#[audit(ManagementAction::MemberInvited, target_type = "member")]
-pub async fn invite(&self, caller: &Caller, req: Req) -> Result<Member> { ... }
-```
+Authorization is enforced at the command layer (`Command::run` in `crates/server/src/domains/common.rs`), not at the service method, so `#[audit]` is the only attribute macro used on service methods today.
 
 ## Storage
 

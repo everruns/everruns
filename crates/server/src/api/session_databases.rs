@@ -84,8 +84,13 @@ impl AppState {
     }
 
     fn ctx(&self, org: &ResolvedOrg) -> Ctx {
-        Ctx::minimal(Caller::from(org), self.db.clone(), None)
-            .with_sqldb_store(self.sqldb_store.clone())
+        Ctx::minimal(
+            Caller::from(org),
+            self.db.clone(),
+            None,
+            self.auth.permission_resolver.clone(),
+        )
+        .with_sqldb_store(self.sqldb_store.clone())
     }
 }
 
@@ -129,7 +134,7 @@ pub async fn list_databases(
     let items = ListSessionDatabases {
         session_id: session_id.to_string(),
     }
-    .execute(&state.ctx(&org))
+    .run(&state.ctx(&org))
     .await
     .map_err(|e| e.status())?;
     Ok(Json(ListResponse::new(items)))
@@ -160,7 +165,7 @@ pub async fn create_database(
         session_id: session_id.to_string(),
         name: req.name,
     }
-    .execute(&state.ctx(&org))
+    .run(&state.ctx(&org))
     .await
     .map_err(|e| e.status())?;
 
@@ -192,7 +197,7 @@ pub async fn get_database(
             session_id: session_id.to_string(),
             name,
         }
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await
         .map_err(|e| e.status())?,
     ))
@@ -222,7 +227,7 @@ pub async fn delete_database(
         session_id: session_id.to_string(),
         name,
     }
-    .execute(&state.ctx(&org))
+    .run(&state.ctx(&org))
     .await
     .map_err(|e| e.status())?;
     Ok(StatusCode::NO_CONTENT)
@@ -253,7 +258,7 @@ pub async fn get_schema(
             session_id: session_id.to_string(),
             name,
         }
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await
         .map_err(|e| e.status())?,
     ))
