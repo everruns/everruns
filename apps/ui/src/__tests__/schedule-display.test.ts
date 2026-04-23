@@ -30,6 +30,12 @@ describe("schedule-display", () => {
     expect(formatScheduledDateTime("2026-04-16T15:30:00Z", "UTC")).toBe("Apr 16, 3:30 PM UTC");
   });
 
+  it("falls back to UTC when timezone is invalid", () => {
+    expect(formatScheduledDateTime("2026-04-16T15:30:00Z", "Bad/Zone")).toBe(
+      "Apr 16, 3:30 PM UTC",
+    );
+  });
+
   it("extracts background monitor titles from synthetic schedule descriptions", () => {
     expect(
       getScheduleDisplayTitle(`Monitor: Watch PR 1319
