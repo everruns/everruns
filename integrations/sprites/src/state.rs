@@ -92,6 +92,8 @@ pub async fn get_sprite_state(
     context: &ToolContext,
     sprite_name: &str,
 ) -> Result<SpriteState, ToolExecutionResult> {
+    validate_sprite_name(sprite_name)?;
+
     let storage = context
         .storage_store
         .as_ref()
@@ -121,6 +123,8 @@ pub async fn save_sprite_state(
     context: &ToolContext,
     state: &SpriteState,
 ) -> Result<(), ToolExecutionResult> {
+    validate_sprite_name(&state.sprite_name)?;
+
     let storage = context
         .storage_store
         .as_ref()
@@ -144,6 +148,8 @@ pub async fn delete_sprite_state(
     context: &ToolContext,
     sprite_name: &str,
 ) -> Result<(), ToolExecutionResult> {
+    validate_sprite_name(sprite_name)?;
+
     let storage = context
         .storage_store
         .as_ref()

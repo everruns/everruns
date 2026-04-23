@@ -20,6 +20,7 @@ pub mod llm_providers;
 pub mod mcp_servers;
 pub mod messages;
 pub mod notifications;
+pub mod org_resolver;
 pub mod organizations;
 pub mod schedules;
 pub mod session_commands;
