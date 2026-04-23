@@ -461,7 +461,7 @@ async fn resolve_client_config(
             return Ok(ResolvedClientConfig { api_key, base_url });
         }
 
-        if let Some(base_url) = base_url {
+        if base_url.is_some() {
             let Some(provider_store) = &context.provider_credential_store else {
                 return Err(ToolExecutionResult::tool_error(
                     "OpenAI credentials are not configured. Store OPENAI_API_KEY via secret_store or configure an OpenAI provider.",
@@ -474,7 +474,7 @@ async fn resolve_client_config(
             {
                 Ok(Some(credentials)) => Ok(ResolvedClientConfig {
                     api_key: credentials.api_key,
-                    base_url: Some(base_url),
+                    base_url: credentials.base_url,
                 }),
                 Ok(None) => Err(ToolExecutionResult::tool_error(
                     "OpenAI credentials are not configured. Store OPENAI_API_KEY via secret_store or configure an OpenAI provider.",
@@ -801,6 +801,85 @@ fn infer_image_content_type(path: &str) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use async_trait::async_trait;
+    use everruns_core::Result;
+    use everruns_core::traits::{
+        KeyInfo, ProviderCredentialStore, ProviderCredentials, SecretInfo, SessionStorageStore,
+    };
+    use everruns_core::typed_id::SessionId;
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex};
+
+    struct MockSessionStorageStore {
+        secrets: Mutex<HashMap<String, String>>,
+    }
+
+    impl MockSessionStorageStore {
+        fn with_secrets(secrets: &[(&str, &str)]) -> Self {
+            let mut map = HashMap::new();
+            for (key, value) in secrets {
+                map.insert((*key).to_string(), (*value).to_string());
+            }
+            Self {
+                secrets: Mutex::new(map),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl SessionStorageStore for MockSessionStorageStore {
+        async fn set_value(&self, _session_id: SessionId, _key: &str, _value: &str) -> Result<()> {
+            unreachable!("unused in tests")
+        }
+
+        async fn get_value(&self, _session_id: SessionId, _key: &str) -> Result<Option<String>> {
+            unreachable!("unused in tests")
+        }
+
+        async fn delete_value(&self, _session_id: SessionId, _key: &str) -> Result<bool> {
+            unreachable!("unused in tests")
+        }
+
+        async fn list_keys(&self, _session_id: SessionId) -> Result<Vec<KeyInfo>> {
+            unreachable!("unused in tests")
+        }
+
+        async fn set_secret(
+            &self,
+            _session_id: SessionId,
+            _name: &str,
+            _value: &str,
+        ) -> Result<()> {
+            unreachable!("unused in tests")
+        }
+
+        async fn get_secret(&self, _session_id: SessionId, name: &str) -> Result<Option<String>> {
+            Ok(self.secrets.lock().expect("poisoned").get(name).cloned())
+        }
+
+        async fn delete_secret(&self, _session_id: SessionId, _name: &str) -> Result<bool> {
+            unreachable!("unused in tests")
+        }
+
+        async fn list_secrets(&self, _session_id: SessionId) -> Result<Vec<SecretInfo>> {
+            unreachable!("unused in tests")
+        }
+    }
+
+    struct MockProviderCredentialStore {
+        credentials: ProviderCredentials,
+    }
+
+    #[async_trait]
+    impl ProviderCredentialStore for MockProviderCredentialStore {
+        async fn get_default_provider_credentials(
+            &self,
+            provider_type: &str,
+        ) -> Result<Option<ProviderCredentials>> {
+            assert_eq!(provider_type, "openai");
+            Ok(Some(self.credentials.clone()))
+        }
+    }
 
     #[test]
     fn normalize_workspace_paths() {
@@ -830,6 +909,68 @@ mod tests {
         assert_eq!(
             capability.dependencies(),
             vec!["session_file_system", "session_storage"]
+        );
+    }
+
+    #[tokio::test]
+    async fn uses_session_base_url_when_session_api_key_present() {
+        let session_id = SessionId::new();
+        let storage = Arc::new(MockSessionStorageStore::with_secrets(&[
+            ("OPENAI_API_KEY", "session-key"),
+            ("OPENAI_BASE_URL", "https://session.example/v1"),
+        ]));
+        let provider = Arc::new(MockProviderCredentialStore {
+            credentials: ProviderCredentials {
+                api_key: "provider-key".to_string(),
+                base_url: Some("https://provider.example/v1".to_string()),
+            },
+        });
+        let context = ToolContext {
+            session_id,
+            storage_store: Some(storage),
+            provider_credential_store: Some(provider),
+            ..ToolContext::new(session_id)
+        };
+
+        let resolved = resolve_client_config(&context)
+            .await
+            .expect("resolve config");
+
+        assert_eq!(resolved.api_key, "session-key");
+        assert_eq!(
+            resolved.base_url,
+            Some("https://session.example/v1".to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn ignores_session_base_url_when_falling_back_to_provider_credentials() {
+        let session_id = SessionId::new();
+        let storage = Arc::new(MockSessionStorageStore::with_secrets(&[(
+            "OPENAI_BASE_URL",
+            "https://attacker.example/v1",
+        )]));
+        let provider = Arc::new(MockProviderCredentialStore {
+            credentials: ProviderCredentials {
+                api_key: "provider-key".to_string(),
+                base_url: Some("https://provider.example/v1".to_string()),
+            },
+        });
+        let context = ToolContext {
+            session_id,
+            storage_store: Some(storage),
+            provider_credential_store: Some(provider),
+            ..ToolContext::new(session_id)
+        };
+
+        let resolved = resolve_client_config(&context)
+            .await
+            .expect("resolve config");
+
+        assert_eq!(resolved.api_key, "provider-key");
+        assert_eq!(
+            resolved.base_url,
+            Some("https://provider.example/v1".to_string())
         );
     }
 }
