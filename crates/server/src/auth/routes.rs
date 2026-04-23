@@ -120,6 +120,28 @@ pub struct AuthConfigResponse {
     pub signup_enabled: bool,
 }
 
+fn oauth_providers(config: &super::config::AuthConfig) -> Vec<String> {
+    if !config.oauth_enabled() {
+        return Vec::new();
+    }
+
+    let mut providers = Vec::new();
+    if config.google.is_some() {
+        providers.push("google".to_string());
+    }
+    if config.github.is_some() {
+        providers.push("github".to_string());
+    }
+    providers
+}
+
+fn ensure_oauth_enabled(config: &super::config::AuthConfig) -> Result<(), AuthError> {
+    if config.oauth_enabled() {
+        return Ok(());
+    }
+    Err(AuthError::unauthorized("OAuth authentication is disabled"))
+}
+
 /// Rate limit middleware for login endpoint
 async fn rate_limit_login(
     State(state): State<BuiltinAuthBackend>,
@@ -199,19 +221,10 @@ pub fn routes(state: BuiltinAuthBackend) -> Router {
 
 /// GET /v1/auth/config - Get authentication configuration
 pub async fn get_auth_config(State(state): State<BuiltinAuthBackend>) -> Json<AuthConfigResponse> {
-    let mut oauth_providers = Vec::new();
-
-    if state.config.google.is_some() {
-        oauth_providers.push("google".to_string());
-    }
-    if state.config.github.is_some() {
-        oauth_providers.push("github".to_string());
-    }
-
     Json(AuthConfigResponse {
         mode: state.config.mode.as_str().to_string(),
         password_auth_enabled: state.config.password_auth_enabled(),
-        oauth_providers,
+        oauth_providers: oauth_providers(&state.config),
         signup_enabled: state.config.signup_enabled(),
     })
 }
@@ -609,6 +622,8 @@ pub async fn oauth_redirect(
     Path(provider): Path<String>,
     jar: CookieJar,
 ) -> Result<(CookieJar, Redirect), AuthError> {
+    ensure_oauth_enabled(&state.config)?;
+
     let provider_enum = OAuthProvider::parse(&provider)
         .ok_or_else(|| AuthError::unauthorized("Unknown OAuth provider"))?;
 
@@ -660,6 +675,8 @@ pub async fn oauth_callback(
     Query(query): Query<OAuthCallbackQuery>,
     jar: CookieJar,
 ) -> Result<(CookieJar, Redirect), AuthError> {
+    ensure_oauth_enabled(&state.config)?;
+
     let provider_enum = OAuthProvider::parse(&provider)
         .ok_or_else(|| AuthError::unauthorized("Unknown OAuth provider"))?;
 
@@ -1005,6 +1022,7 @@ async fn get_or_create_admin_user(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::auth::config::AuthConfig;
 
     #[test]
     fn test_generate_oauth_state_is_unique() {
@@ -1018,6 +1036,57 @@ mod tests {
     fn test_oauth_state_cookie_name() {
         // Verify the constant is set correctly for TM-AUTH-007
         assert_eq!(OAUTH_STATE_COOKIE, "oauth_state");
+    }
+
+    #[test]
+    fn test_oauth_providers_hidden_when_oauth_disabled() {
+        let mut config = AuthConfig::default();
+        config.mode = AuthMode::External;
+        config.google = Some(crate::auth::config::GoogleOAuthConfig {
+            base: crate::auth::config::OAuthProviderConfig {
+                client_id: "id".to_string(),
+                client_secret: "secret".to_string(),
+                redirect_uri: "http://localhost/callback".to_string(),
+            },
+            allowed_domains: None,
+        });
+        config.github = Some(crate::auth::config::GitHubOAuthConfig {
+            base: crate::auth::config::OAuthProviderConfig {
+                client_id: "id".to_string(),
+                client_secret: "secret".to_string(),
+                redirect_uri: "http://localhost/callback".to_string(),
+            },
+        });
+
+        assert!(oauth_providers(&config).is_empty());
+        assert!(ensure_oauth_enabled(&config).is_err());
+    }
+
+    #[test]
+    fn test_oauth_providers_visible_when_oauth_enabled() {
+        let mut config = AuthConfig::default();
+        config.mode = AuthMode::Full;
+        config.google = Some(crate::auth::config::GoogleOAuthConfig {
+            base: crate::auth::config::OAuthProviderConfig {
+                client_id: "id".to_string(),
+                client_secret: "secret".to_string(),
+                redirect_uri: "http://localhost/callback".to_string(),
+            },
+            allowed_domains: None,
+        });
+        config.github = Some(crate::auth::config::GitHubOAuthConfig {
+            base: crate::auth::config::OAuthProviderConfig {
+                client_id: "id".to_string(),
+                client_secret: "secret".to_string(),
+                redirect_uri: "http://localhost/callback".to_string(),
+            },
+        });
+
+        assert_eq!(
+            oauth_providers(&config),
+            vec!["google".to_string(), "github".to_string()]
+        );
+        assert!(ensure_oauth_enabled(&config).is_ok());
     }
 }
 
