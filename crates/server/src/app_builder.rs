@@ -808,6 +808,10 @@ impl ServerAppBuilder {
             db: db.clone(),
             auth: auth_state.clone(),
         };
+        let resolver_state = api::resolver::AppState {
+            db: db.clone(),
+            auth: auth_state.clone(),
+        };
         let durable_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>> =
             if let Some(ref shared_store) = shared_durable_store {
                 tracing::info!("Using shared in-memory workflow event store for DEV MODE");
@@ -969,6 +973,7 @@ impl ServerAppBuilder {
             .merge(api::session_storage::routes(session_storage_state))
             .merge(api::session_databases::routes(session_databases_state))
             .merge(api::users::routes(users_state))
+            .merge(api::resolver::routes(resolver_state))
             .merge(api::durable::routes(durable_state))
             .merge(schedules_state)
             .merge(api::images::routes(images_state))
