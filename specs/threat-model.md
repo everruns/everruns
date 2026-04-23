@@ -1044,7 +1044,7 @@ Session A cannot access Session B's container:
 | Control | Category | Implementation |
 |---------|----------|----------------|
 | Authentication | TM-AUTH | JWT (15 min), API keys (SHA-256), OAuth, Argon2id passwords |
-| Authorization | TM-TENANT, TM-AUTHZ | Org-scoped queries, ResolvedOrg extractor, 404 on cross-org; `Command::run` enforcement via `evaluate_with(ctx.permission_resolver, caller)`, role→permission mapping |
+| Authorization | TM-TENANT, TM-AUTHZ | Org-scoped queries, ResolvedOrg extractor, 404 on cross-org; `Command::run` enforcement via `policy.evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)`, role→permission mapping |
 | Encryption at rest | TM-CRYPTO | AES-256-GCM envelope encryption for API keys |
 | Encryption in transit | TM-LLM | HTTPS for all external communication |
 | Input validation | TM-API | Size limits, path validation, regex constraints |

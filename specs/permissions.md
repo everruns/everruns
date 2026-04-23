@@ -52,7 +52,7 @@ AuthState::new(config, backend)
 AuthState::with_resolver(config, backend, Arc::new(MyResolver))
 ```
 
-Enforcement uses the resolver threaded through `Ctx` — every `Command::run` calls `Policy::evaluate_with(ctx.permission_resolver.as_ref(), &caller)`, so SaaS-custom resolvers apply uniformly across HTTP/MCP/gRPC/platform callers. Config endpoints (`/v1/{resource}/config`) use `evaluate_policies_with(resolver, caller, policies)` for UI gating hints.
+Enforcement uses the resolver threaded through `Ctx` — every `Command::run` calls `policy.evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)`, so SaaS-custom resolvers apply uniformly across HTTP/MCP/gRPC/platform callers. Config endpoints (`/v1/{resource}/config`) use `evaluate_policies_with(resolver, caller, policies)` for UI gating hints.
 
 ### Platform User Contract
 
@@ -88,7 +88,7 @@ impl Command for CreateAgent {
 
 ### Retired: `#[policy]` Macro
 
-The `#[policy(...)]` attribute macro has been removed. It was the historical enforcement mechanism (inject `POLICY.evaluate(caller)?;` at the top of a service method) and hardcoded `DefaultPermissionResolver` — which bypassed the SaaS resolver contract (TM-AUTHZ-008). `Command::run` is now the single enforcement point and uses `evaluate_with(ctx.permission_resolver, caller)`. Service methods no longer perform policy checks; the authorization check happens at the command boundary.
+The `#[policy(...)]` attribute macro has been removed. It was the historical enforcement mechanism (inject `POLICY.evaluate(caller)?;` at the top of a service method) and hardcoded `DefaultPermissionResolver` — which bypassed the SaaS resolver contract (TM-AUTHZ-008). `Command::run` is now the single enforcement point and uses `policy.evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)`. Service methods no longer perform policy checks; the authorization check happens at the command boundary.
 
 ### Durable Ownership
 
@@ -101,7 +101,7 @@ Policy evaluation and durable ownership are separate concerns.
 
 ### Policy Evaluation
 
-See `crates/core/src/permissions.rs` for evaluation logic. Policies support both default and custom resolvers via `evaluate()` / `evaluate_with()`. The command runner always uses `evaluate_with(ctx.permission_resolver, caller)` so custom resolvers (SaaS billing-tier, per-user grants, external RBAC) apply uniformly across HTTP/MCP/gRPC/platform. Config endpoints use `evaluate_policies_with(resolver, caller, policies)` for UI-facing policy hints.
+See `crates/core/src/permissions.rs` for evaluation logic. Policies support both default and custom resolvers via `evaluate()` / `evaluate_with()`. The command runner always uses `policy.evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)` so custom resolvers (SaaS billing-tier, per-user grants, external RBAC) apply uniformly across HTTP/MCP/gRPC/platform. Config endpoints use `evaluate_policies_with(resolver, caller, policies)` for UI-facing policy hints.
 
 ### Error Mapping
 
@@ -152,7 +152,7 @@ pub async fn harness_config(org: ResolvedOrg) -> Json<ResourceConfigResponse> {
 
 ## Policy Requirements for New Features
 
-Every non-GET domain command MUST declare `Command::policy() -> Option<&'static Policy>`. The command runner enforces the declared policy via `evaluate_with(ctx.permission_resolver, caller)` before `execute`. `crates/server/tests/command_policy_enforcement_test.rs::every_non_readonly_command_declares_policy` walks `inventory::iter::<CommandDescriptor>` at test time and fails the build for any mutating command without a policy declaration.
+Every non-GET domain command MUST declare `Command::policy() -> Option<&'static Policy>`. The command runner enforces the declared policy via `policy.evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)` before `execute`. `crates/server/tests/command_policy_enforcement_test.rs::every_non_readonly_command_declares_policy` walks `inventory::iter::<CommandDescriptor>` at test time and fails the build for any mutating command without a policy declaration.
 
 ### Checklist for New Resources
 

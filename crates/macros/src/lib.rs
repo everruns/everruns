@@ -2,8 +2,8 @@
 //
 // Currently provides `#[audit]` for AOP audit logging on service methods.
 //
-// NOTE: `#[policy]` was removed in EVE-???. Command-layer authorization is
-// enforced uniformly by `Command::run` (see `specs/permissions.md` and
+// NOTE: `#[policy]` was retired. Command-layer authorization is enforced
+// uniformly by `Command::run` (see `specs/permissions.md` and
 // `crates/server/src/domains/common.rs`). Service-layer policy checks were
 // redundant and re-introduced a SaaS-resolver bypass (TM-AUTHZ-008).
 
@@ -34,14 +34,11 @@ use syn::{
 /// 4. Extracts `target_id` from the result via `.audit_target_id()` if available,
 ///    or falls back to empty string
 ///
-/// # Composing with `#[policy]`
+/// # Authorization
 ///
-/// Policy runs first (injected at top of body), audit fires after success:
-/// ```rust,ignore
-/// #[policy(HARNESS_MANAGE)]
-/// #[audit(ManagementAction::HarnessCreated, target_type = "harness")]
-/// pub async fn create(&self, caller: &Caller, req: Req) -> Result<Harness> { ... }
-/// ```
+/// Authorization is enforced at the command layer (`Command::run`), not at
+/// the service method. `#[audit]` only records successful outcomes; it does
+/// not gate access. See `specs/permissions.md` for enforcement details.
 #[proc_macro_attribute]
 pub fn audit(attr: TokenStream, item: TokenStream) -> TokenStream {
     let args = parse_macro_input!(attr with Punctuated::<syn::Expr, Token![,]>::parse_terminated);
