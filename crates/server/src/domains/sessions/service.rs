@@ -1162,19 +1162,18 @@ fn sanitize_session_capabilities(
     capabilities
         .into_iter()
         .map(|mut capability| {
-            if capability.capability_id() == SESSION_SANDBOX_CAPABILITY_ID {
-                if let Some(provider_config) = capability
+            if capability.capability_id() == SESSION_SANDBOX_CAPABILITY_ID
+                && let Some(provider_config) = capability
                     .config
                     .get_mut("provider_config")
                     .and_then(serde_json::Value::as_object_mut)
-                {
-                    let removed_api_base = provider_config.remove("api_base").is_some();
-                    let removed_toolbox_base = provider_config.remove("toolbox_base").is_some();
-                    if removed_api_base || removed_toolbox_base {
-                        tracing::warn!(
-                            "Ignoring session-level session_sandbox provider_config base URL overrides"
-                        );
-                    }
+            {
+                let removed_api_base = provider_config.remove("api_base").is_some();
+                let removed_toolbox_base = provider_config.remove("toolbox_base").is_some();
+                if removed_api_base || removed_toolbox_base {
+                    tracing::warn!(
+                        "Ignoring session-level session_sandbox provider_config base URL overrides"
+                    );
                 }
             }
             capability
