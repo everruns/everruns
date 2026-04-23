@@ -27,6 +27,7 @@ import { useOrg } from "@/providers/org-provider";
 import { useLocale } from "@/providers/locale-provider";
 import { createReconnectTracker } from "@/lib/sse-reconnect";
 import { createEventStream, type EventStreamLike } from "@/lib/event-stream";
+import { useResourceOrgFallback } from "./use-resource-org-fallback";
 
 /**
  * Fetch paginated sessions for an organization.
@@ -79,6 +80,15 @@ export function useSession(
     queryFn: () => getSession(sessionId!),
     enabled: !!org && !!sessionId,
     refetchInterval: options?.refetchInterval,
+  });
+
+  // Cross-org fallback: auto-switch to the owning org when the user follows a
+  // direct link to a session in another org they are a member of.
+  // See specs/multitenancy.md (Cross-Org Resource Resolution).
+  useResourceOrgFallback({
+    resourceId: sessionId,
+    error: query.error,
+    isLoading: orgLoading || query.isLoading,
   });
 
   // Include org loading state so pages show skeleton while org initializes

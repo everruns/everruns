@@ -29,10 +29,22 @@ pub const EVAL_VIEW: Policy = Policy {
     rules: &[Rule::UserHasPermission(Permission::OrgAgentsManage)],
 };
 
-/// Policy: Manage evals (create, update, run).
+/// Policy: Manage evals (create, update, metadata operations).
 pub const EVAL_MANAGE: Policy = Policy {
     id: "eval.manage",
     rules: &[Rule::UserHasPermission(Permission::OrgAgentsManage)],
+};
+
+/// Policy: Start eval runs.
+///
+/// Runs create real sessions in the background eval runner, so require both
+/// eval-management and session-management permissions.
+pub const EVAL_RUN: Policy = Policy {
+    id: "eval.run",
+    rules: &[
+        Rule::UserHasPermission(Permission::OrgAgentsManage),
+        Rule::UserHasPermission(Permission::OrgSessionsManage),
+    ],
 };
 
 pub struct EvalService {
@@ -328,7 +340,7 @@ impl EvalService {
     // Eval Run
     // ============================================
 
-    #[policy(EVAL_MANAGE)]
+    #[policy(EVAL_RUN)]
     pub async fn create_run(
         &self,
         caller: &Caller,

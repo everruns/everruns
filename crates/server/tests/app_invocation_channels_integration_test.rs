@@ -298,6 +298,64 @@ async fn webhook_channel_shared_session_reuses_session_and_renders_template() {
 }
 
 #[tokio::test]
+async fn webhook_shared_session_does_not_reuse_user_seeded_tag_session() {
+    let server = TestServer::in_memory().await;
+    let app = create_app(
+        &server,
+        "webhook-protected-shared",
+        "webhook",
+        json!({
+            "token": "secret-attack",
+            "session_mode": "shared_session",
+            "message": "repo={{payload.repo.name}}",
+        }),
+    )
+    .await;
+
+    let app_id = app["id"].as_str().unwrap();
+    let channel_id = app["channels"][0]["id"].as_str().unwrap();
+
+    let seeded_session: Value = server
+        .post(
+            "/v1/sessions",
+            json!({
+                "harness_id": server.seed_generic_harness_id,
+                "title": "seeded attacker session",
+                "tags": [
+                    format!("app:{app_id}"),
+                    format!("app_channel:{channel_id}"),
+                    "app_channel_type:webhook",
+                ],
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    publish_app(&server, app_id).await;
+
+    let invoked: Value = server
+        .request_raw(
+            Method::POST,
+            &format!("/v1/apps/{app_id}/webhooks/{channel_id}"),
+            vec![
+                ("content-type", "application/json"),
+                ("x-everruns-webhook-token", "secret-attack"),
+            ],
+            serde_json::to_vec(&json!({
+                "repo": { "name": "everruns" },
+            }))
+            .unwrap(),
+        )
+        .await
+        .assert_status(StatusCode::ACCEPTED)
+        .json();
+
+    assert_ne!(invoked["session_id"], seeded_session["id"]);
+    assert!(invoked["created_session"].as_bool().unwrap());
+}
+
+#[tokio::test]
 async fn webhook_channel_per_invocation_rejects_bad_token_and_creates_new_sessions() {
     let server = TestServer::in_memory().await;
     let app = create_app(

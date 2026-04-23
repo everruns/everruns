@@ -35,6 +35,20 @@ impl Database {
         Ok(row)
     }
 
+    /// Look up the owning org for an agent identity by its public id. See
+    /// specs/multitenancy.md (Cross-Org Resource Resolution).
+    pub async fn get_agent_identity_organization_id(&self, public_id: &str) -> Result<Option<i64>> {
+        let Ok(id) = public_id.parse::<AgentIdentityId>() else {
+            return Ok(None);
+        };
+        let row: Option<(i64,)> =
+            sqlx::query_as("SELECT org_id FROM agent_identities WHERE id = $1 LIMIT 1")
+                .bind(id)
+                .fetch_optional(&self.pool)
+                .await?;
+        Ok(row.map(|(org_id,)| org_id))
+    }
+
     pub async fn get_agent_identity(
         &self,
         org_id: i64,

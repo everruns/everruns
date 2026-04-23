@@ -217,6 +217,7 @@ impl ToolExecutionResult {
                     tool_name = %tool_name,
                     tool_call_id = %tool_call_id,
                     error = %err.message,
+                    error_chain = %err.chain_string(),
                     "Tool internal error (details hidden from LLM)"
                 );
 
@@ -271,6 +272,19 @@ impl ToolInternalError {
             message: message.into(),
             source: None,
         }
+    }
+
+    pub fn chain_string(&self) -> String {
+        let mut parts = vec![self.message.clone()];
+        let mut current = <Self as std::error::Error>::source(self);
+        while let Some(source) = current {
+            let message = source.to_string();
+            if parts.last() != Some(&message) {
+                parts.push(message);
+            }
+            current = source.source();
+        }
+        parts.join(": ")
     }
 }
 
