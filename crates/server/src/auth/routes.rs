@@ -411,12 +411,6 @@ pub async fn register(
             // Continue anyway - user is created, they just might not have org membership
         });
 
-    // Ensure default org has built-in harnesses (safety net — background seed task
-    // may not have completed yet or may have failed silently).
-    if let Err(e) = crate::org_init::initialize_org_harnesses(&state.db, DEFAULT_ORG_ID).await {
-        tracing::warn!(error = %e, "Failed to ensure default org harnesses (non-fatal)");
-    }
-
     let organizations = builtin::fetch_user_organizations(&state.db, user.id)
         .await
         .unwrap_or_default();
@@ -793,12 +787,6 @@ pub async fn oauth_callback(
                 tracing::error!("Failed to add OAuth user to default org: {}", e);
                 // Continue anyway
             });
-
-        // Ensure default org has built-in harnesses (safety net — background seed task
-        // may not have completed yet or may have failed silently).
-        if let Err(e) = crate::org_init::initialize_org_harnesses(&state.db, DEFAULT_ORG_ID).await {
-            tracing::warn!(error = %e, "Failed to ensure default org harnesses (non-fatal)");
-        }
 
         created_user
     };

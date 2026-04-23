@@ -6,7 +6,9 @@
 use crate::storage::StorageBackend;
 use axum::Json;
 use axum::http::StatusCode;
-use everruns_core::{Caller, Policy, PolicyError};
+#[cfg(test)]
+use everruns_core::DefaultPermissionResolver;
+use everruns_core::{Caller, PermissionResolver, Policy, PolicyError};
 use everruns_durable::WorkflowEventStore;
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
@@ -152,6 +154,11 @@ pub struct CommandMeta {
 #[derive(Clone)]
 pub struct Ctx {
     pub caller: Caller,
+    // SECURITY: Threaded through every caller (HTTP/MCP/gRPC/platform) so
+    // `Command::run` evaluates policies against the active (possibly
+    // SaaS-custom) resolver. Never bypass via `Policy::evaluate` — that
+    // hardcodes `DefaultPermissionResolver`.
+    pub permission_resolver: Arc<dyn PermissionResolver>,
     pub db: Arc<StorageBackend>,
     pub capability_service: Arc<crate::services::CapabilityService>,
     pub encryption: Option<Arc<crate::storage::encryption::EncryptionService>>,
@@ -188,14 +195,22 @@ impl Ctx {
     /// `encryption` may be `None` for domains that never need it (agents,
     /// harnesses, skills). Domains that encrypt secrets (apps, mcp_servers)
     /// must pass `Some`.
+    ///
+    /// `permission_resolver` is required — pass `auth.permission_resolver`
+    /// from `AuthState` so SaaS-custom resolvers are honored during
+    /// enforcement. In tests that don't care about the resolver, use
+    /// `Ctx::minimal_for_test`; use `with_permission_resolver` when a test
+    /// needs to override the resolver explicitly.
     pub fn new(
         caller: Caller,
         db: Arc<StorageBackend>,
         capability_service: Arc<crate::services::CapabilityService>,
         encryption: Option<Arc<crate::storage::encryption::EncryptionService>>,
+        permission_resolver: Arc<dyn PermissionResolver>,
     ) -> Self {
         Self {
             caller,
+            permission_resolver,
             db,
             capability_service,
             encryption,
@@ -224,10 +239,37 @@ impl Ctx {
         caller: Caller,
         db: Arc<StorageBackend>,
         encryption: Option<Arc<crate::storage::encryption::EncryptionService>>,
+        permission_resolver: Arc<dyn PermissionResolver>,
     ) -> Self {
         let capability_service =
             Arc::new(crate::services::CapabilityService::new(db.clone(), None));
-        Self::new(caller, db, capability_service, encryption)
+        Self::new(
+            caller,
+            db,
+            capability_service,
+            encryption,
+            permission_resolver,
+        )
+    }
+
+    /// Test-only convenience: construct a minimal Ctx with the OSS default
+    /// resolver. Production code must never use this — route
+    /// `AuthState.permission_resolver` through `Ctx::new` instead so SaaS
+    /// overrides take effect.
+    #[cfg(test)]
+    pub fn minimal_for_test(
+        caller: Caller,
+        db: Arc<StorageBackend>,
+        encryption: Option<Arc<crate::storage::encryption::EncryptionService>>,
+    ) -> Self {
+        Self::minimal(caller, db, encryption, Arc::new(DefaultPermissionResolver))
+    }
+
+    /// Override the permission resolver. Primarily for tests; production
+    /// code should pass the resolver to `Ctx::new` directly.
+    pub fn with_permission_resolver(mut self, resolver: Arc<dyn PermissionResolver>) -> Self {
+        self.permission_resolver = resolver;
+        self
     }
 
     pub fn with_session_service(
@@ -395,7 +437,32 @@ pub trait Command: DeserializeOwned + Send + 'static + CommandSchema {
     }
 
     /// Execute the command. Validation + business logic + persistence.
+    ///
+    /// SECURITY: Do not call this directly from HTTP/MCP/gRPC adapters —
+    /// it skips the policy check. Use `Command::run` instead. `execute`
+    /// stays public to allow one command to compose another (already
+    /// authorized through its own `run`) without re-paying policy cost.
     fn execute(self, ctx: &Ctx) -> impl Future<Output = Result<Self::Output, CommandError>> + Send;
+
+    /// Public entry point. Evaluates `policy()` against the active
+    /// `PermissionResolver` (from `Ctx`) and then delegates to `execute`.
+    ///
+    /// Every caller — HTTP adapters, MCP dispatch, gRPC `ExecuteCommand`,
+    /// platform capability — goes through this. If you're adding a new
+    /// caller and want to skip policy, stop: write a new command.
+    fn run(self, ctx: &Ctx) -> impl Future<Output = Result<Self::Output, CommandError>> + Send
+    where
+        Self: Sized,
+    {
+        async move {
+            if let Some(policy) = Self::policy() {
+                policy
+                    .evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)
+                    .map_err(|e| CommandError::Forbidden(e.message))?;
+            }
+            self.execute(ctx).await
+        }
+    }
 }
 
 pub trait CommandSchema {
@@ -528,6 +595,9 @@ pub struct CommandDescriptor {
     pub read_only: fn() -> bool,
     pub positional_arg: fn() -> Option<&'static str>,
     pub param_schema: fn() -> Value,
+    // SECURITY: Exposed so the policy-coverage test can assert every
+    // mutating command declares a policy; do not drop.
+    pub policy: fn() -> Option<&'static Policy>,
     pub dispatch: DispatchFn,
 }
 
@@ -541,6 +611,7 @@ impl CommandDescriptor {
             read_only: C::read_only,
             positional_arg: C::positional_arg,
             param_schema: <C as Command>::param_schema,
+            policy: C::policy,
             dispatch: dispatch_for::<C>,
         }
     }
@@ -551,17 +622,11 @@ fn dispatch_for<C: Command>(
     ctx: &Ctx,
 ) -> Pin<Box<dyn Future<Output = Result<String, CommandError>> + Send + '_>> {
     Box::pin(async move {
-        // Policy check
-        if let Some(policy) = C::policy() {
-            policy
-                .evaluate(&ctx.caller)
-                .map_err(|e| CommandError::Forbidden(e.message))?;
-        }
-
         let cmd: C =
             serde_json::from_value(params).map_err(|e| CommandError::BadRequest(e.to_string()))?;
 
-        let result = cmd.execute(ctx).await?;
+        // `run` handles the policy check using the active resolver in `ctx`.
+        let result = cmd.run(ctx).await?;
 
         serde_json::to_string(&result).map_err(|e| CommandError::Internal(e.into()))
     })

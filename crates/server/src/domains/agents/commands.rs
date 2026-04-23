@@ -7,6 +7,7 @@ use super::queries as q;
 use super::types::{CreateAgentRequest, CreateAgentRow, UpdateAgent, UpdateAgentRequest};
 use super::{AGENT_DANGEROUS, AGENT_MANAGE, AGENT_VIEW};
 use crate::domains::common::*;
+use crate::max_iterations;
 use everruns_core::typed_id::AgentId;
 use everruns_core::{
     Agent, AgentCapabilityConfig, InitialFile, OrgRole, Policy, ScopedMcpServers, ToolDefinition,
@@ -152,14 +153,14 @@ impl Command for CreateAgent {
             req.capabilities.clone(),
             !req.initial_files.is_empty(),
         );
-        crate::services::capability_validation::validate_capability_refs(
+        crate::domains::capabilities::validation::validate_capability_refs(
             &ctx.db,
             ctx.org_id(),
             &caps,
         )
         .await
         .map_err(classify_anyhow)?;
-        crate::services::scoped_mcp::validate_scoped_mcp_servers(&req.mcp_servers)
+        crate::domains::mcp_servers::scoped_mcp::validate_scoped_mcp_servers(&req.mcp_servers)
             .map_err(classify_anyhow)?;
         let default_model_id = q::validate_model_id(&ctx.db, ctx.org_id(), req.default_model_id)
             .await
@@ -183,7 +184,8 @@ impl Command for CreateAgent {
                     .network_access
                     .as_ref()
                     .map(|na| serde_json::to_value(na).unwrap()),
-                max_iterations: req.max_iterations.map(|v| v as i32),
+                max_iterations: max_iterations::to_db(req.max_iterations)
+                    .map_err(classify_anyhow)?,
             };
             let row = ctx
                 .db
@@ -210,7 +212,8 @@ impl Command for CreateAgent {
                     .network_access
                     .as_ref()
                     .map(|na| serde_json::to_value(na).unwrap()),
-                max_iterations: req.max_iterations.map(|v| v as i32),
+                max_iterations: max_iterations::to_db(req.max_iterations)
+                    .map_err(classify_anyhow)?,
             };
             let row = ctx
                 .db
@@ -419,7 +422,7 @@ impl Command for UpdateAgentCmd {
             None => None,
         };
         if let Some(ref caps) = capabilities_override {
-            crate::services::capability_validation::validate_capability_refs(
+            crate::domains::capabilities::validation::validate_capability_refs(
                 &ctx.db,
                 ctx.org_id(),
                 caps,
@@ -428,7 +431,7 @@ impl Command for UpdateAgentCmd {
             .map_err(classify_anyhow)?;
         }
         if let Some(ref servers) = req.mcp_servers {
-            crate::services::scoped_mcp::validate_scoped_mcp_servers(servers)
+            crate::domains::mcp_servers::scoped_mcp::validate_scoped_mcp_servers(servers)
                 .map_err(classify_anyhow)?;
         }
         let default_model_id = q::validate_model_id(&ctx.db, ctx.org_id(), req.default_model_id)
@@ -453,7 +456,11 @@ impl Command for UpdateAgentCmd {
             mcp_servers: req
                 .mcp_servers
                 .map(|servers| serde_json::to_value(&servers).unwrap_or_default()),
-            max_iterations: req.max_iterations.map(|v| Some(v as i32)),
+            max_iterations: req
+                .max_iterations
+                .map(|v| max_iterations::to_db(Some(v)))
+                .transpose()
+                .map_err(classify_anyhow)?,
             network_access: req
                 .network_access
                 .map(|na| Some(serde_json::to_value(na).unwrap())),
@@ -588,14 +595,14 @@ impl Command for UpsertAgent {
             req.capabilities.clone(),
             !req.initial_files.is_empty(),
         );
-        crate::services::capability_validation::validate_capability_refs(
+        crate::domains::capabilities::validation::validate_capability_refs(
             &ctx.db,
             ctx.org_id(),
             &caps,
         )
         .await
         .map_err(classify_anyhow)?;
-        crate::services::scoped_mcp::validate_scoped_mcp_servers(&req.mcp_servers)
+        crate::domains::mcp_servers::scoped_mcp::validate_scoped_mcp_servers(&req.mcp_servers)
             .map_err(classify_anyhow)?;
         let default_model_id = q::validate_model_id(&ctx.db, ctx.org_id(), req.default_model_id)
             .await
@@ -612,7 +619,7 @@ impl Command for UpsertAgent {
             initial_files: serde_json::to_value(&req.initial_files).unwrap_or_default(),
             tools: serde_json::to_value(&req.tools).unwrap_or_default(),
             mcp_servers: serde_json::to_value(&req.mcp_servers).unwrap_or_default(),
-            max_iterations: req.max_iterations.map(|v| v as i32),
+            max_iterations: max_iterations::to_db(req.max_iterations).map_err(classify_anyhow)?,
             network_access: req
                 .network_access
                 .as_ref()
@@ -827,8 +834,12 @@ impl Command for PreviewAgent {
         true
     }
 
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&crate::domains::agents::AGENT_VIEW)
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<AgentPreview, CommandError> {
-        crate::services::scoped_mcp::validate_scoped_mcp_servers(&self.mcp_servers)
+        crate::domains::mcp_servers::scoped_mcp::validate_scoped_mcp_servers(&self.mcp_servers)
             .map_err(classify_anyhow)?;
         let (prompt, mut tools) = ctx
             .capability_service
@@ -840,9 +851,11 @@ impl Command for PreviewAgent {
             .await
             .map_err(classify_anyhow)?;
         tools.extend(
-            crate::services::scoped_mcp::build_scoped_mcp_tool_definitions(&self.mcp_servers)
-                .await
-                .map_err(classify_anyhow)?,
+            crate::domains::mcp_servers::scoped_mcp::build_scoped_mcp_tool_definitions(
+                &self.mcp_servers,
+            )
+            .await
+            .map_err(classify_anyhow)?,
         );
         tools.extend(self.tools);
         Ok(AgentPreview {

@@ -593,6 +593,81 @@ The settings page (`/settings/organisation`) has two sections:
 1. **Current Organisation:** Edit name, view org ID (existing)
 2. **Your Organisations:** Lists all orgs the user belongs to with switch buttons. Current org highlighted with a "Current" badge.
 
+## Cross-Org Resource Resolution
+
+Users who belong to multiple organisations routinely follow direct links
+(shared URLs, bookmarks, external notifications) that point at a resource
+owned by one of their orgs but not the one currently selected. With strict
+org scoping (see the Query Rules above) the entity API returns 404 for that
+resource and the UI shows a "not found" screen — a recurring papercut.
+
+### Contract
+
+| Layer                | Behaviour                                                                                                                |
+|----------------------|--------------------------------------------------------------------------------------------------------------------------|
+| Entity APIs          | UNCHANGED — still return 404 for resources in other orgs. Preserves the enumeration guarantee on lines 127–128.          |
+| `GET /v1/resolve-org`| Authenticated endpoint. Given a prefixed public ID, returns the owning org ONLY when the caller is a member of that org. |
+| UI                   | On 404 from an entity detail fetch, calls the resolver and, if a member-owned org is returned, switches and retries.     |
+
+Because the resolver reveals only orgs the caller already belongs to, the
+set of answers it can produce is a subset of the information the caller can
+learn by manually switching between their own orgs. No new information
+leaks across org boundaries.
+
+### Endpoint
+
+```
+GET /v1/resolve-org?id=<prefixed_public_id>
+→ 200 { "org_id": "org_xxx", "org_name": "Acme Corp" }
+→ 404 — unknown id, unknown prefix, or owning org is not a caller membership
+```
+
+### Domain trait (`ResourceOrgResolver`)
+
+Every top-level entity with a dedicated UI detail route MUST register an
+`inventory::submit! { ResourceOrgResolver { ... } }` block in
+`crates/server/src/domains/org_resolver.rs`. Each entry pairs an ID prefix
+(e.g. `"session"`) with a function that looks up the owning `org_id`. The
+endpoint dispatches by prefix; adding a new top entity requires:
+
+1. A storage method `get_<entity>_organization_id(public_id: &str) -> Result<Option<i64>>`
+   on the PG and in-memory backends (no caller-side org scoping).
+2. One `inventory::submit!` block in `domains/org_resolver.rs`.
+3. Nothing else — the resolver endpoint picks up the new prefix on startup,
+   and any entity-detail React hook built on `useDetail` automatically gets
+   the fallback.
+
+Existing registrations cover: `session`, `agent`, `harness`, `app`,
+`skill`, `mcp`, `identity`, `eval`.
+
+### UI integration
+
+- `lib/api/resolver.ts::resolveOrgForResource(id)` wraps the endpoint.
+- `hooks/use-resource-org-fallback.ts` is the single React hook that reacts
+  to a 404 on a detail query, calls the resolver, and invokes
+  `setCurrentOrg(target, { stayOnPage: true })` when the owner is a
+  membership. The `stayOnPage` option skips the default org-switch redirect
+  that would otherwise send the user back to the list page.
+- It is wired into `useDetail` (shared CRUD factory) and the bespoke
+  `useSession` / `useAgentIdentity` hooks so every top-level detail route
+  gets the fallback for free.
+
+### Invariants
+
+- The fallback fires **at most once per resource id per mount** (tracked
+  via a ref inside the hook) to avoid ping-pong when the new org also 404s.
+- The entity API's 404 behaviour is never relaxed. The only cross-org
+  information disclosure happens through `GET /v1/resolve-org`, which is
+  membership-gated.
+- The resolver endpoint MUST NOT be reached before authentication; it
+  requires an `AuthUser` extractor.
+
+### When to add a new entity to the resolver
+
+If you add a new top-level entity with a dedicated UI detail route
+(`apps/ui/src/app/(main)/<entity>/[id]/...`), add it to the resolver
+registry. Entities without a detail route do not need to register.
+
 ## Future Considerations
 
 **Not in scope for v1:**

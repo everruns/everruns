@@ -8,6 +8,7 @@ use everruns_core::tools::ToolExecutionResult;
 use everruns_core::traits::ToolContext;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use tracing::error;
 
 /// Secret key prefix for sandbox state.
@@ -28,25 +29,19 @@ pub struct SandboxState {
     pub started_at: String,
 }
 
+fn session_suffix(session_id: &str) -> String {
+    let digest = Sha256::digest(session_id.as_bytes());
+    hex::encode(&digest[..8])
+}
+
 /// Derive container name from session ID.
 pub fn container_name(session_id: &str) -> String {
-    // Use first 12 chars of session UUID for brevity
-    let short = if session_id.len() > 12 {
-        &session_id[..12]
-    } else {
-        session_id
-    };
-    format!("evr-{short}-sandbox")
+    format!("evr-{}-sandbox", session_suffix(session_id))
 }
 
 /// Derive network name from session ID.
 pub fn network_name(session_id: &str) -> String {
-    let short = if session_id.len() > 12 {
-        &session_id[..12]
-    } else {
-        session_id
-    };
-    format!("sandbox-{short}")
+    format!("sandbox-{}", session_suffix(session_id))
 }
 
 /// Standard labels applied to all containers and networks.
@@ -202,13 +197,22 @@ mod tests {
     #[test]
     fn test_container_name() {
         let name = container_name("abc123def456-more-stuff");
-        assert_eq!(name, "evr-abc123def456-sandbox");
+        assert_eq!(name, "evr-8ad60df670162fbe-sandbox");
     }
 
     #[test]
     fn test_network_name() {
         let name = network_name("abc123def456-more-stuff");
-        assert_eq!(name, "sandbox-abc123def456");
+        assert_eq!(name, "sandbox-8ad60df670162fbe");
+    }
+
+    #[test]
+    fn test_names_do_not_collide_for_shared_prefixes() {
+        let first = "session_0193aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        let second = "session_0193bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+
+        assert_ne!(container_name(first), container_name(second));
+        assert_ne!(network_name(first), network_name(second));
     }
 
     #[test]
