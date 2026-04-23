@@ -383,7 +383,9 @@ async fn cli_auth_exchange(
             AuthError::unauthorized("Failed to create API key")
         })?;
 
-    // Delete the used session (one-time use)
+    // Delete the used session to enforce one-time exchange code use.
+    let _ = state.db.delete_cli_auth_session(session.id).await;
+    // Best-effort cleanup for old pending sessions.
     let _ = state.db.delete_expired_cli_auth_sessions().await;
 
     let audit_org_id = orgs

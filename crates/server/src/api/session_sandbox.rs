@@ -118,9 +118,14 @@ impl AppState {
     }
 
     fn ctx(&self, org: &ResolvedOrg) -> Ctx {
-        Ctx::minimal(Caller::from(org), self.db.clone(), None)
-            .with_session_service(self.session_service.clone())
-            .with_session_sandbox_service(self.session_sandbox_service.clone())
+        Ctx::minimal(
+            Caller::from(org),
+            self.db.clone(),
+            None,
+            self.auth.permission_resolver.clone(),
+        )
+        .with_session_service(self.session_service.clone())
+        .with_session_sandbox_service(self.session_sandbox_service.clone())
     }
 }
 
@@ -154,7 +159,7 @@ pub async fn get_sandbox(
 ) -> ApiResult<GetSessionSandboxResponse> {
     Ok(Json(
         GetSessionSandbox { session_id }
-            .execute(&state.ctx(&org))
+            .run(&state.ctx(&org))
             .await?,
     ))
 }
@@ -184,7 +189,7 @@ pub async fn manage_sandbox(
             session_id,
             action: body.action,
         }
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await?,
     ))
 }

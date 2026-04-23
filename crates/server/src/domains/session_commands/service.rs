@@ -22,7 +22,7 @@ use everruns_core::message::{Controls, Message, MessageRole};
 use everruns_core::runtime_context::{inspect_turn_context, resolve_runtime_capabilities};
 use everruns_core::traits::{AgentStore, HarnessStore, ImageResolver, SessionStore};
 use everruns_core::typed_id::{ModelId, SessionId};
-use everruns_core::{Agent, CapabilityRegistry, DriverRegistry, Harness, ResolvedImage};
+use everruns_core::{Agent, Caller, CapabilityRegistry, DriverRegistry, Harness, ResolvedImage};
 use everruns_worker::worker_adapters::{
     AdapterAgentStore, AdapterHarnessStore, AdapterImageResolver, AdapterLlmProviderStore,
     AdapterMessageRetriever, AdapterSessionFileStore, AdapterSessionStore,
@@ -42,7 +42,8 @@ pub struct SessionCommandService {
     capability_registry: CapabilityRegistry,
     driver_registry: DriverRegistry,
     sqldb_store: everruns_core::traits::SessionSqlDbStoreRef,
-    virtual_registry: Option<Arc<crate::services::virtual_mount_registry::VirtualMountRegistry>>,
+    virtual_registry:
+        Option<Arc<crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry>>,
 }
 
 impl SessionCommandService {
@@ -70,7 +71,7 @@ impl SessionCommandService {
 
     pub fn with_virtual_registry(
         mut self,
-        registry: Arc<crate::services::virtual_mount_registry::VirtualMountRegistry>,
+        registry: Arc<crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry>,
     ) -> Self {
         self.virtual_registry = Some(registry);
         self
@@ -78,11 +79,12 @@ impl SessionCommandService {
 
     pub async fn list_system_commands(
         &self,
-        org_id: i64,
+        caller: &Caller,
         session_id: SessionId,
     ) -> Result<Vec<CommandDescriptor>> {
-        let (harness_chain, agent, session) =
-            self.load_session_components(org_id, session_id).await?;
+        let (harness_chain, agent, session) = self
+            .load_session_components(caller.org_id, session_id)
+            .await?;
         let resolved = resolve_runtime_capabilities(
             &harness_chain,
             agent.as_ref(),
@@ -108,11 +110,11 @@ impl SessionCommandService {
 
     pub async fn execute(
         &self,
-        org_id: i64,
+        caller: &Caller,
         session_id: SessionId,
         req: ExecuteCommandRequest,
     ) -> Result<CommandResult> {
-        let commands = self.list_system_commands(org_id, session_id).await?;
+        let commands = self.list_system_commands(caller, session_id).await?;
         let command = commands
             .iter()
             .find(|command| command.name == req.name)
@@ -124,7 +126,7 @@ impl SessionCommandService {
             })?;
 
         match command.name.as_str() {
-            BTW_COMMAND_NAME => self.execute_btw(org_id, session_id, req).await,
+            BTW_COMMAND_NAME => self.execute_btw(caller.org_id, session_id, req).await,
             _ => Err(BadRequestError::new(format!(
                 "Unsupported system command: /{}",
                 command.name

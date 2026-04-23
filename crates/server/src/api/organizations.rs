@@ -362,6 +362,11 @@ pub async fn update_organization(
 ) -> ApiResult<OrganizationResponse> {
     use crate::storage::models::UpdateOrganization;
 
+    let updates_org_settings = req.default_model_id.is_some()
+        || req.default_harness_id.is_some()
+        || req.default_harness_name.is_some()
+        || req.base_harness_id.is_some();
+
     // Validate format
     if !validate_org_public_id(&org_public_id) {
         return Err(ErrorResponse::not_found("Organization"));
@@ -370,6 +375,18 @@ pub async fn update_organization(
     // Check user membership from DB
     if !is_member_of_public_db(&state.db, user.id, &org_public_id).await? {
         return Err(ErrorResponse::not_found("Organization"));
+    }
+
+    // Only admin+ can update org-level defaults.
+    if updates_org_settings
+        && !is_org_admin_of_public_db(&state.db, user.id, &org_public_id).await?
+    {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse::new(
+                "Only organization admins can update organization settings",
+            )),
+        ));
     }
 
     // Validate input
@@ -526,6 +543,22 @@ async fn is_member_of_public_db(
         .await
         .log_internal_error_json("list user organizations")?;
     Ok(orgs.iter().any(|o| o.public_id == org_public_id))
+}
+
+async fn is_org_admin_of_public_db(
+    db: &StorageBackend,
+    user_id: uuid::Uuid,
+    org_public_id: &str,
+) -> Result<bool, (StatusCode, Json<ErrorResponse>)> {
+    let orgs = db
+        .list_user_organizations(user_id)
+        .await
+        .log_internal_error_json("list user organizations")?;
+    Ok(orgs
+        .iter()
+        .find(|o| o.public_id == org_public_id)
+        .and_then(|o| o.role.parse::<OrgRole>().ok())
+        .is_some_and(|role| role.has_permission(OrgRole::Admin)))
 }
 
 async fn build_organization_response(

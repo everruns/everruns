@@ -53,8 +53,13 @@ impl AppState {
     }
 
     fn ctx(&self, org: &ResolvedOrg) -> Ctx {
-        Ctx::minimal(Caller::from(org), self.db.clone(), None)
-            .with_llm_model_service(self.service.clone())
+        Ctx::minimal(
+            Caller::from(org),
+            self.db.clone(),
+            None,
+            self.auth.permission_resolver.clone(),
+        )
+        .with_llm_model_service(self.service.clone())
     }
 }
 
@@ -158,7 +163,7 @@ pub async fn create_model(
         enabled: req.enabled,
         is_favorite: req.is_favorite,
     }
-    .execute(&state.ctx(&org))
+    .run(&state.ctx(&org))
     .await?;
 
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
@@ -184,7 +189,7 @@ pub async fn list_provider_models(
     Path(provider_id): Path<String>,
 ) -> ApiResult<ListResponse<WithUrls<LlmModel>>> {
     let models = ListProviderModels { provider_id }
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await?;
 
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
@@ -213,7 +218,7 @@ pub async fn list_all_models(
         include_stale: query.include_stale,
         favorites_only: query.favorites_only,
     }
-    .execute(&state.ctx(&org))
+    .run(&state.ctx(&org))
     .await?;
 
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
@@ -239,7 +244,7 @@ pub async fn get_model(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> ApiResult<WithUrls<LlmModelWithProvider>> {
-    let model = GetModel { id }.execute(&state.ctx(&org)).await?;
+    let model = GetModel { id }.run(&state.ctx(&org)).await?;
 
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(builder.wrap(model)))
@@ -275,7 +280,7 @@ pub async fn update_model(
         is_favorite: req.is_favorite,
         status: req.status,
     }
-    .execute(&state.ctx(&org))
+    .run(&state.ctx(&org))
     .await?;
 
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
@@ -301,7 +306,7 @@ pub async fn delete_model(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    DeleteModel { id }.execute(&state.ctx(&org)).await?;
+    DeleteModel { id }.run(&state.ctx(&org)).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 

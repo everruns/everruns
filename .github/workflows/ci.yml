@@ -405,7 +405,7 @@ jobs:
         run: |
           if [ ! -f ~/.cargo/bin/sqlx ]; then
             if [ ! -f ~/.cargo/bin/cargo-binstall ]; then
-              curl -L --proto '=https' --tlsv1.2 -sSf --retry 3 https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
+              cargo install cargo-binstall --locked
             fi
             cargo binstall sqlx-cli --no-confirm --version '~0.8'
           fi
@@ -570,7 +570,7 @@ jobs:
         run: |
           if [ ! -f ~/.cargo/bin/sqlx ]; then
             if [ ! -f ~/.cargo/bin/cargo-binstall ]; then
-              curl -L --proto '=https' --tlsv1.2 -sSf --retry 3 https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
+              cargo install cargo-binstall --locked
             fi
             cargo binstall sqlx-cli --no-confirm --version '~0.8'
           fi

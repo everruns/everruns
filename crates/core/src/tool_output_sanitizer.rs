@@ -211,6 +211,19 @@ pub const READ_FILE_DEFAULT_LIMIT: usize = 2000;
 /// Hard byte cap for read_file (50 KB safety net for pathological cases like minified files).
 pub const READ_FILE_HARD_BYTE_CAP: usize = 50 * 1024;
 
+/// Apply the read_file hard byte cap to already-formatted output.
+///
+/// Returns true when truncation was applied.
+pub fn apply_read_file_hard_cap(result: &mut String) -> bool {
+    if result.len() <= READ_FILE_HARD_BYTE_CAP {
+        return false;
+    }
+
+    let cut = utf8_floor(result, READ_FILE_HARD_BYTE_CAP);
+    result.truncate(cut);
+    true
+}
+
 /// Format file content with compact line numbers: `N|content`.
 ///
 /// Applies offset/limit pagination. Returns (formatted_content, total_lines, truncated).
@@ -243,9 +256,7 @@ pub fn format_lines(content: &str, offset: usize, limit: usize) -> (String, usiz
     let truncated = end < total_lines;
 
     // Apply hard byte cap
-    if result.len() > READ_FILE_HARD_BYTE_CAP {
-        let cut = utf8_floor(&result, READ_FILE_HARD_BYTE_CAP);
-        result.truncate(cut);
+    if apply_read_file_hard_cap(&mut result) {
         return (result, total_lines, true);
     }
 
@@ -812,6 +823,15 @@ mod tests {
         assert!(truncated);
         assert!(formatted.len() <= READ_FILE_HARD_BYTE_CAP);
         // Must be valid UTF-8 (would panic on access if not)
+        assert!(formatted.is_char_boundary(formatted.len()));
+    }
+
+    #[test]
+    fn test_apply_read_file_hard_cap() {
+        let mut formatted = "x".repeat(READ_FILE_HARD_BYTE_CAP + 128);
+        let truncated = apply_read_file_hard_cap(&mut formatted);
+        assert!(truncated);
+        assert!(formatted.len() <= READ_FILE_HARD_BYTE_CAP);
         assert!(formatted.is_char_boundary(formatted.len()));
     }
 

@@ -124,6 +124,16 @@ impl InMemoryDatabase {
             .cloned())
     }
 
+    /// Look up the owning org for an agent by its public_id (cross-org resolver).
+    pub async fn get_agent_organization_id(&self, public_id: &str) -> Result<Option<i64>> {
+        Ok(self
+            .agents
+            .read()
+            .values()
+            .find(|a| a.public_id == public_id)
+            .map(|a| a.org_id))
+    }
+
     pub async fn get_agent_by_public_id(
         &self,
         org_id: i64,

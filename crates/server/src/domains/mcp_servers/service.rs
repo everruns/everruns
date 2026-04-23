@@ -10,7 +10,6 @@
 // live here together because they share internal helpers (encryption,
 // settings mapping, tool fetching).
 
-use super::{MCP_SERVER_DANGEROUS, MCP_SERVER_MANAGE, MCP_SERVER_VIEW};
 use crate::storage::{
     EncryptionService, McpServerRow, StorageBackend,
     models::{CreateMcpServerRow, UpdateMcpServer, UpdateMcpServerTools},
@@ -22,7 +21,6 @@ use everruns_core::{
     Caller, McpServer, McpServerAuthMode, McpServerStatus, McpServerTransportType,
     McpToolDefinition, McpToolsListRequest, McpToolsListResponse, mcp_oauth_provider_id_for_uuid,
 };
-use everruns_macros::policy;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -122,7 +120,6 @@ impl McpServerService {
         encryption.decrypt_to_string(&bytes)
     }
 
-    #[policy(MCP_SERVER_MANAGE)]
     pub async fn create(&self, caller: &Caller, req: CreateMcpServerRequest) -> Result<McpServer> {
         let auth_mode = req.auth_mode.clone().unwrap_or_else(|| {
             if req.api_key.is_some() {
@@ -171,7 +168,6 @@ impl McpServerService {
         Ok(Self::row_to_mcp_server(&row))
     }
 
-    #[policy(MCP_SERVER_VIEW)]
     pub async fn get(&self, caller: &Caller, id: Uuid) -> Result<Option<McpServer>> {
         let row = self.db.get_mcp_server(caller.org_id, id).await?;
         Ok(row
@@ -182,7 +178,6 @@ impl McpServerService {
 
     /// Batch fetch multiple MCP servers with their cached tools in a single query.
     /// Returns a map of server_id -> (McpServer, `Vec<McpToolDefinition>`).
-    #[policy(MCP_SERVER_VIEW)]
     pub async fn get_batch_with_tools(
         &self,
         caller: &Caller,
@@ -200,7 +195,6 @@ impl McpServerService {
             .collect())
     }
 
-    #[policy(MCP_SERVER_VIEW)]
     pub async fn list(
         &self,
         caller: &Caller,
@@ -214,7 +208,6 @@ impl McpServerService {
         Ok(rows.iter().map(Self::row_to_mcp_server).collect())
     }
 
-    #[policy(MCP_SERVER_MANAGE)]
     pub async fn update(
         &self,
         caller: &Caller,
@@ -284,12 +277,10 @@ impl McpServerService {
         Ok(row.as_ref().map(Self::row_to_mcp_server))
     }
 
-    #[policy(MCP_SERVER_MANAGE)]
     pub async fn delete(&self, caller: &Caller, id: Uuid) -> Result<bool> {
         self.db.delete_mcp_server(caller.org_id, id).await
     }
 
-    #[policy(MCP_SERVER_DANGEROUS)]
     pub async fn destroy(&self, caller: &Caller, id: Uuid) -> Result<bool> {
         let Some(existing) = self.db.get_mcp_server(caller.org_id, id).await? else {
             return Ok(false);
@@ -301,14 +292,12 @@ impl McpServerService {
     }
 
     /// List active MCP servers (for capability listing)
-    #[policy(MCP_SERVER_VIEW)]
     pub async fn list_active(&self, caller: &Caller) -> Result<Vec<McpServer>> {
         let rows = self.db.list_active_mcp_servers(caller.org_id).await?;
         Ok(rows.iter().map(Self::row_to_mcp_server).collect())
     }
 
     /// List active MCP servers with their cached tools
-    #[policy(MCP_SERVER_VIEW)]
     pub async fn list_active_with_tools(&self, caller: &Caller) -> Result<Vec<McpServerWithTools>> {
         let rows = self.db.list_active_mcp_servers(caller.org_id).await?;
         Ok(rows
@@ -318,7 +307,6 @@ impl McpServerService {
     }
 
     /// Refresh cached tools for an MCP server by calling tools/list
-    #[policy(MCP_SERVER_MANAGE)]
     pub async fn refresh_tools(&self, caller: &Caller, id: Uuid) -> Result<Vec<McpToolDefinition>> {
         // Get the MCP server
         let row = self
@@ -392,7 +380,6 @@ impl McpServerService {
     }
 
     /// Get cached tools for an MCP server, refreshing if stale
-    #[policy(MCP_SERVER_VIEW)]
     pub async fn get_tools(
         &self,
         caller: &Caller,
@@ -426,7 +413,6 @@ impl McpServerService {
 
     /// Get cached tools for an MCP server without refreshing (for preview)
     /// Returns empty vec if server not found or no cached tools
-    #[policy(MCP_SERVER_VIEW)]
     pub async fn get_cached_tools(
         &self,
         caller: &Caller,
@@ -442,7 +428,6 @@ impl McpServerService {
 
     /// Decrypt API key for an MCP server by ID.
     /// Returns None if server has no API key set.
-    #[policy(MCP_SERVER_MANAGE)]
     pub async fn decrypt_api_key(&self, caller: &Caller, id: Uuid) -> Result<Option<String>> {
         let row = self
             .db
@@ -470,7 +455,6 @@ impl McpServerService {
     ///
     /// Used by both gRPC service and direct worker adapters to look up an MCP
     /// server by its sanitized name (lowercase, non-alphanumeric chars -> '_').
-    #[policy(MCP_SERVER_VIEW)]
     pub async fn resolve_by_prefix(
         &self,
         caller: &Caller,

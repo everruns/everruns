@@ -12,7 +12,6 @@ use anyhow::{Result, anyhow};
 use everruns_core::llm_models::LlmProvider;
 use everruns_core::url_validation::validate_safe_url;
 use everruns_core::{Caller, LlmProviderStatus, LlmProviderType, Permission, Policy, Rule};
-use everruns_macros::policy;
 use reqwest::Url;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -62,7 +61,6 @@ impl LlmProviderService {
         }
     }
 
-    #[policy(LLM_PROVIDER_MANAGE)]
     pub async fn create(
         &self,
         caller: &Caller,
@@ -94,19 +92,16 @@ impl LlmProviderService {
         Ok(Self::row_to_provider(&row))
     }
 
-    #[policy(LLM_PROVIDER_VIEW)]
     pub async fn get(&self, caller: &Caller, id: Uuid) -> Result<Option<LlmProvider>> {
         let row = self.db.get_llm_provider(caller.org_id, id).await?;
         Ok(row.as_ref().map(Self::row_to_provider))
     }
 
-    #[policy(LLM_PROVIDER_VIEW)]
     pub async fn list(&self, caller: &Caller) -> Result<Vec<LlmProvider>> {
         let rows = self.db.list_llm_providers(caller.org_id).await?;
         Ok(rows.iter().map(Self::row_to_provider).collect())
     }
 
-    #[policy(LLM_PROVIDER_MANAGE)]
     pub async fn update(
         &self,
         caller: &Caller,
@@ -160,7 +155,6 @@ impl LlmProviderService {
         Ok(row.as_ref().map(Self::row_to_provider))
     }
 
-    #[policy(LLM_PROVIDER_MANAGE)]
     pub async fn delete(&self, caller: &Caller, id: Uuid) -> Result<bool> {
         let deleted = self.db.delete_llm_provider(caller.org_id, id).await?;
         if deleted {

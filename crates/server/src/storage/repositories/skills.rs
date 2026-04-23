@@ -37,6 +37,17 @@ impl Database {
         Ok(row)
     }
 
+    /// Look up the owning org for a skill by its public_id. See
+    /// specs/multitenancy.md (Cross-Org Resource Resolution).
+    pub async fn get_skill_organization_id(&self, public_id: &str) -> Result<Option<i64>> {
+        let row: Option<(i64,)> =
+            sqlx::query_as("SELECT org_id FROM skills WHERE public_id = $1 LIMIT 1")
+                .bind(public_id)
+                .fetch_optional(&self.pool)
+                .await?;
+        Ok(row.map(|(org_id,)| org_id))
+    }
+
     pub async fn get_skill(&self, org_id: i64, id: Uuid) -> Result<Option<SkillRow>> {
         let row = sqlx::query_as::<_, SkillRow>(
             r#"

@@ -828,6 +828,8 @@ struct StreamCollectors {
     stderr: Option<StreamCollector>,
 }
 
+const MAX_STREAM_BYTES: usize = 1_048_576;
+
 impl StreamCollectors {
     fn new(stdout_id: Option<u64>, stderr_id: Option<u64>) -> Self {
         Self {
@@ -854,7 +856,7 @@ impl StreamCollectors {
                 if let Some(encoded) = params.get("data").and_then(Value::as_str)
                     && let Ok(bytes) = base64::engine::general_purpose::STANDARD.decode(encoded)
                 {
-                    target.buffer.extend_from_slice(&bytes);
+                    target.append(&bytes);
                 }
             }
             "$sandbox.stream.end" => target.ended = true,
@@ -937,6 +939,7 @@ struct StreamCollector {
     started: bool,
     ended: bool,
     buffer: Vec<u8>,
+    truncated: bool,
     error: Option<String>,
 }
 
@@ -947,6 +950,7 @@ impl StreamCollector {
             started: false,
             ended: false,
             buffer: Vec::new(),
+            truncated: false,
             error: None,
         }
     }
@@ -957,6 +961,12 @@ impl StreamCollector {
 
     fn as_string(&self) -> String {
         let mut text = String::from_utf8_lossy(&self.buffer).to_string();
+        if self.truncated {
+            if !text.is_empty() && !text.ends_with('\n') {
+                text.push('\n');
+            }
+            text.push_str("[output truncated: stream exceeded size limit]");
+        }
         if let Some(error) = &self.error {
             if !text.is_empty() && !text.ends_with('\n') {
                 text.push('\n');
@@ -964,6 +974,22 @@ impl StreamCollector {
             text.push_str(error);
         }
         text
+    }
+
+    fn append(&mut self, bytes: &[u8]) {
+        if self.truncated {
+            return;
+        }
+        let remaining = MAX_STREAM_BYTES.saturating_sub(self.buffer.len());
+        if remaining == 0 {
+            self.truncated = true;
+            return;
+        }
+        let take = remaining.min(bytes.len());
+        self.buffer.extend_from_slice(&bytes[..take]);
+        if take < bytes.len() {
+            self.truncated = true;
+        }
     }
 }
 
@@ -989,6 +1015,34 @@ mod tests {
 
         assert!(collectors.is_complete());
         assert_eq!(collectors.stdout_string(), "hello");
+    }
+
+    #[test]
+    fn stream_collectors_cap_output_size() {
+        let mut collectors = StreamCollectors::new(Some(7), None);
+        let max_size_input = vec![b'a'; MAX_STREAM_BYTES];
+        let overflow_input = vec![b'b'; 16];
+        collectors.handle_notification("$sandbox.stream.start", Some(&json!({"streamId": 7})));
+        collectors.handle_notification(
+            "$sandbox.stream.enqueue",
+            Some(&json!({
+                "streamId": 7,
+                "data": base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &max_size_input),
+            })),
+        );
+        collectors.handle_notification(
+            "$sandbox.stream.enqueue",
+            Some(&json!({
+                "streamId": 7,
+                "data": base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &overflow_input),
+            })),
+        );
+        collectors.handle_notification("$sandbox.stream.end", Some(&json!({"streamId": 7})));
+
+        let output = collectors.stdout_string();
+        assert!(output.starts_with(&"a".repeat(128)));
+        assert!(!output.contains("bbbb"));
+        assert!(output.contains("[output truncated: stream exceeded size limit]"));
     }
 
     #[test]
