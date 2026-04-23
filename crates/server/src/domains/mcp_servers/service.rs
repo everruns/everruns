@@ -470,7 +470,7 @@ impl McpServerService {
                 .chars()
                 .map(|c| if c.is_alphanumeric() { c } else { '_' })
                 .collect::<String>();
-            sanitized == server_prefix_lower
+            sanitized == server_prefix_lower && s.status == McpServerStatus::Active
         });
 
         let server = match server {
@@ -804,6 +804,45 @@ mod tests {
             .unwrap();
         assert!(resolved.is_some());
         assert_eq!(resolved.unwrap().api_key.as_deref(), Some("sk-mcp-secret"));
+    }
+
+    #[tokio::test]
+    async fn resolve_by_prefix_ignores_disabled_server() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let svc = McpServerService::new(db.clone(), Some(test_encryption()));
+
+        let created = db
+            .create_mcp_server(
+                1,
+                CreateMcpServerRow {
+                    name: "Disabled Server".into(),
+                    description: None,
+                    url: "https://example.com/mcp".into(),
+                    transport_type: "streamable_http".into(),
+                    api_key_encrypted: None,
+                    headers: None,
+                    settings: None,
+                },
+            )
+            .await
+            .unwrap();
+
+        db.update_mcp_server(
+            1,
+            created.id.uuid(),
+            UpdateMcpServer {
+                status: Some("disabled".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        let resolved = svc
+            .resolve_by_prefix(&test_caller(1), "disabled_server")
+            .await
+            .unwrap();
+        assert!(resolved.is_none());
     }
 
     // --- SSRF: fetch_mcp_tools blocks unsafe URLs ---
