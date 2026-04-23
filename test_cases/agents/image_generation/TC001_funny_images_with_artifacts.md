@@ -4,12 +4,12 @@
 
 Verify that an agent using `gpt_image_gen` can complete a three-image generation request end to end: plan three `generate_image` calls, persist durable `img_*` artifacts, mirror each image into the session filesystem, and finish with a coherent final reply instead of an internal-error message.
 
-This case is based on the real 2026-04-22 live run captured in `EVE-385`. It exists to preserve the intended contract independently of the regressions tracked in `EVE-383` and `EVE-384`.
+This case is based on the successful 2026-04-23 live run captured after fixing the regressions tracked in `EVE-383`, `EVE-384`, and the tool-search exposure issue discovered during validation.
 
 ## Preconditions
 
 - Control-plane running (`just start-dev` or `just start-all`)
-- OpenAI credentials configured so `gpt_image_gen` can call `gpt-image-1`
+- OpenAI credentials configured so `gpt_image_gen` can call `gpt-image-2` (default)
 - OpenAI `gpt-5.4` model available in the org
 - Agent can enable these capabilities:
   - `gpt_image_gen`
@@ -76,9 +76,10 @@ This case is based on the real 2026-04-22 live run captured in `EVE-385`. It exi
   - `save_to_session_fs: true`
   - `persist_artifact: true`
   - `format: png`
-  - `size: 1536x1024`
-  - `quality: high`
+  - `quality: medium`
   - `background: opaque`
+- Every call uses a supported GPT Image size
+- For the recorded 2026-04-23 fixture, each call used `size: 1024x1024`
 - The three calls target the three requested joke concepts and use distinct filename prefixes
 
 ### Final Reply
@@ -117,14 +118,18 @@ This case is based on the real 2026-04-22 live run captured in `EVE-385`. It exi
 | Tool-call mismatch | Fewer than 3 `generate_image` calls, wrong output format/size/quality, or `persist_artifact` / `save_to_session_fs` omitted |
 | Collapsed concepts | Images are duplicates or do not clearly map to raccoon-boardroom, knight-cubicle, and cat-diner concepts |
 
-## Recorded Fixture Evidence (2026-04-22)
+## Recorded Fixture Evidence (2026-04-23)
 
-- Agent id: `agent_019db2ecc0017331a0ec8fe20dff9ad6`
-- Session id: `session_019db2ed04fb71eda72ce6eb262b41b1`
+- Agent id: `agent_019db8af118f71719bf264c49a115f7e`
+- Session id: `session_019db8af119f7f62afd2db111617d7b5`
 - Recorded image artifacts:
-  - `funny_raccoon_boardroom.png` -> `img_019db2ee211d7398ad2ba9871e3f466d`
-  - `funny_knight_cubicle.png` -> `img_019db2ee1c8d7adaaad316c1ee169016`
-  - `funny_cat_diner.png` -> `img_019db2ee35e974e78c0151b472e2ab49`
+  - `funny_raccoon_boardroom.png` -> `img_019db8b0235e7af3afa7ef32ed53af03`
+  - `funny_knight_cubicle.png` -> `img_019db8b021037a70a5cc4954c0538c43`
+  - `funny_cat_diner.png` -> `img_019db8b0203972409d6fe60863c4d569`
+- Recorded tool-call defaults:
+  - `quality: medium`
+  - `size: 1024x1024`
+  - `tool_search.enabled: true`, with `generate_image` still invoked successfully
 - Recorded prompt themes:
   - raccoon boardroom: polished comedic corporate satire with a raccoon presenting quarterly earnings to pigeons
   - knight cubicle: polished comedic fantasy-vs-office contrast with a knight trapped in a beige cubicle during standup
