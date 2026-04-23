@@ -577,6 +577,21 @@ impl<S: WorkflowEventStore> WorkflowExecutor<S> {
                     .load_events_after(workflow_id, snap.sequence_num)
                     .await?;
 
+                if events.len() > self.config.max_events_per_workflow {
+                    warn!(
+                        %workflow_id,
+                        snapshot_seq = snap.sequence_num,
+                        events_after = events.len(),
+                        max = self.config.max_events_per_workflow,
+                        "snapshot replay exceeded max events after load, rejecting"
+                    );
+                    return Err(ExecutorError::TooManyEvents(
+                        workflow_id,
+                        events.len(),
+                        self.config.max_events_per_workflow,
+                    ));
+                }
+
                 debug!(
                     %workflow_id,
                     snapshot_seq = snap.sequence_num,
@@ -609,6 +624,14 @@ impl<S: WorkflowEventStore> WorkflowExecutor<S> {
 
         // Full replay: load all events only after passing the cap check
         let events = self.store.load_events(workflow_id).await?;
+
+        if events.len() > self.config.max_events_per_workflow {
+            return Err(ExecutorError::TooManyEvents(
+                workflow_id,
+                events.len(),
+                self.config.max_events_per_workflow,
+            ));
+        }
 
         // Verify first event is WorkflowStarted
         if !matches!(&events[0].1, WorkflowEvent::WorkflowStarted { .. }) {
