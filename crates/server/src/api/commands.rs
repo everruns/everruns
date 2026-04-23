@@ -8,6 +8,7 @@
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::session_commands::SessionCommandService;
+use crate::domains::sessions::SESSION_VIEW;
 use crate::services::CapabilityService;
 use axum::{
     Json, Router,
@@ -78,6 +79,11 @@ async fn list_session_commands(
     Path(session_id): Path<SessionId>,
 ) -> ApiResult<CommandsResponse> {
     let caller = Caller::from(&org);
+    SESSION_VIEW
+        .evaluate_with(state.auth.permission_resolver.as_ref(), &caller)
+        .map_err(anyhow::Error::from)
+        .map_policy_or_internal("authorize list session commands")?;
+
     let mut commands = state
         .command_service
         .list_system_commands(&caller, session_id)
@@ -106,6 +112,11 @@ async fn execute_session_command(
     Json(req): Json<ExecuteCommandRequest>,
 ) -> ApiResult<CommandResult> {
     let caller = Caller::from(&org);
+    SESSION_VIEW
+        .evaluate_with(state.auth.permission_resolver.as_ref(), &caller)
+        .map_err(anyhow::Error::from)
+        .map_policy_or_internal("authorize execute session command")?;
+
     let result = state
         .command_service
         .execute(&caller, session_id, req)

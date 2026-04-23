@@ -75,6 +75,10 @@ impl Command for ListEvals {
         }
     }
 
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&crate::domains::evals::EVAL_VIEW)
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<Vec<Eval>, CommandError> {
         q::service(ctx)
             .list(&ctx.caller, self.search.as_deref(), self.include_archived)
@@ -105,6 +109,10 @@ impl Command for GetEval {
 
     fn positional_arg() -> Option<&'static str> {
         Some("eval_id")
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&crate::domains::evals::EVAL_VIEW)
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<Eval, CommandError> {
