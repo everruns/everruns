@@ -301,6 +301,19 @@ the logic. Once all callers are migrated, the service file is removed.
    `domains/{name}/` (for example `service.rs` or `helpers.rs`)
 7. Once all callers migrated, delete the old top-level `services/{name}.rs`
 
+### Cross-Org Resource Resolution (`domains/org_resolver.rs`)
+
+`domains/org_resolver.rs` is an inventory-registry module, not a `Command`
+domain. Every top-level entity with a dedicated UI detail route MUST
+register an `inventory::submit! { ResourceOrgResolver { prefix, resolve } }`
+block there so the UI can auto-switch orgs on direct links. See
+`specs/multitenancy.md` (Cross-Org Resource Resolution) for the full
+contract. When introducing a new such entity, add:
+
+1. A storage method `get_<entity>_organization_id(public_id: &str) -> Result<Option<i64>>`
+   (PG + in-memory).
+2. One `inventory::submit!` block in `domains/org_resolver.rs`.
+
 ### When NOT to use this pattern
 
 - **Internal-only logic** with no user-facing API surface (e.g. `llm_resolver`,

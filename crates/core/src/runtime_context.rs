@@ -315,6 +315,7 @@ async fn build_runtime_agent(
             .tools(blueprint.tool_definitions())
             .model(&blueprint_model)
             .max_iterations(blueprint.max_turns.unwrap_or(20))
+            .network_access(effective_overlay.network_access.clone())
             .with_locale(prompt_ctx.locale.as_deref())
             .build()
     } else {
@@ -385,7 +386,9 @@ fn extract_locale_override(messages: &[Message]) -> Option<String> {
 mod tests {
     use super::*;
     use crate::agent::{Agent, AgentStatus};
-    use crate::capabilities::{CapabilityRegistry, TestMathCapability};
+    use crate::capabilities::{
+        AgentBlueprint, BlueprintModel, Capability, CapabilityRegistry, TestMathCapability,
+    };
     use crate::harness::{Harness, HarnessStatus};
     use crate::memory::{
         InMemoryAgentStore, InMemoryHarnessStore, InMemoryLlmProviderStore,
@@ -393,6 +396,7 @@ mod tests {
     };
     use crate::message::Controls;
     use crate::message_retriever::InputMessage;
+    use crate::network_access::NetworkAccessList;
     use crate::session::{Session, SessionStatus};
     use crate::typed_id::{AgentId, HarnessId};
     use chrono::Utc;
@@ -486,6 +490,35 @@ mod tests {
             subagent_status: None,
             blueprint_id: None,
             blueprint_config: None,
+        }
+    }
+
+    struct TestBlueprintCapability;
+
+    impl Capability for TestBlueprintCapability {
+        fn id(&self) -> &str {
+            "test_blueprint"
+        }
+
+        fn name(&self) -> &str {
+            "Test Blueprint"
+        }
+
+        fn description(&self) -> &str {
+            "Provides a test blueprint"
+        }
+
+        fn agent_blueprints(&self) -> Vec<AgentBlueprint> {
+            vec![AgentBlueprint {
+                id: "net_test_blueprint",
+                name: "Network Test Blueprint",
+                description: "Used for testing network ACL propagation",
+                model: BlueprintModel::Inherit,
+                system_prompt: "You are a test blueprint.",
+                tools: vec![],
+                max_turns: Some(4),
+                config_schema: None,
+            }]
         }
     }
 
@@ -602,5 +635,67 @@ mod tests {
         assert!(assembled.messages.is_empty());
         assert_eq!(assembled.resolved_locale.as_deref(), Some("en-US"));
         assert_eq!(assembled.runtime_agent.model, "llmsim-model");
+    }
+
+    #[tokio::test]
+    async fn blueprint_runtime_agent_inherits_merged_network_access() {
+        let harness_id = "harness_00000000000000000000000000000083".parse().unwrap();
+        let agent_id = "agent_00000000000000000000000000000083".parse().unwrap();
+        let session_id = "session_00000000000000000000000000000083".parse().unwrap();
+
+        let mut harness_record = harness(harness_id);
+        harness_record.network_access = Some(NetworkAccessList::allow_only(["example.com"]));
+        let harness_store = InMemoryHarnessStore::new();
+        harness_store.add_harness(harness_record).await;
+
+        let agent_store = InMemoryAgentStore::new();
+        agent_store.add_agent(agent(agent_id)).await;
+
+        let mut session_record = session(session_id, harness_id, agent_id);
+        session_record.blueprint_id = Some("net_test_blueprint".to_string());
+        let session_store = crate::memory::InMemorySessionStore::new();
+        session_store.add_session(session_record).await;
+
+        let message_store = InMemoryMessageRetriever::new();
+        message_store
+            .add(session_id, InputMessage::user("run blueprint"))
+            .await
+            .unwrap();
+
+        let provider_store = InMemoryLlmProviderStore::new();
+        provider_store
+            .set_default_model(ModelWithProvider {
+                model: "llmsim-model".into(),
+                provider_type: crate::llm_models::LlmProviderType::LlmSim,
+                api_key: Some("fake-key".into()),
+                base_url: None,
+            })
+            .await;
+
+        let mut capability_registry = CapabilityRegistry::new();
+        capability_registry.register(TestBlueprintCapability);
+
+        let assembled = assemble_turn_context(
+            &harness_store,
+            &agent_store,
+            &session_store,
+            &message_store,
+            &provider_store,
+            &capability_registry,
+            session_id,
+            harness_id,
+            Some(agent_id),
+            &[],
+            None,
+        )
+        .await
+        .unwrap();
+
+        let acl = assembled
+            .runtime_agent
+            .network_access
+            .expect("blueprint runtime agent should include merged network access");
+        assert!(acl.is_url_allowed("https://example.com/ok"));
+        assert!(!acl.is_url_allowed("https://blocked.example.org/nope"));
     }
 }

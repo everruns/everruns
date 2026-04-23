@@ -57,6 +57,17 @@ impl Database {
         Ok(row)
     }
 
+    /// Look up the owning org for an app by its public_id. See
+    /// specs/multitenancy.md (Cross-Org Resource Resolution).
+    pub async fn get_app_organization_id(&self, public_id: &str) -> Result<Option<i64>> {
+        let row: Option<(i64,)> =
+            sqlx::query_as("SELECT org_id FROM apps WHERE public_id = $1 LIMIT 1")
+                .bind(public_id)
+                .fetch_optional(&self.pool)
+                .await?;
+        Ok(row.map(|(org_id,)| org_id))
+    }
+
     /// Lookup app by public_id without org scoping (for unauthenticated webhooks).
     pub async fn get_app_by_public_id_unscoped(&self, public_id: &str) -> Result<Option<AppRow>> {
         let row = sqlx::query_as::<_, AppRow>(
