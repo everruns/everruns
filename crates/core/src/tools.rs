@@ -1135,7 +1135,11 @@ struct SessionBackgroundState {
     progress: Option<BackgroundProgress>,
     output_tail: String,
     output_log: String,
+    output_log_chars: usize,
+    output_log_truncated: bool,
 }
+
+const MAX_BACKGROUND_OUTPUT_LOG_CHARS: usize = 256 * 1024;
 
 struct SessionBackgroundSink {
     context: ToolContext,
@@ -1182,7 +1186,8 @@ impl SessionBackgroundSink {
                 let output_log = if let Some(raw_output) = &outcome.raw_output {
                     raw_output.clone()
                 } else {
-                    self.state.lock().await.output_log.clone()
+                    let state = self.state.lock().await;
+                    Self::final_output_log(&state)
                 };
                 self.write_text_file(&self.log_path, &output_log).await?;
                 let result_json = serde_json::to_string_pretty(&outcome.result)
@@ -1211,7 +1216,8 @@ impl SessionBackgroundSink {
                         "Background run ended unexpectedly".to_string()
                     }
                 };
-                let output_log = self.state.lock().await.output_log.clone();
+                let state = self.state.lock().await;
+                let output_log = Self::final_output_log(&state);
                 self.write_text_file(&self.log_path, &output_log).await?;
                 let error_json = serde_json::to_string_pretty(&json!({
                     "status": "failed",
@@ -1327,8 +1333,7 @@ impl BackgroundEventSink for SessionBackgroundSink {
             let prefix = format!("[{stream}] ");
             state.output_tail.push_str(&prefix);
             state.output_tail.push_str(delta);
-            state.output_log.push_str(&prefix);
-            state.output_log.push_str(delta);
+            Self::append_to_output_log(&mut state, &prefix, delta);
             if state.output_tail.chars().count() > 2048 {
                 state.output_tail = state
                     .output_tail
@@ -1352,6 +1357,41 @@ impl BackgroundEventSink for SessionBackgroundSink {
         drop(state);
         self.update_resource(SessionResourceStatus::Active, None)
             .await
+    }
+}
+
+impl SessionBackgroundSink {
+    fn append_to_output_log(state: &mut SessionBackgroundState, prefix: &str, delta: &str) {
+        if state.output_log_chars >= MAX_BACKGROUND_OUTPUT_LOG_CHARS {
+            state.output_log_truncated = true;
+            return;
+        }
+
+        let chunk = format!("{prefix}{delta}");
+        let remaining = MAX_BACKGROUND_OUTPUT_LOG_CHARS - state.output_log_chars;
+        let chunk_chars = chunk.chars().count();
+
+        if chunk_chars <= remaining {
+            state.output_log.push_str(&chunk);
+            state.output_log_chars += chunk_chars;
+            return;
+        }
+
+        let truncated_chunk: String = chunk.chars().take(remaining).collect();
+        state.output_log.push_str(&truncated_chunk);
+        state.output_log_chars += truncated_chunk.chars().count();
+        state.output_log_truncated = true;
+    }
+
+    fn final_output_log(state: &SessionBackgroundState) -> String {
+        if !state.output_log_truncated {
+            return state.output_log.clone();
+        }
+
+        format!(
+            "{}\n[system] background output truncated at {} characters\n",
+            state.output_log, MAX_BACKGROUND_OUTPUT_LOG_CHARS
+        )
     }
 }
 
@@ -1557,6 +1597,63 @@ mod tests {
 
         fn description(&self) -> &str {
             "failing background test tool"
+        }
+
+        fn parameters_schema(&self) -> Value {
+            json!({
+                "type": "object",
+                "properties": {}
+            })
+        }
+
+        async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
+            ToolExecutionResult::tool_error("foreground unsupported")
+        }
+
+        fn hints(&self) -> ToolHints {
+            ToolHints::default().with_supports_background(true)
+        }
+
+        fn as_background_executable(&self) -> Option<&dyn BackgroundExecutableTool> {
+            Some(self)
+        }
+    }
+
+    #[derive(Default)]
+    struct TestLargeOutputBackgroundTool;
+
+    #[async_trait]
+    impl BackgroundExecutableTool for TestLargeOutputBackgroundTool {
+        async fn execute_background(
+            &self,
+            _arguments: Value,
+            _context: ToolContext,
+            sink: Arc<dyn BackgroundEventSink>,
+        ) -> std::result::Result<BackgroundOutcome, ToolExecutionResult> {
+            let large_chunk = "x".repeat(MAX_BACKGROUND_OUTPUT_LOG_CHARS + 4096);
+            sink.output("stdout", &large_chunk)
+                .await
+                .map_err(ToolExecutionResult::internal_error)?;
+            Ok(BackgroundOutcome {
+                summary: "large output complete".to_string(),
+                result: json!({"ok": true}),
+                raw_output: None,
+            })
+        }
+    }
+
+    #[async_trait]
+    impl Tool for TestLargeOutputBackgroundTool {
+        fn name(&self) -> &str {
+            "test_background_large_output"
+        }
+
+        fn display_name(&self) -> Option<&str> {
+            Some("Test Background Large Output")
+        }
+
+        fn description(&self) -> &str {
+            "background test tool with huge output"
         }
 
         fn parameters_schema(&self) -> Value {
@@ -2528,6 +2625,64 @@ mod tests {
             panic!("spawn_background should reject missing file store");
         };
         assert!(message.contains("Session file store not available"));
+    }
+
+    #[tokio::test]
+    async fn test_spawn_background_caps_output_log_size() {
+        let session_id = SessionId::new();
+        let resource_registry = Arc::new(TestSessionResourceRegistry::default());
+        let file_store = Arc::new(TestFileStore::default());
+        let storage_store = Arc::new(NoopStorageStore);
+        let tool_registry = ToolRegistry::builder()
+            .tool(SpawnBackgroundTool)
+            .tool(TestLargeOutputBackgroundTool)
+            .build();
+
+        let context = ToolContext::with_stores(session_id, file_store.clone(), storage_store)
+            .with_tool_registry(Arc::new(tool_registry))
+            .with_session_resource_registry(resource_registry.clone());
+
+        let result = SpawnBackgroundTool
+            .execute_with_context(
+                json!({
+                    "tool": "test_background_large_output",
+                    "args": {}
+                }),
+                &context,
+            )
+            .await;
+
+        let ToolExecutionResult::Success(value) = result else {
+            panic!("spawn_background should succeed");
+        };
+        let run_id = value["run_id"].as_str().unwrap().to_string();
+
+        tokio::time::timeout(std::time::Duration::from_secs(2), async {
+            loop {
+                let entry = resource_registry
+                    .get(session_id, &run_id)
+                    .await
+                    .unwrap()
+                    .expect("resource exists");
+                if entry.status == SessionResourceStatus::Completed {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .expect("background run should complete");
+
+        let log_content = file_store
+            .read_file(session_id, &format!("/.background/{run_id}/output.log"))
+            .await
+            .unwrap()
+            .expect("log file")
+            .content
+            .unwrap_or_default();
+
+        assert!(log_content.contains("[system] background output truncated"));
+        assert!(log_content.chars().count() <= MAX_BACKGROUND_OUTPUT_LOG_CHARS + 128);
     }
 
     #[tokio::test]
