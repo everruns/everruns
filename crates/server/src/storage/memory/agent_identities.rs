@@ -45,6 +45,14 @@ impl InMemoryDatabase {
             .cloned())
     }
 
+    /// Look up the owning org for an agent identity by its public id.
+    pub async fn get_agent_identity_organization_id(&self, public_id: &str) -> Result<Option<i64>> {
+        let Ok(id) = public_id.parse::<AgentIdentityId>() else {
+            return Ok(None);
+        };
+        Ok(self.agent_identities.read().get(&id).map(|r| r.org_id))
+    }
+
     pub async fn list_agent_identities(
         &self,
         org_id: i64,

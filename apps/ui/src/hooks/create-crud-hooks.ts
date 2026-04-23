@@ -10,6 +10,7 @@ import {
 } from "@tanstack/react-query";
 import type { CrudApi } from "@/lib/api/crud";
 import { useOrg } from "@/providers/org-provider";
+import { useResourceOrgFallback } from "./use-resource-org-fallback";
 
 interface UseCrudListOptions {
   includeArchived?: boolean;
@@ -88,12 +89,21 @@ export function createCrudHooks<TItem, TCreate, TUpdate>({
   }
 
   function useDetail(id: string | undefined) {
-    return useOrgScopedQuery({
+    const query = useOrgScopedQuery({
       queryKey: queryKeys.detail(id ?? ""),
       queryFn: () => api.get(id!),
       enabled: !!id,
       staleTime,
     });
+    // Cross-org fallback: if the current org doesn't own this resource but
+    // another org the caller belongs to does, switch and retry transparently.
+    // See specs/multitenancy.md (Cross-Org Resource Resolution).
+    useResourceOrgFallback({
+      resourceId: id,
+      error: query.error,
+      isLoading: query.isLoading,
+    });
+    return query;
   }
 
   function useCreate(): UseMutationResult<TItem, Error, TCreate> {
