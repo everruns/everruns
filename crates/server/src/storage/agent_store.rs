@@ -7,6 +7,7 @@
 // matching the Grpc/Adapter store pattern. Callers must provide
 // the correct org_id when creating the store.
 
+use crate::max_iterations;
 use async_trait::async_trait;
 use everruns_core::{
     AgentCapabilityConfig, AgentId, Result, StoreResultExt,
@@ -74,7 +75,7 @@ impl AgentStore for DbAgentStore {
                     network_access: row
                         .network_access
                         .and_then(|v| serde_json::from_value(v).ok()),
-                    max_iterations: row.max_iterations.map(|v| v as usize),
+                    max_iterations: max_iterations::from_db(row.max_iterations),
                     tools: from_json(row.tools),
                     status: AgentStatus::from(row.status.as_str()),
                     created_at: row.created_at,

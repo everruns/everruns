@@ -74,6 +74,7 @@ impl AppState {
             self.db.clone(),
             self.capability_service.clone(),
             self.encryption.clone(),
+            self.auth.permission_resolver.clone(),
         )
     }
 }
@@ -143,7 +144,7 @@ pub async fn create_mcp_server(
     Json(req): Json<CreateMcpServerRequest>,
 ) -> Result<(StatusCode, Json<WithUrls<McpServer>>), (StatusCode, Json<ErrorResponse>)> {
     let server = crate::domains::mcp_servers::CreateMcpServer(req)
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await?;
 
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
@@ -170,7 +171,7 @@ pub async fn list_mcp_servers(
         search: query.search,
         include_archived: query.include_archived.unwrap_or(false),
     }
-    .execute(&state.ctx(&org))
+    .run(&state.ctx(&org))
     .await?;
 
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
@@ -198,7 +199,7 @@ pub async fn get_mcp_server(
     Path(server_id): Path<String>,
 ) -> ApiResult<WithUrls<McpServer>> {
     let server = crate::domains::mcp_servers::GetMcpServer { id: server_id }
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await?;
 
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
@@ -228,7 +229,7 @@ pub async fn update_mcp_server(
     Json(req): Json<UpdateMcpServerRequest>,
 ) -> ApiResult<WithUrls<McpServer>> {
     let server = crate::domains::mcp_servers::UpdateMcpServerCmd { id: server_id, req }
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await?;
 
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
@@ -256,7 +257,7 @@ pub async fn delete_mcp_server(
     Path(server_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     crate::domains::mcp_servers::DeleteMcpServer { id: server_id }
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -267,7 +268,7 @@ pub async fn destroy_mcp_server(
     Path(server_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     crate::domains::mcp_servers::DestroyMcpServer { id: server_id }
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }

@@ -40,7 +40,12 @@ impl AppState {
     }
 
     fn ctx(&self, org: &ResolvedOrg) -> Ctx {
-        Ctx::minimal(Caller::from(org), self.db.clone(), None)
+        Ctx::minimal(
+            Caller::from(org),
+            self.db.clone(),
+            None,
+            self.auth.permission_resolver.clone(),
+        )
     }
 }
 
@@ -71,7 +76,7 @@ pub async fn list_resources(
         ListSessionResources {
             session_id: session_id.to_string(),
         }
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await?,
     ))
 }

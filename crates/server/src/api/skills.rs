@@ -86,6 +86,7 @@ impl AppState {
             self.db.clone(),
             self.capability_service.clone(),
             None,
+            self.auth.permission_resolver.clone(),
         )
     }
 }
@@ -162,7 +163,7 @@ pub async fn create_skill(
     Json(req): Json<CreateSkillRequest>,
 ) -> Result<(StatusCode, Json<WithUrls<Skill>>), (StatusCode, Json<ErrorResponse>)> {
     let skill = crate::domains::skills::CreateSkill(req)
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await?;
 
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
@@ -260,7 +261,7 @@ pub async fn list_skills(
         search: query.search,
         include_archived: query.include_archived.unwrap_or(false),
     }
-    .execute(&state.ctx(&org))
+    .run(&state.ctx(&org))
     .await?;
 
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
@@ -286,7 +287,7 @@ pub async fn get_skill(
     Path(skill_id): Path<String>,
 ) -> ApiResult<WithUrls<Skill>> {
     let skill = crate::domains::skills::GetSkill { id: skill_id }
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await?;
 
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
@@ -312,7 +313,7 @@ pub async fn get_skill_content(
     Path(skill_id): Path<String>,
 ) -> ApiResult<SkillContent> {
     let content = crate::domains::skills::GetSkillContent { id: skill_id }
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await?;
 
     Ok(Json(content))
@@ -338,7 +339,7 @@ pub async fn update_skill(
     Json(req): Json<UpdateSkillRequest>,
 ) -> ApiResult<WithUrls<Skill>> {
     let skill = crate::domains::skills::UpdateSkillCmd { id: skill_id, req }
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await?;
 
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
@@ -364,7 +365,7 @@ pub async fn delete_skill(
     Path(skill_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     crate::domains::skills::DeleteSkill { id: skill_id }
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -375,7 +376,7 @@ pub async fn destroy_skill(
     Path(skill_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     crate::domains::skills::DestroySkill { id: skill_id }
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }
