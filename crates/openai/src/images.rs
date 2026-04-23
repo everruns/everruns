@@ -4,6 +4,8 @@ use reqwest::{Client, RequestBuilder, Url};
 use serde::{Deserialize, Serialize};
 
 const DEFAULT_OPENAI_BASE_URL: &str = "https://api.openai.com/v1";
+const DEFAULT_OPENAI_IMAGE_TIMEOUT_SECS: u64 = 300;
+const OPENAI_IMAGE_TIMEOUT_ENV: &str = "OPENAI_IMAGE_TIMEOUT_SECS";
 
 #[derive(Debug, Clone)]
 pub struct OpenAiImageClient {
@@ -14,9 +16,14 @@ pub struct OpenAiImageClient {
 
 impl OpenAiImageClient {
     pub fn new(api_key: impl Into<String>, base_url: Option<String>) -> Result<Self> {
+        let timeout_secs = std::env::var(OPENAI_IMAGE_TIMEOUT_ENV)
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .filter(|value| *value > 0)
+            .unwrap_or(DEFAULT_OPENAI_IMAGE_TIMEOUT_SECS);
         Ok(Self {
             client: Client::builder()
-                .timeout(std::time::Duration::from_secs(120))
+                .timeout(std::time::Duration::from_secs(timeout_secs))
                 .build()
                 .context("failed to build OpenAI image client")?,
             api_key: api_key.into(),
