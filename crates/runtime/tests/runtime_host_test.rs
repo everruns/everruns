@@ -938,6 +938,55 @@ async fn plan_next_host_turn_schedules_act_after_reason_tool_calls() {
 }
 
 #[tokio::test]
+async fn plan_next_host_turn_schedules_act_with_session_blueprint_id() {
+    let adapter = mock_host();
+    let harness_id = HarnessId::from_uuid(Uuid::now_v7());
+    let session_id = SessionId::from_uuid(Uuid::now_v7());
+    adapter.harness_store.add_harness(harness(harness_id)).await;
+    adapter
+        .session_store
+        .insert(Session {
+            blueprint_id: Some("blueprint.private".into()),
+            ..session(session_id, harness_id)
+        })
+        .await;
+
+    let input = turn_state(session_id, harness_id);
+    let output = serde_json::to_value(ReasonResult {
+        success: true,
+        text: "Calling a tool".into(),
+        tool_calls: vec![ToolCall {
+            id: "call_mul".into(),
+            name: "multiply".into(),
+            arguments: serde_json::json!({ "a": 6, "b": 7 }),
+        }],
+        has_tool_calls: true,
+        tool_definitions: vec![],
+        max_iterations: 8,
+        error: None,
+        usage: None,
+        response_id: Some("resp_blueprint".into()),
+        locale: Some("en-US".into()),
+        network_access: None,
+    })
+    .unwrap();
+
+    let plan = plan_next_host_turn(&adapter, "reason", &input, &output, 0)
+        .await
+        .unwrap();
+
+    match plan {
+        RuntimeTurnPlan::ScheduleAct(plan) => {
+            assert_eq!(
+                plan.input.blueprint_id.as_deref(),
+                Some("blueprint.private")
+            );
+        }
+        other => panic!("expected ScheduleAct, got {other:?}"),
+    }
+}
+
+#[tokio::test]
 async fn plan_next_host_turn_continues_reason_when_steering_messages_are_pending() {
     let adapter = mock_host();
     let harness_id = HarnessId::from_uuid(Uuid::now_v7());

@@ -19,13 +19,16 @@ use crate::storage::models::{
     CreateOAuthAuthorizationCodeRow, CreateOAuthClientRow, CreateOAuthRefreshTokenRow,
 };
 use axum::{
-    Json, Router,
+    Form, Json, Router,
     extract::{FromRef, Query, State},
     http::{HeaderMap, StatusCode},
-    response::{IntoResponse, Redirect, Response},
+    response::{Html, IntoResponse, Redirect, Response},
     routing::{get, post},
 };
-use axum_extra::extract::CookieJar;
+use axum_extra::extract::{
+    CookieJar,
+    cookie::{Cookie, SameSite},
+};
 use chrono::{Duration, Utc};
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -41,6 +44,7 @@ const MCP_ACCESS_TOKEN_LIFETIME_SECS: i64 = 3600;
 
 /// MCP refresh token lifetime (30 days)
 const MCP_REFRESH_TOKEN_LIFETIME_SECS: i64 = 30 * 24 * 3600;
+const OAUTH_AUTHORIZE_CSRF_COOKIE: &str = "mcp_oauth_authorize_csrf";
 
 /// Generate a random hex string (32 bytes = 64 hex chars)
 fn generate_random_hex() -> String {
@@ -98,6 +102,19 @@ pub struct OAuthAuthorizeQuery {
     /// don't get a deserialization error.
     #[serde(default)]
     pub resource: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct OAuthAuthorizeConfirmForm {
+    pub client_id: String,
+    pub redirect_uri: String,
+    pub response_type: String,
+    pub code_challenge: String,
+    pub code_challenge_method: String,
+    pub state: String,
+    #[serde(default = "default_scope")]
+    pub scope: String,
+    pub csrf_token: String,
 }
 
 fn default_scope() -> String {
@@ -204,7 +221,10 @@ pub fn mcp_oauth_routes(state: McpOAuthState) -> Router {
             get(oauth_server_metadata),
         )
         .route("/oauth/register", post(oauth_register))
-        .route("/oauth/authorize", get(oauth_authorize))
+        .route(
+            "/oauth/authorize",
+            get(oauth_authorize).post(oauth_authorize_confirm),
+        )
         .route("/oauth/token", post(oauth_token))
         .with_state(state)
 }
@@ -391,17 +411,110 @@ async fn oauth_authorize(
         return Err(AuthError::unauthorized("Invalid redirect_uri"));
     }
 
-    // Use user's first org (same as CLI auth)
+    let csrf_token = generate_random_hex();
+    let csrf_cookie = Cookie::build((OAUTH_AUTHORIZE_CSRF_COOKIE, csrf_token.clone()))
+        .path("/")
+        .http_only(true)
+        .secure(true)
+        .same_site(SameSite::Lax)
+        .build();
+    let jar = jar.add(csrf_cookie);
+
+    let confirm_page = render_authorize_confirm_page(&query, &csrf_token);
+    audit::emit(
+        state.db.clone(),
+        user.organizations
+            .first()
+            .map(|o| o.org_id)
+            .unwrap_or(everruns_core::DEFAULT_ORG_ID),
+        Some(user.id),
+        "auth.mcp_oauth.authorize.prompt",
+        ip,
+        serde_json::json!({"client_id": query.client_id}),
+    );
+    Ok((jar, Html(confirm_page)).into_response())
+}
+
+async fn oauth_authorize_confirm(
+    State(state): State<McpOAuthState>,
+    headers: HeaderMap,
+    jar: CookieJar,
+    Form(form): Form<OAuthAuthorizeConfirmForm>,
+) -> Result<Response, AuthError> {
+    let ip = audit::client_ip(&headers);
+    let user = try_resolve_user(&state, &jar)
+        .await
+        .ok_or_else(|| AuthError::unauthorized("Authentication required"))?;
+
+    let csrf_cookie = jar
+        .get(OAUTH_AUTHORIZE_CSRF_COOKIE)
+        .ok_or_else(|| AuthError::unauthorized("Missing CSRF cookie"))?;
+    if csrf_cookie.value() != form.csrf_token {
+        return Err(AuthError::unauthorized("Invalid CSRF token"));
+    }
+
+    if form.response_type != "code" {
+        return Err(AuthError::unauthorized("Unsupported response_type"));
+    }
+    if form.code_challenge_method != "S256" {
+        return Err(AuthError::unauthorized(
+            "Only S256 code_challenge_method is supported",
+        ));
+    }
+
+    let query = OAuthAuthorizeQuery {
+        client_id: form.client_id,
+        redirect_uri: form.redirect_uri,
+        response_type: form.response_type,
+        code_challenge: form.code_challenge,
+        code_challenge_method: form.code_challenge_method,
+        state: form.state,
+        scope: form.scope,
+        resource: None,
+    };
+
+    validate_authorize_client(&state, &query).await?;
+    let redirect_url = issue_authorization_code(&state, &query, &user, ip).await?;
+
+    let jar = jar.remove(Cookie::build(OAUTH_AUTHORIZE_CSRF_COOKIE).path("/"));
+    Ok((jar, Redirect::to(&redirect_url)).into_response())
+}
+
+async fn validate_authorize_client(
+    state: &McpOAuthState,
+    query: &OAuthAuthorizeQuery,
+) -> Result<(), AuthError> {
+    let client = state
+        .db
+        .get_oauth_client_by_client_id(&query.client_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to look up OAuth client: {}", e);
+            AuthError::unauthorized("Invalid client_id")
+        })?
+        .ok_or_else(|| AuthError::unauthorized("Invalid client_id"))?;
+    let registered_uris: Vec<String> =
+        serde_json::from_value(client.redirect_uris).unwrap_or_default();
+    if !registered_uris.contains(&query.redirect_uri) {
+        return Err(AuthError::unauthorized("Invalid redirect_uri"));
+    }
+    Ok(())
+}
+
+async fn issue_authorization_code(
+    state: &McpOAuthState,
+    query: &OAuthAuthorizeQuery,
+    user: &AuthUser,
+    ip: Option<String>,
+) -> Result<String, AuthError> {
     let org_id = user
         .organizations
         .first()
         .map(|o| o.org_id)
         .unwrap_or(everruns_core::DEFAULT_ORG_ID);
 
-    // Generate authorization code
     let code = generate_random_hex();
     let code_hash = hash_value(&code);
-
     let expires_at = Utc::now() + Duration::seconds(AUTH_CODE_TTL_SECS);
 
     state
@@ -412,9 +525,9 @@ async fn oauth_authorize(
             user_id: user.id,
             org_id,
             redirect_uri: query.redirect_uri.clone(),
-            code_challenge: query.code_challenge,
-            code_challenge_method: query.code_challenge_method,
-            scope: query.scope,
+            code_challenge: query.code_challenge.clone(),
+            code_challenge_method: query.code_challenge_method.clone(),
+            scope: query.scope.clone(),
             expires_at,
         })
         .await
@@ -433,15 +546,36 @@ async fn oauth_authorize(
     );
 
     tracing::info!(user_id = %user.id, client_id = %query.client_id, redirect_uri = %query.redirect_uri, "MCP OAuth: auth code issued, redirecting");
-    // Redirect to client with code and state
-    let redirect_url = format!(
+    Ok(format!(
         "{}?code={}&state={}",
         query.redirect_uri,
         urlencoding::encode(&code),
         urlencoding::encode(&query.state)
-    );
+    ))
+}
 
-    Ok(Redirect::to(&redirect_url).into_response())
+fn render_authorize_confirm_page(query: &OAuthAuthorizeQuery, csrf_token: &str) -> String {
+    format!(
+        "<!doctype html><html><body><h1>Authorize MCP Client</h1><p>Authorize <strong>{}</strong> to access your MCP data?</p><form method=\"post\" action=\"/oauth/authorize\"><input type=\"hidden\" name=\"client_id\" value=\"{}\"/><input type=\"hidden\" name=\"redirect_uri\" value=\"{}\"/><input type=\"hidden\" name=\"response_type\" value=\"{}\"/><input type=\"hidden\" name=\"code_challenge\" value=\"{}\"/><input type=\"hidden\" name=\"code_challenge_method\" value=\"{}\"/><input type=\"hidden\" name=\"state\" value=\"{}\"/><input type=\"hidden\" name=\"scope\" value=\"{}\"/><input type=\"hidden\" name=\"csrf_token\" value=\"{}\"/><button type=\"submit\">Authorize</button></form></body></html>",
+        escape_html_attr(&query.client_id),
+        escape_html_attr(&query.client_id),
+        escape_html_attr(&query.redirect_uri),
+        escape_html_attr(&query.response_type),
+        escape_html_attr(&query.code_challenge),
+        escape_html_attr(&query.code_challenge_method),
+        escape_html_attr(&query.state),
+        escape_html_attr(&query.scope),
+        escape_html_attr(csrf_token),
+    )
+}
+
+fn escape_html_attr(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 /// POST /oauth/token — Token exchange (authorization_code or refresh_token grant)

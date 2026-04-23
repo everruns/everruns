@@ -558,7 +558,9 @@ impl Tool for ReadFileTool {
         arguments: Value,
         context: &ToolContext,
     ) -> ToolExecutionResult {
-        use crate::tool_output_sanitizer::{READ_FILE_DEFAULT_LIMIT, format_lines};
+        use crate::tool_output_sanitizer::{
+            READ_FILE_DEFAULT_LIMIT, apply_read_file_hard_cap, format_lines,
+        };
 
         let path = match arguments.get("path").and_then(|v| v.as_str()) {
             Some(p) => p,
@@ -694,7 +696,7 @@ impl Tool for ReadFileTool {
                 };
 
                 // Generate structural outline for unread portions (EVE-248)
-                let formatted = if truncated && start_line > 0 {
+                let mut formatted = if truncated && start_line > 0 {
                     let outline_items =
                         crate::outline::generate_outline(raw_content, &normalized_path);
                     if let Some(outline_text) = crate::outline::format_outline(
@@ -710,6 +712,9 @@ impl Tool for ReadFileTool {
                 } else {
                     formatted
                 };
+                // Reapply hard cap after any post-format decorations (e.g. outlines).
+                let hard_capped = apply_read_file_hard_cap(&mut formatted);
+                let truncated = truncated || hard_capped;
 
                 let mut result = json!({
                     "path": display_path,
