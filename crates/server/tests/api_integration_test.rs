@@ -21,7 +21,7 @@ use test_harness::TestServer;
 use everruns_core::llm_models::LlmProvider;
 use everruns_core::typed_id::ScheduleId;
 use everruns_core::{Agent, DEFAULT_ORG_ID, Harness, LlmModel, Session, SessionFile};
-use everruns_server::storage::models::{CreateSessionScheduleRow, UpdateAppChannel, UpdateSession};
+use everruns_server::storage::models::{CreateSessionScheduleRow, UpdateSession};
 
 // ============================================
 // Health Endpoint Tests
@@ -3702,22 +3702,23 @@ async fn test_update_app_reencrypts_legacy_plaintext_channel_configs() {
         .unwrap()
         .unwrap();
 
-    // Simulate legacy migrated row: plaintext secrets + missing ciphertext.
-    server
-        .db
-        .update_app_channel(
-            channel_row.id,
-            UpdateAppChannel {
-                channel_config: Some(json!({
-                    "bot_token": "xoxb-plaintext",
-                    "signing_secret": "signing-plaintext"
-                })),
-                channel_config_encrypted: None,
-                ..Default::default()
-            },
-        )
-        .await
-        .unwrap();
+    // Simulate legacy migrated row: plaintext secrets + NULL ciphertext.
+    // UpdateAppChannel uses COALESCE and cannot clear channel_config_encrypted,
+    // so write the legacy state directly.
+    let pool = server.db.pool().expect("Postgres pool required for this test");
+    sqlx::query(
+        "UPDATE app_channels \
+         SET channel_config = $1, channel_config_encrypted = NULL \
+         WHERE id = $2",
+    )
+    .bind(json!({
+        "bot_token": "xoxb-plaintext",
+        "signing_secret": "signing-plaintext"
+    }))
+    .bind(channel_row.id)
+    .execute(pool)
+    .await
+    .unwrap();
 
     server
         .patch(
