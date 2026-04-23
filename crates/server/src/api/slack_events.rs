@@ -411,7 +411,20 @@ async fn handle_slack_event(
             ))
         }
         "event_callback" => {
+            let envelope_team_id = envelope.team_id.clone();
             if let Some(event) = envelope.event {
+                if !event_matches_slack_scope(&slack_config, envelope_team_id.as_deref(), &event) {
+                    tracing::warn!(
+                        app_id = %app_id,
+                        expected_team_id = ?slack_config.team_id,
+                        incoming_team_id = ?envelope_team_id,
+                        expected_channel_id = ?slack_config.channel_id,
+                        incoming_channel_id = ?event.channel,
+                        "Ignoring Slack event outside configured scope"
+                    );
+                    return Ok((StatusCode::OK, Json(ack_json())));
+                }
+
                 // Skip bot messages to avoid loops // THREAT[TM-SLACK-002]
                 if event.bot_id.is_some() || event.subtype.as_deref() == Some("bot_message") {
                     tracing::debug!(app_id = %app_id, "Skipping bot message");
@@ -491,6 +504,26 @@ async fn handle_slack_event(
 
 fn ack_json() -> serde_json::Value {
     serde_json::to_value(AckResponse { ok: true }).unwrap()
+}
+
+fn event_matches_slack_scope(
+    slack_config: &SlackChannelConfig,
+    envelope_team_id: Option<&str>,
+    event: &SlackEvent,
+) -> bool {
+    if let Some(expected_team_id) = slack_config.team_id.as_deref()
+        && envelope_team_id != Some(expected_team_id)
+    {
+        return false;
+    }
+
+    if let Some(expected_channel_id) = slack_config.channel_id.as_deref()
+        && event.channel.as_deref() != Some(expected_channel_id)
+    {
+        return false;
+    }
+
+    true
 }
 
 /// Process an incoming Slack message: find/create session, create message, wait for response.
@@ -1711,6 +1744,39 @@ mod tests {
         assert_eq!(config.reply_mode, SlackReplyMode::AllMessages);
         assert!(config.channel_id.is_none());
         assert!(config.team_id.is_none());
+    }
+
+    #[test]
+    fn test_event_matches_slack_scope_unrestricted() {
+        let config = test_config(SessionStrategy::PerThread);
+        let event = test_event("C123", Some("1234.5678"), Some("1234.0000"));
+        assert!(event_matches_slack_scope(&config, Some("T123"), &event));
+    }
+
+    #[test]
+    fn test_event_matches_slack_scope_rejects_team_mismatch() {
+        let mut config = test_config(SessionStrategy::PerThread);
+        config.team_id = Some("T123".to_string());
+        let event = test_event("C123", Some("1234.5678"), Some("1234.0000"));
+        assert!(!event_matches_slack_scope(&config, Some("T999"), &event));
+        assert!(!event_matches_slack_scope(&config, None, &event));
+    }
+
+    #[test]
+    fn test_event_matches_slack_scope_rejects_channel_mismatch() {
+        let mut config = test_config(SessionStrategy::PerThread);
+        config.channel_id = Some("C123".to_string());
+        let event = test_event("C999", Some("1234.5678"), Some("1234.0000"));
+        assert!(!event_matches_slack_scope(&config, Some("T123"), &event));
+    }
+
+    #[test]
+    fn test_event_matches_slack_scope_accepts_matching_team_and_channel() {
+        let mut config = test_config(SessionStrategy::PerThread);
+        config.team_id = Some("T123".to_string());
+        config.channel_id = Some("C123".to_string());
+        let event = test_event("C123", Some("1234.5678"), Some("1234.0000"));
+        assert!(event_matches_slack_scope(&config, Some("T123"), &event));
     }
 
     #[test]
