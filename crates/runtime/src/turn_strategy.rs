@@ -133,6 +133,11 @@ pub async fn plan_next_host_turn<A: RuntimeHostAdapter>(
             let response_id = reason_result.response_id.clone();
 
             if reason_result.has_tool_calls && reason_result.success {
+                let session_blueprint_id = adapter
+                    .session_store(state.org_id)
+                    .get_session(state.session_id)
+                    .await?
+                    .and_then(|session| session.blueprint_id);
                 let plan = RuntimeActPlan {
                     input: ActInput {
                         org_id: Some(state.org_id),
@@ -147,7 +152,7 @@ pub async fn plan_next_host_turn<A: RuntimeHostAdapter>(
                         tool_calls: reason_result.tool_calls,
                         tool_definitions: reason_result.tool_definitions,
                         locale: reason_result.locale,
-                        blueprint_id: None,
+                        blueprint_id: session_blueprint_id,
                         network_access: reason_result.network_access,
                     },
                     previous_response_id: response_id,

@@ -16,6 +16,7 @@ use axum::{
 };
 
 use super::common::{ApiPolicyResultExt, ApiResult, impl_auth_state};
+use everruns_core::Caller;
 use everruns_core::command::{CommandDescriptor, CommandResult, ExecuteCommandRequest};
 use everruns_core::typed_id::SessionId;
 use serde::Serialize;
@@ -76,9 +77,10 @@ async fn list_session_commands(
     org: ResolvedOrg,
     Path(session_id): Path<SessionId>,
 ) -> ApiResult<CommandsResponse> {
+    let caller = Caller::from(&org);
     let mut commands = state
         .command_service
-        .list_system_commands(org.org_id, session_id)
+        .list_system_commands(&caller, session_id)
         .await
         .map_policy_or_internal("list session system commands")?;
 
@@ -103,9 +105,10 @@ async fn execute_session_command(
     Path(session_id): Path<SessionId>,
     Json(req): Json<ExecuteCommandRequest>,
 ) -> ApiResult<CommandResult> {
+    let caller = Caller::from(&org);
     let result = state
         .command_service
-        .execute(org.org_id, session_id, req)
+        .execute(&caller, session_id, req)
         .await
         .map_policy_or_internal("execute session command")?;
     Ok(Json(result))

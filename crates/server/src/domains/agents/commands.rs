@@ -7,6 +7,7 @@ use super::queries as q;
 use super::types::{CreateAgentRequest, CreateAgentRow, UpdateAgent, UpdateAgentRequest};
 use super::{AGENT_DANGEROUS, AGENT_MANAGE, AGENT_VIEW};
 use crate::domains::common::*;
+use crate::max_iterations;
 use everruns_core::typed_id::AgentId;
 use everruns_core::{
     Agent, AgentCapabilityConfig, InitialFile, OrgRole, Policy, ScopedMcpServers, ToolDefinition,
@@ -183,7 +184,8 @@ impl Command for CreateAgent {
                     .network_access
                     .as_ref()
                     .map(|na| serde_json::to_value(na).unwrap()),
-                max_iterations: req.max_iterations.map(|v| v as i32),
+                max_iterations: max_iterations::to_db(req.max_iterations)
+                    .map_err(classify_anyhow)?,
             };
             let row = ctx
                 .db
@@ -210,7 +212,8 @@ impl Command for CreateAgent {
                     .network_access
                     .as_ref()
                     .map(|na| serde_json::to_value(na).unwrap()),
-                max_iterations: req.max_iterations.map(|v| v as i32),
+                max_iterations: max_iterations::to_db(req.max_iterations)
+                    .map_err(classify_anyhow)?,
             };
             let row = ctx
                 .db
@@ -453,7 +456,11 @@ impl Command for UpdateAgentCmd {
             mcp_servers: req
                 .mcp_servers
                 .map(|servers| serde_json::to_value(&servers).unwrap_or_default()),
-            max_iterations: req.max_iterations.map(|v| Some(v as i32)),
+            max_iterations: req
+                .max_iterations
+                .map(|v| max_iterations::to_db(Some(v)))
+                .transpose()
+                .map_err(classify_anyhow)?,
             network_access: req
                 .network_access
                 .map(|na| Some(serde_json::to_value(na).unwrap())),
@@ -612,7 +619,7 @@ impl Command for UpsertAgent {
             initial_files: serde_json::to_value(&req.initial_files).unwrap_or_default(),
             tools: serde_json::to_value(&req.tools).unwrap_or_default(),
             mcp_servers: serde_json::to_value(&req.mcp_servers).unwrap_or_default(),
-            max_iterations: req.max_iterations.map(|v| v as i32),
+            max_iterations: max_iterations::to_db(req.max_iterations).map_err(classify_anyhow)?,
             network_access: req
                 .network_access
                 .as_ref()

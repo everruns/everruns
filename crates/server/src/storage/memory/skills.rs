@@ -154,6 +154,16 @@ impl InMemoryDatabase {
             .cloned())
     }
 
+    /// Look up the owning org for a skill by its public_id (cross-org resolver).
+    pub async fn get_skill_organization_id(&self, public_id: &str) -> Result<Option<i64>> {
+        Ok(self
+            .skills
+            .read()
+            .values()
+            .find(|s| s.public_id == public_id)
+            .map(|s| s.org_id))
+    }
+
     pub async fn get_skill_by_name(&self, org_id: i64, name: &str) -> Result<Option<SkillRow>> {
         Ok(self
             .skills
