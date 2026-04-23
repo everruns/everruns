@@ -232,13 +232,18 @@ impl AppState {
     }
 
     fn ctx(&self, org: &ResolvedOrg) -> Ctx {
-        Ctx::minimal(Caller::from(org), self.db.clone(), None)
-            .with_session_service(self.session_service.clone())
-            .with_event_service(Arc::new(self.event_service.clone()))
-            .with_runner(self.runner.clone())
-            .with_fallback_harness_name(self.fallback_default_harness_name.clone())
-            .with_chat_harness_name(self.chat_harness_name.clone())
-            .with_chat_session_title(self.chat_session_title.clone())
+        Ctx::minimal(
+            Caller::from(org),
+            self.db.clone(),
+            None,
+            self.auth.permission_resolver.clone(),
+        )
+        .with_session_service(self.session_service.clone())
+        .with_event_service(Arc::new(self.event_service.clone()))
+        .with_runner(self.runner.clone())
+        .with_fallback_harness_name(self.fallback_default_harness_name.clone())
+        .with_chat_harness_name(self.chat_harness_name.clone())
+        .with_chat_session_title(self.chat_session_title.clone())
     }
 }
 
@@ -318,7 +323,7 @@ pub async fn create_session(
     Json(req): Json<CreateSessionRequest>,
 ) -> Result<(StatusCode, Json<WithUrls<Session>>), (StatusCode, Json<ErrorResponse>)> {
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
-    let session = CreateSession(req).execute(&state.ctx(&org)).await?;
+    let session = CreateSession(req).run(&state.ctx(&org)).await?;
 
     Ok((StatusCode::CREATED, Json(urls.wrap(session))))
 }
@@ -347,7 +352,7 @@ pub async fn get_or_create_chat_session(
     let session = GetOrCreateChatSession {
         locale: payload.and_then(|Json(body)| body.locale),
     }
-    .execute(&state.ctx(&org))
+    .run(&state.ctx(&org))
     .await?;
 
     Ok(Json(urls.wrap(session)))
@@ -376,7 +381,7 @@ pub async fn list_sessions(
         offset: query.offset,
         limit: query.limit,
     }
-    .execute(&state.ctx(&org))
+    .run(&state.ctx(&org))
     .await?;
 
     Ok(Json(
@@ -398,7 +403,7 @@ pub async fn get_session_stats(
     org: ResolvedOrg,
     State(state): State<AppState>,
 ) -> ApiResult<SessionStatsResponse> {
-    Ok(Json(GetSessionStats.execute(&state.ctx(&org)).await?))
+    Ok(Json(GetSessionStats.run(&state.ctx(&org)).await?))
 }
 
 /// GET /v1/sessions/{session_id} - Get session
@@ -422,7 +427,7 @@ pub async fn get_session(
     Path(session_id): Path<String>,
 ) -> ApiResult<WithUrls<Session>> {
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
-    let session = GetSession { session_id }.execute(&state.ctx(&org)).await?;
+    let session = GetSession { session_id }.run(&state.ctx(&org)).await?;
 
     Ok(Json(urls.wrap(session)))
 }
@@ -451,7 +456,7 @@ pub async fn update_session(
 ) -> ApiResult<WithUrls<Session>> {
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
     let session = UpdateSessionCmd { session_id, req }
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await?;
 
     Ok(Json(urls.wrap(session)))
@@ -477,9 +482,7 @@ pub async fn delete_session(
     State(state): State<AppState>,
     Path(session_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    DeleteSession { session_id }
-        .execute(&state.ctx(&org))
-        .await?;
+    DeleteSession { session_id }.run(&state.ctx(&org)).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -513,7 +516,7 @@ pub async fn pin_session(
             }),
         ));
     }
-    PinSession { session_id }.execute(&state.ctx(&org)).await?;
+    PinSession { session_id }.run(&state.ctx(&org)).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -547,9 +550,7 @@ pub async fn unpin_session(
             }),
         ));
     }
-    UnpinSession { session_id }
-        .execute(&state.ctx(&org))
-        .await?;
+    UnpinSession { session_id }.run(&state.ctx(&org)).await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -582,9 +583,7 @@ pub async fn cancel_turn(
     Path(session_id): Path<String>,
 ) -> ApiResult<CancelTurnResponse> {
     Ok(Json(
-        CancelSession { session_id }
-            .execute(&state.ctx(&org))
-            .await?,
+        CancelSession { session_id }.run(&state.ctx(&org)).await?,
     ))
 }
 
