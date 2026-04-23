@@ -58,9 +58,14 @@ impl AppState {
     }
 
     fn ctx(&self, org: &ResolvedOrg) -> Ctx {
-        Ctx::minimal(Caller::from(org), self.db.clone(), None)
-            .with_llm_provider_service(self.service.clone())
-            .with_model_sync_service(self.sync_service.clone())
+        Ctx::minimal(
+            Caller::from(org),
+            self.db.clone(),
+            None,
+            self.auth.permission_resolver.clone(),
+        )
+        .with_llm_provider_service(self.service.clone())
+        .with_model_sync_service(self.sync_service.clone())
     }
 }
 
@@ -148,7 +153,7 @@ pub async fn create_provider(
         base_url: req.base_url,
         api_key: req.api_key,
     }
-    .execute(&state.ctx(&org))
+    .run(&state.ctx(&org))
     .await?;
 
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
@@ -168,7 +173,7 @@ pub async fn list_providers(
     org: ResolvedOrg,
     State(state): State<AppState>,
 ) -> ApiResult<ListResponse<WithUrls<LlmProvider>>> {
-    let providers = ListProviders.execute(&state.ctx(&org)).await?;
+    let providers = ListProviders.run(&state.ctx(&org)).await?;
 
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(ListResponse::new(providers).with_urls(&builder)))
@@ -193,7 +198,7 @@ pub async fn get_provider(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> ApiResult<WithUrls<LlmProvider>> {
-    let provider = GetProvider { id }.execute(&state.ctx(&org)).await?;
+    let provider = GetProvider { id }.run(&state.ctx(&org)).await?;
 
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(builder.wrap(provider)))
@@ -228,7 +233,7 @@ pub async fn update_provider(
         api_key: req.api_key,
         status: req.status,
     }
-    .execute(&state.ctx(&org))
+    .run(&state.ctx(&org))
     .await?;
 
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
@@ -254,7 +259,7 @@ pub async fn delete_provider(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    DeleteProvider { id }.execute(&state.ctx(&org)).await?;
+    DeleteProvider { id }.run(&state.ctx(&org)).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -281,9 +286,7 @@ pub async fn sync_models(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> ApiResult<SyncModelsResponse> {
-    Ok(Json(
-        SyncProviderModels { id }.execute(&state.ctx(&org)).await?,
-    ))
+    Ok(Json(SyncProviderModels { id }.run(&state.ctx(&org)).await?))
 }
 
 /// GET /v1/llm-providers/config

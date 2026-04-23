@@ -238,34 +238,6 @@ impl Tool for SpawnSubagentTool {
             );
         }
 
-        // Validate blueprint exists if specified
-        if let Some(ref bp_id) = blueprint_param {
-            if let Some(ref registry) = context.capability_registry {
-                if registry.blueprint(bp_id).is_none() {
-                    return ToolExecutionResult::tool_error(format!(
-                        "Unknown blueprint: \"{bp_id}\". Check available blueprints."
-                    ));
-                }
-                // Validate config against schema if blueprint has one
-                if let Some(blueprint) = registry.blueprint(bp_id)
-                    && let Some(ref schema) = blueprint.config_schema
-                    && config_param.is_none()
-                    && schema
-                        .get("required")
-                        .is_some_and(|r| r.as_array().is_some_and(|arr| !arr.is_empty()))
-                {
-                    return ToolExecutionResult::tool_error(format!(
-                        "Blueprint \"{bp_id}\" requires config. Schema: {}",
-                        serde_json::to_string_pretty(schema).unwrap_or_default()
-                    ));
-                }
-            } else {
-                return ToolExecutionResult::tool_error(
-                    "Blueprint support requires capability_registry context.",
-                );
-            }
-        }
-
         // Nesting check: reject if current session is already a subagent
         let parent_session = match session_store.get_session(context.session_id).await {
             Ok(Some(s)) => s,
@@ -277,6 +249,67 @@ impl Tool for SpawnSubagentTool {
             return ToolExecutionResult::tool_error(
                 "Subagents cannot spawn other subagents (nesting not allowed).",
             );
+        }
+
+        // Validate blueprint exists and is allowed for this parent session.
+        if let Some(ref bp_id) = blueprint_param {
+            let Some(ref registry) = context.capability_registry else {
+                return ToolExecutionResult::tool_error(
+                    "Blueprint support requires capability_registry context.",
+                );
+            };
+
+            let Some((blueprint_capability_id, blueprint)) =
+                registry.blueprint_with_capability(bp_id)
+            else {
+                return ToolExecutionResult::tool_error(format!(
+                    "Unknown blueprint: \"{bp_id}\". Check available blueprints."
+                ));
+            };
+
+            // Validate config against schema if blueprint has one.
+            if let Some(ref schema) = blueprint.config_schema
+                && config_param.is_none()
+                && schema
+                    .get("required")
+                    .is_some_and(|r| r.as_array().is_some_and(|arr| !arr.is_empty()))
+            {
+                return ToolExecutionResult::tool_error(format!(
+                    "Blueprint \"{bp_id}\" requires config. Schema: {}",
+                    serde_json::to_string_pretty(schema).unwrap_or_default()
+                ));
+            }
+
+            let allowed_capability_ids = if let Some(agent_id) = parent_session.agent_id {
+                match store.get_agent_by_id(agent_id).await {
+                    Ok(Some(agent)) => agent
+                        .capabilities
+                        .iter()
+                        .map(|c| c.capability_id().to_string())
+                        .collect::<Vec<_>>(),
+                    Ok(None) => vec![],
+                    Err(e) => return ToolExecutionResult::internal_error(e),
+                }
+            } else {
+                match store.get_harness(parent_session.harness_id).await {
+                    Ok(Some(harness)) => harness
+                        .capabilities
+                        .iter()
+                        .map(|c| c.capability_id().to_string())
+                        .collect::<Vec<_>>(),
+                    Ok(None) => vec![],
+                    Err(e) => return ToolExecutionResult::internal_error(e),
+                }
+            };
+
+            if !allowed_capability_ids
+                .iter()
+                .any(|capability_id| capability_id == &blueprint_capability_id)
+            {
+                return ToolExecutionResult::tool_error(format!(
+                    "Blueprint \"{bp_id}\" is not enabled for this session."
+                ));
+            }
         }
 
         // Create child session

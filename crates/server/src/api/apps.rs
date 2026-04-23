@@ -58,6 +58,7 @@ impl AppState {
             self.db.clone(),
             self.capability_service.clone(),
             self.encryption.clone(),
+            self.auth.permission_resolver.clone(),
         )
         .with_workflow_store(self.workflow_store.clone())
     }
@@ -126,7 +127,7 @@ pub async fn create_app(
     Json(req): Json<CreateAppRequest>,
 ) -> Result<(StatusCode, Json<WithUrls<App>>), (StatusCode, Json<ErrorResponse>)> {
     let app = crate::domains::apps::CreateApp(req)
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await?;
 
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
@@ -153,7 +154,7 @@ pub async fn list_apps(
         search: query.search,
         include_archived: query.include_archived.unwrap_or(false),
     }
-    .execute(&state.ctx(&org))
+    .run(&state.ctx(&org))
     .await?;
 
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
@@ -179,7 +180,7 @@ pub async fn get_app(
     Path(app_id): Path<String>,
 ) -> ApiResult<WithUrls<App>> {
     let app = crate::domains::apps::GetApp { id: app_id }
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await?;
 
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
@@ -207,7 +208,7 @@ pub async fn update_app(
     Json(req): Json<UpdateAppRequest>,
 ) -> ApiResult<WithUrls<App>> {
     let app = crate::domains::apps::UpdateAppCmd { id: app_id, req }
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await?;
 
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
@@ -233,7 +234,7 @@ pub async fn delete_app(
     Path(app_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     crate::domains::apps::DeleteApp { id: app_id }
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -244,7 +245,7 @@ pub async fn destroy_app(
     Path(app_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     crate::domains::apps::DestroyApp { id: app_id }
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -268,7 +269,7 @@ pub async fn publish_app(
     Path(app_id): Path<String>,
 ) -> ApiResult<WithUrls<App>> {
     let app = crate::domains::apps::PublishApp { id: app_id }
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await?;
 
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
@@ -294,7 +295,7 @@ pub async fn unpublish_app(
     Path(app_id): Path<String>,
 ) -> ApiResult<WithUrls<App>> {
     let app = crate::domains::apps::UnpublishApp { id: app_id }
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await?;
 
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
@@ -313,7 +314,7 @@ pub async fn add_channel(
     Json(req): Json<AddChannelRequest>,
 ) -> Result<(StatusCode, Json<AppChannel>), (StatusCode, Json<ErrorResponse>)> {
     let channel = crate::domains::apps::AddChannel { app_id, req }
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await?;
     Ok((StatusCode::CREATED, Json(channel)))
 }
@@ -330,7 +331,7 @@ pub async fn update_channel(
         channel_id,
         req,
     }
-    .execute(&state.ctx(&org))
+    .run(&state.ctx(&org))
     .await?;
     Ok(Json(channel))
 }
@@ -342,7 +343,7 @@ pub async fn delete_channel(
     Path((app_id, channel_id)): Path<(String, String)>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     crate::domains::apps::DeleteChannel { app_id, channel_id }
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }

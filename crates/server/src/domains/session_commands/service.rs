@@ -8,7 +8,6 @@
 
 use crate::direct_worker_adapters::DirectWorkerAdapters;
 use crate::domains::mcp_servers::McpServerService;
-use crate::domains::sessions::SESSION_VIEW;
 use crate::errors::{BadRequestError, ResourceNotFoundError};
 use crate::services::{EventService, LlmResolverService};
 use crate::storage::StorageBackend;
@@ -24,7 +23,6 @@ use everruns_core::runtime_context::{inspect_turn_context, resolve_runtime_capab
 use everruns_core::traits::{AgentStore, HarnessStore, ImageResolver, SessionStore};
 use everruns_core::typed_id::{ModelId, SessionId};
 use everruns_core::{Agent, Caller, CapabilityRegistry, DriverRegistry, Harness, ResolvedImage};
-use everruns_macros::policy;
 use everruns_worker::worker_adapters::{
     AdapterAgentStore, AdapterHarnessStore, AdapterImageResolver, AdapterLlmProviderStore,
     AdapterMessageRetriever, AdapterSessionFileStore, AdapterSessionStore,
@@ -44,7 +42,8 @@ pub struct SessionCommandService {
     capability_registry: CapabilityRegistry,
     driver_registry: DriverRegistry,
     sqldb_store: everruns_core::traits::SessionSqlDbStoreRef,
-    virtual_registry: Option<Arc<crate::services::virtual_mount_registry::VirtualMountRegistry>>,
+    virtual_registry:
+        Option<Arc<crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry>>,
 }
 
 impl SessionCommandService {
@@ -72,13 +71,12 @@ impl SessionCommandService {
 
     pub fn with_virtual_registry(
         mut self,
-        registry: Arc<crate::services::virtual_mount_registry::VirtualMountRegistry>,
+        registry: Arc<crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry>,
     ) -> Self {
         self.virtual_registry = Some(registry);
         self
     }
 
-    #[policy(SESSION_VIEW)]
     pub async fn list_system_commands(
         &self,
         caller: &Caller,
@@ -110,7 +108,6 @@ impl SessionCommandService {
         Ok(commands)
     }
 
-    #[policy(SESSION_VIEW)]
     pub async fn execute(
         &self,
         caller: &Caller,

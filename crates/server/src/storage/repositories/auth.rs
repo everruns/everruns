@@ -232,6 +232,15 @@ impl Database {
         Ok(result.rows_affected())
     }
 
+    pub async fn delete_cli_auth_session(&self, id: Uuid) -> Result<bool> {
+        let result = sqlx::query("DELETE FROM cli_auth_sessions WHERE id = $1")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
     // ============================================
     // OAuth Clients (MCP OAuth 2.1)
     // ============================================

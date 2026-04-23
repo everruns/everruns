@@ -189,6 +189,10 @@ impl Command for CreateSessionFile {
         }
     }
 
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&crate::domains::sessions::SESSION_MANAGE)
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<SessionFile, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
         q::verify_session(ctx, session_id).await?;
@@ -277,6 +281,10 @@ impl Command for UpdateSessionFile {
         }
     }
 
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&crate::domains::sessions::SESSION_MANAGE)
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<SessionFile, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
         q::verify_session(ctx, session_id).await?;
@@ -344,6 +352,10 @@ impl Command for DeleteSessionFile {
         }
     }
 
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&crate::domains::sessions::SESSION_MANAGE)
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<DeleteResponse, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
         q::verify_session(ctx, session_id).await?;
@@ -376,6 +388,10 @@ impl Command for MoveSessionFile {
             method: "POST",
             path: "/v1/sessions/{session_id}/fs/_/move",
         }
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&crate::domains::sessions::SESSION_MANAGE)
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<SessionFile, CommandError> {
@@ -415,6 +431,10 @@ impl Command for CopySessionFile {
             method: "POST",
             path: "/v1/sessions/{session_id}/fs/_/copy",
         }
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&crate::domains::sessions::SESSION_MANAGE)
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<SessionFile, CommandError> {
@@ -458,6 +478,10 @@ impl Command for GrepSessionFiles {
 
     fn read_only() -> bool {
         true
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&crate::domains::sessions::SESSION_VIEW)
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<GrepResult>, CommandError> {
@@ -507,6 +531,10 @@ impl Command for StatSessionFile {
 
     fn read_only() -> bool {
         true
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&crate::domains::sessions::SESSION_VIEW)
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<FileStat, CommandError> {
