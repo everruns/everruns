@@ -1157,6 +1157,16 @@ mod tests {
     }
 
     #[test]
+    fn capability_config_ignores_unknown_fields() {
+        let config = parse_capability_config(&json!({
+            "model": "gpt-image-1",
+            "future_field": true
+        }))
+        .unwrap();
+        assert_eq!(config.model, ImageGenerationModel::GptImage1);
+    }
+
+    #[test]
     fn capability_config_rejects_unknown_model_override() {
         let result = parse_capability_config(&json!({
             "model": "chatgpt-image-latest"
