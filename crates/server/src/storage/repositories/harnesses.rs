@@ -97,6 +97,21 @@ impl Database {
         Ok(row)
     }
 
+    /// Look up the owning org for a harness by its public_id, without scoping
+    /// to a caller-supplied org. See specs/multitenancy.md (Cross-Org Resource
+    /// Resolution). Gating by membership happens at the resolver endpoint.
+    pub async fn get_harness_organization_id(&self, public_id: &str) -> Result<Option<i64>> {
+        let Ok(id) = public_id.parse::<HarnessId>() else {
+            return Ok(None);
+        };
+        let row: Option<(i64,)> =
+            sqlx::query_as("SELECT org_id FROM harnesses WHERE id = $1 LIMIT 1")
+                .bind(id.uuid())
+                .fetch_optional(&self.pool)
+                .await?;
+        Ok(row.map(|(org_id,)| org_id))
+    }
+
     pub async fn get_harness(&self, org_id: i64, id: HarnessId) -> Result<Option<HarnessRow>> {
         let row = sqlx::query_as::<_, HarnessRow>(
             r#"

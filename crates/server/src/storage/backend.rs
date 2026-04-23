@@ -1872,6 +1872,44 @@ impl StorageBackend {
         dispatch!(self, get_session_organization_id, session_id)
     }
 
+    // ============================================
+    // Cross-Org Resource Resolution
+    //
+    // Lookup-by-public_id helpers that return the owning org without requiring
+    // the caller to know it. Used only by the authenticated
+    // GET /v1/resolve-org endpoint, which gates the result by the caller's
+    // org memberships to preserve the 404-vs-403 enumeration guarantee.
+    // See specs/multitenancy.md (Cross-Org Resource Resolution).
+    // ============================================
+
+    pub async fn get_agent_organization_id(&self, public_id: &str) -> Result<Option<i64>> {
+        dispatch!(self, get_agent_organization_id, public_id)
+    }
+
+    pub async fn get_harness_organization_id(&self, public_id: &str) -> Result<Option<i64>> {
+        dispatch!(self, get_harness_organization_id, public_id)
+    }
+
+    pub async fn get_app_organization_id(&self, public_id: &str) -> Result<Option<i64>> {
+        dispatch!(self, get_app_organization_id, public_id)
+    }
+
+    pub async fn get_skill_organization_id(&self, public_id: &str) -> Result<Option<i64>> {
+        dispatch!(self, get_skill_organization_id, public_id)
+    }
+
+    pub async fn get_mcp_server_organization_id(&self, public_id: &str) -> Result<Option<i64>> {
+        dispatch!(self, get_mcp_server_organization_id, public_id)
+    }
+
+    pub async fn get_agent_identity_organization_id(&self, public_id: &str) -> Result<Option<i64>> {
+        dispatch!(self, get_agent_identity_organization_id, public_id)
+    }
+
+    pub async fn get_eval_organization_id(&self, public_id: &str) -> Result<Option<i64>> {
+        dispatch!(self, get_eval_organization_id, public_id)
+    }
+
     pub async fn upsert_leased_resource(
         &self,
         input: UpsertLeasedResourceRow,

@@ -57,6 +57,16 @@ impl InMemoryDatabase {
         Ok(apps.values().find(|a| a.public_id == public_id).cloned())
     }
 
+    /// Look up the owning org for an app by its public_id (cross-org resolver).
+    pub async fn get_app_organization_id(&self, public_id: &str) -> Result<Option<i64>> {
+        Ok(self
+            .apps
+            .read()
+            .values()
+            .find(|a| a.public_id == public_id)
+            .map(|a| a.org_id))
+    }
+
     pub async fn list_apps(
         &self,
         org_id: i64,
