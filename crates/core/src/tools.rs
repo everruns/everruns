@@ -1230,8 +1230,10 @@ impl SessionBackgroundSink {
                         "Background run ended unexpectedly".to_string()
                     }
                 };
-                let state = self.state.lock().await;
-                let output_log = Self::final_output_log(&state);
+                let output_log = {
+                    let state = self.state.lock().await;
+                    Self::final_output_log(&state)
+                };
                 self.write_text_file(&self.log_path, &output_log).await?;
                 let error_json = serde_json::to_string_pretty(&json!({
                     "status": "failed",
