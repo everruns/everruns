@@ -10,7 +10,8 @@ use crate::domains::common::*;
 use crate::max_iterations;
 use everruns_core::typed_id::AgentId;
 use everruns_core::{
-    Agent, AgentCapabilityConfig, InitialFile, OrgRole, Policy, ScopedMcpServers, ToolDefinition,
+    Agent, AgentCapabilityConfig, AgentStatus, InitialFile, OrgRole, Policy, ScopedMcpServers,
+    ToolDefinition,
 };
 use serde::Deserialize;
 use utoipa::ToSchema;
@@ -376,6 +377,11 @@ impl Command for UpdateAgentCmd {
             validate_name("Agent", name)?;
         }
         validate_update_limits(&req)?;
+        if matches!(req.status, Some(AgentStatus::Deleted)) {
+            return Err(CommandError::forbidden(
+                "Setting status=deleted requires dangerous delete permission",
+            ));
+        }
         if let Some(ref caps) = req.capabilities {
             check_high_risk_caps(ctx, caps)?;
         }

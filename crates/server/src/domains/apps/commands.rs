@@ -1046,6 +1046,11 @@ impl Command for UpdateAppCmd {
             .map_err(|e| CommandError::bad_request(format!("Invalid app ID: {e}")))?;
 
         let req = self.req;
+        if matches!(req.status, Some(AppStatus::Deleted)) {
+            return Err(CommandError::forbidden(
+                "Setting status=deleted requires dangerous delete permission",
+            ));
+        }
 
         let existing = ctx
             .db

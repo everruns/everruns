@@ -11,7 +11,7 @@ use super::types::{
 use super::{MCP_SERVER_DANGEROUS, MCP_SERVER_MANAGE, MCP_SERVER_VIEW};
 use crate::domains::common::*;
 use everruns_core::typed_id::McpServerId;
-use everruns_core::{McpServer, McpServerAuthMode, Policy, validate_safe_url};
+use everruns_core::{McpServer, McpServerAuthMode, McpServerStatus, Policy, validate_safe_url};
 use serde::Deserialize;
 use utoipa::ToSchema;
 
@@ -277,6 +277,11 @@ impl Command for UpdateMcpServerCmd {
             .map_err(|e| CommandError::bad_request(format!("Invalid MCP server ID: {e}")))?;
 
         let req = self.req;
+        if matches!(req.status, Some(McpServerStatus::Deleted)) {
+            return Err(CommandError::forbidden(
+                "Setting status=deleted requires dangerous delete permission",
+            ));
+        }
 
         // Validate name if provided
         if let Some(ref name) = req.name {
