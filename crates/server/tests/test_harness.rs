@@ -709,6 +709,11 @@ impl TestResponse {
         String::from_utf8_lossy(&self.body).to_string()
     }
 
+    /// Get the raw response body bytes
+    pub fn bytes(&self) -> &[u8] {
+        &self.body
+    }
+
     /// Parse the body as JSON
     pub fn json<T: DeserializeOwned>(&self) -> T {
         serde_json::from_slice(&self.body)

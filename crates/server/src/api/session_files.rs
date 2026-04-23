@@ -9,6 +9,7 @@
 // - POST   /fs/_/copy - Copy file
 // - POST   /fs/_/grep - Search files
 // - POST   /fs/_/stat - Get file metadata
+// - GET    /fs/_/download/*path - Download raw file bytes
 //
 // Note: Paths starting with "_" are reserved for actions and cannot be
 // used for file creation or updates.
@@ -22,12 +23,15 @@ use crate::domains::session_files::{
 use crate::storage::StorageBackend;
 use axum::{
     Json, Router,
+    body::Body,
     extract::{DefaultBodyLimit, Path, Query, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode, header},
+    response::{IntoResponse, Response},
     routing::{get, post},
 };
 use everruns_core::Caller;
 use everruns_core::{FileInfo, FileStat, GrepResult, SessionFile};
+use mime_guess::from_path;
 
 use super::common::{ListResponse, impl_auth_state};
 use serde::{Deserialize, Serialize};
@@ -182,6 +186,116 @@ fn file_error(error: CommandError) -> (StatusCode, String) {
     }
 }
 
+fn wants_raw_file(headers: &HeaderMap) -> bool {
+    headers
+        .get(header::ACCEPT)
+        .and_then(|value| value.to_str().ok())
+        .map(|accept| {
+            accept
+                .split(',')
+                .filter_map(parse_accept_entry)
+                .any(|(entry, quality)| {
+                    entry.eq_ignore_ascii_case("application/octet-stream") && quality > 0.0
+                })
+        })
+        .unwrap_or(false)
+}
+
+fn parse_accept_entry(entry: &str) -> Option<(&str, f32)> {
+    let mut parts = entry.split(';');
+    let media_type = parts.next()?.trim();
+    if media_type.is_empty() {
+        return None;
+    }
+
+    let mut quality = 1.0_f32;
+    for param in parts {
+        let mut key_value = param.splitn(2, '=');
+        let key = key_value.next().unwrap_or("").trim();
+        let value = key_value.next().unwrap_or("").trim();
+
+        if key.eq_ignore_ascii_case("q") {
+            if let Ok(parsed) = value.parse::<f32>() {
+                quality = parsed;
+            }
+            break;
+        }
+    }
+
+    Some((media_type, quality))
+}
+
+fn raw_file_content_type(file: &SessionFile) -> String {
+    from_path(&file.path)
+        .first_raw()
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| {
+            if file.encoding == "base64" {
+                "application/octet-stream".to_string()
+            } else {
+                "text/plain; charset=utf-8".to_string()
+            }
+        })
+}
+
+fn ascii_filename_fallback(filename: &str) -> String {
+    let sanitized: String = filename
+        .chars()
+        .map(|ch| match ch {
+            '"' | '\\' | '/' | ';' => '_',
+            ' '..='~' => ch,
+            _ => '_',
+        })
+        .collect();
+    let trimmed = sanitized.trim();
+    if trimmed.is_empty() {
+        "download".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn content_disposition_value(filename: &str, attachment: bool) -> String {
+    let disposition = if attachment { "attachment" } else { "inline" };
+    let fallback = ascii_filename_fallback(filename);
+    let encoded = urlencoding::encode(filename);
+    format!("{disposition}; filename=\"{fallback}\"; filename*=UTF-8''{encoded}")
+}
+
+fn raw_file_response(
+    file: SessionFile,
+    attachment: bool,
+) -> Result<Response, (StatusCode, String)> {
+    let content_type = raw_file_content_type(&file);
+    let content = file.content.as_ref().ok_or((
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "File content missing".to_string(),
+    ))?;
+    let bytes = SessionFile::decode_content(content, &file.encoding).map_err(|error| {
+        tracing::error!(path = %file.path, %error, "Failed to decode session file content");
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "Failed to decode file content".to_string(),
+        )
+    })?;
+
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, content_type)
+        .header(
+            header::CONTENT_DISPOSITION,
+            content_disposition_value(&file.name, attachment),
+        )
+        .body(Body::from(bytes))
+        .map_err(|error| {
+            tracing::error!(path = %file.path, %error, "Failed to build raw file response");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to build file response".to_string(),
+            )
+        })
+}
+
 /// Create session files routes
 pub fn routes(state: AppState) -> Router {
     Router::new()
@@ -190,6 +304,10 @@ pub fn routes(state: AppState) -> Router {
         .route("/v1/sessions/{session_id}/fs/_/copy", post(copy_file))
         .route("/v1/sessions/{session_id}/fs/_/grep", post(grep_files))
         .route("/v1/sessions/{session_id}/fs/_/stat", post(stat_file))
+        .route(
+            "/v1/sessions/{session_id}/fs/_/download/{*path}",
+            get(download_path),
+        )
         // File operations with path
         .route(
             "/v1/sessions/{session_id}/fs",
@@ -307,8 +425,9 @@ pub async fn get_path(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path((session_id, path)): Path<(String, String)>,
+    headers: HeaderMap,
     Query(query): Query<GetQuery>,
-) -> Result<Json<GetResponse>, (StatusCode, String)> {
+) -> Result<Response, (StatusCode, String)> {
     let response = GetSessionFile {
         session_id,
         path,
@@ -317,7 +436,57 @@ pub async fn get_path(
     .execute(&state.ctx(&org))
     .await
     .map_err(file_error)?;
-    Ok(Json(response))
+
+    if wants_raw_file(&headers) {
+        return match response {
+            GetResponse::File(file) => raw_file_response(file, false),
+            GetResponse::Listing(_) => Err((
+                StatusCode::BAD_REQUEST,
+                "Cannot download a directory".to_string(),
+            )),
+        };
+    }
+
+    Ok(Json(response).into_response())
+}
+
+/// GET /fs/_/download/*path - Download raw file bytes
+#[utoipa::path(
+    get,
+    path = "/v1/sessions/{session_id}/fs/_/download/{path}",
+    params(
+        ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)"),
+        ("path" = String, Path, description = "File path")
+    ),
+    responses(
+        (status = 200, description = "Raw file bytes", content_type = "application/octet-stream"),
+        (status = 400, description = "Invalid session ID or path points to a directory"),
+        (status = 404, description = "File not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "filesystem"
+)]
+pub async fn download_path(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path((session_id, path)): Path<(String, String)>,
+) -> Result<Response, (StatusCode, String)> {
+    let response = GetSessionFile {
+        session_id,
+        path,
+        recursive: false,
+    }
+    .execute(&state.ctx(&org))
+    .await
+    .map_err(file_error)?;
+
+    match response {
+        GetResponse::File(file) => raw_file_response(file, true),
+        GetResponse::Listing(_) => Err((
+            StatusCode::BAD_REQUEST,
+            "Cannot download a directory".to_string(),
+        )),
+    }
 }
 
 /// POST /fs - Create at root (not allowed)
@@ -607,5 +776,37 @@ mod tests {
         // /workspacefoo is NOT a workspace path (no slash after workspace)
         assert_eq!(normalize_path("workspacefoo"), "/workspacefoo");
         assert_eq!(normalize_path("/workspacefoo"), "/workspacefoo");
+    }
+
+    #[test]
+    fn test_wants_raw_file_honors_q_zero() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::ACCEPT,
+            "application/octet-stream;q=0, application/json"
+                .parse()
+                .unwrap(),
+        );
+        assert!(!wants_raw_file(&headers));
+    }
+
+    #[test]
+    fn test_wants_raw_file_accepts_positive_quality() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::ACCEPT,
+            "application/json, application/octet-stream;q=0.5"
+                .parse()
+                .unwrap(),
+        );
+        assert!(wants_raw_file(&headers));
+    }
+
+    #[test]
+    fn test_content_disposition_value_uses_ascii_fallback_and_filename_star() {
+        let value = content_disposition_value("report \"Δ\".pdf", true);
+        assert!(value.starts_with("attachment; "));
+        assert!(value.contains("filename=\"report ___.pdf\""));
+        assert!(value.contains("filename*=UTF-8''report%20%22%CE%94%22.pdf"));
     }
 }

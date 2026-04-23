@@ -13,6 +13,7 @@
 mod test_harness;
 
 use axum::http::StatusCode;
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use chrono::{Duration, Utc};
 use serde_json::{Value, json};
 use test_harness::TestServer;
@@ -1459,6 +1460,256 @@ async fn test_session_filesystem_list_nonexistent_directory_returns_404() {
     // List a directory that doesn't exist — should return 404, not 500
     let resp = server.get(&format!("{}/.agents/skills", fs_url)).await;
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_session_file_download_path_returns_raw_bytes() {
+    let server = TestServer::in_memory().await;
+
+    let agent: Agent = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "fs-download-agent",
+                "display_name": "FS Download Agent",
+                "system_prompt": "Test"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let session: Session = server
+        .post(
+            "/v1/sessions",
+            json!({
+                "harness_id": server.seed_base_harness_id,
+                "agent_id": agent.public_id
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let fs_url = format!("/v1/sessions/{}/fs", session.id);
+    let pdf_bytes = b"%PDF-1.7\n%\x80\x81\x82\x83\n".to_vec();
+
+    server
+        .post(
+            &format!("{}/report.pdf", fs_url),
+            json!({
+                "content": BASE64.encode(&pdf_bytes),
+                "encoding": "base64"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED);
+
+    let json_read: SessionFile = server
+        .get(&format!("{}/report.pdf", fs_url))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(json_read.encoding, "base64");
+    assert_eq!(
+        json_read.content.as_deref(),
+        Some(BASE64.encode(&pdf_bytes).as_str())
+    );
+
+    let raw = server
+        .get(&format!("{}/_/download/report.pdf", fs_url))
+        .await
+        .assert_status(StatusCode::OK);
+
+    assert_eq!(
+        raw.headers()
+            .get("content-type")
+            .and_then(|value| value.to_str().ok()),
+        Some("application/pdf")
+    );
+    assert_eq!(
+        raw.headers()
+            .get("content-disposition")
+            .and_then(|value| value.to_str().ok()),
+        Some("attachment; filename=\"report.pdf\"; filename*=UTF-8''report.pdf")
+    );
+    assert_eq!(raw.bytes(), pdf_bytes.as_slice());
+}
+
+#[tokio::test]
+async fn test_session_file_read_accept_octet_stream_returns_raw_bytes() {
+    let server = TestServer::in_memory().await;
+
+    let agent: Agent = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "fs-negotiate-agent",
+                "display_name": "FS Negotiate Agent",
+                "system_prompt": "Test"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let session: Session = server
+        .post(
+            "/v1/sessions",
+            json!({
+                "harness_id": server.seed_base_harness_id,
+                "agent_id": agent.public_id
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let fs_url = format!("/v1/sessions/{}/fs", session.id);
+    let raw_bytes = vec![0, 159, 146, 150];
+
+    server
+        .post(
+            &format!("{}/payload.bin", fs_url),
+            json!({
+                "content": BASE64.encode(&raw_bytes),
+                "encoding": "base64"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED);
+
+    let response = server
+        .request_raw(
+            axum::http::Method::GET,
+            &format!("{}/payload.bin", fs_url),
+            vec![("accept", "application/octet-stream")],
+            vec![],
+        )
+        .await
+        .assert_status(StatusCode::OK);
+
+    assert_eq!(
+        response
+            .headers()
+            .get("content-type")
+            .and_then(|value| value.to_str().ok()),
+        Some("application/octet-stream")
+    );
+    assert_eq!(
+        response
+            .headers()
+            .get("content-disposition")
+            .and_then(|value| value.to_str().ok()),
+        Some("inline; filename=\"payload.bin\"; filename*=UTF-8''payload.bin")
+    );
+    assert_eq!(response.bytes(), raw_bytes.as_slice());
+}
+
+#[tokio::test]
+async fn test_session_file_read_accept_octet_stream_q_zero_keeps_json_response() {
+    let server = TestServer::in_memory().await;
+
+    let agent: Agent = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "fs-negotiate-q-zero-agent",
+                "display_name": "FS Negotiate Q Zero Agent",
+                "system_prompt": "Test"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let session: Session = server
+        .post(
+            "/v1/sessions",
+            json!({
+                "harness_id": server.seed_base_harness_id,
+                "agent_id": agent.public_id
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let fs_url = format!("/v1/sessions/{}/fs", session.id);
+    let raw_bytes = vec![0, 159, 146, 150];
+
+    server
+        .post(
+            &format!("{}/payload.bin", fs_url),
+            json!({
+                "content": BASE64.encode(&raw_bytes),
+                "encoding": "base64"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED);
+
+    let response = server
+        .request_raw(
+            axum::http::Method::GET,
+            &format!("{}/payload.bin", fs_url),
+            vec![("accept", "application/octet-stream;q=0, application/json")],
+            vec![],
+        )
+        .await
+        .assert_status(StatusCode::OK);
+
+    let file: SessionFile = response.json();
+    assert_eq!(file.encoding, "base64");
+    assert_eq!(
+        file.content.as_deref(),
+        Some(BASE64.encode(&raw_bytes).as_str())
+    );
+}
+
+#[tokio::test]
+async fn test_session_file_download_path_rejects_directories() {
+    let server = TestServer::in_memory().await;
+
+    let agent: Agent = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "fs-download-dir-agent",
+                "display_name": "FS Download Dir Agent",
+                "system_prompt": "Test"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let session: Session = server
+        .post(
+            "/v1/sessions",
+            json!({
+                "harness_id": server.seed_base_harness_id,
+                "agent_id": agent.public_id
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let fs_url = format!("/v1/sessions/{}/fs", session.id);
+
+    server
+        .post(
+            &format!("{}/docs", fs_url),
+            json!({
+                "is_directory": true
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED);
+
+    let response = server.get(&format!("{}/_/download/docs", fs_url)).await;
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
 }
 
 // ============================================
