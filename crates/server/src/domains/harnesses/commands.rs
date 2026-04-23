@@ -703,6 +703,10 @@ impl Command for PreviewHarness {
         true
     }
 
+    fn policy() -> Option<&'static Policy> {
+        Some(&HARNESS_VIEW)
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<HarnessPreview, CommandError> {
         let parent = match self.parent_harness_id {
             Some(parent_id) => q::resolve_effective(ctx.db.as_ref(), ctx.org_id(), parent_id)
