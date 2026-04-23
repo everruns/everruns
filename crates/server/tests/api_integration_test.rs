@@ -3795,6 +3795,12 @@ async fn test_delete_user_account() {
         .get("/v1/users/me/export")
         .await
         .assert_status(StatusCode::NOT_FOUND);
+
+    // Existing auth cookie/token must no longer authenticate after deletion.
+    server
+        .delete("/v1/users/me")
+        .await
+        .assert_status(StatusCode::UNAUTHORIZED);
 }
 
 #[tokio::test]
