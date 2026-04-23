@@ -194,10 +194,36 @@ fn wants_raw_file(headers: &HeaderMap) -> bool {
         .map(|accept| {
             accept
                 .split(',')
-                .map(|entry| entry.split(';').next().unwrap_or("").trim())
-                .any(|entry| entry.eq_ignore_ascii_case("application/octet-stream"))
+                .filter_map(parse_accept_entry)
+                .any(|(entry, quality)| {
+                    entry.eq_ignore_ascii_case("application/octet-stream") && quality > 0.0
+                })
         })
         .unwrap_or(false)
+}
+
+fn parse_accept_entry(entry: &str) -> Option<(&str, f32)> {
+    let mut parts = entry.split(';');
+    let media_type = parts.next()?.trim();
+    if media_type.is_empty() {
+        return None;
+    }
+
+    let mut quality = 1.0_f32;
+    for param in parts {
+        let mut key_value = param.splitn(2, '=');
+        let key = key_value.next().unwrap_or("").trim();
+        let value = key_value.next().unwrap_or("").trim();
+
+        if key.eq_ignore_ascii_case("q") {
+            if let Ok(parsed) = value.parse::<f32>() {
+                quality = parsed;
+            }
+            break;
+        }
+    }
+
+    Some((media_type, quality))
 }
 
 fn raw_file_content_type(file: &SessionFile) -> String {
@@ -213,9 +239,35 @@ fn raw_file_content_type(file: &SessionFile) -> String {
         })
 }
 
-fn raw_file_response(file: SessionFile) -> Result<Response, (StatusCode, String)> {
+fn ascii_filename_fallback(filename: &str) -> String {
+    let sanitized: String = filename
+        .chars()
+        .map(|ch| match ch {
+            '"' | '\\' | '/' | ';' => '_',
+            ' '..='~' => ch,
+            _ => '_',
+        })
+        .collect();
+    let trimmed = sanitized.trim();
+    if trimmed.is_empty() {
+        "download".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn content_disposition_value(filename: &str, attachment: bool) -> String {
+    let disposition = if attachment { "attachment" } else { "inline" };
+    let fallback = ascii_filename_fallback(filename);
+    let encoded = urlencoding::encode(filename);
+    format!("{disposition}; filename=\"{fallback}\"; filename*=UTF-8''{encoded}")
+}
+
+fn raw_file_response(
+    file: SessionFile,
+    attachment: bool,
+) -> Result<Response, (StatusCode, String)> {
     let content_type = raw_file_content_type(&file);
-    let filename = file.name.clone();
     let content = file.content.as_ref().ok_or((
         StatusCode::INTERNAL_SERVER_ERROR,
         "File content missing".to_string(),
@@ -233,7 +285,7 @@ fn raw_file_response(file: SessionFile) -> Result<Response, (StatusCode, String)
         .header(header::CONTENT_TYPE, content_type)
         .header(
             header::CONTENT_DISPOSITION,
-            format!("attachment; filename=\"{}\"", filename),
+            content_disposition_value(&file.name, attachment),
         )
         .body(Body::from(bytes))
         .map_err(|error| {
@@ -388,7 +440,7 @@ pub async fn get_path(
 
     if wants_raw_file(&headers) {
         return match response {
-            GetResponse::File(file) => raw_file_response(file),
+            GetResponse::File(file) => raw_file_response(file, false),
             GetResponse::Listing(_) => Err((
                 StatusCode::BAD_REQUEST,
                 "Cannot download a directory".to_string(),
@@ -430,7 +482,7 @@ pub async fn download_path(
     .map_err(file_error)?;
 
     match response {
-        GetResponse::File(file) => raw_file_response(file),
+        GetResponse::File(file) => raw_file_response(file, true),
         GetResponse::Listing(_) => Err((
             StatusCode::BAD_REQUEST,
             "Cannot download a directory".to_string(),
@@ -725,5 +777,37 @@ mod tests {
         // /workspacefoo is NOT a workspace path (no slash after workspace)
         assert_eq!(normalize_path("workspacefoo"), "/workspacefoo");
         assert_eq!(normalize_path("/workspacefoo"), "/workspacefoo");
+    }
+
+    #[test]
+    fn test_wants_raw_file_honors_q_zero() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::ACCEPT,
+            "application/octet-stream;q=0, application/json"
+                .parse()
+                .unwrap(),
+        );
+        assert!(!wants_raw_file(&headers));
+    }
+
+    #[test]
+    fn test_wants_raw_file_accepts_positive_quality() {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            header::ACCEPT,
+            "application/json, application/octet-stream;q=0.5"
+                .parse()
+                .unwrap(),
+        );
+        assert!(wants_raw_file(&headers));
+    }
+
+    #[test]
+    fn test_content_disposition_value_uses_ascii_fallback_and_filename_star() {
+        let value = content_disposition_value("report \"Δ\".pdf", true);
+        assert!(value.starts_with("attachment; "));
+        assert!(value.contains("filename=\"report ___.pdf\""));
+        assert!(value.contains("filename*=UTF-8''report%20%22%CE%94%22.pdf"));
     }
 }
