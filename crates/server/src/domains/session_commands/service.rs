@@ -8,6 +8,7 @@
 
 use crate::direct_worker_adapters::DirectWorkerAdapters;
 use crate::domains::mcp_servers::McpServerService;
+use crate::domains::sessions::SESSION_VIEW;
 use crate::errors::{BadRequestError, ResourceNotFoundError};
 use crate::services::{EventService, LlmResolverService};
 use crate::storage::StorageBackend;
@@ -22,7 +23,8 @@ use everruns_core::message::{Controls, Message, MessageRole};
 use everruns_core::runtime_context::{inspect_turn_context, resolve_runtime_capabilities};
 use everruns_core::traits::{AgentStore, HarnessStore, ImageResolver, SessionStore};
 use everruns_core::typed_id::{ModelId, SessionId};
-use everruns_core::{Agent, CapabilityRegistry, DriverRegistry, Harness, ResolvedImage};
+use everruns_core::{Agent, Caller, CapabilityRegistry, DriverRegistry, Harness, ResolvedImage};
+use everruns_macros::policy;
 use everruns_worker::worker_adapters::{
     AdapterAgentStore, AdapterHarnessStore, AdapterImageResolver, AdapterLlmProviderStore,
     AdapterMessageRetriever, AdapterSessionFileStore, AdapterSessionStore,
@@ -76,13 +78,15 @@ impl SessionCommandService {
         self
     }
 
+    #[policy(SESSION_VIEW)]
     pub async fn list_system_commands(
         &self,
-        org_id: i64,
+        caller: &Caller,
         session_id: SessionId,
     ) -> Result<Vec<CommandDescriptor>> {
-        let (harness_chain, agent, session) =
-            self.load_session_components(org_id, session_id).await?;
+        let (harness_chain, agent, session) = self
+            .load_session_components(caller.org_id, session_id)
+            .await?;
         let resolved = resolve_runtime_capabilities(
             &harness_chain,
             agent.as_ref(),
@@ -106,13 +110,14 @@ impl SessionCommandService {
         Ok(commands)
     }
 
+    #[policy(SESSION_VIEW)]
     pub async fn execute(
         &self,
-        org_id: i64,
+        caller: &Caller,
         session_id: SessionId,
         req: ExecuteCommandRequest,
     ) -> Result<CommandResult> {
-        let commands = self.list_system_commands(org_id, session_id).await?;
+        let commands = self.list_system_commands(caller, session_id).await?;
         let command = commands
             .iter()
             .find(|command| command.name == req.name)
@@ -124,7 +129,7 @@ impl SessionCommandService {
             })?;
 
         match command.name.as_str() {
-            BTW_COMMAND_NAME => self.execute_btw(org_id, session_id, req).await,
+            BTW_COMMAND_NAME => self.execute_btw(caller.org_id, session_id, req).await,
             _ => Err(BadRequestError::new(format!(
                 "Unsupported system command: /{}",
                 command.name

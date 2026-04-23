@@ -1,7 +1,8 @@
-use super::queries as q;
 use super::types::CreateBudgetRequest;
+use super::{BUDGET_MANAGE, queries as q};
 use crate::domains::common::*;
 use crate::storage::models::{CreateBudgetLedgerRow, CreateBudgetRow, UpdateBudgetRow};
+use everruns_core::Policy;
 use everruns_core::budget::{Budget, BudgetCheckResult, LedgerEntry};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -24,6 +25,12 @@ fn validate_limit(limit: f64, soft_limit: Option<f64>) -> Result<(), CommandErro
         ));
     }
     Ok(())
+}
+
+fn require_budget_manage(ctx: &Ctx) -> Result<(), CommandError> {
+    BUDGET_MANAGE
+        .evaluate(&ctx.caller)
+        .map_err(|e| CommandError::Forbidden(e.message))
 }
 
 #[derive(Debug, Serialize)]
@@ -59,7 +66,12 @@ impl Command for CreateBudget {
         }
     }
 
+    fn policy() -> Option<&'static Policy> {
+        Some(&BUDGET_MANAGE)
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<Budget, CommandError> {
+        require_budget_manage(ctx)?;
         let req = self.0;
         validate_subject_type(&req.subject_type)?;
         validate_limit(req.limit, req.soft_limit)?;
@@ -176,7 +188,12 @@ impl Command for UpdateBudgetCmd {
         }
     }
 
+    fn policy() -> Option<&'static Policy> {
+        Some(&BUDGET_MANAGE)
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<Budget, CommandError> {
+        require_budget_manage(ctx)?;
         if let Some(limit) = self.limit {
             validate_limit(limit, self.soft_limit.flatten())?;
         }
@@ -225,7 +242,12 @@ impl Command for DeleteBudget {
         Some("budget_id")
     }
 
+    fn policy() -> Option<&'static Policy> {
+        Some(&BUDGET_MANAGE)
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<BudgetDeleteResult, CommandError> {
+        require_budget_manage(ctx)?;
         let budget_id = q::parse_budget_id(&self.budget_id)?;
         let deleted = ctx
             .db
@@ -261,7 +283,12 @@ impl Command for TopUpBudget {
         }
     }
 
+    fn policy() -> Option<&'static Policy> {
+        Some(&BUDGET_MANAGE)
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<Budget, CommandError> {
+        require_budget_manage(ctx)?;
         if self.amount <= 0.0 {
             return Err(CommandError::bad_request("Amount must be positive"));
         }
@@ -473,7 +500,12 @@ impl Command for ResumeSessionBudgets {
         Some("session_id")
     }
 
+    fn policy() -> Option<&'static Policy> {
+        Some(&BUDGET_MANAGE)
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<ResumeSessionBudgetsResult, CommandError> {
+        require_budget_manage(ctx)?;
         let budgets = ctx
             .db
             .list_budgets(ctx.org_id(), Some("session"), Some(&self.session_id))
@@ -497,3 +529,66 @@ impl Command for ResumeSessionBudgets {
 }
 
 inventory::submit! { CommandDescriptor::of::<ResumeSessionBudgets>() }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::services::CapabilityService;
+    use crate::storage::StorageBackend;
+    use everruns_core::{Caller, DEFAULT_ORG_ID, organization::OrgRole};
+    use std::sync::Arc;
+    use uuid::Uuid;
+
+    fn caller_with_role(role: OrgRole) -> Caller {
+        Caller {
+            org_id: DEFAULT_ORG_ID,
+            org_public_id: "org_00000000000000000000000000000001".to_string(),
+            user_id: Some(Uuid::nil()),
+            role,
+            is_platform_user: false,
+            is_internal: false,
+        }
+    }
+
+    fn ctx_for_role(role: OrgRole) -> Ctx {
+        let db = Arc::new(StorageBackend::in_memory());
+        let capability_service = Arc::new(CapabilityService::new(db.clone(), None));
+        Ctx::new(caller_with_role(role), db, capability_service, None)
+    }
+
+    #[tokio::test]
+    async fn create_budget_denies_member() {
+        let ctx = ctx_for_role(OrgRole::Member);
+        let err = CreateBudget(CreateBudgetRequest {
+            subject_type: "session".to_string(),
+            subject_id: "session_123".to_string(),
+            currency: "usd".to_string(),
+            limit: 10.0,
+            soft_limit: None,
+            period: None,
+            metadata: None,
+        })
+        .execute(&ctx)
+        .await
+        .expect_err("member should be denied by BUDGET_MANAGE");
+        assert!(matches!(err, CommandError::Forbidden(_)));
+    }
+
+    #[tokio::test]
+    async fn create_budget_allows_owner() {
+        let ctx = ctx_for_role(OrgRole::Owner);
+        let budget = CreateBudget(CreateBudgetRequest {
+            subject_type: "session".to_string(),
+            subject_id: "session_123".to_string(),
+            currency: "usd".to_string(),
+            limit: 10.0,
+            soft_limit: None,
+            period: None,
+            metadata: None,
+        })
+        .execute(&ctx)
+        .await
+        .expect("owner should pass BUDGET_MANAGE");
+        assert_eq!(budget.subject_type.to_string(), "session");
+    }
+}

@@ -94,6 +94,12 @@ pub fn validate_scoped_mcp_servers(servers: &ScopedMcpServers) -> Result<()> {
         validate_safe_url(&server.url)
             .map_err(|e| anyhow!("Invalid scoped MCP server URL for '{name}': {e}"))?;
         let prefix = sanitize_mcp_server_name(name);
+        if prefix.contains("__") {
+            return Err(anyhow!(
+                "Scoped MCP server name '{name}' is invalid after sanitization: \
+                 consecutive underscores are reserved for MCP tool prefix delimiters"
+            ));
+        }
         if !sanitized.insert(prefix) {
             return Err(anyhow!(
                 "Scoped MCP server names must be unique after sanitization"
@@ -271,6 +277,22 @@ mod tests {
             error
                 .to_string()
                 .contains("must be unique after sanitization")
+        );
+    }
+
+    #[test]
+    fn validate_scoped_mcp_servers_rejects_reserved_delimiter_after_sanitization() {
+        let mut servers = ScopedMcpServers::default();
+        servers.insert(
+            "admin__foo".to_string(),
+            scoped_server("https://one.example.com/mcp"),
+        );
+
+        let error = validate_scoped_mcp_servers(&servers).unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("reserved for MCP tool prefix delimiters")
         );
     }
 
