@@ -27,8 +27,9 @@ use crate::services::{
 use crate::storage::StorageBackend;
 use axum::{
     Json, Router,
-    extract::State,
-    http::{HeaderMap, StatusCode},
+    extract::{Request, State},
+    http::{HeaderMap, StatusCode, header},
+    middleware::Next,
     response::{IntoResponse, Response},
     routing::post,
 };
@@ -192,6 +193,11 @@ pub struct AppState {
     pub chat_harness_name: Option<String>,
     pub chat_session_title: Option<String>,
     pub sqldb_store: Option<Arc<dyn SessionSqlDbStore>>,
+    /// Absolute URL of `/.well-known/oauth-protected-resource`, used to
+    /// populate the `WWW-Authenticate: Bearer resource_metadata="..."` header
+    /// on 401 responses per RFC 9728 §5.1 and the MCP 2025-06-18 auth spec.
+    /// `None` disables the header (e.g. tests without an issuer configured).
+    pub resource_metadata_url: Option<String>,
 }
 
 impl AppState {
@@ -242,7 +248,13 @@ impl AppState {
                 .harness_for_role(everruns_core::BuiltInHarnessRole::Chat)
                 .map(|h| h.display_name.clone()),
             sqldb_store,
+            resource_metadata_url: None,
         }
+    }
+
+    pub fn with_resource_metadata_url(mut self, url: impl Into<String>) -> Self {
+        self.resource_metadata_url = Some(url.into());
+        self
     }
 
     pub fn with_virtual_registry(
@@ -267,9 +279,55 @@ impl_auth_state!(AppState);
 // ============================================================================
 
 pub fn routes(state: AppState) -> Router {
-    Router::new()
+    let metadata_url = state.resource_metadata_url.clone();
+    let router = Router::new()
         .route("/mcp", post(handle_mcp))
-        .with_state(state)
+        .with_state(state);
+    match metadata_url
+        .as_deref()
+        .and_then(parse_www_authenticate_value)
+    {
+        Some(header_value) => router.layer(axum::middleware::from_fn(
+            move |req: Request, next: Next| {
+                let header_value = header_value.clone();
+                async move { inject_www_authenticate(req, next, header_value).await }
+            },
+        )),
+        None => router,
+    }
+}
+
+fn build_www_authenticate_value(resource_metadata_url: &str) -> String {
+    format!("Bearer realm=\"mcp\", resource_metadata=\"{resource_metadata_url}\"")
+}
+
+/// Build the static header value once at router construction time. Returns
+/// `None` when the configured URL cannot produce a valid `HeaderValue`
+/// (malformed config), which disables the layer rather than paying parse
+/// cost per request.
+fn parse_www_authenticate_value(resource_metadata_url: &str) -> Option<axum::http::HeaderValue> {
+    build_www_authenticate_value(resource_metadata_url)
+        .parse()
+        .ok()
+}
+
+/// Adds `WWW-Authenticate: Bearer resource_metadata="..."` to 401 responses
+/// from the MCP endpoint so clients can discover the authorization server
+/// via RFC 9728 protected-resource metadata.
+async fn inject_www_authenticate(
+    req: Request,
+    next: Next,
+    header_value: axum::http::HeaderValue,
+) -> Response {
+    let mut response = next.run(req).await;
+    if response.status() == StatusCode::UNAUTHORIZED
+        && !response.headers().contains_key(header::WWW_AUTHENTICATE)
+    {
+        response
+            .headers_mut()
+            .insert(header::WWW_AUTHENTICATE, header_value);
+    }
+    response
 }
 
 // ============================================================================
@@ -1157,5 +1215,118 @@ async fn execute_script(
             }
         }
         Err(_) => Err(format!("Command timed out after {timeout_ms}ms")),
+    }
+}
+
+#[cfg(test)]
+mod www_authenticate_tests {
+    use super::*;
+    use axum::body::Body;
+    use axum::http::Request as HttpRequest;
+    use axum::response::IntoResponse;
+    use axum::routing::any;
+    use tower::ServiceExt;
+
+    const METADATA_URL: &str = "https://example.com/.well-known/oauth-protected-resource";
+
+    fn app_with_layer(status: StatusCode) -> Router {
+        let header_value = parse_www_authenticate_value(METADATA_URL).expect("valid header");
+        Router::new()
+            .route("/mcp", any(move || async move { status.into_response() }))
+            .layer(axum::middleware::from_fn(
+                move |req: Request, next: Next| {
+                    let header_value = header_value.clone();
+                    async move { inject_www_authenticate(req, next, header_value).await }
+                },
+            ))
+    }
+
+    #[test]
+    fn header_value_matches_rfc9728_format() {
+        let value = build_www_authenticate_value(METADATA_URL);
+        assert_eq!(
+            value,
+            format!("Bearer realm=\"mcp\", resource_metadata=\"{METADATA_URL}\"")
+        );
+    }
+
+    #[tokio::test]
+    async fn adds_header_on_401() {
+        let app = app_with_layer(StatusCode::UNAUTHORIZED);
+        let response = app
+            .oneshot(
+                HttpRequest::builder()
+                    .uri("/mcp")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        let header = response
+            .headers()
+            .get(header::WWW_AUTHENTICATE)
+            .expect("WWW-Authenticate header present on 401")
+            .to_str()
+            .unwrap();
+        assert!(header.starts_with("Bearer realm=\"mcp\""));
+        assert!(header.contains(&format!("resource_metadata=\"{METADATA_URL}\"")));
+    }
+
+    #[tokio::test]
+    async fn skips_header_on_non_401() {
+        let app = app_with_layer(StatusCode::OK);
+        let response = app
+            .oneshot(
+                HttpRequest::builder()
+                    .uri("/mcp")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(response.headers().get(header::WWW_AUTHENTICATE).is_none());
+    }
+
+    #[tokio::test]
+    async fn preserves_existing_header() {
+        let header_value = parse_www_authenticate_value(METADATA_URL).expect("valid header");
+        let app = Router::new()
+            .route(
+                "/mcp",
+                any(|| async {
+                    let mut response = StatusCode::UNAUTHORIZED.into_response();
+                    response.headers_mut().insert(
+                        header::WWW_AUTHENTICATE,
+                        "Basic realm=\"x\"".parse().unwrap(),
+                    );
+                    response
+                }),
+            )
+            .layer(axum::middleware::from_fn(
+                move |req: Request, next: Next| {
+                    let header_value = header_value.clone();
+                    async move { inject_www_authenticate(req, next, header_value).await }
+                },
+            ));
+        let response = app
+            .oneshot(
+                HttpRequest::builder()
+                    .uri("/mcp")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            response
+                .headers()
+                .get(header::WWW_AUTHENTICATE)
+                .unwrap()
+                .to_str()
+                .unwrap(),
+            "Basic realm=\"x\""
+        );
     }
 }

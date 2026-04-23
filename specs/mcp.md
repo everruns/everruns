@@ -130,6 +130,16 @@ Protected Resource Metadata for MCP-aware OAuth clients. No auth required.
 
 Everruns advertises `/mcp` as the protected resource and points clients at the same OAuth issuer and token endpoints used by the rest of the MCP flow.
 
+### 401 WWW-Authenticate Header (RFC 9728)
+
+Per [RFC 9728 §5.1](https://datatracker.ietf.org/doc/html/rfc9728#section-5.1) and the MCP 2025-06-18 auth spec, unauthenticated requests to `/mcp` return `401 Unauthorized` with a `WWW-Authenticate` header pointing at the protected-resource metadata document:
+
+```
+WWW-Authenticate: Bearer realm="mcp", resource_metadata="https://app.example.com/.well-known/oauth-protected-resource"
+```
+
+The `resource_metadata` URL is derived from the configured API base URL (stripping `/api` or `$API_PREFIX`) so it matches the origin of the `.well-known` endpoints. Implementation: `crates/server/src/api/mcp_endpoint/mod.rs` attaches a tower layer to the MCP router that injects the header on 401 responses and leaves other status codes untouched.
+
 #### POST /oauth/register
 
 Dynamic Client Registration (RFC 7591). No auth required.

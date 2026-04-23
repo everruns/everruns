@@ -46,7 +46,10 @@ fn build_api_key_cache() -> Cache<String, AuthUser> {
         .build()
 }
 
-fn root_url_from_api_base(api_base_url: &str) -> String {
+/// Strip the API prefix from the base URL to recover the public root origin.
+/// Used by MCP metadata endpoints and the MCP 401 `WWW-Authenticate` header
+/// so clients can locate `/.well-known/oauth-protected-resource`.
+pub(crate) fn root_url_from_api_base(api_base_url: &str) -> String {
     let trimmed = api_base_url.trim_end_matches('/');
     if let Ok(api_prefix) = std::env::var("API_PREFIX") {
         let api_prefix = api_prefix.trim_end_matches('/');
