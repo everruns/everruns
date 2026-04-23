@@ -3,7 +3,8 @@
 // Decision: When VALKEY_URL is set, use Valkey sliding-window counter (Lua script, atomic).
 //   When not set, fall back to governor in-memory (per-instance, same as before).
 // Decision: Different limits for login (strict), register (strict), refresh (relaxed).
-// Decision: Keyed by client IP extracted from X-Forwarded-For or socket addr.
+// Decision: Keyed by client IP from socket peer; forwarded headers are trusted
+//   only when the peer is a trusted proxy (loopback/private ranges).
 // Decision: On Valkey errors, fail open (allow request) and log — availability over strictness.
 
 use axum::{
@@ -144,32 +145,60 @@ impl From<RateLimitError> for Response {
     }
 }
 
-/// Extract client IP from request. Checks X-Forwarded-For first, falls back to
-/// X-Real-IP, then ConnectInfo peer addr, then loopback.
-pub fn extract_client_ip(req: &Request<Body>) -> IpAddr {
-    // X-Forwarded-For: client, proxy1, proxy2 — take the first (leftmost)
+fn extract_forwarded_ip(req: &Request<Body>) -> Option<IpAddr> {
     if let Some(forwarded) = req.headers().get("x-forwarded-for")
         && let Ok(val) = forwarded.to_str()
         && let Some(first) = val.split(',').next()
         && let Ok(ip) = first.trim().parse::<IpAddr>()
     {
-        return ip;
+        return Some(ip);
     }
 
-    // X-Real-IP (single IP, set by reverse proxy)
+    None
+}
+
+fn extract_real_ip(req: &Request<Body>) -> Option<IpAddr> {
     if let Some(real_ip) = req.headers().get("x-real-ip")
         && let Ok(val) = real_ip.to_str()
         && let Ok(ip) = val.trim().parse::<IpAddr>()
     {
-        return ip;
+        return Some(ip);
     }
 
-    // ConnectInfo from axum (socket peer address)
+    None
+}
+
+fn is_trusted_proxy_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(ipv4) => ipv4.is_loopback() || ipv4.is_private() || ipv4.is_link_local(),
+        IpAddr::V6(ipv6) => {
+            ipv6.is_loopback() || ipv6.is_unique_local() || ipv6.is_unicast_link_local()
+        }
+    }
+}
+
+/// Extract client IP from request.
+///
+/// Security: Forwarding headers are accepted only when the immediate peer is a
+/// trusted proxy (loopback/private ranges). Direct clients cannot spoof
+/// X-Forwarded-For / X-Real-IP to influence rate-limit keys.
+pub fn extract_client_ip(req: &Request<Body>) -> IpAddr {
     if let Some(connect_info) = req.extensions().get::<ConnectInfo<std::net::SocketAddr>>() {
-        return connect_info.0.ip();
+        let peer_ip = connect_info.0.ip();
+
+        if is_trusted_proxy_ip(peer_ip) {
+            if let Some(ip) = extract_forwarded_ip(req) {
+                return ip;
+            }
+            if let Some(ip) = extract_real_ip(req) {
+                return ip;
+            }
+        }
+
+        return peer_ip;
     }
 
-    // Fallback: loopback (shouldn't happen in production)
+    // Fallback: no peer addr attached.
     IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)
 }
 
@@ -270,21 +299,31 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_ip_from_x_forwarded_for() {
-        let req = Request::builder()
+    fn test_extract_ip_from_x_forwarded_for_from_trusted_proxy() {
+        let mut req = Request::builder()
             .header("x-forwarded-for", "203.0.113.50, 70.41.3.18")
             .body(Body::empty())
             .unwrap();
+        req.extensions_mut()
+            .insert(ConnectInfo(std::net::SocketAddr::from((
+                [127, 0, 0, 1],
+                443,
+            ))));
         let ip = extract_client_ip(&req);
         assert_eq!(ip, IpAddr::V4(Ipv4Addr::new(203, 0, 113, 50)));
     }
 
     #[test]
-    fn test_extract_ip_from_x_real_ip() {
-        let req = Request::builder()
+    fn test_extract_ip_from_x_real_ip_from_trusted_proxy() {
+        let mut req = Request::builder()
             .header("x-real-ip", "198.51.100.25")
             .body(Body::empty())
             .unwrap();
+        req.extensions_mut()
+            .insert(ConnectInfo(std::net::SocketAddr::from((
+                [127, 0, 0, 1],
+                443,
+            ))));
         let ip = extract_client_ip(&req);
         assert_eq!(ip, IpAddr::V4(Ipv4Addr::new(198, 51, 100, 25)));
     }
@@ -294,6 +333,21 @@ mod tests {
         let req = Request::builder().body(Body::empty()).unwrap();
         let ip = extract_client_ip(&req);
         assert_eq!(ip, IpAddr::V4(Ipv4Addr::LOCALHOST));
+    }
+
+    #[test]
+    fn test_extract_ip_ignores_forwarded_for_from_untrusted_peer() {
+        let mut req = Request::builder()
+            .header("x-forwarded-for", "203.0.113.50")
+            .body(Body::empty())
+            .unwrap();
+        req.extensions_mut()
+            .insert(ConnectInfo(std::net::SocketAddr::from((
+                [198, 51, 100, 10],
+                443,
+            ))));
+        let ip = extract_client_ip(&req);
+        assert_eq!(ip, IpAddr::V4(Ipv4Addr::new(198, 51, 100, 10)));
     }
 
     // ============================================

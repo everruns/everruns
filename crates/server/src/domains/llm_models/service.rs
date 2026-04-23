@@ -14,7 +14,6 @@ use everruns_core::{
     Caller, LlmModel, LlmModelProfile, LlmModelSource, LlmModelStatus, LlmModelWithProvider,
     LlmProviderType, Permission, Policy, Rule, get_model_profile,
 };
-use everruns_macros::policy;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -56,7 +55,6 @@ impl LlmModelService {
         }
     }
 
-    #[policy(LLM_MODEL_MANAGE)]
     pub async fn create(
         &self,
         caller: &Caller,
@@ -83,7 +81,6 @@ impl LlmModelService {
         Ok(Self::row_to_model(&row))
     }
 
-    #[policy(LLM_MODEL_VIEW)]
     pub async fn get_with_provider(
         &self,
         caller: &Caller,
@@ -96,7 +93,6 @@ impl LlmModelService {
         Ok(row.as_ref().map(Self::row_to_model_with_provider))
     }
 
-    #[policy(LLM_MODEL_VIEW)]
     pub async fn list_for_provider(
         &self,
         caller: &Caller,
@@ -109,14 +105,12 @@ impl LlmModelService {
         Ok(rows.iter().map(Self::row_to_model).collect())
     }
 
-    #[policy(LLM_MODEL_VIEW)]
     pub async fn list_all(&self, caller: &Caller) -> Result<Vec<LlmModelWithProvider>> {
         let rows = self.db.list_all_llm_models(caller.org_id).await?;
         Ok(rows.iter().map(Self::row_to_model_with_provider).collect())
     }
 
     /// List all models with optional filters
-    #[policy(LLM_MODEL_VIEW)]
     pub async fn list_all_with_filters(
         &self,
         caller: &Caller,
@@ -179,7 +173,6 @@ impl LlmModelService {
         Ok(models)
     }
 
-    #[policy(LLM_MODEL_MANAGE)]
     pub async fn update(
         &self,
         caller: &Caller,
@@ -215,7 +208,6 @@ impl LlmModelService {
         Ok(row.as_ref().map(Self::row_to_model))
     }
 
-    #[policy(LLM_MODEL_MANAGE)]
     pub async fn delete(&self, caller: &Caller, id: Uuid) -> Result<bool> {
         // Before deleting, check if this was the org default
         let was_default = self.is_org_default(caller.org_id, id).await?;
@@ -230,7 +222,6 @@ impl LlmModelService {
     }
 
     /// Get the default model
-    #[policy(LLM_MODEL_VIEW)]
     pub async fn get_default(&self, caller: &Caller) -> Result<Option<LlmModelWithProvider>> {
         let row = self.db.get_default_llm_model(caller.org_id).await?;
         Ok(row.as_ref().map(Self::row_to_model_with_provider))

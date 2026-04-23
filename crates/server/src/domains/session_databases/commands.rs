@@ -71,6 +71,10 @@ impl Command for CreateSessionDatabaseCmd {
         }
     }
 
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&crate::domains::sessions::SESSION_MANAGE)
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<DatabaseInfoResponse, CommandError> {
         let session_id = q::parse_owned_session_id(&self.session_id)?;
         q::verify_session_ownership(&ctx.db, ctx.org_id(), session_id).await?;
@@ -151,6 +155,10 @@ impl Command for DeleteSessionDatabase {
             method: "DELETE",
             path: "/v1/sessions/{session_id}/databases/{name}",
         }
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&crate::domains::sessions::SESSION_MANAGE)
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<DeleteSessionDatabaseResult, CommandError> {

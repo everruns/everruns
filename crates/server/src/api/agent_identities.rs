@@ -49,6 +49,7 @@ impl AppState {
             self.db.clone(),
             self.capability_service.clone(),
             None,
+            self.auth.permission_resolver.clone(),
         )
     }
 }
@@ -98,7 +99,7 @@ pub async fn create_agent_identity(
     Json(req): Json<CreateAgentIdentityRequest>,
 ) -> Result<(StatusCode, Json<AgentIdentity>), (StatusCode, Json<ErrorResponse>)> {
     let identity = crate::domains::agent_identities::CreateAgentIdentity(req)
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await?;
     Ok((StatusCode::CREATED, Json(identity)))
 }
@@ -112,7 +113,7 @@ pub async fn list_agent_identities(
         search: query.search,
         include_archived: query.include_archived.unwrap_or(false),
     }
-    .execute(&state.ctx(&org))
+    .run(&state.ctx(&org))
     .await?;
     Ok(Json(ListResponse::new(identities)))
 }
@@ -123,7 +124,7 @@ pub async fn get_agent_identity(
     Path(identity_id): Path<String>,
 ) -> Result<Json<AgentIdentity>, (StatusCode, Json<ErrorResponse>)> {
     let identity = crate::domains::agent_identities::GetAgentIdentity { id: identity_id }
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await?;
     Ok(Json(identity))
 }
@@ -138,7 +139,7 @@ pub async fn update_agent_identity(
         id: identity_id,
         req,
     }
-    .execute(&state.ctx(&org))
+    .run(&state.ctx(&org))
     .await?;
     Ok(Json(identity))
 }
@@ -149,7 +150,7 @@ pub async fn delete_agent_identity(
     Path(identity_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     crate::domains::agent_identities::DeleteAgentIdentity { id: identity_id }
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -160,7 +161,7 @@ pub async fn destroy_agent_identity(
     Path(identity_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     crate::domains::agent_identities::DestroyAgentIdentity { id: identity_id }
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }

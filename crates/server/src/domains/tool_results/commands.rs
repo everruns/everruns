@@ -31,6 +31,10 @@ impl Command for SubmitToolResults {
         Some("session_id")
     }
 
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&crate::domains::sessions::SESSION_MANAGE)
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<SubmitToolResultsResponse, CommandError> {
         if self.tool_results.is_empty() {
             return Err(CommandError::bad_request("tool_results must not be empty"));

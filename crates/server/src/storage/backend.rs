@@ -234,6 +234,10 @@ impl StorageBackend {
         dispatch!(self, delete_expired_cli_auth_sessions)
     }
 
+    pub async fn delete_cli_auth_session(&self, id: Uuid) -> Result<bool> {
+        dispatch!(self, delete_cli_auth_session, id)
+    }
+
     // ============================================
     // Refresh Tokens
     // ============================================
@@ -591,6 +595,22 @@ impl StorageBackend {
         tags: &[String],
     ) -> Result<Option<SessionRow>> {
         dispatch!(self, find_session_by_tags, org_id, tags)
+    }
+
+    /// Find a single session matching ALL given tags + owner within an org.
+    pub async fn find_session_by_tags_and_owner(
+        &self,
+        org_id: i64,
+        owner_principal_id: PrincipalId,
+        tags: &[String],
+    ) -> Result<Option<SessionRow>> {
+        dispatch!(
+            self,
+            find_session_by_tags_and_owner,
+            org_id,
+            owner_principal_id,
+            tags
+        )
     }
 
     pub async fn update_session(
@@ -1883,6 +1903,44 @@ impl StorageBackend {
 
     pub async fn get_session_organization_id(&self, session_id: SessionId) -> Result<Option<i64>> {
         dispatch!(self, get_session_organization_id, session_id)
+    }
+
+    // ============================================
+    // Cross-Org Resource Resolution
+    //
+    // Lookup-by-public_id helpers that return the owning org without requiring
+    // the caller to know it. Used only by the authenticated
+    // GET /v1/resolve-org endpoint, which gates the result by the caller's
+    // org memberships to preserve the 404-vs-403 enumeration guarantee.
+    // See specs/multitenancy.md (Cross-Org Resource Resolution).
+    // ============================================
+
+    pub async fn get_agent_organization_id(&self, public_id: &str) -> Result<Option<i64>> {
+        dispatch!(self, get_agent_organization_id, public_id)
+    }
+
+    pub async fn get_harness_organization_id(&self, public_id: &str) -> Result<Option<i64>> {
+        dispatch!(self, get_harness_organization_id, public_id)
+    }
+
+    pub async fn get_app_organization_id(&self, public_id: &str) -> Result<Option<i64>> {
+        dispatch!(self, get_app_organization_id, public_id)
+    }
+
+    pub async fn get_skill_organization_id(&self, public_id: &str) -> Result<Option<i64>> {
+        dispatch!(self, get_skill_organization_id, public_id)
+    }
+
+    pub async fn get_mcp_server_organization_id(&self, public_id: &str) -> Result<Option<i64>> {
+        dispatch!(self, get_mcp_server_organization_id, public_id)
+    }
+
+    pub async fn get_agent_identity_organization_id(&self, public_id: &str) -> Result<Option<i64>> {
+        dispatch!(self, get_agent_identity_organization_id, public_id)
+    }
+
+    pub async fn get_eval_organization_id(&self, public_id: &str) -> Result<Option<i64>> {
+        dispatch!(self, get_eval_organization_id, public_id)
     }
 
     pub async fn upsert_leased_resource(
