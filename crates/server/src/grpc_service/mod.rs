@@ -410,7 +410,7 @@ impl WorkerServiceImpl {
         runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
         platform_definition: PlatformDefinition,
         virtual_registry: Option<
-            Arc<crate::services::virtual_mount_registry::VirtualMountRegistry>,
+            Arc<crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry>,
         >,
     ) -> Self {
         let capability_registry = platform_definition.capability_registry().clone();
