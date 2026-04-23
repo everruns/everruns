@@ -41,9 +41,11 @@ use tokio::sync::RwLock;
 
 use crate::api::messages::{CreateMessageRequest, InputContentPart, InputMessage, MessageRole};
 use crate::api::sessions::CreateSessionRequest;
+use crate::domains::messages::{CreateMessageContext, MessageService};
+use crate::domains::sessions::SessionService;
 use crate::execution_metadata;
 use crate::middleware::RequestId;
-use crate::services::{CreateMessageContext, EventService, MessageService, SessionService};
+use crate::services::EventService;
 use crate::slack_delivery::SlackDeliveryDispatcher;
 use crate::storage::StorageBackend;
 use crate::storage::models::UpdateSession;

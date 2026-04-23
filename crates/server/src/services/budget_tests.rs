@@ -5,7 +5,7 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::services::budget::BudgetService;
+    use crate::domains::budgets::BudgetService;
     use crate::storage::StorageBackend;
     use crate::storage::models::*;
     use everruns_core::budget::BudgetAction;

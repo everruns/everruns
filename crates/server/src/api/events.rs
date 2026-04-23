@@ -38,7 +38,7 @@ use tokio::sync::broadcast;
 use tokio::time::Instant;
 use uuid::Uuid;
 
-use crate::services::SessionService;
+use crate::domains::sessions::SessionService;
 use utoipa::{IntoParams, ToSchema};
 
 /// Query parameters for event listing

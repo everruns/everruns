@@ -8,9 +8,8 @@
 
 use crate::api::messages::{CreateMessageRequest, InputMessage};
 use crate::api::sessions::CreateSessionRequest;
-use crate::services::MessageService;
-use crate::services::SessionService;
-use crate::services::message::CreateMessageContext;
+use crate::domains::messages::{CreateMessageContext, MessageService};
+use crate::domains::sessions::SessionService;
 use crate::storage::StorageBackend;
 use crate::storage::models::UpdateEvalCaseResultRow;
 use anyhow::Result;

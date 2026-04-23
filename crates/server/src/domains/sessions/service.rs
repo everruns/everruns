@@ -8,11 +8,11 @@
 
 use crate::api::common::Pagination;
 use crate::domains::harnesses::queries::resolve_effective as resolve_effective_harness;
+use crate::domains::session_files::{CreateFileInput, SessionFileService};
+use crate::domains::session_sandbox::SessionSandboxService;
 use crate::errors::ResourceNotFoundError;
 use crate::org_init;
 use crate::services::PrincipalService;
-use crate::services::session_file::{CreateFileInput, SessionFileService};
-use crate::services::session_sandbox::SessionSandboxService;
 use crate::storage::{
     StorageBackend,
     models::{CreateSessionRow, UpdateSession},

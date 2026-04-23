@@ -17,12 +17,12 @@ use everruns_core::typed_id::EvalResultId;
 use crate::api::common::{ApiResult, ErrorResponse, ListResponse};
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
+use crate::domains::evals::EvalService;
 use crate::domains::evals::{
     BulkUpdateEvalRunScores, CancelEvalRun, CreateEval, CreateEvalCase, CreateEvalRun, DeleteEval,
     DeleteEvalCase, ExportEvalRunArtifacts, GetEval, GetEvalCase, GetEvalRun, ListEvalCases,
     ListEvalRuns, ListEvals, UpdateEval, UpdateEvalCase, UpdateEvalResultScores,
 };
-use crate::services::EvalService;
 use crate::services::eval_runner::EvalRunContext;
 use crate::storage::StorageBackend;
 use everruns_core::Caller;

@@ -1,6 +1,6 @@
 use crate::domains::common::{CommandError, Ctx};
+use crate::domains::session_sandbox::SessionSandboxService;
 use crate::domains::sessions::queries::get_session;
-use crate::services::SessionSandboxService;
 use everruns_core::ToolExecutionResult;
 use everruns_core::typed_id::SessionId;
 use std::sync::Arc;

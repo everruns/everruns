@@ -9,7 +9,8 @@
 // stores tool results as tool.completed events and resumes the workflow.
 
 use crate::auth::{AuthState, ResolvedOrg};
-use crate::services::{EventService, SessionService};
+use crate::domains::sessions::SessionService;
+use crate::services::EventService;
 use crate::storage::StorageBackend;
 use axum::{
     Json, Router,

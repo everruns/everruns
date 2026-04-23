@@ -65,9 +65,11 @@ use crate::api::messages::{
 };
 use crate::api::sessions::CreateSessionRequest;
 use crate::api::sse::SseConnectionTracker;
+use crate::domains::messages::{CreateMessageContext, MessageService};
+use crate::domains::sessions::SessionService;
 use crate::execution_metadata;
 use crate::middleware::RequestId;
-use crate::services::{CreateMessageContext, EventService, MessageService, SessionService};
+use crate::services::EventService;
 use crate::storage::{DbMessageRetriever, EncryptionService, StorageBackend};
 
 #[derive(Clone)]

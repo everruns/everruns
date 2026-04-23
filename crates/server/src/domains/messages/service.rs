@@ -5,9 +5,10 @@
 // - Listing messages by querying message events
 // - Workflow triggering for user messages
 
-use super::{EventService, NotificationService, PrincipalService};
 use crate::api::messages::{ContentPart, CreateMessageRequest, Message, MessageRole};
+use crate::domains::notifications::NotificationService;
 use crate::execution_metadata;
+use crate::services::{EventService, PrincipalService};
 use crate::storage::StorageBackend;
 use anyhow::Result;
 use chrono::Utc;

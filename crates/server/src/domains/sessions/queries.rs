@@ -6,7 +6,9 @@ use everruns_core::typed_id::HarnessId;
 use everruns_worker::AgentRunner;
 use std::sync::Arc;
 
-pub fn session_service(ctx: &Ctx) -> Result<Arc<crate::services::SessionService>, CommandError> {
+pub fn session_service(
+    ctx: &Ctx,
+) -> Result<Arc<crate::domains::sessions::SessionService>, CommandError> {
     ctx.session_service
         .clone()
         .ok_or_else(|| CommandError::Internal(anyhow::anyhow!("Session service not configured")))

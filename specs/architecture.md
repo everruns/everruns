@@ -579,7 +579,8 @@ The control-plane follows a strict layered architecture:
 └─────────────────────────────────────────────────────────┘
 ```
 
-**Key Principle**: Both HTTP API and gRPC handlers access storage ONLY through services.
+**Key Principle**: Both HTTP API and gRPC handlers access storage through domain
+commands/queries or explicit infrastructure helpers.
 No direct database access from transport layer handlers.
 
 **HTTP/2 Flow Control**: The HTTP server uses `hyper_util::server::conn::auto::Builder` instead of `axum::serve` to expose HTTP/2 configuration knobs. This is critical for high-concurrency SSE: the default 65 KB per-stream flow control window exhausts under many slow-reading clients, blocking streams and causing cascade timeouts. Configuration:
@@ -609,49 +610,48 @@ Adaptive flow control is enabled (hyper auto-adjusts windows based on throughput
    - Domain types are DB-agnostic and serializable
    - Types that need OpenAPI support use `#[cfg_attr(feature = "openapi", derive(ToSchema))]`
 
-3. **Service Layer** (`server/src/services/`):
-   - **Single point of business logic** - both HTTP and gRPC handlers use services
-   - Services accept API contracts (request types) and return domain types
-   - Services handle conversion from API contracts to storage Row types
-   - Services own business logic, validation, and orchestration
-   - Services call repositories (via Database) for persistence
-   - Available services:
-     - `AgentService` - Agent CRUD and capability management
-     - `SessionService` - Session CRUD
-     - `EventService` - Event emission and listing
-     - `SessionFileService` - Virtual filesystem operations
-     - `LlmResolverService` - Model resolution with decrypted API keys
-     - `MessageService` - Message operations (delegates to EventService)
-     - `LlmModelService`, `LlmProviderService` - LLM configuration management
-     - `CapabilityService` - Capability listing
+3. **Domain Layer** (`server/src/domains/`):
+   - **Single point of user-facing business logic** - HTTP, MCP, and gRPC call domain commands/queries
+   - Each domain owns its command types, validation, policies, and persistence orchestration
+   - Shared read/write helpers stay in domain-local `queries.rs`
+   - Some domains also include domain-local helper modules (for example `service.rs`) when multiple commands or internal callers need the same orchestration, but those helpers live under the owning domain instead of a global service layer
 
-4. **Transport Layer** (`server/src/api/`, `server/src/grpc_service.rs`):
+4. **Infrastructure Helpers** (`server/src/services/`):
+   - Cross-cutting or internal-only modules, not a separate business-logic layer
+   - Examples:
+     - `EventService` - event persistence + delivery fanout
+     - `LlmResolverService` - model resolution with decrypted API keys
+     - `ModelSyncService` - provider model discovery / sync
+     - `CapabilityService` - capability registry/read helpers
+     - listeners and validators such as `UsageTrackingListener`, `scoped_mcp`, `capability_validation`
+
+5. **Transport Layer** (`server/src/api/`, `server/src/grpc_service.rs`):
    - **HTTP API** (axum) on local direct port 9301 - public REST API behind Caddy in local dev
    - **gRPC Server** (tonic) on port 9001 - internal WorkerService
    - API contracts (DTOs) are collocated with their routes in the same module
-   - Handlers handle protocol concerns only, delegating ALL business logic to services
+   - Handlers handle protocol concerns only, delegating user-facing logic to domains
    - Input types for user-facing APIs use `Input` prefix (e.g., `InputMessage`, `InputContentPart`)
    - Request/response wrappers use `Request`/`Response` suffix
 
-5. **Internal Protocol Layer** (`internal-protocol/` → `everruns-internal-protocol`):
+6. **Internal Protocol Layer** (`internal-protocol/` → `everruns-internal-protocol`):
    - gRPC protocol definitions (proto files)
    - Generated Rust types via tonic-build
    - Conversion functions between proto types and core types
 
 #### Type Flow Example
 
-Both HTTP and gRPC follow the same pattern through services:
+Both HTTP and gRPC follow the same pattern through domains:
 
 ```
 HTTP API Flow:
-Controller (HTTP)  →  Service (Business Logic)  →  Repository (Storage)
+Controller (HTTP)  →  Domain Command / Query  →  Repository (Storage)
        ↓                      ↓                           ↓
 CreateAgentRequest  →   CreateAgentRow             →   Database
        ↓                      ↓                           ↓
       JSON              Core types used                  SQL
 
 gRPC Service Flow:
-gRPC Handler  →  Service (Business Logic)  →  Repository (Storage)
+gRPC Handler  →  Domain Command / Query  →  Repository (Storage)
        ↓                      ↓                           ↓
   Proto types   →   Core/Row types          →   Database
        ↓                      ↓                           ↓

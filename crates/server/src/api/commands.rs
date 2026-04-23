@@ -7,7 +7,8 @@
 // 2. Skill commands — from skills with user-invocable: true (prompt expansion)
 
 use crate::auth::{AuthState, ResolvedOrg};
-use crate::services::{CapabilityService, SessionCommandService};
+use crate::domains::session_commands::SessionCommandService;
+use crate::services::CapabilityService;
 use axum::{
     Json, Router,
     extract::{Path, State},

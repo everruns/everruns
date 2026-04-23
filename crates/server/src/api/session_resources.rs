@@ -6,7 +6,7 @@
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
 use crate::domains::session_resources::ListSessionResources;
-use crate::services::SessionResourceService;
+use crate::domains::session_resources::SessionResourceService;
 use crate::storage::StorageBackend;
 use axum::{
     Json, Router,

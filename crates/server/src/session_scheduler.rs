@@ -4,8 +4,9 @@
 // Each triggered schedule injects a user message into the session with
 // metadata.source = "schedule", then starts a turn workflow.
 
+use crate::domains::session_schedules::SessionScheduleService;
 use crate::execution_metadata;
-use crate::services::{EventService, SessionScheduleService};
+use crate::services::EventService;
 use crate::storage::StorageBackend;
 use chrono::Utc;
 use everruns_core::events::{EventContext, EventRequest, InputMessageData};

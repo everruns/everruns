@@ -2,12 +2,12 @@
 // Routes use ResolvedOrg: org derived from auth context (API key or cookie)
 
 use crate::auth::{AuthState, ResolvedOrg};
+use crate::domains::budgets::BudgetService;
 use crate::domains::budgets::{
     CheckBudget, CheckSessionBudgets, CreateBudget, DeleteBudget, GetBudget, ListBudgetLedger,
     ListBudgets, ListSessionBudgets, ResumeSessionBudgets, TopUpBudget, UpdateBudgetCmd,
 };
 use crate::domains::common::{Command, Ctx};
-use crate::services::BudgetService;
 use crate::storage::StorageBackend;
 use axum::{
     Json, Router,

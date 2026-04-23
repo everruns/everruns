@@ -2,7 +2,7 @@
 // Routes nested under /v1/sessions/{session_id}/schedules
 
 use crate::auth::{AuthState, ResolvedOrg};
-use crate::services::SessionScheduleService;
+use crate::domains::session_schedules::SessionScheduleService;
 use axum::{
     Json, Router,
     extract::{Path, State},

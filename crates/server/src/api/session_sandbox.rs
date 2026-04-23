@@ -4,8 +4,10 @@
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
-use crate::domains::session_sandbox::{GetSessionSandbox, ManageSessionSandbox};
-use crate::services::{SessionSandboxService, SessionService};
+use crate::domains::session_sandbox::{
+    GetSessionSandbox, ManageSessionSandbox, SessionSandboxService,
+};
+use crate::domains::sessions::SessionService;
 use crate::storage::StorageBackend;
 use axum::{
     Json, Router,

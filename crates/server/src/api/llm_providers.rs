@@ -5,9 +5,9 @@ use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
 use crate::domains::llm_providers::{
     CreateProvider, DeleteProvider, GetProvider, LLM_PROVIDER_MANAGE, LLM_PROVIDER_VIEW,
-    ListProviders, SyncProviderModels, UpdateProvider,
+    ListProviders, LlmProviderService, SyncProviderModels, UpdateProvider,
 };
-use crate::services::{LlmProviderService, LlmResolverService, ModelSyncService};
+use crate::services::{LlmResolverService, ModelSyncService};
 use crate::storage::{EncryptionService, StorageBackend};
 use axum::{
     Json, Router,

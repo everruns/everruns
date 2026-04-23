@@ -9,7 +9,7 @@
 //   DELETE /v1/sessions/{session_id}/git/branches/{name} - Delete branch
 
 use crate::auth::{AuthState, ResolvedOrg};
-use crate::services::session_git::{
+use crate::domains::session_git::{
     CommitResult, GitCommitInfo, GitDiff, GitRefInfo, SessionGitService,
 };
 use crate::storage::StorageBackend;

@@ -2,8 +2,8 @@
 //
 // Decision: Workers communicate with control plane via gRPC for all database operations
 // Decision: This provides a clean boundary and simplifies worker deployment
-// Decision: gRPC service uses the same services layer as HTTP API for consistency
-// Decision: Operations go through domain commands/queries or services layer
+// Decision: gRPC uses the same domain entrypoints as HTTP/MCP for user-facing logic
+// Decision: Remaining top-level services are cross-cutting infra helpers only
 // Decision: Split into submodules for maintainability (EVE-101).
 
 mod worker_service_impl;
@@ -12,10 +12,11 @@ mod worker_service_impl;
 mod tests;
 
 use crate::domains::mcp_servers::McpServerService;
-use crate::services::{
-    CapabilityService, EventService, LlmResolverService, SessionFileService, SessionService,
-    session_file::{CreateDirectoryInput, CreateFileInput, GrepInput, UpdateFileInput},
+use crate::domains::session_files::{
+    CreateDirectoryInput, CreateFileInput, GrepInput, SessionFileService, UpdateFileInput,
 };
+use crate::domains::sessions::SessionService;
+use crate::services::{CapabilityService, EventService, LlmResolverService};
 use crate::storage::{EncryptionService, StorageBackend};
 use crate::task_notifications::TaskBroadcaster;
 use base64::Engine;
@@ -381,7 +382,7 @@ pub struct WorkerServiceImpl {
     /// Signing secret for presigned URLs (WORKER_GRPC_AUTH_TOKEN)
     presign_secret: Option<String>,
     /// Budget service for check_budget tool
-    budget_service: Arc<crate::services::BudgetService>,
+    budget_service: Arc<crate::domains::budgets::BudgetService>,
 }
 
 impl WorkerServiceImpl {
@@ -484,7 +485,7 @@ impl WorkerServiceImpl {
             .ok()
             .filter(|s| !s.is_empty());
 
-        let budget_service = Arc::new(crate::services::BudgetService::new(db.clone()));
+        let budget_service = Arc::new(crate::domains::budgets::BudgetService::new(db.clone()));
 
         Self {
             event_service,
