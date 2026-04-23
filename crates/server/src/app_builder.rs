@@ -1574,7 +1574,7 @@ impl ServerAppBuilder {
             .keep_alive_timeout(std::time::Duration::from_secs(20));
 
         loop {
-            let (tcp, _addr) = listener
+            let (tcp, addr) = listener
                 .accept()
                 .await
                 .context("Failed to accept connection")?;
@@ -1588,8 +1588,11 @@ impl ServerAppBuilder {
                 let service = hyper::service::service_fn(
                     move |req: hyper::Request<hyper::body::Incoming>| {
                         let app = app.clone();
+                        let addr = addr;
                         async move {
-                            let req = req.map(axum::body::Body::new);
+                            let mut req = req.map(axum::body::Body::new);
+                            req.extensions_mut()
+                                .insert(axum::extract::ConnectInfo(addr));
                             let mut app = app;
                             tower::Service::call(&mut app, req).await
                         }
