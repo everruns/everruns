@@ -108,6 +108,10 @@ impl Command for ListSchedules {
         }
     }
 
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&super::SCHEDULE_VIEW)
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<SchedulesListResponse, CommandError> {
         q::ensure_platform_user(ctx)?;
         let store = q::store(ctx)?;
@@ -157,6 +161,10 @@ impl Command for GetSchedule {
 
     fn positional_arg() -> Option<&'static str> {
         Some("schedule_id")
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&super::SCHEDULE_VIEW)
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<ScheduleResponse, CommandError> {
@@ -479,6 +487,10 @@ impl Command for ListScheduleExecutions {
         }
     }
 
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&super::SCHEDULE_VIEW)
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<ScheduleExecutionsListResponse, CommandError> {
         q::ensure_platform_user(ctx)?;
         let store = q::store(ctx)?;
@@ -537,6 +549,10 @@ impl Command for GetExecution {
         Some("execution_id")
     }
 
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&super::SCHEDULE_VIEW)
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<ScheduleExecutionResponse, CommandError> {
         q::ensure_platform_user(ctx)?;
         let execution = q::store(ctx)?
@@ -565,6 +581,10 @@ impl Command for GetScheduleStats {
             method: "GET",
             path: "/v1/durable/schedules/{schedule_id}/stats",
         }
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&super::SCHEDULE_VIEW)
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<ScheduleStatsResponse, CommandError> {

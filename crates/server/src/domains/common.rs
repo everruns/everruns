@@ -198,8 +198,9 @@ impl Ctx {
     ///
     /// `permission_resolver` is required — pass `auth.permission_resolver`
     /// from `AuthState` so SaaS-custom resolvers are honored during
-    /// enforcement. Use `Ctx::with_default_resolver` only in tests that
-    /// don't care about the resolver.
+    /// enforcement. In tests that don't care about the resolver, use
+    /// `Ctx::minimal_for_test`; use `with_permission_resolver` when a test
+    /// needs to override the resolver explicitly.
     pub fn new(
         caller: Caller,
         db: Arc<StorageBackend>,
