@@ -30,7 +30,7 @@ use crate::traits::{SessionFileStore, ToolContext};
 use crate::typed_id::SessionId;
 
 /// Max bytes persisted per output stream file to avoid storage exhaustion.
-const MAX_PERSISTED_STREAM_BYTES: usize = 1 * 1024 * 1024; // 1 MiB
+const MAX_PERSISTED_STREAM_BYTES: usize = 1024 * 1024; // 1 MiB
 
 /// Result of persisting large exec output to session VFS.
 pub struct PersistResult {
