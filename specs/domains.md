@@ -55,13 +55,32 @@ pub trait Command: DeserializeOwned + Send + 'static {
     /// Static metadata — drives MCP catalog generation.
     fn meta() -> CommandMeta;
 
-    /// Policy checked before execute(). None = no auth required.
+    /// Policy checked by `run()` before `execute()`. None = public/no auth.
     fn policy() -> Option<&'static Policy> { None }
 
     /// Execute the command. All validation and business logic lives here.
+    /// SECURITY: Do not call directly from HTTP/MCP/gRPC adapters — it skips
+    /// the policy check. Use `run()` instead. `execute` stays public so one
+    /// command can compose another already-authorized command.
     async fn execute(self, ctx: &Ctx) -> Result<Self::Output, CommandError>;
+
+    /// Public entry point. Every caller (HTTP adapter, MCP dispatch, gRPC
+    /// `ExecuteCommand`, platform capability) goes through here.
+    ///
+    /// Evaluates `policy()` against `ctx.permission_resolver` (so SaaS
+    /// custom resolvers apply), then delegates to `execute`.
+    async fn run(self, ctx: &Ctx) -> Result<Self::Output, CommandError>;
 }
 ```
+
+### Enforcement contract
+
+Policy enforcement is performed **once**, at `Command::run`. Every caller kind (HTTP, MCP, gRPC `ExecuteCommand`, platform capability) routes through `run`, which evaluates `Command::policy()` against the `PermissionResolver` carried in `Ctx`. See `specs/permissions.md` for the full model.
+
+- HTTP adapters: `CreateAgent(req).run(&ctx).await` (never `.execute(...)`).
+- MCP and gRPC `ExecuteCommand` use `domains::common::dispatch()`, which calls `run` internally.
+- Every non-GET command must declare `policy()`; `crates/server/tests/command_policy_enforcement_test.rs` verifies this at test time by iterating `inventory::iter::<CommandDescriptor>`.
+- `Ctx::new` requires the resolver as its fifth argument, so constructing a `Ctx` without a resolver is a compile error. Tests use `Ctx::minimal_for_test` which defaults to `DefaultPermissionResolver`.
 
 ### CommandMeta
 
@@ -278,28 +297,23 @@ the logic. Once all callers are migrated, the service file is removed.
 
 ### Status
 
-**Migrated (commands + queries + MCP wired):**
-- `agents`, `harnesses`, `apps`, `mcp_servers`, `agent_identities`, `skills`,
-  `capabilities`, `audit_logs`
+All user-facing domains have been migrated. The 30 directories under `crates/server/src/domains/` each own their HTTP/MCP/gRPC surface via commands. Several domains retain an internal `service.rs` alongside `commands.rs` for orchestration that spans multiple commands — that's intentional and not a migration backlog.
 
-**Pending migration:**
-- `sessions`, `budgets`, `messages`, `events`, `harnesses` (sessions),
-  `llm_models`, `llm_providers`, `schedules`, `notifications`,
-  `session_files`, `session_databases`, `session_storage`,
-  `session_resources`, `session_sandbox`, `evals`
+**Fully migrated (commands + queries only):** `agents`, `harnesses`, `apps`, `mcp_servers`, `agent_identities`, `skills`, `capabilities`, `audit_logs`, `schedules`, `events`, `images`, `tool_results`, `users`, `organizations`, `system`, `session_databases`, `session_storage`.
+
+**Commands + internal `service.rs`:** `sessions`, `messages`, `budgets`, `evals`, `llm_models`, `llm_providers`, `notifications`, `session_files`, `session_sandbox`, `session_resources`.
+
+**Internal-only (no user-facing commands):** `session_git`, `session_commands`, `session_schedules`.
 
 ### Migration order for new domains
 
-1. Create `domains/{name}/` with `mod.rs`, `commands.rs`, `queries.rs`, `types.rs`
-2. Move request types into `types.rs` (initially re-export from `api/`)
-3. Extract shared DB helpers from `services/{name}.rs` into `queries.rs`
-4. Implement `Command` for each user-facing operation in `commands.rs`,
-   each with `inventory::submit! { CommandDescriptor::of::<Cmd>() }`
-5. Wire HTTP adapter to call commands via `cmd.execute(&ctx).await`
-   (MCP integration is automatic via inventory)
-6. If orchestration still needs to be shared, keep it as a helper under
-   `domains/{name}/` (for example `service.rs` or `helpers.rs`)
-7. Once all callers migrated, delete the old top-level `services/{name}.rs`
+1. Create `domains/{name}/` with `mod.rs`, `commands.rs`, `queries.rs`, `types.rs`.
+2. Move request types into `types.rs`.
+3. Put shared DB helpers in `queries.rs`.
+4. Implement `Command` for each user-facing operation in `commands.rs`, each with `inventory::submit! { CommandDescriptor::of::<Cmd>() }`. Declare `policy()` for every non-GET command — the inventory coverage test enforces this.
+5. Wire the HTTP adapter to call `cmd.run(&ctx).await` (not `.execute(...)`). MCP and gRPC integration are automatic via inventory.
+6. Thread `self.auth.permission_resolver.clone()` into the adapter's `ctx()` method so SaaS custom resolvers apply during enforcement.
+7. If orchestration needs to be shared across commands, keep it as a helper under `domains/{name}/` (for example `service.rs`).
 
 ### Cross-Org Resource Resolution (`domains/org_resolver.rs`)
 

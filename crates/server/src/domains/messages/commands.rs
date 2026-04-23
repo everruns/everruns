@@ -34,6 +34,10 @@ impl Command for CreateMessage {
         }
     }
 
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&crate::domains::sessions::SESSION_MANAGE)
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<Message, CommandError> {
         let mut req = crate::api::messages::CreateMessageRequest {
             message: self.message,

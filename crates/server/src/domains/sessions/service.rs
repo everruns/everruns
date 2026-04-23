@@ -1170,7 +1170,13 @@ mod tests {
 
     fn test_ctx(caller: Caller, db: Arc<StorageBackend>) -> Ctx {
         let capability_service = Arc::new(CapabilityService::new(db.clone(), None));
-        Ctx::new(caller, db, capability_service, None)
+        Ctx::new(
+            caller,
+            db,
+            capability_service,
+            None,
+            Arc::new(everruns_core::DefaultPermissionResolver),
+        )
     }
 
     fn build_create_request(

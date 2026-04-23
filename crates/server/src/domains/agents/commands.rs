@@ -834,6 +834,10 @@ impl Command for PreviewAgent {
         true
     }
 
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&crate::domains::agents::AGENT_VIEW)
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<AgentPreview, CommandError> {
         crate::services::scoped_mcp::validate_scoped_mcp_servers(&self.mcp_servers)
             .map_err(classify_anyhow)?;

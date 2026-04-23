@@ -137,7 +137,13 @@ mod tests {
         .unwrap();
 
         let capability_service = Arc::new(CapabilityService::new(db.clone(), None));
-        Ctx::new(caller_with_role(role), db, capability_service, None)
+        Ctx::new(
+            caller_with_role(role),
+            db,
+            capability_service,
+            None,
+            Arc::new(everruns_core::DefaultPermissionResolver),
+        )
     }
 
     #[tokio::test]

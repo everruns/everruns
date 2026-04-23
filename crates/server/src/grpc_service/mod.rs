@@ -527,11 +527,14 @@ impl WorkerServiceImpl {
 
     /// Build a domain command context for the given org.
     fn domain_ctx(&self, org_id: i64) -> crate::domains::common::Ctx {
+        // Internal gRPC path — uses DefaultPermissionResolver so internal
+        // ops are not subject to SaaS custom restrictions.
         crate::domains::common::Ctx::new(
             everruns_core::Caller::internal(org_id),
             self.db.clone(),
             self.capability_service.clone(),
             self.encryption.clone(),
+            Arc::new(everruns_core::DefaultPermissionResolver),
         )
         .with_workflow_store(
             self.durable_store
