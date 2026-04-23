@@ -18,18 +18,21 @@ describe("CapabilitySettingsEditor", () => {
     expect(
       screen.getByText(/Uses OpenAI's current ChatGPT Images 2.0 API model/i),
     ).toBeInTheDocument();
+    expect(screen.getByText("Medium")).toBeInTheDocument();
+    expect(screen.getByText(/Balanced quality and latency/i)).toBeInTheDocument();
   });
 
-  it("shows the legacy GPT Image 1 description when configured", () => {
+  it("shows the configured legacy model and high-quality descriptions", () => {
     render(
       <CapabilitySettingsEditor
         capabilityId="gpt_image_gen"
-        config={{ model: "gpt-image-1" }}
+        config={{ model: "gpt-image-1", default_quality: "high" }}
         onChange={jest.fn()}
       />,
     );
 
     expect(screen.getByText("GPT Image 1")).toBeInTheDocument();
     expect(screen.getByText(/Legacy fallback/i)).toBeInTheDocument();
+    expect(screen.getByText(/Highest fidelity, but materially slower/i)).toBeInTheDocument();
   });
 });
