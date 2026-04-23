@@ -35,7 +35,7 @@ just fmt  # Runs cargo fmt + oxfmt + oxlint --fix
 
 ### Policy Enforcement
 
-All service methods MUST have `#[policy]` enforcement with a `Caller` parameter. Use `Caller::internal(org_id)` for gRPC/internal paths. See `specs/permissions.md` for the full policy model.
+Every non-GET `Command` impl MUST declare `fn policy() -> Option<&'static Policy>`. The command runner (`Command::run`) evaluates the declared policy against the `PermissionResolver` threaded through `Ctx` before dispatching to `execute`. Use `Caller::internal(org_id)` for gRPC/internal paths. See `specs/permissions.md` for the full policy model.
 
 ## Error Handling
 

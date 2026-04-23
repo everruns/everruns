@@ -792,6 +792,20 @@ impl CapabilityRegistry {
         None
     }
 
+    /// Find a blueprint and the capability that registered it.
+    ///
+    /// Returns `(capability_id, blueprint)` with fresh tool instances.
+    pub fn blueprint_with_capability(&self, id: &str) -> Option<(String, AgentBlueprint)> {
+        for (capability_id, cap) in &self.capabilities {
+            for bp in cap.agent_blueprints() {
+                if bp.id == id {
+                    return Some((capability_id.clone(), bp));
+                }
+            }
+        }
+        None
+    }
+
     /// Collect all blueprints from all registered capabilities.
     pub fn all_blueprints(&self) -> Vec<AgentBlueprint> {
         self.capabilities
@@ -1593,6 +1607,44 @@ mod tests {
         assert_eq!(noop.id(), "noop");
         assert_eq!(noop.name(), "No-Op");
         assert_eq!(noop.status(), CapabilityStatus::Available);
+    }
+
+    #[test]
+    fn test_capability_registry_blueprint_with_capability() {
+        struct BlueprintProviderCapability;
+
+        impl Capability for BlueprintProviderCapability {
+            fn id(&self) -> &str {
+                "blueprint_provider"
+            }
+            fn name(&self) -> &str {
+                "Blueprint Provider"
+            }
+            fn description(&self) -> &str {
+                "Capability that provides a blueprint for tests"
+            }
+            fn agent_blueprints(&self) -> Vec<AgentBlueprint> {
+                vec![AgentBlueprint {
+                    id: "test_blueprint",
+                    name: "Test Blueprint",
+                    description: "Blueprint for capability registry tests",
+                    model: BlueprintModel::Inherit,
+                    system_prompt: "Test prompt",
+                    tools: vec![],
+                    max_turns: None,
+                    config_schema: None,
+                }]
+            }
+        }
+
+        let mut registry = CapabilityRegistry::new();
+        registry.register(BlueprintProviderCapability);
+
+        let (capability_id, blueprint) = registry
+            .blueprint_with_capability("test_blueprint")
+            .expect("blueprint should resolve with capability id");
+        assert_eq!(capability_id, "blueprint_provider");
+        assert_eq!(blueprint.id, "test_blueprint");
     }
 
     #[test]
