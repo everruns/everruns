@@ -142,6 +142,13 @@ mod tests {
                 entry.prefix
             );
         }
+        // Guard against a missing `inventory::submit!` silently passing CI.
+        // Must stay in sync with the registrations above.
+        assert!(
+            seen.len() >= 8,
+            "expected at least 8 resolvers, found {}",
+            seen.len()
+        );
     }
 
     #[tokio::test]

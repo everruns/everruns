@@ -35,11 +35,14 @@ export function hasPermission(currentRole: OrgRole, requiredRole: OrgRole): bool
 }
 
 // Entity detail route prefixes — when on a detail page under one of these,
-// org switch redirects to the list page to avoid a 404.
+// org switch redirects to the list page to avoid a 404. MUST stay in sync
+// with the dynamic [id] routes under apps/ui/src/app/(main)/.
 const ENTITY_PREFIXES = [
+  "/agent-identities/",
   "/agents/",
   "/apps/",
   "/capabilities/",
+  "/evals/",
   "/harnesses/",
   "/sessions/",
   "/durable/schedules/",
