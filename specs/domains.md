@@ -30,10 +30,11 @@ crates/server/src/domains/
     ...
 ```
 
-Every domain has `commands.rs`, `queries.rs`, and `types.rs`. Some domains may
-also carry domain-local helper modules (for example `service.rs`) when shared
-orchestration is needed by multiple commands or internal callers, but those
-helpers stay under the owning domain rather than a global business-logic layer.
+User-facing domains normally expose `commands.rs`, `queries.rs`, and `types.rs`.
+Some internal-only domains exist purely to house shared orchestration, in which
+case they may only export `service.rs` (or another helper module) until they
+gain user-facing commands. In both cases, the helper code stays under the
+owning domain rather than a global business-logic layer.
 
 The standard files are:
 
