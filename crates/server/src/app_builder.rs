@@ -592,8 +592,9 @@ impl ServerAppBuilder {
 
         // Shared virtual mount registry — serves capability-mounted content
         // from memory without DB writes. Threaded into all file-reading paths.
-        let virtual_registry =
-            Arc::new(crate::services::virtual_mount_registry::VirtualMountRegistry::new());
+        let virtual_registry = Arc::new(
+            crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry::new(),
+        );
 
         let mut sessions_state = api::sessions::AppState::with_platform_definition(
             db.clone(),
@@ -752,7 +753,7 @@ impl ServerAppBuilder {
             auth_state.clone(),
             platform_definition.connection_providers().clone(),
         );
-        let eval_run_ctx = Arc::new(services::eval_runner::EvalRunContext {
+        let eval_run_ctx = Arc::new(crate::domains::evals::runner::EvalRunContext {
             db: db.clone(),
             session_service: Arc::new(
                 crate::domains::sessions::SessionService::new(db.clone())

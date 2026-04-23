@@ -425,7 +425,7 @@ mod tests {
     }
 
     fn test_ctx(db: Arc<StorageBackend>, sandbox_service: Arc<SessionSandboxService>) -> Ctx {
-        Ctx::minimal(Caller::internal(DEFAULT_ORG_ID), db.clone(), None)
+        Ctx::minimal_for_test(Caller::internal(DEFAULT_ORG_ID), db.clone(), None)
             .with_session_service(Arc::new(SessionService::new(db)))
             .with_session_sandbox_service(sandbox_service)
     }

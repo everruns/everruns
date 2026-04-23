@@ -64,6 +64,7 @@ impl AppState {
             self.db.clone(),
             self.capability_service.clone(),
             None,
+            self.auth.permission_resolver.clone(),
         )
     }
 }
@@ -137,7 +138,7 @@ pub async fn check_harness_name(
         name: query.name,
         exclude_id: query.exclude_id,
     }
-    .execute(&state.ctx(&org))
+    .run(&state.ctx(&org))
     .await?;
     Ok(Json(CheckNameResponse {
         available: result.available,
@@ -163,7 +164,7 @@ pub async fn create_harness(
     Json(req): Json<CreateHarnessRequest>,
 ) -> Result<(StatusCode, Json<WithUrls<Harness>>), (StatusCode, Json<ErrorResponse>)> {
     let harness = crate::domains::harnesses::CreateHarness(req)
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await?;
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
     Ok((StatusCode::CREATED, Json(urls.wrap(harness))))
@@ -190,7 +191,7 @@ pub async fn list_harnesses(
         search: query.search,
         include_archived: query.include_archived.unwrap_or(false),
     }
-    .execute(&state.ctx(&org))
+    .run(&state.ctx(&org))
     .await?;
 
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
@@ -224,7 +225,7 @@ pub async fn get_harness(
     let harness = crate::domains::harnesses::GetHarness {
         id: harness_id_or_name,
     }
-    .execute(&state.ctx(&org))
+    .run(&state.ctx(&org))
     .await?;
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(urls.wrap(harness)))
@@ -257,7 +258,7 @@ pub async fn update_harness(
         id: harness_id,
         req,
     }
-    .execute(&state.ctx(&org))
+    .run(&state.ctx(&org))
     .await?;
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(urls.wrap(harness)))
@@ -285,7 +286,7 @@ pub async fn delete_harness(
     Path(harness_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     crate::domains::harnesses::DeleteHarness { id: harness_id }
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -296,7 +297,7 @@ pub async fn destroy_harness(
     Path(harness_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     crate::domains::harnesses::DestroyHarness { id: harness_id }
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -326,7 +327,7 @@ pub async fn copy_harness(
     Path(harness_id): Path<String>,
 ) -> Result<(StatusCode, Json<WithUrls<Harness>>), (StatusCode, Json<ErrorResponse>)> {
     let harness = crate::domains::harnesses::CopyHarness { id: harness_id }
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await?;
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
     Ok((StatusCode::CREATED, Json(urls.wrap(harness))))
@@ -354,7 +355,7 @@ pub async fn preview_harness(
         capabilities: req.capabilities,
         mcp_servers: req.mcp_servers,
     }
-    .execute(&state.ctx(&org))
+    .run(&state.ctx(&org))
     .await?;
 
     Ok(Json(HarnessPreviewResponse {
