@@ -5,7 +5,7 @@ use super::InMemoryDatabase;
 use super::matches_search_tokens;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use everruns_core::{AgentId, EventId, SessionId};
+use everruns_core::{AgentId, EventId, PrincipalId, SessionId};
 use uuid::Uuid;
 
 impl InMemoryDatabase {
@@ -176,6 +176,27 @@ impl InMemoryDatabase {
         let mut result: Vec<_> = sessions
             .values()
             .filter(|s| s.org_id == org_id && tags.iter().all(|tag| s.tags.contains(tag)))
+            .cloned()
+            .collect();
+        result.sort_by_key(|session| session.created_at);
+        Ok(result.into_iter().next())
+    }
+
+    /// Find a single session matching ALL given tags + owner within an org.
+    pub async fn find_session_by_tags_and_owner(
+        &self,
+        org_id: i64,
+        owner_principal_id: PrincipalId,
+        tags: &[String],
+    ) -> Result<Option<SessionRow>> {
+        let sessions = self.sessions.read();
+        let mut result: Vec<_> = sessions
+            .values()
+            .filter(|s| {
+                s.org_id == org_id
+                    && s.owner_principal_id == owner_principal_id
+                    && tags.iter().all(|tag| s.tags.contains(tag))
+            })
             .cloned()
             .collect();
         result.sort_by_key(|session| session.created_at);

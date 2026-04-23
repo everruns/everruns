@@ -189,6 +189,11 @@ impl SessionService {
             .hints
             .as_ref()
             .map(|h| serde_json::to_value(h).unwrap_or_default());
+
+        if !caller.is_internal && req.tags.iter().any(|tag| tag.starts_with("__internal:")) {
+            anyhow::bail!("Tags with '__internal:' prefix are reserved");
+        }
+
         let owner_principal = self
             .principal_service
             .default_owner_principal(caller, agent_identity_id)
