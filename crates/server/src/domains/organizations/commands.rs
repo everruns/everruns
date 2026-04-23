@@ -102,7 +102,7 @@ mod tests {
         .await
         .expect("seed test data");
 
-        let ctx = Ctx::minimal(
+        let ctx = Ctx::minimal_for_test(
             Caller {
                 org_id: DEFAULT_ORG_ID,
                 org_public_id: "org_00000000000000000000000000000001".to_string(),

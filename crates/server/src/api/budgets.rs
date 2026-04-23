@@ -50,7 +50,12 @@ impl AppState {
     }
 
     fn ctx(&self, org: &ResolvedOrg) -> Ctx {
-        Ctx::minimal(Caller::from(org), self.db.clone(), None)
+        Ctx::minimal(
+            Caller::from(org),
+            self.db.clone(),
+            None,
+            self.auth.permission_resolver.clone(),
+        )
     }
 }
 
@@ -138,7 +143,7 @@ async fn create_budget(
     State(state): State<AppState>,
     Json(req): Json<CreateBudgetRequest>,
 ) -> Result<(StatusCode, Json<WithUrls<Budget>>), ApiError> {
-    let row = CreateBudget(req).execute(&state.ctx(&org)).await?;
+    let row = CreateBudget(req).run(&state.ctx(&org)).await?;
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
     Ok((StatusCode::CREATED, Json(urls.wrap(row))))
 }
@@ -148,7 +153,7 @@ async fn get_budget(
     State(state): State<AppState>,
     Path(budget_id): Path<String>,
 ) -> Result<Json<WithUrls<Budget>>, ApiError> {
-    let row = GetBudget { budget_id }.execute(&state.ctx(&org)).await?;
+    let row = GetBudget { budget_id }.run(&state.ctx(&org)).await?;
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(urls.wrap(row)))
 }
@@ -162,7 +167,7 @@ async fn list_budgets(
         subject_type: query.subject_type,
         subject_id: query.subject_id,
     }
-    .execute(&state.ctx(&org))
+    .run(&state.ctx(&org))
     .await?;
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(urls.wrap_vec(budgets)))
@@ -181,7 +186,7 @@ async fn update_budget(
         status: req.status,
         metadata: req.metadata,
     }
-    .execute(&state.ctx(&org))
+    .run(&state.ctx(&org))
     .await?;
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(urls.wrap(row)))
@@ -192,7 +197,7 @@ async fn delete_budget(
     State(state): State<AppState>,
     Path(budget_id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
-    DeleteBudget { budget_id }.execute(&state.ctx(&org)).await?;
+    DeleteBudget { budget_id }.run(&state.ctx(&org)).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -207,7 +212,7 @@ async fn top_up(
         amount: req.amount,
         description: req.description,
     }
-    .execute(&state.ctx(&org))
+    .run(&state.ctx(&org))
     .await?;
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(urls.wrap(row)))
@@ -225,7 +230,7 @@ async fn list_ledger(
             limit: query.limit,
             offset: query.offset,
         }
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await?,
     ))
 }
@@ -235,9 +240,7 @@ async fn check_budget(
     State(state): State<AppState>,
     Path(budget_id): Path<String>,
 ) -> Result<Json<BudgetCheckResult>, ApiError> {
-    Ok(Json(
-        CheckBudget { budget_id }.execute(&state.ctx(&org)).await?,
-    ))
+    Ok(Json(CheckBudget { budget_id }.run(&state.ctx(&org)).await?))
 }
 
 // ============================================================================
@@ -250,7 +253,7 @@ async fn list_session_budgets(
     Path(session_id): Path<String>,
 ) -> Result<Json<Vec<WithUrls<Budget>>>, ApiError> {
     let budgets = ListSessionBudgets { session_id }
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await?;
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(urls.wrap_vec(budgets)))
@@ -263,7 +266,7 @@ async fn check_session_budgets(
 ) -> Result<Json<BudgetCheckResult>, ApiError> {
     Ok(Json(
         CheckSessionBudgets { session_id }
-            .execute(&state.ctx(&org))
+            .run(&state.ctx(&org))
             .await?,
     ))
 }
@@ -276,7 +279,7 @@ async fn resume_session(
     Ok(Json(
         serde_json::to_value(
             ResumeSessionBudgets { session_id }
-                .execute(&state.ctx(&org))
+                .run(&state.ctx(&org))
                 .await?,
         )
         .map_err(|e| {

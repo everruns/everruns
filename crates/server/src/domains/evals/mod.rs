@@ -1,9 +1,11 @@
-// Evals domain — commands, queries, and types.
+// Evals domain — commands, queries, service, and background runner.
 
 pub mod commands;
 pub mod queries;
+pub mod runner;
 pub mod service;
 pub mod types;
 
 pub use commands::*;
+pub use runner::*;
 pub use service::*;

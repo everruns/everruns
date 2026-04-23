@@ -58,7 +58,8 @@ pub struct GrepInput {
 
 pub struct SessionFileService {
     db: Arc<StorageBackend>,
-    virtual_registry: Option<Arc<crate::services::virtual_mount_registry::VirtualMountRegistry>>,
+    virtual_registry:
+        Option<Arc<crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry>>,
 }
 
 impl SessionFileService {
@@ -71,7 +72,7 @@ impl SessionFileService {
 
     pub fn with_virtual_registry(
         mut self,
-        registry: Arc<crate::services::virtual_mount_registry::VirtualMountRegistry>,
+        registry: Arc<crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry>,
     ) -> Self {
         self.virtual_registry = Some(registry);
         self
@@ -736,7 +737,8 @@ impl SessionFileService {
     /// Get a reference to the virtual mount registry (if configured).
     pub fn virtual_registry(
         &self,
-    ) -> Option<&Arc<crate::services::virtual_mount_registry::VirtualMountRegistry>> {
+    ) -> Option<&Arc<crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry>>
+    {
         self.virtual_registry.as_ref()
     }
 
@@ -1194,7 +1196,7 @@ mod tests {
 
     // ===== Virtual mount tests =====
 
-    use crate::services::virtual_mount_registry::VirtualMountRegistry;
+    use crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry;
     use everruns_core::capability_types::VirtualFileTree;
 
     fn make_virtual_svc() -> (SessionFileService, Arc<VirtualMountRegistry>, Uuid) {
