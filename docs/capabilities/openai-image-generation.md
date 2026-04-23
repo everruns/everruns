@@ -10,7 +10,20 @@ description: Generate and edit raster images with OpenAI's GPT Image API, persis
 | **Features** | None |
 | **Dependencies** | [`session_file_system`](/capabilities/file-system/), [`session_storage`](/capabilities/session-storage/) |
 
-Generate new raster images and edit existing ones with OpenAI's `gpt-image-1` model.
+Generate new raster images and edit existing ones with OpenAI's ChatGPT Images 2.0 API model, `gpt-image-2`, by default.
+
+Capability config supports both model selection and a default quality used when the tool call does not specify one:
+
+```json
+{
+  "model": "gpt-image-2",
+  "default_quality": "medium"
+}
+```
+
+If you need the previous generation model for compatibility, set `"model": "gpt-image-1"`.
+
+The default quality is `medium`. That keeps latency and reliability reasonable for `gpt-image-2` while still producing polished outputs.
 
 This capability resolves credentials server-side, persists durable image artifacts, and can also write generated outputs into the session filesystem under `/workspace/.outputs/images/`.
 
@@ -34,7 +47,7 @@ Generate one or more images from a prompt.
 |---|---|---|---|
 | `prompt` | string | yes | Image generation prompt |
 | `size` | enum | no | `1024x1024`, `1536x1024`, `1024x1536`, `auto` |
-| `quality` | enum | no | `low`, `medium`, `high`, `auto` |
+| `quality` | enum | no | `low`, `medium`, `high`, `auto`. Defaults to capability `default_quality`, which defaults to `medium` |
 | `background` | enum | no | `transparent`, `opaque`, `auto` |
 | `format` | enum | no | `png`, `jpeg`, `webp` |
 | `count` | integer | no | Number of images to generate (1-10) |
@@ -53,7 +66,7 @@ Edit one or more existing images using a prompt.
 | `image_id` | string | conditional | Durable image artifact ID to use as an edit source |
 | `path` | string | conditional | Session filesystem path to use as an edit source |
 | `size` | enum | no | `1024x1024`, `1536x1024`, `1024x1536`, `auto` |
-| `quality` | enum | no | `low`, `medium`, `high`, `auto` |
+| `quality` | enum | no | `low`, `medium`, `high`, `auto`. Defaults to capability `default_quality`, which defaults to `medium` |
 | `background` | enum | no | `transparent`, `opaque`, `auto` |
 | `format` | enum | no | `png`, `jpeg`, `webp` |
 | `count` | integer | no | Number of images to produce (1-10) |
@@ -78,6 +91,8 @@ Both tools return:
 ## Notes
 
 - Transparent background requires `png` or `webp` output
+- High quality can take substantially longer than medium or low on `gpt-image-2`
+- `generate_image` and `edit_image` stay fully exposed even when OpenAI `tool_search` is enabled, so large tool lists do not defer their schemas
 - Session file edits must be `png`, `jpg`, `jpeg`, or `webp`
 - Edit sources larger than 50 MB are rejected before the API call
 - Saved workspace files are written as base64-encoded binary files
