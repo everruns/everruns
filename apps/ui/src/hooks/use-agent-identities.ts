@@ -11,6 +11,7 @@ import {
 } from "@/lib/api/agent-identities";
 import { useOrg } from "@/providers/org-provider";
 import type { CreateAgentIdentityRequest, UpdateAgentIdentityRequest } from "@/lib/api/types";
+import { useResourceOrgFallback } from "./use-resource-org-fallback";
 
 const agentIdentityKeys = {
   all: ["agent-identities"] as const,
@@ -37,6 +38,11 @@ export function useAgentIdentity(identityId: string | undefined) {
     queryKey: [...agentIdentityKeys.detail(identityId ?? ""), org],
     queryFn: () => getAgentIdentity(identityId!),
     enabled: !!org && !!identityId,
+  });
+  useResourceOrgFallback({
+    resourceId: identityId,
+    error: query.error,
+    isLoading: orgLoading || query.isLoading,
   });
   return { ...query, isLoading: orgLoading || query.isLoading };
 }

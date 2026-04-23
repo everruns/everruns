@@ -48,6 +48,10 @@ impl Command for CreateSession {
         }
     }
 
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&super::SESSION_MANAGE)
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<Session, CommandError> {
         let mut req = self.0;
         req.locale =
@@ -238,6 +242,10 @@ impl Command for GetSession {
         Some("session_id")
     }
 
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&super::SESSION_VIEW)
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<Session, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
         q::get_session(ctx, session_id, ctx.caller.user_id).await
@@ -264,6 +272,10 @@ impl Command for UpdateSessionCmd {
             method: "PATCH",
             path: "/v1/sessions/{session_id}",
         }
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&super::SESSION_MANAGE)
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<Session, CommandError> {
@@ -297,6 +309,10 @@ impl Command for DeleteSession {
             method: "DELETE",
             path: "/v1/sessions/{session_id}",
         }
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&super::SESSION_MANAGE)
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<bool, CommandError> {
@@ -333,6 +349,10 @@ impl Command for GetOrCreateChatSession {
             method: "POST",
             path: "/v1/sessions/chat",
         }
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&super::SESSION_MANAGE)
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<Session, CommandError> {
@@ -411,6 +431,10 @@ impl Command for PinSession {
         }
     }
 
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&super::SESSION_MANAGE)
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<bool, CommandError> {
         let user_id = ctx.caller.user_id.ok_or_else(|| {
             CommandError::Forbidden("Authentication required to pin sessions".to_string())
@@ -444,6 +468,10 @@ impl Command for UnpinSession {
         }
     }
 
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&super::SESSION_MANAGE)
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<bool, CommandError> {
         let user_id = ctx.caller.user_id.ok_or_else(|| {
             CommandError::Forbidden("Authentication required to unpin sessions".to_string())
@@ -474,6 +502,10 @@ impl Command for CancelSession {
             method: "POST",
             path: "/v1/sessions/{session_id}/cancel",
         }
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&super::SESSION_MANAGE)
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<CancelTurnResponse, CommandError> {

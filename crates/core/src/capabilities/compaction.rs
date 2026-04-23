@@ -844,9 +844,10 @@ pub fn format_messages_for_summarization(messages: &[LlmMessage]) -> String {
 
         // Truncate very long messages to avoid blowing up the summarization prompt
         let truncated = if !is_protected && content.len() > 2000 {
+            let safe_prefix = truncate_at_char_boundary(&content, 2000);
             format!(
                 "{}... [truncated, {} chars total]",
-                &content[..2000],
+                safe_prefix,
                 content.len()
             )
         } else {
@@ -856,6 +857,23 @@ pub fn format_messages_for_summarization(messages: &[LlmMessage]) -> String {
         parts.push(format!("[{role}]: {truncated}"));
     }
     parts.join("\n\n")
+}
+
+fn truncate_at_char_boundary(content: &str, max_bytes: usize) -> &str {
+    if content.len() <= max_bytes {
+        return content;
+    }
+
+    if content.is_char_boundary(max_bytes) {
+        return &content[..max_bytes];
+    }
+
+    let mut end = max_bytes;
+    while end > 0 && !content.is_char_boundary(end) {
+        end -= 1;
+    }
+
+    &content[..end]
 }
 
 /// Build a summary system message that replaces compacted messages in context.
@@ -1403,6 +1421,15 @@ mod tests {
         let formatted = format_messages_for_summarization(&messages);
         assert!(formatted.contains("truncated"));
         assert!(formatted.len() < long_content.len());
+    }
+
+    #[test]
+    fn test_format_messages_truncates_utf8_without_panic() {
+        let multibyte = "é".repeat(1001); // 2002 bytes, 1001 chars
+        let messages = vec![make_user_msg(&multibyte)];
+        let formatted = format_messages_for_summarization(&messages);
+        assert!(formatted.contains("truncated"));
+        assert!(formatted.contains("[truncated, 2002 chars total]"));
     }
 
     #[test]

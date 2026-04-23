@@ -51,6 +51,7 @@ pub mod harnesses;
 pub mod direct_worker_adapters;
 pub mod execution_metadata;
 pub use direct_worker_adapters::DirectWorkerAdapters;
+pub mod max_iterations;
 
 // Task notification broadcaster for push-based notifications
 pub mod task_notifications;

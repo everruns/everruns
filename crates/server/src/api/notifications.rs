@@ -74,7 +74,12 @@ pub struct AppState {
 
 impl AppState {
     fn ctx(&self, org: &ResolvedOrg) -> Ctx {
-        Ctx::minimal(Caller::from(org), self.db.clone(), None)
+        Ctx::minimal(
+            Caller::from(org),
+            self.db.clone(),
+            None,
+            self.auth.permission_resolver.clone(),
+        )
     }
 }
 
@@ -127,7 +132,7 @@ pub async fn list_notifications(
     require_user_id(&org)?;
     Ok(Json(
         ListNotifications { limit: query.limit }
-            .execute(&state.ctx(&org))
+            .run(&state.ctx(&org))
             .await?,
     ))
 }
@@ -140,7 +145,7 @@ pub async fn mark_notification_viewed(
     require_user_id(&org)?;
     Ok(Json(
         MarkNotificationViewed { notification_id }
-            .execute(&state.ctx(&org))
+            .run(&state.ctx(&org))
             .await?,
     ))
 }

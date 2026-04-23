@@ -180,6 +180,7 @@ Re-encryption CLI tool implemented at `crates/server/src/bin/reencrypt_secrets.r
 | TM-TENANT-007 | Durable tasks cross-org | Medium | gRPC `GetTurnContext` validates org_id in request matches record in DB | MITIGATED |
 | TM-TENANT-008 | User listing cross-org | High | `GET /v1/users` returns all system users without org filtering; uses `AuthUser` not `ResolvedOrg` | **OPEN** |
 | TM-TENANT-009 | AG-UI thread ID collision crosses app session boundaries | High | AG-UI session routing tags include both `ag_ui:app:{app_id}` and `ag_ui:thread:{thread_id}` so a shared thread UUID cannot attach to another app's session | MITIGATED |
+| TM-TENANT-010 | Cross-org resource→org oracle via `/v1/resolve-org` | Medium | Endpoint requires `AuthUser` and answers only when the owning org is a membership of the caller (`is_organization_member` check before returning any identity). Unknown ids, unknown prefixes, and non-member owners all produce 404 — identical to what the entity APIs would return. Attacker learns nothing they couldn't already learn by manually switching between their own orgs. See specs/multitenancy.md (Cross-Org Resource Resolution). | MITIGATED |
 
 ### Mitigation Details
 
@@ -214,9 +215,11 @@ ApiError::Forbidden("No access")         // ✗ Reveals resource exists
 | TM-AUTHZ-001 | Default Owner role grants full access | Medium | By design for phase 1; all users are Owners. Future phases will assign roles via admin UI/invitation flow | **BY DESIGN** |
 | TM-AUTHZ-002 | Policy bypass via internal Caller | Medium | `Caller::internal()` bypasses policies with Owner role; only used in gRPC service (worker ↔ server), not HTTP-accessible | MITIGATED |
 | TM-AUTHZ-003 | Policy error reveals permission names | Low | 403 response includes policy ID and required permission; acceptable for debugging, no internal state leaked | **ACCEPTED** |
-| TM-AUTHZ-004 | Missing policy on service method | Medium | Compile-time enforcement via `#[policy]` macro; code review required to ensure coverage | MITIGATED |
+| TM-AUTHZ-004 | Missing policy on mutating command | Medium | Every caller (HTTP/MCP/gRPC/platform) routes through `Command::run` which evaluates `Command::policy()`. Inventory coverage test (`crates/server/tests/command_policy_enforcement_test.rs`) asserts every non-GET command declares a policy — a missing declaration fails the build | MITIGATED |
 | TM-AUTHZ-005 | Anonymous app channel reaches draft or disabled app config | High | Public AG-UI ingress requires `AppStatus::Published`, an enabled `ag_ui` channel, and `anonymous=true`; otherwise returns 403/400 before session creation | MITIGATED |
 | TM-AUTHZ-006 | Anonymous webhook reaches draft or disabled app channel | High | Public webhook ingress requires `AppStatus::Published`, a `webhook` channel, `enabled=true`, and the per-channel token before creating or reusing a session | MITIGATED |
+| TM-AUTHZ-007 | HTTP callers bypass declared command policy | High | Before the command runner, HTTP adapters called `Command::execute` directly, skipping `Command::policy()`. Now all adapters call `Command::run`, which enforces policy using `ctx.permission_resolver.evaluate_with`. Tests: `run_blocks_member_from_manage_command`, `dispatch_blocks_member_from_manage_command` | MITIGATED |
+| TM-AUTHZ-008 | SaaS custom `PermissionResolver` bypassed during enforcement | High | Legacy `#[policy]` macro calls `Policy::evaluate(caller)` which hardcodes `DefaultPermissionResolver`, ignoring custom resolvers. `Command::run` now threads `ctx.permission_resolver` (from `AuthState`) into `evaluate_with`, so billing-tier / per-user grant resolvers apply uniformly. Tests: `run_honors_custom_resolver_denying_owner_write`, `dispatch_honors_custom_resolver` | MITIGATED |
 
 ### Mitigation Details
 
@@ -225,6 +228,12 @@ Phase 1 assigns `OrgRole::Owner` as the default for all users. This means no per
 
 **TM-AUTHZ-002 — Internal Caller:**
 `Caller::internal(org_id)` is used exclusively in `grpc_service.rs` for worker-to-server calls. The gRPC endpoint requires a bearer token in production (`TM-DURABLE-002`). HTTP handlers always construct `Caller` from `ResolvedOrg` with the user's actual role.
+
+**TM-AUTHZ-004 — Command Runner as Single Enforcement Point:**
+`Command::run` (`crates/server/src/domains/common.rs`) evaluates `Command::policy()` against the active `PermissionResolver` before dispatching to `execute`. HTTP adapters call `run`; MCP and gRPC `ExecuteCommand` route through `dispatch()` which calls `run`. Coverage is enforced by iterating `inventory::iter::<CommandDescriptor>` in a test, so new mutating commands that forget `policy()` fail the build. The legacy `#[policy]` attribute macro was removed — service-layer checks were redundant with `Command::run` and hardcoded `DefaultPermissionResolver`, re-introducing `TM-AUTHZ-008`.
+
+**TM-AUTHZ-007 / TM-AUTHZ-008 — Historical gap:**
+Prior to the command runner, only MCP/gRPC `dispatch` evaluated `Command::policy()`, and the evaluation used `Policy::evaluate` (default resolver only). HTTP adapters called `Command::execute` directly, so role-based restrictions and SaaS custom resolvers were not enforced on HTTP writes for fully-migrated domains. The runner closes both gaps in a single code path.
 
 ## 4. API Security (TM-API)
 
@@ -1035,7 +1044,7 @@ Session A cannot access Session B's container:
 | Control | Category | Implementation |
 |---------|----------|----------------|
 | Authentication | TM-AUTH | JWT (15 min), API keys (SHA-256), OAuth, Argon2id passwords |
-| Authorization | TM-TENANT, TM-AUTHZ | Org-scoped queries, ResolvedOrg extractor, 404 on cross-org; `#[policy]` macro enforcement, role→permission mapping |
+| Authorization | TM-TENANT, TM-AUTHZ | Org-scoped queries, ResolvedOrg extractor, 404 on cross-org; `Command::run` enforcement via `policy.evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)`, role→permission mapping |
 | Encryption at rest | TM-CRYPTO | AES-256-GCM envelope encryption for API keys |
 | Encryption in transit | TM-LLM | HTTPS for all external communication |
 | Input validation | TM-API | Size limits, path validation, regex constraints |

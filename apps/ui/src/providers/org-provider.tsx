@@ -35,11 +35,14 @@ export function hasPermission(currentRole: OrgRole, requiredRole: OrgRole): bool
 }
 
 // Entity detail route prefixes — when on a detail page under one of these,
-// org switch redirects to the list page to avoid a 404.
+// org switch redirects to the list page to avoid a 404. MUST stay in sync
+// with the dynamic [id] routes under apps/ui/src/app/(main)/.
 const ENTITY_PREFIXES = [
+  "/agent-identities/",
   "/agents/",
   "/apps/",
   "/capabilities/",
+  "/evals/",
   "/harnesses/",
   "/sessions/",
   "/durable/schedules/",
@@ -57,13 +60,23 @@ function getEntityListPath(pathname: string): string | null {
   return null;
 }
 
+export interface SetCurrentOrgOptions {
+  /**
+   * When true, skip the default "redirect entity detail to list" behaviour and
+   * stay on the current page after the switch. Used by the cross-org resource
+   * resolver — after switching to the owning org, the current detail URL is
+   * valid and should not be redirected away from.
+   */
+  stayOnPage?: boolean;
+}
+
 export interface OrgContextValue {
   /** Currently selected organization */
   currentOrg: OrganizationMembership | null;
   /** All organizations the user belongs to */
   organizations: OrganizationMembership[];
   /** Set the current organization (awaits server cookie sync before committing) */
-  setCurrentOrg: (org: OrganizationMembership) => void;
+  setCurrentOrg: (org: OrganizationMembership, options?: SetCurrentOrgOptions) => void;
   /** Check if current user has at least the given role in the current org */
   hasRole: (role: OrgRole) => boolean;
   /** Loading state */
@@ -161,7 +174,7 @@ export function OrgProvider({ children, initialOrgId = null }: OrgProviderProps)
 
   // Atomic org switch: await cookie sync → commit state → invalidate queries
   const setCurrentOrg = useCallback(
-    (org: OrganizationMembership) => {
+    (org: OrganizationMembership, options?: SetCurrentOrgOptions) => {
       // Skip if already on this org
       if (currentOrg?.public_id === org.public_id) return;
 
@@ -171,6 +184,7 @@ export function OrgProvider({ children, initialOrgId = null }: OrgProviderProps)
 
       const switchId = ++switchCounterRef.current;
       setIsSwitching(true);
+      const stayOnPage = options?.stayOnPage === true;
 
       // Await server cookie before committing client state
       switchOrgApi(org.public_id)
@@ -181,10 +195,14 @@ export function OrgProvider({ children, initialOrgId = null }: OrgProviderProps)
           localStorage.setItem(ORG_STORAGE_KEY, org.public_id);
           // Invalidate all org-scoped queries so stale data is refetched
           void queryClient.invalidateQueries();
-          // Redirect entity detail pages to their list page to avoid 404
-          const listPath = getEntityListPath(pathname);
-          if (listPath) {
-            router.push(listPath);
+          // Redirect entity detail pages to their list page to avoid 404,
+          // unless the caller has opted out (e.g. cross-org resource
+          // resolver, where the detail URL is valid in the new org).
+          if (!stayOnPage) {
+            const listPath = getEntityListPath(pathname);
+            if (listPath) {
+              router.push(listPath);
+            }
           }
         })
         .catch((error) => {
