@@ -635,6 +635,29 @@ async fn test_create_sprite_rejects_uppercase_name() {
     }
 }
 
+#[tokio::test]
+async fn test_exec_rejects_path_traversal_name() {
+    let tool = get_tool("sprites_exec");
+    let session_id = SessionId::new();
+    let store = Arc::new(MockStorageStore::new());
+    let context = ToolContext::with_storage_store(session_id, store)
+        .with_connection_resolver(sprites_resolver());
+
+    let result = tool
+        .execute_with_context(
+            json!({"sprite_name": "../account", "command": "pwd"}),
+            &context,
+        )
+        .await;
+
+    match result {
+        ToolExecutionResult::ToolError(msg) => {
+            assert!(msg.contains("lowercase"), "Got: {msg}");
+        }
+        other => panic!("Expected ToolError, got: {other:?}"),
+    }
+}
+
 // ============================================================================
 // Service URL and checkpoint tool tests
 // ============================================================================
