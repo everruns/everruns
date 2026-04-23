@@ -348,15 +348,24 @@ impl SlackDeliveryDispatcher {
                 None => continue,
             };
 
-            // Look up the app to get bot_token
-            let app = match crate::domains::apps::queries::get_by_public_id_unscoped(
-                db, encryption, &app_id,
+            // Look up app scoped to the session's organization.
+            // Prevents cross-tenant token use from forged slack:app:* tags.
+            let app = match crate::domains::apps::queries::get_by_public_id(
+                db,
+                encryption,
+                session.org_id,
+                &app_id,
             )
             .await
             {
                 Ok(Some(app)) => app,
                 Ok(None) => {
-                    warn!(app_id = %app_id, "App not found during Slack recovery");
+                    warn!(
+                        app_id = %app_id,
+                        session_id = %session.id,
+                        org_id = session.org_id,
+                        "App not found in session org during Slack recovery"
+                    );
                     continue;
                 }
                 Err(e) => {
