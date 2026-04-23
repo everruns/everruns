@@ -11,6 +11,7 @@ use crate::domains::harnesses::queries::resolve_effective as resolve_effective_h
 use crate::domains::session_files::{CreateFileInput, SessionFileService};
 use crate::domains::session_sandbox::SessionSandboxService;
 use crate::errors::ResourceNotFoundError;
+use crate::max_iterations;
 use crate::org_init;
 use crate::services::PrincipalService;
 use crate::storage::{
@@ -220,7 +221,7 @@ impl SessionService {
                 .network_access
                 .as_ref()
                 .map(|na| serde_json::to_value(na).unwrap()),
-            max_iterations: req.max_iterations.map(|v| v as i32),
+            max_iterations: max_iterations::to_db(req.max_iterations)?,
             blueprint_id: None,
             blueprint_config: None,
         };
@@ -324,7 +325,7 @@ impl SessionService {
                 .network_access
                 .as_ref()
                 .map(|na| serde_json::to_value(na).unwrap()),
-            max_iterations: req.max_iterations.map(|v| v as i32),
+            max_iterations: max_iterations::to_db(req.max_iterations)?,
             blueprint_id: Some(blueprint_id),
             blueprint_config,
         };
@@ -1122,7 +1123,7 @@ impl SessionService {
                 .network_access
                 .and_then(|v| serde_json::from_value(v).ok()),
             hints: row.hints.and_then(|v| serde_json::from_value(v).ok()),
-            max_iterations: row.max_iterations.map(|v| v as usize),
+            max_iterations: max_iterations::from_db(row.max_iterations),
             status: SessionStatus::from(row.status.as_str()),
             created_at: row.created_at,
             updated_at: row.updated_at,
