@@ -164,4 +164,52 @@ mod tests {
             resolve_resource_org(&db, "unknownprefix_00000000000000000000000000000001").await;
         assert!(result.unwrap().is_none());
     }
+
+    #[tokio::test]
+    async fn resolve_agent_returns_owning_org_id() {
+        use crate::storage::models::CreateAgentRow;
+
+        let db = StorageBackend::in_memory();
+
+        // Seed an agent in org 1 and another in org 42. Mirrors the
+        // cross-org situation: a user currently in one org follows a link
+        // to a resource owned by another.
+        let agent_one = CreateAgentRow {
+            public_id: "agent_00000000000000000000000000000001".to_string(),
+            name: "one".to_string(),
+            display_name: None,
+            description: None,
+            system_prompt: String::new(),
+            default_model_id: None,
+            tags: vec![],
+            initial_files: serde_json::json!([]),
+            tools: serde_json::json!([]),
+            mcp_servers: serde_json::json!([]),
+            network_access: None,
+            max_iterations: None,
+        };
+        let mut agent_two = agent_one.clone();
+        agent_two.public_id = "agent_00000000000000000000000000000042".to_string();
+        agent_two.name = "two".to_string();
+
+        db.create_agent(1, agent_one).await.unwrap();
+        db.create_agent(42, agent_two).await.unwrap();
+
+        // Known id → known owning org.
+        let org = resolve_resource_org(&db, "agent_00000000000000000000000000000001")
+            .await
+            .unwrap();
+        assert_eq!(org, Some(1));
+
+        let org = resolve_resource_org(&db, "agent_00000000000000000000000000000042")
+            .await
+            .unwrap();
+        assert_eq!(org, Some(42));
+
+        // Same prefix, unknown id → None (never leaks a guessed org).
+        let org = resolve_resource_org(&db, "agent_00000000000000000000000000000099")
+            .await
+            .unwrap();
+        assert!(org.is_none());
+    }
 }

@@ -89,16 +89,31 @@ pub async fn resolve_org(
 
     // Gate: only reveal the org if the caller is already a member. Without
     // this filter the endpoint would be a generic resource→org oracle.
-    let memberships = state
+    // THREAT[TM-TENANT-010]: membership gate — DO NOT remove.
+    let is_member = state
         .db
-        .list_user_organizations(auth.id)
+        .is_organization_member(owning_org_id, auth.id)
         .await
         .map_err(|e| {
             tracing::error!("resolve-org membership lookup failed: {e}");
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
+    if !is_member {
+        return Err(StatusCode::NOT_FOUND);
+    }
 
-    let Some(org) = memberships.into_iter().find(|o| o.org_id == owning_org_id) else {
+    // Only load the org record once membership is established.
+    let Some(org) = state
+        .db
+        .get_organization(owning_org_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("resolve-org org lookup failed: {e}");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+    else {
+        // Theoretically unreachable (membership implies the org exists),
+        // but treat a vanished row as 404 rather than 500.
         return Err(StatusCode::NOT_FOUND);
     };
 

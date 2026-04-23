@@ -180,6 +180,7 @@ Re-encryption CLI tool implemented at `crates/server/src/bin/reencrypt_secrets.r
 | TM-TENANT-007 | Durable tasks cross-org | Medium | gRPC `GetTurnContext` validates org_id in request matches record in DB | MITIGATED |
 | TM-TENANT-008 | User listing cross-org | High | `GET /v1/users` returns all system users without org filtering; uses `AuthUser` not `ResolvedOrg` | **OPEN** |
 | TM-TENANT-009 | AG-UI thread ID collision crosses app session boundaries | High | AG-UI session routing tags include both `ag_ui:app:{app_id}` and `ag_ui:thread:{thread_id}` so a shared thread UUID cannot attach to another app's session | MITIGATED |
+| TM-TENANT-010 | Cross-org resource→org oracle via `/v1/resolve-org` | Medium | Endpoint requires `AuthUser` and answers only when the owning org is a membership of the caller (`is_organization_member` check before returning any identity). Unknown ids, unknown prefixes, and non-member owners all produce 404 — identical to what the entity APIs would return. Attacker learns nothing they couldn't already learn by manually switching between their own orgs. See specs/multitenancy.md (Cross-Org Resource Resolution). | MITIGATED |
 
 ### Mitigation Details
 
