@@ -1116,6 +1116,17 @@ impl Command for UpdateAppCmd {
             UpdateField::Unchanged => (None, UpdateField::Unchanged),
         };
 
+        let encryption = ctx.encryption.as_ref();
+        let mut channel_config = None;
+        let mut channel_config_encrypted = None;
+        if existing.channel_config_encrypted.is_none() && encryption.is_some() {
+            let (stored, encrypted) =
+                q::prepare_channel_config(encryption, &existing.channel_config)
+                    .map_err(classify_anyhow)?;
+            channel_config = Some(stored);
+            channel_config_encrypted = encrypted;
+        }
+
         let input = UpdateApp {
             name: req.name,
             description: req.description,
@@ -1125,19 +1136,44 @@ impl Command for UpdateAppCmd {
             owner_principal_id,
             resolved_owner_user_id,
             channel_type: None,
-            channel_config: None,
-            channel_config_encrypted: None,
+            channel_config,
+            channel_config_encrypted,
             status: req.status.clone().map(|s| s.to_string()),
             published_at: UpdateField::Unchanged,
         };
 
-        let encryption = ctx.encryption.as_ref();
         let row = ctx
             .db
             .update_app(ctx.org_id(), existing.id, input)
             .await
             .map_err(classify_anyhow)?
             .ok_or_else(|| CommandError::not_found("App"))?;
+
+        if encryption.is_some() {
+            let channel_rows = ctx
+                .db
+                .list_app_channels(existing.id)
+                .await
+                .map_err(classify_anyhow)?;
+            for channel_row in channel_rows
+                .into_iter()
+                .filter(|channel_row| channel_row.channel_config_encrypted.is_none())
+            {
+                let (stored, encrypted) =
+                    q::prepare_channel_config(encryption, &channel_row.channel_config)
+                        .map_err(classify_anyhow)?;
+                let input = UpdateAppChannel {
+                    channel_config: Some(stored),
+                    channel_config_encrypted: encrypted,
+                    ..Default::default()
+                };
+                ctx.db
+                    .update_app_channel(channel_row.id, input)
+                    .await
+                    .map_err(classify_anyhow)?;
+            }
+        }
+
         let app = q::row_to_app(&ctx.db, encryption, row, ctx.org_id()).await;
         if req.status.is_some() {
             sync_all_schedule_bindings(ctx, &app).await?;
