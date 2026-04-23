@@ -148,6 +148,7 @@ impl AppState {
             self.db.clone(),
             self.capability_service.clone(),
             None,
+            self.auth.permission_resolver.clone(),
         )
     }
 }
@@ -178,7 +179,7 @@ pub async fn check_agent_name(
         name: query.name,
         exclude_id: query.exclude_id,
     }
-    .execute(&state.ctx(&org))
+    .run(&state.ctx(&org))
     .await?;
     Ok(Json(CheckAgentNameResponse {
         available: result.available,
@@ -272,7 +273,7 @@ pub async fn create_agent(
     Json(req): Json<CreateAgentRequest>,
 ) -> Result<(StatusCode, Json<WithUrls<Agent>>), (StatusCode, Json<ErrorResponse>)> {
     let agent = crate::domains::agents::CreateAgent(req)
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await?;
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
     Ok((StatusCode::CREATED, Json(builder.wrap(agent))))
@@ -300,7 +301,7 @@ pub async fn list_agents(
         offset: query.offset,
         limit: query.limit,
     }
-    .execute(&state.ctx(&org))
+    .run(&state.ctx(&org))
     .await?;
 
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
@@ -336,7 +337,7 @@ pub async fn get_agent(
     let agent = crate::domains::agents::GetAgent {
         id: agent_id_or_name,
     }
-    .execute(&state.ctx(&org))
+    .run(&state.ctx(&org))
     .await?;
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(builder.wrap(agent)))
@@ -365,7 +366,7 @@ pub async fn update_agent(
     Json(req): Json<UpdateAgentRequest>,
 ) -> ApiResult<WithUrls<Agent>> {
     let agent = crate::domains::agents::UpdateAgentCmd { id: agent_id, req }
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await?;
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(builder.wrap(agent)))
@@ -392,7 +393,7 @@ pub async fn delete_agent(
     Path(agent_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     crate::domains::agents::DeleteAgent { id: agent_id }
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -403,7 +404,7 @@ pub async fn destroy_agent(
     Path(agent_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     crate::domains::agents::DestroyAgent { id: agent_id }
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -432,7 +433,7 @@ pub async fn copy_agent(
     Path(agent_id): Path<String>,
 ) -> Result<(StatusCode, Json<WithUrls<Agent>>), (StatusCode, Json<ErrorResponse>)> {
     let agent = crate::domains::agents::CopyAgent { id: agent_id }
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await?;
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
     Ok((StatusCode::CREATED, Json(builder.wrap(agent))))
@@ -473,7 +474,7 @@ pub async fn upsert_agent(
             id: agent_id.to_string(),
             req,
         }
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await?;
         (result.agent, result.was_created)
     } else {
@@ -488,7 +489,7 @@ pub async fn upsert_agent(
         }
         // Name-based upsert: try create, if name taken → update
         let create_result = crate::domains::agents::CreateAgent(req.clone())
-            .execute(&state.ctx(&org))
+            .run(&state.ctx(&org))
             .await;
         match create_result {
             Ok(agent) => (agent, true),
@@ -520,7 +521,7 @@ pub async fn upsert_agent(
                     id: existing.public_id.to_string(),
                     req: update_req,
                 }
-                .execute(&state.ctx(&org))
+                .run(&state.ctx(&org))
                 .await?;
                 (agent, false)
             }
@@ -570,7 +571,7 @@ pub async fn export_agent(
     let agent = crate::domains::agents::GetAgent {
         id: agent_id.to_string(),
     }
-    .execute(&state.ctx(&org))
+    .run(&state.ctx(&org))
     .await?;
 
     let markdown = agent_to_markdown(&agent);
@@ -703,7 +704,7 @@ async fn import_from_example(
                 name: candidate.clone(),
                 exclude_id: None,
             }
-            .execute(&state.ctx(&org))
+            .run(&state.ctx(&org))
             .await?;
             let available = result.available;
 
@@ -733,7 +734,7 @@ async fn import_from_example(
     };
 
     let agent = crate::domains::agents::CreateAgent(req)
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await?;
 
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
@@ -835,7 +836,7 @@ async fn import_from_file(
             id: id.to_string(),
             req: request,
         }
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await?;
 
         let status = if result.was_created {
@@ -847,7 +848,7 @@ async fn import_from_file(
         Ok((status, Json(builder.wrap(result.agent))))
     } else {
         let agent = crate::domains::agents::CreateAgent(request)
-            .execute(&state.ctx(&org))
+            .run(&state.ctx(&org))
             .await?;
 
         Ok((StatusCode::CREATED, Json(builder.wrap(agent))))
@@ -1015,7 +1016,7 @@ pub async fn preview_agent(
         tools: req.tools,
         mcp_servers: req.mcp_servers,
     }
-    .execute(&state.ctx(&org))
+    .run(&state.ctx(&org))
     .await?;
 
     Ok(Json(AgentPreviewResponse {

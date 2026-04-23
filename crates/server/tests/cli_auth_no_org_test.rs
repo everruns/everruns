@@ -19,7 +19,9 @@ use everruns_server::auth::cli_auth::{CliAuthState, cli_auth_routes};
 use everruns_server::auth::config::{AuthConfig, AuthMode, JwtConfig};
 use everruns_server::auth::{AuthState, BuiltinAuthBackend};
 use everruns_server::seed;
-use everruns_server::storage::{CreateCliAuthSessionRow, CreateUserRow, StorageBackend};
+use everruns_server::storage::{
+    CreateCliAuthSessionRow, CreateOrganizationRow, CreateUserRow, StorageBackend,
+};
 
 #[tokio::test]
 async fn test_cli_exchange_no_orgs_returns_422() {
@@ -113,5 +115,122 @@ async fn test_cli_exchange_no_orgs_returns_422() {
             .unwrap_or("")
             .contains("create an organization"),
         "Error should tell user to create an org: {body}"
+    );
+}
+
+#[tokio::test]
+async fn test_cli_exchange_code_is_one_time_use() {
+    let db = Arc::new(StorageBackend::in_memory());
+    let grade = everruns_core::DeploymentGrade::from_env();
+    seed::seed_all(&db, grade, &seed::SeedAuthContext::default())
+        .await
+        .expect("seed failed");
+
+    let config = AuthConfig {
+        mode: AuthMode::Full,
+        jwt: JwtConfig {
+            secret: "test-secret-cli-replay".to_string(),
+            access_token_lifetime: Duration::from_secs(900),
+            refresh_token_lifetime: Duration::from_secs(86400),
+        },
+        ..Default::default()
+    };
+
+    let backend = BuiltinAuthBackend::new(config.clone(), db.clone());
+    let auth_state = AuthState::new(config, Arc::new(backend));
+    let cli_state = CliAuthState {
+        db: db.clone(),
+        auth: auth_state,
+        frontend_url: "http://localhost:3000".to_string(),
+        base_url: "http://localhost:9000".to_string(),
+    };
+    let router = cli_auth_routes(cli_state);
+
+    let user = db
+        .create_user(CreateUserRow {
+            email: "one-time-user@example.com".to_string(),
+            name: "One Time User".to_string(),
+            avatar_url: None,
+            roles: vec![],
+            password_hash: Some("unused".to_string()),
+            email_verified: true,
+            auth_provider: None,
+            auth_provider_id: None,
+            external_id: None,
+        })
+        .await
+        .expect("create_user failed");
+
+    let org = db
+        .create_organization(CreateOrganizationRow {
+            public_id: "org_one_time_use".to_string(),
+            name: "One Time Org".to_string(),
+            created_by: Some(user.id),
+        })
+        .await
+        .expect("create_organization failed");
+
+    db.add_organization_member(org.org_id, user.id, "member")
+        .await
+        .expect("add_organization_member failed");
+
+    let exchange_code = "test-exchange-code-one-time";
+    let session = db
+        .create_cli_auth_session(CreateCliAuthSessionRow {
+            state: "test-state-one-time".to_string(),
+            exchange_code: exchange_code.to_string(),
+            redirect_port: 12345,
+            expires_at: Utc::now() + ChronoDuration::seconds(300),
+        })
+        .await
+        .expect("create session failed");
+
+    db.complete_cli_auth_session(session.id, user.id)
+        .await
+        .expect("complete session failed");
+
+    let payload = serde_json::to_string(&json!({
+        "code": exchange_code,
+        "hostname": "test-machine",
+        "os": "linux"
+    }))
+    .unwrap();
+
+    let first = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/auth/cli/exchange")
+                .header("content-type", "application/json")
+                .body(Body::from(payload.clone()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        first.status(),
+        StatusCode::OK,
+        "First exchange must succeed"
+    );
+
+    let second = router
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/auth/cli/exchange")
+                .header("content-type", "application/json")
+                .body(Body::from(payload))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let second_status = second.status();
+    let second_body = second.into_body().collect().await.unwrap().to_bytes();
+    let second_json: Value = serde_json::from_slice(&second_body).unwrap_or(Value::Null);
+    assert_eq!(
+        second_status,
+        StatusCode::UNAUTHORIZED,
+        "Second exchange must fail as replay: {second_json}"
     );
 }

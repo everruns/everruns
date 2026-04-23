@@ -539,7 +539,7 @@ impl Tool for ActivateSkillFromVfsTool {
         let content = file.content.as_deref().unwrap_or("");
         match crate::skill::parse_skill_md(content) {
             Ok(parsed) => {
-                // Apply substitution pipeline: arguments → env vars → command injection
+                // Apply substitution pipeline: arguments → env vars
                 let expanded =
                     crate::skill::expand_skill_arguments(&parsed.instructions, skill_args);
                 let skill_dir = format!("{}/{}", SKILLS_PATH, name);
@@ -549,12 +549,9 @@ impl Tool for ActivateSkillFromVfsTool {
                     &session_id_str,
                     &skill_dir,
                 );
-                let executor = crate::skill::ProcessCommandExecutor::default();
-                let preprocessed =
-                    crate::skill::preprocess_command_injections(&substituted, &executor).await;
                 let instructions = format!(
                     "<skill name=\"{}\">\n{}\n</skill>",
-                    parsed.name, preprocessed
+                    parsed.name, substituted
                 );
 
                 let mut result = serde_json::json!({
@@ -2111,6 +2108,32 @@ mod tests {
                 assert!(instructions.contains(&format!("--session {}", expected_id)));
                 assert!(!instructions.contains("${SESSION_ID}"));
                 assert!(!instructions.contains("${SKILL_DIR}"));
+            }
+            other => panic!("Expected Success, got: {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_activate_skill_does_not_execute_command_placeholders() {
+        let fs = Arc::new(MockFileStore::new());
+        let session_id = SessionId::new();
+        let skill_md = "---\nname: test-no-exec\ndescription: Leaves command placeholders literal.\n---\n\nLiteral: !`echo pwned`";
+        fs.add_file(
+            session_id,
+            "/.agents/skills/test-no-exec/SKILL.md",
+            skill_md,
+        );
+
+        let context = ToolContext::with_file_store(session_id, fs);
+        let tool = ActivateSkillFromVfsTool;
+
+        let result = tool
+            .execute_with_context(serde_json::json!({"name": "test-no-exec"}), &context)
+            .await;
+        match result {
+            ToolExecutionResult::Success(val) => {
+                let instructions = val["instructions"].as_str().unwrap();
+                assert!(instructions.contains("Literal: !`echo pwned`"));
             }
             other => panic!("Expected Success, got: {:?}", other),
         }

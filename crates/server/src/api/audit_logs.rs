@@ -46,6 +46,7 @@ impl AppState {
             self.db.clone(),
             self.capability_service.clone(),
             None,
+            self.auth.permission_resolver.clone(),
         )
     }
 }
@@ -89,7 +90,7 @@ async fn list_audit_logs(
         domain: query.domain,
         action: query.action,
     }
-    .execute(&state.ctx(&org))
+    .run(&state.ctx(&org))
     .await?;
 
     Ok(Json(ListResponse::new(items)))

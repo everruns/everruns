@@ -83,7 +83,12 @@ impl AppState {
     }
 
     fn ctx(&self, org: &ResolvedOrg) -> Ctx {
-        Ctx::minimal(Caller::from(org), self.db.clone(), self.encryption.clone())
+        Ctx::minimal(
+            Caller::from(org),
+            self.db.clone(),
+            self.encryption.clone(),
+            self.auth.permission_resolver.clone(),
+        )
     }
 }
 
@@ -123,7 +128,7 @@ pub async fn list_keys(
     let items = ListSessionStorage {
         session_id: session_id.to_string(),
     }
-    .execute(&state.ctx(&org))
+    .run(&state.ctx(&org))
     .await
     .map_err(|e| e.status())?;
     Ok(Json(ListResponse::new(items)))
@@ -152,7 +157,7 @@ pub async fn list_secrets(
     let items = ListSessionSecrets {
         session_id: session_id.to_string(),
     }
-    .execute(&state.ctx(&org))
+    .run(&state.ctx(&org))
     .await
     .map_err(|e| e.status())?;
     Ok(Json(ListResponse::new(items)))
@@ -191,7 +196,7 @@ pub async fn batch_set_secrets(
             session_id: session_id.to_string(),
             secrets: body.secrets,
         }
-        .execute(&state.ctx(&org))
+        .run(&state.ctx(&org))
         .await?,
     ))
 }

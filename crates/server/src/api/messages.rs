@@ -191,9 +191,14 @@ impl AppState {
     }
 
     fn ctx(&self, org: &ResolvedOrg) -> Ctx {
-        Ctx::minimal(Caller::from(org), self.db.clone(), None)
-            .with_session_service(self.session_service.clone())
-            .with_message_service(self.message_service.clone())
+        Ctx::minimal(
+            Caller::from(org),
+            self.db.clone(),
+            None,
+            self.auth.permission_resolver.clone(),
+        )
+        .with_session_service(self.session_service.clone())
+        .with_message_service(self.message_service.clone())
     }
 }
 
@@ -250,7 +255,7 @@ pub async fn create_message(
         external_actor: req.external_actor,
         request_id,
     }
-    .execute(&state.ctx(&org))
+    .run(&state.ctx(&org))
     .await?;
 
     Ok((StatusCode::CREATED, Json(message)))
@@ -276,9 +281,7 @@ pub async fn list_messages(
     State(state): State<AppState>,
     Path(session_id): Path<String>,
 ) -> ApiResult<ListResponse<Message>> {
-    let messages = ListMessages { session_id }
-        .execute(&state.ctx(&org))
-        .await?;
+    let messages = ListMessages { session_id }.run(&state.ctx(&org)).await?;
 
     Ok(Json(ListResponse::new(messages)))
 }
@@ -311,7 +314,7 @@ pub async fn export_session_jsonl(
     let export = ExportSessionMessages {
         session_id: session_id.clone(),
     }
-    .execute(&state.ctx(&org))
+    .run(&state.ctx(&org))
     .await?;
     let filename = format!("{}.jsonl", session_id);
     Ok((

@@ -30,12 +30,13 @@ use uuid::Uuid;
 
 use crate::domains::budgets::BudgetService;
 use crate::domains::mcp_servers::McpServerService;
-use crate::domains::messages::MessageService;
-use crate::domains::sessions::SessionService;
-use crate::org_init;
-use crate::services::scoped_mcp::{
+use crate::domains::mcp_servers::scoped_mcp::{
     build_scoped_mcp_tool_definitions, resolve_scoped_mcp_server, validate_scoped_mcp_servers,
 };
+use crate::domains::messages::MessageService;
+use crate::domains::sessions::SessionService;
+use crate::max_iterations;
+use crate::org_init;
 use crate::services::{EventService, LlmResolverService, PrincipalService};
 use crate::storage::models::{AgentCapabilityRow, AgentRow, UpdateSession};
 use crate::storage::{EncryptionService, StorageBackend};
@@ -265,7 +266,8 @@ pub struct DirectWorkerAdapters {
     runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
     encryption: Option<Arc<EncryptionService>>,
     workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
-    virtual_registry: Option<Arc<crate::services::virtual_mount_registry::VirtualMountRegistry>>,
+    virtual_registry:
+        Option<Arc<crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry>>,
 }
 
 impl DirectWorkerAdapters {
@@ -321,7 +323,7 @@ impl DirectWorkerAdapters {
     /// Set the virtual mount registry for serving files from memory
     pub fn with_virtual_registry(
         mut self,
-        registry: Arc<crate::services::virtual_mount_registry::VirtualMountRegistry>,
+        registry: Arc<crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry>,
     ) -> Self {
         self.virtual_registry = Some(registry);
         self
@@ -490,7 +492,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
                     .network_access
                     .and_then(|v| serde_json::from_value(v).ok()),
                 hints: r.hints.and_then(|v| serde_json::from_value(v).ok()),
-                max_iterations: r.max_iterations.map(|v| v as usize),
+                max_iterations: max_iterations::from_db(r.max_iterations),
                 status: match r.status.as_str() {
                     "started" => SessionStatus::Started,
                     "active" => SessionStatus::Active,
@@ -1222,11 +1224,12 @@ impl WorkerAdapters for DirectWorkerAdapters {
             .await?;
 
         let local_mcp_tool_definitions = if let Some(ref harness) = harness {
-            let effective = crate::services::scoped_mcp::merge_effective_scoped_mcp_servers(
-                harness,
-                agent.as_ref(),
-                &session,
-            );
+            let effective =
+                crate::domains::mcp_servers::scoped_mcp::merge_effective_scoped_mcp_servers(
+                    harness,
+                    agent.as_ref(),
+                    &session,
+                );
 
             if let Err(error) = validate_scoped_mcp_servers(&effective) {
                 tracing::warn!(error = %error, "Invalid scoped MCP server config, skipping");
@@ -1574,7 +1577,7 @@ impl DirectWorkerAdapters {
             network_access: r
                 .network_access
                 .and_then(|v| serde_json::from_value(v).ok()),
-            max_iterations: r.max_iterations.map(|v| v as usize),
+            max_iterations: max_iterations::from_db(r.max_iterations),
             tools: serde_json::from_value(r.tools).unwrap_or_default(),
             status: match r.status.as_str() {
                 "active" => AgentStatus::Active,
@@ -1759,11 +1762,15 @@ impl DirectPlatformStore {
     }
 
     fn command_ctx(&self) -> crate::domains::common::Ctx {
+        // Internal gRPC/worker path — uses DefaultPermissionResolver so
+        // internal ops are never subject to SaaS custom restrictions.
+        // `Caller::internal` already carries role:Owner + is_internal.
         crate::domains::common::Ctx::new(
             Caller::internal(self.org_id),
             self.db.clone(),
             self.capability_service.clone(),
             self.encryption.clone(),
+            std::sync::Arc::new(everruns_core::DefaultPermissionResolver),
         )
         .with_workflow_store(self.workflow_store.clone())
     }
@@ -1851,7 +1858,7 @@ impl DirectPlatformStore {
             network_access: row
                 .network_access
                 .and_then(|v| serde_json::from_value(v).ok()),
-            max_iterations: row.max_iterations.map(|v| v as usize),
+            max_iterations: max_iterations::from_db(row.max_iterations),
             tools: serde_json::from_value(row.tools).unwrap_or_default(),
             status: AgentStatus::from(row.status.as_str()),
             created_at: row.created_at,
@@ -1899,7 +1906,7 @@ impl DirectPlatformStore {
                 .network_access
                 .and_then(|v| serde_json::from_value(v).ok()),
             hints: row.hints.and_then(|v| serde_json::from_value(v).ok()),
-            max_iterations: row.max_iterations.map(|v| v as usize),
+            max_iterations: max_iterations::from_db(row.max_iterations),
             status: SessionStatus::from(row.status.as_str()),
             created_at: row.created_at,
             updated_at: row.updated_at,
