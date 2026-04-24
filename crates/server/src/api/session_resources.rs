@@ -6,7 +6,6 @@
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
 use crate::domains::session_resources::ListSessionResources;
-use crate::domains::session_resources::SessionResourceService;
 use crate::storage::StorageBackend;
 use axum::{
     Json, Router,
@@ -22,21 +21,12 @@ use super::common::{ApiResult, impl_auth_state};
 #[derive(Clone)]
 pub struct AppState {
     pub db: Arc<StorageBackend>,
-    pub session_resource_service: Arc<SessionResourceService>,
     pub auth: AuthState,
 }
 
 impl AppState {
-    pub fn new(
-        db: Arc<StorageBackend>,
-        session_resource_service: Arc<SessionResourceService>,
-        auth: AuthState,
-    ) -> Self {
-        Self {
-            db,
-            session_resource_service,
-            auth,
-        }
+    pub fn new(db: Arc<StorageBackend>, auth: AuthState) -> Self {
+        Self { db, auth }
     }
 
     fn ctx(&self, org: &ResolvedOrg) -> Ctx {
