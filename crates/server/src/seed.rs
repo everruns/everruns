@@ -259,6 +259,17 @@ async fn seed_admin_user(
     let mut result = SeedResult::default();
 
     if let Some(existing_admin) = db.get_user_by_email(&admin_config.email).await? {
+        let existing_roles: Vec<String> =
+            serde_json::from_value(existing_admin.roles.clone()).unwrap_or_default();
+        let is_admin = existing_roles.iter().any(|role| role == "admin");
+        if !is_admin || !existing_admin.email_verified {
+            return Err(anyhow::anyhow!(
+                "Refusing to seed admin user for existing untrusted account (email={}, user_id={})",
+                admin_config.email,
+                existing_admin.id
+            ));
+        }
+
         tracing::debug!(
             user_id = %existing_admin.id,
             "Admin user already exists by email"
@@ -2658,6 +2669,53 @@ mod tests {
             .unwrap()
             .expect("admin should be added to default org");
         assert_eq!(membership.role, "owner");
+    }
+
+    #[tokio::test]
+    async fn test_seed_all_admin_mode_existing_non_admin_email_is_rejected() {
+        let db = make_db();
+
+        let existing_user = db
+            .create_user(CreateUserRow {
+                email: "admin@example.com".to_string(),
+                name: "Regular User".to_string(),
+                avatar_url: None,
+                roles: vec!["user".to_string()],
+                password_hash: None,
+                email_verified: false,
+                auth_provider: Some("local".to_string()),
+                auth_provider_id: None,
+                external_id: None,
+            })
+            .await
+            .unwrap();
+
+        let result = seed_all(
+            &db,
+            DeploymentGrade::Dev,
+            &SeedAuthContext {
+                mode: AuthMode::Admin,
+                admin: Some(AdminConfig {
+                    email: "admin@example.com".to_string(),
+                    password: "password123".to_string(),
+                }),
+            },
+        )
+        .await;
+
+        assert!(
+            result.is_err(),
+            "existing untrusted account must not be promoted to owner"
+        );
+
+        let membership = db
+            .get_organization_member(DEFAULT_ORG_ID, existing_user.id)
+            .await
+            .unwrap();
+        assert!(
+            membership.is_none(),
+            "non-admin user should not be added to org"
+        );
     }
 
     // --- Agent seeding regression ---
