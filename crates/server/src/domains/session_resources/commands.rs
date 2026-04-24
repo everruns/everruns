@@ -28,8 +28,7 @@ impl Command for ListSessionResources {
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<SessionResourceEntry>, CommandError> {
         let session_id = q::parse_session_id(&self.session_id)?;
-        crate::domains::session_resources::SessionResourceService::new(ctx.db.clone())
-            .list_for_session(ctx.org_id(), session_id)
+        q::list_for_session(&ctx.db, ctx.org_id(), session_id)
             .await
             .map_err(classify_anyhow)?
             .ok_or_else(|| CommandError::not_found("Session"))

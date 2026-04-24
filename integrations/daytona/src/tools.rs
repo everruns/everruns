@@ -1330,10 +1330,13 @@ impl Tool for DaytonaGitCloneTool {
 
         let client = DaytonaClient::new(api_key);
 
-        // Build the clone URL — embed token for authenticated cloning
+        // Build the clone URL — embed token only for github.com HTTPS clones.
+        // Never attach GitHub credentials to arbitrary hosts.
         let clone_url = if let Some(ref token) = github_token {
-            // Inject token into HTTPS URL: https://oauth2:<token>@github.com/...
-            if let Some(rest) = repo_url.strip_prefix("https://") {
+            if let Some(rest) = repo_url.strip_prefix("https://")
+                && is_github_https_host(rest)
+            {
+                // Inject token into HTTPS GitHub URL: https://oauth2:<token>@github.com/...
                 format!("https://oauth2:{token}@{rest}")
             } else {
                 repo_url.clone()
@@ -1598,6 +1601,22 @@ fn normalize_repo_url(url: &str) -> String {
     } else {
         url.to_string()
     }
+}
+
+/// Returns true when an HTTPS clone URL suffix starts with github.com host.
+///
+/// Expects the string after stripping `https://`, e.g.:
+/// - `github.com/owner/repo.git`
+/// - `github.com:443/owner/repo.git`
+fn is_github_https_host(https_url_without_scheme: &str) -> bool {
+    let host = https_url_without_scheme
+        .split('/')
+        .next()
+        .unwrap_or_default()
+        .split(':')
+        .next()
+        .unwrap_or_default();
+    host.eq_ignore_ascii_case("github.com")
 }
 
 /// Extract "owner/repo" from a git URL. Returns `Some("owner/repo")` for:
@@ -2536,6 +2555,22 @@ mod tests {
     fn test_normalize_repo_url_bare_word() {
         // Single word without slash — returned as-is
         assert_eq!(normalize_repo_url("something"), "something");
+    }
+
+    #[test]
+    fn test_is_github_https_host_accepts_github_com() {
+        assert!(is_github_https_host("github.com/user/repo.git"));
+        assert!(is_github_https_host("github.com:443/user/repo.git"));
+        assert!(is_github_https_host("GITHUB.COM/user/repo.git"));
+    }
+
+    #[test]
+    fn test_is_github_https_host_rejects_non_github_hosts() {
+        assert!(!is_github_https_host("evil.example.com/user/repo.git"));
+        assert!(!is_github_https_host(
+            "github.com.evil.example/user/repo.git"
+        ));
+        assert!(!is_github_https_host("github.example.com/user/repo.git"));
     }
 
     // --- extract_owner_repo tests ---
