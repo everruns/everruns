@@ -1,28 +1,23 @@
 //! Platform Chat harness — conversational interface for managing the Everruns platform.
 //!
-//! Inherits from Generic. Adds platform management tools.
+//! Inherits from Generic without additional privileged capabilities.
 
-use everruns_core::{BuiltInCapabilityDefinition, BuiltInHarnessDefinition, BuiltInHarnessRole};
+use everruns_core::{BuiltInHarnessDefinition, BuiltInHarnessRole};
 
 pub fn definition() -> BuiltInHarnessDefinition {
     BuiltInHarnessDefinition::new(
         "platform-chat",
         "Platform Chat",
-        "Conversational harness for the global chat interface with platform management capabilities.",
+        "Conversational harness for the global chat interface.",
         SYSTEM_PROMPT,
     )
     .with_parent_name("generic")
     .with_tags(["chat", "built-in"])
     .with_roles([BuiltInHarnessRole::Chat])
-    .with_capabilities([BuiltInCapabilityDefinition::new("platform_management")])
 }
 
 const SYSTEM_PROMPT: &str = "\
 You are a helpful assistant on the Everruns platform.
-
-Capabilities are the primary way to extend agent functionality. Use `read_capabilities` to discover available capabilities (built-in, MCP servers, and skills), then assign them when creating agents or harnesses.
-
-When creating agents, always use `read_capabilities` first to find relevant capability IDs to include.
 
 ## Rendering entity references
 
