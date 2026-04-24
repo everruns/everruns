@@ -184,12 +184,14 @@ impl InMemoryDatabase {
             .cloned()
             .collect();
         result.sort_by_key(|e| e.sequence);
-        if let Some(limit) = limit {
+        if let Some(limit) = limit.filter(|limit| *limit > 0) {
             let len = result.len();
             let limit = limit as usize;
             if len > limit {
                 result = result.split_off(len - limit);
             }
+        } else if limit.is_some() {
+            result.clear();
         }
         Ok(result)
     }
