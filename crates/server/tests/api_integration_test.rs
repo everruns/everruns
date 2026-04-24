@@ -20,8 +20,11 @@ use test_harness::TestServer;
 
 use everruns_core::llm_models::LlmProvider;
 use everruns_core::typed_id::ScheduleId;
-use everruns_core::{Agent, DEFAULT_ORG_ID, Harness, LlmModel, Session, SessionFile};
-use everruns_server::storage::models::{CreateSessionScheduleRow, UpdateSession};
+use everruns_core::{Agent, DEFAULT_ORG_ID, Harness, LlmModel, PrincipalId, Session, SessionFile};
+use everruns_server::storage::models::{
+    CreatePrincipalRow, CreateSessionScheduleRow, UpdateSession,
+};
+use uuid::Uuid;
 
 // ============================================
 // Health Endpoint Tests
@@ -3029,6 +3032,60 @@ async fn test_global_chat_has_chat_harness() {
         session.harness_id.to_string(),
         server.seed_chat_harness_id,
         "Chat session should use the Platform Chat harness"
+    );
+}
+
+#[tokio::test]
+async fn test_global_chat_ignores_tag_match_owned_by_other_principal() {
+    let server = TestServer::in_memory().await;
+
+    let initial: Session = server
+        .post("/v1/sessions/chat", json!({}))
+        .await
+        .assert_success()
+        .json();
+
+    let attacker_principal = server
+        .db
+        .create_principal(CreatePrincipalRow {
+            id: PrincipalId::from_uuid(Uuid::new_v4()),
+            org_id: DEFAULT_ORG_ID,
+            kind: "user".to_string(),
+            subject_id: Some(Uuid::new_v4()),
+            parent_principal_id: None,
+            resolved_user_id: Some(Uuid::new_v4()),
+            metadata: json!({}),
+        })
+        .await
+        .expect("failed to create attacker principal");
+
+    server
+        .db
+        .update_session(
+            DEFAULT_ORG_ID,
+            initial.id,
+            UpdateSession {
+                owner_principal_id: Some(attacker_principal.id),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("failed to mutate chat session owner")
+        .expect("chat session should exist");
+
+    let recreated: Session = server
+        .post("/v1/sessions/chat", json!({}))
+        .await
+        .assert_success()
+        .json();
+
+    assert_ne!(
+        recreated.id, initial.id,
+        "chat lookup must not attach to tag-matching sessions owned by a different principal"
+    );
+    assert_ne!(
+        recreated.owner_principal_id, attacker_principal.id,
+        "new global chat should be owned by the authenticated user's principal"
     );
 }
 
