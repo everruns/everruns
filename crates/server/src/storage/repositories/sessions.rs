@@ -412,16 +412,22 @@ impl Database {
         Ok(())
     }
 
-    /// Unpin a session for a user
-    pub async fn unpin_session(&self, user_id: Uuid, session_id: SessionId) -> Result<bool> {
+    /// Unpin a session for a user in an org
+    pub async fn unpin_session(
+        &self,
+        user_id: Uuid,
+        session_id: SessionId,
+        org_id: i64,
+    ) -> Result<bool> {
         let result = sqlx::query(
             r#"
             DELETE FROM pinned_sessions
-            WHERE user_id = $1 AND session_id = $2
+            WHERE user_id = $1 AND session_id = $2 AND org_id = $3
             "#,
         )
         .bind(user_id)
         .bind(session_id)
+        .bind(org_id)
         .execute(&self.pool)
         .await?;
         Ok(result.rows_affected() > 0)

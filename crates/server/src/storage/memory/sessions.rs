@@ -341,9 +341,21 @@ impl InMemoryDatabase {
         Ok(())
     }
 
-    pub async fn unpin_session(&self, user_id: Uuid, session_id: SessionId) -> Result<bool> {
+    pub async fn unpin_session(
+        &self,
+        user_id: Uuid,
+        session_id: SessionId,
+        org_id: i64,
+    ) -> Result<bool> {
         let mut pins = self.pinned_sessions.write();
-        Ok(pins.remove(&(user_id, session_id)).is_some())
+        let key = (user_id, session_id);
+        let Some((pinned_org_id, _)) = pins.get(&key) else {
+            return Ok(false);
+        };
+        if *pinned_org_id != org_id {
+            return Ok(false);
+        }
+        Ok(pins.remove(&key).is_some())
     }
 
     pub async fn list_pinned_session_ids(
