@@ -21,7 +21,7 @@ use everruns_core::capability_types::AgentCapabilityConfig;
 use everruns_core::typed_id::{AgentId, AgentIdentityId, HarnessId, ModelId};
 use everruns_core::{
     BuiltInHarnessRole, Caller, PlatformDefinition, ResourceConfigResponse, ScopedMcpServers,
-    Session, evaluate_policies_with,
+    Session, ToolDefinition, evaluate_policies_with,
 };
 use everruns_worker::AgentRunner;
 
@@ -80,8 +80,8 @@ pub struct CreateSessionRequest {
     pub capabilities: Vec<AgentCapabilityConfig>,
     /// Client-side tools for this session (additive to agent tools).
     /// These tools are sent to the LLM but executed by the client.
-    #[serde(default)]
-    pub tools: Vec<everruns_core::ToolDefinition>,
+    #[serde(default, deserialize_with = "deserialize_client_side_tools")]
+    pub tools: Vec<ToolDefinition>,
     /// Remote MCP servers scoped to this session only.
     #[serde(default, rename = "mcpServers", alias = "mcp_servers")]
     pub mcp_servers: ScopedMcpServers,
@@ -108,6 +108,22 @@ pub struct CreateSessionRequest {
     /// Maximum number of LLM iterations per turn for this session.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_iterations: Option<usize>,
+}
+
+fn deserialize_client_side_tools<'de, D>(deserializer: D) -> Result<Vec<ToolDefinition>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let tools = Vec::<ToolDefinition>::deserialize(deserializer)?;
+    if tools
+        .iter()
+        .any(|tool| !matches!(tool, ToolDefinition::ClientSide(_)))
+    {
+        return Err(serde::de::Error::custom(
+            "tools must contain only client_side definitions",
+        ));
+    }
+    Ok(tools)
 }
 
 /// Response from cancel turn endpoint
@@ -685,6 +701,30 @@ mod tests {
         let req: CreateSessionRequest = serde_json::from_str(&json).unwrap();
         assert_eq!(req.capabilities[0].capability_id(), "current_time");
         assert_eq!(req.capabilities[1].capability_id(), "web_fetch");
+    }
+
+    #[test]
+    fn test_create_session_request_rejects_builtin_tools() {
+        let json = format!(
+            r#"{{
+                "harness_id": "{}",
+                "tools": [
+                    {{
+                        "type": "builtin",
+                        "name": "read_file",
+                        "description": "Read file",
+                        "parameters": {{"type": "object"}}
+                    }}
+                ]
+            }}"#,
+            TEST_HARNESS_ID
+        );
+
+        let err = serde_json::from_str::<CreateSessionRequest>(&json).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("tools must contain only client_side definitions")
+        );
     }
 
     #[test]
