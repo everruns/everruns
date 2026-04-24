@@ -1023,6 +1023,7 @@ impl ServerAppBuilder {
         api_routes = api_routes.merge(crate::auth::api_key_routes(crate::auth::ApiKeyState {
             db: db.clone(),
             auth: auth_state.clone(),
+            resource_limits: crate::server::ResourceLimitsConfig::from_env(),
         }));
 
         // Auth-specific routes (login, register, OAuth — provider-dependent)
@@ -1212,6 +1213,7 @@ impl ServerAppBuilder {
             let grpc_runner = runner.clone();
             let grpc_addr = self.config.grpc_addr.clone();
             let grpc_platform_definition = platform_definition.clone();
+            let grpc_llm_resolver = llm_resolver.clone();
 
             let grpc_task_broadcaster = task_broadcaster.clone();
             let grpc_virtual_registry = virtual_registry.clone();
@@ -1224,6 +1226,7 @@ impl ServerAppBuilder {
                     Some(grpc_runner),
                     grpc_platform_definition.as_ref().clone(),
                     Some(grpc_virtual_registry),
+                    Some(grpc_llm_resolver),
                 );
                 if let Some(broadcaster) = grpc_task_broadcaster {
                     grpc_svc.set_task_broadcaster(broadcaster);

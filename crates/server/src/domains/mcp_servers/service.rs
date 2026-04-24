@@ -184,15 +184,40 @@ impl McpServerService {
         ids: &[Uuid],
     ) -> Result<HashMap<Uuid, (McpServer, Vec<McpToolDefinition>)>> {
         let rows = self.db.get_mcp_servers_batch(caller.org_id, ids).await?;
-        Ok(rows
-            .iter()
-            .map(|row| {
-                let server = Self::row_to_mcp_server(row);
-                let tools: Vec<McpToolDefinition> =
-                    serde_json::from_value(row.cached_tools.clone()).unwrap_or_default();
-                (row.id.uuid(), (server, tools))
-            })
-            .collect())
+        let mut servers = HashMap::with_capacity(rows.len());
+
+        for row in rows {
+            let server = Self::row_to_mcp_server(&row);
+            let server_id = row.id.uuid();
+
+            let cache_fresh = if let Some(cached_at) = row.tools_cached_at {
+                let age = Utc::now().signed_duration_since(cached_at);
+                age < chrono::Duration::from_std(TOOL_CACHE_TTL)
+                    .unwrap_or(chrono::Duration::hours(1))
+            } else {
+                false
+            };
+
+            let tools = if cache_fresh {
+                serde_json::from_value(row.cached_tools.clone()).unwrap_or_default()
+            } else {
+                match self.refresh_tools(caller, server_id).await {
+                    Ok(tools) => tools,
+                    Err(err) => {
+                        tracing::warn!(
+                            server_id = %server_id,
+                            error = %err,
+                            "Failed to refresh stale MCP tool cache in batch load; returning empty tools"
+                        );
+                        Vec::new()
+                    }
+                }
+            };
+
+            servers.insert(server_id, (server, tools));
+        }
+
+        Ok(servers)
     }
 
     pub async fn list(
@@ -470,7 +495,7 @@ impl McpServerService {
                 .chars()
                 .map(|c| if c.is_alphanumeric() { c } else { '_' })
                 .collect::<String>();
-            sanitized == server_prefix_lower
+            sanitized == server_prefix_lower && s.status == McpServerStatus::Active
         });
 
         let server = match server {
@@ -804,6 +829,45 @@ mod tests {
             .unwrap();
         assert!(resolved.is_some());
         assert_eq!(resolved.unwrap().api_key.as_deref(), Some("sk-mcp-secret"));
+    }
+
+    #[tokio::test]
+    async fn resolve_by_prefix_ignores_disabled_server() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let svc = McpServerService::new(db.clone(), Some(test_encryption()));
+
+        let created = db
+            .create_mcp_server(
+                1,
+                CreateMcpServerRow {
+                    name: "Disabled Server".into(),
+                    description: None,
+                    url: "https://example.com/mcp".into(),
+                    transport_type: "streamable_http".into(),
+                    api_key_encrypted: None,
+                    headers: None,
+                    settings: None,
+                },
+            )
+            .await
+            .unwrap();
+
+        db.update_mcp_server(
+            1,
+            created.id.uuid(),
+            UpdateMcpServer {
+                status: Some("disabled".into()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        let resolved = svc
+            .resolve_by_prefix(&test_caller(1), "disabled_server")
+            .await
+            .unwrap();
+        assert!(resolved.is_none());
     }
 
     // --- SSRF: fetch_mcp_tools blocks unsafe URLs ---

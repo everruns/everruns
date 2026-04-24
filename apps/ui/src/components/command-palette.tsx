@@ -95,12 +95,10 @@ export function CommandPalette() {
     }
   }, [open]);
 
-  // Reset selected index when query changes — derived inline, no effect needed.
-  const prevQueryRef = useRef(query);
-  if (prevQueryRef.current !== query) {
-    prevQueryRef.current = query;
+  // Reset selected index when query changes.
+  useEffect(() => {
     setSelectedIndex(0);
-  }
+  }, [query]);
 
   const navigate = useCallback(
     (result: SearchResult) => {

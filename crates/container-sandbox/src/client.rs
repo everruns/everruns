@@ -20,6 +20,9 @@ const DEFAULT_DOCKER_HOST: &str = "http://localhost:2375";
 
 /// Environment variable for Docker host override.
 const DOCKER_HOST_ENV: &str = "CONTAINER_SANDBOX_DOCKER_HOST";
+const MAX_EXEC_OUTPUT_BYTES: usize = 8 * 1024 * 1024;
+const MAX_ARCHIVE_RESPONSE_BYTES: usize = 8 * 1024 * 1024;
+const MAX_ARCHIVE_FILE_BYTES: usize = 4 * 1024 * 1024;
 
 // ============================================================================
 // Types
@@ -250,9 +253,14 @@ impl DockerClient {
         serde_json::from_str(&body_text).map_err(|e| format!("Invalid JSON from Docker: {e}"))
     }
 
-    async fn request_bytes(&self, method: reqwest::Method, path: &str) -> Result<Vec<u8>, String> {
+    async fn request_bytes_limited(
+        &self,
+        method: reqwest::Method,
+        path: &str,
+        max_bytes: usize,
+    ) -> Result<Vec<u8>, String> {
         let url = self.url(path);
-        let resp = self
+        let mut resp = self
             .http
             .request(method, &url)
             .send()
@@ -268,10 +276,7 @@ impl DockerClient {
             return Err(map_docker_error(status.as_u16(), &body_text));
         }
 
-        resp.bytes()
-            .await
-            .map(|b| b.to_vec())
-            .map_err(|e| format!("Failed to read bytes: {e}"))
+        read_response_bytes_limited(&mut resp, max_bytes).await
     }
 
     async fn request_no_content(
@@ -488,8 +493,8 @@ impl DockerClient {
             return Err(map_docker_error(status.as_u16(), &body_text));
         }
 
-        let raw = resp
-            .bytes()
+        let mut resp = resp;
+        let raw = read_response_bytes_limited(&mut resp, MAX_EXEC_OUTPUT_BYTES)
             .await
             .map_err(|e| format!("Failed to read exec output: {e}"))?;
 
@@ -546,13 +551,14 @@ impl DockerClient {
         debug!(container_id = %container_id, path = %path, "Reading file from container");
         let encoded_path = urlencoding::encode(path);
         let tar_bytes = self
-            .request_bytes(
+            .request_bytes_limited(
                 reqwest::Method::GET,
                 &format!("/containers/{container_id}/archive?path={encoded_path}"),
+                MAX_ARCHIVE_RESPONSE_BYTES,
             )
             .await?;
 
-        extract_file_from_tar(&tar_bytes)
+        extract_file_from_tar(&tar_bytes, MAX_ARCHIVE_FILE_BYTES)
     }
 
     /// Write a file to a container via the archive API.
@@ -680,7 +686,7 @@ fn demux_docker_stream(raw: &[u8]) -> String {
 
 /// Extract the first regular file's content from a tar archive (Docker GET /archive response).
 /// Skips directory entries to find the actual file content.
-fn extract_file_from_tar(tar_bytes: &[u8]) -> Result<Vec<u8>, String> {
+fn extract_file_from_tar(tar_bytes: &[u8], max_bytes: usize) -> Result<Vec<u8>, String> {
     let mut archive = tar::Archive::new(tar_bytes);
     let entries = archive
         .entries()
@@ -692,14 +698,53 @@ fn extract_file_from_tar(tar_bytes: &[u8]) -> Result<Vec<u8>, String> {
         if entry_type.is_dir() {
             continue;
         }
+        let file_size = entry
+            .header()
+            .size()
+            .map_err(|e| format!("Failed to read tar header size: {e}"))?;
+        if file_size > max_bytes as u64 {
+            return Err(format!(
+                "File from tar exceeds maximum size ({file_size} > {max_bytes} bytes)"
+            ));
+        }
         let mut content = Vec::new();
         entry
             .read_to_end(&mut content)
             .map_err(|e| format!("Failed to read file from tar: {e}"))?;
+        if content.len() > max_bytes {
+            return Err(format!(
+                "File from tar exceeds maximum size ({} > {max_bytes} bytes)",
+                content.len()
+            ));
+        }
         return Ok(content);
     }
 
     Err("No regular file found in tar archive".to_string())
+}
+
+async fn read_response_bytes_limited(
+    resp: &mut reqwest::Response,
+    max_bytes: usize,
+) -> Result<Vec<u8>, String> {
+    let mut buffer = Vec::new();
+    while let Some(chunk) = resp
+        .chunk()
+        .await
+        .map_err(|e| format!("Failed to read bytes: {e}"))?
+    {
+        let new_len = buffer
+            .len()
+            .checked_add(chunk.len())
+            .ok_or_else(|| "Response size overflow".to_string())?;
+        if new_len > max_bytes {
+            return Err(format!(
+                "Response exceeds maximum size ({new_len} > {max_bytes} bytes)"
+            ));
+        }
+        buffer.extend_from_slice(&chunk);
+    }
+    Ok(buffer)
 }
 
 /// Create a tar archive containing a single file.
@@ -769,7 +814,7 @@ mod tests {
     fn test_create_and_extract_tar() {
         let content = b"Hello, container!";
         let tar_bytes = create_tar_with_file("test.txt", content).unwrap();
-        let extracted = extract_file_from_tar(&tar_bytes).unwrap();
+        let extracted = extract_file_from_tar(&tar_bytes, 1024).unwrap();
         assert_eq!(extracted, content);
     }
 
@@ -911,7 +956,15 @@ mod tests {
             .unwrap();
 
         let tar_bytes = builder.into_inner().unwrap();
-        let extracted = extract_file_from_tar(&tar_bytes).unwrap();
+        let extracted = extract_file_from_tar(&tar_bytes, 1024).unwrap();
         assert_eq!(extracted, content);
+    }
+
+    #[test]
+    fn test_extract_tar_rejects_large_file() {
+        let content = vec![b'a'; 32];
+        let tar_bytes = create_tar_with_file("large.txt", &content).unwrap();
+        let err = extract_file_from_tar(&tar_bytes, 16).unwrap_err();
+        assert!(err.contains("exceeds maximum size"));
     }
 }

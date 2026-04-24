@@ -380,6 +380,17 @@ impl Command for UpdateSkillCmd {
                 )));
             }
 
+            let mut metadata_map = parsed.metadata.clone();
+            if !parsed.user_invocable {
+                metadata_map.insert("user_invocable".to_string(), serde_json::Value::Bool(false));
+            }
+            if parsed.disable_model_invocation {
+                metadata_map.insert(
+                    "disable_model_invocation".to_string(),
+                    serde_json::Value::Bool(true),
+                );
+            }
+
             input.name = Some(parsed.name);
             input.description = Some(parsed.description);
             input.license = parsed.license;

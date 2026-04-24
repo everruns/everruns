@@ -105,8 +105,8 @@ describe("getPreviewType", () => {
       expect(getPreviewType("webp", "base64")).toBe("image");
     });
 
-    it("returns 'image' for SVG files with base64 encoding", () => {
-      expect(getPreviewType("svg", "base64")).toBe("image");
+    it("returns 'binary' for SVG files with base64 encoding", () => {
+      expect(getPreviewType("svg", "base64")).toBe("binary");
     });
   });
 
@@ -179,6 +179,7 @@ describe("canPreview", () => {
     it("returns false for binary files", () => {
       expect(canPreview("exe", "base64")).toBe(false);
       expect(canPreview("bin", "base64")).toBe(false);
+      expect(canPreview("svg", "base64")).toBe(false);
     });
 
     it("returns false for unknown file types", () => {
@@ -310,13 +311,6 @@ describe("ImagePreview", () => {
 
       const img = screen.getByRole("img");
       expect(img).toHaveAttribute("src", `data:image/webp;base64,${sampleBase64}`);
-    });
-
-    it("sets correct data URL for SVG", () => {
-      render(<ImagePreview content={sampleBase64} extension="svg" fileName="test.svg" />);
-
-      const img = screen.getByRole("img");
-      expect(img).toHaveAttribute("src", `data:image/svg+xml;base64,${sampleBase64}`);
     });
   });
 

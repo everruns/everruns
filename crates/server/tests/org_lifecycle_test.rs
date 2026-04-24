@@ -502,3 +502,31 @@ async fn test_api_keys_remain_visible_across_active_org_switches() {
         "keys created while another org is active should still be visible to the user"
     );
 }
+
+#[tokio::test]
+async fn test_api_key_creation_enforces_per_user_limit() {
+    let server = TestServer::in_memory().await;
+
+    for idx in 0..25 {
+        server
+            .post(
+                "/v1/auth/api-keys",
+                json!({ "name": format!("quota-key-{idx}") }),
+            )
+            .await
+            .assert_status(StatusCode::CREATED);
+    }
+
+    let over_limit: Value = server
+        .post("/v1/auth/api-keys", json!({"name": "quota-key-over-limit"}))
+        .await
+        .assert_status(StatusCode::CONFLICT)
+        .json();
+    assert!(
+        over_limit["error"]
+            .as_str()
+            .expect("error message")
+            .contains("API key limit reached"),
+        "expected API key limit error, got: {over_limit:?}"
+    );
+}

@@ -760,6 +760,66 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn start_run_steers_pending_workflow_with_claimed_task() {
+        let shared = Arc::new(InMemoryWorkflowEventStore::new());
+        let workflow_id = Uuid::now_v7();
+        shared
+            .create_workflow(workflow_id, "turn_workflow", serde_json::json!({}), None)
+            .await
+            .expect("create workflow");
+        shared
+            .update_workflow_status(workflow_id, WorkflowStatus::Pending, None, None)
+            .await
+            .expect("mark pending");
+        shared
+            .enqueue_task(everruns_durable::TaskDefinition {
+                workflow_id: Some(workflow_id),
+                activity_id: format!("input_{}", Uuid::now_v7()),
+                activity_type: "process_input".to_string(),
+                input: serde_json::json!({}),
+                options: Default::default(),
+            })
+            .await
+            .expect("enqueue task");
+        let claimed = shared
+            .claim_task("worker-1", &["process_input".to_string()], 1)
+            .await
+            .expect("claim task");
+        assert_eq!(claimed.len(), 1);
+
+        let runner = DurableRunner::new_with_shared_store(shared.clone());
+        let session_id = SessionId::from_uuid(workflow_id);
+
+        runner
+            .start_run(
+                1,
+                session_id,
+                HarnessId::new(),
+                None,
+                MessageId::new(),
+                None,
+            )
+            .await
+            .expect("start_run should send steering signal");
+
+        let signals = shared
+            .consume_pending_signals(workflow_id)
+            .await
+            .expect("signals should load");
+        assert_eq!(signals.len(), 1);
+        assert_eq!(
+            signals[0].signal_type,
+            everruns_durable::signal_types::USER_MESSAGE
+        );
+
+        let additional_claimed = shared
+            .claim_task("worker-2", &["process_input".to_string()], 10)
+            .await
+            .expect("no additional process_input tasks should be available");
+        assert!(additional_claimed.is_empty());
+    }
+
+    #[tokio::test]
     async fn resume_after_tool_results_enqueues_reason() {
         let shared = Arc::new(InMemoryWorkflowEventStore::new());
         let session_id = SessionId::new();

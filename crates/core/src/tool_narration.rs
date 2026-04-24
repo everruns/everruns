@@ -168,7 +168,7 @@ fn ukrainian_phrase(
     let args = &tool_call.arguments;
     match tool_call.name.as_str() {
         name if is_shell_exec_tool(name) => {
-            let command = arg_str(args, &["command"])
+            let command = arg_str(args, &["commands", "command"])
                 .map(|value| format!("`{}`", truncate(value, 48)))
                 .unwrap_or_else(|| fallback_name.to_string());
             match phase {
@@ -489,7 +489,7 @@ pub fn render_tool_narration_with_locale(
 
     match tool_call.name.as_str() {
         name if is_shell_exec_tool(name) => {
-            let command = arg_str(args, &["command"])
+            let command = arg_str(args, &["commands", "command"])
                 .map(|value| format!("`{}`", truncate(value, 48)))
                 .unwrap_or_else(|| fallback_name.clone());
             generic_phrase("Running", "Ran", "Failed to run", Some(command), phase)
@@ -882,6 +882,24 @@ mod tests {
     }
 
     #[test]
+    fn renders_bash_narration_with_commands_arg() {
+        let tool_call = ToolCall {
+            id: "call_1".to_string(),
+            name: "bash".to_string(),
+            arguments: json!({ "commands": "echo hi" }),
+        };
+
+        assert_eq!(
+            render_tool_narration(None, &tool_call, ToolNarrationPhase::Started),
+            "Running `echo hi`"
+        );
+        assert_eq!(
+            render_tool_narration(None, &tool_call, ToolNarrationPhase::Completed),
+            "Ran `echo hi`"
+        );
+    }
+
+    #[test]
     fn renders_group_headline_from_multiple_tool_calls() {
         let tool_calls = vec![
             ToolCall {
@@ -963,6 +981,34 @@ mod tests {
                 Some("uk-UA"),
             ),
             "Запустив `npm test`"
+        );
+    }
+
+    #[test]
+    fn renders_ukrainian_bash_narration_with_commands_arg() {
+        let tool_call = ToolCall {
+            id: "call_1".to_string(),
+            name: "bash".to_string(),
+            arguments: json!({ "commands": "echo hi" }),
+        };
+
+        assert_eq!(
+            render_tool_narration_with_locale(
+                None,
+                &tool_call,
+                ToolNarrationPhase::Started,
+                Some("uk-UA"),
+            ),
+            "Запускаю `echo hi`"
+        );
+        assert_eq!(
+            render_tool_narration_with_locale(
+                None,
+                &tool_call,
+                ToolNarrationPhase::Completed,
+                Some("uk-UA"),
+            ),
+            "Запустив `echo hi`"
         );
     }
 

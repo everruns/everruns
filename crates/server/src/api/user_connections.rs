@@ -1456,11 +1456,7 @@ async fn json_response_or_error<T: serde::de::DeserializeOwned>(
     let status = response.status();
     if !status.is_success() {
         let body = response.text().await.unwrap_or_default();
-        let truncated: &str = if body.len() > 512 {
-            &body[..512]
-        } else {
-            &body
-        };
+        let truncated = truncate_utf8_for_log(&body, 512);
         tracing::error!(
             status = %status,
             body_len = body.len(),
@@ -1472,6 +1468,17 @@ async fn json_response_or_error<T: serde::de::DeserializeOwned>(
         .json()
         .await
         .map_err(|e| sanitized_bad_gateway("External service response parse", &e))
+}
+
+fn truncate_utf8_for_log(input: &str, max_bytes: usize) -> &str {
+    if input.len() <= max_bytes {
+        return input;
+    }
+    let mut end = max_bytes;
+    while end > 0 && !input.is_char_boundary(end) {
+        end -= 1;
+    }
+    &input[..end]
 }
 
 #[cfg(test)]
@@ -1562,6 +1569,14 @@ mod tests {
         let query: GitHubInstallationCallbackQuery = serde_json::from_str(json).unwrap();
         assert_eq!(query.installation_id, 12345);
         assert_eq!(query.state, None);
+    }
+
+    #[test]
+    fn truncate_utf8_for_log_handles_multibyte_boundary() {
+        let value = format!("{}étail", "a".repeat(511));
+        let truncated = truncate_utf8_for_log(&value, 512);
+        assert_eq!(truncated, "a".repeat(511));
+        assert!(truncated.is_char_boundary(truncated.len()));
     }
 
     // =========================================================================

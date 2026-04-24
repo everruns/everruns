@@ -514,33 +514,42 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
                 WorkflowStatus::Pending => (None, None),
             };
 
-        let query = if reset_to_pending {
-            // Clear all transient fields when resetting for a new turn
-            r#"
-            UPDATE durable_workflow_instances
-            SET status = $2,
-                result = NULL,
-                error = NULL,
-                started_at = NULL,
-                completed_at = NULL
-            WHERE id = $1
-            "#
-        } else {
-            r#"
-            UPDATE durable_workflow_instances
-            SET status = $2,
-                result = COALESCE($3, result),
-                error = COALESCE($4, error),
-                started_at = COALESCE($5, started_at),
-                completed_at = COALESCE($6, completed_at)
-            WHERE id = $1
-            "#
-        };
-
         let result = result.map(sanitize_json_null_bytes);
         let error_json = error_json.map(sanitize_json_null_bytes);
 
-        sqlx::query(query)
+        if reset_to_pending {
+            // Clear all transient fields when resetting for a new turn.
+            sqlx::query(
+                r#"
+                UPDATE durable_workflow_instances
+                SET status = $2,
+                    result = NULL,
+                    error = NULL,
+                    started_at = NULL,
+                    completed_at = NULL
+                WHERE id = $1
+                "#,
+            )
+            .bind(workflow_id)
+            .bind(&status_str)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| {
+                error!("Failed to update workflow status: {}", e);
+                StoreError::Database(e.to_string())
+            })?;
+        } else {
+            sqlx::query(
+                r#"
+                UPDATE durable_workflow_instances
+                SET status = $2,
+                    result = COALESCE($3, result),
+                    error = COALESCE($4, error),
+                    started_at = COALESCE($5, started_at),
+                    completed_at = COALESCE($6, completed_at)
+                WHERE id = $1
+                "#,
+            )
             .bind(workflow_id)
             .bind(&status_str)
             .bind(&result)
@@ -553,6 +562,7 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
                 error!("Failed to update workflow status: {}", e);
                 StoreError::Database(e.to_string())
             })?;
+        }
 
         debug!(%workflow_id, %status_str, "updated workflow status");
         Ok(())
@@ -947,6 +957,29 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
         let status: String = row.get("status");
         if status == "running" {
             // Active turn — cannot claim, caller should send steering signal
+            tx.rollback().await.ok();
+            return Ok(false);
+        }
+
+        let has_claimed_task = sqlx::query_scalar::<_, bool>(
+            r#"
+            SELECT EXISTS(
+                SELECT 1
+                FROM durable_task_queue
+                WHERE workflow_id = $1
+                  AND status = 'claimed'
+            )
+            "#,
+        )
+        .bind(workflow_id)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|e| {
+            error!("Failed to check claimed workflow tasks: {}", e);
+            StoreError::Database(e.to_string())
+        })?;
+
+        if has_claimed_task {
             tx.rollback().await.ok();
             return Ok(false);
         }

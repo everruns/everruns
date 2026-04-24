@@ -518,6 +518,7 @@ impl TestServer {
         api_routes = api_routes.merge(auth::api_key_routes(auth::ApiKeyState {
             db: db.clone(),
             auth: auth_state.clone(),
+            resource_limits: everruns_server::server::ResourceLimitsConfig::default(),
         }));
 
         let root_routes = Router::new()

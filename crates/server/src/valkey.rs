@@ -75,6 +75,8 @@ impl ValkeyClient {
     /// Check rate limit using sliding window counter.
     ///
     /// Returns `Ok(remaining)` if allowed, `Err(())` if limit exceeded.
+    ///
+    /// Fail-open behavior: Valkey command errors are logged and treated as allowed.
     /// `key`: rate limit key (e.g., `rl:login:192.168.1.1`)
     /// `limit`: max requests in the window
     /// `window_secs`: window duration in seconds
@@ -91,7 +93,7 @@ impl ValkeyClient {
 
         let window_ms = (window_secs * 1000) as i64;
 
-        let result: i64 = self
+        let result: i64 = match self
             .client
             .eval(
                 RATE_LIMIT_SCRIPT,
@@ -99,10 +101,14 @@ impl ValkeyClient {
                 vec![limit as i64, window_ms, now],
             )
             .await
-            .map_err(|e| {
+        {
+            Ok(result) => result,
+            Err(e) => {
                 // Fail open: on Valkey errors, allow the request (availability > strictness)
                 tracing::error!(error = %e, key = %key, "Valkey rate limit check failed, allowing request");
-            })?;
+                return Ok(limit);
+            }
+        };
 
         if result >= 0 {
             Ok(result as u32)

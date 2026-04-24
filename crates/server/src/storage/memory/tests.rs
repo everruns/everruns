@@ -260,6 +260,60 @@ async fn test_events_sequence() {
     assert_eq!(events[2].sequence, 3);
 }
 
+#[tokio::test]
+async fn test_unpin_session_is_scoped_by_org() {
+    let db = InMemoryDatabase::new();
+    let user_id = Uuid::now_v7();
+
+    let session = db
+        .create_session(CreateSessionRow {
+            org_id: DEFAULT_ORG_ID,
+            harness_id: None,
+            agent_id: None,
+            agent_identity_id: None,
+            owner_principal_id: everruns_core::PrincipalId::from_seed(1),
+            resolved_owner_user_id: Some(user_id),
+            title: Some("Pinned Session".to_string()),
+            locale: None,
+            tags: vec![],
+            model_id: None,
+            capabilities: serde_json::json!([]),
+            tools: serde_json::json!([]),
+            mcp_servers: serde_json::json!({}),
+            system_prompt: None,
+            initial_files: serde_json::Value::Array(vec![]),
+            hints: None,
+            network_access: None,
+            max_iterations: None,
+            blueprint_id: None,
+            blueprint_config: None,
+        })
+        .await
+        .unwrap();
+
+    db.pin_session(user_id, session.id, DEFAULT_ORG_ID)
+        .await
+        .unwrap();
+
+    let removed_wrong_org = db
+        .unpin_session(user_id, session.id, DEFAULT_ORG_ID + 1)
+        .await
+        .unwrap();
+    assert!(!removed_wrong_org);
+
+    let pinned_after_wrong_org = db
+        .list_pinned_session_ids(user_id, DEFAULT_ORG_ID)
+        .await
+        .unwrap();
+    assert_eq!(pinned_after_wrong_org, vec![session.id]);
+
+    let removed_correct_org = db
+        .unpin_session(user_id, session.id, DEFAULT_ORG_ID)
+        .await
+        .unwrap();
+    assert!(removed_correct_org);
+}
+
 /// Helper: create an agent + session for event filter tests.
 async fn create_session_with_events(db: &InMemoryDatabase) -> SessionId {
     let agent = db
@@ -2002,23 +2056,50 @@ async fn create_session_with_content_events(db: &InMemoryDatabase) -> SessionId 
     let events_data = vec![
         (
             "input.message",
-            serde_json::json!({"content": "Hello, how are you?"}),
+            serde_json::json!({
+                "message": {
+                    "id": "message_01933b5a00007000800000000000001",
+                    "role": "user",
+                    "content": [{"type": "text", "text": "Hello, how are you?"}]
+                }
+            }),
         ),
         (
             "output.message.completed",
-            serde_json::json!({"content": "I am doing great, thank you!"}),
+            serde_json::json!({
+                "message": {
+                    "id": "message_01933b5a00007000800000000000002",
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "I am doing great, thank you!"}]
+                }
+            }),
         ),
         (
             "input.message",
-            serde_json::json!({"content": "Tell me about Rust programming"}),
+            serde_json::json!({
+                "message": {
+                    "id": "message_01933b5a00007000800000000000003",
+                    "role": "user",
+                    "content": [{"type": "text", "text": "Tell me about Rust programming"}]
+                }
+            }),
         ),
         (
             "tool.completed",
-            serde_json::json!({"tool_name": "search", "content": "Rust is a systems language"}),
+            serde_json::json!({
+                "tool_name": "search",
+                "result": [{"type": "text", "text": "Rust is a systems language"}]
+            }),
         ),
         (
             "output.message.completed",
-            serde_json::json!({"content": "Here is information about Rust"}),
+            serde_json::json!({
+                "message": {
+                    "id": "message_01933b5a00007000800000000000004",
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "Here is information about Rust"}]
+                }
+            }),
         ),
         // Event with no content field
         ("turn.started", serde_json::json!({"turn_id": "abc123"})),

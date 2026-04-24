@@ -358,7 +358,7 @@ pub struct WorkerServiceImpl {
     event_service: EventService,
     session_service: SessionService,
     session_file_service: SessionFileService,
-    llm_resolver_service: LlmResolverService,
+    llm_resolver_service: Arc<LlmResolverService>,
     mcp_server_service: McpServerService,
     capability_service: Arc<CapabilityService>,
     durable_store: Option<Arc<PostgresWorkflowEventStore>>,
@@ -400,6 +400,7 @@ impl WorkerServiceImpl {
             runner,
             platform_definition,
             None,
+            None,
         )
     }
 
@@ -412,6 +413,7 @@ impl WorkerServiceImpl {
         virtual_registry: Option<
             Arc<crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry>,
         >,
+        llm_resolver_service: Option<Arc<LlmResolverService>>,
     ) -> Self {
         let capability_registry = platform_definition.capability_registry().clone();
         let session_service = {
@@ -427,7 +429,8 @@ impl WorkerServiceImpl {
         } else {
             SessionFileService::new(db.clone())
         };
-        let llm_resolver_service = LlmResolverService::new(db.clone(), encryption.clone());
+        let llm_resolver_service = llm_resolver_service
+            .unwrap_or_else(|| Arc::new(LlmResolverService::new(db.clone(), encryption.clone())));
         let mcp_server_service = McpServerService::new(db.clone(), encryption.clone());
         let capability_service = Arc::new(CapabilityService::with_registry(
             db.clone(),

@@ -477,6 +477,16 @@ fn is_disallowed_hidden(component: &str) -> bool {
     !ALLOWED_DOT_ENTRIES.contains(&component)
 }
 
+/// Returns true when any path component is hidden and not allowlisted.
+fn has_disallowed_hidden_component(path: &Path) -> bool {
+    path.components().any(|component| {
+        let std::path::Component::Normal(name) = component else {
+            return false;
+        };
+        is_disallowed_hidden(&name.to_string_lossy())
+    })
+}
+
 /// Strip glob metacharacters from a pattern to find the directory prefix.
 /// e.g. ".agents/*" → ".agents", "src/**/*.rs" → "src", "." → "."
 fn glob_base_dir(pattern: &str) -> &str {
@@ -522,6 +532,16 @@ fn expand_initial_files_globs(
             })?;
 
             if resolved.is_dir() {
+                // Reject hidden directory roots unless explicitly allowlisted.
+                let rel = resolved.strip_prefix(&base_canonical)?;
+                if has_disallowed_hidden_component(rel) {
+                    eprintln!(
+                        "Warning: skipping hidden directory: {} (only {:?} allowed)",
+                        resolved.display(),
+                        ALLOWED_DOT_ENTRIES
+                    );
+                    continue;
+                }
                 // Directory: collect all files, computing workspace paths relative to base_dir
                 collect_dir_files(&resolved, &base_canonical, writable, &mut all_files)?;
             } else if resolved.is_file() {
@@ -659,18 +679,13 @@ fn collect_single_file(
 
     // Check for disallowed hidden path components (e.g. .env, .ssh/config)
     let rel = canonical.strip_prefix(workspace_base)?;
-    for component in rel.components() {
-        if let std::path::Component::Normal(c) = component {
-            let name = c.to_string_lossy();
-            if is_disallowed_hidden(&name) {
-                eprintln!(
-                    "Warning: skipping hidden file: {} (only {:?} allowed)",
-                    file_path.display(),
-                    ALLOWED_DOT_ENTRIES
-                );
-                return Ok(());
-            }
-        }
+    if has_disallowed_hidden_component(rel) {
+        eprintln!(
+            "Warning: skipping hidden file: {} (only {:?} allowed)",
+            file_path.display(),
+            ALLOWED_DOT_ENTRIES
+        );
+        return Ok(());
     }
 
     let rel_normalized = rel.to_string_lossy().replace('\\', "/");
@@ -1264,6 +1279,23 @@ mod tests {
         let agent = serde_json::json!({
             "name": "test",
             "initial_files": [".env", "ok.txt"]
+        });
+
+        let files = expand_initial_files_globs(&agent, dir.path(), false).unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, "/workspace/ok.txt");
+    }
+
+    #[test]
+    fn test_expand_initial_files_rejects_hidden_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join(".ssh")).unwrap();
+        std::fs::write(dir.path().join(".ssh/config"), "Host *").unwrap();
+        std::fs::write(dir.path().join("ok.txt"), "safe").unwrap();
+
+        let agent = serde_json::json!({
+            "name": "test",
+            "initial_files": [".ssh", "ok.txt"]
         });
 
         let files = expand_initial_files_globs(&agent, dir.path(), false).unwrap();
