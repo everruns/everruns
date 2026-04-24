@@ -211,6 +211,12 @@ impl NatsTaskNotificationBroadcaster {
     }
 }
 
+impl Drop for NatsTaskNotificationBroadcaster {
+    fn drop(&mut self) {
+        let _ = self.shutdown_tx.try_send(());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::activity_type_from_message;
@@ -232,11 +238,5 @@ mod tests {
             activity_type_from_message("task.available.foo", &[0xFF], "task.available.");
 
         assert_eq!(activity_type, "foo");
-    }
-}
-
-impl Drop for NatsTaskNotificationBroadcaster {
-    fn drop(&mut self) {
-        let _ = self.shutdown_tx.try_send(());
     }
 }
