@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { AlertCircle, Check, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import type { ToolCompletedData } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
+import { formatResultDetails, getResultPreview } from "./tool-activity-utils";
 import { getFullText } from "./tool-call-utils";
 import { useLocale } from "@/providers/locale-provider";
 
@@ -23,22 +24,21 @@ interface ToolActivityTimelineGroupProps {
 function resultPreview(result?: ToolCompletedData): string | null {
   if (!result) return null;
   if (result.error) return result.error;
-
-  const fullText = getFullText(result.result);
-  if (!fullText) return null;
-
-  const preview = fullText
-    .split("\n")
-    .map((line) => line.trim())
-    .find((line) => line.length > 0);
-
-  return preview ?? null;
+  return getResultPreview(
+    { id: result.tool_call_id, name: result.tool_name, arguments: {} },
+    result,
+  );
 }
 
 function TimelineRow({ row }: { row: TimelineToolRow }) {
   const { t } = useLocale();
   const [expanded, setExpanded] = useState(false);
-  const fullText = getFullText(row.result?.result);
+  const fullText = row.result
+    ? formatResultDetails(
+        { id: row.result.tool_call_id, name: row.result.tool_name, arguments: {} },
+        getFullText(row.result.result),
+      )
+    : "";
   const preview = resultPreview(row.result);
   const hasDetails = fullText.length > 0;
 

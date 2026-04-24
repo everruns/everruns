@@ -40,4 +40,41 @@ describe("ToolActivityTimelineGroup", () => {
     expect(screen.getByText("Read AGENTS.md")).toBeInTheDocument();
     expect(screen.getByText("Searched files for Doppler")).toBeInTheDocument();
   });
+
+  it("redacts secret_store values in preview and details", () => {
+    renderWithLocale(
+      <ToolActivityTimelineGroup
+        headline="Reading secret"
+        rows={[
+          {
+            id: "tool-1",
+            label: "Read secret",
+            state: "completed",
+            result: {
+              tool_call_id: "tool-1",
+              tool_name: "secret_store",
+              success: true,
+              status: "success",
+              result: [
+                {
+                  type: "text",
+                  text: JSON.stringify({
+                    operation: "get",
+                    name: "OPENAI_API_KEY",
+                    found: true,
+                    value: "sk-live-secret",
+                  }),
+                },
+              ],
+            },
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.getByText("OPENAI_API_KEY found")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /details/i })).toBeInTheDocument();
+    expect(screen.queryByText("sk-live-secret")).not.toBeInTheDocument();
+    expect(screen.getByText(/value: \[hidden\]/)).toBeInTheDocument();
+  });
 });
