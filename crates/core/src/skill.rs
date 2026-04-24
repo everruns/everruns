@@ -679,6 +679,13 @@ pub fn substitute_activation_vars(content: &str, session_id: &str, skill_dir: &s
 // gate forced off; the function itself is preserved for its unit tests and
 // to simplify a future re-enable PR.
 //
+// The default `ProcessCommandExecutor` spawns `bash -c` on the worker host.
+// That is deliberately dormant: when command substitution is re-enabled, the
+// executor MUST be replaced with a session-sandbox-backed implementation so
+// commands run against virtual bash (bashkit / managed session sandbox) and
+// the session virtual filesystem rather than the worker. Flipping the trust
+// gate without that replacement would still be RCE against the worker host.
+//
 // See `specs/skills-registry.md` ("Activation Substitution Pipeline") and
 // `specs/threat-model.md` entry TM-TOOL-020 for the rationale.
 

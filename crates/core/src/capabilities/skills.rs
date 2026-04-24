@@ -33,6 +33,12 @@
 // follow-up can flip the gate once a non-user-spoofable provenance signal
 // (e.g. a `mount_capability_id` column populated only by mount application
 // code) is added to `SessionFile` / `SessionFileStore`. See EVE-388.
+//
+// Re-enable must ALSO replace `ProcessCommandExecutor` (which spawns worker-host
+// `bash -c`) with a session-sandbox-backed executor: execution MUST run against
+// virtual bash (bashkit / managed session sandbox) and the session virtual
+// filesystem, not the worker host. Adding provenance alone would still be RCE
+// against the worker. See threat-model TM-TOOL-020 step 6.
 
 use super::{Capability, CapabilityStatus, SystemPromptContext};
 use crate::tool_types::{BuiltinTool, DeferrablePolicy, ToolDefinition, ToolHints, ToolPolicy};
