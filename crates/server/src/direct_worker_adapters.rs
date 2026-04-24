@@ -3186,8 +3186,19 @@ mod tests {
     /// org 2's platform store.
     #[tokio::test]
     async fn platform_store_cross_org_isolation() {
+        use crate::storage::models::CreateOrganizationRow;
+
         let adapters = test_adapters();
         let agent_id = seed_agent(&adapters.db).await;
+        let org2 = adapters
+            .db
+            .create_organization(CreateOrganizationRow {
+                public_id: "org_00000000000000000000000000000999".to_string(),
+                name: "Platform Store Org 2".to_string(),
+                created_by: None,
+            })
+            .await
+            .expect("create org 2");
         let harness_org1 = seed_harness_for_platform_store(
             &adapters.db,
             everruns_core::DEFAULT_ORG_ID,
@@ -3195,15 +3206,21 @@ mod tests {
             false,
         )
         .await;
-        let harness_org2 =
-            seed_harness_for_platform_store(&adapters.db, 999, "org2-session-harness", false).await;
+        let harness_org2 = seed_harness_for_platform_store(
+            &adapters.db,
+            org2.org_id,
+            "org2-session-harness",
+            false,
+        )
+        .await;
         let owner_org1 = seed_platform_owner(
             &adapters.db,
             everruns_core::DEFAULT_ORG_ID,
             "org1-owner@example.com",
         )
         .await;
-        let owner_org2 = seed_platform_owner(&adapters.db, 999, "org2-owner@example.com").await;
+        let owner_org2 =
+            seed_platform_owner(&adapters.db, org2.org_id, "org2-owner@example.com").await;
         let session_org1 = seed_platform_session(
             &adapters.db,
             everruns_core::DEFAULT_ORG_ID,
@@ -3212,7 +3229,7 @@ mod tests {
         )
         .await;
         let session_org2 =
-            seed_platform_session(&adapters.db, 999, harness_org2, Some(owner_org2)).await;
+            seed_platform_session(&adapters.db, org2.org_id, harness_org2, Some(owner_org2)).await;
 
         // Agent seeded in org 1 should be visible via org 1's platform store
         let store_org1 = adapters.platform_store(everruns_core::DEFAULT_ORG_ID, session_org1);
@@ -3223,12 +3240,12 @@ mod tests {
         assert!(agent.is_some(), "agent should be visible in org 1");
 
         // Same agent must NOT be visible via org 2's platform store
-        let store_org2 = adapters.platform_store(999, session_org2);
+        let store_org2 = adapters.platform_store(org2.org_id, session_org2);
         let agent = store_org2
             .get_agent_by_id(everruns_core::AgentId::from_uuid(agent_id))
             .await
             .unwrap();
-        assert!(agent.is_none(), "agent must NOT be visible in org 999");
+        assert!(agent.is_none(), "agent must NOT be visible in org 2");
     }
 
     /// Regression test: image resolution must receive org_id so the gRPC
@@ -3810,8 +3827,19 @@ mod tests {
 
     #[tokio::test]
     async fn platform_store_agent_count_isolated_per_org() {
+        use crate::storage::models::CreateOrganizationRow;
+
         let adapters = test_adapters();
         seed_agent(&adapters.db).await;
+        let org2 = adapters
+            .db
+            .create_organization(CreateOrganizationRow {
+                public_id: "org_00000000000000000000000000000998".to_string(),
+                name: "Platform Store Agent Count Org 2".to_string(),
+                created_by: None,
+            })
+            .await
+            .expect("create org 2");
         let harness_org1 = seed_harness_for_platform_store(
             &adapters.db,
             everruns_core::DEFAULT_ORG_ID,
@@ -3819,16 +3847,21 @@ mod tests {
             false,
         )
         .await;
-        let harness_org999 =
-            seed_harness_for_platform_store(&adapters.db, 999, "agent-count-org999", false).await;
+        let harness_org2 =
+            seed_harness_for_platform_store(&adapters.db, org2.org_id, "agent-count-org2", false)
+                .await;
         let owner_org1 = seed_platform_owner(
             &adapters.db,
             everruns_core::DEFAULT_ORG_ID,
             "agent-count-org1-owner@example.com",
         )
         .await;
-        let owner_org999 =
-            seed_platform_owner(&adapters.db, 999, "agent-count-org999-owner@example.com").await;
+        let owner_org2 = seed_platform_owner(
+            &adapters.db,
+            org2.org_id,
+            "agent-count-org2-owner@example.com",
+        )
+        .await;
         let session_org1 = seed_platform_session(
             &adapters.db,
             everruns_core::DEFAULT_ORG_ID,
@@ -3836,14 +3869,14 @@ mod tests {
             Some(owner_org1),
         )
         .await;
-        let session_org999 =
-            seed_platform_session(&adapters.db, 999, harness_org999, Some(owner_org999)).await;
+        let session_org2 =
+            seed_platform_session(&adapters.db, org2.org_id, harness_org2, Some(owner_org2)).await;
 
         let store_org1 = adapters.platform_store(everruns_core::DEFAULT_ORG_ID, session_org1);
         let agents_org1 = store_org1.list_agents().await.unwrap();
         assert!(!agents_org1.is_empty(), "default org should have agents");
-        let store_org999 = adapters.platform_store(999, session_org999);
-        let agents_org999 = store_org999.list_agents().await.unwrap();
-        assert!(agents_org999.is_empty(), "org 999 should have no agents");
+        let store_org2 = adapters.platform_store(org2.org_id, session_org2);
+        let agents_org2 = store_org2.list_agents().await.unwrap();
+        assert!(agents_org2.is_empty(), "second org should have no agents");
     }
 }
