@@ -1,7 +1,7 @@
 {
-  "name": "everruns",
+  "name": "everruns-dev",
   "version": "0.1.0",
-  "description": "Interact with the Everruns agent platform — inspect state with read-only queries, run side-effecting workflows, and manage agents, harnesses, and sessions.",
+  "description": "Interact with the Everruns dev agent platform — inspect state with read-only queries, run side-effecting workflows, and manage agents, harnesses, and sessions.",
   "author": {
     "name": "Everruns",
     "url": "https://everruns.com"
@@ -11,7 +11,7 @@
   "license": "MIT",
   "keywords": [
     "agents",
-    "everruns",
+    "everruns-dev",
     "mcp",
     "harness",
     "llm"
