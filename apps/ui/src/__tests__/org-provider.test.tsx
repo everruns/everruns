@@ -244,7 +244,6 @@ describe("OrgProvider", () => {
     expect(mockPush).not.toHaveBeenCalled();
   });
 
-
   it("syncs cookie when current org auto-falls back after org list refresh", async () => {
     storageMap.set("everruns_current_org", SECOND_ORG.public_id);
     mockInitialOrgId = SECOND_ORG.public_id;
