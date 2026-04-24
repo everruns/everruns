@@ -270,25 +270,42 @@ impl OtelEventListener {
     fn handle_reason_started(&self, event: &Event, _data: &ReasonStartedData) {
         let span_key = self.span_key_from_context(event, "reason");
         let parent_key = self.parent_key_from_context(event);
+        let parent_span = parent_key.as_ref().and_then(|k| self.parent_span(k));
 
-        // Enter parent span context for proper nesting
-        let _parent_guard = parent_key.as_ref().and_then(|k| self.enter_parent(k));
-
-        let span = tracing::info_span!(
-            "reason",
-            "otel.name" = "reason",
-            "otel.kind" = "internal",
-            "gen_ai.operation.name" = gen_ai::operation::REASON,
-            "gen_ai.conversation.id" = %event.session_id,
-            // Filled on completed
-            "reason.success" = tracing::field::Empty,
-            "reason.has_tool_calls" = tracing::field::Empty,
-            "reason.tool_call_count" = tracing::field::Empty,
-            "gen_ai.usage.input_tokens" = tracing::field::Empty,
-            "gen_ai.usage.output_tokens" = tracing::field::Empty,
-            "duration_ms" = tracing::field::Empty,
-            "error.type" = tracing::field::Empty,
-        );
+        let span = if let Some(parent_span) = &parent_span {
+            tracing::info_span!(
+                parent: parent_span,
+                "reason",
+                "otel.name" = "reason",
+                "otel.kind" = "internal",
+                "gen_ai.operation.name" = gen_ai::operation::REASON,
+                "gen_ai.conversation.id" = %event.session_id,
+                // Filled on completed
+                "reason.success" = tracing::field::Empty,
+                "reason.has_tool_calls" = tracing::field::Empty,
+                "reason.tool_call_count" = tracing::field::Empty,
+                "gen_ai.usage.input_tokens" = tracing::field::Empty,
+                "gen_ai.usage.output_tokens" = tracing::field::Empty,
+                "duration_ms" = tracing::field::Empty,
+                "error.type" = tracing::field::Empty,
+            )
+        } else {
+            tracing::info_span!(
+                "reason",
+                "otel.name" = "reason",
+                "otel.kind" = "internal",
+                "gen_ai.operation.name" = gen_ai::operation::REASON,
+                "gen_ai.conversation.id" = %event.session_id,
+                // Filled on completed
+                "reason.success" = tracing::field::Empty,
+                "reason.has_tool_calls" = tracing::field::Empty,
+                "reason.tool_call_count" = tracing::field::Empty,
+                "gen_ai.usage.input_tokens" = tracing::field::Empty,
+                "gen_ai.usage.output_tokens" = tracing::field::Empty,
+                "duration_ms" = tracing::field::Empty,
+                "error.type" = tracing::field::Empty,
+            )
+        };
 
         let mut spans = self.active_spans.lock().unwrap();
         spans.insert(
@@ -346,17 +363,28 @@ impl OtelEventListener {
     fn handle_thinking_started(&self, event: &Event, data: &ReasonThinkingStartedData) {
         let span_key = self.span_key_from_context(event, "thinking");
         let parent_key = self.parent_key_from_context(event);
+        let parent_span = parent_key.as_ref().and_then(|k| self.parent_span(k));
 
-        let _parent_guard = parent_key.as_ref().and_then(|k| self.enter_parent(k));
-
-        let span = tracing::info_span!(
-            "thinking",
-            "otel.name" = "thinking",
-            "otel.kind" = "internal",
-            "gen_ai.operation.name" = gen_ai::operation::THINKING,
-            "gen_ai.request.model" = data.model.as_deref().unwrap_or(""),
-            "duration_ms" = tracing::field::Empty,
-        );
+        let span = if let Some(parent_span) = &parent_span {
+            tracing::info_span!(
+                parent: parent_span,
+                "thinking",
+                "otel.name" = "thinking",
+                "otel.kind" = "internal",
+                "gen_ai.operation.name" = gen_ai::operation::THINKING,
+                "gen_ai.request.model" = data.model.as_deref().unwrap_or(""),
+                "duration_ms" = tracing::field::Empty,
+            )
+        } else {
+            tracing::info_span!(
+                "thinking",
+                "otel.name" = "thinking",
+                "otel.kind" = "internal",
+                "gen_ai.operation.name" = gen_ai::operation::THINKING,
+                "gen_ai.request.model" = data.model.as_deref().unwrap_or(""),
+                "duration_ms" = tracing::field::Empty,
+            )
+        };
 
         let mut spans = self.active_spans.lock().unwrap();
         spans.insert(
@@ -396,7 +424,7 @@ impl OtelEventListener {
 
     fn handle_llm_generation(&self, event: &Event, data: &LlmGenerationData) {
         let parent_key = self.parent_key_from_context(event);
-        let _parent_guard = parent_key.as_ref().and_then(|k| self.enter_parent(k));
+        let parent_span = parent_key.as_ref().and_then(|k| self.parent_span(k));
 
         let model = &data.metadata.model;
         let provider = data.metadata.provider.as_deref().unwrap_or("unknown");
@@ -433,25 +461,48 @@ impl OtelEventListener {
             .unwrap_or(0);
 
         let span_name = format!("chat {}", model);
-        let span = tracing::info_span!(
-            "gen_ai.chat",
-            "otel.name" = %span_name,
-            "otel.kind" = "client",
-            "gen_ai.operation.name" = gen_ai::operation::CHAT,
-            "gen_ai.system" = %provider,
-            "gen_ai.request.model" = %model,
-            "gen_ai.response.model" = %model,
-            "gen_ai.response.id" = data.metadata.response_id.as_deref().unwrap_or(""),
-            "gen_ai.response.finish_reasons" = ?data.metadata.finish_reasons,
-            "gen_ai.usage.input_tokens" = input_tokens,
-            "gen_ai.usage.output_tokens" = output_tokens,
-            "gen_ai.usage.cache_read_tokens" = cache_read,
-            "gen_ai.usage.cache_creation_tokens" = cache_creation,
-            "gen_ai.output.type" = %output_type,
-            "gen_ai.conversation.id" = %event.session_id,
-            "duration_ms" = data.metadata.duration_ms.unwrap_or(0),
-            "time_to_first_token_ms" = data.metadata.time_to_first_token_ms.unwrap_or(0),
-        );
+        let span = if let Some(parent_span) = &parent_span {
+            tracing::info_span!(
+                parent: parent_span,
+                "gen_ai.chat",
+                "otel.name" = %span_name,
+                "otel.kind" = "client",
+                "gen_ai.operation.name" = gen_ai::operation::CHAT,
+                "gen_ai.system" = %provider,
+                "gen_ai.request.model" = %model,
+                "gen_ai.response.model" = %model,
+                "gen_ai.response.id" = data.metadata.response_id.as_deref().unwrap_or(""),
+                "gen_ai.response.finish_reasons" = ?data.metadata.finish_reasons,
+                "gen_ai.usage.input_tokens" = input_tokens,
+                "gen_ai.usage.output_tokens" = output_tokens,
+                "gen_ai.usage.cache_read_tokens" = cache_read,
+                "gen_ai.usage.cache_creation_tokens" = cache_creation,
+                "gen_ai.output.type" = %output_type,
+                "gen_ai.conversation.id" = %event.session_id,
+                "duration_ms" = data.metadata.duration_ms.unwrap_or(0),
+                "time_to_first_token_ms" = data.metadata.time_to_first_token_ms.unwrap_or(0),
+            )
+        } else {
+            tracing::info_span!(
+                "gen_ai.chat",
+                "otel.name" = %span_name,
+                "otel.kind" = "client",
+                "gen_ai.operation.name" = gen_ai::operation::CHAT,
+                "gen_ai.system" = %provider,
+                "gen_ai.request.model" = %model,
+                "gen_ai.response.model" = %model,
+                "gen_ai.response.id" = data.metadata.response_id.as_deref().unwrap_or(""),
+                "gen_ai.response.finish_reasons" = ?data.metadata.finish_reasons,
+                "gen_ai.usage.input_tokens" = input_tokens,
+                "gen_ai.usage.output_tokens" = output_tokens,
+                "gen_ai.usage.cache_read_tokens" = cache_read,
+                "gen_ai.usage.cache_creation_tokens" = cache_creation,
+                "gen_ai.output.type" = %output_type,
+                "gen_ai.conversation.id" = %event.session_id,
+                "duration_ms" = data.metadata.duration_ms.unwrap_or(0),
+                "time_to_first_token_ms" = data.metadata.time_to_first_token_ms.unwrap_or(0),
+            )
+        };
 
         let _guard = span.enter();
 
@@ -522,21 +573,36 @@ impl OtelEventListener {
     fn handle_act_started(&self, event: &Event, _data: &ActStartedData) {
         let span_key = self.span_key_from_context(event, "act");
         let parent_key = self.parent_key_from_context(event);
+        let parent_span = parent_key.as_ref().and_then(|k| self.parent_span(k));
 
-        let _parent_guard = parent_key.as_ref().and_then(|k| self.enter_parent(k));
-
-        let span = tracing::info_span!(
-            "act",
-            "otel.name" = "act",
-            "otel.kind" = "internal",
-            "gen_ai.operation.name" = gen_ai::operation::ACT,
-            "gen_ai.conversation.id" = %event.session_id,
-            // Filled on completed
-            "act.completed" = tracing::field::Empty,
-            "act.success_count" = tracing::field::Empty,
-            "act.error_count" = tracing::field::Empty,
-            "duration_ms" = tracing::field::Empty,
-        );
+        let span = if let Some(parent_span) = &parent_span {
+            tracing::info_span!(
+                parent: parent_span,
+                "act",
+                "otel.name" = "act",
+                "otel.kind" = "internal",
+                "gen_ai.operation.name" = gen_ai::operation::ACT,
+                "gen_ai.conversation.id" = %event.session_id,
+                // Filled on completed
+                "act.completed" = tracing::field::Empty,
+                "act.success_count" = tracing::field::Empty,
+                "act.error_count" = tracing::field::Empty,
+                "duration_ms" = tracing::field::Empty,
+            )
+        } else {
+            tracing::info_span!(
+                "act",
+                "otel.name" = "act",
+                "otel.kind" = "internal",
+                "gen_ai.operation.name" = gen_ai::operation::ACT,
+                "gen_ai.conversation.id" = %event.session_id,
+                // Filled on completed
+                "act.completed" = tracing::field::Empty,
+                "act.success_count" = tracing::field::Empty,
+                "act.error_count" = tracing::field::Empty,
+                "duration_ms" = tracing::field::Empty,
+            )
+        };
 
         let mut spans = self.active_spans.lock().unwrap();
         spans.insert(
@@ -577,45 +643,83 @@ impl OtelEventListener {
     fn handle_tool_started(&self, event: &Event, data: &ToolStartedData) {
         let tool_key = format!("tool:{}", data.tool_call.id);
         let parent_key = self.parent_key_from_context(event);
-
-        let _parent_guard = parent_key.as_ref().and_then(|k| self.enter_parent(k));
+        let parent_span = parent_key.as_ref().and_then(|k| self.parent_span(k));
 
         let span_name = format!("execute_tool {}", data.tool_call.name);
 
         let span = if self.record_content {
             let args_json = serde_json::to_string(&data.tool_call.arguments).unwrap_or_default();
-            tracing::info_span!(
-                "gen_ai.execute_tool",
-                "otel.name" = %span_name,
-                "otel.kind" = "internal",
-                "gen_ai.operation.name" = gen_ai::operation::EXECUTE_TOOL,
-                "gen_ai.tool.name" = %data.tool_call.name,
-                "gen_ai.tool.type" = gen_ai::tool_type::FUNCTION,
-                "gen_ai.tool.call.id" = %data.tool_call.id,
-                "gen_ai.conversation.id" = %event.session_id,
-                "gen_ai.tool.call.arguments" = %args_json,
-                // Filled on completed
-                "tool.success" = tracing::field::Empty,
-                "tool.status" = tracing::field::Empty,
-                "duration_ms" = tracing::field::Empty,
-                "error.type" = tracing::field::Empty,
-                "gen_ai.tool.call.result" = tracing::field::Empty,
-            )
+            if let Some(parent_span) = &parent_span {
+                tracing::info_span!(
+                    parent: parent_span,
+                    "gen_ai.execute_tool",
+                    "otel.name" = %span_name,
+                    "otel.kind" = "internal",
+                    "gen_ai.operation.name" = gen_ai::operation::EXECUTE_TOOL,
+                    "gen_ai.tool.name" = %data.tool_call.name,
+                    "gen_ai.tool.type" = gen_ai::tool_type::FUNCTION,
+                    "gen_ai.tool.call.id" = %data.tool_call.id,
+                    "gen_ai.conversation.id" = %event.session_id,
+                    "gen_ai.tool.call.arguments" = %args_json,
+                    // Filled on completed
+                    "tool.success" = tracing::field::Empty,
+                    "tool.status" = tracing::field::Empty,
+                    "duration_ms" = tracing::field::Empty,
+                    "error.type" = tracing::field::Empty,
+                    "gen_ai.tool.call.result" = tracing::field::Empty,
+                )
+            } else {
+                tracing::info_span!(
+                    "gen_ai.execute_tool",
+                    "otel.name" = %span_name,
+                    "otel.kind" = "internal",
+                    "gen_ai.operation.name" = gen_ai::operation::EXECUTE_TOOL,
+                    "gen_ai.tool.name" = %data.tool_call.name,
+                    "gen_ai.tool.type" = gen_ai::tool_type::FUNCTION,
+                    "gen_ai.tool.call.id" = %data.tool_call.id,
+                    "gen_ai.conversation.id" = %event.session_id,
+                    "gen_ai.tool.call.arguments" = %args_json,
+                    // Filled on completed
+                    "tool.success" = tracing::field::Empty,
+                    "tool.status" = tracing::field::Empty,
+                    "duration_ms" = tracing::field::Empty,
+                    "error.type" = tracing::field::Empty,
+                    "gen_ai.tool.call.result" = tracing::field::Empty,
+                )
+            }
         } else {
-            tracing::info_span!(
-                "gen_ai.execute_tool",
-                "otel.name" = %span_name,
-                "otel.kind" = "internal",
-                "gen_ai.operation.name" = gen_ai::operation::EXECUTE_TOOL,
-                "gen_ai.tool.name" = %data.tool_call.name,
-                "gen_ai.tool.type" = gen_ai::tool_type::FUNCTION,
-                "gen_ai.tool.call.id" = %data.tool_call.id,
-                "gen_ai.conversation.id" = %event.session_id,
-                "tool.success" = tracing::field::Empty,
-                "tool.status" = tracing::field::Empty,
-                "duration_ms" = tracing::field::Empty,
-                "error.type" = tracing::field::Empty,
-            )
+            if let Some(parent_span) = &parent_span {
+                tracing::info_span!(
+                    parent: parent_span,
+                    "gen_ai.execute_tool",
+                    "otel.name" = %span_name,
+                    "otel.kind" = "internal",
+                    "gen_ai.operation.name" = gen_ai::operation::EXECUTE_TOOL,
+                    "gen_ai.tool.name" = %data.tool_call.name,
+                    "gen_ai.tool.type" = gen_ai::tool_type::FUNCTION,
+                    "gen_ai.tool.call.id" = %data.tool_call.id,
+                    "gen_ai.conversation.id" = %event.session_id,
+                    "tool.success" = tracing::field::Empty,
+                    "tool.status" = tracing::field::Empty,
+                    "duration_ms" = tracing::field::Empty,
+                    "error.type" = tracing::field::Empty,
+                )
+            } else {
+                tracing::info_span!(
+                    "gen_ai.execute_tool",
+                    "otel.name" = %span_name,
+                    "otel.kind" = "internal",
+                    "gen_ai.operation.name" = gen_ai::operation::EXECUTE_TOOL,
+                    "gen_ai.tool.name" = %data.tool_call.name,
+                    "gen_ai.tool.type" = gen_ai::tool_type::FUNCTION,
+                    "gen_ai.tool.call.id" = %data.tool_call.id,
+                    "gen_ai.conversation.id" = %event.session_id,
+                    "tool.success" = tracing::field::Empty,
+                    "tool.status" = tracing::field::Empty,
+                    "duration_ms" = tracing::field::Empty,
+                    "error.type" = tracing::field::Empty,
+                )
+            }
         };
 
         let mut spans = self.active_spans.lock().unwrap();
@@ -705,28 +809,10 @@ impl OtelEventListener {
         }
     }
 
-    /// Enter a parent span context (returns guard that exits on drop).
-    fn enter_parent(&self, key: &str) -> Option<tracing::span::Entered<'_>> {
-        // We can't return a reference into the Mutex, so we just check existence.
-        // The tracing crate handles parent-child via the current span context,
-        // so we enter the parent span to establish the relationship.
-        //
-        // NOTE: Because we hold the lock briefly to clone the span, then enter it,
-        // there's no deadlock risk. The Entered guard keeps the span active.
-        let span = {
-            let spans = self.active_spans.lock().unwrap();
-            spans.get(key).map(|s| s.span.clone())
-        };
-        // We cannot return Entered<'_> because the span is local.
-        // Instead, we'll just enter the span without returning a guard.
-        // The tracing context is thread-local and will be restored when dropped.
-        if let Some(span) = span {
-            let _entered = span.enter();
-            // The _entered guard would be dropped immediately here.
-            // We need a different approach — use span.follows_from or
-            // set the parent explicitly when creating child spans.
-        }
-        None
+    /// Get the parent span for explicit parent assignment on child span creation.
+    fn parent_span(&self, key: &str) -> Option<tracing::Span> {
+        let spans = self.active_spans.lock().unwrap();
+        spans.get(key).map(|s| s.span.clone())
     }
 
     /// Get the number of tracked in-flight spans (for testing).
