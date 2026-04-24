@@ -3716,6 +3716,88 @@ async fn test_update_app_missing_agent_returns_not_found() {
 }
 
 #[tokio::test]
+async fn test_update_app_reencrypts_legacy_plaintext_channel_configs() {
+    let server = TestServer::new().await;
+
+    let agent: Value = server
+        .post(
+            "/v1/agents",
+            json!({ "name": "update-app-reencrypt-agent", "display_name": "Test Agent", "system_prompt": "Test" }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let app: Value = server
+        .post(
+            "/v1/apps",
+            json!({
+                "name": "Legacy plaintext app",
+                "harness_id": server.seed_generic_harness_id,
+                "agent_id": agent["id"],
+                "channel_type": "slack",
+                "channel_config": {
+                    "bot_token": "xoxb-reencrypt",
+                    "signing_secret": "signing-reencrypt"
+                }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let channel_id = app["channels"][0]["id"].as_str().unwrap().to_string();
+    let channel_row = server
+        .db
+        .get_app_channel_by_public_id(&channel_id)
+        .await
+        .unwrap()
+        .unwrap();
+
+    // Simulate legacy migrated row: plaintext secrets + NULL ciphertext.
+    // UpdateAppChannel uses COALESCE and cannot clear channel_config_encrypted,
+    // so write the legacy state directly.
+    let pool = server
+        .db
+        .pool()
+        .expect("Postgres pool required for this test");
+    sqlx::query(
+        "UPDATE app_channels \
+         SET channel_config = $1, channel_config_encrypted = NULL \
+         WHERE id = $2",
+    )
+    .bind(json!({
+        "bot_token": "xoxb-plaintext",
+        "signing_secret": "signing-plaintext"
+    }))
+    .bind(channel_row.id)
+    .execute(pool)
+    .await
+    .unwrap();
+
+    server
+        .patch(
+            &format!("/v1/apps/{}", app["id"].as_str().unwrap()),
+            json!({ "description": "touch app to trigger opportunistic encryption" }),
+        )
+        .await
+        .assert_status(StatusCode::OK);
+
+    let updated_channel_row = server
+        .db
+        .get_app_channel_by_public_id(&channel_id)
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert!(
+        updated_channel_row.channel_config_encrypted.is_some(),
+        "channel config should be encrypted after app update"
+    );
+    assert_eq!(updated_channel_row.channel_config, json!({}));
+}
+
+#[tokio::test]
 async fn test_list_connections_initially_empty() {
     let server = TestServer::in_memory().await;
 

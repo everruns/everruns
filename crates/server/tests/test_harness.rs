@@ -421,14 +421,14 @@ impl TestServer {
         );
         let apps_state = api::apps::AppState::new(
             db.clone(),
-            None,
+            encryption.clone(),
             Some(durable_store.clone()),
             capability_service.clone(),
             auth_state.clone(),
         );
         let slack_state = api::slack_events::SlackState::new(
             db.clone(),
-            None, // No encryption in tests
+            encryption.clone(),
             runner.clone(),
             None, // No delivery dispatcher in tests
             feature_flags.notifications,
@@ -436,14 +436,14 @@ impl TestServer {
         );
         let app_webhooks_state = api::app_webhooks::AppWebhookState::new(
             db.clone(),
-            None, // No encryption in tests
+            encryption.clone(),
             runner.clone(),
             feature_flags.notifications,
             event_delivery.clone(),
         );
         let ag_ui_state = api::ag_ui::AgUiState::new(
             db.clone(),
-            None, // No encryption in tests
+            encryption.clone(),
             runner.clone(),
             feature_flags.notifications,
             event_delivery.clone(),
@@ -456,7 +456,7 @@ impl TestServer {
             &platform_definition,
             feature_flags.notifications,
             event_delivery.clone(),
-            None, // No encryption in tests
+            encryption.clone(),
             Some(durable_store.clone()),
             capability_service.clone(),
             Some(sqldb_store.clone()),
