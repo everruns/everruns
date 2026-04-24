@@ -191,11 +191,9 @@ export function resolveUiRouteArtifactFilePath(artifact: UiRouteManifestArtifact
     );
   }
 
-  const normalizedPackageRelativePath = path.posix.normalize(
-    artifact.packageRelativePath.replaceAll("\\", "/"),
-  );
+  const posixPackageRelativePath = artifact.packageRelativePath.replaceAll("\\", "/");
 
-  if (!normalizedPackageRelativePath.startsWith(PACKAGE_RELATIVE_PATH_PREFIX)) {
+  if (!posixPackageRelativePath.startsWith(PACKAGE_RELATIVE_PATH_PREFIX)) {
     throw new Error(
       `Cannot resolve ${artifact.artifactId} because packageRelativePath must start with "${PACKAGE_RELATIVE_PATH_PREFIX}", received "${artifact.packageRelativePath}"`,
     );
@@ -203,7 +201,7 @@ export function resolveUiRouteArtifactFilePath(artifact: UiRouteManifestArtifact
 
   const resolvedPath = fileURLToPath(
     new URL(
-      `../${normalizedPackageRelativePath.slice(PACKAGE_RELATIVE_PATH_PREFIX.length)}`,
+      `../${posixPackageRelativePath.slice(PACKAGE_RELATIVE_PATH_PREFIX.length)}`,
       import.meta.url,
     ),
   );
