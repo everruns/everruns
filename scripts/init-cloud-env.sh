@@ -112,6 +112,12 @@ install_doppler() {
 
     # Pinned version — skip GitHub API call to avoid rate limits and hangs
     DOP_VERSION="3.75.2"
+    DOP_SHA256=""
+    case "$DOP_ARCH" in
+        amd64) DOP_SHA256="bfc58d21baa3da2e177a74fb7fbbb8529170b560b1363ac5420de56a2786c489" ;;
+        arm64) DOP_SHA256="b2cb9e8312a088f5e87bc3c1a4e0bd3162cf8f8aa8ed73adfc08cc50a32e9f4f" ;;
+        *)     error "Unsupported architecture for checksum verification: $DOP_ARCH" ;;
+    esac
 
     DOP_TARBALL="doppler_${DOP_VERSION}_linux_${DOP_ARCH}.tar.gz"
     DOP_URL="https://github.com/DopplerHQ/cli/releases/download/${DOP_VERSION}/${DOP_TARBALL}"
@@ -122,6 +128,9 @@ install_doppler() {
 
     info "Downloading doppler v${DOP_VERSION}..."
     curl -fsSL --connect-timeout 10 --max-time 60 --retry 2 --retry-delay 2 "$DOP_URL" -o "$TEMP_DIR/$DOP_TARBALL"
+
+    info "Verifying doppler checksum..."
+    echo "${DOP_SHA256}  $TEMP_DIR/$DOP_TARBALL" | sha256sum -c - >/dev/null
 
     tar -xzf "$TEMP_DIR/$DOP_TARBALL" -C "$TEMP_DIR"
 

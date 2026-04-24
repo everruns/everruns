@@ -80,6 +80,49 @@ impl BrowserSessionState {
         };
         format!("{}{}token={}", self.ws_endpoint, sep, api_token)
     }
+
+    /// Build reconnect URL only if the stored endpoint matches configured
+    /// Browserless WebSocket origin.
+    pub fn validated_reconnect_url(&self, api_token: &str) -> Result<String, ToolExecutionResult> {
+        validate_stored_ws_endpoint(&self.ws_endpoint)?;
+        Ok(self.reconnect_url(api_token))
+    }
+}
+
+/// Validate persisted CDP reconnect endpoints before using them.
+///
+/// Threat model: session storage is plain key-value and can be tampered with.
+/// Only allow reconnecting to the configured Browserless WS origin to prevent
+/// token exfiltration and arbitrary outbound WebSocket connections.
+pub fn validate_stored_ws_endpoint(ws_endpoint: &str) -> Result<(), ToolExecutionResult> {
+    let parsed = reqwest::Url::parse(ws_endpoint).map_err(|_| {
+        ToolExecutionResult::tool_error(
+            "Stored browser session is invalid and has been discarded. Open a new browser session.",
+        )
+    })?;
+
+    if !matches!(parsed.scheme(), "ws" | "wss") {
+        return Err(ToolExecutionResult::tool_error(
+            "Stored browser session is invalid and has been discarded. Open a new browser session.",
+        ));
+    }
+
+    let configured_base = crate::browserless_ws_base();
+    let configured = reqwest::Url::parse(&configured_base).map_err(|_| {
+        ToolExecutionResult::tool_error("Browserless configuration error: invalid WS base URL")
+    })?;
+
+    let same_origin = parsed.scheme() == configured.scheme()
+        && parsed.host_str() == configured.host_str()
+        && parsed.port_or_known_default() == configured.port_or_known_default();
+
+    if !same_origin {
+        return Err(ToolExecutionResult::tool_error(
+            "Stored browser session is invalid and has been discarded. Open a new browser session.",
+        ));
+    }
+
+    Ok(())
 }
 
 /// Stable leased-resource identifier for a browser session.
@@ -458,6 +501,18 @@ mod tests {
             state.reconnect_url("my_token"),
             "wss://example.com/browser/abc123?param=1&token=my_token"
         );
+    }
+
+    #[test]
+    fn test_validate_stored_ws_endpoint_accepts_configured_origin() {
+        let endpoint = "wss://production-sfo.browserless.io/e/abc123";
+        assert!(validate_stored_ws_endpoint(endpoint).is_ok());
+    }
+
+    #[test]
+    fn test_validate_stored_ws_endpoint_rejects_different_origin() {
+        let endpoint = "wss://attacker.example.com/e/abc123";
+        assert!(validate_stored_ws_endpoint(endpoint).is_err());
     }
 
     #[test]

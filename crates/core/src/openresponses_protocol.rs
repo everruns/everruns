@@ -643,8 +643,7 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
         };
 
         // Log request details for debugging LLM errors.
-        // Debug level: shape (model, tool count, input size, flags).
-        // Trace level: full serialized body for deep debugging.
+        // Only log request shape to avoid leaking prompt or metadata contents.
         {
             let tool_count = request.tools.as_ref().map_or(0, |t| t.len());
             let input_count = request.input.len();
@@ -661,14 +660,6 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
                 api_url = %self.api_url,
                 "OpenResponsesDriver: sending request"
             );
-            if tracing::enabled!(tracing::Level::TRACE)
-                && let Ok(body) = serde_json::to_string(&request)
-            {
-                tracing::trace!(
-                    request_body = %body,
-                    "OpenResponsesDriver: full request body"
-                );
-            }
         }
 
         // Retry loop for rate limit (429) and transient errors
