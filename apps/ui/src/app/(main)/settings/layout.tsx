@@ -31,7 +31,7 @@ const settingsSections: NavSection[] = [
         name: "LLM Providers",
         href: "/settings/providers",
         icon: Server,
-        description: "Manage LLM providers and models",
+        description: "Manage LLM providers",
       },
       {
         name: "Members",

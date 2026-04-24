@@ -37,6 +37,7 @@ import {
   UserRound,
   Workflow,
   Cog,
+  Cpu,
 } from "lucide-react";
 import { capabilityIconMap } from "@/lib/capability-icons";
 import { useCommandPalette } from "@/hooks/use-command-palette";
@@ -91,6 +92,7 @@ export const defaultBuildingBlocksNavigation: NavigationItem[] = [
   { name: "Agents", href: "/agents", icon: Boxes },
   { name: "Agent Identities", href: "/agent-identities", icon: UserRound },
   { name: "Skills", href: "/skills", icon: BookOpen },
+  { name: "Models", href: "/models", icon: Cpu },
   { name: "Capabilities", href: "/capabilities", icon: Puzzle },
   { name: "MCP Servers", href: "/mcp-servers", icon: capabilityIconMap.mcp },
   { name: "Apps", href: "/apps", icon: Rocket, flag: "apps", experimental: true },
