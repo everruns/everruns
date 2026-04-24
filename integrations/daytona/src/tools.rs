@@ -1630,7 +1630,10 @@ fn extract_owner_repo(url: &str) -> Option<String> {
     if !url.contains("://") && !url.starts_with("git@") && url.contains('/') && !url.contains(' ') {
         let trimmed = url.trim_end_matches(".git");
         let parts: Vec<&str> = trimmed.splitn(3, '/').collect();
-        if parts.len() == 2 && !parts[0].is_empty() && !parts[1].is_empty() {
+        if parts.len() == 2
+            && is_valid_owner_repo_segment(parts[0])
+            && is_valid_owner_repo_segment(parts[1])
+        {
             return Some(trimmed.to_string());
         }
     }
@@ -1644,7 +1647,10 @@ fn extract_owner_repo(url: &str) -> Option<String> {
         if let Some(path) = rest.split_once('/').map(|(_, p)| p) {
             let path = path.trim_end_matches(".git").trim_end_matches('/');
             let parts: Vec<&str> = path.splitn(3, '/').collect();
-            if parts.len() == 2 && !parts[0].is_empty() && !parts[1].is_empty() {
+            if parts.len() == 2
+                && is_valid_owner_repo_segment(parts[0])
+                && is_valid_owner_repo_segment(parts[1])
+            {
                 return Some(path.to_string());
             }
         }
@@ -1656,12 +1662,19 @@ fn extract_owner_repo(url: &str) -> Option<String> {
     {
         let path = path.trim_end_matches(".git").trim_end_matches('/');
         let parts: Vec<&str> = path.splitn(3, '/').collect();
-        if parts.len() == 2 && !parts[0].is_empty() && !parts[1].is_empty() {
+        if parts.len() == 2
+            && is_valid_owner_repo_segment(parts[0])
+            && is_valid_owner_repo_segment(parts[1])
+        {
             return Some(path.to_string());
         }
     }
 
     None
+}
+
+fn is_valid_owner_repo_segment(segment: &str) -> bool {
+    !segment.is_empty() && segment != "." && segment != ".."
 }
 
 /// Resolve GitHub token lazily from user connections, with session secret fallback.
@@ -2672,6 +2685,14 @@ mod tests {
     #[test]
     fn test_extract_owner_repo_with_spaces() {
         assert_eq!(extract_owner_repo("user /repo"), None);
+    }
+
+    #[test]
+    fn test_extract_owner_repo_rejects_traversal_segments() {
+        assert_eq!(extract_owner_repo("../repo"), None);
+        assert_eq!(extract_owner_repo("user/.."), None);
+        assert_eq!(extract_owner_repo("https://github.com/../repo"), None);
+        assert_eq!(extract_owner_repo("git@github.com:user/../.git"), None);
     }
 
     #[test]
