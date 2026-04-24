@@ -888,13 +888,8 @@ impl ServerAppBuilder {
             session_schedule_service.clone(),
             auth_state.clone(),
         );
-        let session_resource_service =
-            Arc::new(crate::domains::session_resources::SessionResourceService::new(db.clone()));
-        let session_resources_state = api::session_resources::AppState::new(
-            db.clone(),
-            session_resource_service,
-            auth_state.clone(),
-        );
+        let session_resources_state =
+            api::session_resources::AppState::new(db.clone(), auth_state.clone());
 
         // MCP endpoint: derive the protected-resource metadata URL from
         // auth_config.base_url so it matches `/.well-known/oauth-protected-resource`.
