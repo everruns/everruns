@@ -38,6 +38,10 @@ fn skill_activation_resource_id(name: &str) -> String {
 /// Max skills to include in the system prompt (rest via list_skills tool)
 const MAX_SKILLS_IN_PROMPT: usize = 15;
 
+/// Max skill directories to scan when building the system prompt.
+/// Bounds per-turn filesystem reads to avoid prompt-build DoS.
+const MAX_SKILLS_SCAN_IN_PROMPT: usize = 64;
+
 /// Max description length in system prompt (truncated with "…")
 const MAX_DESCRIPTION_CHARS: usize = 76;
 
@@ -140,12 +144,13 @@ Skills are instruction packages (SKILL.md files) that teach the agent new abilit
             }
         };
 
-        let mut discovered_skills = Vec::new();
-        for entry in &entries {
-            if !entry.is_directory {
-                continue;
-            }
+        // Only scan a bounded number of skill directories for prompt generation.
+        // Full discovery remains available through list_skills tool.
+        let skill_dirs: Vec<_> = entries.iter().filter(|entry| entry.is_directory).collect();
+        let scan_truncated = skill_dirs.len() > MAX_SKILLS_SCAN_IN_PROMPT;
 
+        let mut discovered_skills = Vec::new();
+        for entry in skill_dirs.iter().take(MAX_SKILLS_SCAN_IN_PROMPT) {
             let skill_md_path = format!("{}/SKILL.md", entry.path);
             if let Ok(Some(file)) = file_store.read_file(ctx.session_id, &skill_md_path).await {
                 let content = file.content.as_deref().unwrap_or("");
@@ -184,6 +189,11 @@ Skills are instruction packages (SKILL.md files) that teach the agent new abilit
                     "\n({} more skills available — use `list_skills` to see all)\n",
                     total - MAX_SKILLS_IN_PROMPT
                 ));
+            }
+            if scan_truncated {
+                prompt.push_str(
+                    "\n(Additional skills may exist — use `list_skills` to view the full list)\n",
+                );
             }
         }
 
@@ -1748,6 +1758,33 @@ mod tests {
 
         // No overflow message
         assert!(!result.contains("more skills available"));
+    }
+
+    #[tokio::test]
+    async fn test_contribution_limits_skill_scan_reads() {
+        let cap = SkillsCapability;
+        let store = Arc::new(MockFileStore::new());
+        let session_id = SessionId::new();
+
+        for i in 0..(MAX_SKILLS_SCAN_IN_PROMPT + 20) {
+            let name = format!("scan-skill-{:03}", i);
+            store.add_file(
+                session_id,
+                &format!("/.agents/skills/{name}/SKILL.md"),
+                &valid_skill_md(&name, "Scan limit test"),
+            );
+        }
+
+        let ctx = SystemPromptContext {
+            session_id,
+            locale: None,
+            file_store: Some(store.clone()),
+        };
+
+        let result = cap.system_prompt_contribution(&ctx).await.unwrap();
+
+        assert_eq!(store.read_count(), MAX_SKILLS_SCAN_IN_PROMPT);
+        assert!(result.contains("Additional skills may exist"));
     }
 
     // ========================================================================
