@@ -958,11 +958,11 @@ impl SessionService {
             .await
     }
 
-    /// Unpin a session for a user. `_caller` kept for signature symmetry;
-    /// authorization is enforced at `Command::run` via `UnpinSession::policy`.
-    pub async fn unpin(&self, _caller: &Caller, user_id: Uuid, session_id: Uuid) -> Result<bool> {
+    /// Unpin a session for a user in the caller's current org.
+    /// Authorization is enforced at `Command::run` via `UnpinSession::policy`.
+    pub async fn unpin(&self, caller: &Caller, user_id: Uuid, session_id: Uuid) -> Result<bool> {
         self.db
-            .unpin_session(user_id, SessionId::from_uuid(session_id))
+            .unpin_session(user_id, SessionId::from_uuid(session_id), caller.org_id)
             .await
     }
 
