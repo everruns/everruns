@@ -85,6 +85,8 @@ inventory::submit! { CommandDescriptor::of::<CreateMessage>() }
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ListMessages {
     pub session_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limit: Option<i32>,
 }
 
 impl Command for ListMessages {
@@ -94,7 +96,7 @@ impl Command for ListMessages {
         CommandMeta {
             name: "list_messages",
             category: "messages",
-            description: "List all materialized messages in a session.",
+            description: "List materialized messages in a session, optionally limited to the most recent N.",
             method: "GET",
             path: "/v1/sessions/{session_id}/messages",
         }
@@ -113,7 +115,7 @@ impl Command for ListMessages {
             .ok_or_else(|| CommandError::not_found("Session"))?;
 
         q::message_service(ctx)?
-            .list(session_id.uuid())
+            .list_limited(session_id.uuid(), self.limit)
             .await
             .map_err(classify_anyhow)
     }

@@ -29,7 +29,7 @@ use everruns_internal_protocol::{
     proto_struct_to_json,
 };
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, OnceCell};
 use tonic::service::interceptor::InterceptedService;
 use tonic::transport::Channel;
 use uuid::Uuid;
@@ -504,6 +504,7 @@ pub struct GrpcOrgAdapter {
     client: GrpcClient,
     org_id: i64,
     platform_session_id: Option<SessionId>,
+    platform_user_id: Arc<OnceCell<Uuid>>,
 }
 
 impl GrpcOrgAdapter {
@@ -512,6 +513,7 @@ impl GrpcOrgAdapter {
             client,
             org_id,
             platform_session_id: None,
+            platform_user_id: Arc::new(OnceCell::new()),
         }
     }
 
@@ -524,30 +526,42 @@ impl GrpcOrgAdapter {
             client,
             org_id,
             platform_session_id: session_id,
+            platform_user_id: Arc::new(OnceCell::new()),
         }
     }
 
-    async fn platform_user_id(&self) -> Result<Option<Uuid>> {
-        let Some(session_id) = self.platform_session_id else {
-            return Ok(None);
-        };
+    async fn platform_user_id(&self) -> Result<Uuid> {
+        let session_id = self.platform_session_id.ok_or_else(|| {
+            AgentLoopError::store("PlatformStore requires a platform session context")
+        })?;
 
-        let mut client = self.client.inner.lock().await;
-        let response = client
-            .get_session(proto::GetSessionRequest {
-                session_id: Some(uuid_to_proto(session_id.uuid())),
-                org_id: self.org_id,
+        let user_id = self
+            .platform_user_id
+            .get_or_try_init(|| async {
+                let mut client = self.client.inner.lock().await;
+                let response = client
+                    .get_session(proto::GetSessionRequest {
+                        session_id: Some(uuid_to_proto(session_id.uuid())),
+                        org_id: self.org_id,
+                    })
+                    .await
+                    .map_err(grpc_status_to_error)?;
+
+                let session = response
+                    .into_inner()
+                    .session
+                    .ok_or_else(|| grpc_missing_field("No session in response"))?;
+                let user_id = session.resolved_owner_user_id.as_ref().ok_or_else(|| {
+                    AgentLoopError::config(
+                        "Platform tool authorization requires a user-owned session with a resolved owner"
+                            .to_string(),
+                    )
+                })?;
+                proto_uuid_to_uuid(Some(user_id))
             })
-            .await
-            .map_err(grpc_status_to_error)?;
+            .await?;
 
-        response
-            .into_inner()
-            .session
-            .and_then(|session| session.resolved_owner_user_id)
-            .as_ref()
-            .map(|user_id| proto_uuid_to_uuid(Some(user_id)))
-            .transpose()
+        Ok(*user_id)
     }
 
     async fn execute_platform_command_raw(
@@ -565,7 +579,7 @@ impl GrpcOrgAdapter {
                     AgentLoopError::store(format!("JSON serialization failed: {}", e))
                 })?,
                 org_id: self.org_id,
-                user_id: user_id.map(|id| id.to_string()),
+                user_id: Some(user_id.to_string()),
                 idempotency_key: None,
                 metadata: Default::default(),
             })
@@ -3000,7 +3014,10 @@ impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
         let mut messages: Vec<Message> = self
             .execute_platform_command(
                 "list_messages",
-                serde_json::json!({ "session_id": session_id.to_string() }),
+                serde_json::json!({
+                    "session_id": session_id.to_string(),
+                    "limit": limit.unwrap_or(10),
+                }),
             )
             .await?;
         messages.retain(|message| {
@@ -3009,8 +3026,6 @@ impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
                 everruns_core::MessageRole::User | everruns_core::MessageRole::Agent
             )
         });
-        messages.reverse();
-        let limit = limit.unwrap_or(10);
 
         Ok(messages
             .into_iter()
@@ -3036,7 +3051,6 @@ impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
                     created_at: message.created_at,
                 })
             })
-            .take(limit)
             .collect())
     }
 

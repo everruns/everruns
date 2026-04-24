@@ -27,6 +27,7 @@ use everruns_worker::mcp_executor::McpServerInfo;
 use everruns_worker::worker_adapters::{TurnContext, WorkerAdapters};
 use std::collections::HashMap;
 use std::sync::Arc;
+use tokio::sync::OnceCell;
 use uuid::Uuid;
 
 use crate::domains::budgets::BudgetService;
@@ -1761,13 +1762,14 @@ pub struct DirectPlatformStore {
     org_id: i64,
     session_id: SessionId,
     db: Arc<StorageBackend>,
-    event_service: Arc<EventService>,
     runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
-    capability_registry: CapabilityRegistry,
     capability_service: Arc<crate::services::CapabilityService>,
+    session_service: Arc<SessionService>,
+    message_service: Option<Arc<MessageService>>,
     encryption: Option<Arc<EncryptionService>>,
     workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
     permission_resolver: Arc<dyn PermissionResolver>,
+    resolved_caller: Arc<OnceCell<Caller>>,
 }
 
 impl DirectPlatformStore {
@@ -1782,17 +1784,30 @@ impl DirectPlatformStore {
             deps.encryption.clone(),
             deps.capability_registry.clone(),
         ));
+        let session_service = Arc::new(SessionService::with_registry(
+            db.clone(),
+            deps.capability_registry.clone(),
+        ));
+        let message_service = deps.runner.as_ref().map(|runner| {
+            Arc::new(MessageService::new(
+                db.clone(),
+                runner.clone(),
+                false,
+                deps.event_service.event_delivery().clone(),
+            ))
+        });
         Self {
             org_id,
             session_id,
             db,
-            event_service: deps.event_service,
             runner: deps.runner,
-            capability_registry: deps.capability_registry,
             capability_service,
+            session_service,
+            message_service,
             encryption: deps.encryption,
             workflow_store: deps.workflow_store,
             permission_resolver: deps.permission_resolver,
+            resolved_caller: Arc::new(OnceCell::new()),
         }
     }
 
@@ -1810,60 +1825,52 @@ impl DirectPlatformStore {
     }
 
     async fn resolve_caller(&self) -> everruns_core::error::Result<Caller> {
-        // Platform tools must execute as the session owner. Do not replace
-        // this with Caller::internal to "fix" permission failures.
-        let session = self
-            .db
-            .get_session(self.org_id, self.session_id)
-            .await
-            .map_err(|e| store_error(format!("Failed to load session owner: {e}")))?
-            .ok_or_else(|| store_error("Session not found for platform tool authorization"))?;
+        self.resolved_caller
+            .get_or_try_init(|| async {
+                // Platform tools must execute as the session owner. Do not replace
+                // this with Caller::internal to "fix" permission failures.
+                let session = self
+                    .db
+                    .get_session(self.org_id, self.session_id)
+                    .await
+                    .map_err(|e| store_error(format!("Failed to load session owner: {e}")))?
+                    .ok_or_else(|| {
+                        store_error("Session not found for platform tool authorization")
+                    })?;
 
-        match session.resolved_owner_user_id {
-            Some(user_id) => {
+                let user_id = session.resolved_owner_user_id.ok_or_else(|| {
+                    store_error(
+                        "Platform tool authorization requires a user-owned session with a resolved owner",
+                    )
+                })?;
+
                 crate::auth::caller_resolution::caller_for_user(&self.db, self.org_id, user_id)
                     .await
                     .map_err(|e| {
                         store_error(format!("Failed to resolve platform tool caller: {e}"))
                     })
-            }
-            None => Ok(Caller::internal(self.org_id)),
-        }
+            })
+            .await
+            .cloned()
     }
 
     async fn command_ctx(&self) -> everruns_core::error::Result<crate::domains::common::Ctx> {
         let caller = self.resolve_caller().await?;
-        let resolver: Arc<dyn PermissionResolver> = if caller.is_internal {
-            Arc::new(everruns_core::DefaultPermissionResolver)
-        } else {
-            self.permission_resolver.clone()
-        };
-
         let mut ctx = crate::domains::common::Ctx::new(
             caller,
             self.db.clone(),
             self.capability_service.clone(),
             self.encryption.clone(),
-            resolver,
+            self.permission_resolver.clone(),
         )
         .with_workflow_store(self.workflow_store.clone())
-        .with_session_service(Arc::new(
-            crate::domains::sessions::SessionService::with_registry(
-                self.db.clone(),
-                self.capability_registry.clone(),
-            ),
-        ));
+        .with_session_service(self.session_service.clone());
 
+        if let Some(message_service) = &self.message_service {
+            ctx = ctx.with_message_service(message_service.clone());
+        }
         if let Some(runner) = &self.runner {
-            let message_service = Arc::new(crate::domains::messages::MessageService::new(
-                self.db.clone(),
-                runner.clone(),
-                false,
-                self.event_service.event_delivery().clone(),
-            ));
-            ctx = ctx
-                .with_message_service(message_service)
-                .with_runner(runner.clone());
+            ctx = ctx.with_runner(runner.clone());
         }
 
         Ok(ctx)
@@ -2558,7 +2565,10 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
         let mut messages: Vec<crate::api::messages::Message> = self
             .execute_domain_command(
                 "list_messages",
-                serde_json::json!({ "session_id": session_id.to_string() }),
+                serde_json::json!({
+                    "session_id": session_id.to_string(),
+                    "limit": limit.unwrap_or(10),
+                }),
             )
             .await?;
         messages.retain(|message| {
@@ -2567,8 +2577,6 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
                 crate::api::messages::MessageRole::User | crate::api::messages::MessageRole::Agent
             )
         });
-        messages.reverse();
-        let limit = limit.unwrap_or(10);
 
         Ok(messages
             .into_iter()
@@ -2594,7 +2602,6 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
                     created_at: message.created_at,
                 })
             })
-            .take(limit)
             .collect())
     }
 
@@ -2964,6 +2971,29 @@ mod tests {
         .id
     }
 
+    async fn seed_platform_owner(db: &StorageBackend, org_id: i64, email: &str) -> Uuid {
+        use crate::storage::models::CreateUserRow;
+
+        let user = db
+            .create_user(CreateUserRow {
+                email: email.to_string(),
+                name: "Platform Owner".to_string(),
+                avatar_url: None,
+                external_id: None,
+                roles: vec![],
+                password_hash: None,
+                email_verified: true,
+                auth_provider: Some("test".to_string()),
+                auth_provider_id: None,
+            })
+            .await
+            .expect("create owner user");
+        db.ensure_membership(user.id, org_id, "owner")
+            .await
+            .expect("ensure owner membership");
+        user.id
+    }
+
     fn test_platform_store(
         adapters: &DirectWorkerAdapters,
         org_id: i64,
@@ -2994,11 +3024,17 @@ mod tests {
             true,
         )
         .await;
+        let owner_user_id = seed_platform_owner(
+            &adapters.db,
+            everruns_core::DEFAULT_ORG_ID,
+            "built-in-update-owner@example.com",
+        )
+        .await;
         let session_id = seed_platform_session(
             &adapters.db,
             everruns_core::DEFAULT_ORG_ID,
             harness_id,
-            None,
+            Some(owner_user_id),
         )
         .await;
         let store = test_platform_store(&adapters, everruns_core::DEFAULT_ORG_ID, session_id);
@@ -3021,11 +3057,17 @@ mod tests {
             true,
         )
         .await;
+        let owner_user_id = seed_platform_owner(
+            &adapters.db,
+            everruns_core::DEFAULT_ORG_ID,
+            "built-in-delete-owner@example.com",
+        )
+        .await;
         let session_id = seed_platform_session(
             &adapters.db,
             everruns_core::DEFAULT_ORG_ID,
             harness_id,
-            None,
+            Some(owner_user_id),
         )
         .await;
         let store = test_platform_store(&adapters, everruns_core::DEFAULT_ORG_ID, session_id);
@@ -3155,14 +3197,22 @@ mod tests {
         .await;
         let harness_org2 =
             seed_harness_for_platform_store(&adapters.db, 999, "org2-session-harness", false).await;
+        let owner_org1 = seed_platform_owner(
+            &adapters.db,
+            everruns_core::DEFAULT_ORG_ID,
+            "org1-owner@example.com",
+        )
+        .await;
+        let owner_org2 = seed_platform_owner(&adapters.db, 999, "org2-owner@example.com").await;
         let session_org1 = seed_platform_session(
             &adapters.db,
             everruns_core::DEFAULT_ORG_ID,
             harness_org1,
-            None,
+            Some(owner_org1),
         )
         .await;
-        let session_org2 = seed_platform_session(&adapters.db, 999, harness_org2, None).await;
+        let session_org2 =
+            seed_platform_session(&adapters.db, 999, harness_org2, Some(owner_org2)).await;
 
         // Agent seeded in org 1 should be visible via org 1's platform store
         let store_org1 = adapters.platform_store(everruns_core::DEFAULT_ORG_ID, session_org1);
@@ -3771,14 +3821,23 @@ mod tests {
         .await;
         let harness_org999 =
             seed_harness_for_platform_store(&adapters.db, 999, "agent-count-org999", false).await;
+        let owner_org1 = seed_platform_owner(
+            &adapters.db,
+            everruns_core::DEFAULT_ORG_ID,
+            "agent-count-org1-owner@example.com",
+        )
+        .await;
+        let owner_org999 =
+            seed_platform_owner(&adapters.db, 999, "agent-count-org999-owner@example.com").await;
         let session_org1 = seed_platform_session(
             &adapters.db,
             everruns_core::DEFAULT_ORG_ID,
             harness_org1,
-            None,
+            Some(owner_org1),
         )
         .await;
-        let session_org999 = seed_platform_session(&adapters.db, 999, harness_org999, None).await;
+        let session_org999 =
+            seed_platform_session(&adapters.db, 999, harness_org999, Some(owner_org999)).await;
 
         let store_org1 = adapters.platform_store(everruns_core::DEFAULT_ORG_ID, session_org1);
         let agents_org1 = store_org1.list_agents().await.unwrap();
