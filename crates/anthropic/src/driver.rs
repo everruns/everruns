@@ -1228,15 +1228,12 @@ struct AnthropicModelCapabilities {
 /// date suffix (e.g., "claude-opus-4-5-20251101" -> "claude-opus-4-5").
 fn normalize_anthropic_id(model_id: &str) -> &str {
     // Anthropic date suffixes are always -YYYYMMDD (8 digits after a dash)
-    if model_id.len() > 9 {
-        let suffix_start = model_id.len() - 9; // "-YYYYMMDD" is 9 chars
-        let (base, suffix) = model_id.split_at(suffix_start);
-        if suffix.starts_with('-')
-            && suffix[1..].len() == 8
-            && suffix[1..].chars().all(|c| c.is_ascii_digit())
-        {
-            return base;
-        }
+    if let Some((base, suffix)) = model_id.rsplit_once('-')
+        && !base.is_empty()
+        && suffix.len() == 8
+        && suffix.bytes().all(|b| b.is_ascii_digit())
+    {
+        return base;
     }
     model_id
 }
@@ -1893,6 +1890,18 @@ mod tests {
         assert_eq!(
             normalize_anthropic_id("claude-3-5-sonnet"),
             "claude-3-5-sonnet"
+        );
+    }
+
+    #[test]
+    fn test_normalize_anthropic_id_handles_non_ascii_ids() {
+        assert_eq!(
+            normalize_anthropic_id("claudé-opus-20251101"),
+            "claudé-opus"
+        );
+        assert_eq!(
+            normalize_anthropic_id("claudé-opus-experimental"),
+            "claudé-opus-experimental"
         );
     }
 
