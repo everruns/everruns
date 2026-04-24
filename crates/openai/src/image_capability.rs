@@ -1,5 +1,6 @@
 use crate::images::{
-    EditImageInput, EditImageRequest, GenerateImageRequest, ImageApiImage, OpenAiImageClient,
+    EditImageInput, EditImageRequest, GenerateImageRequest, ImageApiImage, ImageApiStreamEvent,
+    OpenAiImageClient,
 };
 use async_trait::async_trait;
 use base64::Engine;
@@ -18,6 +19,7 @@ const GPT_IMAGE_GEN_CAPABILITY_ID: &str = "gpt_image_gen";
 // keeping the legacy GPT Image 1 path available as an explicit opt-in.
 const DEFAULT_OPENAI_IMAGE_MODEL: ImageGenerationModel = ImageGenerationModel::GptImage2;
 const DEFAULT_OPENAI_IMAGE_QUALITY: ImageGenerationQuality = ImageGenerationQuality::Medium;
+const DEFAULT_OPENAI_IMAGE_PARTIAL_IMAGES: u8 = 1;
 const DEFAULT_OUTPUT_DIR: &str = "/workspace/.outputs/images";
 const DEFAULT_GENERATE_PREFIX: &str = "generated-image";
 const DEFAULT_EDIT_PREFIX: &str = "edited-image";
@@ -41,6 +43,7 @@ For straightforward image requests, avoid unrelated metadata or bookkeeping tool
 When the user asks for multiple new images, make one `generate_image` call per requested concept unless they explicitly ask for a batch in one call.
 Unless the user says otherwise, set `save_to_session_fs` to true, keep `persist_artifact` enabled, and save under `/workspace/.outputs/images`.
 Prefer PNG output and rely on the capability default quality unless the user requests a specific quality.
+For single-image requests, streaming progress updates may arrive before the final image; wait for the completed tool result before describing the finished output.
 Do not stop at writing prompts, suggesting external tools, or describing environment limitations unless an actual image tool call fails.
 
 Store per-session OpenAI overrides in `secret_store` under `OPENAI_API_KEY` and optionally `OPENAI_BASE_URL`.
@@ -214,24 +217,51 @@ impl Tool for GenerateImageTool {
             Ok(client) => client,
             Err(result) => return result,
         };
+        let partial_images = resolve_partial_images(args.common.count(), &capability_config);
+        let request = GenerateImageRequest {
+            model: model.to_string(),
+            prompt: args.prompt.clone(),
+            size: args.common.size.clone(),
+            quality: Some(resolve_quality(
+                args.common.quality.as_deref(),
+                capability_config.default_quality,
+            )),
+            background: args.common.background.clone(),
+            output_format: args.common.format.clone(),
+            stream: partial_images.map(|_| true),
+            partial_images,
+            count: args.common.count(),
+        };
 
-        let response = match client
-            .generate(GenerateImageRequest {
-                model: model.to_string(),
-                prompt: args.prompt.clone(),
-                size: args.common.size.clone(),
-                quality: Some(resolve_quality(
-                    args.common.quality.as_deref(),
-                    capability_config.default_quality,
-                )),
-                background: args.common.background.clone(),
-                output_format: args.common.format.clone(),
-                count: args.common.count(),
-            })
-            .await
-        {
-            Ok(response) => response,
-            Err(error) => return ToolExecutionResult::internal_error_msg(format!("{error:#}")),
+        context
+            .emit_progress(
+                self.name(),
+                &initial_progress_message("Generating", args.common.count(), partial_images),
+            )
+            .await;
+
+        let response = if let Some(expected_previews) = partial_images {
+            match client
+                .generate_with_events(request, |event| async {
+                    emit_stream_progress(
+                        context,
+                        self.name(),
+                        "Generating",
+                        expected_previews,
+                        event,
+                    )
+                    .await;
+                })
+                .await
+            {
+                Ok(response) => response,
+                Err(error) => return ToolExecutionResult::internal_error_msg(format!("{error:#}")),
+            }
+        } else {
+            match client.generate(request).await {
+                Ok(response) => response,
+                Err(error) => return ToolExecutionResult::internal_error_msg(format!("{error:#}")),
+            }
         };
 
         materialize_outputs(
@@ -352,25 +382,46 @@ impl Tool for EditImageTool {
             Ok(client) => client,
             Err(result) => return result,
         };
+        let partial_images = resolve_partial_images(args.common.count(), &capability_config);
+        let request = EditImageRequest {
+            model: model.to_string(),
+            prompt: args.prompt.clone(),
+            images: sources,
+            size: args.common.size.clone(),
+            quality: Some(resolve_quality(
+                args.common.quality.as_deref(),
+                capability_config.default_quality,
+            )),
+            background: args.common.background.clone(),
+            output_format: args.common.format.clone(),
+            stream: partial_images.map(|_| true),
+            partial_images,
+            count: args.common.count(),
+        };
 
-        let response = match client
-            .edit(EditImageRequest {
-                model: model.to_string(),
-                prompt: args.prompt.clone(),
-                images: sources,
-                size: args.common.size.clone(),
-                quality: Some(resolve_quality(
-                    args.common.quality.as_deref(),
-                    capability_config.default_quality,
-                )),
-                background: args.common.background.clone(),
-                output_format: args.common.format.clone(),
-                count: args.common.count(),
-            })
-            .await
-        {
-            Ok(response) => response,
-            Err(error) => return ToolExecutionResult::internal_error_msg(format!("{error:#}")),
+        context
+            .emit_progress(
+                self.name(),
+                &initial_progress_message("Editing", args.common.count(), partial_images),
+            )
+            .await;
+
+        let response = if let Some(expected_previews) = partial_images {
+            match client
+                .edit_with_events(request, |event| async {
+                    emit_stream_progress(context, self.name(), "Editing", expected_previews, event)
+                        .await;
+                })
+                .await
+            {
+                Ok(response) => response,
+                Err(error) => return ToolExecutionResult::internal_error_msg(format!("{error:#}")),
+            }
+        } else {
+            match client.edit(request).await {
+                Ok(response) => response,
+                Err(error) => return ToolExecutionResult::internal_error_msg(format!("{error:#}")),
+            }
         };
 
         materialize_outputs(
@@ -519,6 +570,8 @@ struct GptImageGenCapabilityConfig {
     model: ImageGenerationModel,
     #[serde(default = "default_openai_image_quality")]
     default_quality: ImageGenerationQuality,
+    #[serde(default = "default_openai_image_partial_images")]
+    partial_images: u8,
 }
 
 impl Default for GptImageGenCapabilityConfig {
@@ -526,6 +579,7 @@ impl Default for GptImageGenCapabilityConfig {
         Self {
             model: default_openai_image_model(),
             default_quality: default_openai_image_quality(),
+            partial_images: default_openai_image_partial_images(),
         }
     }
 }
@@ -536,6 +590,10 @@ fn default_openai_image_model() -> ImageGenerationModel {
 
 fn default_openai_image_quality() -> ImageGenerationQuality {
     DEFAULT_OPENAI_IMAGE_QUALITY
+}
+
+fn default_openai_image_partial_images() -> u8 {
+    DEFAULT_OPENAI_IMAGE_PARTIAL_IMAGES
 }
 
 fn resolve_quality(
@@ -561,9 +619,57 @@ fn parse_capability_config(
         return Ok(GptImageGenCapabilityConfig::default());
     }
 
-    serde_json::from_value::<GptImageGenCapabilityConfig>(config.clone()).map_err(|error| {
-        ToolExecutionResult::tool_error(format!("Invalid gpt_image_gen config: {error}"))
-    })
+    let parsed =
+        serde_json::from_value::<GptImageGenCapabilityConfig>(config.clone()).map_err(|error| {
+            ToolExecutionResult::tool_error(format!("Invalid gpt_image_gen config: {error}"))
+        })?;
+
+    if parsed.partial_images > 3 {
+        return Err(ToolExecutionResult::tool_error(
+            "Invalid gpt_image_gen config: partial_images must be between 0 and 3",
+        ));
+    }
+
+    Ok(parsed)
+}
+
+fn resolve_partial_images(count: usize, config: &GptImageGenCapabilityConfig) -> Option<u8> {
+    if count == 1 && config.partial_images > 0 {
+        Some(config.partial_images)
+    } else {
+        None
+    }
+}
+
+fn initial_progress_message(action: &str, count: usize, partial_images: Option<u8>) -> String {
+    if count > 1 {
+        format!("{action} {count} images...")
+    } else if partial_images.unwrap_or(0) > 0 {
+        format!("{action} image and waiting for progress updates...")
+    } else {
+        format!("{action} image...")
+    }
+}
+
+async fn emit_stream_progress(
+    context: &ToolContext,
+    tool_name: &str,
+    action: &str,
+    expected_previews: u8,
+    event: ImageApiStreamEvent,
+) {
+    let message = match event {
+        ImageApiStreamEvent::PartialImage {
+            partial_image_index,
+            ..
+        } => format!(
+            "{action} progress update {} of {}...",
+            partial_image_index + 1,
+            expected_previews
+        ),
+        ImageApiStreamEvent::Completed { .. } => format!("{action} final image..."),
+    };
+    context.emit_progress(tool_name, &message).await;
 }
 
 async fn build_client(context: &ToolContext) -> Result<OpenAiImageClient, ToolExecutionResult> {
@@ -1109,17 +1215,20 @@ mod tests {
         let config = parse_capability_config(&json!({})).unwrap();
         assert_eq!(config.model, ImageGenerationModel::GptImage2);
         assert_eq!(config.default_quality, ImageGenerationQuality::Medium);
+        assert_eq!(config.partial_images, 1);
     }
 
     #[test]
     fn capability_config_accepts_legacy_model_override() {
         let config = parse_capability_config(&json!({
             "model": "gpt-image-1",
-            "default_quality": "low"
+            "default_quality": "low",
+            "partial_images": 2
         }))
         .unwrap();
         assert_eq!(config.model, ImageGenerationModel::GptImage1);
         assert_eq!(config.default_quality, ImageGenerationQuality::Low);
+        assert_eq!(config.partial_images, 2);
     }
 
     #[test]
@@ -1127,11 +1236,13 @@ mod tests {
         let config = parse_capability_config(&json!({
             "model": "gpt-image-1",
             "default_quality": "high",
+            "partial_images": 3,
             "future_field": true
         }))
         .unwrap();
         assert_eq!(config.model, ImageGenerationModel::GptImage1);
         assert_eq!(config.default_quality, ImageGenerationQuality::High);
+        assert_eq!(config.partial_images, 3);
     }
 
     #[test]
@@ -1143,6 +1254,20 @@ mod tests {
         match error {
             ToolExecutionResult::ToolError(message) => {
                 assert!(message.contains("Invalid gpt_image_gen config"));
+            }
+            other => panic!("expected tool error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn capability_config_rejects_invalid_partial_image_count() {
+        let result = parse_capability_config(&json!({
+            "partial_images": 4
+        }));
+        let error = result.unwrap_err();
+        match error {
+            ToolExecutionResult::ToolError(message) => {
+                assert!(message.contains("partial_images must be between 0 and 3"));
             }
             other => panic!("expected tool error, got {other:?}"),
         }
@@ -1162,6 +1287,18 @@ mod tests {
             resolve_quality(None, ImageGenerationQuality::Medium),
             "medium"
         );
+    }
+
+    #[test]
+    fn resolve_partial_images_defaults_single_image_requests() {
+        let config = GptImageGenCapabilityConfig::default();
+        assert_eq!(resolve_partial_images(1, &config), Some(1));
+    }
+
+    #[test]
+    fn resolve_partial_images_disables_preview_streaming_for_batches() {
+        let config = GptImageGenCapabilityConfig::default();
+        assert_eq!(resolve_partial_images(3, &config), None);
     }
 
     #[test]

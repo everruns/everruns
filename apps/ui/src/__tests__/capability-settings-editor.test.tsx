@@ -20,13 +20,15 @@ describe("CapabilitySettingsEditor", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Medium")).toBeInTheDocument();
     expect(screen.getByText(/Balanced quality and latency/i)).toBeInTheDocument();
+    expect(screen.getByText("1 Progress Update")).toBeInTheDocument();
+    expect(screen.getByText(/Emits one in-progress status update/i)).toBeInTheDocument();
   });
 
-  it("shows the configured legacy model and high-quality descriptions", () => {
+  it("shows the configured legacy model, quality, and progress update descriptions", () => {
     render(
       <CapabilitySettingsEditor
         capabilityId="gpt_image_gen"
-        config={{ model: "gpt-image-1", default_quality: "high" }}
+        config={{ model: "gpt-image-1", default_quality: "high", partial_images: 3 }}
         onChange={jest.fn()}
       />,
     );
@@ -34,5 +36,7 @@ describe("CapabilitySettingsEditor", () => {
     expect(screen.getByText("GPT Image 1")).toBeInTheDocument();
     expect(screen.getByText(/Legacy fallback/i)).toBeInTheDocument();
     expect(screen.getByText(/Highest fidelity, but materially slower/i)).toBeInTheDocument();
+    expect(screen.getByText("3 Progress Updates")).toBeInTheDocument();
+    expect(screen.getByText(/Maximum status feedback/i)).toBeInTheDocument();
   });
 });

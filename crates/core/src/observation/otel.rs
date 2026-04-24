@@ -687,39 +687,37 @@ impl OtelEventListener {
                     "gen_ai.tool.call.result" = tracing::field::Empty,
                 )
             }
+        } else if let Some(parent_span) = &parent_span {
+            tracing::info_span!(
+                parent: parent_span,
+                "gen_ai.execute_tool",
+                "otel.name" = %span_name,
+                "otel.kind" = "internal",
+                "gen_ai.operation.name" = gen_ai::operation::EXECUTE_TOOL,
+                "gen_ai.tool.name" = %data.tool_call.name,
+                "gen_ai.tool.type" = gen_ai::tool_type::FUNCTION,
+                "gen_ai.tool.call.id" = %data.tool_call.id,
+                "gen_ai.conversation.id" = %event.session_id,
+                "tool.success" = tracing::field::Empty,
+                "tool.status" = tracing::field::Empty,
+                "duration_ms" = tracing::field::Empty,
+                "error.type" = tracing::field::Empty,
+            )
         } else {
-            if let Some(parent_span) = &parent_span {
-                tracing::info_span!(
-                    parent: parent_span,
-                    "gen_ai.execute_tool",
-                    "otel.name" = %span_name,
-                    "otel.kind" = "internal",
-                    "gen_ai.operation.name" = gen_ai::operation::EXECUTE_TOOL,
-                    "gen_ai.tool.name" = %data.tool_call.name,
-                    "gen_ai.tool.type" = gen_ai::tool_type::FUNCTION,
-                    "gen_ai.tool.call.id" = %data.tool_call.id,
-                    "gen_ai.conversation.id" = %event.session_id,
-                    "tool.success" = tracing::field::Empty,
-                    "tool.status" = tracing::field::Empty,
-                    "duration_ms" = tracing::field::Empty,
-                    "error.type" = tracing::field::Empty,
-                )
-            } else {
-                tracing::info_span!(
-                    "gen_ai.execute_tool",
-                    "otel.name" = %span_name,
-                    "otel.kind" = "internal",
-                    "gen_ai.operation.name" = gen_ai::operation::EXECUTE_TOOL,
-                    "gen_ai.tool.name" = %data.tool_call.name,
-                    "gen_ai.tool.type" = gen_ai::tool_type::FUNCTION,
-                    "gen_ai.tool.call.id" = %data.tool_call.id,
-                    "gen_ai.conversation.id" = %event.session_id,
-                    "tool.success" = tracing::field::Empty,
-                    "tool.status" = tracing::field::Empty,
-                    "duration_ms" = tracing::field::Empty,
-                    "error.type" = tracing::field::Empty,
-                )
-            }
+            tracing::info_span!(
+                "gen_ai.execute_tool",
+                "otel.name" = %span_name,
+                "otel.kind" = "internal",
+                "gen_ai.operation.name" = gen_ai::operation::EXECUTE_TOOL,
+                "gen_ai.tool.name" = %data.tool_call.name,
+                "gen_ai.tool.type" = gen_ai::tool_type::FUNCTION,
+                "gen_ai.tool.call.id" = %data.tool_call.id,
+                "gen_ai.conversation.id" = %event.session_id,
+                "tool.success" = tracing::field::Empty,
+                "tool.status" = tracing::field::Empty,
+                "duration_ms" = tracing::field::Empty,
+                "error.type" = tracing::field::Empty,
+            )
         };
 
         let mut spans = self.active_spans.lock().unwrap();

@@ -23,10 +23,12 @@ export interface DockerContainerConfig {
 
 type GptImageGenModel = "gpt-image-2" | "gpt-image-1";
 type GptImageGenQuality = "low" | "medium" | "high" | "auto";
+type GptImageGenPartialImages = 0 | 1 | 2 | 3;
 
 export interface GptImageGenConfig {
   model?: GptImageGenModel;
   default_quality?: GptImageGenQuality;
+  partial_images?: GptImageGenPartialImages;
 }
 
 export type CapabilityConfig = DockerContainerConfig | GptImageGenConfig | Record<string, unknown>;
@@ -161,6 +163,7 @@ function DockerContainerEditor({ config, onChange, disabled }: DockerContainerEd
 
 const DEFAULT_GPT_IMAGE_MODEL: GptImageGenModel = "gpt-image-2";
 const DEFAULT_GPT_IMAGE_QUALITY: GptImageGenQuality = "medium";
+const DEFAULT_GPT_IMAGE_PARTIAL_IMAGES: GptImageGenPartialImages = 1;
 
 const GPT_IMAGE_MODEL_OPTIONS: Array<{
   value: GptImageGenModel;
@@ -206,6 +209,34 @@ const GPT_IMAGE_QUALITY_OPTIONS: Array<{
   },
 ];
 
+const GPT_IMAGE_PARTIAL_IMAGE_OPTIONS: Array<{
+  value: GptImageGenPartialImages;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: 1,
+    label: "1 Progress Update",
+    description: "Default. Emits one in-progress status update for single-image requests.",
+  },
+  {
+    value: 0,
+    label: "Off",
+    description: "Disable progress updates and only wait for the final image.",
+  },
+  {
+    value: 2,
+    label: "2 Progress Updates",
+    description:
+      "Emit two in-progress status updates. More responsive, with slightly higher token cost.",
+  },
+  {
+    value: 3,
+    label: "3 Progress Updates",
+    description: "Maximum status feedback. Highest extra token cost.",
+  },
+];
+
 interface GptImageGenEditorProps {
   config: GptImageGenConfig;
   onChange: (config: Record<string, unknown>) => void;
@@ -215,12 +246,16 @@ interface GptImageGenEditorProps {
 function GptImageGenEditor({ config, onChange, disabled }: GptImageGenEditorProps) {
   const selectedModel = config.model || DEFAULT_GPT_IMAGE_MODEL;
   const selectedQuality = config.default_quality || DEFAULT_GPT_IMAGE_QUALITY;
+  const selectedPartialImages = config.partial_images ?? DEFAULT_GPT_IMAGE_PARTIAL_IMAGES;
   const selectedOption =
     GPT_IMAGE_MODEL_OPTIONS.find((option) => option.value === selectedModel) ??
     GPT_IMAGE_MODEL_OPTIONS[0];
   const selectedQualityOption =
     GPT_IMAGE_QUALITY_OPTIONS.find((option) => option.value === selectedQuality) ??
     GPT_IMAGE_QUALITY_OPTIONS[0];
+  const selectedPartialImagesOption =
+    GPT_IMAGE_PARTIAL_IMAGE_OPTIONS.find((option) => option.value === selectedPartialImages) ??
+    GPT_IMAGE_PARTIAL_IMAGE_OPTIONS[0];
 
   const handleModelChange = (value: string) => {
     const newConfig = { ...config };
@@ -238,6 +273,17 @@ function GptImageGenEditor({ config, onChange, disabled }: GptImageGenEditorProp
       newConfig.default_quality = value as GptImageGenQuality;
     } else {
       delete newConfig.default_quality;
+    }
+    onChange(newConfig);
+  };
+
+  const handlePartialImagesChange = (value: string) => {
+    const parsedValue = Number(value) as GptImageGenPartialImages;
+    const newConfig = { ...config };
+    if (parsedValue !== DEFAULT_GPT_IMAGE_PARTIAL_IMAGES) {
+      newConfig.partial_images = parsedValue;
+    } else {
+      delete newConfig.partial_images;
     }
     onChange(newConfig);
   };
@@ -280,6 +326,32 @@ function GptImageGenEditor({ config, onChange, disabled }: GptImageGenEditorProp
           </SelectContent>
         </Select>
         <p className="text-xs text-muted-foreground">{selectedQualityOption.description}</p>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label
+          htmlFor="gpt-image-partial-images"
+          className="text-xs font-normal text-muted-foreground"
+        >
+          Progress Updates
+        </Label>
+        <Select
+          value={String(selectedPartialImages)}
+          onValueChange={handlePartialImagesChange}
+          disabled={disabled}
+        >
+          <SelectTrigger id="gpt-image-partial-images" className="w-full">
+            <SelectValue>{selectedPartialImagesOption.label}</SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            {GPT_IMAGE_PARTIAL_IMAGE_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={String(option.value)}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">{selectedPartialImagesOption.description}</p>
       </div>
     </div>
   );
