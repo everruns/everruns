@@ -772,15 +772,13 @@ mod tests {
             .await
             .expect("mark pending");
         shared
-            .enqueue_task(
-                everruns_durable::TaskDefinition {
-                    workflow_id: Some(workflow_id),
-                    activity_id: format!("input_{}", Uuid::now_v7()),
-                    activity_type: "process_input".to_string(),
-                    input: serde_json::json!({}),
-                    options: Default::default(),
-                },
-            )
+            .enqueue_task(everruns_durable::TaskDefinition {
+                workflow_id: Some(workflow_id),
+                activity_id: format!("input_{}", Uuid::now_v7()),
+                activity_type: "process_input".to_string(),
+                input: serde_json::json!({}),
+                options: Default::default(),
+            })
             .await
             .expect("enqueue task");
         let claimed = shared
