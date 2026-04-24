@@ -377,32 +377,42 @@ fn resolve_conflict(
 
 /// Validate that a path joined with local_dir stays within local_dir (prevents path traversal).
 pub fn safe_local_path(local_dir: &Path, path: &str) -> Result<std::path::PathBuf> {
-    // Reject absolute paths and traversal components
-    if path.starts_with('/') || path.starts_with('\\') || path.contains("..") {
-        anyhow::bail!("Unsafe path rejected (traversal or absolute): {}", path);
-    }
-    let joined = local_dir.join(path);
-    // Normalize and verify the result is under local_dir
-    // Use lexical check since the file may not exist yet
-    let normalized = joined
-        .components()
-        .fold(std::path::PathBuf::new(), |mut acc, c| {
-            match c {
-                std::path::Component::ParentDir => {
-                    acc.pop();
-                }
-                std::path::Component::CurDir => {}
-                _ => acc.push(c),
+    let base_dir = local_dir
+        .canonicalize()
+        .unwrap_or_else(|_| local_dir.to_path_buf());
+    let mut relative = std::path::PathBuf::new();
+
+    for component in std::path::Path::new(path).components() {
+        match component {
+            std::path::Component::Normal(part) => relative.push(part),
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir
+            | std::path::Component::RootDir
+            | std::path::Component::Prefix(_) => {
+                anyhow::bail!("Unsafe path rejected (traversal or absolute): {}", path);
             }
-            acc
-        });
-    if !normalized.starts_with(local_dir) {
+        }
+    }
+
+    let joined = base_dir.join(&relative);
+    if !joined.starts_with(&base_dir) {
         anyhow::bail!(
             "Path escapes sync directory: {} -> {}",
             path,
-            normalized.display()
+            joined.display()
         );
     }
+
+    let mut current = base_dir.clone();
+    for component in relative.components() {
+        current.push(component.as_os_str());
+        if let Ok(meta) = std::fs::symlink_metadata(&current)
+            && meta.file_type().is_symlink()
+        {
+            anyhow::bail!("Unsafe path rejected (symlink component): {}", path);
+        }
+    }
+
     Ok(joined)
 }
 
@@ -690,5 +700,18 @@ mod tests {
     fn test_safe_local_path_rejects_absolute() {
         let dir = tempfile::tempdir().unwrap();
         assert!(safe_local_path(dir.path(), "/etc/passwd").is_err());
+    }
+
+    #[test]
+    fn test_safe_local_path_rejects_symlink_component() {
+        let dir = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        let link = dir.path().join("link");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(outside.path(), &link).unwrap();
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_dir(outside.path(), &link).unwrap();
+
+        assert!(safe_local_path(dir.path(), "link/secret.txt").is_err());
     }
 }
