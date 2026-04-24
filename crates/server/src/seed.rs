@@ -2653,7 +2653,7 @@ mod tests {
         );
 
         let membership = db
-            .get_membership(DEFAULT_ORG_ID, existing_admin.id)
+            .get_organization_member(DEFAULT_ORG_ID, existing_admin.id)
             .await
             .unwrap()
             .expect("admin should be added to default org");
