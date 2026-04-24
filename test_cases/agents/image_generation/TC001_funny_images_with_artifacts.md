@@ -49,6 +49,7 @@ This case is based on the successful 2026-04-23 live run captured after fixing t
 
 5. Inspect the session messages and event stream:
    - confirm the agent emitted three `generate_image` tool calls
+   - confirm each tool call emitted at least one `tool.progress` update while the image was rendering
    - confirm each tool call completed successfully
    - confirm the final assistant message is present
 
@@ -67,6 +68,7 @@ This case is based on the successful 2026-04-23 live run captured after fixing t
 
 - Session reaches `idle`
 - Event stream includes `turn.started`, `reason.completed`, `turn.completed`, and `session.idled`
+- For each single-image `generate_image` call, the event stream includes at least one `tool.progress` status such as `Generating image and waiting for preview...` or `Generating preview 1 of 1...`
 - No `tool.error`, `internal_error`, or equivalent failure event appears
 
 ### Tool Planning

@@ -1,7 +1,10 @@
 use anyhow::{Context, Result, anyhow};
+use eventsource_stream::Eventsource;
+use futures::{StreamExt, future::Future};
 use reqwest::multipart::{Form, Part};
 use reqwest::{Client, RequestBuilder, Url};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 const DEFAULT_OPENAI_BASE_URL: &str = "https://api.openai.com/v1";
 const DEFAULT_OPENAI_IMAGE_TIMEOUT_SECS: u64 = 300;
@@ -43,39 +46,29 @@ impl OpenAiImageClient {
         parse_image_response(response).await
     }
 
+    pub async fn generate_with_events<F, Fut>(
+        &self,
+        request: GenerateImageRequest,
+        on_event: F,
+    ) -> Result<ImageApiResponse>
+    where
+        F: FnMut(ImageApiStreamEvent) -> Fut + Send,
+        Fut: Future<Output = ()> + Send,
+    {
+        let url = image_endpoint_url(self.base_url.as_deref(), "images/generations")?;
+        let response = self
+            .apply_auth(self.client.post(url.clone()), url.as_str())
+            .json(&request)
+            .send()
+            .await
+            .context("failed to call OpenAI image generation API")?;
+
+        parse_image_stream_response(response, on_event).await
+    }
+
     pub async fn edit(&self, request: EditImageRequest) -> Result<ImageApiResponse> {
         let url = image_endpoint_url(self.base_url.as_deref(), "images/edits")?;
-        let image_field_name = if request.images.len() > 1 {
-            "image[]"
-        } else {
-            "image"
-        };
-
-        let mut form = Form::new()
-            .text("model", request.model)
-            .text("prompt", request.prompt)
-            .text("n", request.count.to_string());
-
-        if let Some(size) = request.size {
-            form = form.text("size", size);
-        }
-        if let Some(quality) = request.quality {
-            form = form.text("quality", quality);
-        }
-        if let Some(background) = request.background {
-            form = form.text("background", background);
-        }
-        if let Some(output_format) = request.output_format {
-            form = form.text("output_format", output_format);
-        }
-
-        for image in request.images {
-            let part = Part::bytes(image.data)
-                .file_name(image.filename)
-                .mime_str(&image.content_type)
-                .context("invalid source image content type")?;
-            form = form.part(image_field_name.to_string(), part);
-        }
+        let form = build_edit_image_form(request)?;
 
         let response = self
             .apply_auth(self.client.post(url.clone()), url.as_str())
@@ -85,6 +78,28 @@ impl OpenAiImageClient {
             .context("failed to call OpenAI image edit API")?;
 
         parse_image_response(response).await
+    }
+
+    pub async fn edit_with_events<F, Fut>(
+        &self,
+        request: EditImageRequest,
+        on_event: F,
+    ) -> Result<ImageApiResponse>
+    where
+        F: FnMut(ImageApiStreamEvent) -> Fut + Send,
+        Fut: Future<Output = ()> + Send,
+    {
+        let url = image_endpoint_url(self.base_url.as_deref(), "images/edits")?;
+        let form = build_edit_image_form(request)?;
+
+        let response = self
+            .apply_auth(self.client.post(url.clone()), url.as_str())
+            .multipart(form)
+            .send()
+            .await
+            .context("failed to call OpenAI image edit API")?;
+
+        parse_image_stream_response(response, on_event).await
     }
 
     fn apply_auth(&self, request: RequestBuilder, api_url: &str) -> RequestBuilder {
@@ -108,6 +123,10 @@ pub struct GenerateImageRequest {
     pub background: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none", rename = "output_format")]
     pub output_format: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stream: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub partial_images: Option<u8>,
     #[serde(rename = "n")]
     pub count: usize,
 }
@@ -121,6 +140,8 @@ pub struct EditImageRequest {
     pub quality: Option<String>,
     pub background: Option<String>,
     pub output_format: Option<String>,
+    pub stream: Option<bool>,
+    pub partial_images: Option<u8>,
     pub count: usize,
 }
 
@@ -141,6 +162,54 @@ pub struct ImageApiImage {
     pub b64_json: String,
     #[serde(default)]
     pub revised_prompt: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ImageApiStreamEvent {
+    PartialImage { partial_image_index: usize },
+    Completed { completed_image_count: usize },
+}
+
+fn build_edit_image_form(request: EditImageRequest) -> Result<Form> {
+    let image_field_name = if request.images.len() > 1 {
+        "image[]"
+    } else {
+        "image"
+    };
+
+    let mut form = Form::new()
+        .text("model", request.model)
+        .text("prompt", request.prompt)
+        .text("n", request.count.to_string());
+
+    if let Some(size) = request.size {
+        form = form.text("size", size);
+    }
+    if let Some(quality) = request.quality {
+        form = form.text("quality", quality);
+    }
+    if let Some(background) = request.background {
+        form = form.text("background", background);
+    }
+    if let Some(output_format) = request.output_format {
+        form = form.text("output_format", output_format);
+    }
+    if let Some(stream) = request.stream {
+        form = form.text("stream", stream.to_string());
+    }
+    if let Some(partial_images) = request.partial_images {
+        form = form.text("partial_images", partial_images.to_string());
+    }
+
+    for image in request.images {
+        let part = Part::bytes(image.data)
+            .file_name(image.filename)
+            .mime_str(&image.content_type)
+            .context("invalid source image content type")?;
+        form = form.part(image_field_name.to_string(), part);
+    }
+
+    Ok(form)
 }
 
 fn image_endpoint_url(base_url: Option<&str>, endpoint: &str) -> Result<Url> {
@@ -184,6 +253,77 @@ async fn parse_image_response(response: reqwest::Response) -> Result<ImageApiRes
         .context("failed to decode OpenAI image API response")
 }
 
+async fn parse_image_stream_response<F, Fut>(
+    response: reqwest::Response,
+    mut on_event: F,
+) -> Result<ImageApiResponse>
+where
+    F: FnMut(ImageApiStreamEvent) -> Fut + Send,
+    Fut: Future<Output = ()> + Send,
+{
+    let status = response.status();
+    if !status.is_success() {
+        let body = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "<unreadable response body>".to_string());
+        return Err(anyhow!("OpenAI image API returned {status}: {body}"));
+    }
+
+    let mut images = Vec::new();
+    let mut event_stream = response.bytes_stream().eventsource();
+
+    while let Some(event) = event_stream.next().await {
+        let event = event.context("failed to read OpenAI image stream event")?;
+        if event.data == "[DONE]" {
+            break;
+        }
+
+        let payload: Value = serde_json::from_str(&event.data)
+            .context("failed to decode OpenAI image stream event")?;
+        let Some(event_type) = payload.get("type").and_then(Value::as_str) else {
+            tracing::debug!("Ignoring OpenAI image stream payload without type");
+            continue;
+        };
+
+        match event_type {
+            "image_generation.partial_image" => {
+                let partial_image_index = payload
+                    .get("partial_image_index")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0) as usize;
+                on_event(ImageApiStreamEvent::PartialImage {
+                    partial_image_index,
+                })
+                .await;
+            }
+            "image_generation.completed" => {
+                let image = serde_json::from_value::<ImageApiImage>(payload)
+                    .context("failed to decode OpenAI completed image event")?;
+                images.push(image);
+                on_event(ImageApiStreamEvent::Completed {
+                    completed_image_count: images.len(),
+                })
+                .await;
+            }
+            other => {
+                tracing::debug!(
+                    event_type = other,
+                    "Ignoring unknown OpenAI image stream event"
+                );
+            }
+        }
+    }
+
+    if images.is_empty() {
+        return Err(anyhow!(
+            "OpenAI image stream ended before any completed image events were received"
+        ));
+    }
+
+    Ok(ImageApiResponse { data: images })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -221,6 +361,8 @@ mod tests {
                 quality: Some("high".to_string()),
                 background: Some("transparent".to_string()),
                 output_format: Some("png".to_string()),
+                stream: None,
+                partial_images: None,
                 count: 1,
             })
             .await
@@ -258,11 +400,70 @@ mod tests {
                 quality: Some("medium".to_string()),
                 background: Some("opaque".to_string()),
                 output_format: Some("png".to_string()),
+                stream: None,
+                partial_images: None,
                 count: 1,
             })
             .await
             .unwrap();
 
         assert_eq!(response.data.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn generate_with_events_streams_partial_and_completed_images() {
+        let server = MockServer::start().await;
+        let stream_body = concat!(
+            "data: {\"type\":\"image_generation.partial_image\",\"partial_image_index\":0}\n\n",
+            "data: {\"type\":\"image_generation.completed\",\"b64_json\":\"aGVsbG8=\",\"revised_prompt\":\"otter\"}\n\n",
+            "data: [DONE]\n\n"
+        );
+        Mock::given(method("POST"))
+            .and(path("/v1/images/generations"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "text/event-stream")
+                    .set_body_string(stream_body),
+            )
+            .mount(&server)
+            .await;
+
+        let client =
+            OpenAiImageClient::new("sk-test", Some(format!("{}/v1", server.uri()))).unwrap();
+        let mut events = Vec::new();
+        let response = client
+            .generate_with_events(
+                GenerateImageRequest {
+                    model: "gpt-image-2".to_string(),
+                    prompt: "otter".to_string(),
+                    size: Some("1024x1024".to_string()),
+                    quality: Some("medium".to_string()),
+                    background: Some("opaque".to_string()),
+                    output_format: Some("png".to_string()),
+                    stream: Some(true),
+                    partial_images: Some(1),
+                    count: 1,
+                },
+                |event| {
+                    events.push(event);
+                    async {}
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            events,
+            vec![
+                ImageApiStreamEvent::PartialImage {
+                    partial_image_index: 0
+                },
+                ImageApiStreamEvent::Completed {
+                    completed_image_count: 1
+                },
+            ]
+        );
+        assert_eq!(response.data.len(), 1);
+        assert_eq!(response.data[0].revised_prompt.as_deref(), Some("otter"));
     }
 }
