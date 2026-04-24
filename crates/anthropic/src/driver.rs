@@ -1228,10 +1228,12 @@ struct AnthropicModelCapabilities {
 /// date suffix (e.g., "claude-opus-4-5-20251101" -> "claude-opus-4-5").
 fn normalize_anthropic_id(model_id: &str) -> &str {
     // Anthropic date suffixes are always -YYYYMMDD (8 digits after a dash)
-    if let Some((base, suffix)) = model_id.rsplit_once('-') {
-        if !base.is_empty() && suffix.len() == 8 && suffix.bytes().all(|b| b.is_ascii_digit()) {
-            return base;
-        }
+    if let Some((base, suffix)) = model_id.rsplit_once('-')
+        && !base.is_empty()
+        && suffix.len() == 8
+        && suffix.bytes().all(|b| b.is_ascii_digit())
+    {
+        return base;
     }
     model_id
 }
