@@ -156,7 +156,7 @@ impl Database {
             FROM notifications
             WHERE org_id = $1
               AND user_id = $2
-              AND ($3::timestamptz IS NULL OR updated_at >= $3)
+              AND ($3::timestamptz IS NULL OR updated_at > $3)
             ORDER BY updated_at ASC, id ASC
             LIMIT $4
             "#,
