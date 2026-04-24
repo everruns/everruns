@@ -649,7 +649,7 @@ async fn test_list_events_default_cap_keeps_earliest_forward_window() {
     }
 
     let all_events = db
-        .list_events(session_id, None, None, &[], &[], None, None)
+        .list_events(session_id, None, None, &[], &[], Some(20_000), None)
         .await
         .unwrap();
     assert!(all_events.len() > 10_000);
