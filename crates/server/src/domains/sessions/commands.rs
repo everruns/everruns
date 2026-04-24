@@ -176,6 +176,10 @@ impl Command for ListSessions {
         }
     }
 
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&super::SESSION_VIEW)
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<Paginated<Session>, CommandError> {
         let pagination = pagination(self.offset, self.limit);
         let agent_internal_id = if let Some(agent_id) = self.agent_id {
@@ -394,6 +398,10 @@ impl Command for GetSessionStats {
             method: "GET",
             path: "/v1/sessions/stats",
         }
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&super::SESSION_VIEW)
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<SessionStatsResponse, CommandError> {
