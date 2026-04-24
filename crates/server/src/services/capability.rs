@@ -483,4 +483,66 @@ mod tests {
         assert!(!is_cached(&svc, 1).await);
         assert!(is_cached(&svc, 2).await);
     }
+
+    // Regression tests for fix(capabilities): restore high-risk levels for
+    // bash/fetch (#1500). `high_risk_ids` is the admin-gating primitive used
+    // by `api::agents::require_admin_for_high_risk`, the agent domain command
+    // `check_high_risk_caps`, and the session service's high-risk guard. If a
+    // refactor again downgrades `virtual_bash` or `web_fetch` the admin gate
+    // would silently stop firing (TM-AGENT-005).
+    mod high_risk_ids_tests {
+        use super::*;
+
+        #[test]
+        fn flags_virtual_bash_as_high_risk() {
+            let svc = make_service();
+            let high = svc.high_risk_ids(&["virtual_bash"]);
+            assert_eq!(high, vec!["virtual_bash".to_string()]);
+        }
+
+        #[test]
+        fn flags_web_fetch_as_high_risk() {
+            let svc = make_service();
+            let high = svc.high_risk_ids(&["web_fetch"]);
+            assert_eq!(high, vec!["web_fetch".to_string()]);
+        }
+
+        #[test]
+        fn flags_both_bash_and_fetch_in_mixed_input() {
+            let svc = make_service();
+            let high = svc.high_risk_ids(&["noop", "virtual_bash", "web_fetch"]);
+            assert!(high.contains(&"virtual_bash".to_string()));
+            assert!(high.contains(&"web_fetch".to_string()));
+            assert!(!high.contains(&"noop".to_string()));
+            assert_eq!(high.len(), 2);
+        }
+
+        #[test]
+        fn does_not_flag_noop_capability() {
+            let svc = make_service();
+            let high = svc.high_risk_ids(&["noop"]);
+            assert!(
+                high.is_empty(),
+                "default/low-risk capabilities must not be flagged as high-risk"
+            );
+        }
+
+        #[test]
+        fn does_not_flag_unknown_capability_refs() {
+            let svc = make_service();
+            // MCP and skill capability refs are resolved externally and are always
+            // Low risk; unknown refs must not be pulled into the high-risk set.
+            let high = svc.high_risk_ids(&["mcp:example/tool", "skill:local"]);
+            assert!(
+                high.is_empty(),
+                "non-builtin refs must not appear as high-risk"
+            );
+        }
+
+        #[test]
+        fn empty_input_returns_empty() {
+            let svc = make_service();
+            assert!(svc.high_risk_ids(&[]).is_empty());
+        }
+    }
 }
