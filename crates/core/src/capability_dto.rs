@@ -307,15 +307,15 @@ mod tests {
     fn test_from_core_populates_risk_level() {
         let registry = crate::capabilities::CapabilityRegistry::with_builtins();
 
-        // virtual_bash is Low risk (in-memory sandboxed execution)
+        // virtual_bash is High risk (code execution)
         let bash_cap = registry.get("virtual_bash").unwrap();
         let info = CapabilityInfo::from_core(bash_cap.as_ref());
-        assert_eq!(info.risk_level, RiskLevel::Low);
+        assert_eq!(info.risk_level, RiskLevel::High);
 
-        // web_fetch is Medium risk (network access)
+        // web_fetch is High risk (network access)
         let fetch_cap = registry.get("web_fetch").unwrap();
         let info = CapabilityInfo::from_core(fetch_cap.as_ref());
-        assert_eq!(info.risk_level, RiskLevel::Medium);
+        assert_eq!(info.risk_level, RiskLevel::High);
 
         // noop is Low risk (default)
         let noop_cap = registry.get("noop").unwrap();
