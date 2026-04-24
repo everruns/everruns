@@ -30,6 +30,7 @@ use everruns_core::channel::{
     build_session_routing_tag,
 };
 use everruns_core::progress_reporting::sync_slack_reply_mode_tags;
+use everruns_core::validate_safe_url;
 use everruns_core::{App, AppStatus, Caller, SessionStrategy, SlackChannelConfig, SlackReplyMode};
 use everruns_worker::AgentRunner;
 use hmac::{Hmac, Mac};
@@ -266,9 +267,10 @@ fn parse_slack_inbound_event(
         let name = file.name.as_deref().unwrap_or("unnamed file");
         if SUPPORTED_IMAGE_TYPES.contains(&mime)
             && let Some(url) = &file.url_private
+            && let Some(url) = validated_image_url(url)
         {
             attachments.push(InboundAttachment::Image {
-                url: url.clone(),
+                url,
                 alt_text: Some(name.to_string()),
             });
             continue;
@@ -279,9 +281,11 @@ fn parse_slack_inbound_event(
         });
     }
     for att in &event.attachments {
-        if let Some(url) = &att.image_url {
+        if let Some(url) = &att.image_url
+            && let Some(url) = validated_image_url(url)
+        {
             attachments.push(InboundAttachment::Image {
-                url: url.clone(),
+                url,
                 alt_text: att.title.clone(),
             });
         }
@@ -812,6 +816,18 @@ async fn process_slack_message(
 /// Supported image MIME types for Slack file attachments.
 const SUPPORTED_IMAGE_TYPES: &[&str] = &["image/png", "image/jpeg", "image/gif", "image/webp"];
 
+/// Validate and normalize image URLs before forwarding to model backends.
+///
+/// Security: only allow publicly routable HTTPS URLs to avoid SSRF through
+/// model backends that may fetch `image_url` server-side.
+fn validated_image_url(url: &str) -> Option<String> {
+    let parsed = validate_safe_url(url).ok()?;
+    if parsed.scheme() != "https" {
+        return None;
+    }
+    Some(parsed.into())
+}
+
 /// Convert Slack file attachments into content parts.
 ///
 /// Images (png, jpeg, gif, webp) with a private URL → `InputContentPart::Image(url)`.
@@ -826,7 +842,12 @@ fn build_file_content_parts(files: &[SlackFile]) -> Vec<InputContentPart> {
             if SUPPORTED_IMAGE_TYPES.contains(&mime) {
                 // Image with URL → image content part
                 if let Some(url) = &file.url_private {
-                    return InputContentPart::image_url(url);
+                    if let Some(url) = validated_image_url(url) {
+                        return InputContentPart::image_url(url);
+                    }
+                    return InputContentPart::text(format!(
+                        "[Attached image: {name} — blocked unsafe image URL]"
+                    ));
                 }
                 // Image without URL → text fallback
                 InputContentPart::text(format!(
@@ -851,7 +872,13 @@ fn build_attachment_content_parts(attachments: &[SlackAttachment]) -> Vec<InputC
         .filter_map(|att| {
             // If the attachment has an image, include it
             if let Some(url) = &att.image_url {
-                return Some(InputContentPart::image_url(url));
+                if let Some(url) = validated_image_url(url) {
+                    return Some(InputContentPart::image_url(url));
+                }
+                let title = att.title.as_deref().unwrap_or("unnamed attachment");
+                return Some(InputContentPart::text(format!(
+                    "[Attachment image blocked: {title}]"
+                )));
             }
 
             // Build a text summary from available fields
@@ -2449,6 +2476,15 @@ mod tests {
         assert_eq!(urlencoding_encode("a\nb"), "a%0Ab");
     }
 
+    #[test]
+    fn test_validated_image_url_requires_https() {
+        assert!(validated_image_url("http://example.com/image.png").is_none());
+        assert_eq!(
+            validated_image_url("https://example.com/image.png").as_deref(),
+            Some("https://example.com/image.png")
+        );
+    }
+
     // ==========================================
     // File attachment content part building
     // ==========================================
@@ -2483,6 +2519,24 @@ mod tests {
             InputContentPart::Text(t) => {
                 assert!(t.text.contains("photo.png"));
                 assert!(t.text.contains("no download URL"));
+            }
+            other => panic!("Expected Text fallback, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_build_file_content_parts_image_unsafe_url_blocked() {
+        let files = vec![test_slack_file(
+            "photo.png",
+            "image/png",
+            "png",
+            Some("http://169.254.169.254/latest/meta-data/"),
+        )];
+        let parts = build_file_content_parts(&files);
+        assert_eq!(parts.len(), 1);
+        match &parts[0] {
+            InputContentPart::Text(t) => {
+                assert!(t.text.contains("blocked unsafe image URL"));
             }
             other => panic!("Expected Text fallback, got {:?}", other),
         }
@@ -2678,6 +2732,23 @@ mod tests {
                 );
             }
             other => panic!("Expected Image, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_build_attachment_content_parts_unsafe_image_url_blocked() {
+        let mut att = test_slack_attachment();
+        att.image_url = Some("http://127.0.0.1/private.png".to_string());
+        att.title = Some("Preview".to_string());
+
+        let parts = build_attachment_content_parts(&[att]);
+        assert_eq!(parts.len(), 1);
+        match &parts[0] {
+            InputContentPart::Text(t) => {
+                assert!(t.text.contains("Attachment image blocked"));
+                assert!(t.text.contains("Preview"));
+            }
+            other => panic!("Expected Text fallback, got {:?}", other),
         }
     }
 
