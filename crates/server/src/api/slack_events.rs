@@ -34,11 +34,11 @@ use everruns_core::validate_safe_url;
 use everruns_core::{App, AppStatus, Caller, SessionStrategy, SlackChannelConfig, SlackReplyMode};
 use everruns_worker::AgentRunner;
 use hmac::{Hmac, Mac};
+use moka::sync::Cache;
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::RwLock;
 
 use crate::api::messages::{CreateMessageRequest, InputContentPart, InputMessage, MessageRole};
 use crate::api::sessions::CreateSessionRequest;
@@ -186,7 +186,16 @@ struct AckResponse {
 
 /// Resolved Slack user display name.
 /// `Some(name)` = resolved, `None` = resolution failed (don't retry).
-type SlackUserCache = Arc<RwLock<HashMap<String, Option<String>>>>;
+type SlackUserCache = Cache<String, Option<String>>;
+
+/// Bound for in-memory Slack users.info cache to prevent unbounded growth.
+const SLACK_USER_CACHE_MAX_ENTRIES: u64 = 10_000;
+
+fn new_slack_user_cache() -> SlackUserCache {
+    Cache::builder()
+        .max_capacity(SLACK_USER_CACHE_MAX_ENTRIES)
+        .build()
+}
 
 /// App-scoped Slack state (no auth required).
 #[derive(Clone)]
@@ -222,7 +231,7 @@ impl SlackState {
             event_service: Arc::new(EventService::new(db.clone(), event_delivery)),
             encryption,
             db,
-            user_name_cache: Arc::new(RwLock::new(HashMap::new())),
+            user_name_cache: new_slack_user_cache(),
             delivery_dispatcher,
         }
     }
@@ -1321,11 +1330,8 @@ async fn resolve_slack_user_name_base(
     user_id: &str,
 ) -> Option<String> {
     // Check cache first
-    {
-        let cache_read = cache.read().await;
-        if let Some(cached) = cache_read.get(user_id) {
-            return cached.clone();
-        }
+    if let Some(cached) = cache.get(user_id) {
+        return cached;
     }
 
     // Call Slack API (user IDs are alphanumeric, safe to interpolate)
@@ -1375,8 +1381,7 @@ async fn resolve_slack_user_name_base(
             })
             .map(String::from);
 
-        let mut cache_write = cache.write().await;
-        cache_write.insert(user_id.to_string(), display_name.clone());
+        cache.insert(user_id.to_string(), display_name.clone());
         display_name
     } else {
         let error = body
@@ -1396,8 +1401,7 @@ async fn resolve_slack_user_name_base(
             || error == "token_revoked"
             || error == "account_inactive"
         {
-            let mut cache_write = cache.write().await;
-            cache_write.insert(user_id.to_string(), None);
+            cache.insert(user_id.to_string(), None);
         }
 
         None
@@ -1914,11 +1918,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_resolve_slack_user_name_cache_hit() {
-        let cache: SlackUserCache = Arc::new(RwLock::new(HashMap::new()));
-        cache
-            .write()
-            .await
-            .insert("U123".to_string(), Some("Alice".to_string()));
+        let cache: SlackUserCache = new_slack_user_cache();
+        cache.insert("U123".to_string(), Some("Alice".to_string()));
 
         let result = resolve_slack_user_name(&cache, "xoxb-fake", "U123").await;
         assert_eq!(result, Some("Alice".to_string()));
@@ -1927,8 +1928,8 @@ mod tests {
     #[tokio::test]
     async fn test_resolve_slack_user_name_cache_hit_none() {
         // Cached failure (e.g., missing_scope) should return None without API call
-        let cache: SlackUserCache = Arc::new(RwLock::new(HashMap::new()));
-        cache.write().await.insert("U123".to_string(), None);
+        let cache: SlackUserCache = new_slack_user_cache();
+        cache.insert("U123".to_string(), None);
 
         let result = resolve_slack_user_name(&cache, "xoxb-fake", "U123").await;
         assert_eq!(result, None);
@@ -1937,7 +1938,7 @@ mod tests {
     #[tokio::test]
     async fn test_resolve_slack_user_name_api_failure_not_cached() {
         // Network failures should not be cached (allow retry)
-        let cache: SlackUserCache = Arc::new(RwLock::new(HashMap::new()));
+        let cache: SlackUserCache = new_slack_user_cache();
 
         // Use an invalid URL-ish token that will fail network-level
         // (the function uses hardcoded slack.com URL, so with a bad token
@@ -3142,7 +3143,7 @@ mod tests {
                 .mount(&mock_server)
                 .await;
 
-            let cache: SlackUserCache = Arc::new(RwLock::new(HashMap::new()));
+            let cache: SlackUserCache = new_slack_user_cache();
             let result =
                 resolve_slack_user_name_base(&mock_server.uri(), &cache, "xoxb-test-token", "U123")
                     .await;
@@ -3150,7 +3151,7 @@ mod tests {
             assert_eq!(result, Some("Alice S.".to_string()));
 
             // Verify it was cached
-            let cached = cache.read().await.get("U123").cloned();
+            let cached = cache.get("U123");
             assert_eq!(cached, Some(Some("Alice S.".to_string())));
         }
 
@@ -3175,7 +3176,7 @@ mod tests {
                 .mount(&mock_server)
                 .await;
 
-            let cache: SlackUserCache = Arc::new(RwLock::new(HashMap::new()));
+            let cache: SlackUserCache = new_slack_user_cache();
             let result =
                 resolve_slack_user_name_base(&mock_server.uri(), &cache, "xoxb-test-token", "U123")
                     .await;
@@ -3204,7 +3205,7 @@ mod tests {
                 .mount(&mock_server)
                 .await;
 
-            let cache: SlackUserCache = Arc::new(RwLock::new(HashMap::new()));
+            let cache: SlackUserCache = new_slack_user_cache();
             let result =
                 resolve_slack_user_name_base(&mock_server.uri(), &cache, "xoxb-test-token", "U123")
                     .await;
@@ -3230,7 +3231,7 @@ mod tests {
                 .mount(&mock_server)
                 .await;
 
-            let cache: SlackUserCache = Arc::new(RwLock::new(HashMap::new()));
+            let cache: SlackUserCache = new_slack_user_cache();
             let result =
                 resolve_slack_user_name_base(&mock_server.uri(), &cache, "xoxb-test-token", "U123")
                     .await;
@@ -3248,11 +3249,8 @@ mod tests {
             let mock_server = MockServer::start().await;
 
             // No mock mounted — any actual HTTP call would fail
-            let cache: SlackUserCache = Arc::new(RwLock::new(HashMap::new()));
-            cache
-                .write()
-                .await
-                .insert("U123".to_string(), Some("Cached Alice".to_string()));
+            let cache: SlackUserCache = new_slack_user_cache();
+            cache.insert("U123".to_string(), Some("Cached Alice".to_string()));
 
             let result =
                 resolve_slack_user_name_base(&mock_server.uri(), &cache, "xoxb-test-token", "U123")
@@ -3262,13 +3260,24 @@ mod tests {
             // No HTTP call made (mock server received 0 requests)
         }
 
+        #[test]
+        fn test_slack_user_cache_is_bounded() {
+            let cache: SlackUserCache = new_slack_user_cache();
+            let inserts = (SLACK_USER_CACHE_MAX_ENTRIES as usize) + 5_000;
+            for index in 0..inserts {
+                cache.insert(format!("U{index}"), Some(format!("user-{index}")));
+            }
+
+            assert!(cache.entry_count() <= SLACK_USER_CACHE_MAX_ENTRIES);
+        }
+
         #[tokio::test]
         async fn test_resolve_user_name_cached_none_skips_api() {
             let mock_server = MockServer::start().await;
 
             // Cache a None (permanent failure like missing_scope)
-            let cache: SlackUserCache = Arc::new(RwLock::new(HashMap::new()));
-            cache.write().await.insert("U123".to_string(), None);
+            let cache: SlackUserCache = new_slack_user_cache();
+            cache.insert("U123".to_string(), None);
 
             let result =
                 resolve_slack_user_name_base(&mock_server.uri(), &cache, "xoxb-test-token", "U123")
@@ -3295,7 +3304,7 @@ mod tests {
                 .mount(&mock_server)
                 .await;
 
-            let cache: SlackUserCache = Arc::new(RwLock::new(HashMap::new()));
+            let cache: SlackUserCache = new_slack_user_cache();
             let result =
                 resolve_slack_user_name_base(&mock_server.uri(), &cache, "xoxb-test-token", "U123")
                     .await;
@@ -3303,7 +3312,7 @@ mod tests {
             assert_eq!(result, None);
 
             // Permanent error should be cached as None
-            let cached = cache.read().await.get("U123").cloned();
+            let cached = cache.get("U123");
             assert_eq!(cached, Some(None));
         }
 
@@ -3321,13 +3330,13 @@ mod tests {
                 .mount(&mock_server)
                 .await;
 
-            let cache: SlackUserCache = Arc::new(RwLock::new(HashMap::new()));
+            let cache: SlackUserCache = new_slack_user_cache();
             let result =
                 resolve_slack_user_name_base(&mock_server.uri(), &cache, "xoxb-bad-token", "U123")
                     .await;
 
             assert_eq!(result, None);
-            assert_eq!(cache.read().await.get("U123").cloned(), Some(None));
+            assert_eq!(cache.get("U123"), Some(None));
         }
 
         #[tokio::test]
@@ -3344,13 +3353,13 @@ mod tests {
                 .mount(&mock_server)
                 .await;
 
-            let cache: SlackUserCache = Arc::new(RwLock::new(HashMap::new()));
+            let cache: SlackUserCache = new_slack_user_cache();
             let result =
                 resolve_slack_user_name_base(&mock_server.uri(), &cache, "xoxb-revoked", "U123")
                     .await;
 
             assert_eq!(result, None);
-            assert_eq!(cache.read().await.get("U123").cloned(), Some(None));
+            assert_eq!(cache.get("U123"), Some(None));
         }
 
         #[tokio::test]
@@ -3368,7 +3377,7 @@ mod tests {
                 .mount(&mock_server)
                 .await;
 
-            let cache: SlackUserCache = Arc::new(RwLock::new(HashMap::new()));
+            let cache: SlackUserCache = new_slack_user_cache();
             let result =
                 resolve_slack_user_name_base(&mock_server.uri(), &cache, "xoxb-test-token", "U123")
                     .await;
@@ -3376,7 +3385,7 @@ mod tests {
             assert_eq!(result, None);
 
             // Transient error should NOT be cached (allow retry)
-            assert!(cache.read().await.get("U123").is_none());
+            assert!(cache.get("U123").is_none());
         }
 
         #[tokio::test]
@@ -3390,14 +3399,14 @@ mod tests {
                 .mount(&mock_server)
                 .await;
 
-            let cache: SlackUserCache = Arc::new(RwLock::new(HashMap::new()));
+            let cache: SlackUserCache = new_slack_user_cache();
             let result =
                 resolve_slack_user_name_base(&mock_server.uri(), &cache, "xoxb-test-token", "U123")
                     .await;
 
             assert_eq!(result, None);
             // Parse failure is transient — not cached
-            assert!(cache.read().await.get("U123").is_none());
+            assert!(cache.get("U123").is_none());
         }
 
         #[tokio::test]
@@ -3414,13 +3423,13 @@ mod tests {
                 .mount(&mock_server)
                 .await;
 
-            let cache: SlackUserCache = Arc::new(RwLock::new(HashMap::new()));
+            let cache: SlackUserCache = new_slack_user_cache();
             let result =
                 resolve_slack_user_name_base(&mock_server.uri(), &cache, "xoxb-test-token", "U123")
                     .await;
 
             assert_eq!(result, None);
-            assert_eq!(cache.read().await.get("U123").cloned(), Some(None));
+            assert_eq!(cache.get("U123"), Some(None));
         }
 
         #[tokio::test]
@@ -3437,13 +3446,13 @@ mod tests {
                 .mount(&mock_server)
                 .await;
 
-            let cache: SlackUserCache = Arc::new(RwLock::new(HashMap::new()));
+            let cache: SlackUserCache = new_slack_user_cache();
             let result =
                 resolve_slack_user_name_base(&mock_server.uri(), &cache, "xoxb-test-token", "U123")
                     .await;
 
             assert_eq!(result, None);
-            assert_eq!(cache.read().await.get("U123").cloned(), Some(None));
+            assert_eq!(cache.get("U123"), Some(None));
         }
 
         // ------------------------------------------
