@@ -92,7 +92,7 @@ impl Database {
     ///
     /// Resolution order:
     /// 1. If the session has an `agent_identity_id`, use `agent_identity_connections`.
-    /// 2. Otherwise fall back to `user_connections` via org membership.
+    /// 2. Otherwise fall back to `user_connections` for the session's resolved owner user.
     ///
     /// Returns None for GitHub App connections (use get_installation_id_for_session instead).
     pub async fn get_connection_token_for_session(
@@ -124,8 +124,8 @@ impl Database {
             user_conn AS (
                 SELECT uc.access_token_encrypted
                 FROM sessions s
-                JOIN organization_members om ON om.org_id = s.org_id
-                JOIN user_connections uc ON uc.user_id = om.user_id AND uc.provider = $2
+                JOIN user_connections uc
+                    ON uc.user_id = s.resolved_owner_user_id AND uc.provider = $2
                 WHERE s.id = $1
                   AND uc.access_token_encrypted IS NOT NULL
                   AND NOT EXISTS (SELECT 1 FROM has_identity_conn)
@@ -177,8 +177,8 @@ impl Database {
             user_conn AS (
                 SELECT uc.provider_metadata
                 FROM sessions s
-                JOIN organization_members om ON om.org_id = s.org_id
-                JOIN user_connections uc ON uc.user_id = om.user_id AND uc.provider = $2
+                JOIN user_connections uc
+                    ON uc.user_id = s.resolved_owner_user_id AND uc.provider = $2
                 WHERE s.id = $1
                   AND NOT EXISTS (SELECT 1 FROM has_identity_conn)
                 ORDER BY uc.created_at ASC
@@ -231,12 +231,12 @@ impl Database {
 
         let row: Option<(Uuid,)> = sqlx::query_as(
             r#"
-            SELECT uc.user_id
+            SELECT s.resolved_owner_user_id
             FROM sessions s
-            JOIN organization_members om ON om.org_id = s.org_id
-            JOIN user_connections uc ON uc.user_id = om.user_id AND uc.provider = $2
+            JOIN user_connections uc
+                ON uc.user_id = s.resolved_owner_user_id AND uc.provider = $2
             WHERE s.id = $1
-            ORDER BY uc.created_at ASC
+              AND s.resolved_owner_user_id IS NOT NULL
             LIMIT 1
             "#,
         )
@@ -276,7 +276,7 @@ impl Database {
     ///
     /// Resolution order:
     /// 1. If the session has an `agent_identity_id`, use `agent_identity_connections`.
-    /// 2. Otherwise fall back to `user_connections` via org membership.
+    /// 2. Otherwise fall back to `user_connections` for the session's resolved owner user.
     pub async fn get_installation_id_for_session(
         &self,
         session_id: SessionId,
@@ -306,8 +306,8 @@ impl Database {
             user_conn AS (
                 SELECT uc.installation_id
                 FROM sessions s
-                JOIN organization_members om ON om.org_id = s.org_id
-                JOIN user_connections uc ON uc.user_id = om.user_id AND uc.provider = $2
+                JOIN user_connections uc
+                    ON uc.user_id = s.resolved_owner_user_id AND uc.provider = $2
                 WHERE s.id = $1
                   AND uc.installation_id IS NOT NULL
                   AND NOT EXISTS (SELECT 1 FROM has_identity_conn)
@@ -350,6 +350,30 @@ impl Database {
         .await?;
 
         Ok(row.map(|(id,)| id))
+    }
+
+    /// Resolve owning user for a provider installation ID.
+    pub async fn get_user_id_by_installation_id(
+        &self,
+        provider: &str,
+        installation_id: i64,
+    ) -> Result<Option<Uuid>> {
+        let row: Option<(Uuid,)> = sqlx::query_as(
+            r#"
+            SELECT user_id
+            FROM user_connections
+            WHERE provider = $1
+              AND installation_id = $2
+            ORDER BY created_at DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(provider)
+        .bind(installation_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row.map(|(user_id,)| user_id))
     }
 
     /// Delete a user's connection for a specific provider

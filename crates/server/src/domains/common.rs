@@ -168,8 +168,6 @@ pub struct Ctx {
     pub session_file_service: Option<Arc<crate::domains::session_files::SessionFileService>>,
     pub session_sandbox_service:
         Option<Arc<crate::domains::session_sandbox::SessionSandboxService>>,
-    pub session_resource_service:
-        Option<Arc<crate::domains::session_resources::SessionResourceService>>,
     pub session_schedule_service:
         Option<Arc<crate::domains::session_schedules::SessionScheduleService>>,
     pub notification_service: Option<Arc<crate::domains::notifications::NotificationService>>,
@@ -219,7 +217,6 @@ impl Ctx {
             event_service: None,
             session_file_service: None,
             session_sandbox_service: None,
-            session_resource_service: None,
             session_schedule_service: None,
             notification_service: None,
             llm_model_service: None,
@@ -306,14 +303,6 @@ impl Ctx {
         service: Arc<crate::domains::session_sandbox::SessionSandboxService>,
     ) -> Self {
         self.session_sandbox_service = Some(service);
-        self
-    }
-
-    pub fn with_session_resource_service(
-        mut self,
-        service: Arc<crate::domains::session_resources::SessionResourceService>,
-    ) -> Self {
-        self.session_resource_service = Some(service);
         self
     }
 
