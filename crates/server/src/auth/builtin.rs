@@ -1,7 +1,9 @@
 // Built-in authentication backend (JWT + password + OAuth + API keys)
 // Decision: Default for OSS. All existing behavior preserved.
-// Decision: API key auth results cached in-process (moka, 5-min TTL) to avoid
-// 4 sequential DB queries per request. Invalidated on key deletion.
+// Decision: API key auth cache is write-only for now. Read-through caching of
+// AuthUser introduced a TOCTOU authorization window for key expiry and
+// membership/role changes. We keep inserts + invalidation hooks so follow-up
+// work can safely reintroduce cache reads with fresh-state guarantees.
 
 use async_trait::async_trait;
 use axum::Router;
@@ -105,7 +107,7 @@ impl BuiltinAuthBackend {
         self.api_key_cache.entry_count()
     }
 
-    /// Validate API key against DB (4 sequential queries). Called on cache miss.
+    /// Validate API key against DB (4 sequential queries).
     async fn validate_api_key_from_db(&self, key_hash: &str) -> Result<AuthUser, AuthError> {
         let api_key_row = self
             .db
@@ -236,12 +238,8 @@ impl AuthBackend for BuiltinAuthBackend {
 
         let key_hash = hash_api_key(key);
 
-        // Check cache first — avoids 4 sequential DB queries on hit
-        if let Some(cached) = self.api_key_cache.get(&key_hash).await {
-            tracing::trace!("API key auth cache hit");
-            return Ok(cached);
-        }
-
+        // Security: always validate against DB to enforce real-time key expiry
+        // and org membership/role changes.
         let auth_user = self.validate_api_key_from_db(&key_hash).await?;
 
         // Populate cache
