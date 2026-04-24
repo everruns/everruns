@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 - Document the `activate_skill` ``!`command` `` trust gate. The gate remains forced off for every source because `SessionFile::is_readonly` is user-controllable via the session-files API and `InitialFile`. `preprocess_command_injections` is kept wired up (with bounded fan-out: 32 placeholders per activation, 4 concurrent shells) so a follow-up can flip it on once a platform-controlled provenance signal is added to `SessionFile`. See `specs/skills-registry.md` "Activation Substitution Pipeline" and threat-model entry TM-TOOL-020 (EVE-388).
+- Restore SVG file preview behind a sandboxed `<iframe sandbox="" srcDoc=...>` with a strict CSP meta tag (`default-src 'none'; style-src 'unsafe-inline'; img-src data:`). PR #1513 had blocked SVG previews entirely to close an XSS surface; the iframe + CSP gate restores the feature while keeping `<script>`, `on*`, `javascript:`, and `<foreignObject>` payloads inert. See threat-model entry TM-WEB-009 (EVE-389).
 
 ### What's Changed
 

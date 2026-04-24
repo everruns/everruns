@@ -180,6 +180,7 @@ function getPreviewIcon(type: PreviewType) {
     case "json":
       return FileJson;
     case "image":
+    case "svg":
       return FileImage;
     case "markdown":
     case "text":
