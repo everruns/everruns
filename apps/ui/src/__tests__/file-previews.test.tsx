@@ -565,6 +565,29 @@ describe("SVGPreview", () => {
       expect(srcDoc).toContain("<rect width='5' height='5'/>");
     });
 
+    it("decodes base64 SVG with embedded whitespace/newlines", () => {
+      // PEM-style line wrapping every 64 chars or pasted-from-clipboard
+      // payloads commonly include whitespace; strict `atob` rejects them.
+      const svg = "<svg xmlns='http://www.w3.org/2000/svg'><rect width='5' height='5'/></svg>";
+      const base64 = Buffer.from(svg, "utf8").toString("base64");
+      const wrapped = base64.replace(/(.{16})/g, "$1\n");
+      const { container } = render(<SVGPreview content={wrapped} encoding="base64" />);
+      const srcDoc = getIframeSrcDoc(container);
+      expect(srcDoc).toContain("<rect width='5' height='5'/>");
+    });
+
+    it("renders SVGs that happen to contain the substring </body>", () => {
+      // Defensive regression: a comment containing `</body>` must still
+      // render through the sandbox path rather than being blanked out.
+      const svg =
+        "<svg xmlns='http://www.w3.org/2000/svg'><!-- the string </body> appears here --><rect width='1' height='1'/></svg>";
+      const { container } = render(<SVGPreview content={svg} encoding="text" />);
+      const iframe = container.querySelector("iframe");
+      expect(iframe).toBeInTheDocument();
+      const srcDoc = iframe?.getAttribute("srcdoc") ?? "";
+      expect(srcDoc).toContain("<rect width='1' height='1'/>");
+    });
+
     it("shows empty-state for whitespace-only SVG", () => {
       const { container } = render(<SVGPreview content="   " encoding="text" />);
       expect(container.querySelector("iframe")).not.toBeInTheDocument();

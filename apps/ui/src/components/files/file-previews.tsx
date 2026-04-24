@@ -415,8 +415,12 @@ function decodeSvgSource(content: string, encoding: "text" | "base64"): string {
   if (encoding !== "base64") {
     return content;
   }
+  // Strip whitespace before `atob`. PEM-style and HTTP-multipart base64 carry
+  // line breaks; many APIs and pasted-from-clipboard payloads include
+  // newlines that strict `atob` rejects.
+  const normalized = content.replace(/\s+/g, "");
   try {
-    const binary = atob(content);
+    const binary = atob(normalized);
     if (typeof TextDecoder !== "undefined") {
       const bytes = new Uint8Array(binary.length);
       for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
@@ -446,17 +450,17 @@ export function SVGPreview({
   const srcDoc = useMemo(() => {
     const csp = "default-src 'none'; style-src 'unsafe-inline'; img-src data:";
     // SVG body is inserted verbatim; the iframe's `sandbox=""` + CSP gate
-    // any executable content. We still escape the closing `</body>` boundary
-    // by refusing to template SVGs that contain it (vanishingly rare in
-    // legitimate SVGs and avoids any DOM-context confusion).
-    const safe = svgSource.includes("</body>") ? "" : svgSource;
+    // any executable content. No string-level guard around `</body>` — even
+    // if an SVG contains that substring, the iframe's HTML parser handles a
+    // premature body close gracefully (subsequent content reopens implicitly)
+    // and the trust gate (sandbox + CSP) is unaffected.
     return `<!DOCTYPE html>
 <html><head>
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="${csp}">
 <style>html,body{margin:0;padding:0;height:100%;display:flex;align-items:center;justify-content:center;background:transparent}svg{max-width:100%;max-height:100%}</style>
 </head>
-<body>${safe}</body></html>`;
+<body>${svgSource}</body></html>`;
   }, [svgSource]);
 
   if (!svgSource.trim()) {
