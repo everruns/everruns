@@ -662,14 +662,17 @@ mod tests {
             "connections",
             "set",
             "daytona",
-            "--api-key",
-            "test_key_123",
+            "--api-key-stdin",
         ])
         .unwrap();
         if let Commands::Connections { command } = cli.command {
-            if let commands::connections::ConnectionsCommand::Set { provider, api_key } = command {
+            if let commands::connections::ConnectionsCommand::Set {
+                provider,
+                api_key_stdin,
+            } = command
+            {
                 assert_eq!(provider, "daytona");
-                assert_eq!(api_key, "test_key_123");
+                assert!(api_key_stdin);
             } else {
                 panic!("Expected Set command");
             }
