@@ -1,5 +1,5 @@
 ---
-description: Start a new session on an Everruns agent and send the first message
+description: Start a new session on an Everruns Dev agent and send the first message
 argument-hint: "<agent_id_or_name> <message>"
 ---
 

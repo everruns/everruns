@@ -1,5 +1,5 @@
 ---
-description: Send a follow-up message to an existing Everruns session
+description: Send a follow-up message to an existing Everruns Dev session
 argument-hint: "<session_id> <message>"
 ---
 
