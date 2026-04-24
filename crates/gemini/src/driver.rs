@@ -274,14 +274,14 @@ impl GeminiLlmDriver {
     /// Build the streaming URL for a model
     fn stream_url(&self, model: &str) -> String {
         format!(
-            "{}/models/{}:streamGenerateContent?alt=sse&key={}",
-            self.base_url, model, self.api_key
+            "{}/models/{}:streamGenerateContent?alt=sse",
+            self.base_url, model
         )
     }
 
     /// Build the models list URL
     fn models_url(&self) -> String {
-        format!("{}/models?key={}", self.base_url, self.api_key)
+        format!("{}/models", self.base_url)
     }
 }
 
@@ -342,6 +342,7 @@ impl LlmDriver for GeminiLlmDriver {
                 .client
                 .post(&url)
                 .header("Content-Type", "application/json")
+                .header("x-goog-api-key", &self.api_key)
                 .json(&request)
                 .send()
                 .await
@@ -749,6 +750,7 @@ impl LlmDriver for GeminiLlmDriver {
         let response = self
             .client
             .get(self.models_url())
+            .header("x-goog-api-key", &self.api_key)
             .send()
             .await
             .map_err(|e| AgentLoopError::llm(format!("Failed to fetch models: {}", e)))?;
@@ -1336,7 +1338,7 @@ mod tests {
         let url = driver.stream_url("gemini-2.5-pro");
         assert!(url.contains("gemini-2.5-pro:streamGenerateContent"));
         assert!(url.contains("alt=sse"));
-        assert!(url.contains("key=test-key"));
+        assert!(!url.contains("key="));
     }
 
     #[test]
