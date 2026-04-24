@@ -138,8 +138,8 @@ case "$cmd" in
           ;;
         Linux)
           # Download pre-built nats-server binary (pinned version, no curl|sh)
-          local nats_version="2.11.3"
-          local arch
+          nats_version="2.11.3"
+          arch=""
           arch=$(uname -m)
           case "$arch" in
             x86_64)  arch="amd64" ;;
@@ -147,12 +147,12 @@ case "$cmd" in
             *)       arch="" ;;
           esac
           if [ -n "$arch" ] && command -v curl &> /dev/null; then
-            local nats_url="https://github.com/nats-io/nats-server/releases/download/v${nats_version}/nats-server-v${nats_version}-linux-${arch}.tar.gz"
-            local tmp_dir
+            nats_url="https://github.com/nats-io/nats-server/releases/download/v${nats_version}/nats-server-v${nats_version}-linux-${arch}.tar.gz"
+            tmp_dir=""
             tmp_dir=$(mktemp -d)
             if curl -fsSL "$nats_url" -o "$tmp_dir/nats.tar.gz" 2>/dev/null; then
               tar -xzf "$tmp_dir/nats.tar.gz" -C "$tmp_dir" 2>/dev/null
-              local nats_bin
+              nats_bin=""
               nats_bin=$(find "$tmp_dir" -name nats-server -type f | head -1)
               if [ -n "$nats_bin" ]; then
                 mkdir -p "$HOME/.local/bin"
