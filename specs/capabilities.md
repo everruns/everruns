@@ -737,6 +737,10 @@ The `read_capabilities` tool enables agents (particularly the Platform Chat) to 
 
 The `PlatformStore` trait (in `everruns-core`) defines the org-scoped management API. `DirectPlatformStore` (in `everruns-server`) implements it using the existing `StorageBackend` and `SessionService`. This keeps the capability in core while the implementation uses server-layer storage.
 
+##### Design Decision: Authorization Happens In Tool Execution, Not Harness Removal
+
+`platform_management` remains assigned to the built-in `platform-chat` harness. Authorization must be enforced when platform tools execute, using the session owner's caller context plus the active `PermissionResolver`. Do not "fix" permission bugs by stripping the capability from Platform Chat; that removes the feature instead of fixing the broken auth boundary.
+
 ### Experimental Capabilities
 
 Experimental capabilities are available in development environments only (`DeploymentGrade::Dev`). They may change significantly or be removed.

@@ -182,6 +182,64 @@ async fn test_execute_command_unknown_command_returns_bad_request_kind() {
     assert!(error.message.contains("Unknown command"));
 }
 
+#[tokio::test]
+async fn test_execute_command_uses_user_permissions() {
+    use crate::storage::models::CreateUserRow;
+
+    let service = test_worker_service().await;
+    let user = service
+        .db
+        .create_user(CreateUserRow {
+            email: "grpc-member@example.com".to_string(),
+            name: "gRPC Member".to_string(),
+            avatar_url: None,
+            external_id: None,
+            roles: vec![],
+            password_hash: None,
+            email_verified: true,
+            auth_provider: Some("test".to_string()),
+            auth_provider_id: None,
+        })
+        .await
+        .expect("create user");
+    service
+        .db
+        .ensure_membership(user.id, everruns_core::DEFAULT_ORG_ID, "member")
+        .await
+        .expect("ensure membership");
+
+    let response = service
+        .execute_command(Request::new(ExecuteCommandRequest {
+            name: "create_harness".to_string(),
+            api_version: "v1".to_string(),
+            params_json: serde_json::to_vec(&serde_json::json!({
+                "name": "forbidden-from-grpc",
+                "system_prompt": "prompt",
+                "tags": [],
+                "capabilities": [],
+                "initial_files": [],
+                "mcp_servers": {},
+            }))
+            .expect("serialize params"),
+            org_id: everruns_core::DEFAULT_ORG_ID,
+            user_id: Some(user.id.to_string()),
+            idempotency_key: None,
+            metadata: Default::default(),
+        }))
+        .await
+        .expect("execute_command should return a structured command error")
+        .into_inner();
+
+    let proto::execute_command_response::Result::Error(error) =
+        response.result.expect("command result should be present")
+    else {
+        panic!("expected Error response");
+    };
+
+    assert_eq!(error.kind, 2);
+    assert!(error.message.contains("Access denied"));
+}
+
 /// Acquire env lock, tolerating poison from #[should_panic] tests.
 fn lock_env() -> std::sync::MutexGuard<'static, ()> {
     ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())

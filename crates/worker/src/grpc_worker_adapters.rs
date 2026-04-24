@@ -389,11 +389,18 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         ))
     }
 
-    fn platform_store(&self, org_id: i64) -> Arc<dyn everruns_core::platform_store::PlatformStore> {
-        Arc::new(crate::grpc_adapters::GrpcPlatformStore::new(
-            self.client.clone(),
-            org_id,
-        ))
+    fn platform_store(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+    ) -> Arc<dyn everruns_core::platform_store::PlatformStore> {
+        Arc::new(
+            crate::grpc_adapters::GrpcPlatformStore::new_for_platform_session(
+                self.client.clone(),
+                org_id,
+                Some(session_id),
+            ),
+        )
     }
 
     fn connection_resolver(&self) -> Arc<dyn everruns_core::traits::UserConnectionResolver> {

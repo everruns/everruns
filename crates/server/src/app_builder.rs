@@ -1214,6 +1214,7 @@ impl ServerAppBuilder {
             let grpc_addr = self.config.grpc_addr.clone();
             let grpc_platform_definition = platform_definition.clone();
             let grpc_llm_resolver = llm_resolver.clone();
+            let grpc_permission_resolver = auth_state.permission_resolver.clone();
 
             let grpc_task_broadcaster = task_broadcaster.clone();
             let grpc_virtual_registry = virtual_registry.clone();
@@ -1231,6 +1232,7 @@ impl ServerAppBuilder {
                 if let Some(broadcaster) = grpc_task_broadcaster {
                     grpc_svc.set_task_broadcaster(broadcaster);
                 }
+                grpc_svc.set_permission_resolver(grpc_permission_resolver);
                 // THREAT[TM-DURABLE-002]: gRPC unauthenticated access
                 // Mitigation: Bearer token auth + optional mTLS
                 let grpc_token = grpc_service::require_grpc_auth_token();
@@ -1461,6 +1463,7 @@ impl ServerAppBuilder {
                 .with_budget_service(budget_service.clone())
                 .with_encryption(encryption.clone())
                 .with_workflow_store(durable_store.clone())
+                .with_permission_resolver(auth_state.permission_resolver.clone())
                 .with_virtual_registry(virtual_registry.clone())
                 .with_storage_store(session_storage_store)
                 .with_runner(runner.clone());

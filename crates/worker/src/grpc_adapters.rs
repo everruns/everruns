@@ -22,7 +22,7 @@ use everruns_core::traits::{
     StoredImageInfo,
 };
 use everruns_core::typed_id::{AgentId, LeasedResourceId, MessageId, ModelId, SessionId};
-use everruns_core::{Agent, Harness, HarnessStatus, Message, Session};
+use everruns_core::{Agent, Harness, HarnessStatus, Message, Session, SessionStatus};
 use everruns_internal_protocol::proto;
 use everruns_internal_protocol::{
     WorkerServiceClient, json_to_proto_list, json_to_proto_struct, proto_list_to_json,
@@ -503,11 +503,51 @@ impl GrpcAdapter {
 pub struct GrpcOrgAdapter {
     client: GrpcClient,
     org_id: i64,
+    platform_session_id: Option<SessionId>,
 }
 
 impl GrpcOrgAdapter {
     pub fn new(client: GrpcClient, org_id: i64) -> Self {
-        Self { client, org_id }
+        Self {
+            client,
+            org_id,
+            platform_session_id: None,
+        }
+    }
+
+    pub fn new_for_platform_session(
+        client: GrpcClient,
+        org_id: i64,
+        session_id: Option<SessionId>,
+    ) -> Self {
+        Self {
+            client,
+            org_id,
+            platform_session_id: session_id,
+        }
+    }
+
+    async fn platform_user_id(&self) -> Result<Option<Uuid>> {
+        let Some(session_id) = self.platform_session_id else {
+            return Ok(None);
+        };
+
+        let mut client = self.client.inner.lock().await;
+        let response = client
+            .get_session(proto::GetSessionRequest {
+                session_id: Some(uuid_to_proto(session_id.uuid())),
+                org_id: self.org_id,
+            })
+            .await
+            .map_err(grpc_status_to_error)?;
+
+        response
+            .into_inner()
+            .session
+            .and_then(|session| session.resolved_owner_user_id)
+            .as_ref()
+            .map(|user_id| proto_uuid_to_uuid(Some(user_id)))
+            .transpose()
     }
 
     async fn execute_platform_command_raw(
@@ -515,6 +555,7 @@ impl GrpcOrgAdapter {
         name: &str,
         params: serde_json::Value,
     ) -> Result<std::result::Result<serde_json::Value, proto::CommandError>> {
+        let user_id = self.platform_user_id().await?;
         let mut client = self.client.inner.lock().await;
         let response = client
             .execute_command(proto::ExecuteCommandRequest {
@@ -524,7 +565,7 @@ impl GrpcOrgAdapter {
                     AgentLoopError::store(format!("JSON serialization failed: {}", e))
                 })?,
                 org_id: self.org_id,
-                user_id: None,
+                user_id: user_id.map(|id| id.to_string()),
                 idempotency_key: None,
                 metadata: Default::default(),
             })
@@ -2861,25 +2902,16 @@ impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
         limit: Option<usize>,
         agent_id: Option<AgentId>,
     ) -> Result<Vec<Session>> {
-        let mut client = self.client.inner.lock().await;
-        let response = client
-            .platform_list_sessions(proto::PlatformListSessionsRequest {
-                org_id: self.org_id,
-                limit: limit.map(|l| l as u32),
-                agent_id: agent_id.map(|id| uuid_to_proto(id.uuid())),
-            })
-            .await
-            .map_err(grpc_status_to_error)?;
-
-        response
-            .into_inner()
-            .sessions
-            .into_iter()
-            .map(|s| {
-                everruns_internal_protocol::proto_session_to_schema(s)
-                    .map_err(|e| AgentLoopError::store(format!("Session conversion failed: {}", e)))
-            })
-            .collect()
+        let page: CommandPage<Session> = self
+            .execute_platform_command(
+                "list_sessions",
+                serde_json::json!({
+                    "limit": limit.unwrap_or(20),
+                    "agent_id": agent_id.map(|id| id.to_string()),
+                }),
+            )
+            .await?;
+        Ok(page.data)
     }
 
     async fn create_session(
@@ -2891,48 +2923,31 @@ impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
         blueprint_id: Option<&str>,
         blueprint_config: Option<&serde_json::Value>,
     ) -> Result<Session> {
-        let mut client = self.client.inner.lock().await;
-        let response = client
-            .platform_create_session(proto::PlatformCreateSessionRequest {
-                org_id: self.org_id,
-                harness_id: Some(uuid_to_proto(harness_id.uuid())),
-                agent_id: agent_id.map(|id| uuid_to_proto(id.uuid())),
-                title: title.map(|s| s.to_string()),
-                locale: locale.map(|value| value.to_string()),
-                blueprint_id: blueprint_id.map(|s| s.to_string()),
-                blueprint_config_json: blueprint_config
-                    .map(|v| serde_json::to_string(v).unwrap_or_default()),
-            })
-            .await
-            .map_err(grpc_status_to_error)?;
-
-        let session = response
-            .into_inner()
-            .session
-            .ok_or_else(|| grpc_missing_field("No session in create response"))?;
-
-        everruns_internal_protocol::proto_session_to_schema(session)
-            .map_err(|e| AgentLoopError::store(format!("Session conversion failed: {}", e)))
+        self.execute_platform_command(
+            "create_session",
+            serde_json::json!({
+                "harness_id": harness_id.to_string(),
+                "agent_id": agent_id.map(|id| id.to_string()),
+                "title": title,
+                "locale": locale,
+                "tags": ["managed"],
+                "capabilities": [],
+                "tools": [],
+                "mcp_servers": {},
+                "initial_files": [],
+                "blueprint_id": blueprint_id,
+                "blueprint_config": blueprint_config,
+            }),
+        )
+        .await
     }
 
     async fn get_session_by_id(&self, id: SessionId) -> Result<Option<Session>> {
-        let mut client = self.client.inner.lock().await;
-        let response = client
-            .get_session(proto::GetSessionRequest {
-                session_id: Some(uuid_to_proto(id.uuid())),
-                org_id: self.org_id,
-            })
-            .await
-            .map_err(grpc_status_to_error)?;
-
-        match response.into_inner().session {
-            Some(s) => Ok(Some(
-                everruns_internal_protocol::proto_session_to_schema(s).map_err(|e| {
-                    AgentLoopError::store(format!("Session conversion failed: {}", e))
-                })?,
-            )),
-            None => Ok(None),
-        }
+        self.execute_platform_lookup(
+            "get_session",
+            serde_json::json!({ "session_id": id.to_string() }),
+        )
+        .await
     }
 
     async fn set_subagent_metadata(
@@ -2949,14 +2964,12 @@ impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
     }
 
     async fn delete_session(&self, id: SessionId) -> Result<()> {
-        let mut client = self.client.inner.lock().await;
-        client
-            .platform_delete_session(proto::PlatformDeleteSessionRequest {
-                org_id: self.org_id,
-                session_id: Some(uuid_to_proto(id.uuid())),
-            })
-            .await
-            .map_err(grpc_status_to_error)?;
+        let _: serde_json::Value = self
+            .execute_platform_command(
+                "delete_session",
+                serde_json::json!({ "session_id": id.to_string() }),
+            )
+            .await?;
         Ok(())
     }
 
@@ -2965,15 +2978,17 @@ impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
     // =========================================================================
 
     async fn send_message(&self, session_id: SessionId, content: &str) -> Result<()> {
-        let mut client = self.client.inner.lock().await;
-        client
-            .platform_send_message(proto::PlatformSendMessageRequest {
-                org_id: self.org_id,
-                session_id: Some(uuid_to_proto(session_id.uuid())),
-                content: content.to_string(),
-            })
-            .await
-            .map_err(grpc_status_to_error)?;
+        let _: serde_json::Value = self
+            .execute_platform_command(
+                "create_message",
+                serde_json::json!({
+                    "session_id": session_id.to_string(),
+                    "message": {
+                        "content": [{ "type": "text", "text": content }],
+                    },
+                }),
+            )
+            .await?;
         Ok(())
     }
 
@@ -2982,25 +2997,46 @@ impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
         session_id: SessionId,
         limit: Option<usize>,
     ) -> Result<Vec<everruns_core::platform_store::PlatformMessage>> {
-        let mut client = self.client.inner.lock().await;
-        let response = client
-            .platform_get_messages(proto::PlatformGetMessagesRequest {
-                org_id: self.org_id,
-                session_id: Some(uuid_to_proto(session_id.uuid())),
-                limit: limit.map(|l| l as u32),
-            })
-            .await
-            .map_err(grpc_status_to_error)?;
+        let mut messages: Vec<Message> = self
+            .execute_platform_command(
+                "list_messages",
+                serde_json::json!({ "session_id": session_id.to_string() }),
+            )
+            .await?;
+        messages.retain(|message| {
+            matches!(
+                message.role,
+                everruns_core::MessageRole::User | everruns_core::MessageRole::Agent
+            )
+        });
+        messages.reverse();
+        let limit = limit.unwrap_or(10);
 
-        Ok(response
-            .into_inner()
-            .messages
+        Ok(messages
             .into_iter()
-            .map(|m| everruns_core::platform_store::PlatformMessage {
-                role: m.role,
-                content: m.content,
-                created_at: proto_timestamp_or_now(m.created_at.as_ref()),
+            .filter_map(|message| {
+                let content = message
+                    .content
+                    .iter()
+                    .filter_map(|part| match part {
+                        everruns_core::ContentPart::Text(text) => Some(text.text.as_str()),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n");
+                if content.is_empty() {
+                    return None;
+                }
+                Some(everruns_core::platform_store::PlatformMessage {
+                    role: match message.role {
+                        everruns_core::MessageRole::User => "user".to_string(),
+                        _ => "agent".to_string(),
+                    },
+                    content,
+                    created_at: message.created_at,
+                })
             })
+            .take(limit)
             .collect())
     }
 
@@ -3013,17 +3049,31 @@ impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
         session_id: SessionId,
         timeout_secs: Option<u64>,
     ) -> Result<String> {
-        let mut client = self.client.inner.lock().await;
-        let response = client
-            .platform_wait_for_idle(proto::PlatformWaitForIdleRequest {
-                org_id: self.org_id,
-                session_id: Some(uuid_to_proto(session_id.uuid())),
-                timeout_secs,
-            })
-            .await
-            .map_err(grpc_status_to_error)?;
+        let timeout = std::time::Duration::from_secs(timeout_secs.unwrap_or(120));
+        let start = std::time::Instant::now();
+        let poll_interval = std::time::Duration::from_millis(500);
 
-        Ok(response.into_inner().status)
+        loop {
+            let session = self
+                .get_session_by_id(session_id)
+                .await?
+                .ok_or_else(|| AgentLoopError::store("Session not found"))?;
+
+            match session.status {
+                SessionStatus::Idle => return Ok("idle".to_string()),
+                SessionStatus::WaitingForToolResults => {
+                    return Ok("waiting_for_tool_results".to_string());
+                }
+                SessionStatus::Paused => return Ok("paused".to_string()),
+                SessionStatus::Started | SessionStatus::Active => {}
+            }
+
+            if start.elapsed() > timeout {
+                return Ok(format!("timeout (last status: {:?})", session.status));
+            }
+
+            tokio::time::sleep(poll_interval).await;
+        }
     }
 
     // =========================================================================
