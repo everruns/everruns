@@ -151,7 +151,13 @@ export function OrgProvider({ children, initialOrgId = null }: OrgProviderProps)
         return;
       }
       const defaultOrg = organizations.find((org) => org.public_id === DEFAULT_ORG_PUBLIC_ID);
-      setCurrentOrgState(defaultOrg ?? organizations[0]);
+      const nextOrg = defaultOrg ?? organizations[0];
+      setCurrentOrgState(nextOrg);
+      // Keep server-side org cookie in sync for non-explicit org changes
+      // (e.g. membership removal, login org-list refresh).
+      void switchOrgApi(nextOrg.public_id).catch((error) => {
+        console.warn("Failed to sync org cookie after automatic org update:", error);
+      });
     } else {
       // Org found in list — clear the explicit flag since we're in sync.
       if (explicitOrgRef.current === currentOrg?.public_id) {
