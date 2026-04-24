@@ -46,6 +46,7 @@ jobs:
             rust:
               - 'crates/**'
               - 'integrations/**'
+              - 'scripts/cli-e2e-test.sh'
               - 'Cargo.toml'
               - 'Cargo.lock'
               - 'rust-toolchain.toml'
