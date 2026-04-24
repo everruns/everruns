@@ -1402,13 +1402,23 @@ impl DurableWorker {
             );
         let host = WorkerRuntimeHost::new(adapters);
         let pending_user_message_count = if completed_activity == "reason" {
-            store
-                .get_and_consume_signals(workflow_id)
-                .await
-                .map_err(|error| anyhow::anyhow!("Failed to consume workflow signals: {}", error))?
-                .into_iter()
-                .filter(|signal| signal.signal_type == everruns_durable::signal_types::USER_MESSAGE)
-                .count()
+            let reason_result: everruns_core::ReasonResult = serde_json::from_value(output.clone())
+                .map_err(|error| anyhow::anyhow!("Invalid reason output payload: {}", error))?;
+            if reason_result.success && !reason_result.has_tool_calls {
+                store
+                    .get_and_consume_signals(workflow_id)
+                    .await
+                    .map_err(|error| {
+                        anyhow::anyhow!("Failed to consume workflow signals: {}", error)
+                    })?
+                    .into_iter()
+                    .filter(|signal| {
+                        signal.signal_type == everruns_durable::signal_types::USER_MESSAGE
+                    })
+                    .count()
+            } else {
+                0
+            }
         } else {
             0
         };
