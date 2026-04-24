@@ -22,6 +22,7 @@ use crate::auth::AuthMethod;
 use crate::auth::middleware::AuthUser;
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::budgets::BudgetService;
+use crate::domains::common::{Command, CommandError, Ctx};
 use crate::domains::messages::MessageService;
 use crate::domains::session_files::SessionFileService;
 use crate::domains::session_sandbox::SessionSandboxService;
@@ -508,14 +509,40 @@ async fn handle_resources_read(
     }
 }
 
+fn mcp_ctx(org: &ResolvedOrg, state: &AppState) -> Ctx {
+    Ctx::new(
+        Caller::from(org),
+        state.db.clone(),
+        state.capability_service.clone(),
+        state.encryption.clone(),
+        state.auth.permission_resolver.clone(),
+    )
+}
+
+fn resource_error(resource: &str, e: CommandError) -> String {
+    match e {
+        CommandError::Forbidden(msg) => msg,
+        CommandError::BadRequest(msg)
+        | CommandError::NotFound(msg)
+        | CommandError::Conflict(msg) => msg,
+        CommandError::Unprocessable(msg) => msg,
+        CommandError::Internal(err) => format!("Failed to list {resource}: {err}"),
+    }
+}
+
 async fn read_capabilities(org: &ResolvedOrg, state: &AppState) -> Result<String, String> {
-    let capabilities = state
-        .capability_service
-        .list_all(org.org_id)
-        .await
-        .map_err(|e| format!("Failed to list capabilities: {e}"))?;
+    let ctx = mcp_ctx(org, state);
+    let capabilities = crate::domains::capabilities::ListCapabilities {
+        search: None,
+        offset: Some(0),
+        limit: Some(200),
+    }
+    .run(&ctx)
+    .await
+    .map_err(|e| resource_error("capabilities", e))?;
 
     let summary: Vec<Value> = capabilities
+        .data
         .into_iter()
         .map(|c| {
             json!({
@@ -531,11 +558,14 @@ async fn read_capabilities(org: &ResolvedOrg, state: &AppState) -> Result<String
 }
 
 async fn read_harnesses(org: &ResolvedOrg, state: &AppState) -> Result<String, String> {
-    let harnesses = state
-        .db
-        .list_harnesses(org.org_id, None, false)
-        .await
-        .map_err(|e| format!("Failed to list harnesses: {e}"))?;
+    let ctx = mcp_ctx(org, state);
+    let harnesses = crate::domains::harnesses::ListHarnesses {
+        search: None,
+        include_archived: false,
+    }
+    .run(&ctx)
+    .await
+    .map_err(|e| resource_error("harnesses", e))?;
 
     let summary: Vec<Value> = harnesses
         .into_iter()
@@ -553,11 +583,11 @@ async fn read_harnesses(org: &ResolvedOrg, state: &AppState) -> Result<String, S
 }
 
 async fn read_models(org: &ResolvedOrg, state: &AppState) -> Result<String, String> {
-    let providers = state
-        .db
-        .list_llm_providers(org.org_id)
+    let ctx = mcp_ctx(org, state);
+    let providers = crate::domains::llm_providers::ListProviders
+        .run(&ctx)
         .await
-        .map_err(|e| format!("Failed to list providers: {e}"))?;
+        .map_err(|e| resource_error("providers", e))?;
 
     let summary: Vec<Value> = providers
         .into_iter()
@@ -574,18 +604,19 @@ async fn read_models(org: &ResolvedOrg, state: &AppState) -> Result<String, Stri
 }
 
 async fn read_agents(org: &ResolvedOrg, state: &AppState) -> Result<String, String> {
-    let (agents, _total) = state
-        .db
-        .list_agents(
-            org.org_id,
-            None,
-            false,
-            crate::api::common::Pagination::new(0, 100),
-        )
-        .await
-        .map_err(|e| format!("Failed to list agents: {e}"))?;
+    let ctx = mcp_ctx(org, state);
+    let agents = crate::domains::agents::ListAgents {
+        search: None,
+        include_archived: false,
+        offset: Some(0),
+        limit: Some(100),
+    }
+    .run(&ctx)
+    .await
+    .map_err(|e| resource_error("agents", e))?;
 
     let summary: Vec<Value> = agents
+        .data
         .into_iter()
         .map(|a| {
             json!({
