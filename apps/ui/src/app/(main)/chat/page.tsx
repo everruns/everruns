@@ -7,20 +7,8 @@ import { useGlobalChat } from "@/hooks/use-global-chat";
 import { useFeatureFlag } from "@/providers/feature-flags-provider";
 import { ExperimentalPageBadge } from "@/components/ui/experimental-badge";
 
-export default function GlobalChatPage() {
-  const globalChatEnabled = useFeatureFlag("global_chat");
+function GlobalChatEnabledContent() {
   const { sessionId, isLoading, error } = useGlobalChat();
-
-  if (!globalChatEnabled) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <div className="text-center text-muted-foreground">
-          <p className="text-lg font-medium">Global Chat is not enabled</p>
-          <p className="text-sm">This feature is currently disabled.</p>
-        </div>
-      </div>
-    );
-  }
 
   if (isLoading || !sessionId) {
     return (
@@ -54,4 +42,21 @@ export default function GlobalChatPage() {
       </SessionProvider>
     </div>
   );
+}
+
+export default function GlobalChatPage() {
+  const globalChatEnabled = useFeatureFlag("global_chat");
+
+  if (!globalChatEnabled) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <div className="text-center text-muted-foreground">
+          <p className="text-lg font-medium">Global Chat is not enabled</p>
+          <p className="text-sm">This feature is currently disabled.</p>
+        </div>
+      </div>
+    );
+  }
+
+  return <GlobalChatEnabledContent />;
 }
