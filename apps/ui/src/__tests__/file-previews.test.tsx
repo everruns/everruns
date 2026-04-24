@@ -17,6 +17,7 @@ import {
   CSVPreview,
   ImagePreview,
   MarkdownPreview,
+  SVGPreview,
   parseFrontmatter,
 } from "@/components/files/file-previews";
 
@@ -105,8 +106,12 @@ describe("getPreviewType", () => {
       expect(getPreviewType("webp", "base64")).toBe("image");
     });
 
-    it("returns 'binary' for SVG files with base64 encoding", () => {
-      expect(getPreviewType("svg", "base64")).toBe("binary");
+    it("returns 'svg' for SVG files with base64 encoding", () => {
+      expect(getPreviewType("svg", "base64")).toBe("svg");
+    });
+
+    it("returns 'svg' for SVG files with text encoding", () => {
+      expect(getPreviewType("svg", "text")).toBe("svg");
     });
   });
 
@@ -179,7 +184,11 @@ describe("canPreview", () => {
     it("returns false for binary files", () => {
       expect(canPreview("exe", "base64")).toBe(false);
       expect(canPreview("bin", "base64")).toBe(false);
-      expect(canPreview("svg", "base64")).toBe(false);
+    });
+
+    it("returns true for SVG files (sandboxed preview path)", () => {
+      expect(canPreview("svg", "base64")).toBe(true);
+      expect(canPreview("svg", "text")).toBe(true);
     });
 
     it("returns false for unknown file types", () => {
@@ -443,5 +452,129 @@ describe("MarkdownPreview", () => {
     const content = "# Just Markdown";
     const { container } = render(<MarkdownPreview content={content} />);
     expect(container.querySelector(".file-preview-frontmatter")).not.toBeInTheDocument();
+  });
+});
+
+// ============================================
+// SVGPreview Tests (sandboxed iframe path)
+// ============================================
+//
+// These tests verify two things:
+// 1. The trust-gate wiring: a sandboxed iframe is rendered with `sandbox=""`
+//    and a strict `Content-Security-Policy` meta tag inside the srcDoc.
+// 2. The legitimate SVG content survives intact, but XSS payloads
+//    (`<script>`, `on*` handlers, `javascript:` URLs, `<foreignObject>`
+//    HTML) are present in the sandboxed document body — they are NOT
+//    stripped server-side. The iframe sandbox + CSP do the gating, not
+//    text-level sanitization. The tests assert the SVG payload reaches
+//    the iframe so the gate is actually exercised.
+
+describe("SVGPreview", () => {
+  function getIframeSrcDoc(container: HTMLElement): string {
+    const iframe = container.querySelector("iframe");
+    expect(iframe).toBeInTheDocument();
+    return iframe?.getAttribute("srcdoc") ?? "";
+  }
+
+  describe("sandbox + CSP", () => {
+    it("renders an iframe with empty sandbox attribute", () => {
+      const svg = "<svg xmlns='http://www.w3.org/2000/svg'><circle r='10'/></svg>";
+      const { container } = render(<SVGPreview content={svg} encoding="text" />);
+      const iframe = container.querySelector("iframe");
+      expect(iframe).toBeInTheDocument();
+      // empty sandbox = deny all flags (scripts, forms, popups, top-nav, same-origin)
+      expect(iframe?.getAttribute("sandbox")).toBe("");
+    });
+
+    it("includes strict CSP in iframe srcdoc", () => {
+      const svg = "<svg xmlns='http://www.w3.org/2000/svg'/>";
+      const { container } = render(<SVGPreview content={svg} encoding="text" />);
+      const srcDoc = getIframeSrcDoc(container);
+      expect(srcDoc).toContain("Content-Security-Policy");
+      expect(srcDoc).toContain("default-src 'none'");
+      expect(srcDoc).toContain("style-src 'unsafe-inline'");
+      // remote img loads must stay blocked; only data: is allowed for inline raster
+      expect(srcDoc).toMatch(/img-src\s+data:/);
+    });
+
+    it("renders SVG body inside the sandboxed iframe", () => {
+      const svg = "<svg xmlns='http://www.w3.org/2000/svg'><rect width='10' height='10'/></svg>";
+      const { container } = render(<SVGPreview content={svg} encoding="text" />);
+      const srcDoc = getIframeSrcDoc(container);
+      expect(srcDoc).toContain("<rect width='10' height='10'/>");
+    });
+  });
+
+  describe("XSS payloads remain inside sandbox", () => {
+    // We do NOT sanitize the SVG body; we rely on the sandbox + CSP. These
+    // tests assert that the dangerous markup does reach the iframe srcdoc
+    // (proving the sandbox is exercising it) AND that nothing in the host
+    // document was rendered or executed.
+
+    it("does not execute <script> outside the iframe", () => {
+      const svg =
+        "<svg xmlns='http://www.w3.org/2000/svg'><script>window.__svg_pwned=true</script></svg>";
+      const { container } = render(<SVGPreview content={svg} encoding="text" />);
+      // payload is inside the sandboxed srcdoc, not in host DOM
+      expect(container.querySelector("script")).not.toBeInTheDocument();
+      expect((window as unknown as { __svg_pwned?: boolean }).__svg_pwned).toBeUndefined();
+      const srcDoc = getIframeSrcDoc(container);
+      expect(srcDoc).toContain("<script>");
+    });
+
+    it("keeps on* event-handler attributes inside the sandbox", () => {
+      const svg =
+        "<svg xmlns='http://www.w3.org/2000/svg' onload='alert(1)'><circle r='5' onclick='alert(2)'/></svg>";
+      const { container } = render(<SVGPreview content={svg} encoding="text" />);
+      // host DOM has no <svg> elements with handlers
+      expect(container.querySelector("svg")).not.toBeInTheDocument();
+      const srcDoc = getIframeSrcDoc(container);
+      // payload reached the sandbox; CSP + sandbox stop execution
+      expect(srcDoc).toContain("onload='alert(1)'");
+      expect(srcDoc).toContain("onclick='alert(2)'");
+    });
+
+    it("keeps javascript: URLs inside the sandbox", () => {
+      const svg =
+        "<svg xmlns='http://www.w3.org/2000/svg'><a xlink:href='javascript:alert(1)'><circle r='5'/></a></svg>";
+      const { container } = render(<SVGPreview content={svg} encoding="text" />);
+      // host DOM has no anchor with the javascript: URL
+      expect(container.querySelector("a[href^='javascript:']")).not.toBeInTheDocument();
+      const srcDoc = getIframeSrcDoc(container);
+      expect(srcDoc).toContain("javascript:alert(1)");
+    });
+
+    it("keeps <foreignObject> HTML inside the sandbox", () => {
+      const svg =
+        "<svg xmlns='http://www.w3.org/2000/svg'><foreignObject width='100' height='100'><div xmlns='http://www.w3.org/1999/xhtml'><img src=x onerror='alert(1)'/></div></foreignObject></svg>";
+      const { container } = render(<SVGPreview content={svg} encoding="text" />);
+      // no foreignObject HTML escaped into the host DOM
+      expect(container.querySelector("foreignObject")).not.toBeInTheDocument();
+      expect(container.querySelector("img[onerror]")).not.toBeInTheDocument();
+      const srcDoc = getIframeSrcDoc(container);
+      expect(srcDoc).toContain("foreignObject");
+    });
+  });
+
+  describe("input variants", () => {
+    it("decodes base64-encoded SVG into the iframe", () => {
+      const svg = "<svg xmlns='http://www.w3.org/2000/svg'><rect width='5' height='5'/></svg>";
+      const base64 = Buffer.from(svg, "utf8").toString("base64");
+      const { container } = render(<SVGPreview content={base64} encoding="base64" />);
+      const srcDoc = getIframeSrcDoc(container);
+      expect(srcDoc).toContain("<rect width='5' height='5'/>");
+    });
+
+    it("shows empty-state for whitespace-only SVG", () => {
+      const { container } = render(<SVGPreview content="   " encoding="text" />);
+      expect(container.querySelector("iframe")).not.toBeInTheDocument();
+      expect(screen.getByText("Empty or invalid SVG")).toBeInTheDocument();
+    });
+
+    it("shows empty-state for unparseable base64", () => {
+      const { container } = render(<SVGPreview content="!!!not-base64!!!" encoding="base64" />);
+      expect(container.querySelector("iframe")).not.toBeInTheDocument();
+      expect(screen.getByText("Empty or invalid SVG")).toBeInTheDocument();
+    });
   });
 });
