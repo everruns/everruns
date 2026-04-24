@@ -21,6 +21,14 @@ use crate::task_notifications::{TaskNotificationPayload, WorkerSubscription};
 /// NATS subject prefix for task availability notifications
 const NATS_TASK_SUBJECT_PREFIX: &str = "task.available";
 
+fn activity_type_from_message(subject: &str, payload: &[u8], prefix: &str) -> String {
+    std::str::from_utf8(payload)
+        .ok()
+        .filter(|activity_type| !activity_type.is_empty())
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| subject.strip_prefix(prefix).unwrap_or(subject).to_string())
+}
+
 /// NATS-backed task notification broadcaster.
 /// Same public API as `TaskNotificationBroadcaster` — drop-in replacement.
 pub struct NatsTaskNotificationBroadcaster {
@@ -175,10 +183,8 @@ impl NatsTaskNotificationBroadcaster {
                     msg = subscription.next() => {
                         match msg {
                             Some(msg) => {
-                                let activity_type = msg.subject
-                                    .strip_prefix(&prefix)
-                                    .unwrap_or(&msg.subject)
-                                    .to_string();
+                                let activity_type =
+                                    activity_type_from_message(&msg.subject, &msg.payload, &prefix);
 
                                 debug!(activity_type = %activity_type, "NATS task notification received");
 
@@ -202,6 +208,30 @@ impl NatsTaskNotificationBroadcaster {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::activity_type_from_message;
+
+    #[test]
+    fn uses_payload_activity_type_when_available() {
+        let activity_type = activity_type_from_message(
+            "task.available.email_send_batch",
+            b"email.send batch",
+            "task.available.",
+        );
+
+        assert_eq!(activity_type, "email.send batch");
+    }
+
+    #[test]
+    fn falls_back_to_subject_suffix_when_payload_invalid() {
+        let activity_type =
+            activity_type_from_message("task.available.foo", &[0xFF], "task.available.");
+
+        assert_eq!(activity_type, "foo");
     }
 }
 
