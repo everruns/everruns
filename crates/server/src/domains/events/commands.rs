@@ -105,6 +105,7 @@ impl Command for ListEvents {
                     .find_turn_boundary(session_id.uuid(), first_seq)
                     .await
                 && turn_seq < first_seq
+                && let Some(prefix_limit) = first_seq.checked_sub(turn_seq)
                 && let Ok(mut prefix) = q::event_service(ctx)?
                     .list(
                         session_id.uuid(),
@@ -113,7 +114,7 @@ impl Command for ListEvents {
                         &self.types,
                         &self.exclude,
                         Some(first_seq),
-                        None,
+                        Some(prefix_limit),
                     )
                     .await
             {
