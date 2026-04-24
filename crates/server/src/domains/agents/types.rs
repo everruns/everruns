@@ -56,7 +56,7 @@ pub struct CreateAgentRequest {
     pub initial_files: Vec<InitialFile>,
     /// Client-side tools for this agent.
     /// These tools are sent to the LLM but executed by the client, not the server.
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_client_side_tools")]
     pub tools: Vec<ToolDefinition>,
     /// Remote MCP servers scoped to this agent.
     #[serde(default, rename = "mcpServers", alias = "mcp_servers")]
@@ -110,7 +110,11 @@ pub struct UpdateAgentRequest {
     pub status: Option<AgentStatus>,
     /// Client-side tools for this agent.
     /// Replaces existing tools if provided.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        deserialize_with = "deserialize_optional_client_side_tools",
+        skip_serializing_if = "Option::is_none"
+    )]
     pub tools: Option<Vec<ToolDefinition>>,
     /// Remote MCP servers scoped to this agent.
     #[serde(
@@ -197,4 +201,86 @@ pub struct ImportAgentQuery {
     /// When set, the request body is ignored.
     #[serde(rename = "from-example")]
     pub from_example: Option<String>,
+}
+
+fn deserialize_client_side_tools<'de, D>(deserializer: D) -> Result<Vec<ToolDefinition>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let tools = Vec::<ToolDefinition>::deserialize(deserializer)?;
+    if tools
+        .iter()
+        .any(|tool| !matches!(tool, ToolDefinition::ClientSide(_)))
+    {
+        return Err(serde::de::Error::custom(
+            "tools must contain only client_side definitions",
+        ));
+    }
+    Ok(tools)
+}
+
+fn deserialize_optional_client_side_tools<'de, D>(
+    deserializer: D,
+) -> Result<Option<Vec<ToolDefinition>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let tools = Option::<Vec<ToolDefinition>>::deserialize(deserializer)?;
+    if let Some(tools) = &tools
+        && tools
+            .iter()
+            .any(|tool| !matches!(tool, ToolDefinition::ClientSide(_)))
+    {
+        return Err(serde::de::Error::custom(
+            "tools must contain only client_side definitions",
+        ));
+    }
+    Ok(tools)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CreateAgentRequest, UpdateAgentRequest};
+
+    #[test]
+    fn create_agent_request_rejects_builtin_tools() {
+        let json = r#"{
+            "name": "test-agent",
+            "system_prompt": "You are helpful",
+            "tools": [
+                {
+                    "type": "builtin",
+                    "name": "read_file",
+                    "description": "Read file",
+                    "parameters": {"type": "object"}
+                }
+            ]
+        }"#;
+
+        let err = serde_json::from_str::<CreateAgentRequest>(json).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("tools must contain only client_side definitions")
+        );
+    }
+
+    #[test]
+    fn update_agent_request_rejects_builtin_tools() {
+        let json = r#"{
+            "tools": [
+                {
+                    "type": "builtin",
+                    "name": "web_fetch",
+                    "description": "Fetch",
+                    "parameters": {"type": "object"}
+                }
+            ]
+        }"#;
+
+        let err = serde_json::from_str::<UpdateAgentRequest>(json).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("tools must contain only client_side definitions")
+        );
+    }
 }
