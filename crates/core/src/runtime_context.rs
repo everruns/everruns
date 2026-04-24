@@ -223,7 +223,6 @@ async fn assemble_turn_context_with_mode(
     let runtime_agent = build_runtime_agent(
         &session,
         &effective_overlay,
-        &resolved_capability_configs,
         capability_registry,
         &prompt_ctx,
         mcp_tool_definitions,
@@ -280,7 +279,6 @@ pub fn resolve_runtime_capabilities(
 async fn build_runtime_agent(
     session: &Session,
     effective_overlay: &AgentConfigOverlay,
-    resolved_capability_configs: &[AgentCapabilityConfig],
     capability_registry: &CapabilityRegistry,
     prompt_ctx: &SystemPromptContext,
     mcp_tool_definitions: &[ToolDefinition],
@@ -323,8 +321,6 @@ async fn build_runtime_agent(
         let overlay_tools = std::mem::take(&mut overlay_for_builder.tools);
 
         RuntimeAgentBuilder::from_overlay(overlay_for_builder, capability_registry, prompt_ctx)
-            .await
-            .with_capability_configs(resolved_capability_configs, capability_registry, prompt_ctx)
             .await
             .with_locale(prompt_ctx.locale.as_deref())
             .tools(mcp_tool_definitions.iter().cloned())
