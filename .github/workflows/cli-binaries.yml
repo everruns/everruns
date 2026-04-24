@@ -132,7 +132,9 @@ jobs:
 
             on_linux do
               depends_on arch: :x86_64
-              if Hardware::CPU.intel?
+              if Hardware::CPU.arm?
+                odie "Linux ARM is not supported by this formula"
+              else
                 url "${BASE_URL}/everruns-x86_64-unknown-linux-gnu.tar.gz"
                 sha256 "${SHA_LINUX}"
               end
