@@ -244,6 +244,32 @@ describe("OrgProvider", () => {
     expect(mockPush).not.toHaveBeenCalled();
   });
 
+  it("syncs cookie when current org auto-falls back after org list refresh", async () => {
+    storageMap.set("everruns_current_org", SECOND_ORG.public_id);
+    mockInitialOrgId = SECOND_ORG.public_id;
+    mockUser = { organizations: [DEFAULT_ORG, SECOND_ORG] };
+    mockAuthLoading = false;
+
+    const { result, rerender } = renderHook(() => useOrg(), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.currentOrg?.public_id).toBe(SECOND_ORG.public_id);
+    });
+
+    mockSwitchOrg.mockClear();
+
+    // Simulate membership update removing current org; provider should
+    // auto-fallback and resync cookie for the new org.
+    mockUser = { organizations: [DEFAULT_ORG] };
+    rerender();
+
+    await waitFor(() => {
+      expect(result.current.currentOrg?.public_id).toBe(DEFAULT_ORG.public_id);
+    });
+
+    expect(mockSwitchOrg).toHaveBeenCalledWith(DEFAULT_ORG.public_id);
+  });
+
   it("restores org from localStorage on init", () => {
     storageMap.set("everruns_current_org", SECOND_ORG.public_id);
     mockUser = { organizations: [DEFAULT_ORG, SECOND_ORG] };
