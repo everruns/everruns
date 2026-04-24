@@ -312,7 +312,6 @@ describe("ImagePreview", () => {
       const img = screen.getByRole("img");
       expect(img).toHaveAttribute("src", `data:image/webp;base64,${sampleBase64}`);
     });
-
   });
 
   describe("case insensitivity", () => {
