@@ -142,7 +142,7 @@ impl InMemoryDatabase {
             .filter(|row| {
                 row.org_id == org_id
                     && row.user_id == user_id
-                    && updated_since.is_none_or(|ts| row.updated_at >= ts)
+                    && updated_since.is_none_or(|ts| row.updated_at > ts)
             })
             .cloned()
             .collect();
