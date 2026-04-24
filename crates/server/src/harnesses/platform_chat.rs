@@ -1,8 +1,9 @@
 //! Platform Chat harness — conversational interface for managing the Everruns platform.
 //!
-//! Inherits from Generic without additional privileged capabilities.
+//! Keep `platform_management` here. Permission enforcement belongs in the
+//! platform tool execution path, not in harness amputation.
 
-use everruns_core::{BuiltInHarnessDefinition, BuiltInHarnessRole};
+use everruns_core::{BuiltInCapabilityDefinition, BuiltInHarnessDefinition, BuiltInHarnessRole};
 
 pub fn definition() -> BuiltInHarnessDefinition {
     BuiltInHarnessDefinition::new(
@@ -14,6 +15,7 @@ pub fn definition() -> BuiltInHarnessDefinition {
     .with_parent_name("generic")
     .with_tags(["chat", "built-in"])
     .with_roles([BuiltInHarnessRole::Chat])
+    .with_capabilities([BuiltInCapabilityDefinition::new("platform_management")])
 }
 
 const SYSTEM_PROMPT: &str = "\

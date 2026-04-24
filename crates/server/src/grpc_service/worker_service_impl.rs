@@ -3068,7 +3068,23 @@ impl WorkerService for WorkerServiceImpl {
             ));
         };
 
-        let ctx = self.domain_ctx(req.org_id);
+        // gRPC ExecuteCommand is the auth boundary for worker-driven platform
+        // tools. Respect the provided user_id; do not silently upgrade to
+        // Caller::internal for user-owned sessions.
+        let caller = match req.user_id.as_deref() {
+            Some(user_id) => {
+                let user_id = user_id
+                    .parse()
+                    .map_err(|e| Status::invalid_argument(format!("Invalid user_id: {e}")))?;
+                crate::auth::caller_resolution::caller_for_user(&self.db, req.org_id, user_id)
+                    .await
+                    .map_err(|e| {
+                        Status::permission_denied(format!("Failed to resolve caller: {e}"))
+                    })?
+            }
+            None => everruns_core::Caller::internal(req.org_id),
+        };
+        let ctx = self.domain_ctx_for_caller(caller);
         let response = match crate::domains::common::dispatch(&req.name, params, &ctx).await {
             Ok(ok_json) => ExecuteCommandResponse {
                 result: Some(proto::execute_command_response::Result::OkJson(

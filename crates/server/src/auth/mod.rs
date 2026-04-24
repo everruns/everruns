@@ -8,6 +8,7 @@ pub mod api_key_routes;
 pub mod audit;
 pub mod backend;
 pub mod builtin;
+pub mod caller_resolution;
 pub mod cli_auth;
 pub mod config;
 pub mod jwt;
