@@ -2002,23 +2002,50 @@ async fn create_session_with_content_events(db: &InMemoryDatabase) -> SessionId 
     let events_data = vec![
         (
             "input.message",
-            serde_json::json!({"content": "Hello, how are you?"}),
+            serde_json::json!({
+                "message": {
+                    "id": "message_01933b5a00007000800000000000001",
+                    "role": "user",
+                    "content": [{"type": "text", "text": "Hello, how are you?"}]
+                }
+            }),
         ),
         (
             "output.message.completed",
-            serde_json::json!({"content": "I am doing great, thank you!"}),
+            serde_json::json!({
+                "message": {
+                    "id": "message_01933b5a00007000800000000000002",
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "I am doing great, thank you!"}]
+                }
+            }),
         ),
         (
             "input.message",
-            serde_json::json!({"content": "Tell me about Rust programming"}),
+            serde_json::json!({
+                "message": {
+                    "id": "message_01933b5a00007000800000000000003",
+                    "role": "user",
+                    "content": [{"type": "text", "text": "Tell me about Rust programming"}]
+                }
+            }),
         ),
         (
             "tool.completed",
-            serde_json::json!({"tool_name": "search", "content": "Rust is a systems language"}),
+            serde_json::json!({
+                "tool_name": "search",
+                "result": [{"type": "text", "text": "Rust is a systems language"}]
+            }),
         ),
         (
             "output.message.completed",
-            serde_json::json!({"content": "Here is information about Rust"}),
+            serde_json::json!({
+                "message": {
+                    "id": "message_01933b5a00007000800000000000004",
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "Here is information about Rust"}]
+                }
+            }),
         ),
         // Event with no content field
         ("turn.started", serde_json::json!({"turn_id": "abc123"})),

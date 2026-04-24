@@ -286,10 +286,21 @@ impl InMemoryDatabase {
                             }
                         }
                         MessageFilter::Search(search_query) => {
-                            // Match PostgreSQL tsvector behavior: search data->>'content'
-                            let content =
-                                e.data.get("content").and_then(|v| v.as_str()).unwrap_or("");
-                            if !content
+                            // Match PostgreSQL tsvector behavior: search canonical event text
+                            // fields (message.content/result/content/delta/accumulated).
+                            let searchable = e
+                                .data
+                                .pointer("/message/content")
+                                .or_else(|| e.data.pointer("/result"))
+                                .or_else(|| e.data.get("content"))
+                                .or_else(|| e.data.get("delta"))
+                                .or_else(|| e.data.get("accumulated"))
+                                .map(|v| match v {
+                                    serde_json::Value::String(s) => s.to_string(),
+                                    _ => v.to_string(),
+                                })
+                                .unwrap_or_default();
+                            if !searchable
                                 .to_lowercase()
                                 .contains(&search_query.to_lowercase())
                             {
