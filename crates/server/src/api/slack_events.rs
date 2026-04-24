@@ -1436,6 +1436,12 @@ async fn handle_slack_manifest(
     })?
     .ok_or_else(|| ErrorResponse::new("App not found").into_response(StatusCode::NOT_FOUND))?;
 
+    // Mirror webhook exposure policy: only published apps with an enabled Slack channel
+    // can retrieve Slack manifest data from this unauthenticated endpoint.
+    if app.status != AppStatus::Published || app.slack_channel().is_none() {
+        return Err(ErrorResponse::new("App not found").into_response(StatusCode::NOT_FOUND));
+    }
+
     let display_name = truncate_display_name(&app.name);
 
     let manifest_yaml = build_manifest_yaml(&app.name, &display_name, app.description.as_deref());
