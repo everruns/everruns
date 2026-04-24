@@ -261,6 +261,185 @@ async fn test_events_sequence() {
 }
 
 #[tokio::test]
+async fn test_session_connection_resolution_uses_resolved_owner_user() {
+    let db = InMemoryDatabase::new();
+
+    let owner = db
+        .create_user(CreateUserRow {
+            email: format!("owner-{}@example.com", Uuid::now_v7()),
+            name: "Owner".to_string(),
+            avatar_url: None,
+            roles: vec!["user".to_string()],
+            password_hash: None,
+            email_verified: true,
+            auth_provider: None,
+            auth_provider_id: None,
+            external_id: None,
+        })
+        .await
+        .unwrap();
+    let other = db
+        .create_user(CreateUserRow {
+            email: format!("other-{}@example.com", Uuid::now_v7()),
+            name: "Other".to_string(),
+            avatar_url: None,
+            roles: vec!["user".to_string()],
+            password_hash: None,
+            email_verified: true,
+            auth_provider: None,
+            auth_provider_id: None,
+            external_id: None,
+        })
+        .await
+        .unwrap();
+
+    db.add_organization_member(DEFAULT_ORG_ID, owner.id, "member")
+        .await
+        .unwrap();
+    db.add_organization_member(DEFAULT_ORG_ID, other.id, "member")
+        .await
+        .unwrap();
+
+    let session = db
+        .create_session(CreateSessionRow {
+            org_id: DEFAULT_ORG_ID,
+            harness_id: None,
+            agent_id: None,
+            agent_identity_id: None,
+            owner_principal_id: everruns_core::PrincipalId::from_seed(42),
+            resolved_owner_user_id: Some(owner.id),
+            title: Some("connection-owner-scope".to_string()),
+            locale: None,
+            tags: vec![],
+            model_id: None,
+            capabilities: serde_json::json!([]),
+            tools: serde_json::json!([]),
+            mcp_servers: serde_json::json!({}),
+            system_prompt: None,
+            initial_files: serde_json::Value::Array(vec![]),
+            hints: None,
+            network_access: None,
+            max_iterations: None,
+            blueprint_id: None,
+            blueprint_config: None,
+        })
+        .await
+        .unwrap();
+
+    db.upsert_user_connection(CreateUserConnectionRow {
+        user_id: other.id,
+        provider: "gitlab".to_string(),
+        connection_type: "oauth".to_string(),
+        provider_user_id: Some("other-gitlab".to_string()),
+        provider_username: Some("other".to_string()),
+        access_token_encrypted: Some(b"other-token".to_vec()),
+        refresh_token_encrypted: None,
+        scopes: Some("api".to_string()),
+        expires_at: None,
+        installation_id: None,
+        provider_metadata: Some(serde_json::json!({ "user": "other" })),
+    })
+    .await
+    .unwrap();
+    db.upsert_user_connection(CreateUserConnectionRow {
+        user_id: other.id,
+        provider: "github".to_string(),
+        connection_type: "oauth".to_string(),
+        provider_user_id: Some("other-github".to_string()),
+        provider_username: Some("other".to_string()),
+        access_token_encrypted: None,
+        refresh_token_encrypted: None,
+        scopes: Some("contents:read".to_string()),
+        expires_at: None,
+        installation_id: Some(222),
+        provider_metadata: None,
+    })
+    .await
+    .unwrap();
+
+    assert_eq!(
+        db.get_connection_token_for_session(session.id, "gitlab")
+            .await
+            .unwrap(),
+        None
+    );
+    assert_eq!(
+        db.get_connection_metadata_for_session(session.id, "gitlab")
+            .await
+            .unwrap(),
+        None
+    );
+    assert_eq!(
+        db.get_connection_user_for_session(session.id, "gitlab")
+            .await
+            .unwrap(),
+        None
+    );
+    assert_eq!(
+        db.get_installation_id_for_session(session.id, "github")
+            .await
+            .unwrap(),
+        None
+    );
+
+    db.upsert_user_connection(CreateUserConnectionRow {
+        user_id: owner.id,
+        provider: "gitlab".to_string(),
+        connection_type: "oauth".to_string(),
+        provider_user_id: Some("owner-gitlab".to_string()),
+        provider_username: Some("owner".to_string()),
+        access_token_encrypted: Some(b"owner-token".to_vec()),
+        refresh_token_encrypted: None,
+        scopes: Some("api".to_string()),
+        expires_at: None,
+        installation_id: None,
+        provider_metadata: Some(serde_json::json!({ "user": "owner" })),
+    })
+    .await
+    .unwrap();
+    db.upsert_user_connection(CreateUserConnectionRow {
+        user_id: owner.id,
+        provider: "github".to_string(),
+        connection_type: "oauth".to_string(),
+        provider_user_id: Some("owner-github".to_string()),
+        provider_username: Some("owner".to_string()),
+        access_token_encrypted: None,
+        refresh_token_encrypted: None,
+        scopes: Some("contents:read".to_string()),
+        expires_at: None,
+        installation_id: Some(111),
+        provider_metadata: None,
+    })
+    .await
+    .unwrap();
+
+    assert_eq!(
+        db.get_connection_token_for_session(session.id, "gitlab")
+            .await
+            .unwrap(),
+        Some(b"owner-token".to_vec())
+    );
+    assert_eq!(
+        db.get_connection_metadata_for_session(session.id, "gitlab")
+            .await
+            .unwrap(),
+        Some(serde_json::json!({ "user": "owner" }))
+    );
+    assert_eq!(
+        db.get_connection_user_for_session(session.id, "gitlab")
+            .await
+            .unwrap(),
+        Some(owner.id)
+    );
+    assert_eq!(
+        db.get_installation_id_for_session(session.id, "github")
+            .await
+            .unwrap(),
+        Some(111)
+    );
+}
+
+#[tokio::test]
 async fn test_unpin_session_is_scoped_by_org() {
     let db = InMemoryDatabase::new();
     let user_id = Uuid::now_v7();
