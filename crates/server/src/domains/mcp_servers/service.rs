@@ -184,15 +184,40 @@ impl McpServerService {
         ids: &[Uuid],
     ) -> Result<HashMap<Uuid, (McpServer, Vec<McpToolDefinition>)>> {
         let rows = self.db.get_mcp_servers_batch(caller.org_id, ids).await?;
-        Ok(rows
-            .iter()
-            .map(|row| {
-                let server = Self::row_to_mcp_server(row);
-                let tools: Vec<McpToolDefinition> =
-                    serde_json::from_value(row.cached_tools.clone()).unwrap_or_default();
-                (row.id.uuid(), (server, tools))
-            })
-            .collect())
+        let mut servers = HashMap::with_capacity(rows.len());
+
+        for row in rows {
+            let server = Self::row_to_mcp_server(&row);
+            let server_id = row.id.uuid();
+
+            let cache_fresh = if let Some(cached_at) = row.tools_cached_at {
+                let age = Utc::now().signed_duration_since(cached_at);
+                age < chrono::Duration::from_std(TOOL_CACHE_TTL)
+                    .unwrap_or(chrono::Duration::hours(1))
+            } else {
+                false
+            };
+
+            let tools = if cache_fresh {
+                serde_json::from_value(row.cached_tools.clone()).unwrap_or_default()
+            } else {
+                match self.refresh_tools(caller, server_id).await {
+                    Ok(tools) => tools,
+                    Err(err) => {
+                        tracing::warn!(
+                            server_id = %server_id,
+                            error = %err,
+                            "Failed to refresh stale MCP tool cache in batch load; returning empty tools"
+                        );
+                        Vec::new()
+                    }
+                }
+            };
+
+            servers.insert(server_id, (server, tools));
+        }
+
+        Ok(servers)
     }
 
     pub async fn list(
