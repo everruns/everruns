@@ -421,7 +421,7 @@ impl TestServer {
         );
         let apps_state = api::apps::AppState::new(
             db.clone(),
-            None,
+            encryption.clone(),
             Some(durable_store.clone()),
             capability_service.clone(),
             auth_state.clone(),
