@@ -158,47 +158,52 @@ impl Tool for BrowserlessOpenBrowserTool {
 
         // Check if there's already an active session
         if let Ok(Some(existing)) = get_browser_session(context).await {
-            let url = existing.reconnect_url(&api_token);
-            match CdpSession::connect(&url).await {
-                Ok(mut session) => {
-                    let title = session.get_title().await.unwrap_or_default();
-                    let current_url = session.get_url().await.unwrap_or_default();
+            if let Ok(url) = existing.validated_reconnect_url(&api_token) {
+                match CdpSession::connect(&url).await {
+                    Ok(mut session) => {
+                        let title = session.get_title().await.unwrap_or_default();
+                        let current_url = session.get_url().await.unwrap_or_default();
 
-                    let timeout_ms = arguments
-                        .get("timeout_ms")
-                        .and_then(|v| v.as_u64())
-                        .unwrap_or(DEFAULT_RECONNECT_TIMEOUT_MS);
+                        let timeout_ms = arguments
+                            .get("timeout_ms")
+                            .and_then(|v| v.as_u64())
+                            .unwrap_or(DEFAULT_RECONNECT_TIMEOUT_MS);
 
-                    match session.reconnect(timeout_ms).await {
-                        Ok(new_endpoint) => {
-                            let mut state = existing;
-                            state.ws_endpoint = new_endpoint;
-                            state.last_active_at = chrono::Utc::now().to_rfc3339();
-                            if let Err(e) = save_browser_session(context, &state).await {
-                                warn!("Failed to update session state: {e:?}");
-                            }
-                            if let Err(e) = upsert_browser_session_lease(context, &state).await {
+                        match session.reconnect(timeout_ms).await {
+                            Ok(new_endpoint) => {
+                                let mut state = existing;
+                                state.ws_endpoint = new_endpoint;
+                                state.last_active_at = chrono::Utc::now().to_rfc3339();
+                                if let Err(e) = save_browser_session(context, &state).await {
+                                    warn!("Failed to update session state: {e:?}");
+                                }
+                                if let Err(e) = upsert_browser_session_lease(context, &state).await
+                                {
+                                    session.disconnect().await;
+                                    return e;
+                                }
                                 session.disconnect().await;
-                                return e;
-                            }
-                            session.disconnect().await;
 
-                            return ToolExecutionResult::Success(json!({
-                                "status": "already_open",
-                                "message": "Browser session is already active.",
-                                "title": title,
-                                "url": current_url
-                            }));
-                        }
-                        Err(_) => {
-                            session.disconnect().await;
-                            let _ = delete_browser_session(context).await;
+                                return ToolExecutionResult::Success(json!({
+                                    "status": "already_open",
+                                    "message": "Browser session is already active.",
+                                    "title": title,
+                                    "url": current_url
+                                }));
+                            }
+                            Err(_) => {
+                                session.disconnect().await;
+                                let _ = delete_browser_session(context).await;
+                            }
                         }
                     }
+                    Err(_) => {
+                        let _ = delete_browser_session(context).await;
+                    }
                 }
-                Err(_) => {
-                    let _ = delete_browser_session(context).await;
-                }
+            } else {
+                // Stored session state was invalid/tampered. Discard and open a new session.
+                let _ = delete_browser_session(context).await;
             }
         }
 
@@ -373,14 +378,18 @@ impl Tool for BrowserlessCloseBrowserTool {
         };
 
         // Reconnect and close (don't call reconnect — browser will be destroyed)
-        let url = session_state.reconnect_url(&api_token);
-        match CdpSession::connect(&url).await {
-            Ok(session) => {
-                session.disconnect().await;
-                debug!("Browser session closed (disconnected without reconnect)");
-            }
-            Err(e) => {
-                debug!("Browser session already expired: {e}");
+        match session_state.validated_reconnect_url(&api_token) {
+            Ok(url) => match CdpSession::connect(&url).await {
+                Ok(session) => {
+                    session.disconnect().await;
+                    debug!("Browser session closed (disconnected without reconnect)");
+                }
+                Err(e) => {
+                    debug!("Browser session already expired: {e}");
+                }
+            },
+            Err(_) => {
+                debug!("Discarded invalid stored browser session endpoint before close");
             }
         }
 
@@ -416,7 +425,14 @@ pub async fn try_get_cdp_session(context: &ToolContext) -> Option<CdpSession> {
 
     // Resolve token from connection — never from session state
     let api_token = get_api_token(context).await.ok()?;
-    let url = state.reconnect_url(&api_token);
+    let url = match state.validated_reconnect_url(&api_token) {
+        Ok(url) => url,
+        Err(_) => {
+            debug!("Discarded invalid stored browser session endpoint before reconnect");
+            let _ = delete_browser_session(context).await;
+            return None;
+        }
+    };
 
     match CdpSession::connect(&url).await {
         Ok(session) => Some(session),
