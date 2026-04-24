@@ -125,6 +125,49 @@ async fn test_update_skill() {
 }
 
 #[tokio::test]
+async fn test_update_skill_preserves_disable_model_invocation_flag() {
+    let server = TestServer::new().await;
+
+    let skill_md = "---
+name: model-invocation-flag-test
+description: Test disable-model-invocation persistence.
+disable-model-invocation: true
+---
+
+# Test
+";
+    let create_resp = server
+        .post("/v1/skills", json!({ "skill_md": skill_md }))
+        .await
+        .assert_status(StatusCode::CREATED);
+
+    let created_body = create_resp.json_value();
+    assert_eq!(created_body["disable_model_invocation"], true);
+
+    let skill_id = created_body["id"].as_str().unwrap().to_string();
+
+    let updated_md = "---
+name: model-invocation-flag-test
+description: Updated description.
+disable-model-invocation: true
+---
+
+# Updated
+";
+    let update_resp = server
+        .patch(
+            &format!("/v1/skills/{skill_id}"),
+            json!({ "skill_md": updated_md }),
+        )
+        .await
+        .assert_success();
+
+    let updated_body = update_resp.json_value();
+    assert_eq!(updated_body["description"], "Updated description.");
+    assert_eq!(updated_body["disable_model_invocation"], true);
+}
+
+#[tokio::test]
 async fn test_update_skill_status() {
     let server = TestServer::new().await;
 
