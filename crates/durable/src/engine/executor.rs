@@ -252,7 +252,7 @@ impl<S: WorkflowEventStore> WorkflowExecutor<S> {
         // Track the current sequence
         // For snapshot replay: snapshot_seq + events_after.len()
         // For full replay: events.len()
-        let mut current_sequence = if snapshot_seq > 0 {
+        let mut current_sequence = if let Some(snapshot_seq) = snapshot_seq {
             // We replayed events after snapshot; total = last event seq + 1
             events
                 .last()
@@ -263,7 +263,7 @@ impl<S: WorkflowEventStore> WorkflowExecutor<S> {
         };
 
         // For full replay (no snapshot), also need total event count for snapshot decisions
-        let total_event_count = if snapshot_seq > 0 {
+        let total_event_count = if let Some(snapshot_seq) = snapshot_seq {
             // snapshot_seq is 0-indexed, plus events after snapshot
             (snapshot_seq + 1 + events.len() as i32) as usize
         } else {
@@ -531,12 +531,12 @@ impl<S: WorkflowEventStore> WorkflowExecutor<S> {
     /// Load workflow state, using snapshot if available.
     ///
     /// Returns (workflow_instance, events_to_replay, snapshot_sequence).
-    /// snapshot_sequence is 0 if no snapshot was used (full replay).
+    /// `snapshot_sequence` is `None` if no snapshot was used (full replay).
     async fn load_workflow_state(
         &self,
         workflow_id: Uuid,
         workflow_info: &crate::persistence::WorkflowInfo,
-    ) -> Result<(Box<dyn AnyWorkflow>, Vec<(i32, WorkflowEvent)>, i32), ExecutorError> {
+    ) -> Result<(Box<dyn AnyWorkflow>, Vec<(i32, WorkflowEvent)>, Option<i32>), ExecutorError> {
         // Try loading a snapshot first
         let snapshot = self.store.load_latest_snapshot(workflow_id).await?;
 
@@ -599,7 +599,7 @@ impl<S: WorkflowEventStore> WorkflowExecutor<S> {
                     "restored from snapshot"
                 );
 
-                return Ok((restored, events, snap.sequence_num));
+                return Ok((restored, events, Some(snap.sequence_num)));
             }
             // Snapshot restore failed (e.g., workflow doesn't support snapshots)
             // Fall through to full replay
@@ -645,7 +645,7 @@ impl<S: WorkflowEventStore> WorkflowExecutor<S> {
             .registry
             .create(&workflow_info.workflow_type, workflow_info.input.clone())?;
 
-        Ok((workflow, events, 0))
+        Ok((workflow, events, None))
     }
 
     /// Save a snapshot if enough events have accumulated since the last one.
@@ -654,7 +654,7 @@ impl<S: WorkflowEventStore> WorkflowExecutor<S> {
         workflow_id: Uuid,
         workflow: &dyn AnyWorkflow,
         current_sequence: i32,
-        last_snapshot_seq: i32,
+        last_snapshot_seq: Option<i32>,
         total_events: usize,
     ) {
         let interval = self.config.snapshot_interval;
@@ -663,7 +663,7 @@ impl<S: WorkflowEventStore> WorkflowExecutor<S> {
         }
 
         // Only snapshot if enough events since last snapshot
-        let events_since_snapshot = if last_snapshot_seq > 0 {
+        let events_since_snapshot = if let Some(last_snapshot_seq) = last_snapshot_seq {
             current_sequence - last_snapshot_seq
         } else {
             // No previous snapshot — use total event count
@@ -1608,6 +1608,71 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(status, WorkflowStatus::Running);
+    }
+
+    #[tokio::test]
+    async fn test_snapshot_at_sequence_zero_is_treated_as_valid_snapshot() {
+        let executor = snap_executor(InMemoryWorkflowEventStore::new(), 100);
+        let workflow_id = Uuid::now_v7();
+
+        executor
+            .store()
+            .create_workflow(
+                workflow_id,
+                <SnapCounterWorkflow as crate::workflow::Workflow>::TYPE,
+                serde_json::json!({ "start": 0, "target": 10 }),
+                None,
+            )
+            .await
+            .unwrap();
+
+        executor
+            .store()
+            .append_events(
+                workflow_id,
+                0,
+                vec![
+                    WorkflowEvent::WorkflowStarted {
+                        input: serde_json::json!({ "start": 0, "target": 10 }),
+                    },
+                    WorkflowEvent::ActivityScheduled {
+                        activity_id: "increment-0".into(),
+                        activity_type: "increment".into(),
+                        input: serde_json::json!({ "value": 0 }),
+                        options: crate::workflow::ActivityOptions::default(),
+                    },
+                ],
+            )
+            .await
+            .unwrap();
+
+        executor
+            .store()
+            .save_snapshot(
+                workflow_id,
+                0,
+                serde_json::to_vec(&SnapCounterState {
+                    current: 0,
+                    target: 10,
+                    completed: false,
+                    failed: false,
+                    error_message: None,
+                })
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        executor
+            .send_signal(
+                workflow_id,
+                WorkflowSignal::new("noop", serde_json::json!({})),
+            )
+            .await
+            .unwrap();
+
+        let result = executor.process_workflow(workflow_id).await.unwrap();
+        assert_eq!(result.signals_processed, 1);
     }
 
     #[tokio::test]
