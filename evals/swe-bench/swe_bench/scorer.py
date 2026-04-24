@@ -126,6 +126,7 @@ def write_scores_back(
         sys.exit(1)
 
     print(f"Writing scores for {len(bulk_items)} results ({len(resolved_ids)} resolved)...")
+    matched = len(bulk_items)
 
     metadata = {
         "scorer": "swebench-docker-harness",
