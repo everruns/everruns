@@ -961,6 +961,29 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
             return Ok(false);
         }
 
+        let has_claimed_task = sqlx::query_scalar::<_, bool>(
+            r#"
+            SELECT EXISTS(
+                SELECT 1
+                FROM durable_task_queue
+                WHERE workflow_id = $1
+                  AND status = 'claimed'
+            )
+            "#,
+        )
+        .bind(workflow_id)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|e| {
+            error!("Failed to check claimed workflow tasks: {}", e);
+            StoreError::Database(e.to_string())
+        })?;
+
+        if has_claimed_task {
+            tx.rollback().await.ok();
+            return Ok(false);
+        }
+
         // Claim: set to running, clear transient fields
         sqlx::query(
             r#"

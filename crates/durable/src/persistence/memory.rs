@@ -643,6 +643,17 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
     }
 
     async fn try_claim_workflow_for_new_turn(&self, workflow_id: Uuid) -> Result<bool, StoreError> {
+        {
+            let tasks = self.tasks.read();
+            let has_claimed_task = tasks.values().any(|task| {
+                task.definition.workflow_id == Some(workflow_id)
+                    && task.status == TaskStatus::Claimed
+            });
+            if has_claimed_task {
+                return Ok(false);
+            }
+        }
+
         let mut workflows = self.workflows.write();
         let workflow = workflows
             .get_mut(&workflow_id)
