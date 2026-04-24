@@ -357,8 +357,6 @@ impl EvalService {
             triggered_by: "user".to_string(),
         };
 
-        let run_row = self.db.create_eval_run(caller.org_id, input).await?;
-
         // Load eval-level target for resolution
         let eval_target: Option<EvalTarget> = eval
             .target
@@ -370,10 +368,8 @@ impl EvalService {
         // target_snapshot must always store a concrete resolved target so results
         // remain reproducible and do not depend on future default changes.
         let cases = self.db.list_eval_cases(eval.id).await?;
+        let mut resolved_targets = Vec::with_capacity(cases.len());
         for case in &cases {
-            let result_uuid = Uuid::now_v7();
-            let result_public_id = EvalResultId::from_uuid(result_uuid);
-
             // Resolve target: run → case → eval. Fail if nothing resolved.
             let case_target: Option<EvalTarget> = case
                 .target
@@ -390,12 +386,19 @@ impl EvalService {
                     )
                 })?;
 
-            let resolved_json = serde_json::to_value(&resolved)?;
+            resolved_targets.push((case.id, serde_json::to_value(&resolved)?));
+        }
+
+        let run_row = self.db.create_eval_run(caller.org_id, input).await?;
+
+        for (case_id, resolved_json) in resolved_targets {
+            let result_uuid = Uuid::now_v7();
+            let result_public_id = EvalResultId::from_uuid(result_uuid);
 
             let result_input = CreateEvalCaseResultRow {
                 public_id: result_public_id.to_string(),
                 eval_run_id: run_row.id,
-                eval_case_id: case.id,
+                eval_case_id: case_id,
                 target: Some(resolved_json.clone()),
                 target_snapshot: Some(resolved_json),
                 artifacts: None,

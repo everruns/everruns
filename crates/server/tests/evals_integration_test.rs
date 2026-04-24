@@ -263,6 +263,55 @@ async fn test_bulk_update_run_scores_rejects_duplicate_result_ids() {
     );
 }
 
+#[tokio::test]
+async fn test_create_run_without_any_target_does_not_create_orphaned_run() {
+    let server = TestServer::in_memory().await;
+    let eval: Eval = server
+        .post(
+            "/v1/evals",
+            json!({
+                "name": "targetless eval",
+                "description": "integration test"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let _case: EvalCase = server
+        .post(
+            &format!("/v1/evals/{}/cases", eval.public_id),
+            json!({
+                "name": "targetless case",
+                "conversation": [{"content": "hello"}],
+                "scorers": [{"type": "contains", "text": "ok", "weight": 1.0}]
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let response = server
+        .post(&format!("/v1/evals/{}/runs", eval.public_id), json!({}))
+        .await;
+
+    assert_ne!(response.status(), StatusCode::CREATED);
+    let _ = response.text();
+
+    let eval_row = server
+        .db
+        .get_eval_by_public_id(TEST_ORG_ID, &eval.public_id.to_string())
+        .await
+        .expect("load eval")
+        .expect("eval exists");
+    let runs = server
+        .db
+        .list_eval_runs(eval_row.id)
+        .await
+        .expect("list runs");
+    assert_eq!(runs.len(), 0);
+}
+
 struct SeededRun {
     eval_id: String,
     run_id: String,
