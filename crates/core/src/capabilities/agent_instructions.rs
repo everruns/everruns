@@ -110,7 +110,11 @@ pub fn format_agents_md_content(content: &str) -> Option<String> {
             max_size = MAX_AGENTS_MD_SIZE,
             "AGENTS.md exceeds size limit, truncating"
         );
-        (&content[..MAX_AGENTS_MD_SIZE], true)
+        let mut truncation_idx = MAX_AGENTS_MD_SIZE;
+        while truncation_idx > 0 && !content.is_char_boundary(truncation_idx) {
+            truncation_idx -= 1;
+        }
+        (&content[..truncation_idx], true)
     } else {
         (content, false)
     };
@@ -309,6 +313,24 @@ mod tests {
         let truncation_marker = "\n\n[AGENTS.md was truncated";
         let body_end = result.find(truncation_marker).unwrap();
         assert_eq!(body_end - body_start, MAX_AGENTS_MD_SIZE);
+    }
+
+    #[test]
+    fn test_format_agents_md_content_truncation_utf8_boundary_safe() {
+        let content = "€".repeat((MAX_AGENTS_MD_SIZE / "€".len()) + 1);
+        let result = format_agents_md_content(&content).unwrap();
+
+        assert!(result.contains("truncated"));
+
+        let header = "<agent-instructions source=\"AGENTS.md\">\n";
+        let body_start = result.find(header).unwrap() + header.len();
+        let truncation_marker = "\n\n[AGENTS.md was truncated";
+        let body_end = result.find(truncation_marker).unwrap();
+        let body = &result[body_start..body_end];
+
+        assert!(body.len() <= MAX_AGENTS_MD_SIZE);
+        assert!(std::str::from_utf8(body.as_bytes()).is_ok());
+        assert_eq!(body.chars().last(), Some('€'));
     }
 
     #[test]
