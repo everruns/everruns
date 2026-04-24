@@ -1837,6 +1837,27 @@ impl DirectPlatformStore {
         }
     }
 
+    async fn reject_built_in_harness_mutations(
+        &self,
+        id: HarnessId,
+    ) -> everruns_core::error::Result<()> {
+        let is_built_in = self
+            .db
+            .get_harness(self.org_id, id)
+            .await
+            .map_err(|e| store_error(format!("Failed to get harness: {e}")))?
+            .map(|row| row.is_built_in)
+            .ok_or_else(|| store_error("Harness not found"))?;
+
+        if is_built_in {
+            return Err(store_error(
+                "Cannot modify or delete built-in harness. Copy it first to create an editable version.",
+            ));
+        }
+
+        Ok(())
+    }
+
     fn row_to_agent(
         row: crate::storage::AgentRow,
         capabilities: Vec<everruns_core::AgentCapabilityConfig>,
@@ -2050,6 +2071,8 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
     ) -> everruns_core::error::Result<Harness> {
         use crate::storage::models::UpdateHarness;
 
+        self.reject_built_in_harness_mutations(id).await?;
+
         let update = UpdateHarness {
             name: name.map(|s| s.to_string()),
             display_name: display_name.map(|s| s.to_string()),
@@ -2069,6 +2092,8 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
     }
 
     async fn delete_harness(&self, id: HarnessId) -> everruns_core::error::Result<()> {
+        self.reject_built_in_harness_mutations(id).await?;
+
         self.db
             .delete_harness(self.org_id, id)
             .await
@@ -2883,6 +2908,8 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::storage::models::CreateHarnessRow;
+    use everruns_core::PlatformStore;
 
     #[test]
     fn string_to_provider_type_maps_gemini() {
@@ -3106,6 +3133,84 @@ mod tests {
 
         let result = adapters.grep_files(session_id, "[invalid", None).await;
         assert!(result.is_err());
+    }
+
+    async fn seed_harness_for_platform_store(
+        db: &StorageBackend,
+        org_id: i64,
+        name: &str,
+        is_built_in: bool,
+    ) -> HarnessId {
+        db.create_harness(
+            org_id,
+            CreateHarnessRow {
+                name: name.to_string(),
+                display_name: None,
+                description: None,
+                system_prompt: "test prompt".to_string(),
+                parent_harness_id: None,
+                default_model_id: None,
+                tags: vec![],
+                initial_files: serde_json::json!([]),
+                mcp_servers: serde_json::json!({}),
+                network_access: None,
+                is_built_in,
+            },
+        )
+        .await
+        .expect("seed harness")
+        .id
+    }
+
+    fn test_platform_store(adapters: &DirectWorkerAdapters, org_id: i64) -> DirectPlatformStore {
+        DirectPlatformStore::new(
+            org_id,
+            adapters.db.clone(),
+            adapters.event_service.clone(),
+            None,
+            None,
+            None,
+        )
+    }
+
+    #[tokio::test]
+    async fn platform_store_update_rejects_built_in_harness() {
+        let adapters = test_adapters();
+        let harness_id = seed_harness_for_platform_store(
+            &adapters.db,
+            everruns_core::DEFAULT_ORG_ID,
+            "built-in",
+            true,
+        )
+        .await;
+        let store = test_platform_store(&adapters, everruns_core::DEFAULT_ORG_ID);
+
+        let err = store
+            .update_harness(harness_id, Some("renamed"), None, None, None, None)
+            .await
+            .expect_err("built-in harness updates should be rejected");
+
+        assert!(err.to_string().contains("built-in harness"));
+    }
+
+    #[tokio::test]
+    async fn platform_store_delete_rejects_built_in_harness() {
+        let adapters = test_adapters();
+        let harness_id = seed_harness_for_platform_store(
+            &adapters.db,
+            everruns_core::DEFAULT_ORG_ID,
+            "built-in",
+            true,
+        )
+        .await;
+        let store = test_platform_store(&adapters, everruns_core::DEFAULT_ORG_ID);
+
+        let err = store
+            .delete_harness(harness_id)
+            .await
+            .expect_err("built-in harness deletes should be rejected");
+
+        assert!(err.to_string().contains("built-in harness"));
     }
 
     // ---- helpers ----
