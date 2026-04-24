@@ -37,6 +37,7 @@ import {
   Calendar,
   MessageCircle,
   FlaskConical,
+  Cpu,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useAgents } from "@/hooks/use-agents";
@@ -123,6 +124,12 @@ const NAVIGATION_PAGES: NavigationPage[] = [
     icon: BookOpen,
     keywords: ["ability", "tool"],
   },
+  {
+    title: "Models",
+    href: "/models",
+    icon: Cpu,
+    keywords: ["llm", "openai", "anthropic", "default model"],
+  },
   { title: "Capabilities", href: "/capabilities", icon: Puzzle },
   {
     title: "Apps",
@@ -170,7 +177,7 @@ const NAVIGATION_PAGES: NavigationPage[] = [
     title: "Settings > LLM Providers",
     href: "/settings/providers",
     icon: Settings,
-    keywords: ["openai", "anthropic", "model"],
+    keywords: ["openai", "anthropic", "credentials"],
   },
   {
     title: "Settings > Organisation",
