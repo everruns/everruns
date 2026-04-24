@@ -1024,3 +1024,106 @@ pub async fn preview_agent(
         tools: result.tools,
     }))
 }
+
+// Regression tests for fix(capabilities): restore high-risk levels for
+// bash/fetch (#1500). `require_admin_for_high_risk` is the HTTP-side gate
+// that enforces TM-AGENT-005: a member cannot assign `virtual_bash` or
+// `web_fetch` to an agent. The fix re-classified both capabilities as
+// High; without that classification this gate silently becomes a no-op
+// for the two most dangerous capabilities.
+#[cfg(test)]
+mod high_risk_admin_gate_tests {
+    use super::*;
+    use crate::services::CapabilityService;
+    use crate::storage::StorageBackend;
+    use everruns_core::CapabilityRegistry;
+    use std::sync::Arc;
+
+    fn capability_service() -> CapabilityService {
+        let db = Arc::new(StorageBackend::in_memory());
+        CapabilityService::with_registry(db, None, CapabilityRegistry::with_builtins())
+    }
+
+    fn org_with_role(role: OrgRole) -> ResolvedOrg {
+        ResolvedOrg {
+            org_id: 1,
+            public_id: "org_test".to_string(),
+            name: "Test".to_string(),
+            user_id: None,
+            role,
+            is_platform_user: false,
+        }
+    }
+
+    fn caps(refs: &[&str]) -> Vec<AgentCapabilityConfig> {
+        refs.iter()
+            .map(|r| AgentCapabilityConfig::new((*r).to_string()))
+            .collect()
+    }
+
+    #[test]
+    fn member_blocked_from_assigning_virtual_bash() {
+        let svc = capability_service();
+        let result = require_admin_for_high_risk(
+            &org_with_role(OrgRole::Member),
+            &caps(&["virtual_bash"]),
+            &svc,
+        );
+        let (status, body) = result.expect_err("member must not assign virtual_bash");
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert!(body.0.error.contains("virtual_bash"));
+    }
+
+    #[test]
+    fn member_blocked_from_assigning_web_fetch() {
+        let svc = capability_service();
+        let result = require_admin_for_high_risk(
+            &org_with_role(OrgRole::Member),
+            &caps(&["web_fetch"]),
+            &svc,
+        );
+        let (status, body) = result.expect_err("member must not assign web_fetch");
+        assert_eq!(status, StatusCode::FORBIDDEN);
+        assert!(body.0.error.contains("web_fetch"));
+    }
+
+    #[test]
+    fn member_allowed_for_low_risk_capability() {
+        let svc = capability_service();
+        let result =
+            require_admin_for_high_risk(&org_with_role(OrgRole::Member), &caps(&["noop"]), &svc);
+        assert!(
+            result.is_ok(),
+            "low-risk capabilities must remain assignable by members"
+        );
+    }
+
+    #[test]
+    fn admin_allowed_for_virtual_bash() {
+        let svc = capability_service();
+        let result = require_admin_for_high_risk(
+            &org_with_role(OrgRole::Admin),
+            &caps(&["virtual_bash"]),
+            &svc,
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn owner_allowed_for_web_fetch() {
+        let svc = capability_service();
+        let result = require_admin_for_high_risk(
+            &org_with_role(OrgRole::Owner),
+            &caps(&["web_fetch"]),
+            &svc,
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn empty_capability_list_allowed_for_members() {
+        let svc = capability_service();
+        let result = require_admin_for_high_risk(&org_with_role(OrgRole::Member), &[], &svc);
+        assert!(result.is_ok());
+    }
+}
