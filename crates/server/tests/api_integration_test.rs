@@ -3757,7 +3757,10 @@ async fn test_update_app_reencrypts_legacy_plaintext_channel_configs() {
     // Simulate legacy migrated row: plaintext secrets + NULL ciphertext.
     // UpdateAppChannel uses COALESCE and cannot clear channel_config_encrypted,
     // so write the legacy state directly.
-    let pool = server.db.pool().expect("Postgres pool required for this test");
+    let pool = server
+        .db
+        .pool()
+        .expect("Postgres pool required for this test");
     sqlx::query(
         "UPDATE app_channels \
          SET channel_config = $1, channel_config_encrypted = NULL \
