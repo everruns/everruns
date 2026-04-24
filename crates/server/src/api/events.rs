@@ -35,6 +35,7 @@ use futures::{
 };
 use std::{convert::Infallible, sync::Arc, time::Duration};
 use tokio::sync::broadcast;
+use tokio::task::JoinHandle;
 use tokio::time::Instant;
 use uuid::Uuid;
 
@@ -310,11 +311,12 @@ pub async fn stream_sse(
 
     // Legacy PG polling waker (used only when EventDelivery subscription unavailable)
     let event_waker = Arc::new(tokio::sync::Notify::new());
+    let mut pg_notify_listener_task: Option<JoinHandle<()>> = None;
     if let (false, Some(broadcaster)) = (use_push, &state.event_broadcaster) {
         let mut rx = broadcaster.subscribe();
         let waker = event_waker.clone();
         let target_session = session_id;
-        tokio::spawn(async move {
+        let task = tokio::spawn(async move {
             loop {
                 match rx.recv().await {
                     Ok(payload) if payload.session_id == target_session => {
@@ -329,6 +331,7 @@ pub async fn stream_sse(
                 }
             }
         });
+        pg_notify_listener_task = Some(task);
     }
 
     // Shared subscription wrapped in Arc<Mutex> for use inside the stream
@@ -614,6 +617,7 @@ pub async fn stream_sse(
     let guarded_stream = GuardedStream {
         inner: Box::pin(stream),
         _guard: sse_guard,
+        notification_task: pg_notify_listener_task,
     };
 
     let keep_alive = KeepAlive::new()
@@ -626,6 +630,15 @@ pub async fn stream_sse(
 struct GuardedStream<S> {
     inner: std::pin::Pin<Box<S>>,
     _guard: super::sse::SseConnectionGuard,
+    notification_task: Option<JoinHandle<()>>,
+}
+
+impl<S> Drop for GuardedStream<S> {
+    fn drop(&mut self) {
+        if let Some(task) = self.notification_task.take() {
+            task.abort();
+        }
+    }
 }
 
 impl<S: Stream> Stream for GuardedStream<S> {
