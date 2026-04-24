@@ -2935,6 +2935,19 @@ impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
         }
     }
 
+    async fn set_subagent_metadata(
+        &self,
+        _session_id: SessionId,
+        _parent_session_id: SessionId,
+        _subagent_name: &str,
+        _subagent_task: &str,
+        _subagent_status: everruns_core::session::SubagentStatus,
+    ) -> Result<Session> {
+        Err(AgentLoopError::store(
+            "set_subagent_metadata is not supported over grpc platform adapter",
+        ))
+    }
+
     async fn delete_session(&self, id: SessionId) -> Result<()> {
         let mut client = self.client.inner.lock().await;
         client

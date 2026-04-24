@@ -198,6 +198,19 @@ pub trait PlatformStore: Send + Sync {
         blueprint_config: Option<&serde_json::Value>,
     ) -> Result<Session>;
 
+    /// Attach subagent metadata to an existing session.
+    ///
+    /// Used by subagent orchestration to persist parent/child linkage and
+    /// support nesting guards plus child-session lookups.
+    async fn set_subagent_metadata(
+        &self,
+        session_id: SessionId,
+        parent_session_id: SessionId,
+        subagent_name: &str,
+        subagent_task: &str,
+        subagent_status: crate::session::SubagentStatus,
+    ) -> Result<Session>;
+
     /// Get a session by ID.
     async fn get_session_by_id(&self, id: SessionId) -> Result<Option<Session>>;
 
@@ -653,6 +666,22 @@ pub mod tests {
         }
         async fn get_session_by_id(&self, _id: SessionId) -> Result<Option<Session>> {
             Ok(Some(self.session.clone()))
+        }
+        async fn set_subagent_metadata(
+            &self,
+            session_id: SessionId,
+            parent_session_id: SessionId,
+            subagent_name: &str,
+            subagent_task: &str,
+            subagent_status: crate::session::SubagentStatus,
+        ) -> Result<Session> {
+            let mut s = self.session.clone();
+            s.id = session_id;
+            s.parent_session_id = Some(parent_session_id);
+            s.subagent_name = Some(subagent_name.to_string());
+            s.subagent_task = Some(subagent_task.to_string());
+            s.subagent_status = Some(subagent_status);
+            Ok(s)
         }
         async fn delete_session(&self, _id: SessionId) -> Result<()> {
             Ok(())

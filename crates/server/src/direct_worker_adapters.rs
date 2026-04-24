@@ -508,10 +508,12 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 is_pinned: None,
                 active_schedule_count: None,
                 features: vec![],
-                parent_session_id: None,
-                subagent_name: None,
-                subagent_task: None,
-                subagent_status: None,
+                parent_session_id: r.parent_session_id,
+                subagent_name: r.subagent_name,
+                subagent_task: r.subagent_task,
+                subagent_status: r
+                    .subagent_status
+                    .map(|s| everruns_core::session::SubagentStatus::from(s.as_str())),
                 blueprint_id: r.blueprint_id,
                 blueprint_config: r.blueprint_config,
             }
@@ -1937,10 +1939,12 @@ impl DirectPlatformStore {
             is_pinned: None,
             active_schedule_count: None,
             features: vec![],
-            parent_session_id: None,
-            subagent_name: None,
-            subagent_task: None,
-            subagent_status: None,
+            parent_session_id: row.parent_session_id,
+            subagent_name: row.subagent_name,
+            subagent_task: row.subagent_task,
+            subagent_status: row
+                .subagent_status
+                .map(|s| everruns_core::session::SubagentStatus::from(s.as_str())),
             blueprint_id: row.blueprint_id,
             blueprint_config: row.blueprint_config,
         }
@@ -2660,6 +2664,40 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
             }
             None => Ok(None),
         }
+    }
+
+    async fn set_subagent_metadata(
+        &self,
+        session_id: SessionId,
+        parent_session_id: SessionId,
+        subagent_name: &str,
+        subagent_task: &str,
+        subagent_status: everruns_core::session::SubagentStatus,
+    ) -> everruns_core::error::Result<Session> {
+        let row = self
+            .db
+            .set_subagent_metadata(
+                self.org_id,
+                session_id,
+                parent_session_id,
+                subagent_name,
+                subagent_task,
+                &subagent_status.to_string(),
+            )
+            .await
+            .map_err(|e| store_error(format!("Failed to set subagent metadata: {e}")))?
+            .ok_or_else(|| store_error("Session not found"))?;
+
+        let fallback = if row.harness_id.is_none() {
+            Some(
+                org_init::base_harness_id(&self.db, self.org_id)
+                    .await
+                    .map_err(|e| store_error(format!("Failed to resolve base harness: {e}")))?,
+            )
+        } else {
+            None
+        };
+        Ok(self.row_to_session(row, fallback))
     }
 
     async fn delete_session(&self, id: SessionId) -> everruns_core::error::Result<()> {

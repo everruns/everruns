@@ -70,6 +70,40 @@ impl Database {
         Ok(row)
     }
 
+    pub async fn set_subagent_metadata(
+        &self,
+        org_id: i64,
+        id: SessionId,
+        parent_session_id: SessionId,
+        subagent_name: &str,
+        subagent_task: &str,
+        subagent_status: &str,
+    ) -> Result<Option<SessionRow>> {
+        let row = sqlx::query_as::<_, SessionRow>(
+            r#"
+            UPDATE sessions
+            SET parent_session_id = $3,
+                subagent_name = $4,
+                subagent_task = $5,
+                subagent_status = $6
+            WHERE org_id = $1 AND id = $2
+            RETURNING id, org_id, harness_id, agent_id, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, status, created_at, updated_at, started_at, finished_at,
+                      total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status,
+                      blueprint_id, blueprint_config
+            "#,
+        )
+        .bind(org_id)
+        .bind(id)
+        .bind(parent_session_id)
+        .bind(subagent_name)
+        .bind(subagent_task)
+        .bind(subagent_status)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
     /// Get session without org scoping. For internal system use only (e.g. usage tracking).
     pub async fn get_session_unscoped(&self, id: SessionId) -> Result<Option<SessionRow>> {
         let row = sqlx::query_as::<_, SessionRow>(
