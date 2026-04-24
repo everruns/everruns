@@ -683,6 +683,53 @@ async fn test_list_events_since_id_takes_precedence_over_since_sequence() {
 }
 
 #[tokio::test]
+async fn test_list_events_default_cap_keeps_earliest_forward_window() {
+    let db = InMemoryDatabase::new();
+    let session_id = create_session_with_events(&db).await;
+
+    // Add enough events so forward catch-up exceeds the implicit 10k safety cap.
+    for _ in 0..10_010 {
+        db.create_event(CreateEventRow {
+            session_id,
+            event_type: "output.message.delta".to_string(),
+            ts: Utc::now(),
+            context: serde_json::json!({}),
+            data: serde_json::json!({}),
+            metadata: None,
+            tags: None,
+        })
+        .await
+        .unwrap();
+    }
+
+    let all_events = db
+        .list_events(session_id, None, None, &[], &[], None, Some(20_000))
+        .await
+        .unwrap();
+    assert!(all_events.len() > 10_000);
+
+    // Simulate SSE catch-up by querying with since_id and no explicit limit.
+    let second_event_id = all_events[1].id;
+    let events = db
+        .list_events(
+            session_id,
+            None,
+            Some(second_event_id),
+            &[],
+            &[],
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(events.len(), 10_000);
+    // Forward path must return the earliest page after the cursor, not the newest page.
+    assert_eq!(events[0].sequence, all_events[2].sequence);
+    assert_eq!(events.last().unwrap().sequence, all_events[10_001].sequence);
+}
+
+#[tokio::test]
 async fn test_list_events_with_limit() {
     let db = InMemoryDatabase::new();
     let session_id = create_session_with_events(&db).await;

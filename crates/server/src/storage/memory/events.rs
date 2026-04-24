@@ -95,11 +95,22 @@ impl InMemoryDatabase {
 
         result.sort_by_key(|e| e.sequence);
 
-        // Apply limit: take last N events (backward pagination).
-        // Safety cap of 10 000 when no explicit limit to prevent unbounded results.
-        let effective_limit = limit.map(|l| l as usize).unwrap_or(10_000);
-        if result.len() > effective_limit {
-            result = result.split_off(result.len() - effective_limit);
+        // Apply limit.
+        // - Explicit limit keeps backward pagination behavior (most recent N).
+        // - Implicit safety cap (no explicit limit) keeps forward catch-up semantics:
+        //   return the earliest rows first so callers can advance cursors safely.
+        const FORWARD_SAFETY_LIMIT: usize = 10_000;
+        if let Some(limit) = limit {
+            let limit = limit as usize;
+            if result.len() > limit {
+                result = result.split_off(result.len() - limit);
+            }
+        } else if result.len() > FORWARD_SAFETY_LIMIT {
+            if since_id.is_some() || since_sequence.is_some() {
+                result.truncate(FORWARD_SAFETY_LIMIT);
+            } else {
+                result = result.split_off(result.len() - FORWARD_SAFETY_LIMIT);
+            }
         }
 
         Ok(result)
