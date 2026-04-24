@@ -191,18 +191,32 @@ export function resolveUiRouteArtifactFilePath(artifact: UiRouteManifestArtifact
     );
   }
 
-  if (!artifact.packageRelativePath.startsWith(PACKAGE_RELATIVE_PATH_PREFIX)) {
+  const normalizedPackageRelativePath = path.posix.normalize(
+    artifact.packageRelativePath.replaceAll("\\", "/"),
+  );
+
+  if (!normalizedPackageRelativePath.startsWith(PACKAGE_RELATIVE_PATH_PREFIX)) {
     throw new Error(
       `Cannot resolve ${artifact.artifactId} because packageRelativePath must start with "${PACKAGE_RELATIVE_PATH_PREFIX}", received "${artifact.packageRelativePath}"`,
     );
   }
 
-  return fileURLToPath(
+  const resolvedPath = fileURLToPath(
     new URL(
-      `../${artifact.packageRelativePath.slice(PACKAGE_RELATIVE_PATH_PREFIX.length)}`,
+      `../${normalizedPackageRelativePath.slice(PACKAGE_RELATIVE_PATH_PREFIX.length)}`,
       import.meta.url,
     ),
   );
+  const packageRoot = fileURLToPath(new URL("..", import.meta.url));
+  const relativeToPackageRoot = path.relative(packageRoot, resolvedPath);
+
+  if (relativeToPackageRoot.startsWith("..") || path.isAbsolute(relativeToPackageRoot)) {
+    throw new Error(
+      `Cannot resolve ${artifact.artifactId} because packageRelativePath escapes the package root, received "${artifact.packageRelativePath}"`,
+    );
+  }
+
+  return resolvedPath;
 }
 
 export async function loadUiRouteArtifactModule(
