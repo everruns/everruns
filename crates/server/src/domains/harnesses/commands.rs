@@ -8,8 +8,8 @@ use super::types::{CreateHarnessRequest, CreateHarnessRow, UpdateHarness, Update
 use super::{HARNESS_DANGEROUS, HARNESS_MANAGE, HARNESS_VIEW};
 use crate::domains::common::*;
 use everruns_core::{
-    AgentCapabilityConfig, Harness, HarnessId, Policy, ScopedMcpServers, ToolDefinition,
-    merge_scoped_mcp_servers,
+    AgentCapabilityConfig, Harness, HarnessId, HarnessStatus, Policy, ScopedMcpServers,
+    ToolDefinition, merge_scoped_mcp_servers,
 };
 use serde::Deserialize;
 use utoipa::ToSchema;
@@ -327,6 +327,11 @@ impl Command for UpdateHarnessCmd {
             q::validate_harness_name(name)?;
         }
         validate_update_limits(&req)?;
+        if matches!(req.status, Some(HarnessStatus::Deleted)) {
+            return Err(CommandError::Forbidden(
+                "Setting status=deleted requires dangerous delete permission".to_string(),
+            ));
+        }
 
         // Reject updates to built-in harnesses
         if q::is_built_in(&ctx.db, ctx.org_id(), harness_id)

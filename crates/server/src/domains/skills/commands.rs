@@ -10,7 +10,9 @@ use super::queries as q;
 use super::types::{CreateSkillRequest, CreateSkillRow, UpdateSkill, UpdateSkillRequest};
 use super::{SKILL_DANGEROUS, SKILL_MANAGE, SKILL_VIEW};
 use crate::domains::common::*;
-use everruns_core::{Policy, Skill, SkillContent, SkillFileEntry, SkillId, parse_skill_md};
+use everruns_core::{
+    Policy, Skill, SkillContent, SkillFileEntry, SkillId, SkillStatus, parse_skill_md,
+};
 use serde::Deserialize;
 use std::collections::HashMap;
 use utoipa::ToSchema;
@@ -338,6 +340,11 @@ impl Command for UpdateSkillCmd {
 
         let req = self.req;
         let id = skill_id.uuid();
+        if matches!(req.status, Some(SkillStatus::Deleted)) {
+            return Err(CommandError::Forbidden(
+                "Setting status=deleted requires dangerous delete permission".to_string(),
+            ));
+        }
 
         // Check existing status
         if let Some(existing) = ctx
