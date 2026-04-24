@@ -804,7 +804,6 @@ pub async fn preprocess_command_injections(
     // replacement so the content still carries a visible marker but no extra
     // shell processes are spawned.
     let exec_count = all_matches.len().min(MAX_COMMAND_PLACEHOLDERS_PER_SKILL);
-    let exceeded_cap = all_matches.len() > MAX_COMMAND_PLACEHOLDERS_PER_SKILL;
 
     // `buffered` preserves input order, so results line up with
     // `all_matches[..exec_count]` positionally. We collect owned command
@@ -814,7 +813,7 @@ pub async fn preprocess_command_injections(
         .iter()
         .map(|(cmd, _)| cmd.clone())
         .collect();
-    let results: Vec<CommandResult> = futures::stream::iter(cmds_to_run.into_iter())
+    let results: Vec<CommandResult> = futures::stream::iter(cmds_to_run)
         .map(|cmd| async move { executor.execute_command(&cmd).await })
         .buffered(COMMAND_EXECUTION_CONCURRENCY)
         .collect()
@@ -847,9 +846,6 @@ pub async fn preprocess_command_injections(
         };
         result.replace_range(range.clone(), &replacement);
     }
-
-    // Tag to keep the compiler happy about unused-only-in-one-branch bindings.
-    let _ = exceeded_cap;
 
     result
 }
