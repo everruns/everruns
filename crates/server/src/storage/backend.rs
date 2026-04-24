@@ -1793,6 +1793,19 @@ impl StorageBackend {
         dispatch!(self, get_installation_id_for_user, user_id, provider)
     }
 
+    pub async fn get_user_id_by_installation_id(
+        &self,
+        provider: &str,
+        installation_id: i64,
+    ) -> Result<Option<Uuid>> {
+        dispatch!(
+            self,
+            get_user_id_by_installation_id,
+            provider,
+            installation_id
+        )
+    }
+
     // ============================================
     // Agent Identity Connections
     // ============================================
