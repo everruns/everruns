@@ -1047,8 +1047,8 @@ impl Command for UpdateAppCmd {
 
         let req = self.req;
         if matches!(req.status, Some(AppStatus::Deleted)) {
-            return Err(CommandError::forbidden(
-                "Setting status=deleted requires dangerous delete permission",
+            return Err(CommandError::Forbidden(
+                "Setting status=deleted requires dangerous delete permission".to_string(),
             ));
         }
 

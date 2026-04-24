@@ -378,8 +378,8 @@ impl Command for UpdateAgentCmd {
         }
         validate_update_limits(&req)?;
         if matches!(req.status, Some(AgentStatus::Deleted)) {
-            return Err(CommandError::forbidden(
-                "Setting status=deleted requires dangerous delete permission",
+            return Err(CommandError::Forbidden(
+                "Setting status=deleted requires dangerous delete permission".to_string(),
             ));
         }
         if let Some(ref caps) = req.capabilities {

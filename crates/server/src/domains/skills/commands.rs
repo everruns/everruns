@@ -341,8 +341,8 @@ impl Command for UpdateSkillCmd {
         let req = self.req;
         let id = skill_id.uuid();
         if matches!(req.status, Some(SkillStatus::Deleted)) {
-            return Err(CommandError::forbidden(
-                "Setting status=deleted requires dangerous delete permission",
+            return Err(CommandError::Forbidden(
+                "Setting status=deleted requires dangerous delete permission".to_string(),
             ));
         }
 
