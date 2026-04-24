@@ -705,4 +705,76 @@ mod tests {
             panic!("Expected Connections command");
         }
     }
+
+    // Regression tests for fix(cli): avoid API key in connections set args (#1518).
+    //
+    // The old `--api-key <value>` flag leaked the provider secret into shell
+    // history and `ps` output. The fix removed the flag entirely and routed
+    // input through `--api-key-stdin` or the interactive password prompt.
+    // These tests lock in that contract at the clap-parser boundary.
+
+    #[test]
+    fn connections_set_rejects_legacy_api_key_flag() {
+        // Passing `--api-key <value>` must now fail parsing so the secret
+        // cannot end up in argv / shell history.
+        let result = Cli::try_parse_from([
+            "everruns",
+            "connections",
+            "set",
+            "daytona",
+            "--api-key",
+            "leaked_secret_value",
+        ]);
+        assert!(
+            result.is_err(),
+            "--api-key argv flag must be rejected to prevent argv/shell-history leaks"
+        );
+    }
+
+    #[test]
+    fn connections_set_defaults_api_key_stdin_to_false_for_interactive_prompt() {
+        // Without `--api-key-stdin`, the flag is false and `run` drops into
+        // the dialoguer Password prompt — the secret never touches argv.
+        let cli = Cli::try_parse_from(["everruns", "connections", "set", "daytona"]).unwrap();
+        if let Commands::Connections { command } = cli.command {
+            if let commands::connections::ConnectionsCommand::Set {
+                provider,
+                api_key_stdin,
+            } = command
+            {
+                assert_eq!(provider, "daytona");
+                assert!(
+                    !api_key_stdin,
+                    "omitting --api-key-stdin must default to interactive prompt"
+                );
+            } else {
+                panic!("Expected Set command");
+            }
+        } else {
+            panic!("Expected Connections command");
+        }
+    }
+
+    #[test]
+    fn connections_set_rejects_positional_api_key_after_provider() {
+        // A stray positional arg after `provider` must not bind to anything;
+        // clap should reject it rather than silently consuming the secret.
+        let result = Cli::try_parse_from([
+            "everruns",
+            "connections",
+            "set",
+            "daytona",
+            "leaked_secret_value",
+        ]);
+        assert!(
+            result.is_err(),
+            "extra positional args after provider must be rejected"
+        );
+    }
+
+    #[test]
+    fn connections_set_requires_provider() {
+        let result = Cli::try_parse_from(["everruns", "connections", "set"]);
+        assert!(result.is_err(), "provider arg is required");
+    }
 }
