@@ -151,7 +151,7 @@ impl Capability for WebFetchCapability {
     }
 
     fn risk_level(&self) -> RiskLevel {
-        RiskLevel::Medium
+        RiskLevel::High
     }
 
     fn icon(&self) -> Option<&str> {
@@ -545,6 +545,7 @@ mod tests {
         assert_eq!(cap.id(), "web_fetch");
         assert_eq!(cap.name(), "Web Fetch");
         assert_eq!(cap.status(), CapabilityStatus::Available);
+        assert_eq!(cap.risk_level(), RiskLevel::High);
         assert_eq!(cap.icon(), Some("globe"));
         assert_eq!(cap.category(), Some("Network"));
         // System prompt comes from fetchkit ToolBuilder via system_prompt_contribution_with_config
