@@ -13,7 +13,7 @@
 //! - SearchCapable impl delegates grep to SessionFileStore::grep_files for
 //!   single-query indexed search instead of per-file linear scan
 
-use super::{Capability, CapabilityStatus};
+use super::{Capability, CapabilityStatus, RiskLevel};
 use crate::background::{
     BackgroundEventSink, BackgroundExecutableTool, BackgroundOutcome, BackgroundProgress,
 };
@@ -128,6 +128,10 @@ impl Capability for VirtualBashCapability {
 
     fn status(&self) -> CapabilityStatus {
         CapabilityStatus::Available
+    }
+
+    fn risk_level(&self) -> RiskLevel {
+        RiskLevel::High
     }
 
     fn icon(&self) -> Option<&str> {
@@ -1397,6 +1401,7 @@ mod tests {
         assert_eq!(cap.id(), "virtual_bash");
         assert_eq!(cap.name(), "Virtual Bash");
         assert_eq!(cap.status(), CapabilityStatus::Available);
+        assert_eq!(cap.risk_level(), RiskLevel::High);
         assert_eq!(cap.icon(), Some("terminal"));
         assert_eq!(cap.category(), Some("Execution"));
         let description = cap.description();
