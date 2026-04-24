@@ -68,7 +68,7 @@ This case is based on the successful 2026-04-23 live run captured after fixing t
 
 - Session reaches `idle`
 - Event stream includes `turn.started`, `reason.completed`, `turn.completed`, and `session.idled`
-- For each single-image `generate_image` call, the event stream includes at least one `tool.progress` status such as `Generating image and waiting for preview...` or `Generating preview 1 of 1...`
+- For each single-image `generate_image` call, the event stream includes at least one `tool.progress` status such as `Generating image and waiting for progress updates...` or `Generating progress update 1 of 1...`
 - No `tool.error`, `internal_error`, or equivalent failure event appears
 
 ### Tool Planning

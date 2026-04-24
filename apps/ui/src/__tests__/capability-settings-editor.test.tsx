@@ -20,11 +20,11 @@ describe("CapabilitySettingsEditor", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Medium")).toBeInTheDocument();
     expect(screen.getByText(/Balanced quality and latency/i)).toBeInTheDocument();
-    expect(screen.getByText("1 Preview")).toBeInTheDocument();
-    expect(screen.getByText(/Streams one in-progress preview/i)).toBeInTheDocument();
+    expect(screen.getByText("1 Progress Update")).toBeInTheDocument();
+    expect(screen.getByText(/Emits one in-progress status update/i)).toBeInTheDocument();
   });
 
-  it("shows the configured legacy model, quality, and preview descriptions", () => {
+  it("shows the configured legacy model, quality, and progress update descriptions", () => {
     render(
       <CapabilitySettingsEditor
         capabilityId="gpt_image_gen"
@@ -36,7 +36,7 @@ describe("CapabilitySettingsEditor", () => {
     expect(screen.getByText("GPT Image 1")).toBeInTheDocument();
     expect(screen.getByText(/Legacy fallback/i)).toBeInTheDocument();
     expect(screen.getByText(/Highest fidelity, but materially slower/i)).toBeInTheDocument();
-    expect(screen.getByText("3 Previews")).toBeInTheDocument();
-    expect(screen.getByText(/Maximum preview feedback/i)).toBeInTheDocument();
+    expect(screen.getByText("3 Progress Updates")).toBeInTheDocument();
+    expect(screen.getByText(/Maximum status feedback/i)).toBeInTheDocument();
   });
 });

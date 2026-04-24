@@ -216,23 +216,24 @@ const GPT_IMAGE_PARTIAL_IMAGE_OPTIONS: Array<{
 }> = [
   {
     value: 1,
-    label: "1 Preview",
-    description: "Default. Streams one in-progress preview for single-image requests.",
+    label: "1 Progress Update",
+    description: "Default. Emits one in-progress status update for single-image requests.",
   },
   {
     value: 0,
     label: "Off",
-    description: "Disable preview streaming and only wait for the final image.",
+    description: "Disable progress updates and only wait for the final image.",
   },
   {
     value: 2,
-    label: "2 Previews",
-    description: "Show two in-progress previews. More responsive, but slightly higher token cost.",
+    label: "2 Progress Updates",
+    description:
+      "Emit two in-progress status updates. More responsive, with slightly higher token cost.",
   },
   {
     value: 3,
-    label: "3 Previews",
-    description: "Maximum preview feedback. Highest extra token cost.",
+    label: "3 Progress Updates",
+    description: "Maximum status feedback. Highest extra token cost.",
   },
 ];
 
@@ -332,7 +333,7 @@ function GptImageGenEditor({ config, onChange, disabled }: GptImageGenEditorProp
           htmlFor="gpt-image-partial-images"
           className="text-xs font-normal text-muted-foreground"
         >
-          Preview Updates
+          Progress Updates
         </Label>
         <Select
           value={String(selectedPartialImages)}

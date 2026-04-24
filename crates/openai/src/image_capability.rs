@@ -43,7 +43,7 @@ For straightforward image requests, avoid unrelated metadata or bookkeeping tool
 When the user asks for multiple new images, make one `generate_image` call per requested concept unless they explicitly ask for a batch in one call.
 Unless the user says otherwise, set `save_to_session_fs` to true, keep `persist_artifact` enabled, and save under `/workspace/.outputs/images`.
 Prefer PNG output and rely on the capability default quality unless the user requests a specific quality.
-For single-image requests, streaming preview updates may arrive before the final image; wait for the completed tool result before describing the finished output.
+For single-image requests, streaming progress updates may arrive before the final image; wait for the completed tool result before describing the finished output.
 Do not stop at writing prompts, suggesting external tools, or describing environment limitations unless an actual image tool call fails.
 
 Store per-session OpenAI overrides in `secret_store` under `OPENAI_API_KEY` and optionally `OPENAI_BASE_URL`.
@@ -645,7 +645,7 @@ fn initial_progress_message(action: &str, count: usize, partial_images: Option<u
     if count > 1 {
         format!("{action} {count} images...")
     } else if partial_images.unwrap_or(0) > 0 {
-        format!("{action} image and waiting for preview...")
+        format!("{action} image and waiting for progress updates...")
     } else {
         format!("{action} image...")
     }
@@ -661,8 +661,9 @@ async fn emit_stream_progress(
     let message = match event {
         ImageApiStreamEvent::PartialImage {
             partial_image_index,
+            ..
         } => format!(
-            "{action} preview {} of {}...",
+            "{action} progress update {} of {}...",
             partial_image_index + 1,
             expected_previews
         ),

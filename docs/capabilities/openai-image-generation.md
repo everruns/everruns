@@ -26,7 +26,7 @@ If you need the previous generation model for compatibility, set `"model": "gpt-
 
 The default quality is `medium`. That keeps latency and reliability reasonable for `gpt-image-2` while still producing polished outputs.
 
-The default `partial_images` value is `1`. For single-image requests, the capability streams one preview frame and emits `tool.progress` updates while waiting for the final image. Set it to `0` to disable preview streaming, or up to `3` for more feedback at higher token cost.
+The default `partial_images` value is `1`. For single-image requests, the capability emits `tool.progress` status updates while waiting for the final image. Set it to `0` to disable progress updates, or up to `3` for more feedback at higher token cost.
 
 This capability resolves credentials server-side, persists durable image artifacts, and can also write generated outputs into the session filesystem under `/workspace/.outputs/images/`.
 
@@ -95,8 +95,8 @@ Both tools return:
 
 - Transparent background requires `png` or `webp` output
 - High quality can take substantially longer than medium or low on `gpt-image-2`
-- Single-image requests stream preview progress by default; multi-image batches still wait for the final response
-- Each streamed preview adds extra image output tokens on the OpenAI side, so higher `partial_images` values trade cost for better perceived latency
+- Single-image requests emit progress updates by default; multi-image batches still wait for the final response
+- Each additional streamed update adds extra image output tokens on the OpenAI side, so higher `partial_images` values trade cost for better perceived latency
 - `generate_image` and `edit_image` stay fully exposed even when OpenAI `tool_search` is enabled, so large tool lists do not defer their schemas
 - Session file edits must be `png`, `jpg`, `jpeg`, or `webp`
 - Edit sources larger than 50 MB are rejected before the API call

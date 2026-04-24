@@ -166,8 +166,14 @@ pub struct ImageApiImage {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ImageApiStreamEvent {
-    PartialImage { partial_image_index: usize },
-    Completed { completed_image_count: usize },
+    PartialImage {
+        partial_image_index: usize,
+        b64_json: Option<String>,
+        revised_prompt: Option<String>,
+    },
+    Completed {
+        completed_image_count: usize,
+    },
 }
 
 fn build_edit_image_form(request: EditImageRequest) -> Result<Form> {
@@ -292,8 +298,18 @@ where
                     .get("partial_image_index")
                     .and_then(Value::as_u64)
                     .unwrap_or(0) as usize;
+                let b64_json = payload
+                    .get("b64_json")
+                    .and_then(Value::as_str)
+                    .map(ToOwned::to_owned);
+                let revised_prompt = payload
+                    .get("revised_prompt")
+                    .and_then(Value::as_str)
+                    .map(ToOwned::to_owned);
                 on_event(ImageApiStreamEvent::PartialImage {
                     partial_image_index,
+                    b64_json,
+                    revised_prompt,
                 })
                 .await;
             }
@@ -414,7 +430,7 @@ mod tests {
     async fn generate_with_events_streams_partial_and_completed_images() {
         let server = MockServer::start().await;
         let stream_body = concat!(
-            "data: {\"type\":\"image_generation.partial_image\",\"partial_image_index\":0}\n\n",
+            "data: {\"type\":\"image_generation.partial_image\",\"partial_image_index\":0,\"b64_json\":\"cHJldmlldw==\",\"revised_prompt\":\"otter sketch\"}\n\n",
             "data: {\"type\":\"image_generation.completed\",\"b64_json\":\"aGVsbG8=\",\"revised_prompt\":\"otter\"}\n\n",
             "data: [DONE]\n\n"
         );
@@ -456,7 +472,9 @@ mod tests {
             events,
             vec![
                 ImageApiStreamEvent::PartialImage {
-                    partial_image_index: 0
+                    partial_image_index: 0,
+                    b64_json: Some("cHJldmlldw==".to_string()),
+                    revised_prompt: Some("otter sketch".to_string()),
                 },
                 ImageApiStreamEvent::Completed {
                     completed_image_count: 1
@@ -465,5 +483,73 @@ mod tests {
         );
         assert_eq!(response.data.len(), 1);
         assert_eq!(response.data[0].revised_prompt.as_deref(), Some("otter"));
+    }
+
+    #[tokio::test]
+    async fn edit_with_events_streams_partial_and_completed_images() {
+        let server = MockServer::start().await;
+        let stream_body = concat!(
+            "data: {\"type\":\"image_generation.partial_image\",\"partial_image_index\":0,\"b64_json\":\"cHJldmlldw==\"}\n\n",
+            "data: {\"type\":\"image_generation.completed\",\"b64_json\":\"ZmluYWw=\",\"revised_prompt\":\"edited otter\"}\n\n",
+            "data: [DONE]\n\n"
+        );
+        Mock::given(method("POST"))
+            .and(path("/v1/images/edits"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .insert_header("content-type", "text/event-stream")
+                    .set_body_string(stream_body),
+            )
+            .mount(&server)
+            .await;
+
+        let client =
+            OpenAiImageClient::new("sk-test", Some(format!("{}/v1", server.uri()))).unwrap();
+        let mut events = Vec::new();
+        let response = client
+            .edit_with_events(
+                EditImageRequest {
+                    model: "gpt-image-2".to_string(),
+                    prompt: "edit otter".to_string(),
+                    images: vec![EditImageInput {
+                        filename: "source.png".to_string(),
+                        content_type: "image/png".to_string(),
+                        data: vec![1, 2, 3],
+                    }],
+                    size: Some("1024x1024".to_string()),
+                    quality: Some("medium".to_string()),
+                    background: Some("opaque".to_string()),
+                    output_format: Some("png".to_string()),
+                    stream: Some(true),
+                    partial_images: Some(1),
+                    count: 1,
+                },
+                |event| {
+                    events.push(event);
+                    async {}
+                },
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(
+            events,
+            vec![
+                ImageApiStreamEvent::PartialImage {
+                    partial_image_index: 0,
+                    b64_json: Some("cHJldmlldw==".to_string()),
+                    revised_prompt: None,
+                },
+                ImageApiStreamEvent::Completed {
+                    completed_image_count: 1
+                },
+            ]
+        );
+        assert_eq!(response.data.len(), 1);
+        assert_eq!(response.data[0].b64_json, "ZmluYWw=");
+        assert_eq!(
+            response.data[0].revised_prompt.as_deref(),
+            Some("edited otter")
+        );
     }
 }
