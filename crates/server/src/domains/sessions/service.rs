@@ -852,8 +852,17 @@ impl SessionService {
         let tags = vec!["global-chat".to_string(), user_tag.clone()];
         let desired_harness_id = HarnessId::from_uuid(harness_id);
 
-        // Look for existing chat session
-        if let Some(mut row) = self.db.find_session_by_tags(org_id, &tags).await? {
+        let owner_principal = self
+            .principal_service
+            .ensure_user_principal(org_id, user_id)
+            .await?;
+
+        // Look for existing chat session owned by the user.
+        if let Some(mut row) = self
+            .db
+            .find_session_by_tags_and_owner(org_id, owner_principal.id, &tags)
+            .await?
+        {
             if row.harness_id != Some(desired_harness_id) {
                 tracing::info!(
                     session_id = %row.id,
@@ -907,10 +916,6 @@ impl SessionService {
 
         // Create a new chat session
         let harness_id_typed = HarnessId::from_uuid(harness_id);
-        let owner_principal = self
-            .principal_service
-            .ensure_user_principal(org_id, user_id)
-            .await?;
         let input = CreateSessionRow {
             org_id,
             harness_id: Some(harness_id_typed),
