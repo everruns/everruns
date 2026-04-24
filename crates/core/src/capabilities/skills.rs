@@ -12,6 +12,21 @@
 //
 // Database-registered skills are attached via AttachSkillCapability, which
 // mounts skill files into the VFS so this capability discovers them.
+//
+// COMMAND-SUBSTITUTION TRUST GATE (see also `specs/skills-registry.md`
+// "Activation Substitution Pipeline" and threat-model entry TM-TOOL-020):
+// SKILL.md may contain ``!`command` `` placeholders that are executed on the
+// worker host at activation time. Running arbitrary shell for a SKILL.md that
+// was written into the VFS by runtime tool calls would be RCE. The trust
+// boundary we enforce in `ActivateSkillFromVfsTool::execute_with_context` is
+// `SessionFile::is_readonly`:
+//   - readonly == true  → capability-mounted / registry-mounted → TRUSTED;
+//                         run `preprocess_command_injections`.
+//   - readonly == false → written to VFS at runtime (e.g. via write_file) →
+//                         UNTRUSTED; pass content through verbatim and leave
+//                         `!`command`` placeholders as literal text.
+// This keeps the feature working for first-party and registry-signed skills
+// while preserving the RCE fix from PR #1449 for user-uploaded SKILL.md.
 
 use super::{Capability, CapabilityStatus, SystemPromptContext};
 use crate::tool_types::{BuiltinTool, DeferrablePolicy, ToolDefinition, ToolHints, ToolPolicy};
@@ -547,9 +562,17 @@ impl Tool for ActivateSkillFromVfsTool {
 
         // Parse the SKILL.md to extract instructions
         let content = file.content.as_deref().unwrap_or("");
+        // Trust gate: only readonly-mounted SKILL.md (capability contributions
+        // and registry mounts) may run the command-substitution step. SKILL.md
+        // written into the VFS at runtime (is_readonly == false) is treated as
+        // untrusted and bypasses command execution. See module-level comment.
+        let is_trusted_source = file.is_readonly;
         match crate::skill::parse_skill_md(content) {
             Ok(parsed) => {
-                // Apply substitution pipeline: arguments → env vars
+                // Apply substitution pipeline:
+                //   1. arguments ($ARGUMENTS, $N)
+                //   2. env vars (${SESSION_ID}, ${SKILL_DIR})
+                //   3. command injection (!`cmd`) — only for trusted sources
                 let expanded =
                     crate::skill::expand_skill_arguments(&parsed.instructions, skill_args);
                 let skill_dir = format!("{}/{}", SKILLS_PATH, name);
@@ -559,9 +582,15 @@ impl Tool for ActivateSkillFromVfsTool {
                     &session_id_str,
                     &skill_dir,
                 );
+                let preprocessed = if is_trusted_source {
+                    let executor = crate::skill::ProcessCommandExecutor::default();
+                    crate::skill::preprocess_command_injections(&substituted, &executor).await
+                } else {
+                    substituted
+                };
                 let instructions = format!(
                     "<skill name=\"{}\">\n{}\n</skill>",
-                    parsed.name, substituted
+                    parsed.name, preprocessed
                 );
 
                 let mut result = serde_json::json!({
@@ -645,6 +674,8 @@ mod tests {
     struct MockFileStore {
         /// Files: (session_id, path) -> content
         files: Mutex<HashMap<(SessionId, String), String>>,
+        /// Readonly flag per (session_id, path). Absent = writable.
+        readonly_files: Mutex<std::collections::HashSet<(SessionId, String)>>,
         /// Directories: (session_id, path)
         dirs: Mutex<std::collections::HashSet<(SessionId, String)>>,
         /// Counter used by the idempotence test to prove the cache-hit path
@@ -656,6 +687,7 @@ mod tests {
         fn new() -> Self {
             Self {
                 files: Mutex::new(HashMap::new()),
+                readonly_files: Mutex::new(std::collections::HashSet::new()),
                 dirs: Mutex::new(std::collections::HashSet::new()),
                 read_count: AtomicUsize::new(0),
             }
@@ -682,6 +714,16 @@ mod tests {
                 self.dirs.lock().unwrap().insert((session_id, dir.clone()));
             }
         }
+
+        /// Add a file and mark it as readonly (simulates a capability or
+        /// registry mount).
+        fn add_readonly_file(&self, session_id: SessionId, path: &str, content: &str) {
+            self.add_file(session_id, path, content);
+            self.readonly_files
+                .lock()
+                .unwrap()
+                .insert((session_id, path.to_string()));
+        }
     }
 
     #[async_trait]
@@ -693,14 +735,16 @@ mod tests {
         ) -> Result<Option<SessionFile>> {
             self.read_count.fetch_add(1, Ordering::SeqCst);
             let files = self.files.lock().unwrap();
+            let readonly_files = self.readonly_files.lock().unwrap();
             if let Some(content) = files.get(&(session_id, path.to_string())) {
+                let is_readonly = readonly_files.contains(&(session_id, path.to_string()));
                 Ok(Some(SessionFile {
                     id: uuid::Uuid::new_v4(),
                     session_id: session_id.into(),
                     path: path.to_string(),
                     name: path.split('/').next_back().unwrap_or("").to_string(),
                     is_directory: false,
-                    is_readonly: false,
+                    is_readonly,
                     content: Some(content.clone()),
                     encoding: "text".to_string(),
                     size_bytes: content.len() as i64,
@@ -2150,11 +2194,16 @@ mod tests {
         }
     }
 
+    // Trust-gate: a SKILL.md written to the VFS at runtime (is_readonly =
+    // false) is untrusted. `!`command`` placeholders must pass through
+    // verbatim — no shell execution. Regression test for PR #1449 / EVE-388.
     #[tokio::test]
-    async fn test_activate_skill_does_not_execute_command_placeholders() {
+    async fn test_activate_skill_untrusted_does_not_execute_commands() {
         let fs = Arc::new(MockFileStore::new());
         let session_id = SessionId::new();
         let skill_md = "---\nname: test-no-exec\ndescription: Leaves command placeholders literal.\n---\n\nLiteral: !`echo pwned`";
+        // NOTE: add_file — writable (untrusted) source, simulating an agent
+        // writing SKILL.md via write_file tool.
         fs.add_file(
             session_id,
             "/.agents/skills/test-no-exec/SKILL.md",
@@ -2170,7 +2219,52 @@ mod tests {
         match result {
             ToolExecutionResult::Success(val) => {
                 let instructions = val["instructions"].as_str().unwrap();
-                assert!(instructions.contains("Literal: !`echo pwned`"));
+                assert!(
+                    instructions.contains("Literal: !`echo pwned`"),
+                    "untrusted SKILL.md must not execute commands; got: {}",
+                    instructions
+                );
+                assert!(
+                    !instructions.contains("pwned\n") && !instructions.contains("\npwned"),
+                    "command output must not appear in untrusted skill instructions; got: {}",
+                    instructions
+                );
+            }
+            other => panic!("Expected Success, got: {:?}", other),
+        }
+    }
+
+    // Trust-gate: a SKILL.md mounted readonly (capability contribution or
+    // registry mount) is trusted. `!`command`` placeholders must be expanded
+    // with `ProcessCommandExecutor`. EVE-388.
+    #[tokio::test]
+    async fn test_activate_skill_trusted_executes_commands() {
+        let fs = Arc::new(MockFileStore::new());
+        let session_id = SessionId::new();
+        // `echo` is available on every supported build host.
+        let skill_md = "---\nname: test-exec\ndescription: Executes placeholders for trusted sources.\n---\n\nGreeting: !`echo hello-from-skill`";
+        // add_readonly_file marks the mount as trusted.
+        fs.add_readonly_file(session_id, "/.agents/skills/test-exec/SKILL.md", skill_md);
+
+        let context = ToolContext::with_file_store(session_id, fs);
+        let tool = ActivateSkillFromVfsTool;
+
+        let result = tool
+            .execute_with_context(serde_json::json!({"name": "test-exec"}), &context)
+            .await;
+        match result {
+            ToolExecutionResult::Success(val) => {
+                let instructions = val["instructions"].as_str().unwrap();
+                assert!(
+                    instructions.contains("Greeting: hello-from-skill"),
+                    "trusted SKILL.md must expand !`command` placeholders; got: {}",
+                    instructions
+                );
+                assert!(
+                    !instructions.contains("!`echo hello-from-skill`"),
+                    "raw placeholder must not remain in trusted skill instructions; got: {}",
+                    instructions
+                );
             }
             other => panic!("Expected Success, got: {:?}", other),
         }

@@ -15,6 +15,9 @@ use tracing::warn;
 static INDEXED_ARGS_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\$ARGUMENTS\[([0-9]+)\]").unwrap());
 
+/// Cached regex for ``!`command` `` dynamic command injection syntax.
+static COMMAND_INJECTION_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"!`([^`]+)`").unwrap());
+
 use crate::typed_id::SkillId;
 
 #[cfg(feature = "openapi")]
@@ -659,8 +662,20 @@ pub fn substitute_activation_vars(content: &str, session_id: &str, skill_dir: &s
 }
 
 // ============================================================================
-// Dynamic Context Injection: !`command` preprocessing (disabled for safety)
+// Dynamic Context Injection: !`command` preprocessing
 // ============================================================================
+//
+// TRUSTED-SOURCE GATE: `preprocess_command_injections` executes shell commands
+// embedded in SKILL.md, which is RCE if the SKILL.md came from an attacker.
+// The caller (see `ActivateSkillFromVfsTool` in `capabilities::skills`) MUST
+// only invoke this function for skills sourced from a read-only mount
+// (`SessionFile::is_readonly == true`). Readonly mounts are populated by
+// capability contributions and the registry API — trust boundaries that are
+// authenticated at upload/registration. Writable VFS content (written at
+// runtime by agent tools) is untrusted and must be passed through verbatim.
+//
+// See `specs/skills-registry.md` ("Activation Substitution Pipeline") and
+// `specs/threat-model.md` entry TM-TOOL-020 for the rationale.
 
 /// Result of executing a shell command during skill preprocessing.
 pub struct CommandResult {
@@ -670,8 +685,11 @@ pub struct CommandResult {
 
 /// Trait for executing shell commands during skill preprocessing.
 ///
-/// Command execution from skill content is disabled for untrusted, user-uploaded
-/// skills. This trait remains for API compatibility and future trusted-only use.
+/// Commands in `!`...`` syntax are executed before the skill content
+/// is sent to the model, replacing each placeholder with command output.
+///
+/// This path is only reached for trusted (readonly-mounted) skills — see the
+/// trust-gate note at the top of this module.
 #[async_trait::async_trait]
 pub trait CommandExecutor: Send + Sync {
     async fn execute_command(&self, command: &str) -> CommandResult;
@@ -732,13 +750,59 @@ impl CommandExecutor for ProcessCommandExecutor {
 
 /// Preprocess `!`command`` placeholders in skill content.
 ///
-/// Security note: command execution from skill content is intentionally disabled.
-/// The function now returns the original content unchanged.
+/// Each `!`command`` is executed via the provided executor and replaced with
+/// its stdout. Multiple commands are executed concurrently.
+///
+/// Substitution pipeline order (caller is responsible for prior steps):
+/// 1. `$ARGUMENTS` / `$N` substitution (sync)
+/// 2. `${SESSION_ID}` / `${SKILL_DIR}` env substitution (sync)
+/// 3. `!`command`` preprocessing (async) — this function
+///
+/// SECURITY: This function spawns shell processes on the worker host. It MUST
+/// only be called for skill content that came from a trusted source (see the
+/// trust-gate note at the top of this module). Untrusted content must bypass
+/// this step and be used verbatim.
 pub async fn preprocess_command_injections(
     content: &str,
-    _executor: &dyn CommandExecutor,
+    executor: &dyn CommandExecutor,
 ) -> String {
-    content.to_string()
+    let matches: Vec<(String, std::ops::Range<usize>)> = COMMAND_INJECTION_RE
+        .captures_iter(content)
+        .map(|cap| {
+            let full = cap.get(0).unwrap();
+            let cmd = cap[1].to_string();
+            (cmd, full.start()..full.end())
+        })
+        .collect();
+
+    if matches.is_empty() {
+        return content.to_string();
+    }
+
+    let futures: Vec<_> = matches
+        .iter()
+        .map(|(cmd, _)| executor.execute_command(cmd))
+        .collect();
+    let results = futures::future::join_all(futures).await;
+
+    let mut result = content.to_string();
+    for ((cmd, range), cmd_result) in matches.iter().zip(results.iter()).rev() {
+        let replacement = if cmd_result.exit_code != 0 && cmd_result.stdout.starts_with('[') {
+            cmd_result.stdout.clone()
+        } else if cmd_result.exit_code != 0 {
+            format!(
+                "[Command failed: {} (exit code {})]",
+                cmd, cmd_result.exit_code
+            )
+        } else if cmd_result.stdout.is_empty() {
+            "[No output]".to_string()
+        } else {
+            cmd_result.stdout.trim_end().to_string()
+        };
+        result.replace_range(range.clone(), &replacement);
+    }
+
+    result
 }
 
 #[cfg(test)]
@@ -1410,7 +1474,7 @@ Body.
 
         let content = "Output: !`echo hello`";
         let result = preprocess_command_injections(content, &exec).await;
-        assert_eq!(result, content);
+        assert_eq!(result, "Output: hello");
     }
 
     #[tokio::test]
@@ -1421,7 +1485,7 @@ Body.
 
         let content = "Status: !`git status`\nDate: !`date`";
         let result = preprocess_command_injections(content, &exec).await;
-        assert_eq!(result, content);
+        assert_eq!(result, "Status: clean\nDate: 2026-03-19");
     }
 
     #[tokio::test]
@@ -1431,7 +1495,7 @@ Body.
 
         let content = "Result: !`bad-cmd`";
         let result = preprocess_command_injections(content, &exec).await;
-        assert_eq!(result, content);
+        assert_eq!(result, "Result: [Command failed: bad-cmd (exit code 1)]");
     }
 
     #[tokio::test]
@@ -1441,7 +1505,7 @@ Body.
 
         let content = "Result: !`true`";
         let result = preprocess_command_injections(content, &exec).await;
-        assert_eq!(result, content);
+        assert_eq!(result, "Result: [No output]");
     }
 
     #[tokio::test]
@@ -1460,7 +1524,7 @@ Body.
 
         let content = "Use `code` and !`echo hi` here.";
         let result = preprocess_command_injections(content, &exec).await;
-        assert_eq!(result, content);
+        assert_eq!(result, "Use `code` and hi here.");
     }
 
     #[tokio::test]
@@ -1469,7 +1533,7 @@ Body.
 
         let content = "Result: !`echo hello world`";
         let result = preprocess_command_injections(content, &exec).await;
-        assert_eq!(result, content);
+        assert_eq!(result, "Result: hello world");
     }
 
     #[tokio::test]
@@ -1478,7 +1542,7 @@ Body.
 
         let content = "Result: !`unknown-cmd`";
         let result = preprocess_command_injections(content, &exec).await;
-        assert_eq!(result, content);
+        assert!(result.contains("[Command failed: unknown-cmd"));
     }
 
     // -- lenient YAML fallback tests --

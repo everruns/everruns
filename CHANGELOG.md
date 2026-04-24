@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+### Changed
+
+- `activate_skill` again expands `` !`command` `` placeholders in SKILL.md, but only for skills mounted readonly (capability-contributed or registry-attached). SKILL.md written to the VFS at runtime is treated as untrusted and placeholders are left literal. See `specs/skills-registry.md` "Activation Substitution Pipeline" and threat-model entry TM-TOOL-020 (EVE-388).
+
 ## [0.8.18] - 2026-04-22
 
 ### Highlights

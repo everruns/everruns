@@ -417,6 +417,32 @@ CREATE TABLE skill_files (
 CREATE INDEX idx_skill_files_skill_id ON skill_files(skill_id);
 ```
 
+## Activation Substitution Pipeline
+
+When `activate_skill` runs, the SKILL.md body is transformed through a fixed pipeline before being returned to the model. All steps are applied to the body only — frontmatter is parsed separately and never substituted.
+
+1. **Argument expansion** (`$ARGUMENTS`, `$ARGUMENTS[N]`, `$N`) — synchronous, always runs.
+2. **Environment substitution** (`${SESSION_ID}`, `${SKILL_DIR}`) — synchronous, always runs.
+3. **Command injection** (`` !`cmd` ``) — asynchronous shell execution on the worker host. Runs ONLY for trusted sources.
+
+### Command-Injection Trust Gate
+
+``!`cmd` `` placeholders let a skill inline the stdout of a shell command at activation time (e.g. ``!`git rev-parse --show-toplevel` ``, ``!`date` ``). Because this spawns a shell process on the worker host, it is only safe for SKILL.md content that came from a trusted source.
+
+The trust signal is `SessionFile::is_readonly` on the activated SKILL.md:
+
+| Source | Mount mode | Trust gate outcome |
+|---|---|---|
+| Capability-contributed (`contribute_skills`) | `MountPoint::readonly` → `is_readonly = true` | **TRUSTED** — command execution runs |
+| Registry-attached (`AttachSkillCapability`) | `MountPoint::readonly` → `is_readonly = true` | **TRUSTED** — command execution runs |
+| User-uploaded via VFS write (e.g. agent `write_file` at runtime) | writable → `is_readonly = false` | **UNTRUSTED** — ``!`cmd` `` stays literal |
+| Agent `initial_files` with explicit `is_readonly = true` | readonly | **TRUSTED** — command execution runs |
+| Agent `initial_files` with default `is_readonly = false` | writable | **UNTRUSTED** — ``!`cmd` `` stays literal |
+
+Untrusted content is passed through verbatim — no logging warning is emitted to avoid a per-activation side channel; the feature's absence is by design for that source. Threat-model entry: [`TM-TOOL-020`](./threat-model.md).
+
+Enforcement lives at a single call site in `ActivateSkillFromVfsTool::execute_with_context` (`crates/core/src/capabilities/skills.rs`). The `preprocess_command_injections` function in `crates/core/src/skill.rs` assumes its caller has already performed the trust check.
+
 ## Security Considerations
 
 1. **Archive Validation**: ZIP archives must be validated for:

@@ -420,6 +420,7 @@ fn authorizer(action: AuthAction) -> Authorization {
 | TM-TOOL-017 | Browserless API token in logs | Medium | CDP debug logging redacts token from WebSocket URLs before logging | MITIGATED |
 | TM-TOOL-018 | MCP server SSRF via configured server URL | High | MCP server URLs are validated on create/update and re-validated at execution time; private/internal hosts and metadata endpoints blocked | MITIGATED |
 | TM-TOOL-019 | MCP `query`/`execute` positional-arg rewrite injection | Low | Rewriter only inserts compile-time `--<flag>` tokens at statement-start boundaries, respects quotes/escapes/comments, and never modifies or reorders user bytes. Flag names come from the command registry, not user input. See EVE-323. | MITIGATED |
+| TM-TOOL-020 | Skill `` !`command` `` activation RCE on worker host | High | `preprocess_command_injections` only runs when the activated SKILL.md is `is_readonly = true` (capability contribution or registry mount). Runtime-writable VFS content passes through verbatim. Single enforcement point in `ActivateSkillFromVfsTool::execute_with_context`. See EVE-388. | MITIGATED |
 
 ### Mitigation Details
 
@@ -437,6 +438,16 @@ Tool results occupy the `tool_result` message role in the conversation. They are
 
 **TM-TOOL-010 — Skill Instruction Injection Boundary:**
 When `activate_skill` is called, the full SKILL.md body is returned as a tool result wrapped in `<skill name="...">` XML tags. This maintains the tool_result role boundary. Only skill names and descriptions appear in the system prompt (via `<available_skills>` XML block), limiting the injection surface to metadata validated during upload.
+
+**TM-TOOL-020 — Skill Command Injection Trust Gate:**
+SKILL.md content may contain `` !`command` `` placeholders that `ActivateSkillFromVfsTool` expands via `ProcessCommandExecutor` on the worker host. This is RCE against the worker if the SKILL.md body is attacker-controlled. Enforcement:
+
+1. The trust signal is `SessionFile::is_readonly` on the SKILL.md read from the session VFS.
+2. `is_readonly == true` indicates the file was placed via a `MountPoint::readonly(...)` (capability contribution or registry-attached skill) or an explicit `initial_files` entry with `is_readonly: true`. These paths are authenticated at upload/registration and are trusted.
+3. `is_readonly == false` indicates the SKILL.md was written into the VFS at runtime (typical: an agent calling `write_file` on `/.agents/skills/foo/SKILL.md`). This is untrusted; `preprocess_command_injections` is skipped and `!`command`` placeholders are returned verbatim.
+4. The single enforcement point is `ActivateSkillFromVfsTool::execute_with_context` in `crates/core/src/capabilities/skills.rs`. `preprocess_command_injections` in `crates/core/src/skill.rs` assumes the caller has already performed the trust check.
+
+See `specs/skills-registry.md` "Activation Substitution Pipeline" and EVE-388.
 
 **TM-TOOL-011/012 — Skill Archive Validation:**
 ZIP archive extraction in `SkillService::create_from_archive()` enforces:
