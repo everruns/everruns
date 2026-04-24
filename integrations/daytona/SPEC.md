@@ -231,7 +231,7 @@ Call any Daytona REST API endpoint directly. Enabled via capability config `enab
 - **Git credentials**: Short-lived GitHub token written to `/tmp/.git-credentials`; lost on sandbox stop; same trust boundary as exec access (TM-DAYTONA-001)
 - **Token expiry**: GitHub App installation tokens expire in ~1 hour; agent must call `daytona_git_credentials` again to refresh (TM-DAYTONA-002)
 
-See [threat-model.md](threat-model.md#16-daytona-cloud-sandbox-tm-daytona) for full threat analysis.
+See [threat-model.md](../../specs/threat-model.md#16-daytona-cloud-sandbox-tm-daytona) for full threat analysis.
 
 ## Error Handling
 
@@ -324,7 +324,7 @@ The `daytona_api_call` tool is opt-in via capability config (`enable_api_calling
 
 External integration crate, auto-registered via `inventory::submit!` plugin system.
 
-**Force-link required**: Both `crates/server/src/lib.rs` and `crates/worker/src/lib.rs` must contain `extern crate everruns_integrations_daytona;` — otherwise the linker optimizes out the crate and `inventory::submit!` registrations silently disappear. See [architecture.md](architecture.md#integration-plugin-force-linking).
+**Force-link required**: Both `crates/server/src/lib.rs` and `crates/worker/src/lib.rs` must contain `extern crate everruns_integrations_daytona;` — otherwise the linker optimizes out the crate and `inventory::submit!` registrations silently disappear. See [architecture.md](../../specs/architecture.md#integration-plugin-force-linking).
 
 | File | Purpose |
 |------|---------|

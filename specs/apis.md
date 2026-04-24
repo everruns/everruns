@@ -324,7 +324,7 @@ The sync endpoint discovers available models from a provider's API. Returns `"st
 
 ### User Connections
 
-User-scoped external service accounts (e.g., GitHub) for repo access. See [user-connections.md](user-connections.md) for full specification.
+User-scoped external service accounts (e.g., GitHub) for repo access. See [user-connections.md](../crates/server/specs/user-connections.md) for full specification.
 
 | Method | Path | Description |
 |--------|------|-------------|

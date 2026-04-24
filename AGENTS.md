@@ -93,6 +93,7 @@ Always make sure you are working on top of latest main from remote.
 - `specs/correlation-ids.md` - Correlation IDs (request_id, session_id, durable propagation)
 - `specs/prometheus-metrics.md` - Prometheus `/metrics` endpoint and scrape configuration
 - `specs/evals.md` - User-facing behavioral evals for agents (cases, scorers, runs)
+- `specs/swe-bench-lite.md` - SWE-bench Lite evaluation harness (loader, runner, scorer)
 - `specs/encryption.md` - Envelope encryption for sensitive data
 - `specs/audit-logging.md` - Audit logging (domains, AOP macro, trait, API)
 - `specs/session-filesystem.md` - Per-session virtual filesystem
@@ -127,14 +128,17 @@ Always make sure you are working on top of latest main from remote.
 - `specs/apps.md` - Apps system (agent deployment to distribution channels)
 - `specs/app-invocation-channels.md` - App schedule/webhook invocation channels
 - `specs/coding-session-sandbox-harness.md` - Built-in coding harness using the managed session sandbox
+- `specs/coding-daytona-harness.md` - Built-in coding harness backed by Daytona cloud sandboxes
 - `specs/network-access.md` - Network access list (URL allowlist/blocklist per harness/agent/session)
 - `specs/notifications.md` - Generic user notifications (bell, toast, future channels)
 - `specs/feature-flags.md` - Feature flags system (env vars, deployment grade, UI gating)
 - `specs/tool-search.md` - OpenAI tool_search deferred tool loading capability
 - `specs/subagents.md` - Subagent orchestration (spawn, message, cancel child sessions)
 - `specs/session-resources.md` - Session resource registry (sandboxes, subagents, background work)
+- `specs/leased-resources.md` - Generic lease primitive for provider-owned state with async cleanup
 - `specs/session-sandbox.md` - Managed session-owned sandbox capability and lifecycle
 - `specs/toolkit-library-contract.md` - Convention for external toolkit libraries (bashkit, fetchkit, etc.)
+- `specs/fetchkit.md` - fetchkit library powering the `web_fetch` capability
 - `specs/localization.md` - Locale/timezone resolution and backend localization rules
 - `specs/session-export.md` - Session export to JSONL (messages, API, UI)
 - `specs/client-hints.md` - Generic client hints mechanism (session defaults + per-message overrides)

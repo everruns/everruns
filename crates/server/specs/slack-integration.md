@@ -4,7 +4,7 @@
 
 Slack integration allows deploying agents as Slack bots. Each Everruns App gets its own Slack App (own identity, name, avatar). An App binds a harness and optional agent to a Slack workspace with signing secret verification and configurable session strategies. Setup is streamlined via per-app manifest generation.
 
-Slack is the reference implementation for the [messaging integrations](../../specs/messaging-integrations.md) channel abstraction layer. It uses `InboundChannelEvent` for platform-agnostic message parsing, `build_session_routing_tag()` for session routing, `ThreadContext` for participant tracking, and `SlackDeliveryAdapter` implementing the `ChannelDeliveryAdapter` trait.
+Slack is the reference implementation for the [messaging integrations](../../../specs/messaging-integrations.md) channel abstraction layer. It uses `InboundChannelEvent` for platform-agnostic message parsing, `build_session_routing_tag()` for session routing, `ThreadContext` for participant tracking, and `SlackDeliveryAdapter` implementing the `ChannelDeliveryAdapter` trait.
 
 ## Architecture
 
