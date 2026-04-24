@@ -15,18 +15,24 @@
 //
 // COMMAND-SUBSTITUTION TRUST GATE (see also `specs/skills-registry.md`
 // "Activation Substitution Pipeline" and threat-model entry TM-TOOL-020):
-// SKILL.md may contain ``!`command` `` placeholders that are executed on the
-// worker host at activation time. Running arbitrary shell for a SKILL.md that
-// was written into the VFS by runtime tool calls would be RCE. The trust
-// boundary we enforce in `ActivateSkillFromVfsTool::execute_with_context` is
-// `SessionFile::is_readonly`:
-//   - readonly == true  → capability-mounted / registry-mounted → TRUSTED;
-//                         run `preprocess_command_injections`.
-//   - readonly == false → written to VFS at runtime (e.g. via write_file) →
-//                         UNTRUSTED; pass content through verbatim and leave
-//                         `!`command`` placeholders as literal text.
-// This keeps the feature working for first-party and registry-signed skills
-// while preserving the RCE fix from PR #1449 for user-uploaded SKILL.md.
+// SKILL.md may contain ``!`command` `` placeholders that, when expanded by
+// `preprocess_command_injections`, spawn a shell on the worker host. That is
+// RCE if the SKILL.md was authored by an untrusted party. There is currently
+// no platform-controlled provenance signal on `SessionFile` that proves a
+// SKILL.md was placed by the capability/registry mount layer as opposed to by
+// a user-facing path (session-files API, agent/session `initial_files`,
+// runtime `write_file`). In particular, `SessionFile::is_readonly` is NOT
+// such a signal: both the session-files API and `InitialFile` accept
+// `is_readonly = true` from user input.
+//
+// Therefore the trust gate in `ActivateSkillFromVfsTool::execute_with_context`
+// is conservative: `is_trusted_source = false` for every source, so
+// `preprocess_command_injections` is never invoked at runtime. This preserves
+// PR #1449's RCE fix while keeping the execution pipeline wired up
+// (`ProcessCommandExecutor`, `preprocess_command_injections`, unit tests) so a
+// follow-up can flip the gate once a non-user-spoofable provenance signal
+// (e.g. a `mount_capability_id` column populated only by mount application
+// code) is added to `SessionFile` / `SessionFileStore`. See EVE-388.
 
 use super::{Capability, CapabilityStatus, SystemPromptContext};
 use crate::tool_types::{BuiltinTool, DeferrablePolicy, ToolDefinition, ToolHints, ToolPolicy};
@@ -562,11 +568,15 @@ impl Tool for ActivateSkillFromVfsTool {
 
         // Parse the SKILL.md to extract instructions
         let content = file.content.as_deref().unwrap_or("");
-        // Trust gate: only readonly-mounted SKILL.md (capability contributions
-        // and registry mounts) may run the command-substitution step. SKILL.md
-        // written into the VFS at runtime (is_readonly == false) is treated as
-        // untrusted and bypasses command execution. See module-level comment.
-        let is_trusted_source = file.is_readonly;
+        // Trust gate: `preprocess_command_injections` is gated OFF for every
+        // source. `SessionFile::is_readonly` is user-settable via the
+        // session-files API and `InitialFile`, so it cannot be used as the
+        // trust signal. See module-level comment and EVE-388.
+        //
+        // `file` is still read above so future trust checks can look at
+        // provenance metadata once it exists; for now the decision is fixed.
+        let _ = &file;
+        let is_trusted_source: bool = false;
         match crate::skill::parse_skill_md(content) {
             Ok(parsed) => {
                 // Apply substitution pipeline:
@@ -2194,16 +2204,15 @@ mod tests {
         }
     }
 
-    // Trust-gate: a SKILL.md written to the VFS at runtime (is_readonly =
-    // false) is untrusted. `!`command`` placeholders must pass through
-    // verbatim — no shell execution. Regression test for PR #1449 / EVE-388.
+    // Regression test for PR #1449 / EVE-388: SKILL.md written via the VFS
+    // at runtime must leave `!`command`` placeholders literal — no shell
+    // execution on the worker host.
     #[tokio::test]
-    async fn test_activate_skill_untrusted_does_not_execute_commands() {
+    async fn test_activate_skill_does_not_execute_commands_for_writable_skill() {
         let fs = Arc::new(MockFileStore::new());
         let session_id = SessionId::new();
         let skill_md = "---\nname: test-no-exec\ndescription: Leaves command placeholders literal.\n---\n\nLiteral: !`echo pwned`";
-        // NOTE: add_file — writable (untrusted) source, simulating an agent
-        // writing SKILL.md via write_file tool.
+        // add_file — writable (user-authored) source.
         fs.add_file(
             session_id,
             "/.agents/skills/test-no-exec/SKILL.md",
@@ -2221,12 +2230,12 @@ mod tests {
                 let instructions = val["instructions"].as_str().unwrap();
                 assert!(
                     instructions.contains("Literal: !`echo pwned`"),
-                    "untrusted SKILL.md must not execute commands; got: {}",
+                    "writable SKILL.md must not execute commands; got: {}",
                     instructions
                 );
                 assert!(
                     !instructions.contains("pwned\n") && !instructions.contains("\npwned"),
-                    "command output must not appear in untrusted skill instructions; got: {}",
+                    "command output must not appear in skill instructions; got: {}",
                     instructions
                 );
             }
@@ -2234,35 +2243,44 @@ mod tests {
         }
     }
 
-    // Trust-gate: a SKILL.md mounted readonly (capability contribution or
-    // registry mount) is trusted. `!`command`` placeholders must be expanded
-    // with `ProcessCommandExecutor`. EVE-388.
+    // Regression test for the Copilot review of EVE-388: a SKILL.md whose
+    // `is_readonly = true` does NOT earn trust. Users can set `is_readonly`
+    // via the session-files API and `InitialFile`, so it is not a valid
+    // provenance signal. The trust gate must remain off until a
+    // platform-controlled signal (e.g. `mount_capability_id`) exists.
     #[tokio::test]
-    async fn test_activate_skill_trusted_executes_commands() {
+    async fn test_activate_skill_does_not_execute_commands_for_readonly_user_skill() {
         let fs = Arc::new(MockFileStore::new());
         let session_id = SessionId::new();
-        // `echo` is available on every supported build host.
-        let skill_md = "---\nname: test-exec\ndescription: Executes placeholders for trusted sources.\n---\n\nGreeting: !`echo hello-from-skill`";
-        // add_readonly_file marks the mount as trusted.
-        fs.add_readonly_file(session_id, "/.agents/skills/test-exec/SKILL.md", skill_md);
+        let skill_md = "---\nname: test-readonly-no-exec\ndescription: is_readonly alone must not unlock exec.\n---\n\nLiteral: !`echo pwned`";
+        // add_readonly_file simulates a user marking a SKILL.md is_readonly=true
+        // via the session-files API or InitialFile configuration.
+        fs.add_readonly_file(
+            session_id,
+            "/.agents/skills/test-readonly-no-exec/SKILL.md",
+            skill_md,
+        );
 
         let context = ToolContext::with_file_store(session_id, fs);
         let tool = ActivateSkillFromVfsTool;
 
         let result = tool
-            .execute_with_context(serde_json::json!({"name": "test-exec"}), &context)
+            .execute_with_context(
+                serde_json::json!({"name": "test-readonly-no-exec"}),
+                &context,
+            )
             .await;
         match result {
             ToolExecutionResult::Success(val) => {
                 let instructions = val["instructions"].as_str().unwrap();
                 assert!(
-                    instructions.contains("Greeting: hello-from-skill"),
-                    "trusted SKILL.md must expand !`command` placeholders; got: {}",
+                    instructions.contains("Literal: !`echo pwned`"),
+                    "is_readonly=true must not bypass the command-substitution gate; got: {}",
                     instructions
                 );
                 assert!(
-                    !instructions.contains("!`echo hello-from-skill`"),
-                    "raw placeholder must not remain in trusted skill instructions; got: {}",
+                    !instructions.contains("pwned\n") && !instructions.contains("\npwned"),
+                    "command output must not appear in skill instructions; got: {}",
                     instructions
                 );
             }

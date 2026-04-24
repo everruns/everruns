@@ -420,7 +420,7 @@ fn authorizer(action: AuthAction) -> Authorization {
 | TM-TOOL-017 | Browserless API token in logs | Medium | CDP debug logging redacts token from WebSocket URLs before logging | MITIGATED |
 | TM-TOOL-018 | MCP server SSRF via configured server URL | High | MCP server URLs are validated on create/update and re-validated at execution time; private/internal hosts and metadata endpoints blocked | MITIGATED |
 | TM-TOOL-019 | MCP `query`/`execute` positional-arg rewrite injection | Low | Rewriter only inserts compile-time `--<flag>` tokens at statement-start boundaries, respects quotes/escapes/comments, and never modifies or reorders user bytes. Flag names come from the command registry, not user input. See EVE-323. | MITIGATED |
-| TM-TOOL-020 | Skill `` !`command` `` activation RCE on worker host | High | `preprocess_command_injections` only runs when the activated SKILL.md is `is_readonly = true` (capability contribution or registry mount). Runtime-writable VFS content passes through verbatim. Single enforcement point in `ActivateSkillFromVfsTool::execute_with_context`. See EVE-388. | MITIGATED |
+| TM-TOOL-020 | Skill `` !`command` `` activation RCE on worker host | High | `ActivateSkillFromVfsTool::execute_with_context` never invokes `preprocess_command_injections` — the trust gate is forced off because no non-user-spoofable provenance signal exists on `SessionFile` today. Expansion is also capped at `MAX_COMMAND_PLACEHOLDERS_PER_SKILL` (32) with concurrency ≤ 4 in the expansion function itself. See EVE-388. | MITIGATED |
 
 ### Mitigation Details
 
@@ -440,14 +440,15 @@ Tool results occupy the `tool_result` message role in the conversation. They are
 When `activate_skill` is called, the full SKILL.md body is returned as a tool result wrapped in `<skill name="...">` XML tags. This maintains the tool_result role boundary. Only skill names and descriptions appear in the system prompt (via `<available_skills>` XML block), limiting the injection surface to metadata validated during upload.
 
 **TM-TOOL-020 — Skill Command Injection Trust Gate:**
-SKILL.md content may contain `` !`command` `` placeholders that `ActivateSkillFromVfsTool` expands via `ProcessCommandExecutor` on the worker host. This is RCE against the worker if the SKILL.md body is attacker-controlled. Enforcement:
+SKILL.md content may contain `` !`command` `` placeholders that, if expanded by `preprocess_command_injections`, spawn shell processes on the worker host. This is RCE against the worker if the SKILL.md body is attacker-controlled.
 
-1. The trust signal is `SessionFile::is_readonly` on the SKILL.md read from the session VFS.
-2. `is_readonly == true` indicates the file was placed via a `MountPoint::readonly(...)` (capability contribution or registry-attached skill) or an explicit `initial_files` entry with `is_readonly: true`. These paths are authenticated at upload/registration and are trusted.
-3. `is_readonly == false` indicates the SKILL.md was written into the VFS at runtime (typical: an agent calling `write_file` on `/.agents/skills/foo/SKILL.md`). This is untrusted; `preprocess_command_injections` is skipped and `!`command`` placeholders are returned verbatim.
-4. The single enforcement point is `ActivateSkillFromVfsTool::execute_with_context` in `crates/core/src/capabilities/skills.rs`. `preprocess_command_injections` in `crates/core/src/skill.rs` assumes the caller has already performed the trust check.
+1. The trust signal must be a non-user-controllable provenance indicator for the SKILL.md entry read from the session VFS — for example, an origin field populated only by the capability/registry mount layer. `SessionFile::is_readonly` is **not** such a signal: both the session-files HTTP API (create/update) and `InitialFile` configuration accept `is_readonly = true` from user input.
+2. Because no such provenance signal exists on `SessionFile` today, the enforcement point in `ActivateSkillFromVfsTool::execute_with_context` keeps `is_trusted_source = false` for every source. `preprocess_command_injections` is never reached at runtime.
+3. The function itself is preserved (full implementation, unit-test coverage) with bounded fan-out: at most `MAX_COMMAND_PLACEHOLDERS_PER_SKILL` (32) placeholders expanded per activation, at most 4 shells concurrently. These bounds protect a future re-enable from per-activation CPU / process exhaustion.
+4. SKILL.md content originating from user-facing session/file creation or update flows — including the session-files API, `initial_files`, and runtime `write_file` calls — stays untrusted regardless of metadata.
+5. The single enforcement point is `ActivateSkillFromVfsTool::execute_with_context` in `crates/core/src/capabilities/skills.rs`. `preprocess_command_injections` in `crates/core/src/skill.rs` assumes the caller has already performed the trust check.
 
-See `specs/skills-registry.md` "Activation Substitution Pipeline" and EVE-388.
+Follow-up work (tracked on EVE-388): add a platform-controlled provenance field — e.g. a `mount_capability_id` column on `session_files` populated only by mount application code and rejected on all user-facing API paths — and flip the gate to allow expansion when that field is set. See `specs/skills-registry.md` "Activation Substitution Pipeline" for the source/outcome matrix.
 
 **TM-TOOL-011/012 — Skill Archive Validation:**
 ZIP archive extraction in `SkillService::create_from_archive()` enforces:

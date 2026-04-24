@@ -9,9 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
-### Changed
+### Security
 
-- `activate_skill` again expands `` !`command` `` placeholders in SKILL.md, but only for skills mounted readonly (capability-contributed or registry-attached). SKILL.md written to the VFS at runtime is treated as untrusted and placeholders are left literal. See `specs/skills-registry.md` "Activation Substitution Pipeline" and threat-model entry TM-TOOL-020 (EVE-388).
+- Document the `activate_skill` ``!`command` `` trust gate. The gate remains forced off for every source because `SessionFile::is_readonly` is user-controllable via the session-files API and `InitialFile`. `preprocess_command_injections` is kept wired up (with bounded fan-out: 32 placeholders per activation, 4 concurrent shells) so a follow-up can flip it on once a platform-controlled provenance signal is added to `SessionFile`. See `specs/skills-registry.md` "Activation Substitution Pipeline" and threat-model entry TM-TOOL-020 (EVE-388).
 
 ## [0.8.18] - 2026-04-22
 
