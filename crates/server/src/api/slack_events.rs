@@ -1036,8 +1036,9 @@ async fn fetch_thread_replies(
 /// them as input.message events (without triggering agent workflows). This
 /// gives the agent full conversational context when first mentioned mid-thread.
 ///
-/// Messages from bots (including our own) are injected as assistant-role
-/// messages. Messages from users get user-role with ExternalActor attribution.
+/// Messages from users get user-role with ExternalActor attribution.
+/// Bot-authored replies are skipped to avoid role confusion from third-party
+/// bots in shared channels.
 /// The triggering message (matching `exclude_ts`) is skipped since it will be
 /// created normally by the caller.
 async fn inject_thread_context(
@@ -1056,53 +1057,32 @@ async fn inject_thread_context(
 
     let mut injected = 0u32;
     for reply in &replies {
-        // Skip the triggering message (it will be created by the normal flow)
-        if let (Some(reply_ts), Some(skip_ts)) = (reply.ts.as_deref(), exclude_ts)
-            && reply_ts == skip_ts
-        {
+        if should_skip_thread_reply(reply, exclude_ts) {
             continue;
         }
 
-        // Skip messages with no text content
+        // Safe because should_skip_thread_reply filters empty content.
         let text = reply.text.as_deref().unwrap_or("");
-        if text.is_empty() {
-            continue;
-        }
-
-        // Skip subtypes we can't meaningfully represent (channel_join, etc.)
-        if let Some(ref subtype) = reply.subtype
-            && subtype != "bot_message"
-            && subtype != "thread_broadcast"
-        {
-            continue;
-        }
-
-        // Determine role: bot messages → assistant, human messages → user
-        let (role, external_actor) = if reply.bot_id.is_some() {
-            (everruns_core::MessageRole::Agent, None)
+        let user_id = reply.user.clone().unwrap_or_default();
+        let display_name = if !user_id.is_empty() {
+            resolve_slack_user_name(&state.user_name_cache, bot_token, &user_id).await
         } else {
-            let user_id = reply.user.clone().unwrap_or_default();
-            let display_name = if !user_id.is_empty() {
-                resolve_slack_user_name(&state.user_name_cache, bot_token, &user_id).await
-            } else {
-                None
-            };
-            let actor = if !user_id.is_empty() {
-                Some(everruns_core::ExternalActor {
-                    actor_id: user_id,
-                    actor_name: display_name,
-                    source: "slack".to_string(),
-                    metadata: None,
-                })
-            } else {
-                None
-            };
-            (everruns_core::MessageRole::User, actor)
+            None
+        };
+        let external_actor = if !user_id.is_empty() {
+            Some(everruns_core::ExternalActor {
+                actor_id: user_id,
+                actor_name: display_name,
+                source: "slack".to_string(),
+                metadata: None,
+            })
+        } else {
+            None
         };
 
         let message = everruns_core::Message {
             id: everruns_core::typed_id::MessageId::new(),
-            role,
+            role: everruns_core::MessageRole::User,
             content: vec![everruns_core::ContentPart::text(text)],
             phase: None,
             thinking: None,
@@ -1143,6 +1123,36 @@ async fn inject_thread_context(
     }
 
     Ok(())
+}
+
+fn should_skip_thread_reply(reply: &SlackReplyMessage, exclude_ts: Option<&str>) -> bool {
+    // Skip the triggering message (it will be created by the normal flow).
+    if let (Some(reply_ts), Some(skip_ts)) = (reply.ts.as_deref(), exclude_ts)
+        && reply_ts == skip_ts
+    {
+        return true;
+    }
+
+    // Skip messages with no text content.
+    if reply.text.as_deref().unwrap_or("").is_empty() {
+        return true;
+    }
+
+    // Skip subtypes we can't meaningfully represent (channel_join, etc.).
+    if let Some(ref subtype) = reply.subtype
+        && subtype != "bot_message"
+        && subtype != "thread_broadcast"
+    {
+        return true;
+    }
+
+    // Ignore bot-authored history entries. We cannot safely treat arbitrary
+    // Slack bot output as trusted assistant context.
+    if reply.bot_id.is_some() {
+        return true;
+    }
+
+    false
 }
 
 /// Wait for the agent turn to complete and stream responses to Slack.
@@ -2818,6 +2828,30 @@ mod tests {
         assert!(reply.user.is_none());
         assert!(reply.text.is_none());
         assert!(reply.bot_id.is_none());
+    }
+
+    #[test]
+    fn test_should_skip_thread_reply_for_bot_messages() {
+        let reply = SlackReplyMessage {
+            user: None,
+            text: Some("Bot says hi".to_string()),
+            ts: Some("1234.0001".to_string()),
+            bot_id: Some("B999".to_string()),
+            subtype: Some("bot_message".to_string()),
+        };
+        assert!(should_skip_thread_reply(&reply, None));
+    }
+
+    #[test]
+    fn test_should_not_skip_thread_reply_for_human_message() {
+        let reply = SlackReplyMessage {
+            user: Some("U123".to_string()),
+            text: Some("hello".to_string()),
+            ts: Some("1234.0002".to_string()),
+            bot_id: None,
+            subtype: None,
+        };
+        assert!(!should_skip_thread_reply(&reply, None));
     }
 
     #[tokio::test]
