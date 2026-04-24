@@ -193,6 +193,17 @@ impl AuthBackend for BuiltinAuthBackend {
         let user_id = Uuid::parse_str(&claims.sub)
             .map_err(|_| AuthError::unauthorized("Invalid user ID in token"))?;
 
+        // Enforce subject user still exists. Deleted users must not remain authenticated
+        // with previously issued JWTs until token expiry.
+        let user_exists = self.db.get_user(user_id).await.map_err(|e| {
+            tracing::error!("Failed to fetch JWT user: {}", e);
+            AuthError::unauthorized("Failed to validate token user")
+        })?;
+        if user_exists.is_none() {
+            tracing::warn!(user_id = %user_id, "JWT subject user not found");
+            return Err(AuthError::unauthorized("Invalid or expired token"));
+        }
+
         // Fetch organization memberships for the user
         let organizations = fetch_user_organizations(&self.db, user_id).await?;
 

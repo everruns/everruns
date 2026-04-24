@@ -70,7 +70,7 @@ impl InMemoryDatabase {
     /// Get encrypted connection token for a session.
     ///
     /// If the session has an `agent_identity_id`, checks `agent_identity_connections`
-    /// first; falls back to `user_connections` via org membership.
+    /// first; falls back to `user_connections` for the session's resolved owner user.
     pub async fn get_connection_token_for_session(
         &self,
         session_id: SessionId,
@@ -81,8 +81,8 @@ impl InMemoryDatabase {
             Some(s) => s,
             None => return Ok(None),
         };
-        let org_id = session.org_id;
         let agent_identity_id = session.agent_identity_id;
+        let resolved_owner_user_id = session.resolved_owner_user_id;
         drop(sessions);
 
         // Check identity connections first — if any exist for this provider,
@@ -105,28 +105,19 @@ impl InMemoryDatabase {
             }
         }
 
-        // Fall back to user connections via org membership
-        let members = self.organization_members.read();
-        let user_ids: Vec<Uuid> = members
-            .iter()
-            .filter(|((oid, _), _)| *oid == org_id)
-            .map(|((_, uid), _)| *uid)
-            .collect();
-        drop(members);
+        let Some(owner_user_id) = resolved_owner_user_id else {
+            return Ok(None);
+        };
 
         let connections = self.user_connections.read();
-        for uid in user_ids {
-            for conn in connections.values() {
-                if conn.user_id == uid
+        Ok(connections
+            .values()
+            .find(|conn| {
+                conn.user_id == owner_user_id
                     && conn.provider == provider
                     && conn.access_token_encrypted.is_some()
-                {
-                    return Ok(conn.access_token_encrypted.clone());
-                }
-            }
-        }
-
-        Ok(None)
+            })
+            .and_then(|conn| conn.access_token_encrypted.clone()))
     }
 
     /// Get provider metadata for a session/provider pair.
@@ -141,8 +132,8 @@ impl InMemoryDatabase {
             Some(s) => s,
             None => return Ok(None),
         };
-        let org_id = session.org_id;
         let agent_identity_id = session.agent_identity_id;
+        let resolved_owner_user_id = session.resolved_owner_user_id;
         drop(sessions);
 
         if let Some(identity_id) = agent_identity_id {
@@ -155,25 +146,15 @@ impl InMemoryDatabase {
             }
         }
 
-        let members = self.organization_members.read();
-        let user_ids: Vec<Uuid> = members
-            .iter()
-            .filter(|((oid, _), _)| *oid == org_id)
-            .map(|((_, uid), _)| *uid)
-            .collect();
-        drop(members);
+        let Some(owner_user_id) = resolved_owner_user_id else {
+            return Ok(None);
+        };
 
         let connections = self.user_connections.read();
-        for uid in user_ids {
-            if let Some(conn) = connections
-                .values()
-                .find(|c| c.user_id == uid && c.provider == provider)
-            {
-                return Ok(conn.provider_metadata.as_ref().cloned());
-            }
-        }
-
-        Ok(None)
+        Ok(connections
+            .values()
+            .find(|c| c.user_id == owner_user_id && c.provider == provider)
+            .and_then(|conn| conn.provider_metadata.as_ref().cloned()))
     }
 
     /// Resolve the user whose connection would be used for a session/provider pair.
@@ -188,8 +169,8 @@ impl InMemoryDatabase {
             Some(s) => s,
             None => return Ok(None),
         };
-        let org_id = session.org_id;
         let agent_identity_id = session.agent_identity_id;
+        let resolved_owner_user_id = session.resolved_owner_user_id;
         drop(sessions);
 
         // If session has an identity connection, return None (no owning user)
@@ -203,22 +184,15 @@ impl InMemoryDatabase {
             }
         }
 
-        let members = self.organization_members.read();
-        let user_ids: Vec<Uuid> = members
-            .iter()
-            .filter(|((oid, _), _)| *oid == org_id)
-            .map(|((_, uid), _)| *uid)
-            .collect();
-        drop(members);
-
+        let Some(owner_user_id) = resolved_owner_user_id else {
+            return Ok(None);
+        };
         let connections = self.user_connections.read();
-        for uid in user_ids {
-            if connections
-                .values()
-                .any(|conn| conn.user_id == uid && conn.provider == provider)
-            {
-                return Ok(Some(uid));
-            }
+        if connections
+            .values()
+            .any(|conn| conn.user_id == owner_user_id && conn.provider == provider)
+        {
+            return Ok(Some(owner_user_id));
         }
 
         Ok(None)
@@ -240,7 +214,7 @@ impl InMemoryDatabase {
     }
 
     /// Get the GitHub App installation ID for a session.
-    /// Checks agent identity connections first, falls back to user connections.
+    /// Checks agent identity connections first, falls back to the session owner user connection.
     pub async fn get_installation_id_for_session(
         &self,
         session_id: SessionId,
@@ -251,8 +225,8 @@ impl InMemoryDatabase {
             Some(s) => s,
             None => return Ok(None),
         };
-        let org_id = session.org_id;
         let agent_identity_id = session.agent_identity_id;
+        let resolved_owner_user_id = session.resolved_owner_user_id;
         drop(sessions);
 
         // Check identity connections first — if any exist for this provider,
@@ -274,28 +248,19 @@ impl InMemoryDatabase {
             }
         }
 
-        // Fall back to user connections via org membership
-        let members = self.organization_members.read();
-        let user_ids: Vec<Uuid> = members
-            .iter()
-            .filter(|((oid, _), _)| *oid == org_id)
-            .map(|((_, uid), _)| *uid)
-            .collect();
-        drop(members);
+        let Some(owner_user_id) = resolved_owner_user_id else {
+            return Ok(None);
+        };
 
         let connections = self.user_connections.read();
-        for uid in user_ids {
-            for conn in connections.values() {
-                if conn.user_id == uid
+        Ok(connections
+            .values()
+            .find(|conn| {
+                conn.user_id == owner_user_id
                     && conn.provider == provider
                     && conn.installation_id.is_some()
-                {
-                    return Ok(conn.installation_id);
-                }
-            }
-        }
-
-        Ok(None)
+            })
+            .and_then(|conn| conn.installation_id))
     }
 
     pub async fn get_installation_id_for_user(
@@ -309,6 +274,19 @@ impl InMemoryDatabase {
             .values()
             .find(|c| c.user_id == user_id && c.provider == provider && c.installation_id.is_some())
             .and_then(|c| c.installation_id))
+    }
+
+    pub async fn get_user_id_by_installation_id(
+        &self,
+        provider: &str,
+        installation_id: i64,
+    ) -> Result<Option<Uuid>> {
+        Ok(self
+            .user_connections
+            .read()
+            .values()
+            .find(|c| c.provider == provider && c.installation_id == Some(installation_id))
+            .map(|c| c.user_id))
     }
 
     pub async fn delete_user_connection(&self, user_id: Uuid, provider: &str) -> Result<bool> {

@@ -935,6 +935,33 @@ pub async fn github_callback(
             )
         })?;
 
+    // Prevent installation hijacking across users: an installation already linked
+    // to another user must not be claimable via callback replay/forgery.
+    if let Some(existing_owner_id) = state
+        .db
+        .get_user_id_by_installation_id("github", result.installation_id)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to resolve GitHub installation owner: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to store connection".to_string(),
+            )
+        })?
+        && existing_owner_id != auth.id
+    {
+        tracing::warn!(
+            user_id = %auth.id,
+            existing_owner_id = %existing_owner_id,
+            installation_id = result.installation_id,
+            "GitHub installation already linked to another user"
+        );
+        return Err((
+            StatusCode::CONFLICT,
+            "GitHub installation is already linked to another user".to_string(),
+        ));
+    }
+
     // Store installation_id (no OAuth token needed — tokens minted on demand)
     state
         .db
