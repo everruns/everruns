@@ -169,4 +169,19 @@ describe("mergeUiRouteManifests", () => {
       }),
     ).toThrow('packageRelativePath must start with "src/"');
   });
+
+  it("rejects packageRelativePath traversal outside package root", () => {
+    expect(() =>
+      resolveUiRouteArtifactFilePath({
+        artifactId: "/dashboard:page.tsx",
+        sourcePackage: "everruns-ui",
+        kind: "page",
+        appPath: "/dashboard",
+        pathname: "/dashboard",
+        fileName: "page.tsx",
+        sourcePath: "src/app/dashboard/page.tsx",
+        packageRelativePath: "src/../../../../etc/passwd",
+      }),
+    ).toThrow("packageRelativePath escapes the package root");
+  });
 });
