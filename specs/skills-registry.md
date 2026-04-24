@@ -417,6 +417,37 @@ CREATE TABLE skill_files (
 CREATE INDEX idx_skill_files_skill_id ON skill_files(skill_id);
 ```
 
+## Activation Substitution Pipeline
+
+When `activate_skill` runs, the SKILL.md body is transformed through a fixed pipeline before being returned to the model. All steps are applied to the body only — frontmatter is parsed separately and never substituted.
+
+1. **Argument expansion** (`$ARGUMENTS`, `$ARGUMENTS[N]`, `$N`) — synchronous, always runs.
+2. **Environment substitution** (`${SESSION_ID}`, `${SKILL_DIR}`) — synchronous, always runs.
+3. **Command injection** (`` !`cmd` ``) — asynchronous shell execution inside the session sandbox (virtual bash / VFS). Runs ONLY for trusted sources. The dormant default executor still targets the worker host; see the trust-gate section below.
+
+### Command-Injection Trust Gate
+
+``!`cmd` `` placeholders let a skill inline the stdout of a shell command at activation time (e.g. ``!`git rev-parse --show-toplevel` ``, ``!`date` ``). Because this spawns a shell process on the worker host, it is only safe for SKILL.md content that came from a non-user-spoofable source.
+
+**Current status: the gate is forced off.** `SessionFile::is_readonly` is **not** a valid trust signal — both the session-files HTTP API (create/update) and `InitialFile` configuration accept `is_readonly = true` from user input, so a user could mark a SKILL.md readonly and regain RCE.
+
+| Source | Mount mode | Trust gate outcome |
+|---|---|---|
+| Capability-contributed (`contribute_skills`) | `MountPoint::readonly` → `is_readonly = true` on DB row | **UNTRUSTED today** — ``!`cmd` `` stays literal |
+| Registry-attached (`AttachSkillCapability`) | `MountPoint::readonly` → `is_readonly = true` on DB row | **UNTRUSTED today** — ``!`cmd` `` stays literal |
+| User-uploaded via VFS write (e.g. agent `write_file` at runtime) | writable → `is_readonly = false` | **UNTRUSTED** — ``!`cmd` `` stays literal |
+| Agent / session `initial_files` (any `is_readonly` value) | readonly or writable | **UNTRUSTED** — ``!`cmd` `` stays literal |
+| Session-files API create/update with `is_readonly = true` | readonly | **UNTRUSTED** — ``!`cmd` `` stays literal |
+
+Re-enabling the feature requires BOTH:
+
+1. A platform-controlled provenance signal (for example, a `mount_capability_id` column on `session_files` that is populated only by mount application code and rejected on all user-facing API paths), AND
+2. Replacing the default `ProcessCommandExecutor` (which spawns worker-host `bash -c`) with a session-sandbox-backed executor so commands run against **virtual bash (bashkit / managed session sandbox) and the session virtual filesystem**, not the worker host. Flipping provenance alone is insufficient — a trusted but misbehaving skill would otherwise be able to reach worker state.
+
+See threat-model entry [`TM-TOOL-020`](./threat-model.md) for the mitigation state and EVE-388 for follow-up.
+
+Enforcement lives at a single call site in `ActivateSkillFromVfsTool::execute_with_context` (`crates/core/src/capabilities/skills.rs`). The `preprocess_command_injections` function in `crates/core/src/skill.rs` is kept wired up (with unit tests) so the re-enable follow-up only needs to flip the gate after introducing the provenance field. The function is bounded (`MAX_COMMAND_PLACEHOLDERS_PER_SKILL` = 32 placeholders per activation, concurrency cap of 4 shells) so a trusted-but-large SKILL.md cannot exhaust worker resources.
+
 ## Security Considerations
 
 1. **Archive Validation**: ZIP archives must be validated for:
