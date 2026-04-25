@@ -65,8 +65,8 @@ function SchemaCapabilityEditor({
   }
 
   const uiSchema: UiSchema = {
-    "ui:submitButtonOptions": { norender: true },
     ...(capability.config_ui_schema as UiSchema | undefined),
+    "ui:submitButtonOptions": { norender: true },
   };
 
   return (
@@ -170,7 +170,8 @@ function TextWidget({
       onChange={(event) => {
         const nextValue = event.target.value;
         if (inputType === "number") {
-          onChange(nextValue === "" ? undefined : Number(nextValue));
+          const parsedValue = Number(nextValue);
+          onChange(nextValue === "" || !Number.isFinite(parsedValue) ? undefined : parsedValue);
         } else {
           onChange(nextValue);
         }
