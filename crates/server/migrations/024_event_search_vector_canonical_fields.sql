@@ -18,8 +18,10 @@
 --      partial GIN index here, with the canonical fields, as an additive
 --      migration that all environments will apply cleanly.
 
--- Drop the existing generated column. The partial GIN index on it is
--- removed automatically via CASCADE.
+-- Drop the existing partial GIN index, then the generated column it
+-- referenced. Done explicitly (rather than relying on `DROP COLUMN`'s
+-- automatic dependency cleanup) so the dependency is obvious in review.
+DROP INDEX IF EXISTS idx_events_search_vector;
 ALTER TABLE events DROP COLUMN search_vector;
 
 -- Recreate the generated tsvector column from canonical message text
