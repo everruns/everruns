@@ -6,9 +6,14 @@
 // which looks up tools by name.
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
+
+pub const HUMAN_INTENT_ARGUMENT: &str = "human_intent";
+
+const HUMAN_INTENT_DESCRIPTION: &str = "Short user-facing narration of what this tool call will do, written as an action phrase like \"Listing all harnesses\". Do not include hidden reasoning, private chain of thought, secrets, or credential values.";
 
 /// Tool policy determines how tool calls are handled
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
@@ -199,6 +204,68 @@ impl ToolDefinition {
         }
         self
     }
+
+    /// Add the cross-cutting `human_intent` argument to the tool's JSON schema.
+    ///
+    /// This field is model-authored narration for UI rendering. Tool execution
+    /// strips it before invoking the underlying tool implementation.
+    pub fn with_human_intent_argument(mut self) -> Self {
+        match &mut self {
+            ToolDefinition::Builtin(b) => add_human_intent_to_schema(&mut b.parameters),
+            ToolDefinition::ClientSide(c) => add_human_intent_to_schema(&mut c.parameters),
+        }
+        self
+    }
+}
+
+pub fn add_human_intent_to_tool_definitions(tools: &[ToolDefinition]) -> Vec<ToolDefinition> {
+    tools
+        .iter()
+        .cloned()
+        .map(ToolDefinition::with_human_intent_argument)
+        .collect()
+}
+
+pub fn human_intent(arguments: &Value) -> Option<&str> {
+    arguments
+        .get(HUMAN_INTENT_ARGUMENT)
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+}
+
+pub fn strip_human_intent_argument(arguments: &Value) -> Value {
+    let mut stripped = arguments.clone();
+    if let Value::Object(ref mut object) = stripped {
+        object.remove(HUMAN_INTENT_ARGUMENT);
+    }
+    stripped
+}
+
+fn add_human_intent_to_schema(schema: &mut Value) {
+    let Value::Object(schema_obj) = schema else {
+        return;
+    };
+
+    schema_obj
+        .entry("type")
+        .or_insert_with(|| Value::String("object".to_string()));
+
+    let properties = schema_obj
+        .entry("properties")
+        .or_insert_with(|| Value::Object(serde_json::Map::new()));
+    if let Value::Object(properties_obj) = properties {
+        properties_obj.insert(
+            HUMAN_INTENT_ARGUMENT.to_string(),
+            serde_json::json!({
+                "type": "string",
+                "description": HUMAN_INTENT_DESCRIPTION,
+            }),
+        );
+    }
+
+    // `human_intent` is intentionally optional: models should provide it when
+    // useful, but old calls, provider quirks, and client-side calls remain valid.
 }
 
 /// Semantic hints describing a tool's behavioral properties.
@@ -343,6 +410,11 @@ pub struct ToolCall {
 }
 
 impl ToolCall {
+    /// Arguments safe to pass to the actual tool implementation.
+    pub fn execution_arguments(&self) -> serde_json::Value {
+        strip_human_intent_argument(&self.arguments)
+    }
+
     /// Convert tool call to OpenAI-compatible format
     ///
     /// Returns format: `{id, type: "function", function: {name, arguments}}`
@@ -816,5 +888,68 @@ mod tests {
         .with_hints(ToolHints::default().with_readonly(true));
 
         assert_eq!(tool.hints().readonly, Some(true));
+    }
+
+    #[test]
+    fn test_with_human_intent_argument_adds_optional_schema_property() {
+        let tool = ToolDefinition::Builtin(BuiltinTool {
+            name: "manage_harnesses".to_string(),
+            display_name: Some("Manage Harnesses".to_string()),
+            description: "Manage harnesses".to_string(),
+            parameters: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "operation": { "type": "string", "enum": ["list"] }
+                },
+                "required": ["operation"],
+                "additionalProperties": false
+            }),
+            policy: ToolPolicy::Auto,
+            category: None,
+            deferrable: DeferrablePolicy::default(),
+            hints: ToolHints::default(),
+        })
+        .with_human_intent_argument();
+
+        let params = tool.parameters();
+        assert_eq!(
+            params["properties"][HUMAN_INTENT_ARGUMENT]["type"],
+            "string"
+        );
+        assert!(
+            params["properties"][HUMAN_INTENT_ARGUMENT]["description"]
+                .as_str()
+                .unwrap()
+                .contains("Listing all harnesses")
+        );
+        assert!(
+            !params["required"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|item| item.as_str() == Some(HUMAN_INTENT_ARGUMENT))
+        );
+        assert_eq!(params["additionalProperties"], false);
+    }
+
+    #[test]
+    fn test_tool_call_execution_arguments_strip_human_intent() {
+        let tool_call = ToolCall {
+            id: "call_1".to_string(),
+            name: "manage_harnesses".to_string(),
+            arguments: serde_json::json!({
+                "operation": "list",
+                "human_intent": "Listing all harnesses"
+            }),
+        };
+
+        assert_eq!(
+            tool_call.execution_arguments(),
+            serde_json::json!({ "operation": "list" })
+        );
+        assert_eq!(
+            human_intent(&tool_call.arguments),
+            Some("Listing all harnesses")
+        );
     }
 }

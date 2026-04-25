@@ -196,6 +196,9 @@ where
     /// Post-tool-exec hooks (capability-contributed): run after each individual
     /// tool execution. Capabilities register these via `post_tool_exec_hooks()`.
     post_tool_hooks: Vec<Arc<dyn act_hooks::PostToolExecHook>>,
+    /// Tool-call hooks (capability-contributed): inspect model-authored tool
+    /// calls for UI narration and transform calls before actual execution.
+    tool_call_hooks: Vec<Arc<dyn crate::capabilities::ToolCallHook>>,
     /// Final post-tool-exec hooks (infrastructure): run after capability hooks.
     /// Always registered, cannot be removed by capabilities (EVE-225).
     final_post_tool_hooks: Vec<Arc<dyn act_hooks::PostToolExecHook>>,
@@ -232,6 +235,7 @@ where
             budget_checker: None,
             hooks: Self::default_hooks(),
             post_tool_hooks: Vec::new(),
+            tool_call_hooks: Vec::new(),
             final_post_tool_hooks: Self::default_final_hooks(),
         }
     }
@@ -266,6 +270,7 @@ where
             budget_checker: None,
             hooks: Self::default_hooks(),
             post_tool_hooks: Vec::new(),
+            tool_call_hooks: Vec::new(),
             final_post_tool_hooks: Self::default_final_hooks(),
         }
     }
@@ -406,6 +411,14 @@ where
         hooks: Vec<Arc<dyn act_hooks::PostToolExecHook>>,
     ) -> Self {
         self.post_tool_hooks.extend(hooks);
+        self
+    }
+
+    pub fn with_tool_call_hooks(
+        mut self,
+        hooks: Vec<Arc<dyn crate::capabilities::ToolCallHook>>,
+    ) -> Self {
+        self.tool_call_hooks.extend(hooks);
         self
     }
 
@@ -569,17 +582,36 @@ where
             })
             .collect();
 
+        let mut started_data = ActStartedData::with_definitions_and_locale(
+            &tool_calls,
+            &tool_definitions,
+            locale.as_deref(),
+        );
+        for summary in &mut started_data.tool_calls {
+            if let Some(tool_call) = tool_calls.iter().find(|tc| tc.id == summary.id) {
+                let tool_def = tool_map.get(tool_call.name.as_str()).copied();
+                summary.narration = Some(self.render_tool_narration(
+                    tool_def,
+                    tool_call,
+                    ToolNarrationPhase::Started,
+                    locale.as_deref(),
+                ));
+            }
+        }
+        if tool_calls.len() == 1 {
+            started_data.headline = started_data
+                .tool_calls
+                .first()
+                .and_then(|summary| summary.narration.clone());
+        }
+
         // Emit act.started event (with display names from tool definitions)
         if let Err(e) = self
             .event_emitter
             .emit(EventRequest::new(
                 context.session_id,
                 event_context.clone(),
-                ActStartedData::with_definitions_and_locale(
-                    &tool_calls,
-                    &tool_definitions,
-                    locale.as_deref(),
-                ),
+                started_data,
             ))
             .await
         {
@@ -628,6 +660,16 @@ where
             ToolNarrationPhase::Completed,
             locale.as_deref(),
         );
+        if tool_calls.len() == 1
+            && let Some(tool_call) = tool_calls.first()
+        {
+            completed_headline = Some(self.render_tool_narration(
+                tool_map.get(tool_call.name.as_str()).copied(),
+                tool_call,
+                ToolNarrationPhase::Completed,
+                locale.as_deref(),
+            ));
+        }
         if error_count > 0 {
             let suffix = crate::localization::format_error_suffix(locale.as_deref(), error_count);
             completed_headline = Some(match completed_headline {
@@ -699,6 +741,29 @@ where
     T: ToolExecutor + Send + Sync,
     E: EventEmitter + Send + Sync + 'static,
 {
+    fn render_tool_narration(
+        &self,
+        tool_def: Option<&ToolDefinition>,
+        tool_call: &ToolCall,
+        phase: ToolNarrationPhase,
+        locale: Option<&str>,
+    ) -> String {
+        for hook in &self.tool_call_hooks {
+            if let Some(narration) = hook.narration(tool_def, tool_call, phase, locale) {
+                return narration;
+            }
+        }
+        render_tool_narration_with_locale(tool_def, tool_call, phase, locale)
+    }
+
+    fn transform_tool_call_for_execution(&self, tool_call: ToolCall) -> ToolCall {
+        self.tool_call_hooks
+            .iter()
+            .fold(tool_call, |tool_call, hook| {
+                hook.transform_for_execution(tool_call)
+            })
+    }
+
     /// Execute a single tool call
     ///
     /// Note: OTel instrumentation is handled via event listeners.
@@ -752,7 +817,7 @@ where
                 ToolStartedData {
                     tool_call: tool_call.clone(),
                     display_name: display_name.clone(),
-                    narration: Some(render_tool_narration_with_locale(
+                    narration: Some(self.render_tool_narration(
                         tool_def,
                         &tool_call,
                         ToolNarrationPhase::Started,
@@ -788,7 +853,7 @@ where
                         error_msg.clone(),
                         Some(tool_duration_ms),
                     )
-                    .with_narration(Some(render_tool_narration_with_locale(
+                    .with_narration(Some(self.render_tool_narration(
                         None,
                         &tool_call,
                         ToolNarrationPhase::Failed,
@@ -885,9 +950,10 @@ where
         tool_context.event_context = Some(event_context.clone());
         tool_context.tool_call_id = Some(tool_call.id.clone());
 
+        let execution_tool_call = self.transform_tool_call_for_execution(tool_call.clone());
         let result = self
             .tool_executor
-            .execute_with_context(&tool_call, tool_def, &tool_context)
+            .execute_with_context(&execution_tool_call, tool_def, &tool_context)
             .await;
 
         match result {
@@ -896,7 +962,7 @@ where
                 act_hooks::run_post_tool_exec_hooks(
                     &self.post_tool_hooks,
                     &self.final_post_tool_hooks,
-                    &tool_call,
+                    &execution_tool_call,
                     tool_def,
                     &mut tool_result,
                     &tool_context,
@@ -933,7 +999,7 @@ where
                         Some(tool_duration_ms),
                     )
                     .with_display_name(display_name.clone())
-                    .with_narration(Some(render_tool_narration_with_locale(
+                    .with_narration(Some(self.render_tool_narration(
                         Some(tool_def),
                         &tool_call,
                         ToolNarrationPhase::Completed,
@@ -948,7 +1014,7 @@ where
                         Some(tool_duration_ms),
                     )
                     .with_display_name(display_name.clone())
-                    .with_narration(Some(render_tool_narration_with_locale(
+                    .with_narration(Some(self.render_tool_narration(
                         Some(tool_def),
                         &tool_call,
                         ToolNarrationPhase::Failed,
@@ -1008,14 +1074,12 @@ where
                             Some(tool_duration_ms),
                         )
                         .with_display_name(display_name.clone())
-                        .with_narration(Some(
-                            render_tool_narration_with_locale(
-                                Some(tool_def),
-                                &tool_call,
-                                ToolNarrationPhase::Failed,
-                                locale,
-                            ),
-                        )),
+                        .with_narration(Some(self.render_tool_narration(
+                            Some(tool_def),
+                            &tool_call,
+                            ToolNarrationPhase::Failed,
+                            locale,
+                        ))),
                     ))
                     .await
                 {
@@ -1064,7 +1128,34 @@ mod tests {
     use crate::tools::ToolRegistry;
     use crate::traits::NoopEventEmitter;
     use crate::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
+    use async_trait::async_trait;
     use serde_json::json;
+
+    struct ArgumentEchoTool;
+
+    #[async_trait]
+    impl crate::tools::Tool for ArgumentEchoTool {
+        fn name(&self) -> &str {
+            "argument_echo"
+        }
+
+        fn description(&self) -> &str {
+            "returns the execution arguments"
+        }
+
+        fn parameters_schema(&self) -> serde_json::Value {
+            json!({
+                "type": "object",
+                "properties": {
+                    "value": { "type": "string" }
+                }
+            })
+        }
+
+        async fn execute(&self, arguments: serde_json::Value) -> crate::ToolExecutionResult {
+            crate::ToolExecutionResult::success(arguments)
+        }
+    }
 
     #[tokio::test]
     async fn test_act_atom_empty_tool_calls() {
@@ -1130,6 +1221,78 @@ mod tests {
                 .unwrap()
                 .contains("not found")
         );
+    }
+
+    #[tokio::test]
+    async fn test_act_atom_uses_tool_call_hooks_for_execution_arguments() {
+        use crate::capabilities::{Capability, HumanIntentCapability};
+
+        let mut executor = ToolRegistry::new();
+        executor.register(ArgumentEchoTool);
+        let tool_def = executor.get("argument_echo").unwrap().to_definition();
+        let emitter = crate::memory::InMemoryEventEmitter::new();
+        let atom = ActAtom::new(executor, emitter.clone())
+            .with_tool_call_hooks(HumanIntentCapability.tool_call_hooks());
+
+        let context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
+        let input = ActInput {
+            org_id: Some(1),
+            context,
+            harness_id: HarnessId::from_seed(1),
+            agent_id: Some(AgentId::new()),
+            tool_calls: vec![ToolCall {
+                id: "call_1".to_string(),
+                name: "argument_echo".to_string(),
+                arguments: json!({
+                    "value": "visible",
+                    "human_intent": "Echoing test arguments"
+                }),
+            }],
+            tool_definitions: vec![tool_def],
+            locale: None,
+            blueprint_id: None,
+            network_access: None,
+        };
+
+        let result = atom.execute(input).await.unwrap();
+
+        assert!(result.results[0].success);
+        assert_eq!(
+            result.results[0].result.result,
+            Some(json!({ "value": "visible" }))
+        );
+
+        let events = emitter.events().await;
+        let act_started = events
+            .iter()
+            .find(|event| event.event_type == "act.started")
+            .expect("act.started event");
+        let crate::events::EventData::ActStarted(data) = &act_started.data else {
+            panic!("expected act.started data");
+        };
+        assert_eq!(data.headline.as_deref(), Some("Echoing test arguments"));
+        assert_eq!(
+            data.tool_calls[0].narration.as_deref(),
+            Some("Echoing test arguments")
+        );
+
+        let tool_started = events
+            .iter()
+            .find(|event| event.event_type == "tool.started")
+            .expect("tool.started event");
+        let crate::events::EventData::ToolStarted(data) = &tool_started.data else {
+            panic!("expected tool.started data");
+        };
+        assert_eq!(data.narration.as_deref(), Some("Echoing test arguments"));
+
+        let tool_completed = events
+            .iter()
+            .find(|event| event.event_type == "tool.completed")
+            .expect("tool.completed event");
+        let crate::events::EventData::ToolCompleted(data) = &tool_completed.data else {
+            panic!("expected tool.completed data");
+        };
+        assert_eq!(data.narration.as_deref(), Some("Echoing test arguments"));
     }
 
     fn manage_harnesses_tool_def() -> crate::ToolDefinition {

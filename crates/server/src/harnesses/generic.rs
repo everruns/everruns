@@ -12,6 +12,7 @@ pub fn definition() -> BuiltInHarnessDefinition {
     .with_tags(["generic", "default", "built-in"])
     .with_roles([BuiltInHarnessRole::Default])
     .with_capabilities([
+        BuiltInCapabilityDefinition::new("human_intent"),
         BuiltInCapabilityDefinition::new("session_file_system"),
         BuiltInCapabilityDefinition::new("virtual_bash"),
         BuiltInCapabilityDefinition::with_config(

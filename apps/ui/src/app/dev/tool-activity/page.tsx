@@ -11,10 +11,12 @@ import {
   Terminal,
 } from "lucide-react";
 import { MessageInfoIcon } from "@/components/chat/message-info-icon";
+import { ChatMessageList } from "@/components/chat/chat-message-list";
 import { ToolActivityGroup } from "@/components/chat/tool-activity-group";
 import { TodoListRenderer } from "@/components/chat/todo-list-renderer";
-import type { Event, ToolCompletedData } from "@/lib/api/types";
+import type { Event, ToolCompletedData, ToolProgressData } from "@/lib/api/types";
 import type { ToolCallContent } from "@/components/chat/tool-call-utils";
+import type { ToolOutputStreams } from "@/app/(main)/sessions/[sessionId]/session-context";
 import { DevPageShell } from "@/app/dev/_components/dev-page-shell";
 import { chatSurfaceStyles } from "@/components/chat/chat-surface";
 
@@ -318,6 +320,98 @@ const agentPlanningEvent: Event = {
   },
 };
 
+const narratedRuntimeEvents: Event[] = [
+  {
+    id: "evt-human-intent-act-started",
+    type: "act.started",
+    ts: "2026-03-07T21:20:09Z",
+    session_id: "session-dev-tool-activity",
+    context: {
+      turn_id: "turn-human-intent",
+      input_message_id: "msg-user-1",
+      exec_id: "exec-human-intent",
+    },
+    data: {
+      tool_calls: [
+        {
+          id: "call-list-harnesses",
+          name: "platform_management",
+          display_name: "Platform Management",
+          narration: "Listing all harnesses",
+        },
+      ],
+      headline: "Listing all harnesses",
+    },
+  },
+  {
+    id: "evt-human-intent-tool-started",
+    type: "tool.started",
+    ts: "2026-03-07T21:20:10Z",
+    session_id: "session-dev-tool-activity",
+    context: {
+      turn_id: "turn-human-intent",
+      input_message_id: "msg-user-1",
+      exec_id: "exec-human-intent",
+    },
+    data: {
+      tool_call: {
+        id: "call-list-harnesses",
+        name: "platform_management",
+        arguments: {
+          operation: "list",
+          resource: "harnesses",
+          human_intent: "Listing all harnesses",
+        },
+      },
+      display_name: "Platform Management",
+      narration: "Listing all harnesses",
+    },
+  },
+  {
+    id: "evt-human-intent-tool-completed",
+    type: "tool.completed",
+    ts: "2026-03-07T21:20:11Z",
+    session_id: "session-dev-tool-activity",
+    context: {
+      turn_id: "turn-human-intent",
+      input_message_id: "msg-user-1",
+      exec_id: "exec-human-intent",
+    },
+    data: {
+      tool_call_id: "call-list-harnesses",
+      tool_name: "platform_management",
+      display_name: "Platform Management",
+      success: true,
+      status: "success",
+      result: [{ type: "text", text: "Base\nGeneric\nData Analyst" }],
+      duration_ms: 74,
+      narration: "Listing all harnesses",
+    },
+  },
+  {
+    id: "evt-human-intent-act-completed",
+    type: "act.completed",
+    ts: "2026-03-07T21:20:11Z",
+    session_id: "session-dev-tool-activity",
+    context: {
+      turn_id: "turn-human-intent",
+      input_message_id: "msg-user-1",
+      exec_id: "exec-human-intent",
+    },
+    data: {
+      completed: true,
+      success_count: 1,
+      error_count: 0,
+      duration_ms: 74,
+      headline: "Listing all harnesses",
+    },
+  },
+];
+
+const emptyToolResultsMap = new Map<string, ToolCompletedData>();
+const emptyToolProgressMap = new Map<string, ToolProgressData>();
+const emptyToolOutputMap = new Map<string, ToolOutputStreams>();
+
 export default function ToolActivityDevPage() {
   return (
     <DevPageShell
@@ -369,6 +463,19 @@ export default function ToolActivityDevPage() {
                       </p>
                       <MessageInfoIcon event={agentPlanningEvent} />
                     </div>
+                    <ChatMessageList
+                      events={narratedRuntimeEvents}
+                      chatEvents={narratedRuntimeEvents}
+                      sessionId="session-dev-tool-activity"
+                      toolResultsMap={emptyToolResultsMap}
+                      toolProgressMap={emptyToolProgressMap}
+                      toolOutputMap={emptyToolOutputMap}
+                      eventsLoading={false}
+                      hasMoreEvents={false}
+                      loadingOlderEvents={false}
+                      getMessageText={() => ""}
+                      getToolCalls={() => []}
+                    />
                     <ToolActivityGroup
                       toolCalls={activeToolCalls}
                       toolResultsMap={activeToolResults}

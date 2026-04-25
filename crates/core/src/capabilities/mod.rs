@@ -22,7 +22,7 @@ use crate::command::CommandDescriptor;
 use crate::deployment::DeploymentGrade;
 use crate::message_filter::MessageFilterProvider;
 use crate::runtime_agent::RuntimeAgent;
-use crate::tool_types::ToolDefinition;
+use crate::tool_types::{ToolCall, ToolDefinition};
 use crate::tools::{Tool, ToolRegistry};
 use crate::traits::SessionFileStore;
 use crate::typed_id::SessionId;
@@ -89,6 +89,7 @@ mod fake_crm;
 mod fake_financial;
 mod fake_warehouse;
 mod file_system;
+mod human_intent;
 mod infinity_context;
 mod loop_detection;
 pub mod mcp;
@@ -164,6 +165,7 @@ pub use file_system::{
     DeleteFileTool, EditFileTool, FileSystemCapability, GrepFilesTool, ListDirectoryTool,
     ReadFileTool, StatFileTool, WriteFileTool,
 };
+pub use human_intent::{HUMAN_INTENT_CAPABILITY_ID, HumanIntentCapability};
 pub use infinity_context::{
     INFINITY_CONTEXT_CAPABILITY_ID, InfinityContextCapability, QueryHistoryTool,
 };
@@ -498,6 +500,29 @@ pub trait Capability: Send + Sync {
         vec![]
     }
 
+    /// Returns tool definition hooks provided by this capability.
+    ///
+    /// These hooks run after the runtime agent has merged and deduplicated its
+    /// final tool list, before the tool schemas are sent to the LLM. They let
+    /// capabilities apply cross-cutting schema changes to all active tools,
+    /// including tools contributed by other capabilities, MCP, or clients.
+    ///
+    /// By default, returns an empty vector (no tool definition transforms).
+    fn tool_definition_hooks(&self) -> Vec<Arc<dyn ToolDefinitionHook>> {
+        vec![]
+    }
+
+    /// Returns tool call hooks provided by this capability.
+    ///
+    /// These hooks run after the model has produced a tool call. They can read
+    /// model-authored metadata for UI display and transform the tool call used
+    /// for actual execution.
+    ///
+    /// By default, returns an empty vector (no tool call handling).
+    fn tool_call_hooks(&self) -> Vec<Arc<dyn ToolCallHook>> {
+        vec![]
+    }
+
     /// Returns the risk level of this capability.
     ///
     /// TM-AGENT-005: High-risk capabilities (code execution, network access)
@@ -542,6 +567,26 @@ pub trait Capability: Send + Sync {
     /// By default, returns an empty vector (no contributed skills).
     fn contribute_skills(&self) -> Vec<SkillContribution> {
         vec![]
+    }
+}
+
+pub trait ToolDefinitionHook: Send + Sync {
+    fn transform(&self, tools: Vec<ToolDefinition>) -> Vec<ToolDefinition>;
+}
+
+pub trait ToolCallHook: Send + Sync {
+    fn narration(
+        &self,
+        _tool_def: Option<&ToolDefinition>,
+        _tool_call: &ToolCall,
+        _phase: crate::tool_narration::ToolNarrationPhase,
+        _locale: Option<&str>,
+    ) -> Option<String> {
+        None
+    }
+
+    fn transform_for_execution(&self, tool_call: ToolCall) -> ToolCall {
+        tool_call
     }
 }
 
@@ -677,6 +722,7 @@ impl CapabilityRegistry {
 
         // Core capabilities (all environments)
         registry.register(AgentInstructionsCapability);
+        registry.register(HumanIntentCapability);
         registry.register(NoopCapability);
         registry.register(CurrentTimeCapability);
         registry.register(ResearchCapability);
@@ -919,6 +965,10 @@ pub struct CollectedCapabilities {
     pub tool_search: Option<crate::llm_driver_registry::ToolSearchConfig>,
     /// Prompt caching configuration (set when prompt_caching capability is present)
     pub prompt_cache: Option<crate::llm_driver_registry::PromptCacheConfig>,
+    /// Hooks that transform the final runtime tool definition list.
+    pub tool_definition_hooks: Vec<Arc<dyn ToolDefinitionHook>>,
+    /// Hooks that inspect or transform model-produced tool calls.
+    pub tool_call_hooks: Vec<Arc<dyn ToolCallHook>>,
 }
 
 impl CollectedCapabilities {
@@ -1342,6 +1392,8 @@ pub async fn collect_capabilities_with_configs(
     let mut applied_ids: Vec<String> = Vec::new();
     let mut tool_search: Option<crate::llm_driver_registry::ToolSearchConfig> = None;
     let mut prompt_cache: Option<crate::llm_driver_registry::PromptCacheConfig> = None;
+    let mut tool_definition_hooks: Vec<Arc<dyn ToolDefinitionHook>> = Vec::new();
+    let mut tool_call_hooks: Vec<Arc<dyn ToolCallHook>> = Vec::new();
 
     for cap_config in capability_configs {
         let cap_id = cap_config.capability_ref.as_str();
@@ -1361,6 +1413,8 @@ pub async fn collect_capabilities_with_configs(
 
             // Collect tools (config-aware: capabilities can adapt based on per-agent config)
             tools.extend(capability.tools_with_config(&cap_config.config));
+            tool_definition_hooks.extend(capability.tool_definition_hooks());
+            tool_call_hooks.extend(capability.tool_call_hooks());
 
             // Collect tool definitions, propagating capability category if not already set
             let cap_category = capability.category();
@@ -1440,6 +1494,8 @@ pub async fn collect_capabilities_with_configs(
         applied_ids,
         tool_search,
         prompt_cache,
+        tool_definition_hooks,
+        tool_call_hooks,
     }
 }
 
@@ -1517,10 +1573,15 @@ pub async fn apply_capabilities(
     }
 
     // Create modified runtime agent
+    let mut tools = collected.tool_definitions;
+    for hook in &collected.tool_definition_hooks {
+        tools = hook.transform(tools);
+    }
+
     let runtime_agent = RuntimeAgent {
         system_prompt: final_system_prompt,
         model: base_runtime_agent.model,
-        tools: collected.tool_definitions,
+        tools,
         max_iterations: base_runtime_agent.max_iterations,
         temperature: base_runtime_agent.temperature,
         max_tokens: base_runtime_agent.max_tokens,
@@ -1555,6 +1616,7 @@ mod tests {
     fn expected_core_builtin_ids() -> BTreeSet<&'static str> {
         [
             "agent_instructions",
+            "human_intent",
             "budgeting",
             "self_budget",
             "noop",
