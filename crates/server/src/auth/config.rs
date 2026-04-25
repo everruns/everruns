@@ -6,13 +6,15 @@
 // the platform delegates user identity to a third-party provider (PropelAuth,
 // Auth0, Clerk, etc.) and the built-in OAuth flow is intentionally disabled.
 // Pre-#1492 the runtime quietly hid configured providers and returned 401 on
-// `/oauth/redirect` and `/oauth/callback`. That made hybrid deployments fail
-// silently — operators saw 401s only at request time. We now fail fast at
-// startup: `AuthConfig::validate()` rejects `mode == External` when any
-// OAuth provider config is present, with a clear message that names both
-// the conflicting mode and the specific providers. Operators must remove
-// `google`/`github` config or change `AUTH_MODE` before the server starts.
-// See `specs/authentication.md` (External Mode and OAuth Providers).
+// `/v1/auth/oauth/{provider}` and `/v1/auth/callback/{provider}` (the login
+// OAuth handlers — distinct from the MCP `/oauth/...` handlers). That made
+// hybrid deployments fail silently — operators saw 401s only at request
+// time. We now fail fast at startup: `AuthConfig::validate()` rejects
+// `mode == External` when any OAuth provider config is present, with a clear
+// message that names both the conflicting mode and the specific providers.
+// Operators must remove `google`/`github` config or change `AUTH_MODE`
+// before the server starts. See `specs/authentication.md` (External Mode
+// and OAuth Providers).
 
 use std::time::Duration;
 
@@ -344,19 +346,19 @@ impl AuthConfig {
         if self.mode == AuthMode::External {
             let mut configured: Vec<&str> = Vec::new();
             if self.google.is_some() {
-                configured.push("AUTH_GOOGLE_CLIENT_ID/SECRET");
+                configured.push("AUTH_GOOGLE_CLIENT_ID, AUTH_GOOGLE_CLIENT_SECRET");
             }
             if self.github.is_some() {
-                configured.push("AUTH_GITHUB_CLIENT_ID/SECRET");
+                configured.push("AUTH_GITHUB_CLIENT_ID, AUTH_GITHUB_CLIENT_SECRET");
             }
             if !configured.is_empty() {
                 return Err(format!(
                     "AUTH_MODE=external is incompatible with built-in OAuth providers \
                      ({}). External mode delegates identity to a third-party provider; \
-                     remove the OAuth env vars or change AUTH_MODE to 'full' to use the \
-                     built-in OAuth flow. See specs/authentication.md (External Mode and \
-                     OAuth Providers).",
-                    configured.join(", ")
+                     remove the OAuth env vars or set AUTH_MODE=full to use the built-in \
+                     OAuth flow. See specs/authentication.md (External Mode and OAuth \
+                     Providers).",
+                    configured.join("; ")
                 ));
             }
         }
@@ -640,7 +642,10 @@ mod tests {
 
     #[test]
     fn test_validate_full_mode_with_oauth_passes() {
-        // Full mode IS the built-in OAuth mode — providers are required there.
+        // Full mode supports built-in OAuth when providers are configured;
+        // that combination must validate successfully. (Full mode is also
+        // valid without OAuth — password / API-key auth still work — and
+        // that case is covered by `test_full_mode_password_auth`.)
         let config = AuthConfig {
             mode: AuthMode::Full,
             google: Some(make_google_config()),
