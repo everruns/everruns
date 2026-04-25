@@ -1088,13 +1088,18 @@ impl ServerAppBuilder {
             ));
 
         // Mount /metrics endpoint:
-        //  - METRICS_ADDR set → dedicated internal-only server (production)
-        //  - METRICS_ADDR unset → on main router (dev convenience)
+        //  - METRICS_ADDR set → dedicated internal-only server (recommended)
+        //  - METRICS_ADDR unset + METRICS_PUBLIC_ON_MAIN=true → main router (dev/local)
+        //  - otherwise → do not expose /metrics HTTP endpoint
         if let Some(ref handle) = prometheus_handle {
             if let Some(ref addr) = prometheus_config.metrics_addr {
                 api::prometheus::spawn_metrics_server(handle.clone(), addr.clone());
-            } else {
+            } else if prometheus_config.public_on_main {
                 app = app.merge(api::prometheus::route(handle.clone()));
+            } else {
+                tracing::info!(
+                    "Prometheus metrics HTTP endpoint not exposed on main API server; set METRICS_ADDR or METRICS_PUBLIC_ON_MAIN=true"
+                );
             }
         }
 
