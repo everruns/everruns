@@ -31,18 +31,30 @@ ALTER TABLE events DROP COLUMN search_vector;
 --   data.content           - legacy / non-message events with top-level text
 --   data.delta             - streaming deltas
 --   data.accumulated       - accumulated streaming text
+--
+-- The canonical text is bounded with `LEFT(..., 250000)` because Postgres'
+-- `to_tsvector` rejects inputs exceeding 1 MiB ("string is too long for
+-- tsvector ... max 1048575 bytes") and individual rows can carry tool
+-- results, accumulated streaming text, or stringified message-content
+-- arrays well beyond that. 250 000 chars is a safe upper bound across
+-- realistic UTF-8 inputs (250k chars * 4 worst-case bytes/char = 1 MB),
+-- and search relevance is dominated by early tokens, so the truncation
+-- has negligible effect on the index's usefulness.
 ALTER TABLE events
     ADD COLUMN search_vector tsvector
     GENERATED ALWAYS AS (
         to_tsvector(
             'english',
-            COALESCE(
-                data #>> '{message,content}',
-                data #>> '{result}',
-                data->>'content',
-                data->>'delta',
-                data->>'accumulated',
-                ''
+            LEFT(
+                COALESCE(
+                    data #>> '{message,content}',
+                    data #>> '{result}',
+                    data->>'content',
+                    data->>'delta',
+                    data->>'accumulated',
+                    ''
+                ),
+                250000
             )
         )
     ) STORED;

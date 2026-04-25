@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.8.21] - 2026-04-25
+
+### Highlights
+
+- **Hotfix: bound migration 024 input to fit `to_tsvector` 1 MiB cap** - The v0.8.20 search-vector rebuild migration crashed dev startup with `string is too long for tsvector (3108640 bytes, max 1048575 bytes)` because individual event rows can carry tool results, accumulated streaming text, or message-content arrays well beyond Postgres' 1 MiB tsvector input limit. The canonical-text expression is now wrapped in `LEFT(..., 250000)` so any single row's contribution stays under tsvector's hard cap. Search relevance is dominated by early tokens, so the truncation has negligible effect on the index's usefulness.
+- **GPT-5.5 / GPT-5.5 Pro** - New OpenAI model entries are wired into the LLM driver registry ([#1593](https://github.com/everruns/everruns/pull/1593)).
+
+### What's Changed
+
+- fix(migrations): bound migration 024 input to 250 000 chars so to_tsvector stays within Postgres' 1 MiB cap by [@chaliy](https://github.com/chaliy)
+- feat(llm): add GPT-5.5 and GPT-5.5 Pro ([#1593](https://github.com/everruns/everruns/pull/1593)) by [@chaliy](https://github.com/chaliy)
+
 ## [0.8.20] - 2026-04-25
 
 ### Highlights
