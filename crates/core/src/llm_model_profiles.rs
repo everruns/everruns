@@ -1029,6 +1029,9 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
 
         // GPT-5.5 family: latest flagship reasoning models. Released 2026-04-23.
         // Flat pricing (no 200K context tiers, unlike 5.4).
+        // Source: developers.openai.com/api/docs/models/gpt-5.5 and .../gpt-5.5-pro
+        // (models.dev did not yet list these variants at the time of addition;
+        // refresh once the models.dev entry appears).
         "gpt-5.5" => Some(LlmModelProfile {
             name: "GPT-5.5".into(),
             family: "gpt-5.5".into(),
