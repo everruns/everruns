@@ -376,6 +376,24 @@ Client-side tool waits have a configurable timeout (default: 5 minutes). If no r
 3. **Result size limits**: Tool result payloads are limited to 100 KB per result to prevent abuse.
 4. **No server-side execution**: Client-side tool definitions never trigger server-side code. They are metadata only.
 
+### Tools-Field Deprecation Window
+
+`CreateSessionRequest.tools`, `CreateAgentRequest.tools`, and `UpdateAgentRequest.tools` only accept `client_side` definitions — they are documented as "executed by the client, not the server". Older SDK/CLI clients that still send `{"type": "builtin", ...}` entries in this field need a migration window before the server hard-rejects them.
+
+**Current behavior (deprecation window):** the deserializer drops any non-`client_side` entry from the request and emits a `tracing::warn!` with `target = "client_tools_deprecation"`, `dropped_count`, and `dropped_kinds` (e.g. `["builtin"]`). The request still succeeds. Operators can monitor the warning to detect clients that still need to migrate.
+
+**Operator opt-in to hard-reject:** set `EVERRUNS_REJECT_NON_CLIENT_SIDE_TOOLS=1` (also accepts `true` / `yes` / `on`). The deserializer then returns the original `tools must contain only client_side definitions` error, surfacing as `400 Bad Request`.
+
+**Update-request semantics:** `UpdateAgentRequest.tools` is documented as "replaces existing tools if provided". To prevent legacy clients from accidentally clearing an agent's tools during the deprecation window, the deserializer treats the field as **absent** (`None`) when *every* entry was non-`client_side` and got dropped. An explicit `"tools": []` from a modern client still clears the agent's tools (replacement semantics preserved). A mixed list keeps the surviving `client_side` entries and replaces the agent's tools with that subset.
+
+**Migration timeline:**
+
+1. **Today (deprecation window):** soft-drop with structured warning. Default behavior; existing SDK/CLI clients keep working.
+2. **Next release:** OpenAPI schema annotates the field with the cutoff date. CHANGELOG warns operators to flip the hard-reject env var in dev/staging to surface remaining offenders.
+3. **Cutoff release (planned):** flip the default to strict; `EVERRUNS_REJECT_NON_CLIENT_SIDE_TOOLS=0` becomes the legacy escape hatch (and is removed one release later).
+
+**Logging contract:** the warning logs only the discriminator (`builtin`, `client_side`, etc.) and counts — never the payload — so request bodies (prompts, tool arguments) cannot leak into logs from this path. This is enforced by `tool_definition_kind_name` in `crates/server/src/api/sessions.rs`.
+
 ### Design Decisions
 
 | Question | Decision |

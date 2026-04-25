@@ -240,7 +240,11 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
 
     /// Get the platform store for org-level management tools.
     /// Takes org_id so the store is scoped to the current session's organization.
-    fn platform_store(&self, org_id: i64) -> Arc<dyn everruns_core::platform_store::PlatformStore>;
+    fn platform_store(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+    ) -> Arc<dyn everruns_core::platform_store::PlatformStore>;
 
     /// Get the user connection resolver for lazy token lookup.
     fn connection_resolver(&self) -> Arc<dyn everruns_core::traits::UserConnectionResolver>;

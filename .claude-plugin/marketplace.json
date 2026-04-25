@@ -1,14 +1,14 @@
 {
-  "name": "everruns",
+  "name": "everruns-dev",
   "owner": {
     "name": "Everruns",
     "url": "https://everruns.com"
   },
   "plugins": [
     {
-      "name": "everruns",
-      "source": "./plugins/everruns",
-      "description": "Interact with the Everruns agent platform — create and run agents, manage harnesses and sessions, browse the API catalog.",
+      "name": "everruns-dev",
+      "source": "./plugins/everruns-dev",
+      "description": "Interact with the Everruns dev agent platform - create and run agents, manage harnesses and sessions, browse the API catalog.",
       "version": "0.1.0",
       "author": {
         "name": "Everruns",
@@ -20,7 +20,7 @@
       "category": "agents",
       "keywords": [
         "agents",
-        "everruns",
+        "everruns-dev",
         "mcp",
         "harness",
         "llm"

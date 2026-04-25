@@ -203,9 +203,13 @@ impl MessageService {
     }
 
     pub async fn list(&self, session_id: Uuid) -> Result<Vec<Message>> {
+        self.list_limited(session_id, None).await
+    }
+
+    pub async fn list_limited(&self, session_id: Uuid, limit: Option<i32>) -> Result<Vec<Message>> {
         let events = self
             .db
-            .list_message_events(SessionId::from_uuid(session_id))
+            .list_message_events_limited(SessionId::from_uuid(session_id), limit)
             .await?;
         let mut messages = Vec::with_capacity(events.len());
 

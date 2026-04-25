@@ -30,6 +30,7 @@ describe("SettingsLayout", () => {
     );
 
     expect(screen.getByText("General")).toBeInTheDocument();
+    expect(screen.getByText("Organisations")).toBeInTheDocument();
     expect(screen.getByText("LLM Providers")).toBeInTheDocument();
     expect(screen.getByText("Members")).toBeInTheDocument();
     expect(screen.getByText("Profile")).toBeInTheDocument();
@@ -56,6 +57,7 @@ describe("SettingsLayout", () => {
     );
 
     const generalLink = screen.getByRole("link", { name: /General/i });
+    const organisationsLink = screen.getByRole("link", { name: /Organisations/i });
     const providersLink = screen.getByRole("link", { name: /LLM Providers/i });
     const membersLink = screen.getByRole("link", { name: /Members/i });
     const profileLink = screen.getByRole("link", { name: /Profile/i });
@@ -63,6 +65,7 @@ describe("SettingsLayout", () => {
     const apiKeysLink = screen.getByRole("link", { name: /API Keys/i });
 
     expect(generalLink).toHaveAttribute("href", "/settings/organisation");
+    expect(organisationsLink).toHaveAttribute("href", "/settings/organisations");
     expect(providersLink).toHaveAttribute("href", "/settings/providers");
     expect(membersLink).toHaveAttribute("href", "/settings/members");
     expect(profileLink).toHaveAttribute("href", "/settings/profile");
@@ -117,7 +120,7 @@ describe("SettingsLayout", () => {
     expect(membersLink).toHaveClass("border-accent");
   });
 
-  it("has exactly 6 navigation items", () => {
+  it("has exactly 7 navigation items", () => {
     render(
       <SettingsLayout>
         <div>Test Content</div>
@@ -125,7 +128,7 @@ describe("SettingsLayout", () => {
     );
 
     const navLinks = screen.getAllByRole("link");
-    expect(navLinks).toHaveLength(6);
+    expect(navLinks).toHaveLength(7);
   });
 
   it("groups items under correct sections", () => {
@@ -141,6 +144,7 @@ describe("SettingsLayout", () => {
     // Organisation section contains its items
     const orgSection = orgLabel.closest("div[class]")!.parentElement!;
     expect(orgSection).toHaveTextContent("General");
+    expect(orgSection).toHaveTextContent("Organisations");
     expect(orgSection).toHaveTextContent("LLM Providers");
     expect(orgSection).toHaveTextContent("Members");
     expect(orgSection).not.toHaveTextContent("Connections");
@@ -152,6 +156,7 @@ describe("SettingsLayout", () => {
     expect(personalSection).toHaveTextContent("Connections");
     expect(personalSection).toHaveTextContent("API Keys");
     expect(personalSection).not.toHaveTextContent("General");
+    expect(personalSection).not.toHaveTextContent("Organisations");
     expect(personalSection).not.toHaveTextContent("Members");
   });
 
@@ -183,11 +188,13 @@ describe("SettingsLayout", () => {
     );
 
     const generalLink = screen.getByRole("link", { name: /General/i });
+    const organisationsLink = screen.getByRole("link", { name: /Organisations/i });
     const membersLink = screen.getByRole("link", { name: /Members/i });
     const apiKeysLink = screen.getByRole("link", { name: /API Keys/i });
 
     expect(generalLink).toHaveClass("border-transparent");
     expect(generalLink).not.toHaveClass("border-accent");
+    expect(organisationsLink).toHaveClass("border-transparent");
     expect(membersLink).toHaveClass("border-transparent");
     expect(apiKeysLink).toHaveClass("border-transparent");
   });
@@ -202,6 +209,18 @@ describe("SettingsLayout", () => {
 
     const generalLink = screen.getByRole("link", { name: /General/i });
     expect(generalLink).toHaveClass("border-accent");
+  });
+
+  it("highlights active item for Organisations page", () => {
+    mockPathname.mockReturnValue("/settings/organisations");
+    render(
+      <SettingsLayout>
+        <div>Test Content</div>
+      </SettingsLayout>,
+    );
+
+    const organisationsLink = screen.getByRole("link", { name: /Organisations/i });
+    expect(organisationsLink).toHaveClass("border-accent");
   });
 
   it("highlights active item for Profile page", () => {

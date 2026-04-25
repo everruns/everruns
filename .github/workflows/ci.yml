@@ -137,6 +137,19 @@ jobs:
       - name: Check Cargo.lock is up to date
         run: cargo fetch --locked
 
+  migration-immutability:
+    name: Migration Immutability
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check existing migrations are immutable
+        run: bash scripts/lib/check-migration-immutability.sh
+
   clippy:
     name: Clippy Lints
     runs-on: ubuntu-latest

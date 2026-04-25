@@ -1,16 +1,16 @@
 ---
-name: everruns
-description: Reference for working with the Everruns agent platform (https://everruns.com) over MCP - core concepts, how to connect capabilities to agents and harnesses, and how to drive the API with the `discover`, `query`, and `execute` tools. Use whenever the user asks about Everruns agents, harnesses, capabilities, sessions, models, or wants to call the Everruns API.
+name: everruns-dev
+description: Reference for working with the Everruns dev agent platform (https://dev.everruns.com) over MCP - core concepts, how to connect capabilities to agents and harnesses, and how to drive the API with the `discover`, `query`, and `execute` tools. Use whenever the user asks about Everruns Dev agents, harnesses, capabilities, sessions, models, or wants to call the Everruns Dev API.
 ---
 
-# Everruns
+# Everruns Dev
 
-Everruns is a durable agentic harness engine. Docs:
-<https://docs.everruns.com>. This plugin talks to Everruns over MCP and exposes
-read-only API operations as bash builtins inside `query` and the full API
-surface inside `execute`.
+Everruns Dev is the dev deployment of the durable Everruns agentic harness engine. Docs:
+<https://docs.everruns.com>. This plugin talks to the Everruns dev deployment
+over MCP and exposes read-only API operations as bash builtins inside `query`
+and the full API surface inside `execute`.
 
-If a user asks something Everruns-related, prefer the MCP tools over guessing.
+If a user asks something Everruns Dev-related, prefer the MCP tools over guessing.
 When the exact shape of an operation is unclear, call `discover` first.
 
 ## Core concepts
@@ -45,7 +45,7 @@ Harness --has--> Capability
   `paused`. Sessions live indefinitely.
 - **Model** - an LLM like `gpt-4o` or `claude-sonnet-4`. Resolution priority:
   per-message controls -> session override -> agent default -> system default.
-- **MCP server** - a remote server exposing tools; integrated into Everruns as
+- **MCP server** - a remote server exposing tools; integrated into Everruns Dev as
   a virtual capability (`mcp:{uuid}`).
 - **App** - binds a Harness + Agent to a channel (Slack, web widget, etc.) for
   external deployment.
@@ -66,7 +66,7 @@ Capabilities are the answer to "how does my agent get tool X?" - attach the
 capability at the harness level for org-wide defaults, at the agent level for
 agent-specific tools, or at the session level for one-off additions.
 
-## MCP tools exposed by Everruns
+## MCP tools exposed by Everruns Dev
 
 | Tool | When to use |
 |---|---|
@@ -76,8 +76,8 @@ agent-specific tools, or at the session level for one-off additions.
 | `session_send_message` | Follow-up user message in an existing session. |
 | `session_get_status` | Poll session status + latest agent message + recent events. Supports `since_event_id` for incremental polling and `event_types` to filter. |
 | `discover` | Search the API catalog. Returns operation name, category, description, parameters. |
-| `query` | Run a bash script where only read-only Everruns API operations are builtins. `jq` is available. Prefer this for inspection, search, preview, export, grep, and status checks. |
-| `execute` | Run a bash script where every Everruns API operation is a builtin. `jq` is available. Use this when the workflow needs side effects. |
+| `query` | Run a bash script where only read-only Everruns Dev API operations are builtins. `jq` is available. Prefer this for inspection, search, preview, export, grep, and status checks. |
+| `execute` | Run a bash script where every Everruns Dev API operation is a builtin. `jq` is available. Use this when the workflow needs side effects. |
 
 Default to `query` for reads. Switch to `execute` only when the workflow needs
 to create, update, delete, or trigger actions.
@@ -180,7 +180,7 @@ list_agents | jq '.data[] | {id, name, default_model_id}'
 ## When things go wrong
 
 - **401 / OAuth loop** - The host handles the OAuth 2.1 flow. If it fails,
-  sign out at <https://everruns.com> and retry so a fresh client registers.
+  sign out at <https://dev.everruns.com> and retry so a fresh client registers.
 - **`tool not found` in query** - `query` only exposes read-only builtins. If
   the command mutates state, switch to `execute`.
 - **`tool not found` in execute** - run `discover { "all": true }` to confirm
@@ -194,4 +194,5 @@ list_agents | jq '.data[] | {id, name, default_model_id}'
 
 - Product docs: <https://docs.everruns.com>
 - Marketing: <https://everruns.com>
+- Dev deployment: <https://dev.everruns.com>
 - MCP endpoint spec: see `specs/mcp.md` in the main repo

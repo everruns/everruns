@@ -184,13 +184,14 @@ Clone a git repository into a sandbox. Automatically uses the user's connected G
   - `path`: string (optional) — destination inside sandbox (defaults to `/home/daytona/<owner>/<repo>`)
 - **Returns**: `{ sandbox_id, repo_url, path, branch, commit, authenticated }`
 
-**Implementation:** Runs `git clone` via the `exec` endpoint (`POST /process/execute`). For authenticated clones, the GitHub token is embedded in the HTTPS URL (`https://oauth2:<token>@github.com/...`). Uses `--depth 1` for faster clones.
+**Implementation:** Runs `git clone` via the `exec` endpoint (`POST /process/execute`). For authenticated clones, the GitHub token is embedded in the HTTPS URL (`https://oauth2:<token>@<host>/...`) only when the URL host is on the trusted-host allowlist (see [GitHub Clone-Auth Host Allowlist](#github-clone-auth-host-allowlist)). Uses `--depth 1` for faster clones.
 
 **Authentication flow:**
 1. Lazily resolves GitHub token from user connections (`connection_resolver`)
 2. Falls back to `GITHUB_TOKEN` session secret
-3. If token found: embeds `oauth2:<token>` in the clone URL
-4. If no token: public repos only; private repos fail with hint to connect GitHub
+3. If token found AND clone URL host is in the trusted-host allowlist: embeds `oauth2:<token>` in the clone URL
+4. If token found but host not on the allowlist: clone proceeds without auth (no token leak to arbitrary hosts)
+5. If no token: public repos only; private repos fail with hint to connect GitHub
 
 ### daytona_git_credentials
 
@@ -200,7 +201,7 @@ Configure git credentials in a sandbox so that all git operations (push, pull, f
   - `sandbox_id`: string (required)
 - **Returns**: `{ sandbox_id, authenticated, provider, hint }`
 
-**Implementation:** Writes a `git credential store` file (`/tmp/.git-credentials`) containing `https://oauth2:<token>@github.com`, then configures `git config --global credential.helper 'store --file=/tmp/.git-credentials'`. After this, any git command via `daytona_exec` authenticates automatically.
+**Implementation:** Writes a `git credential store` file (`/tmp/.git-credentials`) containing one `https://oauth2:<token>@<host>` entry per trusted host (see [GitHub Clone-Auth Host Allowlist](#github-clone-auth-host-allowlist)), then configures `git config --global credential.helper 'store --file=/tmp/.git-credentials'`. After this, any git command via `daytona_exec` authenticates automatically against every configured host.
 
 **Authentication flow:** Same token resolution as `daytona_git_clone` (connection_resolver → GITHUB_TOKEN fallback). Fails with actionable error if no credentials found.
 
@@ -222,6 +223,23 @@ Call any Daytona REST API endpoint directly. Enabled via capability config `enab
 
 **Opt-in mechanism:** The `daytona_api_call` tool is only included when the capability config JSON has `enable_api_calling: true`. This is set per-agent in the harness capability configuration. When enabled, the system prompt also adds a section about direct API access.
 
+### GitHub Clone-Auth Host Allowlist
+
+To prevent the GitHub token from leaking to arbitrary hosts that contain the substring `github`, both `daytona_git_clone` and `daytona_git_credentials` gate token injection through a strict trusted-host allowlist:
+
+- **Default:** `["github.com"]`. Public-SaaS deployments require no configuration.
+- **Operator extension:** Set `EVERRUNS_DAYTONA_GITHUB_TRUSTED_HOSTS` (comma-separated) to add Enterprise hosts. Examples:
+  - `EVERRUNS_DAYTONA_GITHUB_TRUSTED_HOSTS=github.acme.com`
+  - `EVERRUNS_DAYTONA_GITHUB_TRUSTED_HOSTS=github.acme.com,git.internal.corp`
+- **Matching rules:**
+  - Case-insensitive exact match against the URL host (with optional `:port` stripped).
+  - **No** suffix or wildcard match. To allow `github.acme.com`, list it explicitly. `*.acme.com` patterns are deliberately not supported — they would re-introduce the lookalike-host attack class.
+  - The default `github.com` is always present, even if the env var lists other hosts. A misconfigured env var cannot silently disable public-GitHub auth.
+- **Validation:** Entries containing `/`, `@`, whitespace, or `..` are rejected with a `tracing::warn!` and the rest of the list is honored. This protects against operator misconfig embedding a credential, scheme, or path-traversal target into the env var.
+- **Credentials helper:** `daytona_git_credentials` writes one `https://oauth2:<token>@<host>` entry per trusted host so all configured GitHub servers authenticate transparently.
+
+The trust-boundary decision and rationale are documented at the top of `integrations/daytona/src/tools.rs`. See `TM-DAYTONA-008` in `specs/threat-model.md` for the threat analysis.
+
 ## Security
 
 - **API Key**: Stored in user connections (Settings > Connections > Daytona), encrypted at rest (TM-DAYTONA-004)
@@ -230,8 +248,9 @@ Call any Daytona REST API endpoint directly. Enabled via capability config `enab
 - **Multi-tenancy**: Sandboxes scoped to session via secret name prefixes
 - **Git credentials**: Short-lived GitHub token written to `/tmp/.git-credentials`; lost on sandbox stop; same trust boundary as exec access (TM-DAYTONA-001)
 - **Token expiry**: GitHub App installation tokens expire in ~1 hour; agent must call `daytona_git_credentials` again to refresh (TM-DAYTONA-002)
+- **Clone-auth host allowlist**: GitHub token injected only into URLs whose host is on the operator-configured allowlist; default `["github.com"]`, extended via `EVERRUNS_DAYTONA_GITHUB_TRUSTED_HOSTS` (TM-DAYTONA-008)
 
-See [threat-model.md](threat-model.md#16-daytona-cloud-sandbox-tm-daytona) for full threat analysis.
+See [threat-model.md](../../specs/threat-model.md#16-daytona-cloud-sandbox-tm-daytona) for full threat analysis.
 
 ## Error Handling
 
@@ -324,7 +343,7 @@ The `daytona_api_call` tool is opt-in via capability config (`enable_api_calling
 
 External integration crate, auto-registered via `inventory::submit!` plugin system.
 
-**Force-link required**: Both `crates/server/src/lib.rs` and `crates/worker/src/lib.rs` must contain `extern crate everruns_integrations_daytona;` — otherwise the linker optimizes out the crate and `inventory::submit!` registrations silently disappear. See [architecture.md](architecture.md#integration-plugin-force-linking).
+**Force-link required**: Both `crates/server/src/lib.rs` and `crates/worker/src/lib.rs` must contain `extern crate everruns_integrations_daytona;` — otherwise the linker optimizes out the crate and `inventory::submit!` registrations silently disappear. See [architecture.md](../../specs/architecture.md#integration-plugin-force-linking).
 
 | File | Purpose |
 |------|---------|

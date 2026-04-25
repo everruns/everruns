@@ -1,14 +1,14 @@
 {
-  "name": "everruns",
+  "name": "everruns-dev",
   "interface": {
-    "displayName": "Everruns"
+    "displayName": "Everruns Dev"
   },
   "plugins": [
     {
-      "name": "everruns",
+      "name": "everruns-dev",
       "source": {
         "source": "local",
-        "path": "./plugins/everruns"
+        "path": "./plugins/everruns-dev"
       },
       "policy": {
         "installation": "AVAILABLE",

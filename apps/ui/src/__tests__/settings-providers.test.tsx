@@ -165,13 +165,11 @@ describe("ProvidersPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("renders Models section header", () => {
+  it("does not render model management in provider settings", () => {
     render(<ProvidersPage />, { wrapper });
 
-    expect(screen.getByText("Models")).toBeInTheDocument();
-    expect(
-      screen.getByText("Manage the models available from your configured providers."),
-    ).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Models" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Add Model/i })).not.toBeInTheDocument();
   });
 
   it("renders provider cards with correct data", () => {
@@ -179,14 +177,6 @@ describe("ProvidersPage", () => {
 
     expect(screen.getByText("OpenAI Production")).toBeInTheDocument();
     expect(screen.getByText("Anthropic Dev")).toBeInTheDocument();
-  });
-
-  it("renders model rows with correct data", () => {
-    render(<ProvidersPage />, { wrapper });
-
-    // Model name may appear in both the row and org settings selector
-    expect(screen.getAllByText("GPT-4").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText("gpt-5.2 - OpenAI Production")).toBeInTheDocument();
   });
 
   it("shows loading skeleton when providers are loading", () => {
@@ -218,18 +208,6 @@ describe("ProvidersPage", () => {
     ).toBeInTheDocument();
   });
 
-  it("shows empty state when no models exist", () => {
-    mockUseLlmModels.mockReturnValue({
-      data: [],
-      isLoading: false,
-      error: null,
-    });
-
-    render(<ProvidersPage />, { wrapper });
-
-    expect(screen.getByText("No models configured")).toBeInTheDocument();
-  });
-
   it("shows error message when providers fail to load", () => {
     mockUseLlmProviders.mockReturnValue({
       data: [],
@@ -242,59 +220,11 @@ describe("ProvidersPage", () => {
     expect(screen.getByText(/Failed to load providers/)).toBeInTheDocument();
   });
 
-  it("shows error message when models fail to load", () => {
-    mockUseLlmModels.mockReturnValue({
-      data: [],
-      isLoading: false,
-      error: new Error("Network error"),
-    });
-
-    render(<ProvidersPage />, { wrapper });
-
-    expect(screen.getByText(/Failed to load models/)).toBeInTheDocument();
-  });
-
   it("renders Add Provider button", () => {
     render(<ProvidersPage />, { wrapper });
 
     const addButtons = screen.getAllByRole("button", { name: /Add Provider/i });
     expect(addButtons.length).toBeGreaterThan(0);
-  });
-
-  it("renders Add Model button", () => {
-    render(<ProvidersPage />, { wrapper });
-
-    const addButtons = screen.getAllByRole("button", { name: /Add Model/i });
-    expect(addButtons.length).toBeGreaterThan(0);
-  });
-
-  it("disables Add Model button when no providers exist", () => {
-    mockUseLlmProviders.mockReturnValue({
-      data: [],
-      isLoading: false,
-      error: null,
-    });
-
-    render(<ProvidersPage />, { wrapper });
-
-    // The Add Model button in the header should be disabled
-    const addModelButtons = screen.getAllByRole("button", { name: /Add Model/i });
-    const headerButton = addModelButtons[0];
-    expect(headerButton).toBeDisabled();
-  });
-
-  it("shows Enabled badge for enabled model", () => {
-    render(<ProvidersPage />, { wrapper });
-
-    // GPT-4 is enabled
-    expect(screen.getByText("Enabled")).toBeInTheDocument();
-  });
-
-  it("shows Enable/Disable button for models", () => {
-    render(<ProvidersPage />, { wrapper });
-
-    // Enabled model should show Disable button
-    expect(screen.getByRole("button", { name: /Disable/i })).toBeInTheDocument();
   });
 
   it("shows API Key status correctly", () => {

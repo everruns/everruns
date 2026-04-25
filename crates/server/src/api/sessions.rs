@@ -110,20 +110,82 @@ pub struct CreateSessionRequest {
     pub max_iterations: Option<usize>,
 }
 
+// Trust boundary (client-side tools deprecation rollout): the `tools` field
+// on session/agent create/update requests is documented as carrying only
+// `client_side` definitions executed by the client, not the server. Pre-#1525
+// the server silently accepted other shapes; #1525 turned the invariant into
+// a hard 400. To give SDK/CLI consumers a migration window, we now drop any
+// non-`client_side` entries during deserialization (with a `tracing::warn!`
+// for ops visibility) instead of failing the request. Operators flip
+// `EVERRUNS_REJECT_NON_CLIENT_SIDE_TOOLS=1` to opt back into hard-rejection
+// once their clients are confirmed migrated. The migration timeline lives in
+// `specs/client-side-tools.md`.
 fn deserialize_client_side_tools<'de, D>(deserializer: D) -> Result<Vec<ToolDefinition>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
     let tools = Vec::<ToolDefinition>::deserialize(deserializer)?;
-    if tools
-        .iter()
-        .any(|tool| !matches!(tool, ToolDefinition::ClientSide(_)))
-    {
-        return Err(serde::de::Error::custom(
-            "tools must contain only client_side definitions",
-        ));
+    filter_or_reject_client_side_tools(tools).map_err(serde::de::Error::custom)
+}
+
+/// Apply the deprecation policy to a parsed `tools` array. By default, drops
+/// every non-`client_side` entry with a structured warning. When the env
+/// var `EVERRUNS_REJECT_NON_CLIENT_SIDE_TOOLS` is set to a truthy value
+/// (`1`/`true`/`yes`), returns the original hard-reject error instead.
+pub(crate) fn filter_or_reject_client_side_tools(
+    tools: Vec<ToolDefinition>,
+) -> Result<Vec<ToolDefinition>, &'static str> {
+    let (kept, dropped): (Vec<_>, Vec<_>) = tools
+        .into_iter()
+        .partition(|tool| matches!(tool, ToolDefinition::ClientSide(_)));
+    if dropped.is_empty() {
+        return Ok(kept);
     }
-    Ok(tools)
+    if reject_non_client_side_tools_enabled() {
+        return Err("tools must contain only client_side definitions");
+    }
+    // Soft-warn surface for the deprecation window: log type names only, no
+    // payloads, so request fields like prompts or arguments cannot leak into
+    // logs from the request body. Dedupe + sort the kind labels so a request
+    // with many non-`client_side` entries doesn't allocate a huge Vec or
+    // amplify telemetry — the count carries the cardinality, not the labels.
+    let mut dropped_kinds: Vec<&'static str> =
+        dropped.iter().map(tool_definition_kind_name).collect();
+    dropped_kinds.sort_unstable();
+    dropped_kinds.dedup();
+    tracing::warn!(
+        target = "client_tools_deprecation",
+        dropped_count = dropped.len(),
+        dropped_kinds = ?dropped_kinds,
+        "tools[] contained {} non-client_side definition(s); dropping them. \
+         The server will reject these in a future release; migrate clients \
+         now. See specs/client-side-tools.md for the timeline.",
+        dropped.len()
+    );
+    Ok(kept)
+}
+
+/// Return `true` when the operator has opted into the legacy hard-reject
+/// behavior. Used to gate the deprecation window.
+pub(crate) fn reject_non_client_side_tools_enabled() -> bool {
+    matches!(
+        std::env::var("EVERRUNS_REJECT_NON_CLIENT_SIDE_TOOLS")
+            .ok()
+            .as_deref()
+            .map(str::to_ascii_lowercase)
+            .as_deref(),
+        Some("1") | Some("true") | Some("yes") | Some("on")
+    )
+}
+
+/// Log-safe kind label for a `ToolDefinition` variant. Returns the same
+/// `snake_case` discriminator that serde uses on the wire, so dashboards can
+/// pivot on `dropped_kinds` without parsing free-form text.
+fn tool_definition_kind_name(tool: &ToolDefinition) -> &'static str {
+    match tool {
+        ToolDefinition::Builtin(_) => "builtin",
+        ToolDefinition::ClientSide(_) => "client_side",
+    }
 }
 
 /// Response from cancel turn endpoint
@@ -704,7 +766,10 @@ mod tests {
     }
 
     #[test]
-    fn test_create_session_request_rejects_builtin_tools() {
+    fn test_create_session_request_drops_builtin_tools_with_warn() {
+        // Deprecation window: legacy `builtin` entries are dropped, not
+        // rejected, so existing SDK/CLI clients keep working while operators
+        // monitor the migration.
         let json = format!(
             r#"{{
                 "harness_id": "{}",
@@ -714,18 +779,30 @@ mod tests {
                         "name": "read_file",
                         "description": "Read file",
                         "parameters": {{"type": "object"}}
+                    }},
+                    {{
+                        "type": "client_side",
+                        "name": "lookup_crm",
+                        "description": "Lookup",
+                        "parameters": {{"type": "object"}}
                     }}
                 ]
             }}"#,
             TEST_HARNESS_ID
         );
 
-        let err = serde_json::from_str::<CreateSessionRequest>(&json).unwrap_err();
-        assert!(
-            err.to_string()
-                .contains("tools must contain only client_side definitions")
-        );
+        let req: CreateSessionRequest = serde_json::from_str(&json).unwrap();
+        assert_eq!(req.tools.len(), 1);
+        // Only the client_side entry survives.
+        assert!(matches!(
+            req.tools[0],
+            everruns_core::ToolDefinition::ClientSide(_)
+        ));
     }
+
+    // Strict-mode tests live in `tests/strict_client_tools.rs` so they run in
+    // their own process and don't race with the lenient round-trip tests
+    // here over the `EVERRUNS_REJECT_NON_CLIENT_SIDE_TOOLS` env var.
 
     #[test]
     fn test_update_session_request_minimal() {

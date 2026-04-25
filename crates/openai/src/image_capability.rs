@@ -114,6 +114,79 @@ impl Capability for GptImageGenCapability {
     fn dependencies(&self) -> Vec<&'static str> {
         vec!["session_file_system", "session_storage"]
     }
+
+    fn config_schema(&self) -> Option<Value> {
+        Some(json!({
+            "type": "object",
+            "title": "Image Generation Settings",
+            "properties": {
+                "model": {
+                    "type": "string",
+                    "title": "Image Model",
+                    "description": "Default model used by image generation and edit tools.",
+                    "default": DEFAULT_OPENAI_IMAGE_MODEL.as_str(),
+                    "oneOf": [
+                        {
+                            "const": "gpt-image-2",
+                            "title": "ChatGPT Images 2.0"
+                        },
+                        {
+                            "const": "gpt-image-1",
+                            "title": "GPT Image 1"
+                        }
+                    ]
+                },
+                "default_quality": {
+                    "type": "string",
+                    "title": "Default Quality",
+                    "description": "Default quality used when a tool call does not specify quality.",
+                    "default": DEFAULT_OPENAI_IMAGE_QUALITY.as_str(),
+                    "oneOf": [
+                        { "const": "medium", "title": "Medium" },
+                        { "const": "low", "title": "Low" },
+                        { "const": "high", "title": "High" },
+                        { "const": "auto", "title": "Auto" }
+                    ]
+                },
+                "partial_images": {
+                    "type": "integer",
+                    "title": "Progress Updates",
+                    "description": "Number of streamed in-progress image updates for single-image requests.",
+                    "default": DEFAULT_OPENAI_IMAGE_PARTIAL_IMAGES,
+                    "minimum": 0,
+                    "maximum": 3,
+                    "oneOf": [
+                        { "const": 1, "title": "1 Progress Update" },
+                        { "const": 0, "title": "Off" },
+                        { "const": 2, "title": "2 Progress Updates" },
+                        { "const": 3, "title": "3 Progress Updates" }
+                    ]
+                }
+            }
+        }))
+    }
+
+    fn config_ui_schema(&self) -> Option<Value> {
+        Some(json!({
+            "ui:submitButtonOptions": { "norender": true },
+            "ui:order": ["model", "default_quality", "partial_images"],
+            "model": {
+                "ui:placeholder": DEFAULT_OPENAI_IMAGE_MODEL.as_str()
+            },
+            "default_quality": {
+                "ui:placeholder": DEFAULT_OPENAI_IMAGE_QUALITY.as_str()
+            },
+            "partial_images": {
+                "ui:widget": "select"
+            }
+        }))
+    }
+
+    fn validate_config(&self, config: &Value) -> Result<(), String> {
+        parse_capability_config(config)
+            .map(|_| ())
+            .map_err(tool_error_to_string)
+    }
 }
 
 pub struct GenerateImageTool {
@@ -631,6 +704,13 @@ fn parse_capability_config(
     }
 
     Ok(parsed)
+}
+
+fn tool_error_to_string(error: ToolExecutionResult) -> String {
+    match error {
+        ToolExecutionResult::ToolError(message) => message,
+        other => format!("{other:?}"),
+    }
 }
 
 fn resolve_partial_images(count: usize, config: &GptImageGenCapabilityConfig) -> Option<u8> {

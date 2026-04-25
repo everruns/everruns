@@ -169,7 +169,7 @@ cargo test
 just pre-pr
 ```
 
-See [SMOKE_TEST.md](./SMOKE_TEST.md) for detailed testing guide.
+See [`test_cases/`](./test_cases/) for manual test cases (format in [`specs/test-cases.md`](./specs/test-cases.md)).
 
 ## License Compliance
 
@@ -191,5 +191,5 @@ RUST_LOG=debug just api
 
 ## Getting Help
 
-- See [PLAN.md](./PLAN.md) for development roadmap
+- See [CHANGELOG.md](./CHANGELOG.md) for release history
 - Open an issue for bugs or feature requests

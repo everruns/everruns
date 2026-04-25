@@ -137,6 +137,16 @@ If every piece of information in the prompt is already covered by tool definitio
 
 - **`tools_with_config(config)`** — Returns tools adapted to per-capability config. Default delegates to `tools()`. Example: `WebFetchCapability` enables `save_to_file` when config has `enable_file_download: true`.
 
+##### Config Schema and UI Metadata
+
+Capabilities that accept per-agent config expose a standard JSON Schema through
+`config_schema()` and optional react-jsonschema-form UI hints through
+`config_ui_schema()`. These fields are copied to `CapabilityInfo` so clients
+render settings through the same generic editor for built-in and integration
+capabilities. The backend remains authoritative for config semantics through
+`validate_config(config)`, which is called on capability write paths before
+config is persisted.
+
 ##### Collection Functions
 
 - **`collect_capabilities()`** — Sync. Collects tools, mounts, static prompts.
@@ -736,6 +746,10 @@ The `read_capabilities` tool enables agents (particularly the Platform Chat) to 
 ##### Design Decision: PlatformStore Trait
 
 The `PlatformStore` trait (in `everruns-core`) defines the org-scoped management API. `DirectPlatformStore` (in `everruns-server`) implements it using the existing `StorageBackend` and `SessionService`. This keeps the capability in core while the implementation uses server-layer storage.
+
+##### Design Decision: Authorization Happens In Tool Execution, Not Harness Removal
+
+`platform_management` remains assigned to the built-in `platform-chat` harness. Authorization must be enforced when platform tools execute, using the session owner's caller context plus the active `PermissionResolver`. Do not "fix" permission bugs by stripping the capability from Platform Chat; that removes the feature instead of fixing the broken auth boundary.
 
 ### Experimental Capabilities
 

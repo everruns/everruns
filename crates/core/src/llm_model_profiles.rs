@@ -91,6 +91,21 @@ fn reasoning_effort_gpt52() -> ReasoningEffortConfig {
     }
 }
 
+/// Reasoning effort for gpt-5.5
+/// Default: medium, supports: none, low, medium, high, xhigh
+fn reasoning_effort_gpt55() -> ReasoningEffortConfig {
+    ReasoningEffortConfig {
+        values: vec![
+            effort(ReasoningEffort::None, "None"),
+            effort(ReasoningEffort::Low, "Low"),
+            effort(ReasoningEffort::Medium, "Medium"),
+            effort(ReasoningEffort::High, "High"),
+            effort(ReasoningEffort::Xhigh, "Extra High"),
+        ],
+        default: ReasoningEffort::Medium,
+    }
+}
+
 /// Reasoning effort for gpt-5.2-pro
 /// Default: medium, supports: medium, high, xhigh
 fn reasoning_effort_gpt52_pro() -> ReasoningEffortConfig {
@@ -1010,6 +1025,79 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
             reasoning_effort: Some(reasoning_effort_gpt52()),
             tool_search: false,
             supports_phases: false,
+        }),
+
+        // GPT-5.5 family: latest flagship reasoning models. Released 2026-04-23.
+        // Flat pricing (no 200K context tiers, unlike 5.4).
+        // Source: developers.openai.com/api/docs/models/gpt-5.5 and .../gpt-5.5-pro
+        // (models.dev did not yet list these variants at the time of addition;
+        // refresh once the models.dev entry appears).
+        "gpt-5.5" => Some(LlmModelProfile {
+            name: "GPT-5.5".into(),
+            family: "gpt-5.5".into(),
+            description: Some("Latest flagship reasoning model. Best for complex multi-step tasks, code generation, and deep analysis.".into()),
+            release_date: Some("2026-04-23".into()),
+            last_updated: Some("2026-04-23".into()),
+            attachment: true,
+            reasoning: true,
+            temperature: false,
+            knowledge: Some("2025-12-01".into()),
+            tool_call: true,
+            structured_output: true,
+            open_weights: false,
+            cost: Some(LlmModelCost {
+                input: 5.00,
+                output: 30.00,
+                cache_read: Some(0.50),
+                cost_tiers: vec![],
+            }),
+            limits: Some(LlmModelLimits {
+                context: 1_050_000,
+                input: None,
+                output: 128_000,
+                max_media: None,
+            }),
+            modalities: Some(LlmModelModalities {
+                input: vec![Modality::Text, Modality::Image],
+                output: vec![Modality::Text],
+            }),
+            reasoning_effort: Some(reasoning_effort_gpt55()),
+            tool_search: true,
+            supports_phases: true,
+        }),
+
+        "gpt-5.5-pro" => Some(LlmModelProfile {
+            name: "GPT-5.5 Pro".into(),
+            family: "gpt-5.5-pro".into(),
+            description: Some("Extended-thinking variant for the hardest problems. Trades speed for deeper reasoning on math, science, and complex code.".into()),
+            release_date: Some("2026-04-23".into()),
+            last_updated: Some("2026-04-23".into()),
+            attachment: true,
+            reasoning: true,
+            temperature: false,
+            knowledge: Some("2025-12-01".into()),
+            tool_call: true,
+            structured_output: true,
+            open_weights: false,
+            cost: Some(LlmModelCost {
+                input: 30.00,
+                output: 180.00,
+                cache_read: None,
+                cost_tiers: vec![],
+            }),
+            limits: Some(LlmModelLimits {
+                context: 1_050_000,
+                input: None,
+                output: 128_000,
+                max_media: None,
+            }),
+            modalities: Some(LlmModelModalities {
+                input: vec![Modality::Text, Modality::Image],
+                output: vec![Modality::Text],
+            }),
+            reasoning_effort: Some(reasoning_effort_gpt52_pro()),
+            tool_search: true,
+            supports_phases: true,
         }),
 
         // GPT-5.4 family: reasoning models with 1.05M context, tool_search, native phases.
@@ -2170,6 +2258,9 @@ fn get_llmsim_profile(model_id: &str) -> Option<LlmModelProfile> {
 fn normalize_model_id(model_id: &str) -> &str {
     // Known base model patterns (order matters - more specific first)
     let patterns = [
+        // GPT-5.5 models
+        "gpt-5.5-pro",
+        "gpt-5.5",
         // GPT-5.4 models
         "gpt-5.4-pro",
         "gpt-5.4-nano",
@@ -2528,6 +2619,72 @@ mod tests {
         let cost = profile.cost.unwrap();
         assert!((cost.input - 1.75).abs() < f64::EPSILON);
         assert!((cost.output - 14.00).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_gpt55_profile() {
+        let profile = get_model_profile(&LlmProviderType::Openai, "gpt-5.5").unwrap();
+        assert_eq!(profile.name, "GPT-5.5");
+        assert_eq!(profile.family, "gpt-5.5");
+        assert!(profile.reasoning);
+        assert!(profile.tool_call);
+        assert!(profile.structured_output);
+        assert!(profile.tool_search);
+        assert!(profile.supports_phases);
+
+        let limits = profile.limits.unwrap();
+        assert_eq!(limits.context, 1_050_000);
+        assert_eq!(limits.output, 128_000);
+
+        let cost = profile.cost.unwrap();
+        assert!((cost.input - 5.00).abs() < f64::EPSILON);
+        assert!((cost.output - 30.00).abs() < f64::EPSILON);
+        assert!((cost.cache_read.unwrap() - 0.50).abs() < f64::EPSILON);
+        assert!(cost.cost_tiers.is_empty()); // Flat pricing, no 200K tier
+
+        // gpt-5.5: default medium, supports none/low/medium/high/xhigh
+        let effort = profile.reasoning_effort.unwrap();
+        assert_eq!(effort.default, ReasoningEffort::Medium);
+        assert_eq!(effort.values.len(), 5);
+    }
+
+    #[test]
+    fn test_gpt55_pro_profile() {
+        let profile = get_model_profile(&LlmProviderType::Openai, "gpt-5.5-pro").unwrap();
+        assert_eq!(profile.name, "GPT-5.5 Pro");
+        assert_eq!(profile.family, "gpt-5.5-pro");
+        assert!(profile.reasoning);
+        assert!(profile.tool_call);
+        assert!(profile.structured_output);
+        assert!(profile.supports_phases);
+
+        let cost = profile.cost.unwrap();
+        assert!((cost.input - 30.00).abs() < f64::EPSILON);
+        assert!((cost.output - 180.00).abs() < f64::EPSILON);
+        assert!(cost.cache_read.is_none());
+        assert!(cost.cost_tiers.is_empty());
+
+        // gpt-5.5-pro: default medium, supports medium/high/xhigh
+        let effort = profile.reasoning_effort.unwrap();
+        assert_eq!(effort.default, ReasoningEffort::Medium);
+        assert_eq!(effort.values.len(), 3);
+    }
+
+    #[test]
+    fn test_gpt55_versioned() {
+        let profile = get_model_profile(&LlmProviderType::Openai, "gpt-5.5-2026-04-23").unwrap();
+        assert_eq!(profile.name, "GPT-5.5");
+
+        let pro = get_model_profile(&LlmProviderType::Openai, "gpt-5.5-pro-2026-04-23").unwrap();
+        assert_eq!(pro.name, "GPT-5.5 Pro");
+    }
+
+    #[test]
+    fn test_normalize_gpt55_model_ids() {
+        assert_eq!(normalize_model_id("gpt-5.5"), "gpt-5.5");
+        assert_eq!(normalize_model_id("gpt-5.5-2026-04-23"), "gpt-5.5");
+        assert_eq!(normalize_model_id("gpt-5.5-pro"), "gpt-5.5-pro");
+        assert_eq!(normalize_model_id("gpt-5.5-pro-2026-04-23"), "gpt-5.5-pro");
     }
 
     #[test]
