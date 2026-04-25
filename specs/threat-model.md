@@ -337,6 +337,7 @@ Code references:
 | TM-FS-006 | File content unencrypted at rest | Low | Stored as BYTEA in PostgreSQL; relies on infrastructure-level encryption (disk, TDE) | **ACCEPTED** |
 | TM-FS-007 | No file access audit log | Low | File reads/writes not logged; privacy tradeoff | **ACCEPTED** |
 | TM-FS-008 | Large file storage abuse | Medium | No per-session storage quota enforced at application level | **OPEN** |
+| TM-FS-009 | CLI `initial_files` hidden-path exfiltration | High | Three-layer policy in `crates/cli/src/commands/agents.rs`: hard-deny floor (`DENIED_DOT_ENTRIES`) blocks `.env`, `.ssh`, `.aws`, `.gnupg`, `.git`, etc. unconditionally; built-in `ALLOWED_DOT_ENTRIES` permits common dev assets (`.github`, `.vscode`, `.claude`, `.mcp.json`, etc.); per-agent `initial_files_allow_hidden` manifest field extends the allowlist but cannot bypass the hard-deny floor. Skipped paths emit a stderr warning. See `specs/cli.md` (Initial Files Hidden Path Policy). | MITIGATED |
 
 ### Mitigation Details
 
