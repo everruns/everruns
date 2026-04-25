@@ -168,6 +168,51 @@ impl Capability for DockerContainerCapability {
             Box::new(DockerStopTool),
         ]
     }
+
+    fn config_schema(&self) -> Option<Value> {
+        Some(json!({
+            "type": "object",
+            "title": "Docker Container Settings",
+            "properties": {
+                "image": {
+                    "type": "string",
+                    "title": "Docker Image",
+                    "description": "Custom base image for the container.",
+                    "default": DEFAULT_IMAGE,
+                    "examples": [DEFAULT_IMAGE]
+                },
+                "working_dir": {
+                    "type": "string",
+                    "title": "Working Directory",
+                    "description": "Default working directory inside the container.",
+                    "default": DEFAULT_WORKING_DIR,
+                    "examples": [DEFAULT_WORKING_DIR]
+                }
+            }
+        }))
+    }
+
+    fn config_ui_schema(&self) -> Option<Value> {
+        Some(json!({
+            "ui:submitButtonOptions": { "norender": true },
+            "ui:order": ["image", "working_dir"],
+            "image": {
+                "ui:placeholder": DEFAULT_IMAGE
+            },
+            "working_dir": {
+                "ui:placeholder": DEFAULT_WORKING_DIR
+            }
+        }))
+    }
+
+    fn validate_config(&self, config: &Value) -> Result<(), String> {
+        if config.is_null() {
+            return Ok(());
+        }
+        serde_json::from_value::<DockerContainerConfig>(config.clone())
+            .map(|_| ())
+            .map_err(|error| format!("Invalid docker_container config: {error}"))
+    }
 }
 
 // ============================================================================

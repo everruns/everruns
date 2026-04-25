@@ -1,5 +1,9 @@
 "use client";
 
+import Form from "@rjsf/core";
+import validator from "@rjsf/validator-ajv8";
+import type { FieldTemplateProps, RJSFSchema, UiSchema, WidgetProps } from "@rjsf/utils";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -9,33 +13,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { CapabilityId } from "@/lib/api/types";
-
-// Known capability IDs that have configurable settings
-const DOCKER_CONTAINER_ID = "docker_container";
-const GPT_IMAGE_GEN_ID = "gpt_image_gen";
-
-// Type definitions for capability-specific configs
-export interface DockerContainerConfig {
-  image?: string;
-  working_dir?: string;
-}
-
-type GptImageGenModel = "gpt-image-2" | "gpt-image-1";
-type GptImageGenQuality = "low" | "medium" | "high" | "auto";
-type GptImageGenPartialImages = 0 | 1 | 2 | 3;
-
-export interface GptImageGenConfig {
-  model?: GptImageGenModel;
-  default_quality?: GptImageGenQuality;
-  partial_images?: GptImageGenPartialImages;
-}
-
-export type CapabilityConfig = DockerContainerConfig | GptImageGenConfig | Record<string, unknown>;
+import { Textarea } from "@/components/ui/textarea";
+import type { Capability } from "@/lib/api/types";
 
 interface CapabilitySettingsEditorProps {
-  /** The capability ID */
-  capabilityId: CapabilityId;
+  /** Full capability metadata, including optional config schema */
+  capability: Capability;
   /** Current config value */
   config: Record<string, unknown>;
   /** Callback when config changes */
@@ -44,315 +27,217 @@ interface CapabilitySettingsEditorProps {
   disabled?: boolean;
 }
 
-/**
- * Editor for capability-specific configuration.
- * Renders appropriate form fields based on the capability type.
- */
 export function CapabilitySettingsEditor({
-  capabilityId,
+  capability,
   config,
   onChange,
   disabled,
 }: CapabilitySettingsEditorProps) {
-  // Render appropriate editor based on capability type
-  switch (capabilityId) {
-    case DOCKER_CONTAINER_ID:
-      return (
-        <DockerContainerEditor
-          config={config as DockerContainerConfig}
-          onChange={onChange}
-          disabled={disabled}
-        />
-      );
-    case GPT_IMAGE_GEN_ID:
-      return (
-        <GptImageGenEditor
-          config={config as GptImageGenConfig}
-          onChange={onChange}
-          disabled={disabled}
-        />
-      );
-    default:
-      // No settings editor for this capability
-      return null;
-  }
+  return (
+    <SchemaCapabilityEditor
+      capability={capability}
+      config={config}
+      onChange={onChange}
+      disabled={disabled}
+    />
+  );
 }
 
-/**
- * Check if a capability has configurable settings
- */
-export function hasCapabilitySettings(capabilityId: CapabilityId): boolean {
-  return capabilityId === DOCKER_CONTAINER_ID || capabilityId === GPT_IMAGE_GEN_ID;
+export function hasCapabilitySettings(capability: Capability): boolean {
+  return Boolean(capability.config_schema);
 }
 
-// ============================================================================
-// Docker Container Config Editor
-// ============================================================================
-
-const DEFAULT_DOCKER_IMAGE = "mcr.microsoft.com/devcontainers/python:3.11";
-const DEFAULT_WORKING_DIR = "/workspace";
-
-interface DockerContainerEditorProps {
-  config: DockerContainerConfig;
+interface SchemaCapabilityEditorProps {
+  capability: Capability;
+  config: Record<string, unknown>;
   onChange: (config: Record<string, unknown>) => void;
   disabled?: boolean;
 }
 
-function DockerContainerEditor({ config, onChange, disabled }: DockerContainerEditorProps) {
-  const handleImageChange = (value: string) => {
-    // Only set the value if it's different from default, to keep config clean
-    const newConfig = { ...config };
-    if (value && value !== DEFAULT_DOCKER_IMAGE) {
-      newConfig.image = value;
-    } else {
-      delete newConfig.image;
-    }
-    onChange(newConfig);
-  };
+function SchemaCapabilityEditor({
+  capability,
+  config,
+  onChange,
+  disabled,
+}: SchemaCapabilityEditorProps) {
+  if (!capability.config_schema) {
+    return null;
+  }
 
-  const handleWorkingDirChange = (value: string) => {
-    const newConfig = { ...config };
-    if (value && value !== DEFAULT_WORKING_DIR) {
-      newConfig.working_dir = value;
-    } else {
-      delete newConfig.working_dir;
-    }
-    onChange(newConfig);
+  const uiSchema: UiSchema = {
+    "ui:submitButtonOptions": { norender: true },
+    ...(capability.config_ui_schema as UiSchema | undefined),
   };
 
   return (
-    <div className="space-y-3 pt-2">
-      <div className="space-y-1.5">
-        <Label htmlFor="docker-image" className="text-xs font-normal text-muted-foreground">
-          Docker Image
-        </Label>
-        <Input
-          id="docker-image"
-          placeholder={DEFAULT_DOCKER_IMAGE}
-          value={config.image || ""}
-          onChange={(e) => handleImageChange(e.target.value)}
-          disabled={disabled}
-          className="h-8 text-sm"
-        />
-        <p className="text-xs text-muted-foreground">Custom base image for the container</p>
-      </div>
-
-      <div className="space-y-1.5">
-        <Label htmlFor="docker-working-dir" className="text-xs font-normal text-muted-foreground">
-          Working Directory
-        </Label>
-        <Input
-          id="docker-working-dir"
-          placeholder={DEFAULT_WORKING_DIR}
-          value={config.working_dir || ""}
-          onChange={(e) => handleWorkingDirChange(e.target.value)}
-          disabled={disabled}
-          className="h-8 text-sm"
-        />
-        <p className="text-xs text-muted-foreground">
-          Default working directory inside the container
-        </p>
-      </div>
+    <div className="pt-2">
+      <Form
+        schema={capability.config_schema as RJSFSchema}
+        uiSchema={uiSchema}
+        formData={config}
+        validator={validator}
+        disabled={disabled}
+        templates={{ FieldTemplate }}
+        widgets={CAPABILITY_CONFIG_WIDGETS}
+        showErrorList={false}
+        noHtml5Validate
+        onChange={({ formData }) => onChange(cleanConfig(formData))}
+      />
     </div>
   );
 }
 
-// ============================================================================
-// OpenAI Image Generation Config Editor
-// ============================================================================
+function cleanConfig(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
 
-const DEFAULT_GPT_IMAGE_MODEL: GptImageGenModel = "gpt-image-2";
-const DEFAULT_GPT_IMAGE_QUALITY: GptImageGenQuality = "medium";
-const DEFAULT_GPT_IMAGE_PARTIAL_IMAGES: GptImageGenPartialImages = 1;
-
-const GPT_IMAGE_MODEL_OPTIONS: Array<{
-  value: GptImageGenModel;
-  label: string;
-  description: string;
-}> = [
-  {
-    value: "gpt-image-2",
-    label: "ChatGPT Images 2.0",
-    description: "Default. Uses OpenAI's current ChatGPT Images 2.0 API model (`gpt-image-2`).",
-  },
-  {
-    value: "gpt-image-1",
-    label: "GPT Image 1",
-    description: "Legacy fallback if you need the previous image model.",
-  },
-];
-
-const GPT_IMAGE_QUALITY_OPTIONS: Array<{
-  value: GptImageGenQuality;
-  label: string;
-  description: string;
-}> = [
-  {
-    value: "medium",
-    label: "Medium",
-    description: "Default. Balanced quality and latency for ChatGPT Images 2.0.",
-  },
-  {
-    value: "low",
-    label: "Low",
-    description: "Fastest and cheapest. Best when throughput matters more than fidelity.",
-  },
-  {
-    value: "high",
-    label: "High",
-    description: "Highest fidelity, but materially slower on `gpt-image-2`.",
-  },
-  {
-    value: "auto",
-    label: "Auto",
-    description: "Let OpenAI choose the quality dynamically.",
-  },
-];
-
-const GPT_IMAGE_PARTIAL_IMAGE_OPTIONS: Array<{
-  value: GptImageGenPartialImages;
-  label: string;
-  description: string;
-}> = [
-  {
-    value: 1,
-    label: "1 Progress Update",
-    description: "Default. Emits one in-progress status update for single-image requests.",
-  },
-  {
-    value: 0,
-    label: "Off",
-    description: "Disable progress updates and only wait for the final image.",
-  },
-  {
-    value: 2,
-    label: "2 Progress Updates",
-    description:
-      "Emit two in-progress status updates. More responsive, with slightly higher token cost.",
-  },
-  {
-    value: 3,
-    label: "3 Progress Updates",
-    description: "Maximum status feedback. Highest extra token cost.",
-  },
-];
-
-interface GptImageGenEditorProps {
-  config: GptImageGenConfig;
-  onChange: (config: Record<string, unknown>) => void;
-  disabled?: boolean;
+  return Object.fromEntries(
+    Object.entries(value).filter(([, fieldValue]) => fieldValue !== undefined),
+  );
 }
 
-function GptImageGenEditor({ config, onChange, disabled }: GptImageGenEditorProps) {
-  const selectedModel = config.model || DEFAULT_GPT_IMAGE_MODEL;
-  const selectedQuality = config.default_quality || DEFAULT_GPT_IMAGE_QUALITY;
-  const selectedPartialImages = config.partial_images ?? DEFAULT_GPT_IMAGE_PARTIAL_IMAGES;
-  const selectedOption =
-    GPT_IMAGE_MODEL_OPTIONS.find((option) => option.value === selectedModel) ??
-    GPT_IMAGE_MODEL_OPTIONS[0];
-  const selectedQualityOption =
-    GPT_IMAGE_QUALITY_OPTIONS.find((option) => option.value === selectedQuality) ??
-    GPT_IMAGE_QUALITY_OPTIONS[0];
-  const selectedPartialImagesOption =
-    GPT_IMAGE_PARTIAL_IMAGE_OPTIONS.find((option) => option.value === selectedPartialImages) ??
-    GPT_IMAGE_PARTIAL_IMAGE_OPTIONS[0];
+const CAPABILITY_CONFIG_WIDGETS = {
+  CheckboxWidget,
+  EmailWidget: TextWidget,
+  PasswordWidget: TextWidget,
+  SelectWidget,
+  TextareaWidget,
+  TextWidget,
+  URLWidget: TextWidget,
+  UpDownWidget: TextWidget,
+};
 
-  const handleModelChange = (value: string) => {
-    const newConfig = { ...config };
-    if (value !== DEFAULT_GPT_IMAGE_MODEL) {
-      newConfig.model = value as GptImageGenModel;
-    } else {
-      delete newConfig.model;
-    }
-    onChange(newConfig);
-  };
-
-  const handleQualityChange = (value: string) => {
-    const newConfig = { ...config };
-    if (value !== DEFAULT_GPT_IMAGE_QUALITY) {
-      newConfig.default_quality = value as GptImageGenQuality;
-    } else {
-      delete newConfig.default_quality;
-    }
-    onChange(newConfig);
-  };
-
-  const handlePartialImagesChange = (value: string) => {
-    const parsedValue = Number(value) as GptImageGenPartialImages;
-    const newConfig = { ...config };
-    if (parsedValue !== DEFAULT_GPT_IMAGE_PARTIAL_IMAGES) {
-      newConfig.partial_images = parsedValue;
-    } else {
-      delete newConfig.partial_images;
-    }
-    onChange(newConfig);
-  };
+function FieldTemplate({
+  id,
+  label,
+  required,
+  description,
+  help,
+  errors,
+  children,
+  hidden,
+}: FieldTemplateProps) {
+  if (hidden) {
+    return <>{children}</>;
+  }
 
   return (
-    <div className="space-y-3 pt-2">
-      <div className="space-y-1.5">
-        <Label htmlFor="gpt-image-model" className="text-xs font-normal text-muted-foreground">
-          Image Model
+    <div className="space-y-1.5">
+      {label && (
+        <Label htmlFor={id} className="text-xs font-normal text-muted-foreground">
+          {label}
+          {required && <span className="ml-0.5 text-destructive">*</span>}
         </Label>
-        <Select value={selectedModel} onValueChange={handleModelChange} disabled={disabled}>
-          <SelectTrigger id="gpt-image-model" className="w-full">
-            <SelectValue>{selectedOption.label}</SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {GPT_IMAGE_MODEL_OPTIONS.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <p className="text-xs text-muted-foreground">{selectedOption.description}</p>
-      </div>
-
-      <div className="space-y-1.5">
-        <Label htmlFor="gpt-image-quality" className="text-xs font-normal text-muted-foreground">
-          Default Quality
-        </Label>
-        <Select value={selectedQuality} onValueChange={handleQualityChange} disabled={disabled}>
-          <SelectTrigger id="gpt-image-quality" className="w-full">
-            <SelectValue>{selectedQualityOption.label}</SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {GPT_IMAGE_QUALITY_OPTIONS.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <p className="text-xs text-muted-foreground">{selectedQualityOption.description}</p>
-      </div>
-
-      <div className="space-y-1.5">
-        <Label
-          htmlFor="gpt-image-partial-images"
-          className="text-xs font-normal text-muted-foreground"
-        >
-          Progress Updates
-        </Label>
-        <Select
-          value={String(selectedPartialImages)}
-          onValueChange={handlePartialImagesChange}
-          disabled={disabled}
-        >
-          <SelectTrigger id="gpt-image-partial-images" className="w-full">
-            <SelectValue>{selectedPartialImagesOption.label}</SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {GPT_IMAGE_PARTIAL_IMAGE_OPTIONS.map((option) => (
-              <SelectItem key={option.value} value={String(option.value)}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <p className="text-xs text-muted-foreground">{selectedPartialImagesOption.description}</p>
-      </div>
+      )}
+      {children}
+      {description}
+      {errors}
+      {help}
     </div>
+  );
+}
+
+function TextWidget({
+  id,
+  value,
+  disabled,
+  readonly,
+  onChange,
+  onBlur,
+  onFocus,
+  placeholder,
+  options,
+  schema,
+}: WidgetProps) {
+  const inputType =
+    typeof options.inputType === "string"
+      ? options.inputType
+      : schema.type === "number" || schema.type === "integer"
+        ? "number"
+        : "text";
+
+  return (
+    <Input
+      id={id}
+      type={inputType}
+      value={value ?? ""}
+      placeholder={placeholder}
+      disabled={disabled || readonly}
+      className="h-8 text-sm"
+      onBlur={(event) => onBlur(id, event.target.value)}
+      onFocus={(event) => onFocus(id, event.target.value)}
+      onChange={(event) => {
+        const nextValue = event.target.value;
+        if (inputType === "number") {
+          onChange(nextValue === "" ? undefined : Number(nextValue));
+        } else {
+          onChange(nextValue);
+        }
+      }}
+    />
+  );
+}
+
+function TextareaWidget({
+  id,
+  value,
+  disabled,
+  readonly,
+  onChange,
+  onBlur,
+  onFocus,
+  placeholder,
+}: WidgetProps) {
+  return (
+    <Textarea
+      id={id}
+      value={value ?? ""}
+      placeholder={placeholder}
+      disabled={disabled || readonly}
+      className="min-h-20 text-sm"
+      onBlur={(event) => onBlur(id, event.target.value)}
+      onFocus={(event) => onFocus(id, event.target.value)}
+      onChange={(event) => onChange(event.target.value)}
+    />
+  );
+}
+
+function SelectWidget({ id, value, disabled, readonly, onChange, options }: WidgetProps) {
+  const enumOptions = options.enumOptions ?? [];
+  const selectedValue = value === undefined || value === null ? undefined : String(value);
+  const selectedOption = enumOptions.find((option) => String(option.value) === selectedValue);
+
+  return (
+    <Select
+      value={selectedValue}
+      onValueChange={(nextValue) => {
+        const option = enumOptions.find((item) => String(item.value) === nextValue);
+        onChange(option?.value ?? nextValue);
+      }}
+      disabled={disabled || readonly}
+    >
+      <SelectTrigger id={id} className="w-full">
+        <SelectValue>{selectedOption?.label}</SelectValue>
+      </SelectTrigger>
+      <SelectContent>
+        {enumOptions.map((option) => (
+          <SelectItem key={String(option.value)} value={String(option.value)}>
+            {option.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
+function CheckboxWidget({ id, value, disabled, readonly, onChange }: WidgetProps) {
+  return (
+    <Checkbox
+      id={id}
+      checked={Boolean(value)}
+      disabled={disabled || readonly}
+      onCheckedChange={onChange}
+    />
   );
 }

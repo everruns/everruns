@@ -48,9 +48,12 @@ pub async fn validate_capability_refs(
         } else {
             // Built-in capability — check registry
             let reg = registry.get_or_insert_with(CapabilityRegistry::with_builtins);
-            if !reg.has(cap_id) {
+            let Some(capability) = reg.get(cap_id) else {
                 return Err(ResourceNotFoundError::new("Capability").into());
-            }
+            };
+            capability
+                .validate_config(&cap.config)
+                .map_err(|message| anyhow::anyhow!("Invalid capability config: {message}"))?;
         }
     }
 

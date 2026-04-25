@@ -445,6 +445,32 @@ pub trait Capability: Send + Sync {
         vec![]
     }
 
+    /// Returns the JSON Schema for this capability's per-agent config.
+    ///
+    /// The schema is exposed through `CapabilityInfo` so clients can render a
+    /// generic settings editor for capabilities without hard-coding capability
+    /// IDs. Capabilities without configurable settings return `None`.
+    fn config_schema(&self) -> Option<serde_json::Value> {
+        None
+    }
+
+    /// Returns UI hints for rendering `config_schema`.
+    ///
+    /// This follows the react-jsonschema-form `uiSchema` shape. The server owns
+    /// durable config semantics; clients own the generic component implementation.
+    fn config_ui_schema(&self) -> Option<serde_json::Value> {
+        None
+    }
+
+    /// Validates per-capability config before it is persisted.
+    ///
+    /// Default accepts any config for backward compatibility. Capabilities with
+    /// a `config_schema()` should reject invalid values here so HTTP, CLI, and
+    /// MCP write paths share the same server-side guardrail.
+    fn validate_config(&self, _config: &serde_json::Value) -> Result<(), String> {
+        Ok(())
+    }
+
     /// Returns a message filter provider if this capability modifies message retrieval.
     ///
     /// Capabilities can contribute filters that modify how messages are loaded
