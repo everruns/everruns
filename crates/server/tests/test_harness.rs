@@ -204,7 +204,11 @@ impl TestServer {
                 .to_string(),
             ..auth::AuthConfig::default()
         };
-        let auth_backend = auth::BuiltinAuthBackend::new(auth_config.clone(), db.clone());
+        let auth_backend = auth::BuiltinAuthBackend::new(
+            auth_config.clone(),
+            db.clone(),
+            std::sync::Arc::new(everruns_server::platform::oss_platform_definition()),
+        );
         let auth_state = auth::AuthState::new(auth_config.clone(), Arc::new(auth_backend.clone()));
 
         // Create runner with PostgreSQL backend

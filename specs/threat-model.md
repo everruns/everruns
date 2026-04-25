@@ -104,6 +104,7 @@ Format: `TM-<CATEGORY>-<NNN>`
 | TM-AUTH-013 | Expired API key still in use | Medium | Expiration checked on every request via DB lookup; `last_used_at` tracked | MITIGATED |
 | TM-AUTH-014 | Account enumeration via registration | Medium | Returns generic "Registration failed" for existing emails; password hash computed first for timing consistency | MITIGATED |
 | TM-AUTH-015 | JWT secret insecure default | High | Falls back to hardcoded `insecure-dev-secret-change-me` if `AUTH_JWT_SECRET` unset; no startup check in production | **OPEN** |
+| TM-AUTH-016 | OSS harness reseeding via public signup | High | The signup safety net in `register` / `oauth_callback` uses `state.platform_definition.built_in_harnesses()` via `initialize_org_harnesses_with_definitions`, **not** `oss_built_in_harnesses()`. An operator's custom `PlatformDefinition` is the source of truth — public signup cannot reintroduce OSS harnesses that were removed. Original concern tracked by PR #1462; the safety-net semantics re-added in EVE-390 preserve pre-seed correctness without re-opening the override path. | MITIGATED |
 
 ### Mitigation Details
 

@@ -181,9 +181,11 @@ impl AuthState {
 
     /// Convenience: create with built-in backend (OSS default)
     pub fn builtin(config: AuthConfig, db: Arc<StorageBackend>) -> Self {
+        let platform_definition = Arc::new(crate::platform::oss_platform_definition());
         let backend = Arc::new(super::builtin::BuiltinAuthBackend::new(
             config.clone(),
             db.clone(),
+            platform_definition,
         ));
         Self {
             config,

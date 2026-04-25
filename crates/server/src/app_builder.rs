@@ -48,7 +48,8 @@ use utoipa::OpenApi;
 // Types
 // =========================================================================
 
-type AuthFactoryFn = Box<dyn FnOnce(Arc<StorageBackend>) -> Arc<dyn AuthBackend> + Send>;
+type AuthFactoryFn =
+    Box<dyn FnOnce(Arc<StorageBackend>, Arc<PlatformDefinition>) -> Arc<dyn AuthBackend> + Send>;
 
 type MigrationFn =
     Box<dyn FnOnce(PgPool) -> Pin<Box<dyn Future<Output = Result<()>> + Send>> + Send>;
@@ -171,11 +172,18 @@ impl ServerAppBuilder {
 
     /// Set the authentication backend factory.
     ///
-    /// The factory receives the storage backend and returns an auth backend.
-    /// If not set, the built-in auth backend is used.
+    /// The factory receives the storage backend and the active platform
+    /// definition, and returns an auth backend. If not set, the built-in
+    /// auth backend is used.
+    ///
+    /// The platform definition is forwarded so auth handlers can enforce
+    /// operator-configured defaults (e.g. the signup harness-seed safety
+    /// net in `BuiltinAuthBackend` — see EVE-390).
     pub fn auth(
         mut self,
-        factory: impl FnOnce(Arc<StorageBackend>) -> Arc<dyn AuthBackend> + Send + 'static,
+        factory: impl FnOnce(Arc<StorageBackend>, Arc<PlatformDefinition>) -> Arc<dyn AuthBackend>
+        + Send
+        + 'static,
     ) -> Self {
         self.auth_factory = Some(Box::new(factory));
         self
@@ -392,17 +400,22 @@ impl ServerAppBuilder {
         );
 
         let auth_backend = match self.auth_factory {
-            Some(factory) => factory(db.clone()),
+            Some(factory) => factory(db.clone(), platform_definition.clone()),
             None => {
                 let cfg = auth_config.clone();
                 if let Some(valkey) = valkey_client {
                     Arc::new(auth::BuiltinAuthBackend::with_valkey(
                         cfg,
                         db.clone(),
+                        platform_definition.clone(),
                         valkey,
                     ))
                 } else {
-                    Arc::new(auth::BuiltinAuthBackend::new(cfg, db.clone()))
+                    Arc::new(auth::BuiltinAuthBackend::new(
+                        cfg,
+                        db.clone(),
+                        platform_definition.clone(),
+                    ))
                 }
             }
         };
