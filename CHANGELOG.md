@@ -9,6 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.8.20] - 2026-04-25
+
+### Highlights
+
+- **Hotfix: restore migration 006 checksum** - Migration `006_v0.8.5.sql` was edited in-place by [#1566](https://github.com/everruns/everruns/pull/1566) to broaden `events.search_vector` coverage to nested message text. Modifying an applied migration breaks startup against existing databases because sqlx tracks per-migration checksums in `_sqlx_migrations`. v0.8.20 reverts migration 006 to its original v0.8.18 form and re-delivers the search-vector update as a new additive migration `024_event_search_vector_canonical_fields.sql`. Restores deploys against dev/prod databases.
+- **UI: SVG previews behind sandboxed iframe** - SVG file previews are restored under a sandboxed iframe so user-supplied vectors can't break out into the host page ([#1587](https://github.com/everruns/everruns/pull/1587)).
+
+### What's Changed
+
+- fix(migrations): restore migration 006 checksum; re-deliver search_vector via additive 024 by [@chaliy](https://github.com/chaliy)
+- fix(ui): restore SVG previews behind sandboxed iframe ([#1587](https://github.com/everruns/everruns/pull/1587)) by [@chaliy](https://github.com/chaliy)
+- chore(plugin): rename everruns dev plugin by [@chaliy](https://github.com/chaliy)
+- feat(ui): move models to building blocks by [@chaliy](https://github.com/chaliy)
+
 ## [0.8.19] - 2026-04-24
 
 ### Highlights
