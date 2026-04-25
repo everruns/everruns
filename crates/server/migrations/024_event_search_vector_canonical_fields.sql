@@ -37,9 +37,10 @@ ALTER TABLE events DROP COLUMN search_vector;
 -- tsvector ... max 1048575 bytes") and individual rows can carry tool
 -- results, accumulated streaming text, or stringified message-content
 -- arrays well beyond that. 250 000 chars is a safe upper bound across
--- realistic UTF-8 inputs (250k chars * 4 worst-case bytes/char = 1 MB),
--- and search relevance is dominated by early tokens, so the truncation
--- has negligible effect on the index's usefulness.
+-- realistic UTF-8 inputs (250000 chars * 4 worst-case bytes/char =
+-- 1000000 bytes, which stays below the 1048575-byte limit), and search
+-- relevance is dominated by early tokens, so the truncation has
+-- negligible effect on the index's usefulness.
 ALTER TABLE events
     ADD COLUMN search_vector tsvector
     GENERATED ALWAYS AS (
