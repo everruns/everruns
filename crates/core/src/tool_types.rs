@@ -260,6 +260,7 @@ fn add_human_intent_to_schema(schema: &mut Value) {
             serde_json::json!({
                 "type": "string",
                 "description": HUMAN_INTENT_DESCRIPTION,
+                "maxLength": 120,
             }),
         );
     }

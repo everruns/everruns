@@ -65,13 +65,17 @@ impl ToolCallHook for HumanIntentToolCallHook {
 
 fn truncate_intent(intent: &str) -> String {
     const MAX_LEN: usize = 120;
+    const ELLIPSIS: &str = "...";
     let clean = intent.trim();
     if clean.chars().count() <= MAX_LEN {
         return clean.to_string();
     }
 
-    let truncated: String = clean.chars().take(MAX_LEN).collect();
-    format!("{truncated}...")
+    let truncated: String = clean
+        .chars()
+        .take(MAX_LEN - ELLIPSIS.chars().count())
+        .collect();
+    format!("{truncated}{ELLIPSIS}")
 }
 
 #[cfg(test)]
@@ -106,6 +110,7 @@ mod tests {
         let params = transformed[0].parameters();
 
         assert_eq!(params["properties"]["human_intent"]["type"], "string");
+        assert_eq!(params["properties"]["human_intent"]["maxLength"], 120);
         assert!(
             !params["required"]
                 .as_array()
@@ -136,5 +141,14 @@ mod tests {
 
         let execution_call = hook.transform_for_execution(tool_call);
         assert_eq!(execution_call.arguments, json!({ "operation": "list" }));
+    }
+
+    #[test]
+    fn truncate_intent_stays_within_cap() {
+        let long_intent = "x".repeat(130);
+        let truncated = truncate_intent(&long_intent);
+
+        assert_eq!(truncated.chars().count(), 120);
+        assert!(truncated.ends_with("..."));
     }
 }
