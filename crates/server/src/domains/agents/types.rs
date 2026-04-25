@@ -203,20 +203,17 @@ pub struct ImportAgentQuery {
     pub from_example: Option<String>,
 }
 
+// See `crate::api::sessions::filter_or_reject_client_side_tools` for the
+// trust-boundary rationale behind the deprecation window. Both deserializers
+// here delegate to that helper so session and agent tool-list policies stay
+// in lockstep.
 fn deserialize_client_side_tools<'de, D>(deserializer: D) -> Result<Vec<ToolDefinition>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
     let tools = Vec::<ToolDefinition>::deserialize(deserializer)?;
-    if tools
-        .iter()
-        .any(|tool| !matches!(tool, ToolDefinition::ClientSide(_)))
-    {
-        return Err(serde::de::Error::custom(
-            "tools must contain only client_side definitions",
-        ));
-    }
-    Ok(tools)
+    crate::api::sessions::filter_or_reject_client_side_tools(tools)
+        .map_err(serde::de::Error::custom)
 }
 
 fn deserialize_optional_client_side_tools<'de, D>(
@@ -226,16 +223,12 @@ where
     D: serde::Deserializer<'de>,
 {
     let tools = Option::<Vec<ToolDefinition>>::deserialize(deserializer)?;
-    if let Some(tools) = &tools
-        && tools
-            .iter()
-            .any(|tool| !matches!(tool, ToolDefinition::ClientSide(_)))
-    {
-        return Err(serde::de::Error::custom(
-            "tools must contain only client_side definitions",
-        ));
+    match tools {
+        None => Ok(None),
+        Some(tools) => crate::api::sessions::filter_or_reject_client_side_tools(tools)
+            .map(Some)
+            .map_err(serde::de::Error::custom),
     }
-    Ok(tools)
 }
 
 #[cfg(test)]
@@ -243,7 +236,9 @@ mod tests {
     use super::{CreateAgentRequest, UpdateAgentRequest};
 
     #[test]
-    fn create_agent_request_rejects_builtin_tools() {
+    fn create_agent_request_drops_builtin_tools_with_warn() {
+        // Deprecation window: legacy `builtin` entries dropped, request
+        // succeeds with only the `client_side` entry kept.
         let json = r#"{
             "name": "test-agent",
             "system_prompt": "You are helpful",
@@ -253,19 +248,26 @@ mod tests {
                     "name": "read_file",
                     "description": "Read file",
                     "parameters": {"type": "object"}
+                },
+                {
+                    "type": "client_side",
+                    "name": "lookup_crm",
+                    "description": "Lookup",
+                    "parameters": {"type": "object"}
                 }
             ]
         }"#;
 
-        let err = serde_json::from_str::<CreateAgentRequest>(json).unwrap_err();
-        assert!(
-            err.to_string()
-                .contains("tools must contain only client_side definitions")
-        );
+        let req: CreateAgentRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.tools.len(), 1);
+        assert!(matches!(
+            req.tools[0],
+            everruns_core::ToolDefinition::ClientSide(_)
+        ));
     }
 
     #[test]
-    fn update_agent_request_rejects_builtin_tools() {
+    fn update_agent_request_drops_builtin_tools_with_warn() {
         let json = r#"{
             "tools": [
                 {
@@ -277,10 +279,14 @@ mod tests {
             ]
         }"#;
 
-        let err = serde_json::from_str::<UpdateAgentRequest>(json).unwrap_err();
-        assert!(
-            err.to_string()
-                .contains("tools must contain only client_side definitions")
-        );
+        let req: UpdateAgentRequest = serde_json::from_str(json).unwrap();
+        // The whole array was non-client_side; everything is dropped, leaving
+        // an empty list. This is intentionally lenient: the request is still
+        // valid at deserialization, even if it carries no effective tools.
+        assert_eq!(req.tools.as_ref().map(|t| t.len()), Some(0));
     }
+
+    // Strict-mode coverage lives in `tests/strict_client_tools.rs` so it
+    // runs in its own process and doesn't race the lenient tests above
+    // over the `EVERRUNS_REJECT_NON_CLIENT_SIDE_TOOLS` env var.
 }
