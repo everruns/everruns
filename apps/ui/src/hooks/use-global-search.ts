@@ -183,7 +183,13 @@ const NAVIGATION_PAGES: NavigationPage[] = [
     title: "Settings > Organisation",
     href: "/settings/organisation",
     icon: Settings,
-    keywords: ["org", "team"],
+    keywords: ["org", "organization", "team"],
+  },
+  {
+    title: "Settings > Organisations",
+    href: "/settings/organisations",
+    icon: Settings,
+    keywords: ["org", "organization", "organizations", "team", "switch"],
   },
   {
     title: "Settings > Members",
