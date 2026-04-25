@@ -865,6 +865,7 @@ Daytona sandboxes are remote Linux environments managed via REST API. The agent 
 | TM-DAYTONA-005 | Cross-session sandbox access | Critical | Daytona tools require session-owned sandbox IDs via leased-resource/session-resource ownership checks; persisted sandbox state stays session-scoped in `daytona_sandbox:{id}` | MITIGATED |
 | TM-DAYTONA-006 | Sandbox not deleted — resource leak | Low | Auto-stop 5 min, auto-archive 30 min, auto-delete 60 min (Daytona-native); leased-resource cleanup 20 min (control plane); system prompt instructs agent to delete when done | MITIGATED |
 | TM-DAYTONA-007 | Git credential helper persists after sandbox reuse | Low | Credential file in `/tmp` cleared on stop; sandbox stop resets environment | MITIGATED |
+| TM-DAYTONA-008 | GitHub token leaked to lookalike clone host | High | `daytona_git_clone` and `daytona_git_credentials` only embed the GitHub token in HTTPS URLs whose host matches an operator-configured trusted-host allowlist (`trusted_github_hosts` / `is_trusted_github_https_host` in `integrations/daytona/src/tools.rs`). Default `["github.com"]`; operators extend via `EVERRUNS_DAYTONA_GITHUB_TRUSTED_HOSTS` (comma-separated, exact case-insensitive match, no wildcards). Malformed env entries (`/`, `@`, whitespace, `..`) are rejected with a warning; the default is always preserved so misconfig cannot silently disable public-GitHub auth. Unit tests cover lookalike rejection (`evil-github.acme.com`, `github.acme.com.evil.example`). | MITIGATED |
 
 ### Mitigation Details
 
