@@ -507,8 +507,13 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
     const acc = usageRef.current;
 
     // Scan only events that are newer than what we've already accumulated.
+    // Keep unsequenced processed IDs bounded to the current in-memory event window.
+    const retainedUnsequencedIds = new Set<string>();
     for (const event of events) {
       const eventSequence = event.sequence ?? null;
+      if (eventSequence == null) {
+        retainedUnsequencedIds.add(event.id);
+      }
       if (eventSequence != null && eventSequence <= acc.maxSequenceProcessed) {
         continue;
       }
@@ -531,6 +536,8 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
         acc.processedIdsWithoutSequence.add(event.id);
       }
     }
+
+    acc.processedIdsWithoutSequence = retainedUnsequencedIds;
 
     if (acc.hasLlmEvents) {
       return {
