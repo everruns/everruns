@@ -1,14 +1,14 @@
 // Prometheus /metrics endpoint
 //
 // Decision: Uses `metrics` + `metrics-exporter-prometheus` (lighter than OTel bridge).
-// Decision: Metrics are always enabled by default (METRICS_ENABLED=true).
+// Decision: Metrics collection is enabled by default (METRICS_ENABLED=true),
+// but public serving on the main API port is disabled by default.
 // Decision: Two serving modes to keep metrics internal in production:
 //   1. METRICS_ADDR set (e.g. 127.0.0.1:9090) → dedicated internal-only HTTP server
 //      serving only /metrics. Not reachable from outside the pod/host. This is the
 //      recommended production pattern; scrapers access via sidecar or pod-local.
-//   2. METRICS_ADDR unset → /metrics mounted on the main API server (convenient
-//      for dev/local). In production without METRICS_ADDR, restrict via network
-//      policy or ingress rules.
+//   2. METRICS_ADDR unset + METRICS_PUBLIC_ON_MAIN=true → /metrics mounted on the
+//      main API server for local/dev convenience. Keep disabled in production.
 // Decision: No auth on /metrics (Prometheus standard).
 // Decision: Horizontal scaling model:
 //   - Gauges from DB (each replica reports the same logical value; Prometheus
@@ -32,6 +32,9 @@ pub struct PrometheusConfig {
     /// When set, /metrics is served on a dedicated internal-only HTTP server
     /// instead of the main API server — keeping it off the public interface.
     pub metrics_addr: Option<String>,
+    /// Whether to expose `/metrics` on the main API server when `METRICS_ADDR`
+    /// is unset. Defaults to false for safer production posture.
+    pub public_on_main: bool,
 }
 
 impl PrometheusConfig {
@@ -41,10 +44,13 @@ impl PrometheusConfig {
     /// - `METRICS_ADDR`: separate bind address for internal-only metrics server
     ///   (e.g. "127.0.0.1:9090"). When set, /metrics is NOT mounted on the main
     ///   API server. Recommended for production to avoid external exposure.
+    /// - `METRICS_PUBLIC_ON_MAIN`: allow mounting unauthenticated `/metrics` on
+    ///   the main API server when `METRICS_ADDR` is unset (default: false).
     pub fn from_env() -> Self {
         Self {
             enabled: env_bool("METRICS_ENABLED", true),
             metrics_addr: env_opt_string("METRICS_ADDR"),
+            public_on_main: env_bool("METRICS_PUBLIC_ON_MAIN", false),
         }
     }
 }
@@ -316,10 +322,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn config_defaults_enabled() {
+    fn config_defaults_safe() {
         // Note: this test reads real env vars; METRICS_ENABLED unset → defaults true.
         // If CI sets METRICS_ENABLED=false this will fail — intentional canary.
         let config = PrometheusConfig::from_env();
         assert!(config.enabled);
+        assert!(!config.public_on_main);
     }
 }
