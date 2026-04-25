@@ -207,7 +207,7 @@ impl TestServer {
         let auth_backend = auth::BuiltinAuthBackend::new(
             auth_config.clone(),
             db.clone(),
-            std::sync::Arc::new(everruns_server::platform::oss_platform_definition()),
+            platform_definition.clone(),
         );
         let auth_state = auth::AuthState::new(auth_config.clone(), Arc::new(auth_backend.clone()));
 

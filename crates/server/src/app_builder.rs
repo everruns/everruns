@@ -132,7 +132,9 @@ struct HealthState {
 ///
 /// let auth_config = AuthConfig::from_env();
 /// ServerAppBuilder::new(ServerConfig::from_env())
-///     .auth(move |db| Arc::new(BuiltinAuthBackend::new(auth_config, db)))
+///     .auth(move |db, platform| {
+///         Arc::new(BuiltinAuthBackend::new(auth_config, db, platform))
+///     })
 ///     .routes(my_billing_routes())
 ///     .event_listener(Arc::new(MyAnalyticsListener))
 ///     .migration(|pool| async move {
