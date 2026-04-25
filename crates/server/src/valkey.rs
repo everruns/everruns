@@ -76,7 +76,7 @@ impl ValkeyClient {
     ///
     /// Returns `Ok(remaining)` if allowed, `Err(())` if limit exceeded.
     ///
-    /// Fail-open behavior: Valkey command errors are logged and treated as allowed.
+    /// Fail-closed behavior: Valkey command errors are logged and treated as denied.
     /// `key`: rate limit key (e.g., `rl:login:192.168.1.1`)
     /// `limit`: max requests in the window
     /// `window_secs`: window duration in seconds
@@ -104,9 +104,12 @@ impl ValkeyClient {
         {
             Ok(result) => result,
             Err(e) => {
-                // Fail open: on Valkey errors, allow the request (availability > strictness)
-                tracing::error!(error = %e, key = %key, "Valkey rate limit check failed, allowing request");
-                return Ok(limit);
+                tracing::error!(
+                    error = %e,
+                    key = %key,
+                    "Valkey rate limit check failed, denying request"
+                );
+                return Err(());
             }
         };
 

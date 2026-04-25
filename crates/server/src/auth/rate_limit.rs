@@ -5,7 +5,7 @@
 // Decision: Different limits for login (strict), register (strict), refresh (relaxed).
 // Decision: Keyed by client IP from socket peer; forwarded headers are trusted
 //   only when the peer is a trusted proxy (loopback/private ranges).
-// Decision: On Valkey errors, fail open (allow request) and log — availability over strictness.
+// Decision: On Valkey errors, fail closed (deny request) and log — auth hardening over availability.
 
 use axum::{
     body::Body,
