@@ -1687,15 +1687,27 @@ fn parse_trusted_github_hosts(raw: Option<String>) -> Vec<String> {
             || trimmed.chars().any(char::is_whitespace)
             || trimmed.contains("..")
         {
+            // Do NOT log the raw value: a misconfigured env entry could carry
+            // a credential (e.g. `https://oauth2:<token>@host/...`) that we
+            // must not write to logs. Surface only the rejection reason and
+            // the byte length so operators can locate the problem entry.
             warn!(
-                "Ignoring malformed entry in EVERRUNS_DAYTONA_GITHUB_TRUSTED_HOSTS: {:?}",
-                trimmed
+                "Ignoring malformed entry in EVERRUNS_DAYTONA_GITHUB_TRUSTED_HOSTS \
+                 (entry must be a bare hostname; contains one of `/`, `@`, whitespace, or `..`). \
+                 Length: {} bytes",
+                trimmed.len()
             );
             continue;
         }
         // Strip optional `:port` for normalization; the matcher already
         // tolerates ports but storing without them keeps the list tidy.
-        let normalized = trimmed.split(':').next().unwrap_or_default().to_lowercase();
+        // Use ASCII-only lowercasing — hostnames are ASCII, and this stays
+        // consistent with `eq_ignore_ascii_case` used in matching.
+        let normalized = trimmed
+            .split(':')
+            .next()
+            .unwrap_or_default()
+            .to_ascii_lowercase();
         if normalized.is_empty() || normalized == "github.com" {
             continue;
         }
