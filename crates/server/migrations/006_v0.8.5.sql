@@ -12,27 +12,15 @@
 -- Replaces `data::text ILIKE '%query%'` (sequential scan) with a tsvector
 -- generated column + GIN index for indexed full-text search.
 --
--- The search_vector is built from canonical message text fields in event
--- payloads. Message events store text under data.message.content (array of
--- content parts), while some events carry top-level text (delta/content).
--- A partial GIN index covers only message-type events (the only types
--- searched in practice).
+-- The search_vector is built from data->>'content' which is the main text
+-- field in message-type event JSONB payloads. A partial GIN index covers
+-- only message-type events (the only types searched in practice).
 
--- Generated tsvector column from canonical message text fields in JSONB data
+-- Generated tsvector column from the content field in JSONB data
 ALTER TABLE events
     ADD COLUMN search_vector tsvector
     GENERATED ALWAYS AS (
-        to_tsvector(
-            'english',
-            COALESCE(
-                data #>> '{message,content}',
-                data #>> '{result}',
-                data->>'content',
-                data->>'delta',
-                data->>'accumulated',
-                ''
-            )
-        )
+        to_tsvector('english', COALESCE(data->>'content', ''))
     ) STORED;
 
 -- GIN index on search_vector, scoped to message-type events
@@ -46,7 +34,7 @@ CREATE INDEX idx_events_search_vector
         'tool.completed'
     );
 
-COMMENT ON COLUMN events.search_vector IS 'Generated tsvector for full-text search on canonical event text fields (EVE-87)';
+COMMENT ON COLUMN events.search_vector IS 'Generated tsvector for full-text search on data.content (EVE-87)';
 
 -- ============================================
 -- Workflow snapshot checkpointing (EVE-86)

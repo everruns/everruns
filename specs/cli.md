@@ -59,6 +59,16 @@ Agent CRUD. Create from TOML/YAML/JSON/Markdown files or CLI flags.
 - `get <id>`
 - `delete <id>` (soft archive)
 
+#### Initial Files Hidden Path Policy
+
+`initial_files` collection (whether from `--initial-files-dir` or definition globs) gates hidden (dot-prefixed) path components to prevent accidental upload of host secrets. The policy has three layers, evaluated per path component:
+
+1. **Hard-deny floor** — known credential / version-control / shell-history paths are never uploaded. Examples: `.env`, `.env.local`, `.envrc`, `.ssh`, `.gnupg`, `.aws`, `.azure`, `.gcloud`, `.kube`, `.docker`, `.npmrc`, `.yarnrc`, `.pypirc`, `.netrc`, `.cargo`, `.git`, `.hg`, `.svn`, `.bash_history`, `.zsh_history`, `.python_history`, `.node_repl_history`. The full list lives in `crates/cli/src/commands/agents.rs::DENIED_DOT_ENTRIES`. The hard-deny floor cannot be bypassed by user opt-in.
+2. **Built-in allowlist** — common dev-ecosystem assets are allowed by default. Exact basenames: `.agents`, `.github`, `.vscode`, `.claude`, `.cursor`, `.mcp.json`, `.gitignore`, `.gitattributes`, `.editorconfig`, `.prettierrc`, `.prettierrc.json`, `.prettierrc.yaml`, `.prettierrc.yml`, `.prettierrc.js`, `.prettierrc.cjs`, `.prettierrc.mjs`, `.eslintrc`, `.eslintrc.json`, `.eslintrc.yaml`, `.eslintrc.yml`, `.eslintrc.js`, `.eslintrc.cjs`, `.eslintignore`, `.nvmrc`, `.node-version`, `.python-version`, `.tool-versions`, `.dockerignore`, `.rubocop.yml`. The authoritative list lives in `crates/cli/src/commands/agents.rs::ALLOWED_DOT_ENTRIES`.
+3. **Per-agent opt-in** — the agent manifest may declare `initial_files_allow_hidden: [".mytool", ".otherproj"]` to extend the allowlist for project-specific tooling. Each entry must be a single hidden basename (starts with `.`, contains no `/` or `\\`, and is not `.` or `..`). Entries that match the hard-deny floor are silently filtered out of the opt-in. The `initial_files_allow_hidden` field is consumed locally and stripped from the upload payload before the server import call.
+
+The hard-deny floor is checked on **every** path component, not just the root. So `.github/.env` is still rejected even though `.github` is allowlisted; `.claude/.ssh/config` is rejected even if a user adds `.claude` opt-ins. A skipped hidden path emits a `Warning:` to stderr identifying the rejected path and the built-in allowlist. Symlinks pointing outside the base directory are skipped regardless of policy. See `specs/threat-model.md` (TM-FS-009) for the security rationale.
+
 ### `everruns sessions`
 
 Session management.

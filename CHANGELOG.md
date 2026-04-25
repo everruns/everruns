@@ -9,6 +9,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+### What's Changed
+
+- fix(server): stage `client_side` tools rejection with a deprecation window. `CreateSessionRequest.tools`, `CreateAgentRequest.tools`, and `UpdateAgentRequest.tools` now drop legacy non-`client_side` entries (e.g. `{"type": "builtin", ...}`) with a structured `tracing::warn!` (`target = "client_tools_deprecation"`, `dropped_count`, `dropped_kinds`) instead of returning `400`. SDK/CLI clients still on the legacy shape keep working; operators get visibility into who needs to migrate. Set `EVERRUNS_REJECT_NON_CLIENT_SIDE_TOOLS=1` in dev/staging to opt back into hard-reject and surface remaining offenders. The migration timeline lives in `specs/client-side-tools.md` (Tools-Field Deprecation Window).
+- fix(daytona): support GitHub Enterprise clone-auth allowlist. `daytona_git_clone` and `daytona_git_credentials` now consult an operator-configured trusted-host allowlist before embedding a GitHub token in HTTPS URLs. Default remains `["github.com"]` (public-SaaS behavior unchanged); operators extend via `EVERRUNS_DAYTONA_GITHUB_TRUSTED_HOSTS` (comma-separated, e.g. `github.acme.com,git.internal.corp`). Matching is case-insensitive exact (no wildcards) so lookalike hosts like `evil-github.acme.com` and `github.acme.com.evil.example` remain rejected. The credentials helper now writes one entry per trusted host so Enterprise deployments authenticate transparently. See `integrations/daytona/SPEC.md` and `specs/threat-model.md` (TM-DAYTONA-008).
+- fix(cli): allow opt-in hidden directories in `initial_files` while keeping a hard-deny floor for credentials. The CLI now ships common dev-ecosystem dot entries (`.github`, `.vscode`, `.claude`, `.cursor`, `.mcp.json`, `.gitignore`, `.gitattributes`, `.editorconfig`, `.eslintrc{,.json,.yaml,.yml,.js,.cjs}`, `.prettierrc{,.json,.yaml,.yml,.js,.cjs,.mjs}`, `.eslintignore`, `.nvmrc`, `.node-version`, `.python-version`, `.tool-versions`, `.dockerignore`, `.rubocop.yml`, `.agents`) by default and exposes a per-agent `initial_files_allow_hidden: [".mytool"]` opt-in (basename-only; `/`, `\\`, `.`, and `..` rejected) for project-specific tooling. `.env`, `.ssh`, `.aws`, `.gnupg`, `.git`, shell history, and similar credential / VCS paths remain rejected even when explicitly opted in or nested under an allowlisted root (e.g. `.github/.env`). See `specs/cli.md` and `specs/threat-model.md` (TM-FS-009).
+
+## [0.8.21] - 2026-04-25
+
+### Highlights
+
+- **Hotfix: bound migration 024 input to fit `to_tsvector` 1 MiB cap** - The v0.8.20 search-vector rebuild migration crashed dev startup with `string is too long for tsvector (3108640 bytes, max 1048575 bytes)` because individual event rows can carry tool results, accumulated streaming text, or message-content arrays well beyond Postgres' 1 MiB tsvector input limit. The canonical-text expression is now wrapped in `LEFT(..., 250000)` so any single row's contribution stays under tsvector's hard cap. Search relevance is dominated by early tokens, so the truncation has negligible effect on the index's usefulness.
+- **GPT-5.5 / GPT-5.5 Pro** - New OpenAI model entries are wired into the LLM driver registry ([#1593](https://github.com/everruns/everruns/pull/1593)).
+
+### What's Changed
+
+- fix(migrations): bound migration 024 input to 250 000 chars so to_tsvector stays within Postgres' 1 MiB cap by [@chaliy](https://github.com/chaliy)
+- feat(llm): add GPT-5.5 and GPT-5.5 Pro ([#1593](https://github.com/everruns/everruns/pull/1593)) by [@chaliy](https://github.com/chaliy)
+
+## [0.8.20] - 2026-04-25
+
+### Highlights
+
+- **Hotfix: restore migration 006 checksum** - Migration `006_v0.8.5.sql` was edited in-place by [#1566](https://github.com/everruns/everruns/pull/1566) to broaden `events.search_vector` coverage to nested message text. Modifying an applied migration breaks startup against existing databases because sqlx tracks per-migration checksums in `_sqlx_migrations`. v0.8.20 reverts migration 006 to its original v0.8.18 form and re-delivers the search-vector update as a new additive migration `024_event_search_vector_canonical_fields.sql`. Restores deploys against dev/prod databases.
+- **UI: SVG previews behind sandboxed iframe** - SVG file previews are restored under a sandboxed iframe so user-supplied vectors can't break out into the host page ([#1587](https://github.com/everruns/everruns/pull/1587)).
+
+### What's Changed
+
+- fix(migrations): restore migration 006 checksum; re-deliver search_vector via additive 024 by [@chaliy](https://github.com/chaliy)
+- fix(ui): restore SVG previews behind sandboxed iframe ([#1587](https://github.com/everruns/everruns/pull/1587)) by [@chaliy](https://github.com/chaliy)
+- chore(plugin): rename everruns dev plugin by [@chaliy](https://github.com/chaliy)
+- feat(ui): move models to building blocks by [@chaliy](https://github.com/chaliy)
+
 ## [0.8.19] - 2026-04-24
 
 ### Highlights
