@@ -137,6 +137,16 @@ If every piece of information in the prompt is already covered by tool definitio
 
 - **`tools_with_config(config)`** — Returns tools adapted to per-capability config. Default delegates to `tools()`. Example: `WebFetchCapability` enables `save_to_file` when config has `enable_file_download: true`.
 
+##### Config Schema and UI Metadata
+
+Capabilities that accept per-agent config expose a standard JSON Schema through
+`config_schema()` and optional react-jsonschema-form UI hints through
+`config_ui_schema()`. These fields are copied to `CapabilityInfo` so clients
+render settings through the same generic editor for built-in and integration
+capabilities. The backend remains authoritative for config semantics through
+`validate_config(config)`, which is called on capability write paths before
+config is persisted.
+
 ##### Collection Functions
 
 - **`collect_capabilities()`** — Sync. Collects tools, mounts, static prompts.

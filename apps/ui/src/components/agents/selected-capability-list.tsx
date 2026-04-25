@@ -60,7 +60,7 @@ export function SelectedCapabilityList({
         const cap = getCapability(capConfig.ref);
         if (!cap) return null;
         const IconComponent = getCapabilityIcon(cap.icon);
-        const hasSettings = hasCapabilitySettings(capConfig.ref);
+        const hasSettings = hasCapabilitySettings(cap);
         const isSettingsExpanded = expandedSettings.has(capConfig.ref);
         const hasConfigValues = Object.keys(capConfig.config).length > 0;
         const dependents = getDependents(capConfig.ref);
@@ -181,7 +181,7 @@ export function SelectedCapabilityList({
                 <CollapsibleContent>
                   <div className="px-2 pb-2 border-t border-border/50 mx-2 pt-2">
                     <CapabilitySettingsEditor
-                      capabilityId={capConfig.ref}
+                      capability={cap}
                       config={capConfig.config}
                       onChange={(newConfig) => onConfigChange(capConfig.ref, newConfig)}
                       disabled={disabled}

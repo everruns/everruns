@@ -55,6 +55,14 @@ pub struct CapabilityInfo {
     /// Multiple capabilities can contribute the same feature.
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub features: Vec<String>,
+    /// JSON Schema for capability-specific per-agent config.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Object))]
+    pub config_schema: Option<serde_json::Value>,
+    /// react-jsonschema-form uiSchema hints for rendering config_schema.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Object))]
+    pub config_ui_schema: Option<serde_json::Value>,
     /// TM-AGENT-005: Risk level. High-risk capabilities require admin approval.
     #[serde(skip_serializing_if = "is_low_risk", default = "default_risk_level")]
     pub risk_level: RiskLevel,
@@ -101,6 +109,8 @@ impl CapabilityInfo {
             is_skill,
             dependencies: cap.dependencies().iter().map(|s| s.to_string()).collect(),
             features: cap.features().iter().map(|s| s.to_string()).collect(),
+            config_schema: cap.config_schema(),
+            config_ui_schema: cap.config_ui_schema(),
             risk_level: cap.risk_level(),
         }
     }
@@ -136,6 +146,8 @@ mod tests {
             is_skill: false,
             dependencies: vec![],
             features: vec![],
+            config_schema: None,
+            config_ui_schema: None,
             risk_level: RiskLevel::Low,
         };
 
@@ -168,6 +180,8 @@ mod tests {
             is_skill: false,
             dependencies: vec![],
             features: vec![],
+            config_schema: None,
+            config_ui_schema: None,
             risk_level: RiskLevel::Low,
         };
 
@@ -190,6 +204,8 @@ mod tests {
             is_skill: false,
             dependencies: vec!["session_file_system".to_string()],
             features: vec![],
+            config_schema: None,
+            config_ui_schema: None,
             risk_level: RiskLevel::Low,
         };
 
@@ -244,6 +260,8 @@ mod tests {
             is_skill: false,
             dependencies: vec![],
             features: vec!["secrets".to_string(), "key_value".to_string()],
+            config_schema: None,
+            config_ui_schema: None,
             risk_level: RiskLevel::Low,
         };
 
@@ -286,6 +304,8 @@ mod tests {
             is_skill: false,
             dependencies: vec![],
             features: vec![],
+            config_schema: None,
+            config_ui_schema: None,
             risk_level: RiskLevel::Low,
         };
         let json = serde_json::to_string(&cap).unwrap();
@@ -338,6 +358,8 @@ mod tests {
             is_skill: false,
             dependencies: vec![],
             features: vec![],
+            config_schema: None,
+            config_ui_schema: None,
             risk_level: RiskLevel::Low,
         };
 

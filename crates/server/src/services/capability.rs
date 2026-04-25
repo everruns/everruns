@@ -129,6 +129,8 @@ impl CapabilityService {
                 is_skill: false,
                 dependencies: vec![], // MCP capabilities have no dependencies
                 features: vec![],
+                config_schema: None,
+                config_ui_schema: None,
                 risk_level: RiskLevel::Low,
             });
         }
@@ -153,6 +155,8 @@ impl CapabilityService {
                 is_skill: true,
                 dependencies: vec!["session_file_system".to_string()],
                 features: vec![],
+                config_schema: None,
+                config_ui_schema: None,
                 risk_level: RiskLevel::Low,
             });
         }
@@ -203,6 +207,8 @@ impl CapabilityService {
                     is_skill: false,
                     dependencies: vec![], // MCP capabilities have no dependencies
                     features: vec![],
+                    config_schema: None,
+                    config_ui_schema: None,
                     risk_level: RiskLevel::Low,
                 }));
             }
@@ -226,6 +232,8 @@ impl CapabilityService {
                     is_skill: true,
                     dependencies: vec!["session_file_system".to_string()],
                     features: vec![],
+                    config_schema: None,
+                    config_ui_schema: None,
                     risk_level: RiskLevel::Low,
                 }));
             }
