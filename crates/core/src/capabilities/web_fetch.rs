@@ -151,7 +151,7 @@ impl Capability for WebFetchCapability {
     }
 
     fn risk_level(&self) -> RiskLevel {
-        RiskLevel::Medium
+        RiskLevel::High
     }
 
     fn icon(&self) -> Option<&str> {
@@ -263,6 +263,7 @@ impl FileSaver for SessionFileSaver {
 /// the session filesystem (SessionFileStore) via the SessionFileSaver adapter.
 pub struct WebFetchTool {
     fetchkit_tool: fetchkit::Tool,
+    enable_save_to_file: bool,
     /// Cached description from ToolBuilder (owned copy of fetchkit's &str for our Tool trait)
     description: String,
 }
@@ -278,6 +279,7 @@ impl WebFetchTool {
         let description = fetchkit_tool.description().to_string();
         Self {
             fetchkit_tool,
+            enable_save_to_file,
             description,
         }
     }
@@ -430,6 +432,12 @@ impl Tool for WebFetchTool {
             Err(e) => return e,
         };
 
+        if request.save_to_file.is_some() && !self.enable_save_to_file {
+            return ToolExecutionResult::tool_error(
+                "File download is disabled for this capability",
+            );
+        }
+
         // THREAT[TM-AGENT-018]: Enforce network access list
         if let Some(ref acl) = context.network_access
             && !acl.is_url_allowed(&request.url)
@@ -499,6 +507,7 @@ mod tests {
         let description = fetchkit_tool.description().to_string();
         WebFetchTool {
             fetchkit_tool,
+            enable_save_to_file: true,
             description,
         }
     }
@@ -545,6 +554,7 @@ mod tests {
         assert_eq!(cap.id(), "web_fetch");
         assert_eq!(cap.name(), "Web Fetch");
         assert_eq!(cap.status(), CapabilityStatus::Available);
+        assert_eq!(cap.risk_level(), RiskLevel::High);
         assert_eq!(cap.icon(), Some("globe"));
         assert_eq!(cap.category(), Some("Network"));
         // System prompt comes from fetchkit ToolBuilder via system_prompt_contribution_with_config
@@ -1821,6 +1831,50 @@ mod tests {
         } else {
             panic!("Expected tool error, got: {:?}", result);
         }
+    }
+
+    #[tokio::test]
+    async fn test_save_to_file_disabled_by_config_returns_error() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("GET"))
+            .and(path("/file.txt"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("content"))
+            .mount(&mock_server)
+            .await;
+
+        let tool = WebFetchTool::new(false, None);
+        let file_store = Arc::new(MockFileStore::new());
+        let session_id = SessionId::new();
+        let context = ToolContext::with_file_store(session_id, file_store.clone());
+
+        let result = tool
+            .execute_with_context(
+                serde_json::json!({
+                    "url": format!("{}/file.txt", mock_server.uri()),
+                    "save_to_file": "/downloads/file.txt"
+                }),
+                &context,
+            )
+            .await;
+
+        if let ToolExecutionResult::ToolError(msg) = result {
+            assert!(
+                msg.contains("disabled"),
+                "Expected file download disabled error, got: {}",
+                msg
+            );
+        } else {
+            panic!("Expected tool error, got: {:?}", result);
+        }
+
+        assert!(
+            file_store
+                .get_file(session_id, "/downloads/file.txt")
+                .await
+                .is_none(),
+            "File should not be written when save_to_file is disabled",
+        );
     }
 
     #[tokio::test]

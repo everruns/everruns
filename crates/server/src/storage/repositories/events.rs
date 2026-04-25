@@ -273,7 +273,7 @@ impl Database {
         session_id: SessionId,
         limit: Option<i32>,
     ) -> Result<Vec<EventRow>> {
-        let rows = if let Some(limit) = limit {
+        let rows = if let Some(limit) = limit.filter(|limit| *limit > 0) {
             // Subquery: get most recent N by sequence DESC, then re-order ASC
             sqlx::query_as::<_, EventRow>(
                 r#"
@@ -292,6 +292,8 @@ impl Database {
             .bind(limit as i64)
             .fetch_all(&self.pool)
             .await?
+        } else if limit.is_some() {
+            Vec::new()
         } else {
             // Safety cap when no explicit limit — prevents unbounded result sets.
             const MESSAGE_SAFETY_LIMIT: i64 = 5_000;

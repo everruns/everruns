@@ -331,6 +331,19 @@ impl Tool for SpawnSubagentTool {
             Ok(s) => s,
             Err(e) => return ToolExecutionResult::internal_error(e),
         };
+        let child_session = match store
+            .set_subagent_metadata(
+                child_session.id,
+                context.session_id,
+                &name,
+                &task,
+                crate::session::SubagentStatus::Running,
+            )
+            .await
+        {
+            Ok(s) => s,
+            Err(e) => return ToolExecutionResult::internal_error(e),
+        };
 
         // Register subagent in session resource registry.
         if let Some(ref registry) = context.session_resource_registry {

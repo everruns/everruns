@@ -8,3 +8,4 @@ Key rules:
 2. **After rebase:** check for duplicate numbers, renumber to next available
 3. **Release prep:** do not squash or rename existing migrations for a release; keep authored filenames and verify ordering
 4. **Ordering:** numbers must be strictly sequential (no gaps, no duplicates) — validated by `just pre-push` and `/ship`
+5. **Immutability:** once a migration SQL file is merged to `main`, never modify, delete, or rename it. Fixes must land as a new sequential migration. CI and `just pre-push` reject modified/deleted/renamed existing migration files.

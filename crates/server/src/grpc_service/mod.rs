@@ -21,6 +21,7 @@ use crate::storage::{EncryptionService, StorageBackend};
 use crate::task_notifications::TaskBroadcaster;
 use base64::Engine;
 use everruns_core::PlatformDefinition;
+use everruns_core::permissions::PermissionResolver;
 use everruns_durable::{
     ActivityOptions, CircuitBreakerConfig, CircuitState, DistributedCircuitBreaker,
     PostgresWorkflowEventStore, StoreError, TaskDefinition, TaskFailureOutcome, WorkerInfo,
@@ -356,9 +357,9 @@ impl tonic::service::Interceptor for GrpcAuthInterceptor {
 /// sessions, events, and other domains not yet migrated.
 pub struct WorkerServiceImpl {
     event_service: EventService,
-    session_service: SessionService,
+    session_service: Arc<SessionService>,
     session_file_service: SessionFileService,
-    llm_resolver_service: LlmResolverService,
+    llm_resolver_service: Arc<LlmResolverService>,
     mcp_server_service: McpServerService,
     capability_service: Arc<CapabilityService>,
     durable_store: Option<Arc<PostgresWorkflowEventStore>>,
@@ -383,6 +384,8 @@ pub struct WorkerServiceImpl {
     presign_secret: Option<String>,
     /// Budget service for check_budget tool
     budget_service: Arc<crate::domains::budgets::BudgetService>,
+    /// Active permission resolver for user-scoped command execution over gRPC.
+    permission_resolver: Arc<dyn PermissionResolver>,
 }
 
 impl WorkerServiceImpl {
@@ -400,6 +403,7 @@ impl WorkerServiceImpl {
             runner,
             platform_definition,
             None,
+            None,
         )
     }
 
@@ -412,6 +416,7 @@ impl WorkerServiceImpl {
         virtual_registry: Option<
             Arc<crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry>,
         >,
+        llm_resolver_service: Option<Arc<LlmResolverService>>,
     ) -> Self {
         let capability_registry = platform_definition.capability_registry().clone();
         let session_service = {
@@ -427,7 +432,8 @@ impl WorkerServiceImpl {
         } else {
             SessionFileService::new(db.clone())
         };
-        let llm_resolver_service = LlmResolverService::new(db.clone(), encryption.clone());
+        let llm_resolver_service = llm_resolver_service
+            .unwrap_or_else(|| Arc::new(LlmResolverService::new(db.clone(), encryption.clone())));
         let mcp_server_service = McpServerService::new(db.clone(), encryption.clone());
         let capability_service = Arc::new(CapabilityService::with_registry(
             db.clone(),
@@ -489,7 +495,7 @@ impl WorkerServiceImpl {
 
         Self {
             event_service,
-            session_service,
+            session_service: Arc::new(session_service),
             session_file_service,
             llm_resolver_service,
             mcp_server_service,
@@ -505,12 +511,17 @@ impl WorkerServiceImpl {
             api_base_url,
             presign_secret,
             budget_service,
+            permission_resolver: Arc::new(everruns_core::DefaultPermissionResolver),
         }
     }
 
     /// Set the task notification broadcaster (must be called after async initialization)
     pub fn set_task_broadcaster(&mut self, broadcaster: Arc<TaskBroadcaster>) {
         self.task_broadcaster = Some(broadcaster);
+    }
+
+    pub fn set_permission_resolver(&mut self, resolver: Arc<dyn PermissionResolver>) {
+        self.permission_resolver = resolver;
     }
 
     /// Generate a presigned URL for an image, or None if presigned URLs are not configured.
@@ -527,20 +538,43 @@ impl WorkerServiceImpl {
 
     /// Build a domain command context for the given org.
     fn domain_ctx(&self, org_id: i64) -> crate::domains::common::Ctx {
-        // Internal gRPC path — uses DefaultPermissionResolver so internal
-        // ops are not subject to SaaS custom restrictions.
-        crate::domains::common::Ctx::new(
-            everruns_core::Caller::internal(org_id),
+        self.domain_ctx_for_caller(everruns_core::Caller::internal(org_id))
+    }
+
+    fn domain_ctx_for_caller(&self, caller: everruns_core::Caller) -> crate::domains::common::Ctx {
+        let resolver: Arc<dyn PermissionResolver> = if caller.is_internal {
+            Arc::new(everruns_core::DefaultPermissionResolver)
+        } else {
+            self.permission_resolver.clone()
+        };
+
+        let mut ctx = crate::domains::common::Ctx::new(
+            caller,
             self.db.clone(),
             self.capability_service.clone(),
             self.encryption.clone(),
-            Arc::new(everruns_core::DefaultPermissionResolver),
+            resolver,
         )
         .with_workflow_store(
             self.durable_store
                 .clone()
                 .map(|store| store as Arc<dyn WorkflowEventStore + Send + Sync>),
         )
+        .with_session_service(self.session_service.clone());
+
+        if let Some(runner) = &self.runner {
+            let message_service = Arc::new(crate::domains::messages::MessageService::new(
+                self.db.clone(),
+                runner.clone(),
+                false,
+                self.event_service.event_delivery().clone(),
+            ));
+            ctx = ctx
+                .with_message_service(message_service)
+                .with_runner(runner.clone());
+        }
+
+        ctx
     }
 
     /// Get durable store or return unavailable error

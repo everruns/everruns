@@ -106,6 +106,8 @@ mod seed_ids {
     pub const GPT_5_4_PRO: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000220);
     pub const GPT_5_4_MINI: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000221);
     pub const GPT_5_4_NANO: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000222);
+    pub const GPT_5_5: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000223);
+    pub const GPT_5_5_PRO: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000224);
     pub const O1_PREVIEW: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000021e);
 
     // Anthropic Models (0x300-0x3FF)
@@ -257,6 +259,26 @@ async fn seed_admin_user(
     harness_definitions: &[everruns_core::BuiltInHarnessDefinition],
 ) -> anyhow::Result<SeedResult> {
     let mut result = SeedResult::default();
+
+    if let Some(existing_admin) = db.get_user_by_email(&admin_config.email).await? {
+        tracing::debug!(
+            user_id = %existing_admin.id,
+            "Admin user already exists by email"
+        );
+        result.unchanged += 1;
+
+        db.ensure_membership(existing_admin.id, DEFAULT_ORG_ID, "owner")
+            .await?;
+
+        org_init::initialize_org_harnesses_with_definitions(
+            db,
+            DEFAULT_ORG_ID,
+            harness_definitions,
+        )
+        .await?;
+
+        return Ok(result);
+    }
 
     let password_hash = hash_password(&admin_config.password)
         .map_err(|e| anyhow::anyhow!("Failed to hash admin password: {}", e))?;
@@ -1336,6 +1358,23 @@ struct SeedModel {
 
 /// Built-in seed models
 const SEED_MODELS: &[SeedModel] = &[
+    // OpenAI GPT-5.5 series
+    SeedModel {
+        id: seed_ids::GPT_5_5,
+        provider_id: seed_ids::OPENAI_PROVIDER,
+        model_id: "gpt-5.5",
+        display_name: "GPT-5.5",
+        enabled: true,     // Enabled by default
+        is_favorite: true, // Favorite model
+    },
+    SeedModel {
+        id: seed_ids::GPT_5_5_PRO,
+        provider_id: seed_ids::OPENAI_PROVIDER,
+        model_id: "gpt-5.5-pro",
+        display_name: "GPT-5.5 Pro",
+        enabled: false,
+        is_favorite: true, // Favorite model
+    },
     // OpenAI GPT-5.4 series
     SeedModel {
         id: seed_ids::GPT_5_4,
@@ -2581,6 +2620,63 @@ mod tests {
             .await
             .unwrap();
         assert!(!second.has_changes());
+    }
+
+    #[tokio::test]
+    async fn test_seed_all_admin_mode_existing_email_is_idempotent() {
+        let db = make_db();
+
+        let existing_admin = db
+            .create_user(CreateUserRow {
+                email: "admin@example.com".to_string(),
+                name: "Existing Admin".to_string(),
+                avatar_url: None,
+                roles: vec!["admin".to_string()],
+                password_hash: None,
+                email_verified: true,
+                auth_provider: Some("local".to_string()),
+                auth_provider_id: None,
+                external_id: None,
+            })
+            .await
+            .unwrap();
+
+        let result = seed_all(
+            &db,
+            DeploymentGrade::Dev,
+            &SeedAuthContext {
+                mode: AuthMode::Admin,
+                admin: Some(AdminConfig {
+                    email: "admin@example.com".to_string(),
+                    password: "password123".to_string(),
+                }),
+            },
+        )
+        .await
+        .unwrap();
+
+        // seed_all creates many other entities (harnesses, agents, providers) on
+        // first run, so we don't assert `result.created == 0` here — the test
+        // just guarantees the admin user isn't recreated and its identity is
+        // preserved.
+        let _ = result;
+
+        let admin_by_email = db
+            .get_user_by_email("admin@example.com")
+            .await
+            .unwrap()
+            .expect("admin user should exist");
+        assert_eq!(
+            admin_by_email.id, existing_admin.id,
+            "seeding should preserve existing admin identity"
+        );
+
+        let membership = db
+            .get_organization_member(DEFAULT_ORG_ID, existing_admin.id)
+            .await
+            .unwrap()
+            .expect("admin should be added to default org");
+        assert_eq!(membership.role, "owner");
     }
 
     // --- Agent seeding regression ---

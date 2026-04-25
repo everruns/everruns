@@ -220,8 +220,11 @@ impl EncryptionService {
             );
         }
 
-        // Try cache first: wrapped DEK string -> unwrapped DEK bytes
-        let dek_bytes = if let Some(cached) = self.dek_cache.get(&payload.dek_wrapped) {
+        // Cache key includes key_id to preserve key validation semantics on cache hits.
+        let dek_cache_key = format!("{}:{}", payload.key_id, payload.dek_wrapped);
+
+        // Try cache first: (key_id + wrapped DEK) -> unwrapped DEK bytes
+        let dek_bytes = if let Some(cached) = self.dek_cache.get(&dek_cache_key) {
             cached
         } else {
             // Cache miss: unwrap DEK using KEK
@@ -252,8 +255,7 @@ impl EncryptionService {
                 anyhow::bail!("Invalid DEK size after unwrap");
             }
 
-            self.dek_cache
-                .insert(payload.dek_wrapped.clone(), unwrapped.clone());
+            self.dek_cache.insert(dek_cache_key, unwrapped.clone());
             unwrapped
         };
 
@@ -989,6 +991,28 @@ mod tests {
         assert!(
             svc_v3.decrypt(&encrypted).is_err(),
             "unknown key_id must fail"
+        );
+    }
+
+    #[test]
+    fn test_cached_dek_still_rejects_unknown_key_id() {
+        let key = test_key("kek-v1");
+        let service = EncryptionService::new(&key, &[]).unwrap();
+        let encrypted = service.encrypt_string("secret").unwrap();
+
+        // Populate DEK cache with a valid payload.
+        assert_eq!(service.decrypt_to_string(&encrypted).unwrap(), "secret");
+        service.dek_cache.run_pending_tasks();
+        assert_eq!(service.dek_cache_entry_count(), 1);
+
+        // Tamper key_id; decrypt must still fail even if wrapped DEK was cached.
+        let mut payload: EncryptedPayload = serde_json::from_slice(&encrypted).unwrap();
+        payload.key_id = "kek-unknown".to_string();
+        let tampered = serde_json::to_vec(&payload).unwrap();
+
+        assert!(
+            service.decrypt(&tampered).is_err(),
+            "unknown key_id must fail even when DEK was cached"
         );
     }
 }

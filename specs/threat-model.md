@@ -337,6 +337,7 @@ Code references:
 | TM-FS-006 | File content unencrypted at rest | Low | Stored as BYTEA in PostgreSQL; relies on infrastructure-level encryption (disk, TDE) | **ACCEPTED** |
 | TM-FS-007 | No file access audit log | Low | File reads/writes not logged; privacy tradeoff | **ACCEPTED** |
 | TM-FS-008 | Large file storage abuse | Medium | No per-session storage quota enforced at application level | **OPEN** |
+| TM-FS-009 | CLI `initial_files` hidden-path exfiltration | High | Three-layer policy in `crates/cli/src/commands/agents.rs`: hard-deny floor (`DENIED_DOT_ENTRIES`) blocks `.env`, `.ssh`, `.aws`, `.gnupg`, `.git`, etc. unconditionally; built-in `ALLOWED_DOT_ENTRIES` permits common dev assets (`.github`, `.vscode`, `.claude`, `.mcp.json`, etc.); per-agent `initial_files_allow_hidden` manifest field extends the allowlist but cannot bypass the hard-deny floor. Skipped paths emit a stderr warning. See `specs/cli.md` (Initial Files Hidden Path Policy). | MITIGATED |
 
 ### Mitigation Details
 
@@ -420,6 +421,7 @@ fn authorizer(action: AuthAction) -> Authorization {
 | TM-TOOL-017 | Browserless API token in logs | Medium | CDP debug logging redacts token from WebSocket URLs before logging | MITIGATED |
 | TM-TOOL-018 | MCP server SSRF via configured server URL | High | MCP server URLs are validated on create/update and re-validated at execution time; private/internal hosts and metadata endpoints blocked | MITIGATED |
 | TM-TOOL-019 | MCP `query`/`execute` positional-arg rewrite injection | Low | Rewriter only inserts compile-time `--<flag>` tokens at statement-start boundaries, respects quotes/escapes/comments, and never modifies or reorders user bytes. Flag names come from the command registry, not user input. See EVE-323. | MITIGATED |
+| TM-TOOL-020 | Skill `` !`command` `` activation RCE on worker host | High | `ActivateSkillFromVfsTool::execute_with_context` never invokes `preprocess_command_injections` — the trust gate is forced off because no non-user-spoofable provenance signal exists on `SessionFile` today. Expansion is also capped at `MAX_COMMAND_PLACEHOLDERS_PER_SKILL` (32) with concurrency ≤ 4 in the expansion function itself. See EVE-388. | MITIGATED |
 
 ### Mitigation Details
 
@@ -437,6 +439,18 @@ Tool results occupy the `tool_result` message role in the conversation. They are
 
 **TM-TOOL-010 — Skill Instruction Injection Boundary:**
 When `activate_skill` is called, the full SKILL.md body is returned as a tool result wrapped in `<skill name="...">` XML tags. This maintains the tool_result role boundary. Only skill names and descriptions appear in the system prompt (via `<available_skills>` XML block), limiting the injection surface to metadata validated during upload.
+
+**TM-TOOL-020 — Skill Command Injection Trust Gate:**
+SKILL.md content may contain `` !`command` `` placeholders that, if expanded by `preprocess_command_injections`, spawn shell processes on the worker host. This is RCE against the worker if the SKILL.md body is attacker-controlled.
+
+1. The trust signal must be a non-user-controllable provenance indicator for the SKILL.md entry read from the session VFS — for example, an origin field populated only by the capability/registry mount layer. `SessionFile::is_readonly` is **not** such a signal: both the session-files HTTP API (create/update) and `InitialFile` configuration accept `is_readonly = true` from user input.
+2. Because no such provenance signal exists on `SessionFile` today, the enforcement point in `ActivateSkillFromVfsTool::execute_with_context` keeps `is_trusted_source = false` for every source. `preprocess_command_injections` is never reached at runtime.
+3. The function itself is preserved (full implementation, unit-test coverage) with bounded fan-out: at most `MAX_COMMAND_PLACEHOLDERS_PER_SKILL` (32) placeholders expanded per activation, at most 4 shells concurrently. These bounds protect a future re-enable from per-activation CPU / process exhaustion.
+4. SKILL.md content originating from user-facing session/file creation or update flows — including the session-files API, `initial_files`, and runtime `write_file` calls — stays untrusted regardless of metadata.
+5. The single enforcement point is `ActivateSkillFromVfsTool::execute_with_context` in `crates/core/src/capabilities/skills.rs`. `preprocess_command_injections` in `crates/core/src/skill.rs` assumes the caller has already performed the trust check.
+6. Command execution MUST target the session sandbox (virtual bash via `bashkit`) against the session virtual filesystem, not the worker host shell. The current `ProcessCommandExecutor` (which spawns host `bash -c`) is dormant scaffolding only; re-enabling command substitution without also routing it through the session sandbox would still be RCE against the worker host. Any re-enable PR must both (a) introduce the provenance signal in (1) AND (b) replace host-bash execution with a sandbox-backed executor before flipping the gate.
+
+Follow-up work (tracked on EVE-388): (a) add a platform-controlled provenance field — e.g. a `mount_capability_id` column on `session_files` populated only by mount application code and rejected on all user-facing API paths, AND (b) replace `ProcessCommandExecutor` with a session-sandbox-backed executor (`bashkit` / managed session sandbox) so execution is confined to the session VFS. Both must land before the gate is flipped. See `specs/skills-registry.md` "Activation Substitution Pipeline" for the source/outcome matrix.
 
 **TM-TOOL-011/012 — Skill Archive Validation:**
 ZIP archive extraction in `SkillService::create_from_archive()` enforces:
@@ -597,6 +611,7 @@ Full conversation data (user messages, LLM responses, tool results) is transmitt
 | TM-WEB-007 | CORS wildcard exposure | Medium | `CORS_ALLOWED_ORIGINS` not set by default; must be explicitly configured | MITIGATED |
 | TM-WEB-008 | Open redirect via login page `return_to` | Medium | `sanitizeReturnTo` (`apps/ui/src/lib/auth-redirect.ts`) restricts `return_to` to relative paths on the frontend origin: must start with `/`, never `//` (protocol-relative), never `/\` (browser-normalized), never an absolute URL. Applied in login page and main layout (sessionStorage consumer). CLI auth start emits only relative `return_to` paths. See `specs/authentication.md` "Login Page Contract". | MITIGATED |
 | TM-WEB-A2UI-01 | XSS via `javascript:`/`data:` URL in A2UI `open_url` action or `Image.src` | High | A2UI JSON is LLM-emitted. `isSafeUrl` in `apps/ui/src/components/chat/a2ui-renderer.tsx` restricts action URLs and image sources to `http:`/`https:`/`mailto:` schemes; `window.open` also uses `noopener,noreferrer`. React auto-escapes all text props. See `specs/a2ui.md`. | MITIGATED |
+| TM-WEB-009 | XSS via SVG file preview (`<script>`, `on*` handlers, `javascript:` URLs, `<foreignObject>` HTML) | High | `SVGPreview` (`apps/ui/src/components/files/file-previews.tsx`) renders SVG inside an `<iframe sandbox="" srcDoc=...>` carrying a strict CSP meta tag (`default-src 'none'; style-src 'unsafe-inline'; img-src data:`). Empty `sandbox` denies all flags (scripts, forms, popups, top-nav, same-origin); CSP is defense-in-depth. SVG bytes are NOT sanitized server-side — the gate is the iframe boundary. `getPreviewType` routes `.svg` to this path for both `text` and `base64` encodings; no `<img src=data:image/svg+xml>` path remains. Regression tests in `apps/ui/src/__tests__/file-previews.test.tsx` exercise script, on-handler, javascript-URL, and foreignObject payloads. See EVE-389. | MITIGATED |
 
 ### Mitigation Details
 
@@ -697,7 +712,7 @@ When an agent tool (e.g., Daytona) doesn't find an API key, it may instruct the 
 Agents with the `platform_management` capability can create, update, and delete harnesses, agents, and sessions within their organization. They can also send messages to any session and read responses.
 
 - **Impact:** An agent could escalate privileges by creating a new agent with dangerous capabilities, modify other agents' system prompts, or spawn session chains. No fine-grained RBAC exists within the org scope.
-- **Current mitigations:** (1) Capability must be explicitly assigned by an org member. (2) All operations are org-scoped — cross-org access blocked by tenant isolation (TM-TENANT-001). (3) `DirectPlatformStore` uses existing storage layer with org_id filtering. (4) `WorkerAdapters::platform_store(org_id)` receives the session's actual org_id from activity context, preventing cross-org access via hardcoded defaults.
+- **Current mitigations:** (1) Capability must be explicitly assigned by an org member. (2) All operations are org-scoped — cross-org access blocked by tenant isolation (TM-TENANT-001). (3) Platform tool execution resolves the owning session's user into a real `Caller` and evaluates command policy with the active `PermissionResolver`, so member-owned Platform Chat sessions do not inherit internal/owner bypass. (4) Both in-process (`DirectPlatformStore`) and gRPC (`ExecuteCommand`) platform paths route mutating operations through the normal command/policy boundary instead of raw storage writes. (5) `WorkerAdapters::platform_store(org_id, session_id)` receives the session's actual org_id and session_id from activity context, preventing cross-org access via hardcoded defaults and preserving session-owner authorization.
 - **Recommendation:** Add audit logging for all platform management tool calls. Consider RBAC (e.g., "can only manage own sessions") and approval workflows for dangerous operations (creating agents with `virtual_bash`). Add recursion depth limits for agent-spawned session chains.
 - **Code:** `// THREAT[TM-AGENT-017]` at `PlatformManagementCapability` registration and `DirectPlatformStore` implementation.
 - **Priority:** High
@@ -850,6 +865,7 @@ Daytona sandboxes are remote Linux environments managed via REST API. The agent 
 | TM-DAYTONA-005 | Cross-session sandbox access | Critical | Daytona tools require session-owned sandbox IDs via leased-resource/session-resource ownership checks; persisted sandbox state stays session-scoped in `daytona_sandbox:{id}` | MITIGATED |
 | TM-DAYTONA-006 | Sandbox not deleted — resource leak | Low | Auto-stop 5 min, auto-archive 30 min, auto-delete 60 min (Daytona-native); leased-resource cleanup 20 min (control plane); system prompt instructs agent to delete when done | MITIGATED |
 | TM-DAYTONA-007 | Git credential helper persists after sandbox reuse | Low | Credential file in `/tmp` cleared on stop; sandbox stop resets environment | MITIGATED |
+| TM-DAYTONA-008 | GitHub token leaked to lookalike clone host | High | `daytona_git_clone` and `daytona_git_credentials` only embed the GitHub token in HTTPS URLs whose host matches an operator-configured trusted-host allowlist (`trusted_github_hosts` / `is_trusted_github_https_host` in `integrations/daytona/src/tools.rs`). Default `["github.com"]`; operators extend via `EVERRUNS_DAYTONA_GITHUB_TRUSTED_HOSTS` (comma-separated, exact case-insensitive match, no wildcards). Malformed env entries (`/`, `@`, whitespace, `..`) are rejected with a warning; the default is always preserved so misconfig cannot silently disable public-GitHub auth. Unit tests cover lookalike rejection (`evil-github.acme.com`, `github.acme.com.evil.example`). | MITIGATED |
 
 ### Mitigation Details
 

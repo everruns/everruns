@@ -22,6 +22,7 @@ use crate::auth::AuthMethod;
 use crate::auth::middleware::AuthUser;
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::budgets::BudgetService;
+use crate::domains::common::{Command, CommandError, Ctx};
 use crate::domains::messages::MessageService;
 use crate::domains::session_files::SessionFileService;
 use crate::domains::session_sandbox::SessionSandboxService;
@@ -508,14 +509,40 @@ async fn handle_resources_read(
     }
 }
 
+fn mcp_ctx(org: &ResolvedOrg, state: &AppState) -> Ctx {
+    Ctx::new(
+        Caller::from(org),
+        state.db.clone(),
+        state.capability_service.clone(),
+        state.encryption.clone(),
+        state.auth.permission_resolver.clone(),
+    )
+}
+
+fn resource_error(resource: &str, e: CommandError) -> String {
+    match e {
+        CommandError::Forbidden(msg) => msg,
+        CommandError::BadRequest(msg)
+        | CommandError::NotFound(msg)
+        | CommandError::Conflict(msg) => msg,
+        CommandError::Unprocessable(msg) => msg,
+        CommandError::Internal(err) => format!("Failed to list {resource}: {err}"),
+    }
+}
+
 async fn read_capabilities(org: &ResolvedOrg, state: &AppState) -> Result<String, String> {
-    let capabilities = state
-        .capability_service
-        .list_all(org.org_id)
-        .await
-        .map_err(|e| format!("Failed to list capabilities: {e}"))?;
+    let ctx = mcp_ctx(org, state);
+    let capabilities = crate::domains::capabilities::ListCapabilities {
+        search: None,
+        offset: Some(0),
+        limit: Some(200),
+    }
+    .run(&ctx)
+    .await
+    .map_err(|e| resource_error("capabilities", e))?;
 
     let summary: Vec<Value> = capabilities
+        .data
         .into_iter()
         .map(|c| {
             json!({
@@ -531,11 +558,14 @@ async fn read_capabilities(org: &ResolvedOrg, state: &AppState) -> Result<String
 }
 
 async fn read_harnesses(org: &ResolvedOrg, state: &AppState) -> Result<String, String> {
-    let harnesses = state
-        .db
-        .list_harnesses(org.org_id, None, false)
-        .await
-        .map_err(|e| format!("Failed to list harnesses: {e}"))?;
+    let ctx = mcp_ctx(org, state);
+    let harnesses = crate::domains::harnesses::ListHarnesses {
+        search: None,
+        include_archived: false,
+    }
+    .run(&ctx)
+    .await
+    .map_err(|e| resource_error("harnesses", e))?;
 
     let summary: Vec<Value> = harnesses
         .into_iter()
@@ -553,11 +583,11 @@ async fn read_harnesses(org: &ResolvedOrg, state: &AppState) -> Result<String, S
 }
 
 async fn read_models(org: &ResolvedOrg, state: &AppState) -> Result<String, String> {
-    let providers = state
-        .db
-        .list_llm_providers(org.org_id)
+    let ctx = mcp_ctx(org, state);
+    let providers = crate::domains::llm_providers::ListProviders
+        .run(&ctx)
         .await
-        .map_err(|e| format!("Failed to list providers: {e}"))?;
+        .map_err(|e| resource_error("providers", e))?;
 
     let summary: Vec<Value> = providers
         .into_iter()
@@ -574,18 +604,19 @@ async fn read_models(org: &ResolvedOrg, state: &AppState) -> Result<String, Stri
 }
 
 async fn read_agents(org: &ResolvedOrg, state: &AppState) -> Result<String, String> {
-    let (agents, _total) = state
-        .db
-        .list_agents(
-            org.org_id,
-            None,
-            false,
-            crate::api::common::Pagination::new(0, 100),
-        )
-        .await
-        .map_err(|e| format!("Failed to list agents: {e}"))?;
+    let ctx = mcp_ctx(org, state);
+    let agents = crate::domains::agents::ListAgents {
+        search: None,
+        include_archived: false,
+        offset: Some(0),
+        limit: Some(100),
+    }
+    .run(&ctx)
+    .await
+    .map_err(|e| resource_error("agents", e))?;
 
     let summary: Vec<Value> = agents
+        .data
         .into_iter()
         .map(|a| {
             json!({
@@ -1409,6 +1440,161 @@ mod www_authenticate_tests {
                 .to_str()
                 .unwrap(),
             "Basic realm=\"x\""
+        );
+    }
+}
+
+// Regression tests for fix(mcp): enforce policies for resources/read metadata (#1516).
+//
+// Prior to the fix, `resources/read` enumerated harnesses/agents/providers via
+// direct storage calls that bypassed policy checks. The fix routes each read
+// through a domain `List*` command via `Command::run`, which evaluates the
+// command's policy against `Ctx.permission_resolver`. These tests lock in:
+//   1. `resource_error` maps every `CommandError` variant to the expected
+//      user-facing text without leaking internal shapes.
+//   2. The policy-gated list commands the mcp endpoint now dispatches to
+//      reject a caller whose resolver denies the required view permission,
+//      proving the policy gate is consulted and the bypass is closed.
+#[cfg(test)]
+mod resources_read_policy_tests {
+    use super::*;
+    use crate::domains::common::{Command, CommandError};
+    use crate::services::CapabilityService;
+    use crate::storage::StorageBackend;
+    use everruns_core::{Caller, OrgRole, Permission, PermissionResolver};
+    use std::sync::Arc;
+
+    /// Resolver that refuses every permission.
+    struct DenyAllResolver;
+
+    impl PermissionResolver for DenyAllResolver {
+        fn has_permission(&self, _caller: &Caller, _permission: &Permission) -> bool {
+            false
+        }
+
+        fn caller_permissions(&self, _caller: &Caller) -> Vec<Permission> {
+            Vec::new()
+        }
+    }
+
+    fn test_caller() -> Caller {
+        Caller {
+            org_id: 1,
+            org_public_id: "org_test".to_string(),
+            user_id: None,
+            // Member-level, so role rules don't accidentally pass in isolation.
+            role: OrgRole::Member,
+            is_platform_user: false,
+            is_internal: false,
+        }
+    }
+
+    fn deny_all_ctx() -> crate::domains::common::Ctx {
+        let db = Arc::new(StorageBackend::in_memory());
+        let capabilities = Arc::new(CapabilityService::new(db.clone(), None));
+        crate::domains::common::Ctx::new(
+            test_caller(),
+            db,
+            capabilities,
+            None,
+            Arc::new(DenyAllResolver),
+        )
+    }
+
+    // ----- `resource_error` mapping -----
+
+    #[test]
+    fn resource_error_forbidden_returns_policy_message() {
+        let msg = resource_error(
+            "harnesses",
+            CommandError::Forbidden("access denied: harness.view".into()),
+        );
+        assert_eq!(msg, "access denied: harness.view");
+    }
+
+    #[test]
+    fn resource_error_not_found_returns_message() {
+        let msg = resource_error("agents", CommandError::NotFound("agent missing".into()));
+        assert_eq!(msg, "agent missing");
+    }
+
+    #[test]
+    fn resource_error_bad_request_returns_message() {
+        let msg = resource_error("harnesses", CommandError::BadRequest("bad param".into()));
+        assert_eq!(msg, "bad param");
+    }
+
+    #[test]
+    fn resource_error_conflict_returns_message() {
+        let msg = resource_error("providers", CommandError::Conflict("dup".into()));
+        assert_eq!(msg, "dup");
+    }
+
+    #[test]
+    fn resource_error_unprocessable_returns_message() {
+        let msg = resource_error(
+            "capabilities",
+            CommandError::Unprocessable("unprocessable".into()),
+        );
+        assert_eq!(msg, "unprocessable");
+    }
+
+    #[test]
+    fn resource_error_internal_prefixes_resource_name() {
+        let msg = resource_error(
+            "providers",
+            CommandError::Internal(anyhow::anyhow!("connection refused")),
+        );
+        assert_eq!(msg, "Failed to list providers: connection refused");
+    }
+
+    // ----- Policy enforcement on list commands -----
+
+    #[tokio::test]
+    async fn list_harnesses_blocked_when_resolver_denies() {
+        let ctx = deny_all_ctx();
+        let result = crate::domains::harnesses::ListHarnesses {
+            search: None,
+            include_archived: false,
+        }
+        .run(&ctx)
+        .await;
+
+        let err = result.expect_err("denying resolver must block list_harnesses");
+        assert!(
+            matches!(err, CommandError::Forbidden(ref msg) if msg.contains("harness.view")),
+            "expected Forbidden(harness.view), got {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn list_providers_blocked_when_resolver_denies() {
+        let ctx = deny_all_ctx();
+        let result = crate::domains::llm_providers::ListProviders.run(&ctx).await;
+
+        let err = result.expect_err("denying resolver must block list_providers");
+        assert!(
+            matches!(err, CommandError::Forbidden(ref msg) if msg.contains("llm_provider.view")),
+            "expected Forbidden(llm_provider.view), got {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn list_agents_blocked_when_resolver_denies() {
+        let ctx = deny_all_ctx();
+        let result = crate::domains::agents::ListAgents {
+            search: None,
+            include_archived: false,
+            offset: Some(0),
+            limit: Some(100),
+        }
+        .run(&ctx)
+        .await;
+
+        let err = result.expect_err("denying resolver must block list_agents");
+        assert!(
+            matches!(err, CommandError::Forbidden(ref msg) if msg.contains("agent.view")),
+            "expected Forbidden(agent.view), got {err:?}"
         );
     }
 }

@@ -1,7 +1,7 @@
 # Local development reverse proxy
 # Unifies API and UI behind a single port.
 {
-	admin :{$CADDY_ADMIN_PORT:2019}
+	admin localhost:{$CADDY_ADMIN_PORT:2019}
 }
 
 # Recommended:

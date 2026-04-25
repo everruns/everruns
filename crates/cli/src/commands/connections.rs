@@ -11,8 +11,10 @@
 use crate::output::{OutputFormat, print_field, print_table_header, print_table_row};
 use anyhow::{Context, Result};
 use clap::Subcommand;
+use dialoguer::Password;
 use everruns_sdk::Everruns;
 use serde::{Deserialize, Serialize};
+use std::io::Read;
 
 #[derive(Subcommand)]
 pub enum ConnectionsCommand {
@@ -21,9 +23,9 @@ pub enum ConnectionsCommand {
         /// Provider name (e.g. daytona, brave_search, browserless, deno, sprites)
         provider: String,
 
-        /// API key for the provider
+        /// Read provider API key from stdin
         #[arg(long)]
-        api_key: String,
+        api_key_stdin: bool,
     },
 
     /// List connected providers
@@ -60,8 +62,9 @@ pub async fn run(
     match command {
         ConnectionsCommand::Set {
             provider,
-            api_key: provider_api_key,
+            api_key_stdin,
         } => {
+            let provider_api_key = read_provider_api_key(api_key_stdin)?;
             set(
                 api_url,
                 api_key,
@@ -84,6 +87,26 @@ fn http_client() -> reqwest::Client {
 /// Build a connection API URL, normalizing trailing slashes.
 fn connection_url(api_url: &str, path: &str) -> String {
     format!("{}{}", api_url.trim_end_matches('/'), path)
+}
+
+fn read_provider_api_key(api_key_stdin: bool) -> Result<String> {
+    if api_key_stdin {
+        let mut input = String::new();
+        std::io::stdin()
+            .read_to_string(&mut input)
+            .context("Failed to read provider API key from stdin")?;
+        let api_key = input.trim().to_string();
+        if api_key.is_empty() {
+            anyhow::bail!("Provider API key from stdin cannot be empty");
+        }
+        return Ok(api_key);
+    }
+
+    Password::new()
+        .with_prompt("Provider API key")
+        .allow_empty_password(false)
+        .interact()
+        .context("Failed to read provider API key. Use --api-key-stdin for non-interactive usage")
 }
 
 async fn set(

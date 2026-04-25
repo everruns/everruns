@@ -15,6 +15,9 @@ use tracing::warn;
 static INDEXED_ARGS_RE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\$ARGUMENTS\[([0-9]+)\]").unwrap());
 
+/// Cached regex for ``!`command` `` dynamic command injection syntax.
+static COMMAND_INJECTION_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"!`([^`]+)`").unwrap());
+
 use crate::typed_id::SkillId;
 
 #[cfg(feature = "openapi")]
@@ -659,8 +662,32 @@ pub fn substitute_activation_vars(content: &str, session_id: &str, skill_dir: &s
 }
 
 // ============================================================================
-// Dynamic Context Injection: !`command` preprocessing (disabled for safety)
+// Dynamic Context Injection: !`command` preprocessing
 // ============================================================================
+//
+// TRUSTED-SOURCE GATE: `preprocess_command_injections` executes shell commands
+// embedded in SKILL.md, which is RCE if the SKILL.md came from an attacker.
+// Callers MUST only invoke this function when the SKILL.md originates from a
+// non-user-spoofable source (e.g. a capability/registry-owned virtual mount).
+//
+// `SessionFile::is_readonly` is NOT a valid trust signal: it is user-settable
+// via the session-files HTTP API and via `InitialFile` configuration. A
+// future platform-controlled provenance field (for example, a
+// `mount_capability_id` populated only by mount application code) is needed
+// before this function can be re-enabled for any source. Until then, the
+// single caller (`ActivateSkillFromVfsTool::execute_with_context`) keeps the
+// gate forced off; the function itself is preserved for its unit tests and
+// to simplify a future re-enable PR.
+//
+// The default `ProcessCommandExecutor` spawns `bash -c` on the worker host.
+// That is deliberately dormant: when command substitution is re-enabled, the
+// executor MUST be replaced with a session-sandbox-backed implementation so
+// commands run against virtual bash (bashkit / managed session sandbox) and
+// the session virtual filesystem rather than the worker. Flipping the trust
+// gate without that replacement would still be RCE against the worker host.
+//
+// See `specs/skills-registry.md` ("Activation Substitution Pipeline") and
+// `specs/threat-model.md` entry TM-TOOL-020 for the rationale.
 
 /// Result of executing a shell command during skill preprocessing.
 pub struct CommandResult {
@@ -670,8 +697,11 @@ pub struct CommandResult {
 
 /// Trait for executing shell commands during skill preprocessing.
 ///
-/// Command execution from skill content is disabled for untrusted, user-uploaded
-/// skills. This trait remains for API compatibility and future trusted-only use.
+/// Commands in `!`...`` syntax would be executed before the skill content
+/// is sent to the model, replacing each placeholder with command output.
+///
+/// This path is intentionally not reached at runtime today; see the
+/// trust-gate note at the top of this module.
 #[async_trait::async_trait]
 pub trait CommandExecutor: Send + Sync {
     async fn execute_command(&self, command: &str) -> CommandResult;
@@ -730,15 +760,101 @@ impl CommandExecutor for ProcessCommandExecutor {
     }
 }
 
+/// Maximum number of `!`command`` placeholders expanded per activation.
+///
+/// Excess placeholders are replaced with a sentinel error; they are not
+/// executed. Bounds the shell-process fan-out even for a trusted SKILL.md.
+pub const MAX_COMMAND_PLACEHOLDERS_PER_SKILL: usize = 32;
+
+/// Maximum number of `!`command`` placeholders executed concurrently within
+/// a single activation. Keeps worker process pressure bounded under load.
+const COMMAND_EXECUTION_CONCURRENCY: usize = 4;
+
 /// Preprocess `!`command`` placeholders in skill content.
 ///
-/// Security note: command execution from skill content is intentionally disabled.
-/// The function now returns the original content unchanged.
+/// Each `!`command`` is executed via the provided executor and replaced with
+/// its stdout. Execution is bounded: at most
+/// [`MAX_COMMAND_PLACEHOLDERS_PER_SKILL`] placeholders are expanded per call
+/// (extras are replaced with `[Too many command placeholders: limit is N]`
+/// sentinels), and at most [`COMMAND_EXECUTION_CONCURRENCY`] commands run
+/// concurrently.
+///
+/// Substitution pipeline order (caller is responsible for prior steps):
+/// 1. `$ARGUMENTS` / `$N` substitution (sync)
+/// 2. `${SESSION_ID}` / `${SKILL_DIR}` env substitution (sync)
+/// 3. `!`command`` preprocessing (async) — this function
+///
+/// SECURITY: This function spawns shell processes on the worker host. It MUST
+/// only be called for skill content that came from a trusted source (see the
+/// trust-gate note at the top of this module). Untrusted content must bypass
+/// this step and be used verbatim.
 pub async fn preprocess_command_injections(
     content: &str,
-    _executor: &dyn CommandExecutor,
+    executor: &dyn CommandExecutor,
 ) -> String {
-    content.to_string()
+    use futures::stream::StreamExt;
+
+    let all_matches: Vec<(String, std::ops::Range<usize>)> = COMMAND_INJECTION_RE
+        .captures_iter(content)
+        .map(|cap| {
+            let full = cap.get(0).unwrap();
+            let cmd = cap[1].to_string();
+            (cmd, full.start()..full.end())
+        })
+        .collect();
+
+    if all_matches.is_empty() {
+        return content.to_string();
+    }
+
+    // Partition at the cap: the first N are executed, the rest get a sentinel
+    // replacement so the content still carries a visible marker but no extra
+    // shell processes are spawned.
+    let exec_count = all_matches.len().min(MAX_COMMAND_PLACEHOLDERS_PER_SKILL);
+
+    // `buffered` preserves input order, so results line up with
+    // `all_matches[..exec_count]` positionally. We collect owned command
+    // strings so the stream items are `'static`, side-stepping a borrow-
+    // across-await lifetime that the compiler otherwise rejects.
+    let cmds_to_run: Vec<String> = all_matches[..exec_count]
+        .iter()
+        .map(|(cmd, _)| cmd.clone())
+        .collect();
+    let results: Vec<CommandResult> = futures::stream::iter(cmds_to_run)
+        .map(|cmd| async move { executor.execute_command(&cmd).await })
+        .buffered(COMMAND_EXECUTION_CONCURRENCY)
+        .collect()
+        .await;
+
+    let mut result = content.to_string();
+    // Walk all matches in reverse so byte ranges remain valid as we splice.
+    // For positions below exec_count, use the command result; for positions
+    // above (only possible when exceeded_cap), substitute the cap sentinel.
+    for (idx, (cmd, range)) in all_matches.iter().enumerate().rev() {
+        let replacement = if idx < exec_count {
+            let cmd_result = &results[idx];
+            if cmd_result.exit_code != 0 && cmd_result.stdout.starts_with('[') {
+                cmd_result.stdout.clone()
+            } else if cmd_result.exit_code != 0 {
+                format!(
+                    "[Command failed: {} (exit code {})]",
+                    cmd, cmd_result.exit_code
+                )
+            } else if cmd_result.stdout.is_empty() {
+                "[No output]".to_string()
+            } else {
+                cmd_result.stdout.trim_end().to_string()
+            }
+        } else {
+            format!(
+                "[Too many command placeholders: limit is {}]",
+                MAX_COMMAND_PLACEHOLDERS_PER_SKILL
+            )
+        };
+        result.replace_range(range.clone(), &replacement);
+    }
+
+    result
 }
 
 #[cfg(test)]
@@ -1410,7 +1526,7 @@ Body.
 
         let content = "Output: !`echo hello`";
         let result = preprocess_command_injections(content, &exec).await;
-        assert_eq!(result, content);
+        assert_eq!(result, "Output: hello");
     }
 
     #[tokio::test]
@@ -1421,7 +1537,7 @@ Body.
 
         let content = "Status: !`git status`\nDate: !`date`";
         let result = preprocess_command_injections(content, &exec).await;
-        assert_eq!(result, content);
+        assert_eq!(result, "Status: clean\nDate: 2026-03-19");
     }
 
     #[tokio::test]
@@ -1431,7 +1547,7 @@ Body.
 
         let content = "Result: !`bad-cmd`";
         let result = preprocess_command_injections(content, &exec).await;
-        assert_eq!(result, content);
+        assert_eq!(result, "Result: [Command failed: bad-cmd (exit code 1)]");
     }
 
     #[tokio::test]
@@ -1441,7 +1557,7 @@ Body.
 
         let content = "Result: !`true`";
         let result = preprocess_command_injections(content, &exec).await;
-        assert_eq!(result, content);
+        assert_eq!(result, "Result: [No output]");
     }
 
     #[tokio::test]
@@ -1460,7 +1576,7 @@ Body.
 
         let content = "Use `code` and !`echo hi` here.";
         let result = preprocess_command_injections(content, &exec).await;
-        assert_eq!(result, content);
+        assert_eq!(result, "Use `code` and hi here.");
     }
 
     #[tokio::test]
@@ -1469,7 +1585,7 @@ Body.
 
         let content = "Result: !`echo hello world`";
         let result = preprocess_command_injections(content, &exec).await;
-        assert_eq!(result, content);
+        assert_eq!(result, "Result: hello world");
     }
 
     #[tokio::test]
@@ -1478,7 +1594,7 @@ Body.
 
         let content = "Result: !`unknown-cmd`";
         let result = preprocess_command_injections(content, &exec).await;
-        assert_eq!(result, content);
+        assert!(result.contains("[Command failed: unknown-cmd"));
     }
 
     // -- lenient YAML fallback tests --

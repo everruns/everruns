@@ -216,7 +216,29 @@ impl SessionFileStore for DbSessionFileStore {
                         || msg.contains("unique constraint")
                         || msg.contains("UNIQUE constraint")
                     {
-                        // Race: file was created concurrently; fall back to update
+                        // Race: file was created concurrently; re-check file type/readonly, then update.
+                        let existing = self
+                            .db
+                            .get_session_file(session_id.uuid(), &path)
+                            .await
+                            .store_err()?
+                            .ok_or_else(|| {
+                                AgentLoopError::store("File not found after race recovery")
+                            })?;
+
+                        if existing.is_directory {
+                            return Err(AgentLoopError::store(format!(
+                                "Cannot write to directory: {}",
+                                path
+                            )));
+                        }
+                        if existing.is_readonly {
+                            return Err(AgentLoopError::store(format!(
+                                "Cannot modify readonly file: {}",
+                                path
+                            )));
+                        }
+
                         self.db
                             .update_session_file(
                                 session_id.uuid(),
@@ -228,9 +250,7 @@ impl SessionFileStore for DbSessionFileStore {
                             )
                             .await
                             .store_err()?
-                            .ok_or_else(|| {
-                                AgentLoopError::store("File not found after race recovery")
-                            })?
+                            .ok_or_else(|| AgentLoopError::store("File not found after update"))?
                     } else {
                         return Err(AgentLoopError::store(e.to_string()));
                     }

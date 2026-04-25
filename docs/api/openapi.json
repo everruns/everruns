@@ -5824,6 +5824,14 @@
             ],
             "description": "Category for grouping in UI"
           },
+          "config_schema": {
+            "type": "object",
+            "description": "JSON Schema for capability-specific per-agent config."
+          },
+          "config_ui_schema": {
+            "type": "object",
+            "description": "react-jsonschema-form uiSchema hints for rendering config_schema."
+          },
           "dependencies": {
             "type": "array",
             "items": {
@@ -8567,6 +8575,14 @@
                     "null"
                   ],
                   "description": "Category for grouping in UI"
+                },
+                "config_schema": {
+                  "type": "object",
+                  "description": "JSON Schema for capability-specific per-agent config."
+                },
+                "config_ui_schema": {
+                  "type": "object",
+                  "description": "react-jsonschema-form uiSchema hints for rendering config_schema."
                 },
                 "dependencies": {
                   "type": "array",
@@ -12145,6 +12161,14 @@
                         "null"
                       ],
                       "description": "Category for grouping in UI"
+                    },
+                    "config_schema": {
+                      "type": "object",
+                      "description": "JSON Schema for capability-specific per-agent config."
+                    },
+                    "config_ui_schema": {
+                      "type": "object",
+                      "description": "react-jsonschema-form uiSchema hints for rendering config_schema."
                     },
                     "dependencies": {
                       "type": "array",
@@ -15730,6 +15754,14 @@
                   "null"
                 ],
                 "description": "Category for grouping in UI"
+              },
+              "config_schema": {
+                "type": "object",
+                "description": "JSON Schema for capability-specific per-agent config."
+              },
+              "config_ui_schema": {
+                "type": "object",
+                "description": "react-jsonschema-form uiSchema hints for rendering config_schema."
               },
               "dependencies": {
                 "type": "array",

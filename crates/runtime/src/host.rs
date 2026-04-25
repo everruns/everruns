@@ -242,7 +242,11 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
         None
     }
 
-    fn platform_store(&self, _org_id: i64) -> Option<Arc<dyn PlatformStore>> {
+    fn platform_store(
+        &self,
+        _org_id: i64,
+        _session_id: SessionId,
+    ) -> Option<Arc<dyn PlatformStore>> {
         None
     }
 
@@ -769,7 +773,7 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
     if let Some(schedule_store) = adapter.schedule_store(org_id) {
         atom = atom.with_schedule_store(schedule_store);
     }
-    if let Some(platform_store) = adapter.platform_store(org_id) {
+    if let Some(platform_store) = adapter.platform_store(org_id, input.context.session_id) {
         atom = atom.with_platform_store(platform_store);
     }
     if let Some(budget_checker) = adapter.budget_checker(org_id, input.agent_id) {

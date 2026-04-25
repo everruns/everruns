@@ -68,6 +68,29 @@ impl InMemoryDatabase {
         Ok(None)
     }
 
+    pub async fn set_subagent_metadata(
+        &self,
+        org_id: i64,
+        id: SessionId,
+        parent_session_id: SessionId,
+        subagent_name: &str,
+        subagent_task: &str,
+        subagent_status: &str,
+    ) -> Result<Option<SessionRow>> {
+        let mut sessions = self.sessions.write();
+        let Some(session) = sessions.get_mut(&id) else {
+            return Ok(None);
+        };
+        if session.org_id != org_id {
+            return Ok(None);
+        }
+        session.parent_session_id = Some(parent_session_id);
+        session.subagent_name = Some(subagent_name.to_string());
+        session.subagent_task = Some(subagent_task.to_string());
+        session.subagent_status = Some(subagent_status.to_string());
+        Ok(Some(session.clone()))
+    }
+
     /// Get session without org scoping. For internal system use only (e.g. usage tracking).
     pub async fn get_session_unscoped(&self, id: SessionId) -> Result<Option<SessionRow>> {
         let sessions = self.sessions.read();
@@ -318,9 +341,21 @@ impl InMemoryDatabase {
         Ok(())
     }
 
-    pub async fn unpin_session(&self, user_id: Uuid, session_id: SessionId) -> Result<bool> {
+    pub async fn unpin_session(
+        &self,
+        user_id: Uuid,
+        session_id: SessionId,
+        org_id: i64,
+    ) -> Result<bool> {
         let mut pins = self.pinned_sessions.write();
-        Ok(pins.remove(&(user_id, session_id)).is_some())
+        let key = (user_id, session_id);
+        let Some((pinned_org_id, _)) = pins.get(&key) else {
+            return Ok(false);
+        };
+        if *pinned_org_id != org_id {
+            return Ok(false);
+        }
+        Ok(pins.remove(&key).is_some())
     }
 
     pub async fn list_pinned_session_ids(

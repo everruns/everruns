@@ -95,11 +95,22 @@ impl InMemoryDatabase {
 
         result.sort_by_key(|e| e.sequence);
 
-        // Apply limit: take last N events (backward pagination).
-        // Safety cap of 10 000 when no explicit limit to prevent unbounded results.
-        let effective_limit = limit.map(|l| l as usize).unwrap_or(10_000);
-        if result.len() > effective_limit {
-            result = result.split_off(result.len() - effective_limit);
+        // Apply limit.
+        // - Explicit limit keeps backward pagination behavior (most recent N).
+        // - Implicit safety cap (no explicit limit) keeps forward catch-up semantics:
+        //   return the earliest rows first so callers can advance cursors safely.
+        const FORWARD_SAFETY_LIMIT: usize = 10_000;
+        if let Some(limit) = limit {
+            let limit = limit as usize;
+            if result.len() > limit {
+                result = result.split_off(result.len() - limit);
+            }
+        } else if result.len() > FORWARD_SAFETY_LIMIT {
+            if since_id.is_some() || since_sequence.is_some() {
+                result.truncate(FORWARD_SAFETY_LIMIT);
+            } else {
+                result = result.split_off(result.len() - FORWARD_SAFETY_LIMIT);
+            }
         }
 
         Ok(result)
@@ -184,12 +195,14 @@ impl InMemoryDatabase {
             .cloned()
             .collect();
         result.sort_by_key(|e| e.sequence);
-        if let Some(limit) = limit {
+        if let Some(limit) = limit.filter(|limit| *limit > 0) {
             let len = result.len();
             let limit = limit as usize;
             if len > limit {
                 result = result.split_off(len - limit);
             }
+        } else if limit.is_some() {
+            result.clear();
         }
         Ok(result)
     }
@@ -286,10 +299,21 @@ impl InMemoryDatabase {
                             }
                         }
                         MessageFilter::Search(search_query) => {
-                            // Match PostgreSQL tsvector behavior: search data->>'content'
-                            let content =
-                                e.data.get("content").and_then(|v| v.as_str()).unwrap_or("");
-                            if !content
+                            // Match PostgreSQL tsvector behavior: search canonical event text
+                            // fields (message.content/result/content/delta/accumulated).
+                            let searchable = e
+                                .data
+                                .pointer("/message/content")
+                                .or_else(|| e.data.pointer("/result"))
+                                .or_else(|| e.data.get("content"))
+                                .or_else(|| e.data.get("delta"))
+                                .or_else(|| e.data.get("accumulated"))
+                                .map(|v| match v {
+                                    serde_json::Value::String(s) => s.to_string(),
+                                    _ => v.to_string(),
+                                })
+                                .unwrap_or_default();
+                            if !searchable
                                 .to_lowercase()
                                 .contains(&search_query.to_lowercase())
                             {

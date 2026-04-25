@@ -152,7 +152,7 @@ impl Database {
     ) -> Result<Vec<HarnessRow>> {
         let (search_sql, patterns) = build_search_sql(
             search,
-            "LOWER(display_name || ' ' || name || ' ' || COALESCE(description, ''))",
+            "LOWER(COALESCE(display_name, name) || ' ' || name || ' ' || COALESCE(description, ''))",
             2,
         );
         let status_sql = if include_archived {

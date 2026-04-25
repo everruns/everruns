@@ -125,6 +125,74 @@ async fn test_update_skill() {
 }
 
 #[tokio::test]
+async fn test_update_skill_preserves_user_invocable_false() {
+    let server = TestServer::new().await;
+
+    let initial_md = "---\nname: hidden-skill\ndescription: Hidden command.\nuser-invocable: false\n---\n\n# Hidden\n";
+    let create_resp = server
+        .post("/v1/skills", json!({ "skill_md": initial_md }))
+        .await
+        .assert_status(StatusCode::CREATED);
+    let skill_id = create_resp.json_value()["id"].as_str().unwrap().to_string();
+
+    let updated_md = "---\nname: hidden-skill\ndescription: Updated hidden command.\nuser-invocable: false\n---\n\n# Hidden Updated\n";
+    let update_resp = server
+        .patch(
+            &format!("/v1/skills/{skill_id}"),
+            json!({ "skill_md": updated_md }),
+        )
+        .await
+        .assert_success();
+
+    let body = update_resp.json_value();
+    assert_eq!(body["description"], "Updated hidden command.");
+    assert_eq!(body["user_invocable"], false);
+}
+
+#[tokio::test]
+async fn test_update_skill_preserves_disable_model_invocation_flag() {
+    let server = TestServer::new().await;
+
+    let skill_md = "---
+name: model-invocation-flag-test
+description: Test disable-model-invocation persistence.
+disable-model-invocation: true
+---
+
+# Test
+";
+    let create_resp = server
+        .post("/v1/skills", json!({ "skill_md": skill_md }))
+        .await
+        .assert_status(StatusCode::CREATED);
+
+    let created_body = create_resp.json_value();
+    assert_eq!(created_body["disable_model_invocation"], true);
+
+    let skill_id = created_body["id"].as_str().unwrap().to_string();
+
+    let updated_md = "---
+name: model-invocation-flag-test
+description: Updated description.
+disable-model-invocation: true
+---
+
+# Updated
+";
+    let update_resp = server
+        .patch(
+            &format!("/v1/skills/{skill_id}"),
+            json!({ "skill_md": updated_md }),
+        )
+        .await
+        .assert_success();
+
+    let updated_body = update_resp.json_value();
+    assert_eq!(updated_body["description"], "Updated description.");
+    assert_eq!(updated_body["disable_model_invocation"], true);
+}
+
+#[tokio::test]
 async fn test_update_skill_status() {
     let server = TestServer::new().await;
 

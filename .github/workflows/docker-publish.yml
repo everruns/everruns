@@ -82,9 +82,18 @@ jobs:
       - name: Determine release tag
         id: release_tag
         run: |
-          # workflow_dispatch passes the tag explicitly
+          # workflow_dispatch is only trusted when dispatched against the
+          # matching version tag ref (as release.yml does with --ref "$TAG").
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "tag=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+            if [[ "${{ github.ref }}" != refs/tags/v* ]]; then
+              echo "workflow_dispatch must run on a v* tag ref; got ${{ github.ref }}" >&2
+              exit 1
+            fi
+            if [ "${{ github.ref_name }}" != "${{ inputs.tag }}" ]; then
+              echo "workflow_dispatch tag input must match ref_name (${{ github.ref_name }})" >&2
+              exit 1
+            fi
+            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
             echo "is_release=true" >> $GITHUB_OUTPUT
           elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
             echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
@@ -225,7 +234,15 @@ jobs:
         id: release_tag
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "tag=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+            if [[ "${{ github.ref }}" != refs/tags/v* ]]; then
+              echo "workflow_dispatch must run on a v* tag ref; got ${{ github.ref }}" >&2
+              exit 1
+            fi
+            if [ "${{ github.ref_name }}" != "${{ inputs.tag }}" ]; then
+              echo "workflow_dispatch tag input must match ref_name (${{ github.ref_name }})" >&2
+              exit 1
+            fi
+            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
             echo "is_release=true" >> $GITHUB_OUTPUT
           elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
             echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT

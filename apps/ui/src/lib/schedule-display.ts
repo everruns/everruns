@@ -105,14 +105,23 @@ export function formatScheduleCadence(input: {
 }
 
 export function formatScheduledDateTime(dateString: string, timezone = "UTC"): string {
-  return new Intl.DateTimeFormat("en-US", {
+  const options: Intl.DateTimeFormatOptions = {
     month: "short",
     day: "numeric",
     hour: "numeric",
     minute: "2-digit",
     timeZone: timezone,
     timeZoneName: "short",
-  }).format(new Date(dateString));
+  };
+
+  try {
+    return new Intl.DateTimeFormat("en-US", options).format(new Date(dateString));
+  } catch {
+    return new Intl.DateTimeFormat("en-US", {
+      ...options,
+      timeZone: "UTC",
+    }).format(new Date(dateString));
+  }
 }
 
 export function getScheduleDisplayTitle(description: string): string {

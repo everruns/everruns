@@ -445,6 +445,32 @@ pub trait Capability: Send + Sync {
         vec![]
     }
 
+    /// Returns the JSON Schema for this capability's per-agent config.
+    ///
+    /// The schema is exposed through `CapabilityInfo` so clients can render a
+    /// generic settings editor for capabilities without hard-coding capability
+    /// IDs. Capabilities without configurable settings return `None`.
+    fn config_schema(&self) -> Option<serde_json::Value> {
+        None
+    }
+
+    /// Returns UI hints for rendering `config_schema`.
+    ///
+    /// This follows the react-jsonschema-form `uiSchema` shape. The server owns
+    /// durable config semantics; clients own the generic component implementation.
+    fn config_ui_schema(&self) -> Option<serde_json::Value> {
+        None
+    }
+
+    /// Validates per-capability config before it is persisted.
+    ///
+    /// Default accepts any config for backward compatibility. Capabilities with
+    /// a `config_schema()` should reject invalid values here so HTTP, CLI, and
+    /// MCP write paths share the same server-side guardrail.
+    fn validate_config(&self, _config: &serde_json::Value) -> Result<(), String> {
+        Ok(())
+    }
+
     /// Returns a message filter provider if this capability modifies message retrieval.
     ///
     /// Capabilities can contribute filters that modify how messages are loaded
@@ -3074,13 +3100,13 @@ mod tests {
     fn test_capability_risk_levels() {
         let registry = CapabilityRegistry::with_builtins();
 
-        // virtual_bash is Low (in-memory sandboxed execution)
+        // virtual_bash is High (code execution requires admin gating)
         let bash = registry.get("virtual_bash").unwrap();
-        assert_eq!(bash.risk_level(), RiskLevel::Low);
+        assert_eq!(bash.risk_level(), RiskLevel::High);
 
-        // web_fetch is Medium (network access)
+        // web_fetch is High (network access requires admin gating)
         let fetch = registry.get("web_fetch").unwrap();
-        assert_eq!(fetch.risk_level(), RiskLevel::Medium);
+        assert_eq!(fetch.risk_level(), RiskLevel::High);
 
         // Default capabilities should be Low
         let noop = registry.get("noop").unwrap();

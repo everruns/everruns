@@ -1,7 +1,9 @@
 // Built-in authentication backend (JWT + password + OAuth + API keys)
 // Decision: Default for OSS. All existing behavior preserved.
-// Decision: API key auth results cached in-process (moka, 5-min TTL) to avoid
-// 4 sequential DB queries per request. Invalidated on key deletion.
+// Decision: API key auth cache is write-only for now. Read-through caching of
+// AuthUser introduced a TOCTOU authorization window for key expiry and
+// membership/role changes. We keep inserts + invalidation hooks so follow-up
+// work can safely reintroduce cache reads with fresh-state guarantees.
 
 use async_trait::async_trait;
 use axum::Router;
@@ -105,7 +107,7 @@ impl BuiltinAuthBackend {
         self.api_key_cache.entry_count()
     }
 
-    /// Validate API key against DB (4 sequential queries). Called on cache miss.
+    /// Validate API key against DB (4 sequential queries).
     async fn validate_api_key_from_db(&self, key_hash: &str) -> Result<AuthUser, AuthError> {
         let api_key_row = self
             .db
@@ -236,12 +238,8 @@ impl AuthBackend for BuiltinAuthBackend {
 
         let key_hash = hash_api_key(key);
 
-        // Check cache first — avoids 4 sequential DB queries on hit
-        if let Some(cached) = self.api_key_cache.get(&key_hash).await {
-            tracing::trace!("API key auth cache hit");
-            return Ok(cached);
-        }
-
+        // Security: always validate against DB to enforce real-time key expiry
+        // and org membership/role changes.
         let auth_user = self.validate_api_key_from_db(&key_hash).await?;
 
         // Populate cache
@@ -468,5 +466,121 @@ mod tests {
     fn test_cache_constants() {
         assert_eq!(API_KEY_CACHE_TTL, Duration::from_secs(300));
         assert_eq!(API_KEY_CACHE_MAX_CAPACITY, 10_000);
+    }
+
+    // Regression tests for the fix that dropped read-through API-key caching.
+    // See fix(auth): always revalidate API keys against DB (#1532). These tests
+    // lock in that `validate_api_key` goes to the DB on every call, so revoked
+    // keys and stale user state cannot re-authenticate via the in-process cache.
+    mod revalidation {
+        use super::super::super::backend::AuthBackend;
+        use super::super::*;
+        use crate::storage::StorageBackend;
+        use crate::storage::models::{CreateApiKeyRow, CreateUserRow, UpdateUser};
+
+        async fn seed_user_with_key(
+            db: &Arc<StorageBackend>,
+            email: &str,
+            name: &str,
+        ) -> (uuid::Uuid, uuid::Uuid, String) {
+            let user = db
+                .create_user(CreateUserRow {
+                    email: email.to_string(),
+                    name: name.to_string(),
+                    avatar_url: None,
+                    roles: vec!["user".to_string()],
+                    password_hash: None,
+                    email_verified: true,
+                    auth_provider: None,
+                    auth_provider_id: None,
+                    external_id: None,
+                })
+                .await
+                .expect("create user");
+
+            let generated = crate::auth::api_key::generate_api_key();
+            let key_row = db
+                .create_api_key(CreateApiKeyRow {
+                    user_id: user.id,
+                    name: "test-key".to_string(),
+                    key_hash: generated.key_hash.clone(),
+                    key_prefix: generated.key_prefix.clone(),
+                    scopes: vec!["*".to_string()],
+                    expires_at: None,
+                    metadata: serde_json::json!({}),
+                })
+                .await
+                .expect("create api key");
+
+            (user.id, key_row.id, generated.key)
+        }
+
+        #[tokio::test]
+        async fn validate_api_key_rejects_after_key_deleted_from_db() {
+            let db = Arc::new(StorageBackend::in_memory());
+            let backend = BuiltinAuthBackend::new(AuthConfig::default(), db.clone());
+            let (user_id, key_id, plaintext_key) =
+                seed_user_with_key(&db, "revoked@example.com", "Revoked User").await;
+
+            // First call succeeds and populates the cache.
+            let first = backend.validate_api_key(&plaintext_key).await;
+            assert!(first.is_ok(), "initial validation should succeed");
+
+            // Delete the key from the DB but do NOT invalidate the cache. Prior to
+            // the fix this would silently keep authenticating from the cache.
+            let removed = db.delete_api_key(key_id, user_id).await.expect("delete");
+            assert!(removed);
+
+            // Re-validate: must reject because revalidation always hits the DB.
+            let second = backend.validate_api_key(&plaintext_key).await;
+            assert!(
+                second.is_err(),
+                "revoked key must not authenticate even when cached"
+            );
+        }
+
+        #[tokio::test]
+        async fn validate_api_key_reflects_fresh_user_state_on_revalidation() {
+            let db = Arc::new(StorageBackend::in_memory());
+            let backend = BuiltinAuthBackend::new(AuthConfig::default(), db.clone());
+            let (user_id, _key_id, plaintext_key) =
+                seed_user_with_key(&db, "user@example.com", "Original Name").await;
+
+            let first = backend
+                .validate_api_key(&plaintext_key)
+                .await
+                .expect("first validation");
+            assert_eq!(first.name, "Original Name");
+
+            // Rename the user in the DB. With read-through caching this change
+            // would not surface until TTL expired.
+            db.update_user(
+                user_id,
+                UpdateUser {
+                    name: Some("Renamed User".to_string()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("rename user");
+
+            let second = backend
+                .validate_api_key(&plaintext_key)
+                .await
+                .expect("second validation");
+            assert_eq!(
+                second.name, "Renamed User",
+                "validate must re-read user state from DB on every call"
+            );
+        }
+
+        #[tokio::test]
+        async fn validate_api_key_rejects_invalid_format_without_db_lookup() {
+            let db = Arc::new(StorageBackend::in_memory());
+            let backend = BuiltinAuthBackend::new(AuthConfig::default(), db.clone());
+
+            let result = backend.validate_api_key("not-an-api-key").await;
+            assert!(result.is_err(), "malformed key must be rejected");
+        }
     }
 }

@@ -30,14 +30,15 @@ use everruns_core::channel::{
     build_session_routing_tag,
 };
 use everruns_core::progress_reporting::sync_slack_reply_mode_tags;
+use everruns_core::validate_safe_url;
 use everruns_core::{App, AppStatus, Caller, SessionStrategy, SlackChannelConfig, SlackReplyMode};
 use everruns_worker::AgentRunner;
 use hmac::{Hmac, Mac};
+use moka::sync::Cache;
 use serde::{Deserialize, Serialize};
 use sha2::Sha256;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tokio::sync::RwLock;
 
 use crate::api::messages::{CreateMessageRequest, InputContentPart, InputMessage, MessageRole};
 use crate::api::sessions::CreateSessionRequest;
@@ -185,7 +186,16 @@ struct AckResponse {
 
 /// Resolved Slack user display name.
 /// `Some(name)` = resolved, `None` = resolution failed (don't retry).
-type SlackUserCache = Arc<RwLock<HashMap<String, Option<String>>>>;
+type SlackUserCache = Cache<String, Option<String>>;
+
+/// Bound for in-memory Slack users.info cache to prevent unbounded growth.
+const SLACK_USER_CACHE_MAX_ENTRIES: u64 = 10_000;
+
+fn new_slack_user_cache() -> SlackUserCache {
+    Cache::builder()
+        .max_capacity(SLACK_USER_CACHE_MAX_ENTRIES)
+        .build()
+}
 
 /// App-scoped Slack state (no auth required).
 #[derive(Clone)]
@@ -221,7 +231,7 @@ impl SlackState {
             event_service: Arc::new(EventService::new(db.clone(), event_delivery)),
             encryption,
             db,
-            user_name_cache: Arc::new(RwLock::new(HashMap::new())),
+            user_name_cache: new_slack_user_cache(),
             delivery_dispatcher,
         }
     }
@@ -266,9 +276,10 @@ fn parse_slack_inbound_event(
         let name = file.name.as_deref().unwrap_or("unnamed file");
         if SUPPORTED_IMAGE_TYPES.contains(&mime)
             && let Some(url) = &file.url_private
+            && let Some(url) = validated_image_url(url)
         {
             attachments.push(InboundAttachment::Image {
-                url: url.clone(),
+                url,
                 alt_text: Some(name.to_string()),
             });
             continue;
@@ -279,9 +290,11 @@ fn parse_slack_inbound_event(
         });
     }
     for att in &event.attachments {
-        if let Some(url) = &att.image_url {
+        if let Some(url) = &att.image_url
+            && let Some(url) = validated_image_url(url)
+        {
             attachments.push(InboundAttachment::Image {
-                url: url.clone(),
+                url,
                 alt_text: att.title.clone(),
             });
         }
@@ -411,7 +424,20 @@ async fn handle_slack_event(
             ))
         }
         "event_callback" => {
+            let envelope_team_id = envelope.team_id.clone();
             if let Some(event) = envelope.event {
+                if !event_matches_slack_scope(&slack_config, envelope_team_id.as_deref(), &event) {
+                    tracing::warn!(
+                        app_id = %app_id,
+                        expected_team_id = ?slack_config.team_id,
+                        incoming_team_id = ?envelope_team_id,
+                        expected_channel_id = ?slack_config.channel_id,
+                        incoming_channel_id = ?event.channel,
+                        "Ignoring Slack event outside configured scope"
+                    );
+                    return Ok((StatusCode::OK, Json(ack_json())));
+                }
+
                 // Skip bot messages to avoid loops // THREAT[TM-SLACK-002]
                 if event.bot_id.is_some() || event.subtype.as_deref() == Some("bot_message") {
                     tracing::debug!(app_id = %app_id, "Skipping bot message");
@@ -491,6 +517,26 @@ async fn handle_slack_event(
 
 fn ack_json() -> serde_json::Value {
     serde_json::to_value(AckResponse { ok: true }).unwrap()
+}
+
+fn event_matches_slack_scope(
+    slack_config: &SlackChannelConfig,
+    envelope_team_id: Option<&str>,
+    event: &SlackEvent,
+) -> bool {
+    if let Some(expected_team_id) = slack_config.team_id.as_deref()
+        && envelope_team_id != Some(expected_team_id)
+    {
+        return false;
+    }
+
+    if let Some(expected_channel_id) = slack_config.channel_id.as_deref()
+        && event.channel.as_deref() != Some(expected_channel_id)
+    {
+        return false;
+    }
+
+    true
 }
 
 /// Process an incoming Slack message: find/create session, create message, wait for response.
@@ -812,6 +858,18 @@ async fn process_slack_message(
 /// Supported image MIME types for Slack file attachments.
 const SUPPORTED_IMAGE_TYPES: &[&str] = &["image/png", "image/jpeg", "image/gif", "image/webp"];
 
+/// Validate and normalize image URLs before forwarding to model backends.
+///
+/// Security: only allow publicly routable HTTPS URLs to avoid SSRF through
+/// model backends that may fetch `image_url` server-side.
+fn validated_image_url(url: &str) -> Option<String> {
+    let parsed = validate_safe_url(url).ok()?;
+    if parsed.scheme() != "https" {
+        return None;
+    }
+    Some(parsed.into())
+}
+
 /// Convert Slack file attachments into content parts.
 ///
 /// Images (png, jpeg, gif, webp) with a private URL → `InputContentPart::Image(url)`.
@@ -826,7 +884,12 @@ fn build_file_content_parts(files: &[SlackFile]) -> Vec<InputContentPart> {
             if SUPPORTED_IMAGE_TYPES.contains(&mime) {
                 // Image with URL → image content part
                 if let Some(url) = &file.url_private {
-                    return InputContentPart::image_url(url);
+                    if let Some(url) = validated_image_url(url) {
+                        return InputContentPart::image_url(url);
+                    }
+                    return InputContentPart::text(format!(
+                        "[Attached image: {name} — blocked unsafe image URL]"
+                    ));
                 }
                 // Image without URL → text fallback
                 InputContentPart::text(format!(
@@ -851,7 +914,13 @@ fn build_attachment_content_parts(attachments: &[SlackAttachment]) -> Vec<InputC
         .filter_map(|att| {
             // If the attachment has an image, include it
             if let Some(url) = &att.image_url {
-                return Some(InputContentPart::image_url(url));
+                if let Some(url) = validated_image_url(url) {
+                    return Some(InputContentPart::image_url(url));
+                }
+                let title = att.title.as_deref().unwrap_or("unnamed attachment");
+                return Some(InputContentPart::text(format!(
+                    "[Attachment image blocked: {title}]"
+                )));
             }
 
             // Build a text summary from available fields
@@ -1036,8 +1105,9 @@ async fn fetch_thread_replies(
 /// them as input.message events (without triggering agent workflows). This
 /// gives the agent full conversational context when first mentioned mid-thread.
 ///
-/// Messages from bots (including our own) are injected as assistant-role
-/// messages. Messages from users get user-role with ExternalActor attribution.
+/// Messages from users get user-role with ExternalActor attribution.
+/// Bot-authored replies are skipped to avoid role confusion from third-party
+/// bots in shared channels.
 /// The triggering message (matching `exclude_ts`) is skipped since it will be
 /// created normally by the caller.
 async fn inject_thread_context(
@@ -1056,53 +1126,32 @@ async fn inject_thread_context(
 
     let mut injected = 0u32;
     for reply in &replies {
-        // Skip the triggering message (it will be created by the normal flow)
-        if let (Some(reply_ts), Some(skip_ts)) = (reply.ts.as_deref(), exclude_ts)
-            && reply_ts == skip_ts
-        {
+        if should_skip_thread_reply(reply, exclude_ts) {
             continue;
         }
 
-        // Skip messages with no text content
+        // Safe because should_skip_thread_reply filters empty content.
         let text = reply.text.as_deref().unwrap_or("");
-        if text.is_empty() {
-            continue;
-        }
-
-        // Skip subtypes we can't meaningfully represent (channel_join, etc.)
-        if let Some(ref subtype) = reply.subtype
-            && subtype != "bot_message"
-            && subtype != "thread_broadcast"
-        {
-            continue;
-        }
-
-        // Determine role: bot messages → assistant, human messages → user
-        let (role, external_actor) = if reply.bot_id.is_some() {
-            (everruns_core::MessageRole::Agent, None)
+        let user_id = reply.user.clone().unwrap_or_default();
+        let display_name = if !user_id.is_empty() {
+            resolve_slack_user_name(&state.user_name_cache, bot_token, &user_id).await
         } else {
-            let user_id = reply.user.clone().unwrap_or_default();
-            let display_name = if !user_id.is_empty() {
-                resolve_slack_user_name(&state.user_name_cache, bot_token, &user_id).await
-            } else {
-                None
-            };
-            let actor = if !user_id.is_empty() {
-                Some(everruns_core::ExternalActor {
-                    actor_id: user_id,
-                    actor_name: display_name,
-                    source: "slack".to_string(),
-                    metadata: None,
-                })
-            } else {
-                None
-            };
-            (everruns_core::MessageRole::User, actor)
+            None
+        };
+        let external_actor = if !user_id.is_empty() {
+            Some(everruns_core::ExternalActor {
+                actor_id: user_id,
+                actor_name: display_name,
+                source: "slack".to_string(),
+                metadata: None,
+            })
+        } else {
+            None
         };
 
         let message = everruns_core::Message {
             id: everruns_core::typed_id::MessageId::new(),
-            role,
+            role: everruns_core::MessageRole::User,
             content: vec![everruns_core::ContentPart::text(text)],
             phase: None,
             thinking: None,
@@ -1143,6 +1192,36 @@ async fn inject_thread_context(
     }
 
     Ok(())
+}
+
+fn should_skip_thread_reply(reply: &SlackReplyMessage, exclude_ts: Option<&str>) -> bool {
+    // Skip the triggering message (it will be created by the normal flow).
+    if let (Some(reply_ts), Some(skip_ts)) = (reply.ts.as_deref(), exclude_ts)
+        && reply_ts == skip_ts
+    {
+        return true;
+    }
+
+    // Skip messages with no text content.
+    if reply.text.as_deref().unwrap_or("").is_empty() {
+        return true;
+    }
+
+    // Skip subtypes we can't meaningfully represent (channel_join, etc.).
+    if let Some(ref subtype) = reply.subtype
+        && subtype != "bot_message"
+        && subtype != "thread_broadcast"
+    {
+        return true;
+    }
+
+    // Ignore bot-authored history entries. We cannot safely treat arbitrary
+    // Slack bot output as trusted assistant context.
+    if reply.bot_id.is_some() {
+        return true;
+    }
+
+    false
 }
 
 /// Wait for the agent turn to complete and stream responses to Slack.
@@ -1251,11 +1330,8 @@ async fn resolve_slack_user_name_base(
     user_id: &str,
 ) -> Option<String> {
     // Check cache first
-    {
-        let cache_read = cache.read().await;
-        if let Some(cached) = cache_read.get(user_id) {
-            return cached.clone();
-        }
+    if let Some(cached) = cache.get(user_id) {
+        return cached;
     }
 
     // Call Slack API (user IDs are alphanumeric, safe to interpolate)
@@ -1305,8 +1381,7 @@ async fn resolve_slack_user_name_base(
             })
             .map(String::from);
 
-        let mut cache_write = cache.write().await;
-        cache_write.insert(user_id.to_string(), display_name.clone());
+        cache.insert(user_id.to_string(), display_name.clone());
         display_name
     } else {
         let error = body
@@ -1326,8 +1401,7 @@ async fn resolve_slack_user_name_base(
             || error == "token_revoked"
             || error == "account_inactive"
         {
-            let mut cache_write = cache.write().await;
-            cache_write.insert(user_id.to_string(), None);
+            cache.insert(user_id.to_string(), None);
         }
 
         None
@@ -1435,6 +1509,12 @@ async fn handle_slack_manifest(
         ErrorResponse::internal_error()
     })?
     .ok_or_else(|| ErrorResponse::new("App not found").into_response(StatusCode::NOT_FOUND))?;
+
+    // Mirror webhook exposure policy: only published apps with an enabled Slack channel
+    // can retrieve Slack manifest data from this unauthenticated endpoint.
+    if app.status != AppStatus::Published || app.slack_channel().is_none() {
+        return Err(ErrorResponse::new("App not found").into_response(StatusCode::NOT_FOUND));
+    }
 
     let display_name = truncate_display_name(&app.name);
 
@@ -1714,6 +1794,39 @@ mod tests {
     }
 
     #[test]
+    fn test_event_matches_slack_scope_unrestricted() {
+        let config = test_config(SessionStrategy::PerThread);
+        let event = test_event("C123", Some("1234.5678"), Some("1234.0000"));
+        assert!(event_matches_slack_scope(&config, Some("T123"), &event));
+    }
+
+    #[test]
+    fn test_event_matches_slack_scope_rejects_team_mismatch() {
+        let mut config = test_config(SessionStrategy::PerThread);
+        config.team_id = Some("T123".to_string());
+        let event = test_event("C123", Some("1234.5678"), Some("1234.0000"));
+        assert!(!event_matches_slack_scope(&config, Some("T999"), &event));
+        assert!(!event_matches_slack_scope(&config, None, &event));
+    }
+
+    #[test]
+    fn test_event_matches_slack_scope_rejects_channel_mismatch() {
+        let mut config = test_config(SessionStrategy::PerThread);
+        config.channel_id = Some("C123".to_string());
+        let event = test_event("C999", Some("1234.5678"), Some("1234.0000"));
+        assert!(!event_matches_slack_scope(&config, Some("T123"), &event));
+    }
+
+    #[test]
+    fn test_event_matches_slack_scope_accepts_matching_team_and_channel() {
+        let mut config = test_config(SessionStrategy::PerThread);
+        config.team_id = Some("T123".to_string());
+        config.channel_id = Some("C123".to_string());
+        let event = test_event("C123", Some("1234.5678"), Some("1234.0000"));
+        assert!(event_matches_slack_scope(&config, Some("T123"), &event));
+    }
+
+    #[test]
     fn test_build_session_tags_per_thread() {
         let app = test_app();
         let config = test_config(SessionStrategy::PerThread);
@@ -1805,11 +1918,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_resolve_slack_user_name_cache_hit() {
-        let cache: SlackUserCache = Arc::new(RwLock::new(HashMap::new()));
-        cache
-            .write()
-            .await
-            .insert("U123".to_string(), Some("Alice".to_string()));
+        let cache: SlackUserCache = new_slack_user_cache();
+        cache.insert("U123".to_string(), Some("Alice".to_string()));
 
         let result = resolve_slack_user_name(&cache, "xoxb-fake", "U123").await;
         assert_eq!(result, Some("Alice".to_string()));
@@ -1818,8 +1928,8 @@ mod tests {
     #[tokio::test]
     async fn test_resolve_slack_user_name_cache_hit_none() {
         // Cached failure (e.g., missing_scope) should return None without API call
-        let cache: SlackUserCache = Arc::new(RwLock::new(HashMap::new()));
-        cache.write().await.insert("U123".to_string(), None);
+        let cache: SlackUserCache = new_slack_user_cache();
+        cache.insert("U123".to_string(), None);
 
         let result = resolve_slack_user_name(&cache, "xoxb-fake", "U123").await;
         assert_eq!(result, None);
@@ -1828,7 +1938,7 @@ mod tests {
     #[tokio::test]
     async fn test_resolve_slack_user_name_api_failure_not_cached() {
         // Network failures should not be cached (allow retry)
-        let cache: SlackUserCache = Arc::new(RwLock::new(HashMap::new()));
+        let cache: SlackUserCache = new_slack_user_cache();
 
         // Use an invalid URL-ish token that will fail network-level
         // (the function uses hardcoded slack.com URL, so with a bad token
@@ -2443,6 +2553,15 @@ mod tests {
         assert_eq!(urlencoding_encode("a\nb"), "a%0Ab");
     }
 
+    #[test]
+    fn test_validated_image_url_requires_https() {
+        assert!(validated_image_url("http://example.com/image.png").is_none());
+        assert_eq!(
+            validated_image_url("https://example.com/image.png").as_deref(),
+            Some("https://example.com/image.png")
+        );
+    }
+
     // ==========================================
     // File attachment content part building
     // ==========================================
@@ -2477,6 +2596,24 @@ mod tests {
             InputContentPart::Text(t) => {
                 assert!(t.text.contains("photo.png"));
                 assert!(t.text.contains("no download URL"));
+            }
+            other => panic!("Expected Text fallback, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_build_file_content_parts_image_unsafe_url_blocked() {
+        let files = vec![test_slack_file(
+            "photo.png",
+            "image/png",
+            "png",
+            Some("http://169.254.169.254/latest/meta-data/"),
+        )];
+        let parts = build_file_content_parts(&files);
+        assert_eq!(parts.len(), 1);
+        match &parts[0] {
+            InputContentPart::Text(t) => {
+                assert!(t.text.contains("blocked unsafe image URL"));
             }
             other => panic!("Expected Text fallback, got {:?}", other),
         }
@@ -2676,6 +2813,23 @@ mod tests {
     }
 
     #[test]
+    fn test_build_attachment_content_parts_unsafe_image_url_blocked() {
+        let mut att = test_slack_attachment();
+        att.image_url = Some("http://127.0.0.1/private.png".to_string());
+        att.title = Some("Preview".to_string());
+
+        let parts = build_attachment_content_parts(&[att]);
+        assert_eq!(parts.len(), 1);
+        match &parts[0] {
+            InputContentPart::Text(t) => {
+                assert!(t.text.contains("Attachment image blocked"));
+                assert!(t.text.contains("Preview"));
+            }
+            other => panic!("Expected Text fallback, got {:?}", other),
+        }
+    }
+
+    #[test]
     fn test_build_attachment_content_parts_link_unfurl() {
         let mut att = test_slack_attachment();
         att.service_name = Some("GitHub".to_string());
@@ -2818,6 +2972,30 @@ mod tests {
         assert!(reply.user.is_none());
         assert!(reply.text.is_none());
         assert!(reply.bot_id.is_none());
+    }
+
+    #[test]
+    fn test_should_skip_thread_reply_for_bot_messages() {
+        let reply = SlackReplyMessage {
+            user: None,
+            text: Some("Bot says hi".to_string()),
+            ts: Some("1234.0001".to_string()),
+            bot_id: Some("B999".to_string()),
+            subtype: Some("bot_message".to_string()),
+        };
+        assert!(should_skip_thread_reply(&reply, None));
+    }
+
+    #[test]
+    fn test_should_not_skip_thread_reply_for_human_message() {
+        let reply = SlackReplyMessage {
+            user: Some("U123".to_string()),
+            text: Some("hello".to_string()),
+            ts: Some("1234.0002".to_string()),
+            bot_id: None,
+            subtype: None,
+        };
+        assert!(!should_skip_thread_reply(&reply, None));
     }
 
     #[tokio::test]
@@ -2965,7 +3143,7 @@ mod tests {
                 .mount(&mock_server)
                 .await;
 
-            let cache: SlackUserCache = Arc::new(RwLock::new(HashMap::new()));
+            let cache: SlackUserCache = new_slack_user_cache();
             let result =
                 resolve_slack_user_name_base(&mock_server.uri(), &cache, "xoxb-test-token", "U123")
                     .await;
@@ -2973,7 +3151,7 @@ mod tests {
             assert_eq!(result, Some("Alice S.".to_string()));
 
             // Verify it was cached
-            let cached = cache.read().await.get("U123").cloned();
+            let cached = cache.get("U123");
             assert_eq!(cached, Some(Some("Alice S.".to_string())));
         }
 
@@ -2998,7 +3176,7 @@ mod tests {
                 .mount(&mock_server)
                 .await;
 
-            let cache: SlackUserCache = Arc::new(RwLock::new(HashMap::new()));
+            let cache: SlackUserCache = new_slack_user_cache();
             let result =
                 resolve_slack_user_name_base(&mock_server.uri(), &cache, "xoxb-test-token", "U123")
                     .await;
@@ -3027,7 +3205,7 @@ mod tests {
                 .mount(&mock_server)
                 .await;
 
-            let cache: SlackUserCache = Arc::new(RwLock::new(HashMap::new()));
+            let cache: SlackUserCache = new_slack_user_cache();
             let result =
                 resolve_slack_user_name_base(&mock_server.uri(), &cache, "xoxb-test-token", "U123")
                     .await;
@@ -3053,7 +3231,7 @@ mod tests {
                 .mount(&mock_server)
                 .await;
 
-            let cache: SlackUserCache = Arc::new(RwLock::new(HashMap::new()));
+            let cache: SlackUserCache = new_slack_user_cache();
             let result =
                 resolve_slack_user_name_base(&mock_server.uri(), &cache, "xoxb-test-token", "U123")
                     .await;
@@ -3071,11 +3249,8 @@ mod tests {
             let mock_server = MockServer::start().await;
 
             // No mock mounted — any actual HTTP call would fail
-            let cache: SlackUserCache = Arc::new(RwLock::new(HashMap::new()));
-            cache
-                .write()
-                .await
-                .insert("U123".to_string(), Some("Cached Alice".to_string()));
+            let cache: SlackUserCache = new_slack_user_cache();
+            cache.insert("U123".to_string(), Some("Cached Alice".to_string()));
 
             let result =
                 resolve_slack_user_name_base(&mock_server.uri(), &cache, "xoxb-test-token", "U123")
@@ -3085,13 +3260,24 @@ mod tests {
             // No HTTP call made (mock server received 0 requests)
         }
 
+        #[test]
+        fn test_slack_user_cache_is_bounded() {
+            let cache: SlackUserCache = new_slack_user_cache();
+            let inserts = (SLACK_USER_CACHE_MAX_ENTRIES as usize) + 5_000;
+            for index in 0..inserts {
+                cache.insert(format!("U{index}"), Some(format!("user-{index}")));
+            }
+
+            assert!(cache.entry_count() <= SLACK_USER_CACHE_MAX_ENTRIES);
+        }
+
         #[tokio::test]
         async fn test_resolve_user_name_cached_none_skips_api() {
             let mock_server = MockServer::start().await;
 
             // Cache a None (permanent failure like missing_scope)
-            let cache: SlackUserCache = Arc::new(RwLock::new(HashMap::new()));
-            cache.write().await.insert("U123".to_string(), None);
+            let cache: SlackUserCache = new_slack_user_cache();
+            cache.insert("U123".to_string(), None);
 
             let result =
                 resolve_slack_user_name_base(&mock_server.uri(), &cache, "xoxb-test-token", "U123")
@@ -3118,7 +3304,7 @@ mod tests {
                 .mount(&mock_server)
                 .await;
 
-            let cache: SlackUserCache = Arc::new(RwLock::new(HashMap::new()));
+            let cache: SlackUserCache = new_slack_user_cache();
             let result =
                 resolve_slack_user_name_base(&mock_server.uri(), &cache, "xoxb-test-token", "U123")
                     .await;
@@ -3126,7 +3312,7 @@ mod tests {
             assert_eq!(result, None);
 
             // Permanent error should be cached as None
-            let cached = cache.read().await.get("U123").cloned();
+            let cached = cache.get("U123");
             assert_eq!(cached, Some(None));
         }
 
@@ -3144,13 +3330,13 @@ mod tests {
                 .mount(&mock_server)
                 .await;
 
-            let cache: SlackUserCache = Arc::new(RwLock::new(HashMap::new()));
+            let cache: SlackUserCache = new_slack_user_cache();
             let result =
                 resolve_slack_user_name_base(&mock_server.uri(), &cache, "xoxb-bad-token", "U123")
                     .await;
 
             assert_eq!(result, None);
-            assert_eq!(cache.read().await.get("U123").cloned(), Some(None));
+            assert_eq!(cache.get("U123"), Some(None));
         }
 
         #[tokio::test]
@@ -3167,13 +3353,13 @@ mod tests {
                 .mount(&mock_server)
                 .await;
 
-            let cache: SlackUserCache = Arc::new(RwLock::new(HashMap::new()));
+            let cache: SlackUserCache = new_slack_user_cache();
             let result =
                 resolve_slack_user_name_base(&mock_server.uri(), &cache, "xoxb-revoked", "U123")
                     .await;
 
             assert_eq!(result, None);
-            assert_eq!(cache.read().await.get("U123").cloned(), Some(None));
+            assert_eq!(cache.get("U123"), Some(None));
         }
 
         #[tokio::test]
@@ -3191,7 +3377,7 @@ mod tests {
                 .mount(&mock_server)
                 .await;
 
-            let cache: SlackUserCache = Arc::new(RwLock::new(HashMap::new()));
+            let cache: SlackUserCache = new_slack_user_cache();
             let result =
                 resolve_slack_user_name_base(&mock_server.uri(), &cache, "xoxb-test-token", "U123")
                     .await;
@@ -3199,7 +3385,7 @@ mod tests {
             assert_eq!(result, None);
 
             // Transient error should NOT be cached (allow retry)
-            assert!(cache.read().await.get("U123").is_none());
+            assert!(cache.get("U123").is_none());
         }
 
         #[tokio::test]
@@ -3213,14 +3399,14 @@ mod tests {
                 .mount(&mock_server)
                 .await;
 
-            let cache: SlackUserCache = Arc::new(RwLock::new(HashMap::new()));
+            let cache: SlackUserCache = new_slack_user_cache();
             let result =
                 resolve_slack_user_name_base(&mock_server.uri(), &cache, "xoxb-test-token", "U123")
                     .await;
 
             assert_eq!(result, None);
             // Parse failure is transient — not cached
-            assert!(cache.read().await.get("U123").is_none());
+            assert!(cache.get("U123").is_none());
         }
 
         #[tokio::test]
@@ -3237,13 +3423,13 @@ mod tests {
                 .mount(&mock_server)
                 .await;
 
-            let cache: SlackUserCache = Arc::new(RwLock::new(HashMap::new()));
+            let cache: SlackUserCache = new_slack_user_cache();
             let result =
                 resolve_slack_user_name_base(&mock_server.uri(), &cache, "xoxb-test-token", "U123")
                     .await;
 
             assert_eq!(result, None);
-            assert_eq!(cache.read().await.get("U123").cloned(), Some(None));
+            assert_eq!(cache.get("U123"), Some(None));
         }
 
         #[tokio::test]
@@ -3260,13 +3446,13 @@ mod tests {
                 .mount(&mock_server)
                 .await;
 
-            let cache: SlackUserCache = Arc::new(RwLock::new(HashMap::new()));
+            let cache: SlackUserCache = new_slack_user_cache();
             let result =
                 resolve_slack_user_name_base(&mock_server.uri(), &cache, "xoxb-test-token", "U123")
                     .await;
 
             assert_eq!(result, None);
-            assert_eq!(cache.read().await.get("U123").cloned(), Some(None));
+            assert_eq!(cache.get("U123"), Some(None));
         }
 
         // ------------------------------------------

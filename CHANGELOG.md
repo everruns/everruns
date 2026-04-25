@@ -9,6 +9,200 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+### What's Changed
+
+- fix(server): stage `client_side` tools rejection with a deprecation window. `CreateSessionRequest.tools`, `CreateAgentRequest.tools`, and `UpdateAgentRequest.tools` now drop legacy non-`client_side` entries (e.g. `{"type": "builtin", ...}`) with a structured `tracing::warn!` (`target = "client_tools_deprecation"`, `dropped_count`, `dropped_kinds`) instead of returning `400`. SDK/CLI clients still on the legacy shape keep working; operators get visibility into who needs to migrate. Set `EVERRUNS_REJECT_NON_CLIENT_SIDE_TOOLS=1` in dev/staging to opt back into hard-reject and surface remaining offenders. The migration timeline lives in `specs/client-side-tools.md` (Tools-Field Deprecation Window).
+- fix(daytona): support GitHub Enterprise clone-auth allowlist. `daytona_git_clone` and `daytona_git_credentials` now consult an operator-configured trusted-host allowlist before embedding a GitHub token in HTTPS URLs. Default remains `["github.com"]` (public-SaaS behavior unchanged); operators extend via `EVERRUNS_DAYTONA_GITHUB_TRUSTED_HOSTS` (comma-separated, e.g. `github.acme.com,git.internal.corp`). Matching is case-insensitive exact (no wildcards) so lookalike hosts like `evil-github.acme.com` and `github.acme.com.evil.example` remain rejected. The credentials helper now writes one entry per trusted host so Enterprise deployments authenticate transparently. See `integrations/daytona/SPEC.md` and `specs/threat-model.md` (TM-DAYTONA-008).
+- fix(cli): allow opt-in hidden directories in `initial_files` while keeping a hard-deny floor for credentials. The CLI now ships common dev-ecosystem dot entries (`.github`, `.vscode`, `.claude`, `.cursor`, `.mcp.json`, `.gitignore`, `.gitattributes`, `.editorconfig`, `.eslintrc{,.json,.yaml,.yml,.js,.cjs}`, `.prettierrc{,.json,.yaml,.yml,.js,.cjs,.mjs}`, `.eslintignore`, `.nvmrc`, `.node-version`, `.python-version`, `.tool-versions`, `.dockerignore`, `.rubocop.yml`, `.agents`) by default and exposes a per-agent `initial_files_allow_hidden: [".mytool"]` opt-in (basename-only; `/`, `\\`, `.`, and `..` rejected) for project-specific tooling. `.env`, `.ssh`, `.aws`, `.gnupg`, `.git`, shell history, and similar credential / VCS paths remain rejected even when explicitly opted in or nested under an allowlisted root (e.g. `.github/.env`). See `specs/cli.md` and `specs/threat-model.md` (TM-FS-009).
+
+## [0.8.21] - 2026-04-25
+
+### Highlights
+
+- **Hotfix: bound migration 024 input to fit `to_tsvector` 1 MiB cap** - The v0.8.20 search-vector rebuild migration crashed dev startup with `string is too long for tsvector (3108640 bytes, max 1048575 bytes)` because individual event rows can carry tool results, accumulated streaming text, or message-content arrays well beyond Postgres' 1 MiB tsvector input limit. The canonical-text expression is now wrapped in `LEFT(..., 250000)` so any single row's contribution stays under tsvector's hard cap. Search relevance is dominated by early tokens, so the truncation has negligible effect on the index's usefulness.
+- **GPT-5.5 / GPT-5.5 Pro** - New OpenAI model entries are wired into the LLM driver registry ([#1593](https://github.com/everruns/everruns/pull/1593)).
+
+### What's Changed
+
+- fix(migrations): bound migration 024 input to 250 000 chars so to_tsvector stays within Postgres' 1 MiB cap by [@chaliy](https://github.com/chaliy)
+- feat(llm): add GPT-5.5 and GPT-5.5 Pro ([#1593](https://github.com/everruns/everruns/pull/1593)) by [@chaliy](https://github.com/chaliy)
+
+## [0.8.20] - 2026-04-25
+
+### Highlights
+
+- **Hotfix: restore migration 006 checksum** - Migration `006_v0.8.5.sql` was edited in-place by [#1566](https://github.com/everruns/everruns/pull/1566) to broaden `events.search_vector` coverage to nested message text. Modifying an applied migration breaks startup against existing databases because sqlx tracks per-migration checksums in `_sqlx_migrations`. v0.8.20 reverts migration 006 to its original v0.8.18 form and re-delivers the search-vector update as a new additive migration `024_event_search_vector_canonical_fields.sql`. Restores deploys against dev/prod databases.
+- **UI: SVG previews behind sandboxed iframe** - SVG file previews are restored under a sandboxed iframe so user-supplied vectors can't break out into the host page ([#1587](https://github.com/everruns/everruns/pull/1587)).
+
+### What's Changed
+
+- fix(migrations): restore migration 006 checksum; re-deliver search_vector via additive 024 by [@chaliy](https://github.com/chaliy)
+- fix(ui): restore SVG previews behind sandboxed iframe ([#1587](https://github.com/everruns/everruns/pull/1587)) by [@chaliy](https://github.com/chaliy)
+- chore(plugin): rename everruns dev plugin by [@chaliy](https://github.com/chaliy)
+- feat(ui): move models to building blocks by [@chaliy](https://github.com/chaliy)
+
+## [0.8.19] - 2026-04-24
+
+### Highlights
+
+- **Security hardening sweep** - Broad audit pass across auth, sessions, MCP, durable execution, CLI, and UI: API-key revalidation, CSRF-confirmed MCP OAuth, bounded buffers, UTF-8 panic guards, path/symlink traversal blocks, ACL and policy enforcement via `Command::run`, and redacted tool timelines. See `specs/threat-model.md`.
+- **OpenAI image generation** - `gpt-image-2` now streams generation progress and the end-to-end pipeline is reliable for everyday use.
+- **Raw session file downloads** - New API endpoint exposes raw session file downloads for external consumers ([#1443](https://github.com/everruns/everruns/pull/1443)).
+- **MCP `WWW-Authenticate` on 401 (RFC 9728)** - `/mcp` endpoints now emit `WWW-Authenticate` on 401 so compliant clients can discover the OAuth resource server automatically ([#1441](https://github.com/everruns/everruns/pull/1441)).
+- **Multitenancy auto-select** - Direct links to a resource now auto-select the owning organization, removing a sharp UX edge when users belong to multiple orgs ([#1450](https://github.com/everruns/everruns/pull/1450)).
+
+### Security
+
+- Document the `activate_skill` ``!`command` `` trust gate. The gate remains forced off for every source because `SessionFile::is_readonly` is user-controllable via the session-files API and `InitialFile`. `preprocess_command_injections` is kept wired up (with bounded fan-out: 32 placeholders per activation, 4 concurrent shells) so a follow-up can flip it on once a platform-controlled provenance signal is added to `SessionFile`. See `specs/skills-registry.md` "Activation Substitution Pipeline" and threat-model entry TM-TOOL-020 (EVE-388).
+- Restore SVG file preview behind a sandboxed `<iframe sandbox="" srcDoc=...>` with a strict CSP meta tag (`default-src 'none'; style-src 'unsafe-inline'; img-src data:`). PR #1513 had blocked SVG previews entirely to close an XSS surface; the iframe + CSP gate restores the feature while keeping `<script>`, `on*`, `javascript:`, and `<foreignObject>` payloads inert. See threat-model entry TM-WEB-009 (EVE-389).
+
+### What's Changed
+
+- fix(skills): keep !`command` gated off; document re-enable prerequisites ([#1581](https://github.com/everruns/everruns/pull/1581)) by [@chaliy](https://github.com/chaliy)
+- build(deps): bump postcss from 8.5.8 to 8.5.10 in /apps/docs in the npm_and_yarn group across 1 directory ([#1584](https://github.com/everruns/everruns/pull/1584)) by [@dependabot](https://github.com/apps/dependabot)
+- fix(platform-chat): enforce platform tool permissions ([#1582](https://github.com/everruns/everruns/pull/1582)) by [@chaliy](https://github.com/chaliy)
+- chore(docs): fix broken spec cross-refs and index stale references ([#1585](https://github.com/everruns/everruns/pull/1585)) by [@chaliy](https://github.com/chaliy)
+- test(server): cover owner-scoped connection resolution ([#1574](https://github.com/everruns/everruns/pull/1574)) by [@chaliy](https://github.com/chaliy)
+- build(deps): bump rustls-webpki from 0.103.12 to 0.103.13 in /examples/weekend-concierge-host in the cargo group across 1 directory ([#1583](https://github.com/everruns/everruns/pull/1583)) by [@dependabot](https://github.com/apps/dependabot)
+- test(cli): regression tests for connections set argv key leak ([#1580](https://github.com/everruns/everruns/pull/1580)) by [@chaliy](https://github.com/chaliy)
+- feat(openai): stream image generation progress by [@chaliy](https://github.com/chaliy)
+- test(capabilities): lock in high-risk gating for bash/fetch ([#1579](https://github.com/everruns/everruns/pull/1579)) by [@chaliy](https://github.com/chaliy)
+- test(slack): cross-org recovery app lookup rejection ([#1578](https://github.com/everruns/everruns/pull/1578)) by [@chaliy](https://github.com/chaliy)
+- test(mcp): policy enforcement on resources/read list commands ([#1577](https://github.com/everruns/everruns/pull/1577)) by [@chaliy](https://github.com/chaliy)
+- test(auth): regression tests for API key revalidation ([#1576](https://github.com/everruns/everruns/pull/1576)) by [@chaliy](https://github.com/chaliy)
+- fix(storage): preserve forward in-memory event catch-up window ([#1563](https://github.com/everruns/everruns/pull/1563)) by [@chaliy](https://github.com/chaliy)
+- fix(server): handle existing admin email during seed ([#1561](https://github.com/everruns/everruns/pull/1561)) by [@chaliy](https://github.com/chaliy)
+- fix(apps): re-encrypt legacy channel configs on app update ([#1472](https://github.com/everruns/everruns/pull/1472)) by [@chaliy](https://github.com/chaliy)
+- fix(skills): preserve user-invocable flag on skill update ([#1569](https://github.com/everruns/everruns/pull/1569)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): sync org cookie on automatic org fallback ([#1558](https://github.com/everruns/everruns/pull/1558)) by [@chaliy](https://github.com/chaliy)
+- fix(server): preserve activity type in NATS notifications ([#1555](https://github.com/everruns/everruns/pull/1555)) by [@chaliy](https://github.com/chaliy)
+- fix(server): block deleted status in manage update endpoints ([#1494](https://github.com/everruns/everruns/pull/1494)) by [@chaliy](https://github.com/chaliy)
+- fix(worker): block pending takeover with claimed tasks ([#1557](https://github.com/everruns/everruns/pull/1557)) by [@chaliy](https://github.com/chaliy)
+- fix(anthropic): avoid utf8 panic in model id normalization ([#1521](https://github.com/everruns/everruns/pull/1521)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): block route-manifest path traversal ([#1544](https://github.com/everruns/everruns/pull/1544)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): guard invalid schedule timezone rendering ([#1515](https://github.com/everruns/everruns/pull/1515)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): block svg file previews ([#1513](https://github.com/everruns/everruns/pull/1513)) by [@chaliy](https://github.com/chaliy)
+- fix(otel): preserve parent-child span nesting ([#1573](https://github.com/everruns/everruns/pull/1573)) by [@chaliy](https://github.com/chaliy)
+- fix(server): refresh stale MCP caches in batch load ([#1572](https://github.com/everruns/everruns/pull/1572)) by [@chaliy](https://github.com/chaliy)
+- fix(migrations): backfill owner for legacy org memberships ([#1571](https://github.com/everruns/everruns/pull/1571)) by [@chaliy](https://github.com/chaliy)
+- fix(durable): bind correct params when resetting workflow pending ([#1570](https://github.com/everruns/everruns/pull/1570)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): avoid global chat init when flag disabled ([#1568](https://github.com/everruns/everruns/pull/1568)) by [@chaliy](https://github.com/chaliy)
+- fix(dev): bind Caddy admin API to localhost ([#1567](https://github.com/everruns/everruns/pull/1567)) by [@chaliy](https://github.com/chaliy)
+- fix(storage): search nested message content in event filters ([#1566](https://github.com/everruns/everruns/pull/1566)) by [@chaliy](https://github.com/chaliy)
+- fix(server): bound turn-prefix pagination query ([#1565](https://github.com/everruns/everruns/pull/1565)) by [@chaliy](https://github.com/chaliy)
+- fix(durable): handle snapshot sequence zero correctly ([#1564](https://github.com/everruns/everruns/pull/1564)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): keep live usage updating after SSE trim cap ([#1562](https://github.com/everruns/everruns/pull/1562)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): avoid render-phase state updates in command and file views ([#1560](https://github.com/everruns/everruns/pull/1560)) by [@chaliy](https://github.com/chaliy)
+- fix(skills): preserve disable-model-invocation on update ([#1559](https://github.com/everruns/everruns/pull/1559)) by [@chaliy](https://github.com/chaliy)
+- fix(ci): avoid exposing PAT in homebrew tap clone ([#1556](https://github.com/everruns/everruns/pull/1556)) by [@chaliy](https://github.com/chaliy)
+- fix(setup): avoid top-level local in Linux NATS install ([#1554](https://github.com/everruns/everruns/pull/1554)) by [@chaliy](https://github.com/chaliy)
+- fix(core): restore bash narration for commands arg ([#1553](https://github.com/everruns/everruns/pull/1553)) by [@chaliy](https://github.com/chaliy)
+- fix(server): handle NULL display_name in harness search ([#1552](https://github.com/everruns/everruns/pull/1552)) by [@chaliy](https://github.com/chaliy)
+- fix(ci): restore Linux formula URL on AMD x86_64 ([#1551](https://github.com/everruns/everruns/pull/1551)) by [@chaliy](https://github.com/chaliy)
+- fix(evals): prevent orphaned eval runs without a target ([#1550](https://github.com/everruns/everruns/pull/1550)) by [@chaliy](https://github.com/chaliy)
+- fix(session-files): handle root virtual mount lookups ([#1549](https://github.com/everruns/everruns/pull/1549)) by [@chaliy](https://github.com/chaliy)
+- fix(container-sandbox): bound Docker API response buffering ([#1548](https://github.com/everruns/everruns/pull/1548)) by [@chaliy](https://github.com/chaliy)
+- fix(core): avoid double-applying capability configs ([#1547](https://github.com/everruns/everruns/pull/1547)) by [@chaliy](https://github.com/chaliy)
+- fix(worker): preserve steering signals across act/failure ([#1546](https://github.com/everruns/everruns/pull/1546)) by [@chaliy](https://github.com/chaliy)
+- fix(docs): block unsafe notebook markdown URLs ([#1545](https://github.com/everruns/everruns/pull/1545)) by [@chaliy](https://github.com/chaliy)
+- fix(evals): prevent NameError in SWE-bench score write-back ([#1543](https://github.com/everruns/everruns/pull/1543)) by [@chaliy](https://github.com/chaliy)
+- fix(core): avoid UTF-8 panic when truncating AGENTS.md ([#1542](https://github.com/everruns/everruns/pull/1542)) by [@chaliy](https://github.com/chaliy)
+- fix(core): escape AGENTS.md XML content in prompts ([#1541](https://github.com/everruns/everruns/pull/1541)) by [@chaliy](https://github.com/chaliy)
+- fix(server): clamp turn context message limits ([#1540](https://github.com/everruns/everruns/pull/1540)) by [@chaliy](https://github.com/chaliy)
+- fix(sessions): scope unpin to caller org ([#1539](https://github.com/everruns/everruns/pull/1539)) by [@chaliy](https://github.com/chaliy)
+- fix(ci): run rust-gated jobs when CLI E2E script changes ([#1538](https://github.com/everruns/everruns/pull/1538)) by [@chaliy](https://github.com/chaliy)
+- fix(daytona): reject traversal segments in default clone path ([#1537](https://github.com/everruns/everruns/pull/1537)) by [@chaliy](https://github.com/chaliy)
+- fix(auth): sanitize register return_to redirect ([#1536](https://github.com/everruns/everruns/pull/1536)) by [@chaliy](https://github.com/chaliy)
+- fix(server): bound Slack users.info cache growth ([#1535](https://github.com/everruns/everruns/pull/1535)) by [@chaliy](https://github.com/chaliy)
+- fix(slack): restrict manifest endpoint exposure ([#1534](https://github.com/everruns/everruns/pull/1534)) by [@chaliy](https://github.com/chaliy)
+- fix(server): keep auth rate limiter fail-open on valkey errors ([#1533](https://github.com/everruns/everruns/pull/1533)) by [@chaliy](https://github.com/chaliy)
+- fix(auth): always revalidate API keys against DB ([#1532](https://github.com/everruns/everruns/pull/1532)) by [@chaliy](https://github.com/chaliy)
+- fix(server): share LLM resolver with worker service ([#1531](https://github.com/everruns/everruns/pull/1531)) by [@chaliy](https://github.com/chaliy)
+- fix(encryption): validate key_id in DEK cache lookup ([#1530](https://github.com/everruns/everruns/pull/1530)) by [@chaliy](https://github.com/chaliy)
+- fix(server): preserve readonly guard in write_file race recovery ([#1529](https://github.com/everruns/everruns/pull/1529)) by [@chaliy](https://github.com/chaliy)
+- fix(slack): skip bot replies in thread context injection ([#1528](https://github.com/everruns/everruns/pull/1528)) by [@chaliy](https://github.com/chaliy)
+- fix(subagents): persist child session metadata ([#1527](https://github.com/everruns/everruns/pull/1527)) by [@chaliy](https://github.com/chaliy)
+- fix(server): block virtual mount create-path writes ([#1526](https://github.com/everruns/everruns/pull/1526)) by [@chaliy](https://github.com/chaliy)
+- fix(server): restrict client tool definitions to client_side ([#1525](https://github.com/everruns/everruns/pull/1525)) by [@chaliy](https://github.com/chaliy)
+- fix(core): ignore untrusted metadata locale override ([#1524](https://github.com/everruns/everruns/pull/1524)) by [@chaliy](https://github.com/chaliy)
+- fix(durable): enforce post-load event cap during replay ([#1523](https://github.com/everruns/everruns/pull/1523)) by [@chaliy](https://github.com/chaliy)
+- fix(cli): block symlink traversal in file sync paths ([#1520](https://github.com/everruns/everruns/pull/1520)) by [@chaliy](https://github.com/chaliy)
+- fix(api): avoid UTF-8 boundary panic in OAuth error truncation ([#1519](https://github.com/everruns/everruns/pull/1519)) by [@chaliy](https://github.com/chaliy)
+- fix(cli): avoid API key in connections set args ([#1518](https://github.com/everruns/everruns/pull/1518)) by [@chaliy](https://github.com/chaliy)
+- fix(cli): block hidden initial_files directories ([#1517](https://github.com/everruns/everruns/pull/1517)) by [@chaliy](https://github.com/chaliy)
+- fix(mcp): enforce policies for resources/read metadata ([#1516](https://github.com/everruns/everruns/pull/1516)) by [@chaliy](https://github.com/chaliy)
+- fix(api-keys): restore per-user API key quota ([#1514](https://github.com/everruns/everruns/pull/1514)) by [@chaliy](https://github.com/chaliy)
+- fix(sessions): gate high-risk harness capabilities for members ([#1485](https://github.com/everruns/everruns/pull/1485)) by [@chaliy](https://github.com/chaliy)
+- fix(daytona): harden git credential file permissions ([#1509](https://github.com/everruns/everruns/pull/1509)) by [@chaliy](https://github.com/chaliy)
+- fix(core): enforce web_fetch file-download runtime guard ([#1507](https://github.com/everruns/everruns/pull/1507)) by [@chaliy](https://github.com/chaliy)
+- fix(mcp): ignore disabled servers in prefix resolver ([#1504](https://github.com/everruns/everruns/pull/1504)) by [@chaliy](https://github.com/chaliy)
+- fix(server): enforce Slack team/channel webhook scope ([#1501](https://github.com/everruns/everruns/pull/1501)) by [@chaliy](https://github.com/chaliy)
+- fix(slack): scope recovery app lookup to session org ([#1502](https://github.com/everruns/everruns/pull/1502)) by [@chaliy](https://github.com/chaliy)
+- fix(capabilities): restore high-risk levels for bash/fetch ([#1500](https://github.com/everruns/everruns/pull/1500)) by [@chaliy](https://github.com/chaliy)
+- fix(server): cancel SSE pg_notify listener on disconnect ([#1510](https://github.com/everruns/everruns/pull/1510)) by [@chaliy](https://github.com/chaliy)
+- fix(server): block built-in harness mutations in platform store ([#1508](https://github.com/everruns/everruns/pull/1508)) by [@chaliy](https://github.com/chaliy)
+- fix(browserless): validate persisted CDP reconnect endpoint ([#1505](https://github.com/everruns/everruns/pull/1505)) by [@chaliy](https://github.com/chaliy)
+- fix(slack): validate attachment image URLs before LLM forwarding ([#1503](https://github.com/everruns/everruns/pull/1503)) by [@chaliy](https://github.com/chaliy)
+- fix(server): scope global chat singleton by owner principal ([#1499](https://github.com/everruns/everruns/pull/1499)) by [@chaliy](https://github.com/chaliy)
+- fix(core): stop logging full OpenResponses request bodies ([#1522](https://github.com/everruns/everruns/pull/1522)) by [@chaliy](https://github.com/chaliy)
+- fix(gemini): move API key from URL to auth header ([#1511](https://github.com/everruns/everruns/pull/1511)) by [@chaliy](https://github.com/chaliy)
+- fix(notifications): prevent SSE replay loop on cursor poll ([#1506](https://github.com/everruns/everruns/pull/1506)) by [@chaliy](https://github.com/chaliy)
+- fix(scripts): verify doppler tarball checksum ([#1512](https://github.com/everruns/everruns/pull/1512)) by [@chaliy](https://github.com/chaliy)
+- fix(ci): validate docker release dispatch tag ref ([#1498](https://github.com/everruns/everruns/pull/1498)) by [@chaliy](https://github.com/chaliy)
+- fix(skills): bound prompt-time skill discovery scan ([#1497](https://github.com/everruns/everruns/pull/1497)) by [@chaliy](https://github.com/chaliy)
+- refactor(session_resources): absorb SessionResourceService into queries ([#1496](https://github.com/everruns/everruns/pull/1496)) by [@chaliy](https://github.com/chaliy)
+- refactor(services): drop deprecated shims for moved modules ([#1495](https://github.com/everruns/everruns/pull/1495)) by [@chaliy](https://github.com/chaliy)
+- fix(auth): disable OAuth in external auth mode ([#1492](https://github.com/everruns/everruns/pull/1492)) by [@chaliy](https://github.com/chaliy)
+- fix(daytona): restrict git clone auth to github host ([#1491](https://github.com/everruns/everruns/pull/1491)) by [@chaliy](https://github.com/chaliy)
+- fix(server): block cross-user GitHub installation linking ([#1490](https://github.com/everruns/everruns/pull/1490)) by [@chaliy](https://github.com/chaliy)
+- fix(server): remove privileged tools from platform chat ([#1489](https://github.com/everruns/everruns/pull/1489)) by [@chaliy](https://github.com/chaliy)
+- fix(server): scope session connection lookups to owner user ([#1487](https://github.com/everruns/everruns/pull/1487)) by [@chaliy](https://github.com/chaliy)
+- fix(authz): restore missing view policy checks ([#1486](https://github.com/everruns/everruns/pull/1486)) by [@chaliy](https://github.com/chaliy)
+- fix(sessions): reject reserved internal tags on update ([#1484](https://github.com/everruns/everruns/pull/1484)) by [@chaliy](https://github.com/chaliy)
+- fix(server): reject JWT auth for deleted users ([#1470](https://github.com/everruns/everruns/pull/1470)) by [@chaliy](https://github.com/chaliy)
+- fix(core): cap persisted tool output to prevent storage DoS ([#1469](https://github.com/everruns/everruns/pull/1469)) by [@chaliy](https://github.com/chaliy)
+- fix(session_sandbox): strip session-level Daytona base URL overrides ([#1458](https://github.com/everruns/everruns/pull/1458)) by [@chaliy](https://github.com/chaliy)
+- fix(core): bound background output buffering memory ([#1456](https://github.com/everruns/everruns/pull/1456)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): redact timeline tool outputs for secret_store ([#1493](https://github.com/everruns/everruns/pull/1493)) by [@chaliy](https://github.com/chaliy)
+- refactor(services): move single-owner services into their owning domains ([#1483](https://github.com/everruns/everruns/pull/1483)) by [@chaliy](https://github.com/chaliy)
+- refactor(authz): retire #[policy] macro now that Command::run enforces ([#1482](https://github.com/everruns/everruns/pull/1482)) by [@chaliy](https://github.com/chaliy)
+- fix(authz): enforce command policy on every caller via Command::run ([#1451](https://github.com/everruns/everruns/pull/1451)) by [@chaliy](https://github.com/chaliy)
+- fix(harnesses): require HARNESS_VIEW for preview access ([#1478](https://github.com/everruns/everruns/pull/1478)) by [@chaliy](https://github.com/chaliy)
+- fix(deno): bound sandbox stream buffer growth ([#1476](https://github.com/everruns/everruns/pull/1476)) by [@chaliy](https://github.com/chaliy)
+- fix(subagents): enforce blueprint capability authorization ([#1475](https://github.com/everruns/everruns/pull/1475)) by [@chaliy](https://github.com/chaliy)
+- fix(org): require admin for harness defaults updates ([#1481](https://github.com/everruns/everruns/pull/1481)) by [@chaliy](https://github.com/chaliy)
+- fix(worker): exclude dependency blockers from LLM breaker ([#1480](https://github.com/everruns/everruns/pull/1480)) by [@chaliy](https://github.com/chaliy)
+- fix(compaction): avoid UTF-8 panic in summarization truncation ([#1479](https://github.com/everruns/everruns/pull/1479)) by [@chaliy](https://github.com/chaliy)
+- fix(server): enforce one-time CLI exchange code use ([#1477](https://github.com/everruns/everruns/pull/1477)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): harden mermaid rendering with strict security mode ([#1474](https://github.com/everruns/everruns/pull/1474)) by [@chaliy](https://github.com/chaliy)
+- fix(server): harden API rate-limit client IP extraction ([#1471](https://github.com/everruns/everruns/pull/1471)) by [@chaliy](https://github.com/chaliy)
+- fix(server): prevent max_iterations cast overflow ([#1467](https://github.com/everruns/everruns/pull/1467)) by [@chaliy](https://github.com/chaliy)
+- fix(core): reapply read_file hard cap after outline append ([#1464](https://github.com/everruns/everruns/pull/1464)) by [@chaliy](https://github.com/chaliy)
+- fix(sprites): validate sprite names when loading state ([#1473](https://github.com/everruns/everruns/pull/1473)) by [@chaliy](https://github.com/chaliy)
+- fix(budgets): enforce manage policy for budget mutations ([#1468](https://github.com/everruns/everruns/pull/1468)) by [@chaliy](https://github.com/chaliy)
+- fix(core): protect internal secret_store namespaces ([#1466](https://github.com/everruns/everruns/pull/1466)) by [@chaliy](https://github.com/chaliy)
+- fix(core): enforce ACLs for blueprint sessions ([#1465](https://github.com/everruns/everruns/pull/1465)) by [@chaliy](https://github.com/chaliy)
+- fix(evals): require session manage permission to run evals ([#1463](https://github.com/everruns/everruns/pull/1463)) by [@chaliy](https://github.com/chaliy)
+- fix(auth): stop reseeding harnesses in public signup flows ([#1462](https://github.com/everruns/everruns/pull/1462)) by [@chaliy](https://github.com/chaliy)
+- fix(container-sandbox): avoid sandbox name collisions ([#1461](https://github.com/everruns/everruns/pull/1461)) by [@chaliy](https://github.com/chaliy)
+- fix(ci): remove unpinned cargo-binstall install script ([#1460](https://github.com/everruns/everruns/pull/1460)) by [@chaliy](https://github.com/chaliy)
+- fix(runtime): preserve session blueprint for act tools ([#1457](https://github.com/everruns/everruns/pull/1457)) by [@chaliy](https://github.com/chaliy)
+- fix(core): gate Braintrust tool labels on args mode ([#1454](https://github.com/everruns/everruns/pull/1454)) by [@chaliy](https://github.com/chaliy)
+- fix(commands): enforce session view policy on command execution ([#1453](https://github.com/everruns/everruns/pull/1453)) by [@chaliy](https://github.com/chaliy)
+- fix(server): reject scoped MCP names with reserved delimiter ([#1455](https://github.com/everruns/everruns/pull/1455)) by [@chaliy](https://github.com/chaliy)
+- fix(apps): prevent shared invocation session hijacking ([#1452](https://github.com/everruns/everruns/pull/1452)) by [@chaliy](https://github.com/chaliy)
+- feat(multitenancy): auto-select owning org from direct resource links ([#1450](https://github.com/everruns/everruns/pull/1450)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): stop trusting forwarded headers for SSR API origin ([#1459](https://github.com/everruns/everruns/pull/1459)) by [@chaliy](https://github.com/chaliy)
+- feat(openai): make gpt-image-2 image generation reliable by [@chaliy](https://github.com/chaliy)
+- fix(auth): require CSRF-confirmed MCP OAuth authorization ([#1447](https://github.com/everruns/everruns/pull/1447)) by [@chaliy](https://github.com/chaliy)
+- fix(mcp): enforce api key organization scope for overrides ([#1446](https://github.com/everruns/everruns/pull/1446)) by [@chaliy](https://github.com/chaliy)
+- fix(skills): disable command placeholder execution in activation ([#1449](https://github.com/everruns/everruns/pull/1449)) by [@chaliy](https://github.com/chaliy)
+- fix(browserless): suppress interact content when secrets used ([#1448](https://github.com/everruns/everruns/pull/1448)) by [@chaliy](https://github.com/chaliy)
+- fix(openai): prevent session base URL credential leak ([#1445](https://github.com/everruns/everruns/pull/1445)) by [@chaliy](https://github.com/chaliy)
+- feat(api): add raw session file downloads ([#1443](https://github.com/everruns/everruns/pull/1443)) by [@chaliy](https://github.com/chaliy)
+- refactor(server): move domain services into domains by [@chaliy](https://github.com/chaliy)
+- feat(mcp): emit WWW-Authenticate on /mcp 401 responses (RFC 9728) ([#1441](https://github.com/everruns/everruns/pull/1441)) by [@chaliy](https://github.com/chaliy)
+
 ## [0.8.18] - 2026-04-22
 
 ### Highlights

@@ -2047,6 +2047,16 @@ mod tests {
         async fn get_session_by_id(&self, _id: SessionId) -> crate::Result<Option<crate::Session>> {
             Ok(None)
         }
+        async fn set_subagent_metadata(
+            &self,
+            _session_id: SessionId,
+            _parent_session_id: SessionId,
+            _subagent_name: &str,
+            _subagent_task: &str,
+            _subagent_status: crate::session::SubagentStatus,
+        ) -> crate::Result<crate::Session> {
+            unreachable!()
+        }
         async fn delete_session(&self, _id: SessionId) -> crate::Result<()> {
             Ok(())
         }

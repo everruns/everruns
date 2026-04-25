@@ -5,6 +5,26 @@
  *
  * Uses Streamdown with @streamdown/code for Shiki-based syntax highlighting,
  * matching the styling used in chat messages.
+ *
+ * SVG TRUST BOUNDARY (see also `specs/threat-model.md` TM-WEB-009):
+ * SVG files are user-supplied bytes. Rendering attacker-controlled SVG via
+ * `<img src="data:image/svg+xml;base64,…">` was blocked in PR #1513 because
+ * `<img>`-loaded SVG can carry `<script>` and `on*` event-handler XSS in
+ * some browsers. We re-enable preview by rendering inside an
+ * `<iframe sandbox="" srcDoc=...>`:
+ *
+ *   1. `sandbox=""` denies all sandbox flags (scripts, forms, top-nav,
+ *      same-origin, popups), so even script-bearing SVG cannot run.
+ *   2. The srcDoc carries a strict CSP meta tag
+ *      (`default-src 'none'; style-src 'unsafe-inline'; img-src data:`) as
+ *      defense in depth: external fetches, scripts, and cross-origin loads
+ *      are blocked even if a sandbox flag were ever loosened.
+ *   3. SVG bytes go into the iframe body; `<script>`, `on*`, `javascript:`,
+ *      and `<foreignObject>` HTML are still parsed by the iframe DOM but
+ *      cannot execute or fetch under either gate.
+ *
+ * The trust gate is enforced in `SVGPreview` below; `getPreviewType` routes
+ * `.svg` files to that component instead of `<img>`-based `ImagePreview`.
  */
 
 import { useMemo } from "react";
@@ -55,7 +75,7 @@ const CODE_EXTENSIONS = new Set([
   "svelte",
 ]);
 
-const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp", "ico"]);
+const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "ico"]);
 
 // Map file extensions to Shiki language identifiers
 const EXTENSION_TO_LANG: Record<string, string> = {
@@ -91,10 +111,22 @@ const EXTENSION_TO_LANG: Record<string, string> = {
   json: "json",
 };
 
-export type PreviewType = "code" | "csv" | "json" | "markdown" | "image" | "text" | "binary";
+export type PreviewType =
+  | "code"
+  | "csv"
+  | "json"
+  | "markdown"
+  | "image"
+  | "svg"
+  | "text"
+  | "binary";
 
 export function getPreviewType(extension: string, encoding: "text" | "base64"): PreviewType {
   const ext = extension.toLowerCase();
+
+  // SVG previews go through the sandboxed iframe path regardless of how the
+  // bytes are delivered; see SVG TRUST BOUNDARY at the top of this module.
+  if (ext === "svg") return "svg";
 
   if (encoding === "base64") {
     if (IMAGE_EXTENSIONS.has(ext)) return "image";
@@ -349,7 +381,6 @@ export function ImagePreview({
       jpeg: "image/jpeg",
       gif: "image/gif",
       webp: "image/webp",
-      svg: "image/svg+xml",
       bmp: "image/bmp",
       ico: "image/x-icon",
     };
@@ -371,6 +402,94 @@ export function ImagePreview({
   );
 }
 
+/**
+ * Decode user-supplied SVG bytes to a string.
+ *
+ * `text` encoding is already an SVG source string. `base64` encoding decodes
+ * via `atob` and reconstructs UTF-8 (SVG can carry non-ASCII glyph names,
+ * gradient stop labels, foreign-object text, etc.). Decoding only converts
+ * bytes to characters — it does NOT execute or sanitize anything; the
+ * sandboxed iframe + CSP do that work in `SVGPreview`.
+ */
+function decodeSvgSource(content: string, encoding: "text" | "base64"): string {
+  if (encoding !== "base64") {
+    return content;
+  }
+  // Strip whitespace before `atob`. PEM-style and HTTP-multipart base64 carry
+  // line breaks; many APIs and pasted-from-clipboard payloads include
+  // newlines that strict `atob` rejects.
+  const normalized = content.replace(/\s+/g, "");
+  try {
+    const binary = atob(normalized);
+    if (typeof TextDecoder !== "undefined") {
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      return new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+    }
+    return binary;
+  } catch {
+    return "";
+  }
+}
+
+export function SVGPreview({
+  content,
+  encoding,
+}: {
+  content: string;
+  encoding: "text" | "base64";
+}) {
+  const svgSource = useMemo(() => decodeSvgSource(content, encoding), [content, encoding]);
+
+  // Strict CSP for the iframe document. `default-src 'none'` blocks all
+  // network I/O the SVG might attempt (xlink:href to external URLs, image
+  // tags, etc.). `style-src 'unsafe-inline'` is required so SVG `<style>`
+  // and inline `style="..."` attributes — which are the legitimate way to
+  // color/size SVGs — still apply. `img-src data:` allows base64 raster
+  // tiles inlined inside the SVG; remote images stay blocked.
+  const srcDoc = useMemo(() => {
+    const csp = "default-src 'none'; style-src 'unsafe-inline'; img-src data:";
+    // SVG body is inserted verbatim; the iframe's `sandbox=""` + CSP gate
+    // any executable content. No string-level guard around `</body>` — even
+    // if an SVG contains that substring, the iframe's HTML parser handles a
+    // premature body close gracefully (subsequent content reopens implicitly)
+    // and the trust gate (sandbox + CSP) is unaffected.
+    return `<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="${csp}">
+<style>html,body{margin:0;padding:0;height:100%;display:flex;align-items:center;justify-content:center;background:transparent}svg{max-width:100%;max-height:100%}</style>
+</head>
+<body>${svgSource}</body></html>`;
+  }, [svgSource]);
+
+  if (!svgSource.trim()) {
+    return (
+      <div className="p-4 text-sm text-muted-foreground text-center">
+        <AlertCircle className="h-8 w-8 mx-auto mb-2 text-yellow-500" />
+        <p>Empty or invalid SVG</p>
+      </div>
+    );
+  }
+
+  return (
+    <ScrollArea className="h-full">
+      <div className="p-4 flex items-center justify-center min-h-full">
+        <iframe
+          title="SVG preview"
+          // Empty `sandbox` means deny every flag — no scripts, no forms, no
+          // top-nav, no same-origin, no popups. Combined with the CSP meta
+          // tag inside `srcDoc`, this is the strongest browser-side gate
+          // available for inline SVG. See SVG TRUST BOUNDARY at module top.
+          sandbox=""
+          srcDoc={srcDoc}
+          className="w-full max-w-full max-h-[calc(100vh-200px)] aspect-square border-0 bg-white dark:bg-neutral-950 rounded"
+        />
+      </div>
+    </ScrollArea>
+  );
+}
+
 export function FilePreview({ content, extension, encoding }: PreviewProps) {
   const previewType = getPreviewType(extension, encoding);
 
@@ -383,6 +502,8 @@ export function FilePreview({ content, extension, encoding }: PreviewProps) {
       return <JSONPreview content={content} />;
     case "markdown":
       return <MarkdownPreview content={content} />;
+    case "svg":
+      return <SVGPreview content={content} encoding={encoding} />;
     case "image":
       return (
         <ImagePreview content={content} extension={extension} fileName={`file.${extension}`} />

@@ -77,6 +77,39 @@ function escapeMarkdownHtml(value) {
   return value.replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
+const SAFE_MARKDOWN_PROTOCOLS = new Set(["http:", "https:", "mailto:", "tel:"]);
+
+function sanitizeMarkdownUrl(value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+
+  if (
+    trimmed.startsWith("#") ||
+    trimmed.startsWith("/") ||
+    trimmed.startsWith("./") ||
+    trimmed.startsWith("../")
+  ) {
+    return trimmed;
+  }
+
+  if (trimmed.startsWith("//")) {
+    return trimmed;
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    return SAFE_MARKDOWN_PROTOCOLS.has(parsed.protocol.toLowerCase()) ? trimmed : null;
+  } catch {
+    return null;
+  }
+}
+
 function stripHtmlTags(value) {
   return value.replace(/<[^>]+>/g, "");
 }
@@ -210,6 +243,28 @@ function createMarkdownRenderer({ slugCounts, headings, includeTocHeadings, assi
         ${renderHighlightedCode(token.text, token.lang)}
       </div>
     `;
+  };
+
+  renderer.link = function link(token) {
+    const href = sanitizeMarkdownUrl(token.href);
+    const content = this.parser.parseInline(token.tokens);
+    if (!href) {
+      return content;
+    }
+
+    const title = token.title ? ` title="${escapeHtml(token.title)}"` : "";
+    return `<a href="${escapeHtml(href)}"${title}>${content}</a>`;
+  };
+
+  renderer.image = function image(token) {
+    const href = sanitizeMarkdownUrl(token.href);
+    const alt = escapeHtml(token.text ?? "");
+    if (!href) {
+      return alt;
+    }
+
+    const title = token.title ? ` title="${escapeHtml(token.title)}"` : "";
+    return `<img src="${escapeHtml(href)}" alt="${alt}"${title}>`;
   };
 
   return renderer;

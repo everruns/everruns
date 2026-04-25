@@ -23,4 +23,8 @@ export interface Capability {
   dependencies?: CapabilityId[];
   /** UI feature strings this capability contributes to */
   features?: string[];
+  /** JSON Schema for capability-specific config */
+  config_schema?: Record<string, unknown>;
+  /** react-jsonschema-form uiSchema hints for rendering config_schema */
+  config_ui_schema?: Record<string, unknown>;
 }

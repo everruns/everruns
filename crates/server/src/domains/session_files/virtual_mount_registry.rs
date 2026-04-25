@@ -62,6 +62,8 @@ impl VirtualMountRegistry {
             if let Some(relative) = strip_mount_prefix(path, &mount.mount_path) {
                 let lookup = if relative.is_empty() {
                     mount.mount_path.clone()
+                } else if mount.mount_path == "/" {
+                    format!("/{relative}")
                 } else {
                     format!("{}/{relative}", mount.mount_path)
                 };
@@ -260,6 +262,19 @@ mod tests {
 
         // "/mnt2/hello.txt" should NOT match mount at "/mnt"
         assert!(registry.read_file(&sid, "/mnt2/hello.txt").is_none());
+    }
+
+    #[test]
+    fn registry_read_file_root_mount() {
+        let registry = VirtualMountRegistry::new();
+        let sid = Uuid::new_v4();
+        let mut tree = VirtualFileTree::new();
+        tree.insert_text("/hello.txt", "world");
+        registry.register(sid, "/".into(), Arc::new(tree), "cap".into());
+
+        let result = registry.read_file(&sid, "/hello.txt").unwrap();
+        assert_eq!(result.content, b"world");
+        assert!(!result.is_directory);
     }
 
     #[test]

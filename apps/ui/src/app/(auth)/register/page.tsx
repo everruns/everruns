@@ -16,6 +16,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { useAuthConfig, useRegister } from "@/hooks/use-auth";
+import { sanitizeReturnTo } from "@/lib/auth-redirect";
 import { Loader2 } from "lucide-react";
 
 export default function RegisterPage() {
@@ -30,7 +31,7 @@ export default function RegisterPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const returnTo = searchParams.get("return_to");
+  const returnTo = sanitizeReturnTo(searchParams.get("return_to"));
 
   // Redirect if auth is not required or signup is disabled
   useEffect(() => {

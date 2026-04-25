@@ -15,6 +15,7 @@ pub const DEFAULT_API_PREFIX: &str = "/api";
 pub struct ResourceLimitsConfig {
     pub max_orgs_per_user: i64,
     pub max_members_per_org: i64,
+    pub max_api_keys_per_user: i64,
 }
 
 impl Default for ResourceLimitsConfig {
@@ -22,6 +23,7 @@ impl Default for ResourceLimitsConfig {
         Self {
             max_orgs_per_user: 5,
             max_members_per_org: 50,
+            max_api_keys_per_user: 25,
         }
     }
 }
@@ -31,6 +33,7 @@ impl ResourceLimitsConfig {
         Self {
             max_orgs_per_user: env_or("RESOURCE_LIMIT_MAX_ORGS_PER_USER", 5),
             max_members_per_org: env_or("RESOURCE_LIMIT_MAX_MEMBERS_PER_ORG", 50),
+            max_api_keys_per_user: env_or("RESOURCE_LIMIT_MAX_API_KEYS_PER_USER", 25),
         }
     }
 }

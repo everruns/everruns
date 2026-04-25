@@ -475,7 +475,9 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
   // Incremental token usage accumulation — O(1) per new event instead of O(n).
   // Tracks how many events have been processed so only new events are scanned.
   const usageRef = useRef({
-    processed: 0,
+    sessionId: session?.id,
+    maxSequenceProcessed: -1,
+    processedIdsWithoutSequence: new Set<string>(),
     inputTokens: 0,
     outputTokens: 0,
     cacheReadTokens: 0,
@@ -483,10 +485,12 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
     hasLlmEvents: false,
   });
 
-  // Reset accumulator when events array shrinks (session change or trimming)
-  if (events.length < usageRef.current.processed) {
+  // Reset accumulator when switching sessions.
+  if (usageRef.current.sessionId !== session?.id) {
     usageRef.current = {
-      processed: 0,
+      sessionId: session?.id,
+      maxSequenceProcessed: -1,
+      processedIdsWithoutSequence: new Set<string>(),
       inputTokens: 0,
       outputTokens: 0,
       cacheReadTokens: 0,
@@ -502,9 +506,16 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
 
     const acc = usageRef.current;
 
-    // Only scan events we haven't processed yet
-    for (let i = acc.processed; i < events.length; i++) {
-      const event = events[i];
+    // Scan only events that are newer than what we've already accumulated.
+    for (const event of events) {
+      const eventSequence = event.sequence ?? null;
+      if (eventSequence != null && eventSequence <= acc.maxSequenceProcessed) {
+        continue;
+      }
+      if (eventSequence == null && acc.processedIdsWithoutSequence.has(event.id)) {
+        continue;
+      }
+
       const llmData = getEventData(event, "llm.generation");
       if (llmData?.metadata?.usage) {
         acc.hasLlmEvents = true;
@@ -513,8 +524,13 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
         acc.cacheReadTokens += llmData.metadata.usage.cache_read_tokens ?? 0;
         acc.cacheCreationTokens += llmData.metadata.usage.cache_creation_tokens ?? 0;
       }
+
+      if (eventSequence != null) {
+        acc.maxSequenceProcessed = Math.max(acc.maxSequenceProcessed, eventSequence);
+      } else {
+        acc.processedIdsWithoutSequence.add(event.id);
+      }
     }
-    acc.processed = events.length;
 
     if (acc.hasLlmEvents) {
       return {

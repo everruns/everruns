@@ -80,7 +80,6 @@ export function ModelRow({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {/* Profile capability badges */}
           {profile && (
             <div className="flex gap-1">
               {profile.reasoning && (
@@ -103,7 +102,6 @@ export function ModelRow({
               )}
             </div>
           )}
-          {/* Legacy capabilities (only show if no profile) */}
           {!profile && model.capabilities.length > 0 && (
             <div className="flex gap-1">
               {model.capabilities.slice(0, 2).map((cap) => (
@@ -128,7 +126,6 @@ export function ModelRow({
           >
             {model.status}
           </Badge>
-          {/* Enable / Disable toggle */}
           <Button
             variant={model.enabled ? "outline" : "default"}
             size="sm"
@@ -173,11 +170,9 @@ export function ModelRow({
         </div>
       </div>
 
-      {/* Expanded profile details */}
       {expanded && profile && (
         <div className="border-t bg-muted/30 p-4">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-3">
-            {/* Limits */}
             {profile.limits && (
               <div>
                 <div className="font-medium text-muted-foreground mb-1 flex items-center gap-1">
@@ -190,7 +185,6 @@ export function ModelRow({
               </div>
             )}
 
-            {/* Cost */}
             {profile.cost && (
               <div>
                 <div className="font-medium text-muted-foreground mb-1 flex items-center gap-1">
@@ -203,7 +197,6 @@ export function ModelRow({
               </div>
             )}
 
-            {/* Capabilities */}
             <div>
               <div className="font-medium text-muted-foreground mb-1 flex items-center gap-1">
                 <Wrench className="h-3.5 w-3.5" />
@@ -227,7 +220,6 @@ export function ModelRow({
               </div>
             </div>
 
-            {/* Info */}
             <div>
               <div className="font-medium text-muted-foreground mb-1 flex items-center gap-1">
                 <Info className="h-3.5 w-3.5" />

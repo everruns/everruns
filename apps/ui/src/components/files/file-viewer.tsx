@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { File, X, Save, Edit3, Lock, Download, Eye, Code2 } from "lucide-react";
 import { FileIcon } from "./file-icon";
-import { FilePreview, canPreview, getPreviewType } from "./file-previews";
+import { FilePreview, canPreview } from "./file-previews";
 import { useFile, useUpdateFile } from "@/hooks/use-session-files";
 import { formatFileSize, getFileExtension } from "@/lib/api/session-files";
 import type { FileInfo } from "@/lib/api/types";
@@ -78,7 +78,6 @@ export function FileViewer({ sessionId, file, onClose }: FileViewerProps) {
   const isBinary = fileData?.encoding === "base64";
   const encoding = (fileData?.encoding ?? "text") as "text" | "base64";
   const hasPreview = canPreview(extension, encoding);
-  const previewType = getPreviewType(extension, encoding);
 
   return (
     <Card className="h-full flex flex-col">
@@ -175,7 +174,7 @@ export function FileViewer({ sessionId, file, onClose }: FileViewerProps) {
       <CardContent className="flex-1 p-0 overflow-hidden">
         {isLoading ? (
           <div className="p-4 text-sm text-muted-foreground">Loading...</div>
-        ) : isBinary && previewType !== "image" ? (
+        ) : isBinary && !hasPreview ? (
           <div className="p-4 text-sm text-muted-foreground text-center">
             <File className="h-12 w-12 mx-auto mb-2 text-gray-300" />
             <p>Binary file</p>

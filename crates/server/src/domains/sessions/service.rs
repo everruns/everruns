@@ -22,9 +22,9 @@ use anyhow::Result;
 use everruns_core::session_sandbox::SESSION_SANDBOX_CAPABILITY_ID;
 use everruns_core::{
     AgentCapabilityConfig, AgentId, Caller, CapabilityRegistry, HarnessId, InitialFile, ModelId,
-    MountPoint, Permission, Policy, Rule, Session, SessionId, SessionStatus, SubagentStatus,
-    TokenUsage,
-    capabilities::{SystemPromptContext, collect_capabilities, compute_features},
+    MountPoint, OrgRole, Permission, Policy, Rule, Session, SessionId, SessionStatus,
+    SubagentStatus, TokenUsage,
+    capabilities::{RiskLevel, SystemPromptContext, collect_capabilities, compute_features},
     merge_capabilities, merge_initial_files, normalize_initial_file_path,
 };
 use everruns_durable::UpdateField;
@@ -174,6 +174,14 @@ impl SessionService {
         crate::domains::capabilities::validation::validate_capability_refs(
             &self.db,
             org_id,
+            &session_capabilities,
+        )
+        .await?;
+        self.require_admin_for_high_risk_session_capabilities(
+            caller,
+            org_id,
+            harness_id.uuid(),
+            agent_id.map(|id| id.uuid()),
             &session_capabilities,
         )
         .await?;
@@ -844,8 +852,17 @@ impl SessionService {
         let tags = vec!["global-chat".to_string(), user_tag.clone()];
         let desired_harness_id = HarnessId::from_uuid(harness_id);
 
-        // Look for existing chat session
-        if let Some(mut row) = self.db.find_session_by_tags(org_id, &tags).await? {
+        let owner_principal = self
+            .principal_service
+            .ensure_user_principal(org_id, user_id)
+            .await?;
+
+        // Look for existing chat session owned by the user.
+        if let Some(mut row) = self
+            .db
+            .find_session_by_tags_and_owner(org_id, owner_principal.id, &tags)
+            .await?
+        {
             if row.harness_id != Some(desired_harness_id) {
                 tracing::info!(
                     session_id = %row.id,
@@ -899,10 +916,6 @@ impl SessionService {
 
         // Create a new chat session
         let harness_id_typed = HarnessId::from_uuid(harness_id);
-        let owner_principal = self
-            .principal_service
-            .ensure_user_principal(org_id, user_id)
-            .await?;
         let input = CreateSessionRow {
             org_id,
             harness_id: Some(harness_id_typed),
@@ -958,11 +971,11 @@ impl SessionService {
             .await
     }
 
-    /// Unpin a session for a user. `_caller` kept for signature symmetry;
-    /// authorization is enforced at `Command::run` via `UnpinSession::policy`.
-    pub async fn unpin(&self, _caller: &Caller, user_id: Uuid, session_id: Uuid) -> Result<bool> {
+    /// Unpin a session for a user in the caller's current org.
+    /// Authorization is enforced at `Command::run` via `UnpinSession::policy`.
+    pub async fn unpin(&self, caller: &Caller, user_id: Uuid, session_id: Uuid) -> Result<bool> {
         self.db
-            .unpin_session(user_id, SessionId::from_uuid(session_id))
+            .unpin_session(user_id, SessionId::from_uuid(session_id), caller.org_id)
             .await
     }
 
@@ -1031,6 +1044,39 @@ impl SessionService {
         }
 
         Ok(capability_ids)
+    }
+
+    async fn require_admin_for_high_risk_session_capabilities(
+        &self,
+        caller: &Caller,
+        org_id: i64,
+        harness_id: Uuid,
+        agent_id: Option<Uuid>,
+        session_capabilities: &[AgentCapabilityConfig],
+    ) -> Result<()> {
+        if caller.role.has_permission(OrgRole::Admin) {
+            return Ok(());
+        }
+
+        let capability_ids = self
+            .collect_session_capability_ids(org_id, harness_id, agent_id, session_capabilities)
+            .await?;
+        let high_risk: Vec<String> = capability_ids
+            .into_iter()
+            .filter(|capability_id| {
+                self.capability_registry
+                    .get(capability_id)
+                    .is_some_and(|capability| capability.risk_level() == RiskLevel::High)
+            })
+            .collect();
+        if high_risk.is_empty() {
+            return Ok(());
+        }
+
+        anyhow::bail!(
+            "Admin role required to create sessions with high-risk capabilities: {}",
+            high_risk.join(", ")
+        );
     }
 
     /// Populate the `features` field on a session by aggregating features from
@@ -1193,8 +1239,10 @@ mod tests {
     };
     use crate::services::CapabilityService;
     use crate::storage::{
-        CreateLlmModelRow, CreateLlmProviderRow, CreateOrganizationRow, StorageBackend,
+        CreateHarnessRow, CreateLlmModelRow, CreateLlmProviderRow, CreateOrganizationRow,
+        StorageBackend,
     };
+    use everruns_core::capabilities::Capability;
     use everruns_core::{Caller, DEFAULT_ORG_ID, InitialFile, OrgRole};
 
     #[test]
@@ -1809,6 +1857,87 @@ mod tests {
             !session.features.contains(&"schedules".to_string()),
             "foreign agent capability should not contribute features: {:?}",
             session.features
+        );
+    }
+
+    struct TestHighRiskCapability;
+
+    impl Capability for TestHighRiskCapability {
+        fn id(&self) -> &str {
+            "test_high_risk"
+        }
+
+        fn name(&self) -> &str {
+            "Test High Risk"
+        }
+
+        fn description(&self) -> &str {
+            "Test-only high risk capability"
+        }
+
+        fn risk_level(&self) -> RiskLevel {
+            RiskLevel::High
+        }
+    }
+
+    #[tokio::test]
+    async fn create_rejects_high_risk_harness_capabilities_for_members() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let mut registry = CapabilityRegistry::new();
+        registry.register(TestHighRiskCapability);
+        let session_service = SessionService::with_registry(db.clone(), registry);
+        let owner = Caller::internal(DEFAULT_ORG_ID);
+
+        let harness = db
+            .create_harness(
+                owner.org_id,
+                CreateHarnessRow {
+                    name: "restricted-harness".to_string(),
+                    display_name: Some("Restricted Harness".to_string()),
+                    description: None,
+                    system_prompt: "restricted".to_string(),
+                    parent_harness_id: None,
+                    default_model_id: None,
+                    tags: vec![],
+                    initial_files: serde_json::json!([]),
+                    mcp_servers: serde_json::json!({}),
+                    network_access: None,
+                    is_built_in: false,
+                },
+            )
+            .await
+            .unwrap();
+        db.set_harness_capabilities(
+            harness.id.uuid(),
+            vec![("test_high_risk".to_string(), 0, serde_json::json!({}))],
+        )
+        .await
+        .unwrap();
+
+        let member = Caller {
+            org_id: owner.org_id,
+            org_public_id: owner.org_public_id.clone(),
+            user_id: None,
+            role: OrgRole::Member,
+            is_platform_user: false,
+            is_internal: false,
+        };
+
+        let err = session_service
+            .create(
+                &member,
+                harness.id.uuid(),
+                None,
+                None,
+                build_create_request(harness.id, None, None),
+            )
+            .await
+            .unwrap_err();
+
+        assert!(
+            err.to_string()
+                .contains("Admin role required to create sessions with high-risk capabilities"),
+            "unexpected error: {err}"
         );
     }
 

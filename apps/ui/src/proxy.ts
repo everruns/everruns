@@ -26,6 +26,7 @@ export const config = {
     "/evals/:path*",
     "/harnesses/:path*",
     "/mcp-servers/:path*",
+    "/models/:path*",
     "/orgs/:path*",
     "/sessions/:path*",
     "/settings/:path*",

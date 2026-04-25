@@ -1,4 +1,22 @@
 //! Tool implementations for Daytona sandbox operations.
+//!
+//! Trust boundary (GitHub clone-auth host allowlist): when the user has a
+//! GitHub token, `daytona_git_clone` and `daytona_git_credentials` embed it
+//! in HTTPS URLs. To prevent the token from leaking to arbitrary hosts that
+//! happen to contain the substring `github`, host injection is gated by a
+//! strict allowlist.
+//!
+//! 1. The default allowlist is `["github.com"]`, matching public SaaS.
+//! 2. Operators running GitHub Enterprise can extend the allowlist via the
+//!    `EVERRUNS_DAYTONA_GITHUB_TRUSTED_HOSTS` env var (comma-separated).
+//!    Entries are matched case-insensitively against the URL host (with
+//!    optional `:port` stripped). No suffix or pattern matching — to allow
+//!    `github.acme.com`, the operator must list it explicitly.
+//! 3. `daytona_git_credentials` writes one credential entry per trusted
+//!    host so authentication works against every configured server.
+//!
+//! See `integrations/daytona/SPEC.md` (GitHub clone-auth host allowlist) and
+//! `TM-DAYTONA-008` in `specs/threat-model.md`.
 
 use everruns_core::SessionFile;
 use everruns_core::ToolHints;
@@ -1330,13 +1348,16 @@ impl Tool for DaytonaGitCloneTool {
 
         let client = DaytonaClient::new(api_key);
 
-        // Build the clone URL — embed token only for github.com HTTPS clones.
-        // Never attach GitHub credentials to arbitrary hosts.
+        // Build the clone URL — embed token only for HTTPS clones whose host
+        // is on the operator-configured trusted-host allowlist (defaults to
+        // `[github.com]`). Never attach GitHub credentials to arbitrary hosts.
+        // See `trusted_github_hosts` for the configuration surface.
+        let trusted_hosts = trusted_github_hosts();
         let clone_url = if let Some(ref token) = github_token {
             if let Some(rest) = repo_url.strip_prefix("https://")
-                && is_github_https_host(rest)
+                && is_trusted_github_https_host(rest, &trusted_hosts)
             {
-                // Inject token into HTTPS GitHub URL: https://oauth2:<token>@github.com/...
+                // Inject token into HTTPS GitHub URL: https://oauth2:<token>@<host>/...
                 format!("https://oauth2:{token}@{rest}")
             } else {
                 repo_url.clone()
@@ -1494,7 +1515,15 @@ impl Tool for DaytonaGitCredentialsTool {
 
         // THREAT[TM-DAYTONA-001]: Git token persisted on sandbox disk
         // Mitigation: Written to /tmp (cleared on stop), short-lived (~1h), same trust boundary as exec
-        let credentials_content = format!("https://oauth2:{github_token}@github.com\n");
+        // THREAT[TM-DAYTONA-008]: One credential entry per trusted host so
+        // operators running GitHub Enterprise authenticate against their
+        // configured server. Hosts come from the same allowlist as
+        // `daytona_git_clone` to keep the trust boundary consistent.
+        let trusted_hosts = trusted_github_hosts();
+        let credentials_content = trusted_hosts
+            .iter()
+            .map(|host| format!("https://oauth2:{github_token}@{host}\n"))
+            .collect::<String>();
         if let Err(e) = client
             .file_upload(
                 sandbox_id,
@@ -1506,6 +1535,23 @@ impl Tool for DaytonaGitCredentialsTool {
             return ToolExecutionResult::tool_error(format!(
                 "Failed to write credentials file: {e}"
             ));
+        }
+
+        // Restrict credential file permissions to owner-only read/write.
+        let chmod_cmd = "chmod 600 /tmp/.git-credentials";
+        match client.exec(sandbox_id, chmod_cmd, None, None, |_| {}).await {
+            Ok(r) if r.exit_code == 0 => {}
+            Ok(r) => {
+                return ToolExecutionResult::tool_error(format!(
+                    "Failed to secure credentials file permissions (exit {}): {}",
+                    r.exit_code, r.result
+                ));
+            }
+            Err(e) => {
+                return ToolExecutionResult::tool_error(format!(
+                    "Failed to secure credentials file permissions: {e}"
+                ));
+            }
         }
 
         // Configure git to use the credential store
@@ -1586,12 +1632,16 @@ fn normalize_repo_url(url: &str) -> String {
     }
 }
 
-/// Returns true when an HTTPS clone URL suffix starts with github.com host.
+/// Returns true when an HTTPS clone URL suffix's host matches a trusted host.
 ///
 /// Expects the string after stripping `https://`, e.g.:
 /// - `github.com/owner/repo.git`
 /// - `github.com:443/owner/repo.git`
-fn is_github_https_host(https_url_without_scheme: &str) -> bool {
+///
+/// Matching is case-insensitive, exact (no suffix/wildcard). The optional
+/// `:port` is stripped before comparison. `trusted_hosts` is the operator's
+/// configured allowlist (see `trusted_github_hosts`).
+fn is_trusted_github_https_host(https_url_without_scheme: &str, trusted_hosts: &[String]) -> bool {
     let host = https_url_without_scheme
         .split('/')
         .next()
@@ -1599,7 +1649,71 @@ fn is_github_https_host(https_url_without_scheme: &str) -> bool {
         .split(':')
         .next()
         .unwrap_or_default();
-    host.eq_ignore_ascii_case("github.com")
+    if host.is_empty() {
+        return false;
+    }
+    trusted_hosts
+        .iter()
+        .any(|trusted| trusted.eq_ignore_ascii_case(host))
+}
+
+/// Resolve the operator-configured trusted-host allowlist for GitHub
+/// clone-auth injection. Defaults to `["github.com"]` so public SaaS behavior
+/// is unchanged. Operators running GitHub Enterprise extend the list via
+/// `EVERRUNS_DAYTONA_GITHUB_TRUSTED_HOSTS` (comma-separated). The default is
+/// always included so a misconfigured env var cannot silently disable
+/// public-GitHub auth.
+fn trusted_github_hosts() -> Vec<String> {
+    parse_trusted_github_hosts(std::env::var("EVERRUNS_DAYTONA_GITHUB_TRUSTED_HOSTS").ok())
+}
+
+/// Pure-function parser for the trusted-host env var. Always seeds with
+/// `github.com`, then appends every well-formed extra entry. Malformed
+/// entries (containing `/`, `@`, whitespace, or `..`) are dropped with a
+/// warning. Duplicates of `github.com` are skipped.
+fn parse_trusted_github_hosts(raw: Option<String>) -> Vec<String> {
+    let mut hosts = vec!["github.com".to_string()];
+    let Some(raw) = raw else { return hosts };
+    for entry in raw.split(',') {
+        let trimmed = entry.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        // Reject malformed entries: must be a bare host (no scheme, no path,
+        // no `@`/userinfo, no `..`). Defense against operator misconfig
+        // injecting a path-traversal host or credential into the env var.
+        if trimmed.contains('/')
+            || trimmed.contains('@')
+            || trimmed.chars().any(char::is_whitespace)
+            || trimmed.contains("..")
+        {
+            // Do NOT log the raw value: a misconfigured env entry could carry
+            // a credential (e.g. `https://oauth2:<token>@host/...`) that we
+            // must not write to logs. Surface only the rejection reason and
+            // the byte length so operators can locate the problem entry.
+            warn!(
+                "Ignoring malformed entry in EVERRUNS_DAYTONA_GITHUB_TRUSTED_HOSTS \
+                 (entry must be a bare hostname; contains one of `/`, `@`, whitespace, or `..`). \
+                 Length: {} bytes",
+                trimmed.len()
+            );
+            continue;
+        }
+        // Strip optional `:port` for normalization; the matcher already
+        // tolerates ports but storing without them keeps the list tidy.
+        // Use ASCII-only lowercasing — hostnames are ASCII, and this stays
+        // consistent with `eq_ignore_ascii_case` used in matching.
+        let normalized = trimmed
+            .split(':')
+            .next()
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        if normalized.is_empty() || normalized == "github.com" {
+            continue;
+        }
+        hosts.push(normalized);
+    }
+    hosts
 }
 
 /// Extract "owner/repo" from a git URL. Returns `Some("owner/repo")` for:
@@ -1613,7 +1727,10 @@ fn extract_owner_repo(url: &str) -> Option<String> {
     if !url.contains("://") && !url.starts_with("git@") && url.contains('/') && !url.contains(' ') {
         let trimmed = url.trim_end_matches(".git");
         let parts: Vec<&str> = trimmed.splitn(3, '/').collect();
-        if parts.len() == 2 && !parts[0].is_empty() && !parts[1].is_empty() {
+        if parts.len() == 2
+            && is_valid_owner_repo_segment(parts[0])
+            && is_valid_owner_repo_segment(parts[1])
+        {
             return Some(trimmed.to_string());
         }
     }
@@ -1627,7 +1744,10 @@ fn extract_owner_repo(url: &str) -> Option<String> {
         if let Some(path) = rest.split_once('/').map(|(_, p)| p) {
             let path = path.trim_end_matches(".git").trim_end_matches('/');
             let parts: Vec<&str> = path.splitn(3, '/').collect();
-            if parts.len() == 2 && !parts[0].is_empty() && !parts[1].is_empty() {
+            if parts.len() == 2
+                && is_valid_owner_repo_segment(parts[0])
+                && is_valid_owner_repo_segment(parts[1])
+            {
                 return Some(path.to_string());
             }
         }
@@ -1639,12 +1759,19 @@ fn extract_owner_repo(url: &str) -> Option<String> {
     {
         let path = path.trim_end_matches(".git").trim_end_matches('/');
         let parts: Vec<&str> = path.splitn(3, '/').collect();
-        if parts.len() == 2 && !parts[0].is_empty() && !parts[1].is_empty() {
+        if parts.len() == 2
+            && is_valid_owner_repo_segment(parts[0])
+            && is_valid_owner_repo_segment(parts[1])
+        {
             return Some(path.to_string());
         }
     }
 
     None
+}
+
+fn is_valid_owner_repo_segment(segment: &str) -> bool {
+    !segment.is_empty() && segment != "." && segment != ".."
 }
 
 /// Resolve GitHub token lazily from user connections, with session secret fallback.
@@ -2541,19 +2668,163 @@ mod tests {
     }
 
     #[test]
-    fn test_is_github_https_host_accepts_github_com() {
-        assert!(is_github_https_host("github.com/user/repo.git"));
-        assert!(is_github_https_host("github.com:443/user/repo.git"));
-        assert!(is_github_https_host("GITHUB.COM/user/repo.git"));
+    fn test_is_trusted_github_https_host_accepts_github_com_by_default() {
+        let hosts = vec!["github.com".to_string()];
+        assert!(is_trusted_github_https_host(
+            "github.com/user/repo.git",
+            &hosts
+        ));
+        assert!(is_trusted_github_https_host(
+            "github.com:443/user/repo.git",
+            &hosts
+        ));
+        assert!(is_trusted_github_https_host(
+            "GITHUB.COM/user/repo.git",
+            &hosts
+        ));
     }
 
     #[test]
-    fn test_is_github_https_host_rejects_non_github_hosts() {
-        assert!(!is_github_https_host("evil.example.com/user/repo.git"));
-        assert!(!is_github_https_host(
-            "github.com.evil.example/user/repo.git"
+    fn test_is_trusted_github_https_host_rejects_non_github_hosts() {
+        let hosts = vec!["github.com".to_string()];
+        assert!(!is_trusted_github_https_host(
+            "evil.example.com/user/repo.git",
+            &hosts
         ));
-        assert!(!is_github_https_host("github.example.com/user/repo.git"));
+        assert!(!is_trusted_github_https_host(
+            "github.com.evil.example/user/repo.git",
+            &hosts
+        ));
+        // Lookalike that prior implementation would reject — verify this
+        // remains rejected when only `github.com` is trusted.
+        assert!(!is_trusted_github_https_host(
+            "github.example.com/user/repo.git",
+            &hosts
+        ));
+    }
+
+    #[test]
+    fn test_is_trusted_github_https_host_accepts_enterprise_hosts() {
+        // Operator-configured allowlist with public + enterprise hosts.
+        let hosts = vec![
+            "github.com".to_string(),
+            "github.acme.com".to_string(),
+            "git.internal.corp".to_string(),
+        ];
+        assert!(is_trusted_github_https_host(
+            "github.com/owner/repo.git",
+            &hosts
+        ));
+        assert!(is_trusted_github_https_host(
+            "github.acme.com/owner/repo.git",
+            &hosts
+        ));
+        assert!(is_trusted_github_https_host(
+            "git.internal.corp/owner/repo.git",
+            &hosts
+        ));
+        // Case-insensitive match.
+        assert!(is_trusted_github_https_host(
+            "GITHUB.ACME.COM/owner/repo.git",
+            &hosts
+        ));
+    }
+
+    #[test]
+    fn test_is_trusted_github_https_host_rejects_lookalikes_with_enterprise_allowlist() {
+        // Even with multiple trusted hosts configured, lookalikes are rejected.
+        let hosts = vec!["github.com".to_string(), "github.acme.com".to_string()];
+        // Subdomain prefix attack — `evil-github.acme.com` is not exactly
+        // `github.acme.com`.
+        assert!(!is_trusted_github_https_host(
+            "evil-github.acme.com/owner/repo.git",
+            &hosts
+        ));
+        // Suffix-confusion attack — `github.acme.com.evil.example` is rejected.
+        assert!(!is_trusted_github_https_host(
+            "github.acme.com.evil.example/owner/repo.git",
+            &hosts
+        ));
+        // Empty allowlist rejects everything.
+        assert!(!is_trusted_github_https_host(
+            "github.com/owner/repo.git",
+            &[]
+        ));
+    }
+
+    #[test]
+    fn test_is_trusted_github_https_host_rejects_empty_url() {
+        let hosts = vec!["github.com".to_string()];
+        assert!(!is_trusted_github_https_host("", &hosts));
+        assert!(!is_trusted_github_https_host("/", &hosts));
+    }
+
+    #[test]
+    fn test_parse_trusted_github_hosts_default() {
+        // No env var: only github.com.
+        assert_eq!(parse_trusted_github_hosts(None), vec!["github.com"]);
+        assert_eq!(
+            parse_trusted_github_hosts(Some(String::new())),
+            vec!["github.com"]
+        );
+        assert_eq!(
+            parse_trusted_github_hosts(Some(",,".to_string())),
+            vec!["github.com"]
+        );
+    }
+
+    #[test]
+    fn test_parse_trusted_github_hosts_appends_enterprise_hosts() {
+        let hosts =
+            parse_trusted_github_hosts(Some("github.acme.com, git.internal.corp ".to_string()));
+        assert_eq!(
+            hosts,
+            vec![
+                "github.com".to_string(),
+                "github.acme.com".to_string(),
+                "git.internal.corp".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_parse_trusted_github_hosts_normalizes_case_and_port() {
+        let hosts =
+            parse_trusted_github_hosts(Some("GITHUB.ACME.COM:8443, Git.Internal.Corp".to_string()));
+        assert_eq!(
+            hosts,
+            vec![
+                "github.com".to_string(),
+                "github.acme.com".to_string(),
+                "git.internal.corp".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_parse_trusted_github_hosts_rejects_malformed_entries() {
+        // Path, scheme, userinfo, traversal, whitespace are all dropped; the
+        // default `github.com` floor remains. Operator misconfig cannot
+        // silently inject a credential or a redirect target.
+        let hosts = parse_trusted_github_hosts(Some(
+            "https://evil.example, user@github.com, ../traversal, host with space, github.acme.com"
+                .to_string(),
+        ));
+        assert_eq!(
+            hosts,
+            vec!["github.com".to_string(), "github.acme.com".to_string(),]
+        );
+    }
+
+    #[test]
+    fn test_parse_trusted_github_hosts_dedupes_default() {
+        // Operator listing github.com explicitly should not double-add it.
+        let hosts =
+            parse_trusted_github_hosts(Some("github.com, GitHub.com, github.acme.com".to_string()));
+        assert_eq!(
+            hosts,
+            vec!["github.com".to_string(), "github.acme.com".to_string(),]
+        );
     }
 
     // --- extract_owner_repo tests ---
@@ -2655,6 +2926,14 @@ mod tests {
     #[test]
     fn test_extract_owner_repo_with_spaces() {
         assert_eq!(extract_owner_repo("user /repo"), None);
+    }
+
+    #[test]
+    fn test_extract_owner_repo_rejects_traversal_segments() {
+        assert_eq!(extract_owner_repo("../repo"), None);
+        assert_eq!(extract_owner_repo("user/.."), None);
+        assert_eq!(extract_owner_repo("https://github.com/../repo"), None);
+        assert_eq!(extract_owner_repo("git@github.com:user/../.git"), None);
     }
 
     #[test]

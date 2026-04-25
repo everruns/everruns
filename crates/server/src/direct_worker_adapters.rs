@@ -11,6 +11,7 @@ use everruns_core::budget::{BudgetSummary, BudgetToolResponse};
 use everruns_core::capabilities::{AgentCapabilityConfig, CapabilityRegistry};
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::events::{Event, EventRequest};
+use everruns_core::permissions::PermissionResolver;
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use everruns_core::traits::{
     BudgetChecker, CreateStoredImage, ImageArtifactStore, ModelWithProvider,
@@ -26,6 +27,7 @@ use everruns_worker::mcp_executor::McpServerInfo;
 use everruns_worker::worker_adapters::{TurnContext, WorkerAdapters};
 use std::collections::HashMap;
 use std::sync::Arc;
+use tokio::sync::OnceCell;
 use uuid::Uuid;
 
 use crate::domains::budgets::BudgetService;
@@ -37,14 +39,20 @@ use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
 use crate::max_iterations;
 use crate::org_init;
-use crate::services::{EventService, LlmResolverService, PrincipalService};
+use crate::services::{EventService, LlmResolverService};
 use crate::storage::models::{AgentCapabilityRow, AgentRow, UpdateSession};
 use crate::storage::{EncryptionService, StorageBackend};
 use everruns_durable::WorkflowEventStore;
+use serde::Deserialize;
 
 // Helper to create store errors
 fn store_error(msg: impl Into<String>) -> AgentLoopError {
     AgentLoopError::store(msg)
+}
+
+#[derive(Debug, Deserialize)]
+struct CommandPage<T> {
+    data: Vec<T>,
 }
 
 /// Extract file name from path
@@ -266,6 +274,7 @@ pub struct DirectWorkerAdapters {
     runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
     encryption: Option<Arc<EncryptionService>>,
     workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
+    permission_resolver: Arc<dyn PermissionResolver>,
     virtual_registry:
         Option<Arc<crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry>>,
 }
@@ -295,6 +304,7 @@ impl DirectWorkerAdapters {
             runner: None,
             encryption: None,
             workflow_store: None,
+            permission_resolver: Arc::new(everruns_core::DefaultPermissionResolver),
             virtual_registry: None,
         }
     }
@@ -348,6 +358,11 @@ impl DirectWorkerAdapters {
         workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
     ) -> Self {
         self.workflow_store = workflow_store;
+        self
+    }
+
+    pub fn with_permission_resolver(mut self, resolver: Arc<dyn PermissionResolver>) -> Self {
+        self.permission_resolver = resolver;
         self
     }
 
@@ -508,10 +523,12 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 is_pinned: None,
                 active_schedule_count: None,
                 features: vec![],
-                parent_session_id: None,
-                subagent_name: None,
-                subagent_task: None,
-                subagent_status: None,
+                parent_session_id: r.parent_session_id,
+                subagent_name: r.subagent_name,
+                subagent_task: r.subagent_task,
+                subagent_status: r
+                    .subagent_status
+                    .map(|s| everruns_core::session::SubagentStatus::from(s.as_str())),
                 blueprint_id: r.blueprint_id,
                 blueprint_config: r.blueprint_config,
             }
@@ -1410,14 +1427,23 @@ impl WorkerAdapters for DirectWorkerAdapters {
         }))
     }
 
-    fn platform_store(&self, org_id: i64) -> Arc<dyn everruns_core::platform_store::PlatformStore> {
+    fn platform_store(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+    ) -> Arc<dyn everruns_core::platform_store::PlatformStore> {
         Arc::new(DirectPlatformStore::new(
             org_id,
+            session_id,
             self.db.clone(),
-            self.event_service.clone(),
-            self.runner.clone(),
-            self.encryption.clone(),
-            self.workflow_store.clone(),
+            DirectPlatformStoreDeps {
+                event_service: self.event_service.clone(),
+                runner: self.runner.clone(),
+                capability_registry: self.capability_registry.clone(),
+                encryption: self.encryption.clone(),
+                workflow_store: self.workflow_store.clone(),
+                permission_resolver: self.permission_resolver.clone(),
+            },
         ))
     }
 
@@ -1723,35 +1749,65 @@ fn event_to_message(event: Event) -> Option<Message> {
 
 /// Direct PlatformStore backed by StorageBackend + EventService + AgentRunner.
 // THREAT[TM-AGENT-017]: All ops org-scoped via org_id field
-pub struct DirectPlatformStore {
-    org_id: i64,
-    db: Arc<StorageBackend>,
+struct DirectPlatformStoreDeps {
     event_service: Arc<EventService>,
     runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
-    capability_service: Arc<crate::services::CapabilityService>,
+    capability_registry: CapabilityRegistry,
     encryption: Option<Arc<EncryptionService>>,
     workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
+    permission_resolver: Arc<dyn PermissionResolver>,
+}
+
+pub struct DirectPlatformStore {
+    org_id: i64,
+    session_id: SessionId,
+    db: Arc<StorageBackend>,
+    runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
+    capability_service: Arc<crate::services::CapabilityService>,
+    session_service: Arc<SessionService>,
+    message_service: Option<Arc<MessageService>>,
+    encryption: Option<Arc<EncryptionService>>,
+    workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
+    permission_resolver: Arc<dyn PermissionResolver>,
+    resolved_caller: Arc<OnceCell<Caller>>,
 }
 
 impl DirectPlatformStore {
-    pub fn new(
+    fn new(
         org_id: i64,
+        session_id: SessionId,
         db: Arc<StorageBackend>,
-        event_service: Arc<EventService>,
-        runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
-        encryption: Option<Arc<EncryptionService>>,
-        workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
+        deps: DirectPlatformStoreDeps,
     ) -> Self {
-        let capability_service =
-            Arc::new(crate::services::CapabilityService::new(db.clone(), None));
+        let capability_service = Arc::new(crate::services::CapabilityService::with_registry(
+            db.clone(),
+            deps.encryption.clone(),
+            deps.capability_registry.clone(),
+        ));
+        let session_service = Arc::new(SessionService::with_registry(
+            db.clone(),
+            deps.capability_registry.clone(),
+        ));
+        let message_service = deps.runner.as_ref().map(|runner| {
+            Arc::new(MessageService::new(
+                db.clone(),
+                runner.clone(),
+                false,
+                deps.event_service.event_delivery().clone(),
+            ))
+        });
         Self {
             org_id,
+            session_id,
             db,
-            event_service,
-            runner,
+            runner: deps.runner,
             capability_service,
-            encryption,
-            workflow_store,
+            session_service,
+            message_service,
+            encryption: deps.encryption,
+            workflow_store: deps.workflow_store,
+            permission_resolver: deps.permission_resolver,
+            resolved_caller: Arc::new(OnceCell::new()),
         }
     }
 
@@ -1761,18 +1817,63 @@ impl DirectPlatformStore {
             .unwrap_or_else(|_| "http://localhost:9300".to_string())
     }
 
-    fn command_ctx(&self) -> crate::domains::common::Ctx {
-        // Internal gRPC/worker path — uses DefaultPermissionResolver so
-        // internal ops are never subject to SaaS custom restrictions.
-        // `Caller::internal` already carries role:Owner + is_internal.
-        crate::domains::common::Ctx::new(
-            Caller::internal(self.org_id),
+    fn capability_refs_to_configs(capabilities: &[String]) -> Vec<serde_json::Value> {
+        capabilities
+            .iter()
+            .map(|capability| serde_json::json!({ "ref": capability, "config": {} }))
+            .collect()
+    }
+
+    async fn resolve_caller(&self) -> everruns_core::error::Result<Caller> {
+        self.resolved_caller
+            .get_or_try_init(|| async {
+                // Platform tools must execute as the session owner. Do not replace
+                // this with Caller::internal to "fix" permission failures.
+                let session = self
+                    .db
+                    .get_session(self.org_id, self.session_id)
+                    .await
+                    .map_err(|e| store_error(format!("Failed to load session owner: {e}")))?
+                    .ok_or_else(|| {
+                        store_error("Session not found for platform tool authorization")
+                    })?;
+
+                let user_id = session.resolved_owner_user_id.ok_or_else(|| {
+                    store_error(
+                        "Platform tool authorization requires a user-owned session with a resolved owner",
+                    )
+                })?;
+
+                crate::auth::caller_resolution::caller_for_user(&self.db, self.org_id, user_id)
+                    .await
+                    .map_err(|e| {
+                        store_error(format!("Failed to resolve platform tool caller: {e}"))
+                    })
+            })
+            .await
+            .cloned()
+    }
+
+    async fn command_ctx(&self) -> everruns_core::error::Result<crate::domains::common::Ctx> {
+        let caller = self.resolve_caller().await?;
+        let mut ctx = crate::domains::common::Ctx::new(
+            caller,
             self.db.clone(),
             self.capability_service.clone(),
             self.encryption.clone(),
-            std::sync::Arc::new(everruns_core::DefaultPermissionResolver),
+            self.permission_resolver.clone(),
         )
         .with_workflow_store(self.workflow_store.clone())
+        .with_session_service(self.session_service.clone());
+
+        if let Some(message_service) = &self.message_service {
+            ctx = ctx.with_message_service(message_service.clone());
+        }
+        if let Some(runner) = &self.runner {
+            ctx = ctx.with_runner(runner.clone());
+        }
+
+        Ok(ctx)
     }
 
     async fn execute_domain_command<T>(
@@ -1783,7 +1884,8 @@ impl DirectPlatformStore {
     where
         T: serde::de::DeserializeOwned,
     {
-        let json = crate::domains::common::dispatch(name, params, &self.command_ctx())
+        let ctx = self.command_ctx().await?;
+        let json = crate::domains::common::dispatch(name, params, &ctx)
             .await
             .map_err(|e| store_error(format!("Command {name} failed: {e}")))?;
         serde_json::from_str(&json)
@@ -1798,74 +1900,13 @@ impl DirectPlatformStore {
     where
         T: serde::de::DeserializeOwned,
     {
-        match crate::domains::common::dispatch(name, params, &self.command_ctx()).await {
+        let ctx = self.command_ctx().await?;
+        match crate::domains::common::dispatch(name, params, &ctx).await {
             Ok(json) => serde_json::from_str(&json)
                 .map(Some)
                 .map_err(|e| store_error(format!("Failed to decode {name} response: {e}"))),
             Err(crate::domains::common::CommandError::NotFound(_)) => Ok(None),
             Err(error) => Err(store_error(format!("Command {name} failed: {error}"))),
-        }
-    }
-
-    fn row_to_harness(
-        row: crate::storage::HarnessRow,
-        capabilities: Vec<everruns_core::AgentCapabilityConfig>,
-    ) -> everruns_core::Harness {
-        everruns_core::Harness {
-            id: row.id,
-            name: row.name,
-            display_name: row.display_name,
-            description: row.description,
-            system_prompt: row.system_prompt,
-            parent_harness_id: row.parent_harness_id,
-            default_model_id: row.default_model_id,
-            tags: row.tags,
-            capabilities,
-            initial_files: serde_json::from_value(row.initial_files).unwrap_or_default(),
-            mcp_servers: serde_json::from_value(row.mcp_servers).unwrap_or_default(),
-            network_access: row
-                .network_access
-                .and_then(|v| serde_json::from_value(v).ok()),
-            is_built_in: row.is_built_in,
-            status: HarnessStatus::from(row.status.as_str()),
-            created_at: row.created_at,
-            updated_at: row.updated_at,
-            archived_at: row.archived_at,
-            deleted_at: row.deleted_at,
-        }
-    }
-
-    fn row_to_agent(
-        row: crate::storage::AgentRow,
-        capabilities: Vec<everruns_core::AgentCapabilityConfig>,
-    ) -> Agent {
-        let public_id: AgentId = row
-            .public_id
-            .parse()
-            .unwrap_or_else(|_| AgentId::from_uuid(row.id.uuid()));
-        Agent {
-            public_id,
-            internal_id: row.id.uuid(),
-            name: row.name,
-            display_name: row.display_name,
-            description: row.description,
-            system_prompt: row.system_prompt,
-            default_model_id: row.default_model_id,
-            tags: row.tags,
-            capabilities,
-            initial_files: serde_json::from_value(row.initial_files).unwrap_or_default(),
-            mcp_servers: serde_json::from_value(row.mcp_servers).unwrap_or_default(),
-            network_access: row
-                .network_access
-                .and_then(|v| serde_json::from_value(v).ok()),
-            max_iterations: max_iterations::from_db(row.max_iterations),
-            tools: serde_json::from_value(row.tools).unwrap_or_default(),
-            status: AgentStatus::from(row.status.as_str()),
-            created_at: row.created_at,
-            updated_at: row.updated_at,
-            archived_at: row.archived_at,
-            deleted_at: row.deleted_at,
-            usage: None,
         }
     }
 
@@ -1916,10 +1957,12 @@ impl DirectPlatformStore {
             is_pinned: None,
             active_schedule_count: None,
             features: vec![],
-            parent_session_id: None,
-            subagent_name: None,
-            subagent_task: None,
-            subagent_status: None,
+            parent_session_id: row.parent_session_id,
+            subagent_name: row.subagent_name,
+            subagent_task: row.subagent_task,
+            subagent_status: row
+                .subagent_status
+                .map(|s| everruns_core::session::SubagentStatus::from(s.as_str())),
             blueprint_id: row.blueprint_id,
             blueprint_config: row.blueprint_config,
         }
@@ -1933,52 +1976,13 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
     // =========================================================================
 
     async fn list_harnesses(&self) -> everruns_core::error::Result<Vec<Harness>> {
-        let rows = self
-            .db
-            .list_harnesses(self.org_id, None, false)
+        self.execute_domain_command("list_harnesses", serde_json::json!({}))
             .await
-            .map_err(|e| store_error(format!("Failed to list harnesses: {e}")))?;
-
-        let mut harnesses = Vec::with_capacity(rows.len());
-        for row in rows {
-            let caps = self
-                .db
-                .get_harness_capabilities(row.id.uuid())
-                .await
-                .map_err(|e| store_error(format!("Failed to get harness capabilities: {e}")))?
-                .into_iter()
-                .map(|c| {
-                    everruns_core::AgentCapabilityConfig::with_config(c.capability_id, c.config)
-                })
-                .collect();
-            harnesses.push(Self::row_to_harness(row, caps));
-        }
-        Ok(harnesses)
     }
 
     async fn get_harness(&self, id: HarnessId) -> everruns_core::error::Result<Option<Harness>> {
-        let row = self
-            .db
-            .get_harness(self.org_id, id)
+        self.execute_domain_lookup("get_harness", serde_json::json!({ "id": id.to_string() }))
             .await
-            .map_err(|e| store_error(format!("Failed to get harness: {e}")))?;
-
-        match row {
-            Some(row) => {
-                let caps = self
-                    .db
-                    .get_harness_capabilities(row.id.uuid())
-                    .await
-                    .map_err(|e| store_error(format!("Failed to get harness capabilities: {e}")))?
-                    .into_iter()
-                    .map(|c| {
-                        everruns_core::AgentCapabilityConfig::with_config(c.capability_id, c.config)
-                    })
-                    .collect();
-                Ok(Some(Self::row_to_harness(row, caps)))
-            }
-            None => Ok(None),
-        }
     }
 
     async fn create_harness(
@@ -1990,49 +1994,21 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
         parent_harness_id: Option<HarnessId>,
         capabilities: &[String],
     ) -> everruns_core::error::Result<Harness> {
-        use crate::storage::models::CreateHarnessRow;
-
-        let input = CreateHarnessRow {
-            name: name.to_string(),
-            display_name: display_name.map(|s| s.to_string()),
-            description: description.map(|s| s.to_string()),
-            system_prompt: system_prompt.to_string(),
-            parent_harness_id,
-            default_model_id: None,
-            tags: vec!["managed".to_string()],
-            initial_files: serde_json::json!([]),
-            mcp_servers: serde_json::json!({}),
-            is_built_in: false,
-            network_access: None,
-        };
-        let row = self
-            .db
-            .create_harness(self.org_id, input)
-            .await
-            .map_err(|e| store_error(format!("Failed to create harness: {e}")))?;
-
-        // Set capabilities
-        if !capabilities.is_empty() {
-            let caps: Vec<(String, i32, serde_json::Value)> = capabilities
-                .iter()
-                .enumerate()
-                .map(|(i, c)| {
-                    (
-                        c.clone(),
-                        i as i32,
-                        serde_json::Value::Object(Default::default()),
-                    )
-                })
-                .collect();
-            self.db
-                .set_harness_capabilities(row.id.uuid(), caps)
-                .await
-                .map_err(|e| store_error(format!("Failed to set harness capabilities: {e}")))?;
-        }
-
-        self.get_harness(row.id)
-            .await?
-            .ok_or_else(|| store_error("Harness not found after create"))
+        self.execute_domain_command(
+            "create_harness",
+            serde_json::json!({
+                "name": name,
+                "display_name": display_name,
+                "description": description,
+                "system_prompt": system_prompt,
+                "parent_harness_id": parent_harness_id.map(|id| id.to_string()),
+                "tags": ["managed"],
+                "initial_files": [],
+                "mcp_servers": {},
+                "capabilities": Self::capability_refs_to_configs(capabilities),
+            }),
+        )
+        .await
     }
 
     async fn update_harness(
@@ -2044,31 +2020,58 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
         system_prompt: Option<&str>,
         parent_harness_id: Option<Option<HarnessId>>,
     ) -> everruns_core::error::Result<Harness> {
-        use crate::storage::models::UpdateHarness;
+        let mut params = serde_json::Map::from_iter([(
+            "id".to_string(),
+            serde_json::Value::String(id.to_string()),
+        )]);
+        if let Some(name) = name {
+            params.insert(
+                "name".to_string(),
+                serde_json::Value::String(name.to_string()),
+            );
+        }
+        if let Some(display_name) = display_name {
+            params.insert(
+                "display_name".to_string(),
+                serde_json::Value::String(display_name.to_string()),
+            );
+        }
+        if let Some(description) = description {
+            params.insert(
+                "description".to_string(),
+                serde_json::Value::String(description.to_string()),
+            );
+        }
+        if let Some(system_prompt) = system_prompt {
+            params.insert(
+                "system_prompt".to_string(),
+                serde_json::Value::String(system_prompt.to_string()),
+            );
+        }
+        match parent_harness_id {
+            Some(Some(parent_id)) => {
+                params.insert(
+                    "parent_harness_id".to_string(),
+                    serde_json::Value::String(parent_id.to_string()),
+                );
+            }
+            Some(None) => {
+                params.insert("parent_harness_id".to_string(), serde_json::Value::Null);
+            }
+            None => {}
+        }
 
-        let update = UpdateHarness {
-            name: name.map(|s| s.to_string()),
-            display_name: display_name.map(|s| s.to_string()),
-            description: description.map(|s| s.to_string()),
-            system_prompt: system_prompt.map(|s| s.to_string()),
-            parent_harness_id,
-            ..Default::default()
-        };
-        self.db
-            .update_harness(self.org_id, id, update)
+        self.execute_domain_command("update_harness", serde_json::Value::Object(params))
             .await
-            .map_err(|e| store_error(format!("Failed to update harness: {e}")))?;
-
-        self.get_harness(id)
-            .await?
-            .ok_or_else(|| store_error("Harness not found after update"))
     }
 
     async fn delete_harness(&self, id: HarnessId) -> everruns_core::error::Result<()> {
-        self.db
-            .delete_harness(self.org_id, id)
-            .await
-            .map_err(|e| store_error(format!("Failed to delete harness: {e}")))?;
+        let _: serde_json::Value = self
+            .execute_domain_command(
+                "delete_harness",
+                serde_json::json!({ "id": id.to_string() }),
+            )
+            .await?;
         Ok(())
     }
 
@@ -2077,35 +2080,16 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
         id: HarnessId,
         new_name: Option<&str>,
     ) -> everruns_core::error::Result<Harness> {
-        // Get the source harness
-        let source = self
-            .get_harness(id)
-            .await?
-            .ok_or_else(|| store_error("Source harness not found"))?;
+        let harness: Harness = self
+            .execute_domain_command("copy_harness", serde_json::json!({ "id": id.to_string() }))
+            .await?;
 
-        let copy_name = new_name
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| format!("{}-copy", source.name));
-        let copy_display_name = source
-            .display_name
-            .as_ref()
-            .map(|d| format!("{} (copy)", d));
-
-        let cap_ids: Vec<String> = source
-            .capabilities
-            .iter()
-            .map(|c| c.capability_id().to_string())
-            .collect();
-
-        self.create_harness(
-            &copy_name,
-            copy_display_name.as_deref(),
-            source.description.as_deref(),
-            &source.system_prompt,
-            source.parent_harness_id,
-            &cap_ids,
-        )
-        .await
+        if let Some(new_name) = new_name {
+            self.update_harness(harness.id, Some(new_name), None, None, None, None)
+                .await
+        } else {
+            Ok(harness)
+        }
     }
 
     // =========================================================================
@@ -2113,55 +2097,18 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
     // =========================================================================
 
     async fn list_agents(&self) -> everruns_core::error::Result<Vec<Agent>> {
-        let pagination = crate::api::common::Pagination::new(0, 1000);
-        let (rows, _total) = self
-            .db
-            .list_agents(self.org_id, None, false, pagination)
-            .await
-            .map_err(|e| store_error(format!("Failed to list agents: {e}")))?;
-
-        let mut agents = Vec::with_capacity(rows.len());
-        for row in rows {
-            let caps = self
-                .db
-                .get_agent_capabilities(row.id.uuid())
-                .await
-                .map_err(|e| store_error(format!("Failed to get agent capabilities: {e}")))?
-                .into_iter()
-                .map(|c| {
-                    everruns_core::AgentCapabilityConfig::with_config(c.capability_id, c.config)
-                })
-                .collect();
-            agents.push(Self::row_to_agent(row, caps));
-        }
-        Ok(agents)
+        let page: CommandPage<Agent> = self
+            .execute_domain_command(
+                "list_agents",
+                serde_json::json!({ "offset": 0, "limit": 1000 }),
+            )
+            .await?;
+        Ok(page.data)
     }
 
     async fn get_agent_by_id(&self, id: AgentId) -> everruns_core::error::Result<Option<Agent>> {
-        // AgentId is always a public ID — look up by public_id column.
-        let public_id = id.to_string();
-        let row = self
-            .db
-            .get_agent_by_public_id(self.org_id, &public_id)
+        self.execute_domain_lookup("get_agent", serde_json::json!({ "id": id.to_string() }))
             .await
-            .map_err(|e| store_error(format!("Failed to get agent: {e}")))?;
-
-        match row {
-            Some(row) => {
-                let caps = self
-                    .db
-                    .get_agent_capabilities(row.id.uuid())
-                    .await
-                    .map_err(|e| store_error(format!("Failed to get agent capabilities: {e}")))?
-                    .into_iter()
-                    .map(|c| {
-                        everruns_core::AgentCapabilityConfig::with_config(c.capability_id, c.config)
-                    })
-                    .collect();
-                Ok(Some(Self::row_to_agent(row, caps)))
-            }
-            None => Ok(None),
-        }
     }
 
     async fn create_agent(
@@ -2172,51 +2119,21 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
         system_prompt: &str,
         capabilities: &[String],
     ) -> everruns_core::error::Result<Agent> {
-        use crate::storage::models::CreateAgentRow;
-
-        let public_id = everruns_core::generate_agent_public_id();
-        let input = CreateAgentRow {
-            public_id: public_id.to_string(),
-            name: name.to_string(),
-            display_name: display_name.map(|s| s.to_string()),
-            description: description.map(|s| s.to_string()),
-            system_prompt: system_prompt.to_string(),
-            default_model_id: None,
-            tags: vec!["managed".to_string()],
-            initial_files: serde_json::json!([]),
-            tools: serde_json::Value::Array(vec![]),
-            mcp_servers: serde_json::json!({}),
-            max_iterations: None,
-            network_access: None,
-        };
-        let row = self
-            .db
-            .create_agent(self.org_id, input)
-            .await
-            .map_err(|e| store_error(format!("Failed to create agent: {e}")))?;
-
-        // Set capabilities
-        if !capabilities.is_empty() {
-            let caps: Vec<(String, i32, serde_json::Value)> = capabilities
-                .iter()
-                .enumerate()
-                .map(|(i, c)| {
-                    (
-                        c.clone(),
-                        i as i32,
-                        serde_json::Value::Object(Default::default()),
-                    )
-                })
-                .collect();
-            self.db
-                .set_agent_capabilities(row.id.uuid(), caps)
-                .await
-                .map_err(|e| store_error(format!("Failed to set agent capabilities: {e}")))?;
-        }
-
-        self.get_agent_by_id(row.id)
-            .await?
-            .ok_or_else(|| store_error("Agent not found after create"))
+        self.execute_domain_command(
+            "create_agent",
+            serde_json::json!({
+                "name": name,
+                "display_name": display_name,
+                "description": description,
+                "system_prompt": system_prompt,
+                "tags": ["managed"],
+                "initial_files": [],
+                "tools": [],
+                "mcp_servers": {},
+                "capabilities": Self::capability_refs_to_configs(capabilities),
+            }),
+        )
+        .await
     }
 
     async fn update_agent(
@@ -2227,30 +2144,43 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
         description: Option<&str>,
         system_prompt: Option<&str>,
     ) -> everruns_core::error::Result<Agent> {
-        use crate::storage::models::UpdateAgent;
+        let mut params = serde_json::Map::from_iter([(
+            "id".to_string(),
+            serde_json::Value::String(id.to_string()),
+        )]);
+        if let Some(name) = name {
+            params.insert(
+                "name".to_string(),
+                serde_json::Value::String(name.to_string()),
+            );
+        }
+        if let Some(display_name) = display_name {
+            params.insert(
+                "display_name".to_string(),
+                serde_json::Value::String(display_name.to_string()),
+            );
+        }
+        if let Some(description) = description {
+            params.insert(
+                "description".to_string(),
+                serde_json::Value::String(description.to_string()),
+            );
+        }
+        if let Some(system_prompt) = system_prompt {
+            params.insert(
+                "system_prompt".to_string(),
+                serde_json::Value::String(system_prompt.to_string()),
+            );
+        }
 
-        let update = UpdateAgent {
-            name: name.map(|s| s.to_string()),
-            display_name: display_name.map(|s| s.to_string()),
-            description: description.map(|s| s.to_string()),
-            system_prompt: system_prompt.map(|s| s.to_string()),
-            ..Default::default()
-        };
-        self.db
-            .update_agent(self.org_id, id, update)
+        self.execute_domain_command("update_agent", serde_json::Value::Object(params))
             .await
-            .map_err(|e| store_error(format!("Failed to update agent: {e}")))?;
-
-        self.get_agent_by_id(id)
-            .await?
-            .ok_or_else(|| store_error("Agent not found after update"))
     }
 
     async fn delete_agent(&self, id: AgentId) -> everruns_core::error::Result<()> {
-        self.db
-            .delete_agent(self.org_id, id)
-            .await
-            .map_err(|e| store_error(format!("Failed to delete agent: {e}")))?;
+        let _: serde_json::Value = self
+            .execute_domain_command("delete_agent", serde_json::json!({ "id": id.to_string() }))
+            .await?;
         Ok(())
     }
 
@@ -2509,31 +2439,16 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
         limit: Option<usize>,
         agent_id: Option<AgentId>,
     ) -> everruns_core::error::Result<Vec<Session>> {
-        use crate::api::common::Pagination;
-
-        let pagination = Pagination {
-            offset: 0,
-            limit: limit.unwrap_or(20) as u32,
-        };
-        let (rows, _total) = self
-            .db
-            .list_sessions(self.org_id, agent_id, None, pagination)
-            .await
-            .map_err(|e| store_error(format!("Failed to list sessions: {e}")))?;
-
-        let fallback = if rows.iter().any(|r| r.harness_id.is_none()) {
-            Some(
-                org_init::base_harness_id(&self.db, self.org_id)
-                    .await
-                    .map_err(|e| store_error(format!("Failed to resolve base harness: {e}")))?,
+        let page: CommandPage<Session> = self
+            .execute_domain_command(
+                "list_sessions",
+                serde_json::json!({
+                    "limit": limit.unwrap_or(20),
+                    "agent_id": agent_id.map(|id| id.to_string()),
+                }),
             )
-        } else {
-            None
-        };
-        Ok(rows
-            .into_iter()
-            .map(|r| self.row_to_session(r, fallback))
-            .collect())
+            .await?;
+        Ok(page.data)
     }
 
     async fn create_session(
@@ -2545,103 +2460,77 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
         blueprint_id: Option<&str>,
         blueprint_config: Option<&serde_json::Value>,
     ) -> everruns_core::error::Result<Session> {
-        use crate::storage::models::CreateSessionRow;
-
-        let harness = self
-            .db
-            .get_harness(self.org_id, harness_id)
-            .await
-            .map_err(|e| store_error(format!("Failed to get harness: {e}")))?
-            .ok_or_else(|| store_error("Harness not found"))?;
-        if harness.status != "active" {
-            return Err(store_error(
-                "Archived or deleted harnesses cannot be assigned",
-            ));
-        }
-        // Skip agent validation for blueprint sessions (agent_id may be None)
-        if blueprint_id.is_none()
-            && let Some(agent_id) = agent_id
-        {
-            let agent = self
-                .db
-                .get_agent_by_public_id(self.org_id, &agent_id.to_string())
-                .await
-                .map_err(|e| store_error(format!("Failed to get agent: {e}")))?
-                .ok_or_else(|| store_error("Agent not found"))?;
-            if agent.status != "active" {
-                return Err(store_error("Archived or deleted agents cannot be assigned"));
-            }
-        }
-        let owner_principal = PrincipalService::new(self.db.clone())
-            .default_owner_principal(&Caller::internal(self.org_id), None)
-            .await
-            .map_err(|e| store_error(format!("Failed to resolve session owner: {e}")))?;
-
-        let input = CreateSessionRow {
-            org_id: self.org_id,
-            harness_id: Some(harness_id),
-            agent_id,
-            agent_identity_id: None,
-            owner_principal_id: owner_principal.id,
-            resolved_owner_user_id: owner_principal.resolved_user_id,
-            title: title.map(|s| s.to_string()),
-            locale: locale.map(|value| value.to_string()),
-            tags: vec!["managed".to_string()],
-            model_id: None,
-            capabilities: serde_json::Value::Array(vec![]),
-            tools: serde_json::Value::Array(vec![]),
-            mcp_servers: serde_json::json!({}),
-            system_prompt: None,
-            initial_files: serde_json::Value::Array(vec![]),
-            hints: None,
-            max_iterations: None,
-            blueprint_id: blueprint_id.map(|s| s.to_string()),
-            blueprint_config: blueprint_config.cloned(),
-            network_access: None,
-        };
-        let row = self
-            .db
-            .create_session(input)
-            .await
-            .map_err(|e| store_error(format!("Failed to create session: {e}")))?;
-
-        Ok(self.row_to_session(row, Some(harness_id)))
+        self.execute_domain_command(
+            "create_session",
+            serde_json::json!({
+                "harness_id": harness_id.to_string(),
+                "agent_id": agent_id.map(|id| id.to_string()),
+                "title": title,
+                "locale": locale,
+                "tags": ["managed"],
+                "capabilities": [],
+                "tools": [],
+                "mcp_servers": {},
+                "initial_files": [],
+                "blueprint_id": blueprint_id,
+                "blueprint_config": blueprint_config,
+            }),
+        )
+        .await
     }
 
     async fn get_session_by_id(
         &self,
         id: SessionId,
     ) -> everruns_core::error::Result<Option<Session>> {
+        self.execute_domain_lookup(
+            "get_session",
+            serde_json::json!({ "session_id": id.to_string() }),
+        )
+        .await
+    }
+
+    async fn set_subagent_metadata(
+        &self,
+        session_id: SessionId,
+        parent_session_id: SessionId,
+        subagent_name: &str,
+        subagent_task: &str,
+        subagent_status: everruns_core::session::SubagentStatus,
+    ) -> everruns_core::error::Result<Session> {
         let row = self
             .db
-            .get_session(self.org_id, id)
+            .set_subagent_metadata(
+                self.org_id,
+                session_id,
+                parent_session_id,
+                subagent_name,
+                subagent_task,
+                &subagent_status.to_string(),
+            )
             .await
-            .map_err(|e| store_error(format!("Failed to get session: {e}")))?;
+            .map_err(|e| store_error(format!("Failed to set subagent metadata: {e}")))?
+            .ok_or_else(|| store_error("Session not found"))?;
 
-        match row {
-            Some(r) => {
-                let fallback = if r.harness_id.is_none() {
-                    Some(
-                        org_init::base_harness_id(&self.db, self.org_id)
-                            .await
-                            .map_err(|e| {
-                                store_error(format!("Failed to resolve base harness: {e}"))
-                            })?,
-                    )
-                } else {
-                    None
-                };
-                Ok(Some(self.row_to_session(r, fallback)))
-            }
-            None => Ok(None),
-        }
+        let fallback = if row.harness_id.is_none() {
+            Some(
+                org_init::base_harness_id(&self.db, self.org_id)
+                    .await
+                    .map_err(|e| store_error(format!("Failed to resolve base harness: {e}")))?,
+            )
+        } else {
+            None
+        };
+        Ok(self.row_to_session(row, fallback))
     }
 
     async fn delete_session(&self, id: SessionId) -> everruns_core::error::Result<()> {
-        self.db
-            .delete_session(self.org_id, id)
-            .await
-            .map_err(|e| store_error(format!("Failed to delete session: {e}")))?;
+        let _: serde_json::Value = self
+            .execute_domain_command(
+                "delete_session",
+                serde_json::json!({ "session_id": id.to_string() }),
+            )
+            .await?;
         Ok(())
     }
 
@@ -2654,58 +2543,17 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
         session_id: SessionId,
         content: &str,
     ) -> everruns_core::error::Result<()> {
-        use everruns_core::events::{EventContext, InputMessageData};
-
-        // Get session to retrieve harness_id and agent_id
-        let session = self
-            .get_session_by_id(session_id)
-            .await?
-            .ok_or_else(|| store_error("Session not found"))?;
-
-        let message_id = everruns_core::typed_id::MessageId::new();
-        let now = chrono::Utc::now();
-
-        // Build input message
-        let core_message = everruns_core::Message {
-            id: message_id,
-            role: everruns_core::MessageRole::User,
-            content: vec![everruns_core::ContentPart::text(content)],
-            phase: None,
-            thinking: None,
-            thinking_signature: None,
-            controls: None,
-            metadata: None,
-            external_actor: None,
-            created_at: now,
-        };
-
-        // Emit input.message event
-        self.event_service
-            .emit(EventRequest::new(
-                session_id,
-                EventContext::empty(),
-                InputMessageData::new(core_message),
-            ))
-            .await
-            .map_err(|e| store_error(format!("Failed to emit input message: {e}")))?;
-
-        // Start turn workflow via runner
-        if let Some(ref runner) = self.runner {
-            runner
-                .start_run(
-                    self.org_id,
-                    session_id,
-                    session.harness_id,
-                    session.agent_id,
-                    message_id,
-                    None,
-                )
-                .await
-                .map_err(|e| store_error(format!("Failed to start turn: {e}")))?;
-        } else {
-            tracing::warn!("No runner available - message stored but turn not started");
-        }
-
+        let _: serde_json::Value = self
+            .execute_domain_command(
+                "create_message",
+                serde_json::json!({
+                    "session_id": session_id.to_string(),
+                    "message": {
+                        "content": [{ "type": "text", "text": content }],
+                    },
+                }),
+            )
+            .await?;
         Ok(())
     }
 
@@ -2714,58 +2562,47 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
         session_id: SessionId,
         limit: Option<usize>,
     ) -> everruns_core::error::Result<Vec<everruns_core::platform_store::PlatformMessage>> {
-        let limit_i32 = limit.unwrap_or(10) as i32;
-        let events = self
-            .db
-            .list_message_events_limited(session_id, Some(limit_i32))
-            .await
-            .map_err(|e| store_error(format!("Failed to get messages: {e}")))?;
+        let mut messages: Vec<crate::api::messages::Message> = self
+            .execute_domain_command(
+                "list_messages",
+                serde_json::json!({
+                    "session_id": session_id.to_string(),
+                    "limit": limit.unwrap_or(10),
+                }),
+            )
+            .await?;
+        messages.retain(|message| {
+            matches!(
+                message.role,
+                crate::api::messages::MessageRole::User | crate::api::messages::MessageRole::Agent
+            )
+        });
 
-        let messages = events
+        Ok(messages
             .into_iter()
-            .filter_map(|ev| {
-                let role = match ev.event_type.as_str() {
-                    "input.message" => "user".to_string(),
-                    "output.message.completed" => "agent".to_string(),
-                    _ => return None,
-                };
-
-                // Extract text content from the event data
-                let content = ev
-                    .data
-                    .get("message")
-                    .and_then(|m| m.get("content"))
-                    .and_then(|c| c.as_array())
-                    .map(|parts| {
-                        parts
-                            .iter()
-                            .filter_map(|p| {
-                                if p.get("type").and_then(|t| t.as_str()) == Some("text") {
-                                    p.get("text")
-                                        .and_then(|t| t.as_str())
-                                        .map(|s| s.to_string())
-                                } else {
-                                    None
-                                }
-                            })
-                            .collect::<Vec<_>>()
-                            .join("\n")
+            .filter_map(|message| {
+                let content = message
+                    .content
+                    .iter()
+                    .filter_map(|part| match part {
+                        everruns_core::ContentPart::Text(text) => Some(text.text.as_str()),
+                        _ => None,
                     })
-                    .unwrap_or_default();
-
+                    .collect::<Vec<_>>()
+                    .join("\n");
                 if content.is_empty() {
                     return None;
                 }
-
                 Some(everruns_core::platform_store::PlatformMessage {
-                    role,
+                    role: match message.role {
+                        crate::api::messages::MessageRole::User => "user".to_string(),
+                        _ => "agent".to_string(),
+                    },
                     content,
-                    created_at: ev.ts,
+                    created_at: message.created_at,
                 })
             })
-            .collect();
-
-        Ok(messages)
+            .collect())
     }
 
     // =========================================================================
@@ -2817,18 +2654,18 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
         &self,
         search: Option<&str>,
     ) -> everruns_core::error::Result<Vec<everruns_core::CapabilityInfo>> {
-        let mut caps = self
-            .capability_service
-            .list_all(self.org_id)
-            .await
-            .map_err(|e| store_error(format!("Failed to list capabilities: {e}")))?;
-
-        if let Some(q) = search {
-            caps.retain(|c| c.matches_search(q));
+        let mut params = serde_json::Map::new();
+        params.insert("limit".to_string(), serde_json::json!(200));
+        if let Some(search) = search {
+            params.insert(
+                "search".to_string(),
+                serde_json::Value::String(search.to_string()),
+            );
         }
-
-        caps.sort_by(|a, b| a.name.cmp(&b.name));
-        Ok(caps)
+        let page: CommandPage<everruns_core::CapabilityInfo> = self
+            .execute_domain_command("list_capabilities", serde_json::Value::Object(params))
+            .await?;
+        Ok(page.data)
     }
 
     // =========================================================================
@@ -2845,6 +2682,8 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::storage::models::CreateHarnessRow;
+    use everruns_core::PlatformStore;
 
     #[test]
     fn string_to_provider_type_maps_gemini() {
@@ -3070,6 +2909,231 @@ mod tests {
         assert!(result.is_err());
     }
 
+    async fn seed_harness_for_platform_store(
+        db: &StorageBackend,
+        org_id: i64,
+        name: &str,
+        is_built_in: bool,
+    ) -> HarnessId {
+        db.create_harness(
+            org_id,
+            CreateHarnessRow {
+                name: name.to_string(),
+                display_name: None,
+                description: None,
+                system_prompt: "test prompt".to_string(),
+                parent_harness_id: None,
+                default_model_id: None,
+                tags: vec![],
+                initial_files: serde_json::json!([]),
+                mcp_servers: serde_json::json!({}),
+                network_access: None,
+                is_built_in,
+            },
+        )
+        .await
+        .expect("seed harness")
+        .id
+    }
+
+    async fn seed_platform_session(
+        db: &StorageBackend,
+        org_id: i64,
+        harness_id: HarnessId,
+        resolved_owner_user_id: Option<Uuid>,
+    ) -> SessionId {
+        use crate::storage::models::CreateSessionRow;
+
+        db.create_session(CreateSessionRow {
+            org_id,
+            harness_id: Some(harness_id),
+            agent_id: None,
+            agent_identity_id: None,
+            owner_principal_id: everruns_core::PrincipalId::from_seed(1),
+            resolved_owner_user_id,
+            title: Some("platform-store-test".to_string()),
+            locale: None,
+            tags: vec![],
+            model_id: None,
+            capabilities: serde_json::json!([]),
+            tools: serde_json::json!([]),
+            mcp_servers: serde_json::json!({}),
+            system_prompt: None,
+            initial_files: serde_json::json!([]),
+            hints: None,
+            network_access: None,
+            max_iterations: None,
+            blueprint_id: None,
+            blueprint_config: None,
+        })
+        .await
+        .expect("seed session")
+        .id
+    }
+
+    async fn seed_platform_owner(db: &StorageBackend, org_id: i64, email: &str) -> Uuid {
+        use crate::storage::models::CreateUserRow;
+
+        let user = db
+            .create_user(CreateUserRow {
+                email: email.to_string(),
+                name: "Platform Owner".to_string(),
+                avatar_url: None,
+                external_id: None,
+                roles: vec![],
+                password_hash: None,
+                email_verified: true,
+                auth_provider: Some("test".to_string()),
+                auth_provider_id: None,
+            })
+            .await
+            .expect("create owner user");
+        db.ensure_membership(user.id, org_id, "owner")
+            .await
+            .expect("ensure owner membership");
+        user.id
+    }
+
+    fn test_platform_store(
+        adapters: &DirectWorkerAdapters,
+        org_id: i64,
+        session_id: SessionId,
+    ) -> DirectPlatformStore {
+        DirectPlatformStore::new(
+            org_id,
+            session_id,
+            adapters.db.clone(),
+            DirectPlatformStoreDeps {
+                event_service: adapters.event_service.clone(),
+                runner: None,
+                capability_registry: adapters.capability_registry.clone(),
+                encryption: None,
+                workflow_store: None,
+                permission_resolver: adapters.permission_resolver.clone(),
+            },
+        )
+    }
+
+    #[tokio::test]
+    async fn platform_store_update_rejects_built_in_harness() {
+        let adapters = test_adapters();
+        let harness_id = seed_harness_for_platform_store(
+            &adapters.db,
+            everruns_core::DEFAULT_ORG_ID,
+            "built-in",
+            true,
+        )
+        .await;
+        let owner_user_id = seed_platform_owner(
+            &adapters.db,
+            everruns_core::DEFAULT_ORG_ID,
+            "built-in-update-owner@example.com",
+        )
+        .await;
+        let session_id = seed_platform_session(
+            &adapters.db,
+            everruns_core::DEFAULT_ORG_ID,
+            harness_id,
+            Some(owner_user_id),
+        )
+        .await;
+        let store = test_platform_store(&adapters, everruns_core::DEFAULT_ORG_ID, session_id);
+
+        let err = store
+            .update_harness(harness_id, Some("renamed"), None, None, None, None)
+            .await
+            .expect_err("built-in harness updates should be rejected");
+
+        assert!(err.to_string().contains("built-in harness"));
+    }
+
+    #[tokio::test]
+    async fn platform_store_delete_rejects_built_in_harness() {
+        let adapters = test_adapters();
+        let harness_id = seed_harness_for_platform_store(
+            &adapters.db,
+            everruns_core::DEFAULT_ORG_ID,
+            "built-in",
+            true,
+        )
+        .await;
+        let owner_user_id = seed_platform_owner(
+            &adapters.db,
+            everruns_core::DEFAULT_ORG_ID,
+            "built-in-delete-owner@example.com",
+        )
+        .await;
+        let session_id = seed_platform_session(
+            &adapters.db,
+            everruns_core::DEFAULT_ORG_ID,
+            harness_id,
+            Some(owner_user_id),
+        )
+        .await;
+        let store = test_platform_store(&adapters, everruns_core::DEFAULT_ORG_ID, session_id);
+
+        let err = store
+            .delete_harness(harness_id)
+            .await
+            .expect_err("built-in harness deletes should be rejected");
+
+        assert!(err.to_string().contains("built-in harness"));
+    }
+
+    #[tokio::test]
+    async fn platform_store_uses_session_owner_permissions() {
+        use crate::storage::models::{CreateOrganizationRow, CreateUserRow};
+
+        let adapters = test_adapters();
+        let org = adapters
+            .db
+            .create_organization(CreateOrganizationRow {
+                public_id: "org_00000000000000000000000000000042".to_string(),
+                name: "Platform Store Auth".to_string(),
+                created_by: None,
+            })
+            .await
+            .expect("create org");
+        let user = adapters
+            .db
+            .create_user(CreateUserRow {
+                email: "member@example.com".to_string(),
+                name: "Member".to_string(),
+                avatar_url: None,
+                external_id: None,
+                roles: vec![],
+                password_hash: None,
+                email_verified: true,
+                auth_provider: Some("test".to_string()),
+                auth_provider_id: None,
+            })
+            .await
+            .expect("create user");
+        adapters
+            .db
+            .ensure_membership(user.id, org.org_id, "member")
+            .await
+            .expect("ensure membership");
+
+        let harness_id =
+            seed_harness_for_platform_store(&adapters.db, org.org_id, "session-harness", false)
+                .await;
+        let session_id =
+            seed_platform_session(&adapters.db, org.org_id, harness_id, Some(user.id)).await;
+        let store = adapters.platform_store(org.org_id, session_id);
+
+        let err = store
+            .create_harness("forbidden", None, None, "prompt", None, &[])
+            .await
+            .expect_err("member should not manage harnesses via platform tools");
+
+        assert!(
+            err.to_string().contains("Access denied")
+                || err.to_string().contains("Permission denied"),
+            "unexpected error: {err}"
+        );
+    }
+
     // ---- helpers ----
 
     /// Seed a test agent, returning its UUID.
@@ -3122,11 +3186,53 @@ mod tests {
     /// org 2's platform store.
     #[tokio::test]
     async fn platform_store_cross_org_isolation() {
+        use crate::storage::models::CreateOrganizationRow;
+
         let adapters = test_adapters();
         let agent_id = seed_agent(&adapters.db).await;
+        let org2 = adapters
+            .db
+            .create_organization(CreateOrganizationRow {
+                public_id: "org_00000000000000000000000000000999".to_string(),
+                name: "Platform Store Org 2".to_string(),
+                created_by: None,
+            })
+            .await
+            .expect("create org 2");
+        let harness_org1 = seed_harness_for_platform_store(
+            &adapters.db,
+            everruns_core::DEFAULT_ORG_ID,
+            "org1-session-harness",
+            false,
+        )
+        .await;
+        let harness_org2 = seed_harness_for_platform_store(
+            &adapters.db,
+            org2.org_id,
+            "org2-session-harness",
+            false,
+        )
+        .await;
+        let owner_org1 = seed_platform_owner(
+            &adapters.db,
+            everruns_core::DEFAULT_ORG_ID,
+            "org1-owner@example.com",
+        )
+        .await;
+        let owner_org2 =
+            seed_platform_owner(&adapters.db, org2.org_id, "org2-owner@example.com").await;
+        let session_org1 = seed_platform_session(
+            &adapters.db,
+            everruns_core::DEFAULT_ORG_ID,
+            harness_org1,
+            Some(owner_org1),
+        )
+        .await;
+        let session_org2 =
+            seed_platform_session(&adapters.db, org2.org_id, harness_org2, Some(owner_org2)).await;
 
         // Agent seeded in org 1 should be visible via org 1's platform store
-        let store_org1 = adapters.platform_store(everruns_core::DEFAULT_ORG_ID);
+        let store_org1 = adapters.platform_store(everruns_core::DEFAULT_ORG_ID, session_org1);
         let agent = store_org1
             .get_agent_by_id(everruns_core::AgentId::from_uuid(agent_id))
             .await
@@ -3134,12 +3240,12 @@ mod tests {
         assert!(agent.is_some(), "agent should be visible in org 1");
 
         // Same agent must NOT be visible via org 2's platform store
-        let store_org2 = adapters.platform_store(999);
+        let store_org2 = adapters.platform_store(org2.org_id, session_org2);
         let agent = store_org2
             .get_agent_by_id(everruns_core::AgentId::from_uuid(agent_id))
             .await
             .unwrap();
-        assert!(agent.is_none(), "agent must NOT be visible in org 999");
+        assert!(agent.is_none(), "agent must NOT be visible in org 2");
     }
 
     /// Regression test: image resolution must receive org_id so the gRPC
@@ -3721,13 +3827,56 @@ mod tests {
 
     #[tokio::test]
     async fn platform_store_agent_count_isolated_per_org() {
+        use crate::storage::models::CreateOrganizationRow;
+
         let adapters = test_adapters();
         seed_agent(&adapters.db).await;
-        let store_org1 = adapters.platform_store(everruns_core::DEFAULT_ORG_ID);
+        let org2 = adapters
+            .db
+            .create_organization(CreateOrganizationRow {
+                public_id: "org_00000000000000000000000000000998".to_string(),
+                name: "Platform Store Agent Count Org 2".to_string(),
+                created_by: None,
+            })
+            .await
+            .expect("create org 2");
+        let harness_org1 = seed_harness_for_platform_store(
+            &adapters.db,
+            everruns_core::DEFAULT_ORG_ID,
+            "agent-count-org1",
+            false,
+        )
+        .await;
+        let harness_org2 =
+            seed_harness_for_platform_store(&adapters.db, org2.org_id, "agent-count-org2", false)
+                .await;
+        let owner_org1 = seed_platform_owner(
+            &adapters.db,
+            everruns_core::DEFAULT_ORG_ID,
+            "agent-count-org1-owner@example.com",
+        )
+        .await;
+        let owner_org2 = seed_platform_owner(
+            &adapters.db,
+            org2.org_id,
+            "agent-count-org2-owner@example.com",
+        )
+        .await;
+        let session_org1 = seed_platform_session(
+            &adapters.db,
+            everruns_core::DEFAULT_ORG_ID,
+            harness_org1,
+            Some(owner_org1),
+        )
+        .await;
+        let session_org2 =
+            seed_platform_session(&adapters.db, org2.org_id, harness_org2, Some(owner_org2)).await;
+
+        let store_org1 = adapters.platform_store(everruns_core::DEFAULT_ORG_ID, session_org1);
         let agents_org1 = store_org1.list_agents().await.unwrap();
         assert!(!agents_org1.is_empty(), "default org should have agents");
-        let store_org999 = adapters.platform_store(999);
-        let agents_org999 = store_org999.list_agents().await.unwrap();
-        assert!(agents_org999.is_empty(), "org 999 should have no agents");
+        let store_org2 = adapters.platform_store(org2.org_id, session_org2);
+        let agents_org2 = store_org2.list_agents().await.unwrap();
+        assert!(agents_org2.is_empty(), "second org should have no agents");
     }
 }

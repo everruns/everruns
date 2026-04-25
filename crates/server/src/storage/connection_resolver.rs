@@ -23,7 +23,7 @@ use crate::auth::oauth::GitHubAppService;
 ///
 /// Session-based lookup priority:
 /// 1. If the session has an `agent_identity_id`, resolves from `agent_identity_connections`.
-/// 2. Falls back to `user_connections` via org membership.
+/// 2. Falls back to `user_connections` for the session's resolved owner user.
 ///
 /// Leased-resource cleanup additionally uses explicit owner-user lookups so
 /// the same provider identity that created a resource can delete it later.

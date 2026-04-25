@@ -127,6 +127,7 @@ impl SessionFileService {
     pub async fn create_file(&self, session_id: Uuid, req: CreateFileInput) -> Result<SessionFile> {
         let path = Self::normalize_path(&req.path);
         Self::validate_path(&path)?;
+        self.ensure_path_not_virtual(session_id, &path)?;
 
         // Decode content if provided
         let content = if let Some(ref content_str) = req.content {
@@ -176,6 +177,7 @@ impl SessionFileService {
     ) -> Result<FileInfo> {
         let path = Self::normalize_path(&req.path);
         Self::validate_path(&path)?;
+        self.ensure_path_not_virtual(session_id, &path)?;
 
         // Check if already exists
         if let Some(existing) = self.db.get_session_file(session_id, &path).await? {
@@ -226,6 +228,7 @@ impl SessionFileService {
         if path == "/" {
             return Ok(()); // Root always exists
         }
+        self.ensure_path_not_virtual(session_id, path)?;
 
         // Check if directory exists
         if let Some(existing) = self.db.get_session_file(session_id, path).await? {
@@ -697,6 +700,16 @@ impl SessionFileService {
             created_at: row.created_at,
             updated_at: row.updated_at,
         }
+    }
+
+    /// Reject writes under virtual mounts.
+    fn ensure_path_not_virtual(&self, session_id: Uuid, path: &str) -> Result<()> {
+        if let Some(registry) = &self.virtual_registry
+            && registry.is_virtual_path(&session_id, path)
+        {
+            return Err(anyhow!("Cannot modify readonly file: {}", path));
+        }
+        Ok(())
     }
 
     fn row_to_file_info(row: SessionFileRow) -> FileInfo {
@@ -1316,6 +1329,49 @@ mod tests {
                     content: Some("modified".to_string()),
                     encoding: None,
                     is_readonly: None,
+                },
+            )
+            .await
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("readonly"),
+            "Expected readonly error, got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn virtual_create_file_rejected() {
+        let (svc, registry, sid) = make_virtual_svc();
+        registry.register(sid, "/docs".into(), sample_tree(), "test_cap".into());
+
+        let err = svc
+            .create_file(
+                sid,
+                CreateFileInput {
+                    path: "/docs/injected.md".to_string(),
+                    content: Some("bad".to_string()),
+                    encoding: None,
+                    is_readonly: None,
+                },
+            )
+            .await
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("readonly"),
+            "Expected readonly error, got: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn virtual_create_directory_rejected() {
+        let (svc, registry, sid) = make_virtual_svc();
+        registry.register(sid, "/docs".into(), sample_tree(), "test_cap".into());
+
+        let err = svc
+            .create_directory(
+                sid,
+                CreateDirectoryInput {
+                    path: "/docs/new-subdir".to_string(),
                 },
             )
             .await

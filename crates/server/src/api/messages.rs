@@ -281,7 +281,12 @@ pub async fn list_messages(
     State(state): State<AppState>,
     Path(session_id): Path<String>,
 ) -> ApiResult<ListResponse<Message>> {
-    let messages = ListMessages { session_id }.run(&state.ctx(&org)).await?;
+    let messages = ListMessages {
+        session_id,
+        limit: None,
+    }
+    .run(&state.ctx(&org))
+    .await?;
 
     Ok(Json(ListResponse::new(messages)))
 }

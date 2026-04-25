@@ -13,18 +13,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  useCreateLlmProvider,
-  useUpdateLlmProvider,
-  useCreateLlmModel,
-} from "@/hooks/use-llm-providers";
+import { useCreateLlmProvider, useUpdateLlmProvider } from "@/hooks/use-llm-providers";
 import { ProviderIcon, getProviderLabel } from "@/components/providers/provider-icon";
-import type {
-  LlmProvider,
-  LlmProviderType,
-  CreateLlmProviderRequest,
-  CreateLlmModelRequest,
-} from "@/lib/api/types";
+import type { LlmProvider, LlmProviderType, CreateLlmProviderRequest } from "@/lib/api/types";
 
 const PROVIDER_TYPES: { value: LlmProviderType; label: string }[] = [
   { value: "openai", label: "OpenAI (Responses API)" },
@@ -236,111 +227,6 @@ export function SetApiKeyDialog({
             </Button>
             <Button type="submit" disabled={updateProvider.isPending || !apiKey}>
               {updateProvider.isPending ? "Saving..." : "Save API Key"}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-export function AddModelDialog({
-  providers,
-  open,
-  onOpenChange,
-}: {
-  providers: LlmProvider[];
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}) {
-  const [providerId, setProviderId] = useState("");
-  const [modelId, setModelId] = useState("");
-  const [displayName, setDisplayName] = useState("");
-  const [enabled, setEnabled] = useState(true);
-
-  const createModel = useCreateLlmModel(providerId);
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const data: CreateLlmModelRequest = {
-      model_id: modelId,
-      display_name: displayName,
-      enabled,
-    };
-    await createModel.mutateAsync(data);
-    onOpenChange(false);
-    setProviderId("");
-    setModelId("");
-    setDisplayName("");
-    setEnabled(true);
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Add Model</DialogTitle>
-          <DialogDescription>Add a new model to an existing provider.</DialogDescription>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="provider">Provider</Label>
-            <Select value={providerId} onValueChange={setProviderId}>
-              <SelectTrigger className="w-full">
-                <span className={!providerId ? "text-muted-foreground" : ""}>
-                  {providerId
-                    ? providers.find((p) => p.id === providerId)?.name
-                    : "Select provider"}
-                </span>
-              </SelectTrigger>
-              <SelectContent>
-                {providers.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="model-id">Model ID</Label>
-            <Input
-              id="model-id"
-              value={modelId}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setModelId(e.target.value)}
-              placeholder="gpt-5.2"
-              required
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="display-name">Display Name</Label>
-            <Input
-              id="display-name"
-              value={displayName}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDisplayName(e.target.value)}
-              placeholder="GPT-4o"
-              required
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="model-enabled"
-              checked={enabled}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEnabled(e.target.checked)}
-              className="h-4 w-4"
-            />
-            <Label htmlFor="model-enabled">Enable model (visible in UI model pickers)</Label>
-          </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              disabled={createModel.isPending || !providerId || !modelId || !displayName}
-            >
-              {createModel.isPending ? "Creating..." : "Create Model"}
             </Button>
           </DialogFooter>
         </form>

@@ -260,6 +260,239 @@ async fn test_events_sequence() {
     assert_eq!(events[2].sequence, 3);
 }
 
+#[tokio::test]
+async fn test_session_connection_resolution_uses_resolved_owner_user() {
+    let db = InMemoryDatabase::new();
+
+    let owner = db
+        .create_user(CreateUserRow {
+            email: format!("owner-{}@example.com", Uuid::now_v7()),
+            name: "Owner".to_string(),
+            avatar_url: None,
+            roles: vec!["user".to_string()],
+            password_hash: None,
+            email_verified: true,
+            auth_provider: None,
+            auth_provider_id: None,
+            external_id: None,
+        })
+        .await
+        .unwrap();
+    let other = db
+        .create_user(CreateUserRow {
+            email: format!("other-{}@example.com", Uuid::now_v7()),
+            name: "Other".to_string(),
+            avatar_url: None,
+            roles: vec!["user".to_string()],
+            password_hash: None,
+            email_verified: true,
+            auth_provider: None,
+            auth_provider_id: None,
+            external_id: None,
+        })
+        .await
+        .unwrap();
+
+    db.add_organization_member(DEFAULT_ORG_ID, owner.id, "member")
+        .await
+        .unwrap();
+    db.add_organization_member(DEFAULT_ORG_ID, other.id, "member")
+        .await
+        .unwrap();
+
+    let session = db
+        .create_session(CreateSessionRow {
+            org_id: DEFAULT_ORG_ID,
+            harness_id: None,
+            agent_id: None,
+            agent_identity_id: None,
+            owner_principal_id: everruns_core::PrincipalId::from_seed(42),
+            resolved_owner_user_id: Some(owner.id),
+            title: Some("connection-owner-scope".to_string()),
+            locale: None,
+            tags: vec![],
+            model_id: None,
+            capabilities: serde_json::json!([]),
+            tools: serde_json::json!([]),
+            mcp_servers: serde_json::json!({}),
+            system_prompt: None,
+            initial_files: serde_json::Value::Array(vec![]),
+            hints: None,
+            network_access: None,
+            max_iterations: None,
+            blueprint_id: None,
+            blueprint_config: None,
+        })
+        .await
+        .unwrap();
+
+    db.upsert_user_connection(CreateUserConnectionRow {
+        user_id: other.id,
+        provider: "gitlab".to_string(),
+        connection_type: "oauth".to_string(),
+        provider_user_id: Some("other-gitlab".to_string()),
+        provider_username: Some("other".to_string()),
+        access_token_encrypted: Some(b"other-token".to_vec()),
+        refresh_token_encrypted: None,
+        scopes: Some("api".to_string()),
+        expires_at: None,
+        installation_id: None,
+        provider_metadata: Some(serde_json::json!({ "user": "other" })),
+    })
+    .await
+    .unwrap();
+    db.upsert_user_connection(CreateUserConnectionRow {
+        user_id: other.id,
+        provider: "github".to_string(),
+        connection_type: "oauth".to_string(),
+        provider_user_id: Some("other-github".to_string()),
+        provider_username: Some("other".to_string()),
+        access_token_encrypted: None,
+        refresh_token_encrypted: None,
+        scopes: Some("contents:read".to_string()),
+        expires_at: None,
+        installation_id: Some(222),
+        provider_metadata: None,
+    })
+    .await
+    .unwrap();
+
+    assert_eq!(
+        db.get_connection_token_for_session(session.id, "gitlab")
+            .await
+            .unwrap(),
+        None
+    );
+    assert_eq!(
+        db.get_connection_metadata_for_session(session.id, "gitlab")
+            .await
+            .unwrap(),
+        None
+    );
+    assert_eq!(
+        db.get_connection_user_for_session(session.id, "gitlab")
+            .await
+            .unwrap(),
+        None
+    );
+    assert_eq!(
+        db.get_installation_id_for_session(session.id, "github")
+            .await
+            .unwrap(),
+        None
+    );
+
+    db.upsert_user_connection(CreateUserConnectionRow {
+        user_id: owner.id,
+        provider: "gitlab".to_string(),
+        connection_type: "oauth".to_string(),
+        provider_user_id: Some("owner-gitlab".to_string()),
+        provider_username: Some("owner".to_string()),
+        access_token_encrypted: Some(b"owner-token".to_vec()),
+        refresh_token_encrypted: None,
+        scopes: Some("api".to_string()),
+        expires_at: None,
+        installation_id: None,
+        provider_metadata: Some(serde_json::json!({ "user": "owner" })),
+    })
+    .await
+    .unwrap();
+    db.upsert_user_connection(CreateUserConnectionRow {
+        user_id: owner.id,
+        provider: "github".to_string(),
+        connection_type: "oauth".to_string(),
+        provider_user_id: Some("owner-github".to_string()),
+        provider_username: Some("owner".to_string()),
+        access_token_encrypted: None,
+        refresh_token_encrypted: None,
+        scopes: Some("contents:read".to_string()),
+        expires_at: None,
+        installation_id: Some(111),
+        provider_metadata: None,
+    })
+    .await
+    .unwrap();
+
+    assert_eq!(
+        db.get_connection_token_for_session(session.id, "gitlab")
+            .await
+            .unwrap(),
+        Some(b"owner-token".to_vec())
+    );
+    assert_eq!(
+        db.get_connection_metadata_for_session(session.id, "gitlab")
+            .await
+            .unwrap(),
+        Some(serde_json::json!({ "user": "owner" }))
+    );
+    assert_eq!(
+        db.get_connection_user_for_session(session.id, "gitlab")
+            .await
+            .unwrap(),
+        Some(owner.id)
+    );
+    assert_eq!(
+        db.get_installation_id_for_session(session.id, "github")
+            .await
+            .unwrap(),
+        Some(111)
+    );
+}
+
+#[tokio::test]
+async fn test_unpin_session_is_scoped_by_org() {
+    let db = InMemoryDatabase::new();
+    let user_id = Uuid::now_v7();
+
+    let session = db
+        .create_session(CreateSessionRow {
+            org_id: DEFAULT_ORG_ID,
+            harness_id: None,
+            agent_id: None,
+            agent_identity_id: None,
+            owner_principal_id: everruns_core::PrincipalId::from_seed(1),
+            resolved_owner_user_id: Some(user_id),
+            title: Some("Pinned Session".to_string()),
+            locale: None,
+            tags: vec![],
+            model_id: None,
+            capabilities: serde_json::json!([]),
+            tools: serde_json::json!([]),
+            mcp_servers: serde_json::json!({}),
+            system_prompt: None,
+            initial_files: serde_json::Value::Array(vec![]),
+            hints: None,
+            network_access: None,
+            max_iterations: None,
+            blueprint_id: None,
+            blueprint_config: None,
+        })
+        .await
+        .unwrap();
+
+    db.pin_session(user_id, session.id, DEFAULT_ORG_ID)
+        .await
+        .unwrap();
+
+    let removed_wrong_org = db
+        .unpin_session(user_id, session.id, DEFAULT_ORG_ID + 1)
+        .await
+        .unwrap();
+    assert!(!removed_wrong_org);
+
+    let pinned_after_wrong_org = db
+        .list_pinned_session_ids(user_id, DEFAULT_ORG_ID)
+        .await
+        .unwrap();
+    assert_eq!(pinned_after_wrong_org, vec![session.id]);
+
+    let removed_correct_org = db
+        .unpin_session(user_id, session.id, DEFAULT_ORG_ID)
+        .await
+        .unwrap();
+    assert!(removed_correct_org);
+}
+
 /// Helper: create an agent + session for event filter tests.
 async fn create_session_with_events(db: &InMemoryDatabase) -> SessionId {
     let agent = db
@@ -626,6 +859,53 @@ async fn test_list_events_since_id_takes_precedence_over_since_sequence() {
     assert_eq!(events.len(), 2); // events 5 and 6
     assert_eq!(events[0].sequence, all_events[4].sequence);
     assert_eq!(events[1].sequence, all_events[5].sequence);
+}
+
+#[tokio::test]
+async fn test_list_events_default_cap_keeps_earliest_forward_window() {
+    let db = InMemoryDatabase::new();
+    let session_id = create_session_with_events(&db).await;
+
+    // Add enough events so forward catch-up exceeds the implicit 10k safety cap.
+    for _ in 0..10_010 {
+        db.create_event(CreateEventRow {
+            session_id,
+            event_type: "output.message.delta".to_string(),
+            ts: Utc::now(),
+            context: serde_json::json!({}),
+            data: serde_json::json!({}),
+            metadata: None,
+            tags: None,
+        })
+        .await
+        .unwrap();
+    }
+
+    let all_events = db
+        .list_events(session_id, None, None, &[], &[], None, Some(20_000))
+        .await
+        .unwrap();
+    assert!(all_events.len() > 10_000);
+
+    // Simulate SSE catch-up by querying with since_id and no explicit limit.
+    let second_event_id = all_events[1].id;
+    let events = db
+        .list_events(
+            session_id,
+            None,
+            Some(second_event_id),
+            &[],
+            &[],
+            None,
+            None,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(events.len(), 10_000);
+    // Forward path must return the earliest page after the cursor, not the newest page.
+    assert_eq!(events[0].sequence, all_events[2].sequence);
+    assert_eq!(events.last().unwrap().sequence, all_events[10_001].sequence);
 }
 
 #[tokio::test]
@@ -2002,23 +2282,50 @@ async fn create_session_with_content_events(db: &InMemoryDatabase) -> SessionId 
     let events_data = vec![
         (
             "input.message",
-            serde_json::json!({"content": "Hello, how are you?"}),
+            serde_json::json!({
+                "message": {
+                    "id": "message_01933b5a00007000800000000000001",
+                    "role": "user",
+                    "content": [{"type": "text", "text": "Hello, how are you?"}]
+                }
+            }),
         ),
         (
             "output.message.completed",
-            serde_json::json!({"content": "I am doing great, thank you!"}),
+            serde_json::json!({
+                "message": {
+                    "id": "message_01933b5a00007000800000000000002",
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "I am doing great, thank you!"}]
+                }
+            }),
         ),
         (
             "input.message",
-            serde_json::json!({"content": "Tell me about Rust programming"}),
+            serde_json::json!({
+                "message": {
+                    "id": "message_01933b5a00007000800000000000003",
+                    "role": "user",
+                    "content": [{"type": "text", "text": "Tell me about Rust programming"}]
+                }
+            }),
         ),
         (
             "tool.completed",
-            serde_json::json!({"tool_name": "search", "content": "Rust is a systems language"}),
+            serde_json::json!({
+                "tool_name": "search",
+                "result": [{"type": "text", "text": "Rust is a systems language"}]
+            }),
         ),
         (
             "output.message.completed",
-            serde_json::json!({"content": "Here is information about Rust"}),
+            serde_json::json!({
+                "message": {
+                    "id": "message_01933b5a00007000800000000000004",
+                    "role": "assistant",
+                    "content": [{"type": "text", "text": "Here is information about Rust"}]
+                }
+            }),
         ),
         // Event with no content field
         ("turn.started", serde_json::json!({"turn_id": "abc123"})),

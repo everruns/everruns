@@ -5,6 +5,16 @@ use super::*;
 
 const COMMAND_API_VERSION_V1: &str = "v1";
 const MAX_EXECUTE_COMMAND_PARAMS_BYTES: usize = 1024 * 1024;
+const DEFAULT_TURN_CONTEXT_MESSAGE_LIMIT: i32 = 200;
+const MAX_TURN_CONTEXT_MESSAGE_LIMIT: i32 = 5_000;
+
+fn normalize_turn_context_message_limit(requested_limit: Option<i32>, default_limit: i32) -> i32 {
+    let normalized_default = default_limit.clamp(1, MAX_TURN_CONTEXT_MESSAGE_LIMIT);
+    requested_limit
+        .filter(|&l| l > 0)
+        .unwrap_or(normalized_default)
+        .clamp(1, MAX_TURN_CONTEXT_MESSAGE_LIMIT)
+}
 
 fn command_error_kind(error: &crate::domains::common::CommandError) -> i32 {
     match error {
@@ -143,16 +153,14 @@ impl WorkerService for WorkerServiceImpl {
         let default_limit: i32 = std::env::var("TURN_CONTEXT_MESSAGE_LIMIT")
             .ok()
             .and_then(|v| v.parse().ok())
-            .unwrap_or(200);
-        let message_limit = req
-            .message_limit
-            .filter(|&l| l > 0)
-            .unwrap_or(default_limit);
+            .unwrap_or(DEFAULT_TURN_CONTEXT_MESSAGE_LIMIT);
+        let message_limit = normalize_turn_context_message_limit(req.message_limit, default_limit);
+        let fetch_limit = message_limit.saturating_add(1);
 
         // Fetch one extra to detect truncation
         let events = self
             .event_service
-            .list_message_events_limited(session_id, Some(message_limit + 1))
+            .list_message_events_limited(session_id, Some(fetch_limit))
             .await
             .map_err(|e| {
                 tracing::error!("Failed to list messages: {}", e);
@@ -3060,7 +3068,23 @@ impl WorkerService for WorkerServiceImpl {
             ));
         };
 
-        let ctx = self.domain_ctx(req.org_id);
+        // gRPC ExecuteCommand is the auth boundary for worker-driven platform
+        // tools. Respect the provided user_id; do not silently upgrade to
+        // Caller::internal for user-owned sessions.
+        let caller = match req.user_id.as_deref() {
+            Some(user_id) => {
+                let user_id = user_id
+                    .parse()
+                    .map_err(|e| Status::invalid_argument(format!("Invalid user_id: {e}")))?;
+                crate::auth::caller_resolution::caller_for_user(&self.db, req.org_id, user_id)
+                    .await
+                    .map_err(|e| {
+                        Status::permission_denied(format!("Failed to resolve caller: {e}"))
+                    })?
+            }
+            None => everruns_core::Caller::internal(req.org_id),
+        };
+        let ctx = self.domain_ctx_for_caller(caller);
         let response = match crate::domains::common::dispatch(&req.name, params, &ctx).await {
             Ok(ok_json) => ExecuteCommandResponse {
                 result: Some(proto::execute_command_response::Result::OkJson(
@@ -3911,5 +3935,39 @@ fn proto_to_workflow_status(status: DurableWorkflowStatus) -> WorkflowStatus {
         DurableWorkflowStatus::Cancelled => WorkflowStatus::Cancelled,
         DurableWorkflowStatus::ContinuedAsNew => WorkflowStatus::ContinuedAsNew,
         DurableWorkflowStatus::Unspecified => WorkflowStatus::Pending,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        DEFAULT_TURN_CONTEXT_MESSAGE_LIMIT, MAX_TURN_CONTEXT_MESSAGE_LIMIT,
+        normalize_turn_context_message_limit,
+    };
+
+    #[test]
+    fn normalize_turn_context_message_limit_uses_clamped_default() {
+        assert_eq!(
+            normalize_turn_context_message_limit(None, DEFAULT_TURN_CONTEXT_MESSAGE_LIMIT),
+            DEFAULT_TURN_CONTEXT_MESSAGE_LIMIT
+        );
+        assert_eq!(
+            normalize_turn_context_message_limit(None, i32::MAX),
+            MAX_TURN_CONTEXT_MESSAGE_LIMIT
+        );
+    }
+
+    #[test]
+    fn normalize_turn_context_message_limit_rejects_non_positive_values() {
+        assert_eq!(normalize_turn_context_message_limit(Some(0), 123), 123);
+        assert_eq!(normalize_turn_context_message_limit(Some(-50), 123), 123);
+    }
+
+    #[test]
+    fn normalize_turn_context_message_limit_clamps_large_values() {
+        assert_eq!(
+            normalize_turn_context_message_limit(Some(i32::MAX), 123),
+            MAX_TURN_CONTEXT_MESSAGE_LIMIT
+        );
     }
 }

@@ -348,15 +348,24 @@ impl SlackDeliveryDispatcher {
                 None => continue,
             };
 
-            // Look up the app to get bot_token
-            let app = match crate::domains::apps::queries::get_by_public_id_unscoped(
-                db, encryption, &app_id,
+            // Look up app scoped to the session's organization.
+            // Prevents cross-tenant token use from forged slack:app:* tags.
+            let app = match crate::domains::apps::queries::get_by_public_id(
+                db,
+                encryption,
+                session.org_id,
+                &app_id,
             )
             .await
             {
                 Ok(Some(app)) => app,
                 Ok(None) => {
-                    warn!(app_id = %app_id, "App not found during Slack recovery");
+                    warn!(
+                        app_id = %app_id,
+                        session_id = %session.id,
+                        org_id = session.org_id,
+                        "App not found in session org during Slack recovery"
+                    );
                     continue;
                 }
                 Err(e) => {
@@ -1331,6 +1340,165 @@ mod tests {
 
             assert!(result.is_err());
             assert!(result.unwrap_err().to_string().contains("unknown"));
+        }
+    }
+
+    // Regression tests for fix(slack): scope recovery app lookup to session org (#1502).
+    //
+    // Pre-fix `SlackDeliveryDispatcher::recover` resolved `slack:app:*` tags
+    // through an unscoped app lookup, allowing a session in org B to recover
+    // using org A's Slack bot token and post messages as that app. The fix
+    // routes the lookup through `get_by_public_id(..., session.org_id, ...)`,
+    // which returns None for cross-org tags. These tests pin the cross-tenant
+    // rejection.
+    mod recovery_scoping_tests {
+        use super::*;
+        use crate::storage::StorageBackend;
+        use crate::storage::models::{CreateAppRow, CreateSessionRow, UpdateSession};
+        use everruns_core::PrincipalId;
+        use everruns_core::typed_id::{AgentId, HarnessId};
+        use tokio::sync::broadcast;
+
+        const ORG_APP_OWNER: i64 = 10;
+        const ORG_ATTACKER: i64 = 20;
+        const LEGIT_APP_PUBLIC_ID: &str = "app_legit_test";
+
+        async fn seed_slack_app(db: &StorageBackend, org_id: i64, public_id: &str) {
+            db.create_app(
+                org_id,
+                CreateAppRow {
+                    public_id: public_id.to_string(),
+                    name: "Legit Slack App".to_string(),
+                    description: None,
+                    harness_id: uuid::Uuid::nil(),
+                    agent_id: Some(uuid::Uuid::nil()),
+                    agent_identity_id: None,
+                    owner_principal_id: PrincipalId::from_seed(1),
+                    resolved_owner_user_id: None,
+                    channel_type: Some("slack".to_string()),
+                    channel_config: serde_json::json!({
+                        "signing_secret": "sig",
+                        "bot_token": "xoxb-secret-bot-token",
+                        "session_strategy": "per_thread",
+                        "reply_mode": "all_messages",
+                    }),
+                    channel_config_encrypted: None,
+                },
+            )
+            .await
+            .expect("seed slack app");
+        }
+
+        async fn seed_active_session_with_slack_tag(
+            db: &StorageBackend,
+            org_id: i64,
+            app_public_id: &str,
+        ) -> everruns_core::typed_id::SessionId {
+            use crate::storage::models::CreateEventRow;
+
+            let session = db
+                .create_session(CreateSessionRow {
+                    org_id,
+                    harness_id: Some(HarnessId::from_uuid(uuid::Uuid::nil())),
+                    agent_id: Some(AgentId::from_uuid(uuid::Uuid::nil())),
+                    agent_identity_id: None,
+                    owner_principal_id: PrincipalId::from_seed(1),
+                    resolved_owner_user_id: None,
+                    title: Some("recovery test".to_string()),
+                    locale: None,
+                    tags: vec![format!("slack:app:{app_public_id}")],
+                    model_id: None,
+                    capabilities: serde_json::json!([]),
+                    tools: serde_json::json!([]),
+                    mcp_servers: serde_json::json!({}),
+                    system_prompt: None,
+                    initial_files: serde_json::Value::Array(vec![]),
+                    hints: None,
+                    max_iterations: None,
+                    blueprint_id: None,
+                    blueprint_config: None,
+                    network_access: None,
+                })
+                .await
+                .expect("create session");
+
+            db.update_session(
+                org_id,
+                session.id,
+                UpdateSession {
+                    status: Some("active".to_string()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .expect("activate session");
+
+            // Seed an input.message event so recover() has enough context to
+            // reach the `register()` call under the pre-fix (unscoped) lookup.
+            // Without this, recover() would exit via the "no events" branch
+            // and the test couldn't distinguish pre- and post-fix behavior.
+            db.create_event(CreateEventRow {
+                session_id: session.id,
+                event_type: "input.message".to_string(),
+                ts: chrono::Utc::now(),
+                context: serde_json::json!({}),
+                data: serde_json::json!({
+                    "message": {
+                        "id": "msg_test_input",
+                        "metadata": {
+                            "slack_channel": "C_TEST",
+                            "slack_ts": "1234.5678",
+                        },
+                    },
+                }),
+                metadata: None,
+                tags: None,
+            })
+            .await
+            .expect("seed input.message");
+
+            session.id
+        }
+
+        fn build_dispatcher(db: Arc<StorageBackend>) -> Arc<SlackDeliveryDispatcher> {
+            // `recover` is independent of the event loop; we only need the
+            // dispatcher struct with a valid broadcast receiver so `start`
+            // can wire the event loop.
+            let (_tx, rx) = broadcast::channel::<EventNotificationPayload>(16);
+            SlackDeliveryDispatcher::start(db, rx)
+        }
+
+        #[tokio::test]
+        async fn recover_ignores_cross_org_slack_app_tag() {
+            let db = Arc::new(StorageBackend::in_memory());
+            seed_slack_app(&db, ORG_APP_OWNER, LEGIT_APP_PUBLIC_ID).await;
+            // Attacker session sits in a different org but tags a real app's public id.
+            seed_active_session_with_slack_tag(&db, ORG_ATTACKER, LEGIT_APP_PUBLIC_ID).await;
+
+            let dispatcher = build_dispatcher(db);
+            dispatcher.recover(None).await;
+
+            assert_eq!(
+                dispatcher.active_delivery_count().await,
+                0,
+                "cross-org slack:app:* tag must not register a delivery during recovery"
+            );
+        }
+
+        #[tokio::test]
+        async fn recover_ignores_session_with_unknown_app_tag() {
+            let db = Arc::new(StorageBackend::in_memory());
+            // No app exists with this public id anywhere.
+            seed_active_session_with_slack_tag(&db, ORG_ATTACKER, "app_does_not_exist").await;
+
+            let dispatcher = build_dispatcher(db);
+            dispatcher.recover(None).await;
+
+            assert_eq!(
+                dispatcher.active_delivery_count().await,
+                0,
+                "missing slack:app:* lookup must not leak recovery to any app"
+            );
         }
     }
 }

@@ -65,7 +65,7 @@ The recommended default harness. Bundles the core capabilities needed for genera
 
 ### Platform Chat
 
-Conversational harness for the global chat interface. Inherits Generic capabilities and is tagged separately to support the per-user singleton session pattern.
+Conversational harness for the global chat interface. Inherits Generic capabilities, adds `platform_management`, and is tagged separately to support the per-user singleton session pattern.
 
 | Property | Value |
 |----------|-------|
@@ -75,7 +75,9 @@ Conversational harness for the global chat interface. Inherits Generic capabilit
 | System Prompt | See `crates/server/src/harnesses/platform_chat.rs` for full prompt |
 | Tags | `chat`, `built-in` |
 
-**Effective capabilities:** Inherits Generic harness capabilities with no additional local capabilities. See `crates/server/src/harnesses/platform_chat.rs` for details.
+**Effective capabilities:** Inherits Generic harness capabilities and adds local `platform_management`.
+
+**Authorization rule:** Do not remove `platform_management` from Platform Chat to paper over authorization bugs. Platform tools must enforce the session owner's permissions at execution time via the normal command/policy path.
 
 **System prompt guidance includes:**
 - "Run agent" workflow: create session → send message → wait for idle → get results

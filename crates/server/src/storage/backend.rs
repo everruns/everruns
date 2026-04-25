@@ -544,6 +544,27 @@ impl StorageBackend {
         dispatch!(self, get_session, org_id, id)
     }
 
+    pub async fn set_subagent_metadata(
+        &self,
+        org_id: i64,
+        id: SessionId,
+        parent_session_id: SessionId,
+        subagent_name: &str,
+        subagent_task: &str,
+        subagent_status: &str,
+    ) -> Result<Option<SessionRow>> {
+        dispatch!(
+            self,
+            set_subagent_metadata,
+            org_id,
+            id,
+            parent_session_id,
+            subagent_name,
+            subagent_task,
+            subagent_status
+        )
+    }
+
     /// Get session without org scoping. For internal system use only (e.g. usage tracking).
     pub async fn get_session_unscoped(&self, id: SessionId) -> Result<Option<SessionRow>> {
         dispatch!(self, get_session_unscoped, id)
@@ -639,8 +660,13 @@ impl StorageBackend {
         dispatch!(self, pin_session, user_id, session_id, org_id)
     }
 
-    pub async fn unpin_session(&self, user_id: Uuid, session_id: SessionId) -> Result<bool> {
-        dispatch!(self, unpin_session, user_id, session_id)
+    pub async fn unpin_session(
+        &self,
+        user_id: Uuid,
+        session_id: SessionId,
+        org_id: i64,
+    ) -> Result<bool> {
+        dispatch!(self, unpin_session, user_id, session_id, org_id)
     }
 
     pub async fn list_pinned_session_ids(

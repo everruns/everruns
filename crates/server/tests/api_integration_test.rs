@@ -20,8 +20,11 @@ use test_harness::TestServer;
 
 use everruns_core::llm_models::LlmProvider;
 use everruns_core::typed_id::ScheduleId;
-use everruns_core::{Agent, DEFAULT_ORG_ID, Harness, LlmModel, Session, SessionFile};
-use everruns_server::storage::models::{CreateSessionScheduleRow, UpdateSession};
+use everruns_core::{Agent, DEFAULT_ORG_ID, Harness, LlmModel, PrincipalId, Session, SessionFile};
+use everruns_server::storage::models::{
+    CreatePrincipalRow, CreateSessionScheduleRow, UpdateSession,
+};
+use uuid::Uuid;
 
 // ============================================
 // Health Endpoint Tests
@@ -3033,6 +3036,60 @@ async fn test_global_chat_has_chat_harness() {
 }
 
 #[tokio::test]
+async fn test_global_chat_ignores_tag_match_owned_by_other_principal() {
+    let server = TestServer::in_memory().await;
+
+    let initial: Session = server
+        .post("/v1/sessions/chat", json!({}))
+        .await
+        .assert_success()
+        .json();
+
+    let attacker_principal = server
+        .db
+        .create_principal(CreatePrincipalRow {
+            id: PrincipalId::from_uuid(Uuid::new_v4()),
+            org_id: DEFAULT_ORG_ID,
+            kind: "user".to_string(),
+            subject_id: Some(Uuid::new_v4()),
+            parent_principal_id: None,
+            resolved_user_id: Some(Uuid::new_v4()),
+            metadata: json!({}),
+        })
+        .await
+        .expect("failed to create attacker principal");
+
+    server
+        .db
+        .update_session(
+            DEFAULT_ORG_ID,
+            initial.id,
+            UpdateSession {
+                owner_principal_id: Some(attacker_principal.id),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("failed to mutate chat session owner")
+        .expect("chat session should exist");
+
+    let recreated: Session = server
+        .post("/v1/sessions/chat", json!({}))
+        .await
+        .assert_success()
+        .json();
+
+    assert_ne!(
+        recreated.id, initial.id,
+        "chat lookup must not attach to tag-matching sessions owned by a different principal"
+    );
+    assert_ne!(
+        recreated.owner_principal_id, attacker_principal.id,
+        "new global chat should be owned by the authenticated user's principal"
+    );
+}
+
+#[tokio::test]
 async fn test_global_chat_repairs_stale_harness_binding() {
     let server = TestServer::in_memory().await;
 
@@ -3106,7 +3163,7 @@ async fn test_chat_harness_exists_in_seed() {
 }
 
 #[tokio::test]
-async fn test_chat_harness_does_not_include_platform_management() {
+async fn test_chat_harness_includes_platform_management() {
     let server = TestServer::new().await;
 
     let harness: Harness = server
@@ -3128,9 +3185,10 @@ async fn test_chat_harness_does_not_include_platform_management() {
         .map(|c| c.capability_id())
         .collect();
 
-    assert!(
-        cap_ids.is_empty(),
-        "Platform Chat should not store local capabilities"
+    assert_eq!(
+        cap_ids,
+        vec!["platform_management"],
+        "Platform Chat should keep platform management locally"
     );
 
     let preview: Value = server
@@ -3158,8 +3216,8 @@ async fn test_chat_harness_does_not_include_platform_management() {
         "Platform Chat preview should include inherited Generic tools"
     );
     assert!(
-        !tool_names.contains(&"manage_harnesses"),
-        "Platform Chat preview should not include platform management tools"
+        tool_names.contains(&"manage_harnesses"),
+        "Platform Chat preview should include platform management tools"
     );
 }
 
@@ -3656,6 +3714,88 @@ async fn test_update_app_missing_agent_returns_not_found() {
         )
         .await
         .assert_status(StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_update_app_reencrypts_legacy_plaintext_channel_configs() {
+    let server = TestServer::new().await;
+
+    let agent: Value = server
+        .post(
+            "/v1/agents",
+            json!({ "name": "update-app-reencrypt-agent", "display_name": "Test Agent", "system_prompt": "Test" }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let app: Value = server
+        .post(
+            "/v1/apps",
+            json!({
+                "name": "Legacy plaintext app",
+                "harness_id": server.seed_generic_harness_id,
+                "agent_id": agent["id"],
+                "channel_type": "slack",
+                "channel_config": {
+                    "bot_token": "xoxb-reencrypt",
+                    "signing_secret": "signing-reencrypt"
+                }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let channel_id = app["channels"][0]["id"].as_str().unwrap().to_string();
+    let channel_row = server
+        .db
+        .get_app_channel_by_public_id(&channel_id)
+        .await
+        .unwrap()
+        .unwrap();
+
+    // Simulate legacy migrated row: plaintext secrets + NULL ciphertext.
+    // UpdateAppChannel uses COALESCE and cannot clear channel_config_encrypted,
+    // so write the legacy state directly.
+    let pool = server
+        .db
+        .pool()
+        .expect("Postgres pool required for this test");
+    sqlx::query(
+        "UPDATE app_channels \
+         SET channel_config = $1, channel_config_encrypted = NULL \
+         WHERE id = $2",
+    )
+    .bind(json!({
+        "bot_token": "xoxb-plaintext",
+        "signing_secret": "signing-plaintext"
+    }))
+    .bind(channel_row.id)
+    .execute(pool)
+    .await
+    .unwrap();
+
+    server
+        .patch(
+            &format!("/v1/apps/{}", app["id"].as_str().unwrap()),
+            json!({ "description": "touch app to trigger opportunistic encryption" }),
+        )
+        .await
+        .assert_status(StatusCode::OK);
+
+    let updated_channel_row = server
+        .db
+        .get_app_channel_by_public_id(&channel_id)
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert!(
+        updated_channel_row.channel_config_encrypted.is_some(),
+        "channel config should be encrypted after app update"
+    );
+    assert_eq!(updated_channel_row.channel_config, json!({}));
 }
 
 #[tokio::test]
