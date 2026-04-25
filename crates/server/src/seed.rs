@@ -106,6 +106,8 @@ mod seed_ids {
     pub const GPT_5_4_PRO: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000220);
     pub const GPT_5_4_MINI: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000221);
     pub const GPT_5_4_NANO: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000222);
+    pub const GPT_5_5: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000223);
+    pub const GPT_5_5_PRO: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000224);
     pub const O1_PREVIEW: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000021e);
 
     // Anthropic Models (0x300-0x3FF)
@@ -1356,6 +1358,23 @@ struct SeedModel {
 
 /// Built-in seed models
 const SEED_MODELS: &[SeedModel] = &[
+    // OpenAI GPT-5.5 series
+    SeedModel {
+        id: seed_ids::GPT_5_5,
+        provider_id: seed_ids::OPENAI_PROVIDER,
+        model_id: "gpt-5.5",
+        display_name: "GPT-5.5",
+        enabled: true,     // Enabled by default
+        is_favorite: true, // Favorite model
+    },
+    SeedModel {
+        id: seed_ids::GPT_5_5_PRO,
+        provider_id: seed_ids::OPENAI_PROVIDER,
+        model_id: "gpt-5.5-pro",
+        display_name: "GPT-5.5 Pro",
+        enabled: false,
+        is_favorite: true, // Favorite model
+    },
     // OpenAI GPT-5.4 series
     SeedModel {
         id: seed_ids::GPT_5_4,

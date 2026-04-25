@@ -222,7 +222,7 @@ Read-only metadata describing model capabilities, costs, and limits. Computed at
 
 **Data Source:** https://github.com/sst/models.dev/tree/dev/providers, cross-referenced with official provider documentation.
 
-**IMPORTANT:** Never guess or extrapolate profile data (pricing, limits, capabilities). Always source from models.dev and official docs. If a model is not yet listed, wait until the data is available before adding a profile.
+**IMPORTANT:** Never guess or extrapolate profile data (pricing, limits, capabilities). Prefer models.dev when a model is listed there; otherwise source directly from the provider's official documentation (e.g. `developers.openai.com/api/docs/models/<id>`, Anthropic model cards). When a profile is added ahead of the models.dev entry, note the provider-doc source in a comment on the profile block and revisit once models.dev catches up. Never guess values.
 
 See `crates/core/src/llm_models.rs` for `LlmModelProfile`, `LlmModelCost`, `LlmModelLimits`, and `ReasoningEffortConfig` types.
 
