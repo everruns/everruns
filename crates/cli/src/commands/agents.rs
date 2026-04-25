@@ -396,10 +396,15 @@ const ALLOWED_DOT_ENTRIES: &[&str] = &[
     ".prettierrc.json",
     ".prettierrc.yaml",
     ".prettierrc.yml",
+    ".prettierrc.js",
+    ".prettierrc.cjs",
+    ".prettierrc.mjs",
     ".eslintrc",
     ".eslintrc.json",
     ".eslintrc.yaml",
     ".eslintrc.yml",
+    ".eslintrc.js",
+    ".eslintrc.cjs",
     ".eslintignore",
     ".nvmrc",
     ".node-version",
@@ -445,10 +450,10 @@ const DENIED_DOT_ENTRIES: &[&str] = &[
 ];
 
 /// Extract user-declared hidden-path opt-ins from the agent manifest's
-/// `initial_files_allow_hidden` field. Non-string entries and any entry that
-/// matches a hard-denied basename in `DENIED_DOT_ENTRIES` are filtered out;
-/// non-hidden entries (no leading `.`) are also filtered, matching the policy
-/// surface (only hidden paths are gated by this list).
+/// `initial_files_allow_hidden` field. Each entry must be a single normal path
+/// component (basename) — entries containing `/` or `\\`, equal to `.` or
+/// `..`, missing the leading dot, or matching a hard-denied basename in
+/// `DENIED_DOT_ENTRIES` are filtered out.
 fn extract_allow_hidden_extras(agent: &serde_json::Value) -> Vec<String> {
     let Some(arr) = agent
         .get("initial_files_allow_hidden")
@@ -458,9 +463,71 @@ fn extract_allow_hidden_extras(agent: &serde_json::Value) -> Vec<String> {
     };
     arr.iter()
         .filter_map(|v| v.as_str().map(|s| s.to_string()))
-        .filter(|s| s.starts_with('.'))
+        .filter(|s| is_valid_basename_extra(s))
         .filter(|s| !DENIED_DOT_ENTRIES.contains(&s.as_str()))
         .collect()
+}
+
+/// True when `s` is a single hidden basename (starts with `.`, contains no
+/// path separator, and is not the relative-path placeholders `.` / `..`).
+fn is_valid_basename_extra(s: &str) -> bool {
+    if !s.starts_with('.') || s == "." || s == ".." {
+        return false;
+    }
+    !s.contains('/') && !s.contains('\\')
+}
+
+/// Precomputed allow/deny lookup for the hidden-path policy. Built once per
+/// import so repeated calls during directory walks avoid allocating a fresh
+/// `Vec` on every component check.
+struct HiddenPathPolicy {
+    allowed: std::collections::HashSet<String>,
+}
+
+impl HiddenPathPolicy {
+    fn new(extras: &[String]) -> Self {
+        let mut allowed: std::collections::HashSet<String> = ALLOWED_DOT_ENTRIES
+            .iter()
+            .map(|s| (*s).to_string())
+            .collect();
+        for extra in extras {
+            if is_valid_basename_extra(extra) && !DENIED_DOT_ENTRIES.contains(&extra.as_str()) {
+                allowed.insert(extra.clone());
+            }
+        }
+        Self { allowed }
+    }
+
+    /// Iterator over the names of allow-walkable dot directories that the
+    /// extras-aware walker should descend into in addition to the default
+    /// non-hidden tree.
+    fn allow_walk_names(&self) -> impl Iterator<Item = &String> {
+        self.allowed.iter()
+    }
+
+    /// True when a single path component is hidden and either (a) hard-denied,
+    /// or (b) not in the effective allowlist.
+    fn component_is_disallowed(&self, component: &str) -> bool {
+        if !component.starts_with('.') {
+            return false;
+        }
+        if DENIED_DOT_ENTRIES.contains(&component) {
+            return true;
+        }
+        !self.allowed.contains(component)
+    }
+
+    /// True when any path component is disallowed under the policy. Walks
+    /// every `Normal` component so denied entries nested inside an allowlisted
+    /// root (e.g. `.github/.env`) are still rejected.
+    fn path_has_disallowed_component(&self, path: &Path) -> bool {
+        path.components().any(|component| {
+            let std::path::Component::Normal(name) = component else {
+                return false;
+            };
+            self.component_is_disallowed(&name.to_string_lossy())
+        })
+    }
 }
 
 /// Recursively collect text files from a directory, including allowed
@@ -477,8 +544,10 @@ fn glob_initial_files(
         anyhow::bail!("Not a directory: {}", base.display());
     }
 
+    let policy = HiddenPathPolicy::new(allow_hidden_extras);
+
     // hidden(true) prunes most dotfiles/dirs during traversal for performance.
-    // We do a second walk of allowed dot-entries below to include them.
+    // We do a second walk of policy.allow_walk_names() below to include them.
     let walker = ignore::WalkBuilder::new(&base)
         .hidden(true) // skip dotfiles by default (perf: avoids traversing .git/)
         .git_ignore(true) // respect .gitignore (repo-local)
@@ -487,10 +556,13 @@ fn glob_initial_files(
         .build();
 
     // Also walk allowed dot-directories that hidden(true) would skip.
-    let dot_walkers: Vec<_> = effective_allowed_dot_entries(allow_hidden_extras)
-        .into_iter()
+    // Each candidate file is filtered through the policy below so that nested
+    // hard-denied components (e.g. `.github/.env`) are still rejected even
+    // under an allowlisted root.
+    let dot_walkers: Vec<_> = policy
+        .allow_walk_names()
         .filter_map(|name| {
-            let dot_path = base.join(&name);
+            let dot_path = base.join(name);
             if dot_path.is_dir() {
                 Some(
                     ignore::WalkBuilder::new(&dot_path)
@@ -529,6 +601,17 @@ fn glob_initial_files(
         let rel = canonical
             .strip_prefix(&base)
             .context("File outside base directory")?;
+
+        // Defense in depth: enforce the deny floor on every component, even
+        // for files surfaced via the allowlisted-root walkers.
+        if policy.path_has_disallowed_component(rel) {
+            eprintln!(
+                "Warning: skipping hidden path: {} (allowed: {:?})",
+                canonical.display(),
+                ALLOWED_DOT_ENTRIES
+            );
+            continue;
+        }
 
         // Normalize path separators to POSIX-style for workspace paths
         let rel_normalized = rel.to_string_lossy().replace('\\', "/");
@@ -576,50 +659,6 @@ fn is_toml_agent_file(path: &Path) -> bool {
         .is_some_and(|ext| ext.eq_ignore_ascii_case("toml"))
 }
 
-/// Compute the effective allowlist for hidden-path components. Combines the
-/// built-in `ALLOWED_DOT_ENTRIES` floor with any user-declared opt-ins from
-/// `initial_files_allow_hidden`. Hard-denied entries from `DENIED_DOT_ENTRIES`
-/// are filtered out unconditionally.
-fn effective_allowed_dot_entries(extras: &[String]) -> Vec<String> {
-    let mut set: Vec<String> = ALLOWED_DOT_ENTRIES
-        .iter()
-        .map(|s| (*s).to_string())
-        .collect();
-    for extra in extras {
-        if extra.starts_with('.')
-            && !DENIED_DOT_ENTRIES.contains(&extra.as_str())
-            && !set.iter().any(|s| s == extra)
-        {
-            set.push(extra.clone());
-        }
-    }
-    set
-}
-
-/// Check if a path component is a hidden/dot entry that should be skipped.
-/// Returns true if the component is hidden and either (a) hard-denied, or
-/// (b) not in the effective allowlist.
-fn is_disallowed_hidden(component: &str, allow_hidden_extras: &[String]) -> bool {
-    if !component.starts_with('.') {
-        return false;
-    }
-    if DENIED_DOT_ENTRIES.contains(&component) {
-        return true;
-    }
-    let allowed = effective_allowed_dot_entries(allow_hidden_extras);
-    !allowed.iter().any(|s| s == component)
-}
-
-/// Returns true when any path component is hidden and not allowlisted.
-fn has_disallowed_hidden_component(path: &Path, allow_hidden_extras: &[String]) -> bool {
-    path.components().any(|component| {
-        let std::path::Component::Normal(name) = component else {
-            return false;
-        };
-        is_disallowed_hidden(&name.to_string_lossy(), allow_hidden_extras)
-    })
-}
-
 /// Strip glob metacharacters from a pattern to find the directory prefix.
 /// e.g. ".agents/*" → ".agents", "src/**/*.rs" → "src", "." → "."
 fn glob_base_dir(pattern: &str) -> &str {
@@ -648,6 +687,7 @@ fn expand_initial_files_globs(
     };
 
     let allow_hidden_extras = extract_allow_hidden_extras(agent);
+    let policy = HiddenPathPolicy::new(&allow_hidden_extras);
     let base_canonical = std::fs::canonicalize(base_dir)?;
     let mut all_files: Vec<CollectedFile> = Vec::new();
 
@@ -668,7 +708,7 @@ fn expand_initial_files_globs(
             if resolved.is_dir() {
                 // Reject hidden directory roots unless explicitly allowlisted.
                 let rel = resolved.strip_prefix(&base_canonical)?;
-                if has_disallowed_hidden_component(rel, &allow_hidden_extras) {
+                if policy.path_has_disallowed_component(rel) {
                     eprintln!(
                         "Warning: skipping hidden directory: {} (allowed: {:?}; user opt-ins: {:?})",
                         resolved.display(),
@@ -682,7 +722,7 @@ fn expand_initial_files_globs(
                     &resolved,
                     &base_canonical,
                     writable,
-                    &allow_hidden_extras,
+                    &policy,
                     &mut all_files,
                 )?;
             } else if resolved.is_file() {
@@ -691,7 +731,7 @@ fn expand_initial_files_globs(
                     &resolved,
                     &base_canonical,
                     writable,
-                    &allow_hidden_extras,
+                    &policy,
                     &mut all_files,
                 )?;
             } else {
@@ -729,7 +769,7 @@ fn collect_dir_files(
     dir: &Path,
     workspace_base: &Path,
     writable: bool,
-    allow_hidden_extras: &[String],
+    policy: &HiddenPathPolicy,
     files: &mut Vec<CollectedFile>,
 ) -> Result<()> {
     // Main walker skips hidden files for security (.env, .ssh, etc.)
@@ -741,10 +781,12 @@ fn collect_dir_files(
         .build();
 
     // Also walk allowed dot-directories that hidden(true) would skip.
-    let dot_walkers: Vec<_> = effective_allowed_dot_entries(allow_hidden_extras)
-        .into_iter()
+    // Each candidate file is filtered by the policy below so nested hard-denied
+    // components (e.g. `.github/.env`) are still rejected.
+    let dot_walkers: Vec<_> = policy
+        .allow_walk_names()
         .filter_map(|name| {
-            let dot_path = dir.join(&name);
+            let dot_path = dir.join(name);
             if dot_path.is_dir() {
                 Some(
                     ignore::WalkBuilder::new(&dot_path)
@@ -782,6 +824,18 @@ fn collect_dir_files(
         let rel = canonical
             .strip_prefix(workspace_base)
             .context("File outside base directory")?;
+
+        // Defense in depth: re-check every component against the deny floor,
+        // since the allowlisted-root walkers descend with `hidden(false)`.
+        if policy.path_has_disallowed_component(rel) {
+            eprintln!(
+                "Warning: skipping hidden path: {} (allowed: {:?})",
+                canonical.display(),
+                ALLOWED_DOT_ENTRIES
+            );
+            continue;
+        }
+
         let rel_normalized = rel.to_string_lossy().replace('\\', "/");
         let workspace_path = format!("/workspace/{}", rel_normalized);
 
@@ -808,13 +862,13 @@ fn collect_dir_files(
 
 /// Collect a single file into the CollectedFile list.
 /// Rejects hidden files not in the effective allowlist (see
-/// `effective_allowed_dot_entries`). Hard-denied entries from
-/// `DENIED_DOT_ENTRIES` are always rejected, even if the user opts in.
+/// `HiddenPathPolicy`). Hard-denied entries from `DENIED_DOT_ENTRIES` are
+/// always rejected, even if the user opts in.
 fn collect_single_file(
     file_path: &Path,
     workspace_base: &Path,
     writable: bool,
-    allow_hidden_extras: &[String],
+    policy: &HiddenPathPolicy,
     files: &mut Vec<CollectedFile>,
 ) -> Result<()> {
     let canonical = std::fs::canonicalize(file_path)
@@ -830,12 +884,11 @@ fn collect_single_file(
 
     // Check for disallowed hidden path components (e.g. .env, .ssh/config)
     let rel = canonical.strip_prefix(workspace_base)?;
-    if has_disallowed_hidden_component(rel, allow_hidden_extras) {
+    if policy.path_has_disallowed_component(rel) {
         eprintln!(
-            "Warning: skipping hidden file: {} (allowed: {:?}; user opt-ins: {:?})",
+            "Warning: skipping hidden file: {} (allowed: {:?})",
             file_path.display(),
             ALLOWED_DOT_ENTRIES,
-            allow_hidden_extras,
         );
         return Ok(());
     }
@@ -1571,23 +1624,84 @@ mod tests {
     #[test]
     fn test_is_disallowed_hidden_with_extras_and_deny() {
         // No extras: built-in allowlist + deny floor.
-        assert!(!is_disallowed_hidden(".github", &[]));
-        assert!(!is_disallowed_hidden(".claude", &[]));
-        assert!(is_disallowed_hidden(".env", &[]));
-        assert!(is_disallowed_hidden(".ssh", &[]));
+        let base = HiddenPathPolicy::new(&[]);
+        assert!(!base.component_is_disallowed(".github"));
+        assert!(!base.component_is_disallowed(".claude"));
+        assert!(base.component_is_disallowed(".env"));
+        assert!(base.component_is_disallowed(".ssh"));
 
         // User opt-in extends allowlist.
-        let extras = vec![".mytool".to_string()];
-        assert!(!is_disallowed_hidden(".mytool", &extras));
+        let with_extras = HiddenPathPolicy::new(&[".mytool".to_string()]);
+        assert!(!with_extras.component_is_disallowed(".mytool"));
 
-        // Deny floor is unconditional.
-        let bypass_attempt = vec![".ssh".to_string(), ".env".to_string()];
-        assert!(is_disallowed_hidden(".ssh", &bypass_attempt));
-        assert!(is_disallowed_hidden(".env", &bypass_attempt));
+        // Deny floor is unconditional, even if extras try to override it.
+        let bypass = HiddenPathPolicy::new(&[".ssh".to_string(), ".env".to_string()]);
+        assert!(bypass.component_is_disallowed(".ssh"));
+        assert!(bypass.component_is_disallowed(".env"));
 
         // Non-hidden components are never gated.
-        assert!(!is_disallowed_hidden("regular", &[]));
-        assert!(!is_disallowed_hidden("", &[]));
+        assert!(!base.component_is_disallowed("regular"));
+        assert!(!base.component_is_disallowed(""));
+
+        // Nested deny components are caught by path-level check.
+        assert!(base.path_has_disallowed_component(Path::new(".github/.env")));
+        assert!(base.path_has_disallowed_component(Path::new(".claude/.ssh/config")));
+    }
+
+    #[test]
+    fn test_is_valid_basename_extra_rejects_paths() {
+        // Reject path separators, relative-path placeholders, and missing dot.
+        assert!(!is_valid_basename_extra(""));
+        assert!(!is_valid_basename_extra("."));
+        assert!(!is_valid_basename_extra(".."));
+        assert!(!is_valid_basename_extra("regular"));
+        assert!(!is_valid_basename_extra(".mytool/sub"));
+        assert!(!is_valid_basename_extra(".mytool\\sub"));
+        assert!(!is_valid_basename_extra("../escape"));
+        assert!(is_valid_basename_extra(".mytool"));
+        assert!(is_valid_basename_extra(".otherproj"));
+    }
+
+    #[test]
+    fn test_extract_allow_hidden_extras_rejects_path_separators() {
+        let agent = serde_json::json!({
+            "initial_files_allow_hidden": [
+                ".mytool",
+                ".otherproj/sub",   // dropped: contains /
+                ".escape\\windows", // dropped: contains \
+                ".",                // dropped: relative-path placeholder
+                "..",               // dropped: relative-path placeholder
+            ]
+        });
+        let extras = extract_allow_hidden_extras(&agent);
+        assert_eq!(extras, vec![".mytool".to_string()]);
+    }
+
+    #[test]
+    fn test_collect_dir_files_rejects_nested_denied_under_allowed_root() {
+        // .github/.env must NOT be collected even though .github is allowed.
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join(".github/workflows")).unwrap();
+        std::fs::write(dir.path().join(".github/workflows/ci.yml"), "name: ci").unwrap();
+        std::fs::write(dir.path().join(".github/.env"), "SECRET=key").unwrap();
+
+        let agent = serde_json::json!({
+            "name": "test",
+            "initial_files": [".github"]
+        });
+
+        let files = expand_initial_files_globs(&agent, dir.path(), false).unwrap();
+        assert!(
+            files
+                .iter()
+                .any(|f| f.path == "/workspace/.github/workflows/ci.yml"),
+            "ci.yml should be collected"
+        );
+        assert!(
+            files.iter().all(|f| !f.path.contains("/.env")),
+            ".env nested under .github must NOT be collected, got: {:?}",
+            files.iter().map(|f| &f.path).collect::<Vec<_>>()
+        );
     }
 
     #[test]

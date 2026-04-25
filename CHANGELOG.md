@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### What's Changed
 
-- fix(cli): allow opt-in hidden directories in `initial_files` while keeping a hard-deny floor for credentials. The CLI now ships common dev-ecosystem dot directories (`.github`, `.vscode`, `.claude`, `.mcp.json`, `.gitignore`, `.editorconfig`, `.eslintrc*`, `.prettierrc*`, etc.) by default and exposes a per-agent `initial_files_allow_hidden: [".mytool"]` opt-in for project-specific tooling. `.env`, `.ssh`, `.aws`, `.gnupg`, `.git`, and similar credential / VCS paths remain rejected even when explicitly opted in. See `specs/cli.md` and `specs/threat-model.md` (TM-FS-009).
+- fix(cli): allow opt-in hidden directories in `initial_files` while keeping a hard-deny floor for credentials. The CLI now ships common dev-ecosystem dot entries (`.github`, `.vscode`, `.claude`, `.cursor`, `.mcp.json`, `.gitignore`, `.gitattributes`, `.editorconfig`, `.eslintrc{,.json,.yaml,.yml,.js,.cjs}`, `.prettierrc{,.json,.yaml,.yml,.js,.cjs,.mjs}`, `.eslintignore`, `.nvmrc`, `.node-version`, `.python-version`, `.tool-versions`, `.dockerignore`, `.rubocop.yml`, `.agents`) by default and exposes a per-agent `initial_files_allow_hidden: [".mytool"]` opt-in (basename-only; `/`, `\\`, `.`, and `..` rejected) for project-specific tooling. `.env`, `.ssh`, `.aws`, `.gnupg`, `.git`, shell history, and similar credential / VCS paths remain rejected even when explicitly opted in or nested under an allowlisted root (e.g. `.github/.env`). See `specs/cli.md` and `specs/threat-model.md` (TM-FS-009).
 
 ## [0.8.21] - 2026-04-25
 
