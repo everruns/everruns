@@ -751,7 +751,7 @@ the active session before results are returned to the agent.
 
 ## 14. Bash Sandbox (TM-BASH)
 
-Everruns uses [bashkit](https://github.com/everruns/bashkit) (v0.1.2) as a sandboxed bash interpreter for the `virtual_bash` capability. Bashkit provides WASM-like isolation: no real filesystem, no network, no system calls. The session file store is bridged via the `SessionFileSystemAdapter`.
+Everruns uses [bashkit](https://github.com/everruns/bashkit) (v0.1.21) as a sandboxed bash interpreter for the `virtual_bash` capability. Bashkit provides WASM-like isolation: no real filesystem, no network, no system calls. The session file store is bridged via the `SessionFileSystemAdapter`.
 
 | ID | Threat | Severity | Mitigation | Status |
 |----|--------|----------|------------|--------|
