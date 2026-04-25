@@ -7,7 +7,7 @@
 //
 // See EVE-154 for context.
 
-use crate::errors::ResourceNotFoundError;
+use crate::errors::{BadRequestError, ResourceNotFoundError};
 use crate::storage::StorageBackend;
 use anyhow::Result;
 use everruns_core::capabilities::{
@@ -48,9 +48,12 @@ pub async fn validate_capability_refs(
         } else {
             // Built-in capability — check registry
             let reg = registry.get_or_insert_with(CapabilityRegistry::with_builtins);
-            if !reg.has(cap_id) {
+            let Some(capability) = reg.get(cap_id) else {
                 return Err(ResourceNotFoundError::new("Capability").into());
-            }
+            };
+            capability.validate_config(&cap.config).map_err(|message| {
+                BadRequestError::new(format!("Invalid capability config: {message}"))
+            })?;
         }
     }
 
@@ -85,6 +88,22 @@ mod tests {
             .unwrap_err();
 
         assert_eq!(err.to_string(), "Capability not found");
+    }
+
+    #[tokio::test]
+    async fn invalid_builtin_capability_config_is_bad_request() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let caps = vec![AgentCapabilityConfig::with_config(
+            "gpt_image_gen",
+            serde_json::json!({ "partial_images": 4 }),
+        )];
+
+        let err = validate_capability_refs(&db, DEFAULT_ORG_ID, &caps)
+            .await
+            .unwrap_err();
+
+        assert!(err.downcast_ref::<BadRequestError>().is_some());
+        assert!(err.to_string().contains("Invalid capability config"));
     }
 
     #[tokio::test]

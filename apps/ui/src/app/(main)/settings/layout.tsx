@@ -28,6 +28,12 @@ const settingsSections: NavSection[] = [
         description: "Manage organisation settings",
       },
       {
+        name: "Organisations",
+        href: "/settings/organisations",
+        icon: Building2,
+        description: "Switch or create organisations",
+      },
+      {
         name: "LLM Providers",
         href: "/settings/providers",
         icon: Server,
