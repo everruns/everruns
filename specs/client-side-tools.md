@@ -384,6 +384,8 @@ Client-side tool waits have a configurable timeout (default: 5 minutes). If no r
 
 **Operator opt-in to hard-reject:** set `EVERRUNS_REJECT_NON_CLIENT_SIDE_TOOLS=1` (also accepts `true` / `yes` / `on`). The deserializer then returns the original `tools must contain only client_side definitions` error, surfacing as `400 Bad Request`.
 
+**Update-request semantics:** `UpdateAgentRequest.tools` is documented as "replaces existing tools if provided". To prevent legacy clients from accidentally clearing an agent's tools during the deprecation window, the deserializer treats the field as **absent** (`None`) when *every* entry was non-`client_side` and got dropped. An explicit `"tools": []` from a modern client still clears the agent's tools (replacement semantics preserved). A mixed list keeps the surviving `client_side` entries and replaces the agent's tools with that subset.
+
 **Migration timeline:**
 
 1. **Today (deprecation window):** soft-drop with structured warning. Default behavior; existing SDK/CLI clients keep working.

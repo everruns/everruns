@@ -225,9 +225,26 @@ where
     let tools = Option::<Vec<ToolDefinition>>::deserialize(deserializer)?;
     match tools {
         None => Ok(None),
-        Some(tools) => crate::api::sessions::filter_or_reject_client_side_tools(tools)
-            .map(Some)
-            .map_err(serde::de::Error::custom),
+        Some(tools) => {
+            // Capture whether the input array was already empty before
+            // filtering. `UpdateAgentRequest.tools` is documented as
+            // "Replaces existing tools if provided", so an explicit
+            // `"tools": []` must clear the agent's tools, but a legacy
+            // request whose tools all dropped to nothing during the
+            // deprecation window should be treated as "do not change
+            // tools" instead of silently clearing them.
+            let was_empty = tools.is_empty();
+            let filtered = crate::api::sessions::filter_or_reject_client_side_tools(tools)
+                .map_err(serde::de::Error::custom)?;
+            if filtered.is_empty() && !was_empty {
+                // Every entry was non-client_side and got dropped. The
+                // structured warning has already been emitted; treat the
+                // field as absent so we don't destructively clear the
+                // agent's existing tools during the deprecation window.
+                return Ok(None);
+            }
+            Ok(Some(filtered))
+        }
     }
 }
 
@@ -267,7 +284,13 @@ mod tests {
     }
 
     #[test]
-    fn update_agent_request_drops_builtin_tools_with_warn() {
+    fn update_agent_request_drops_all_builtin_tools_treats_as_unchanged() {
+        // Every entry is non-`client_side`, so the deprecation policy drops
+        // them all. The optional deserializer collapses that to `None` so a
+        // legacy update request doesn't destructively clear the agent's
+        // existing tools — `UpdateAgentRequest.tools` is documented as
+        // "Replaces existing tools if provided", and the legacy client did
+        // not intend to replace anything with an empty list.
         let json = r#"{
             "tools": [
                 {
@@ -280,10 +303,53 @@ mod tests {
         }"#;
 
         let req: UpdateAgentRequest = serde_json::from_str(json).unwrap();
-        // The whole array was non-client_side; everything is dropped, leaving
-        // an empty list. This is intentionally lenient: the request is still
-        // valid at deserialization, even if it carries no effective tools.
-        assert_eq!(req.tools.as_ref().map(|t| t.len()), Some(0));
+        assert!(
+            req.tools.is_none(),
+            "expected None (treat as unchanged), got: {:?}",
+            req.tools
+        );
+    }
+
+    #[test]
+    fn update_agent_request_explicit_empty_array_clears_tools() {
+        // An explicit `"tools": []` from a modern client must still clear
+        // the agent's tools — that's the documented "replace if provided"
+        // behavior. The "treat as unchanged" rule only applies when every
+        // legacy entry was dropped by the deprecation policy.
+        let json = r#"{ "tools": [] }"#;
+        let req: UpdateAgentRequest = serde_json::from_str(json).unwrap();
+        let tools = req.tools.expect("expected Some([])");
+        assert!(tools.is_empty());
+    }
+
+    #[test]
+    fn update_agent_request_partial_drop_keeps_client_side_entries() {
+        // Mixed list: legacy entries dropped, `client_side` survivors kept,
+        // and the field is treated as a real replacement.
+        let json = r#"{
+            "tools": [
+                {
+                    "type": "builtin",
+                    "name": "web_fetch",
+                    "description": "Fetch",
+                    "parameters": {"type": "object"}
+                },
+                {
+                    "type": "client_side",
+                    "name": "lookup_crm",
+                    "description": "Lookup",
+                    "parameters": {"type": "object"}
+                }
+            ]
+        }"#;
+
+        let req: UpdateAgentRequest = serde_json::from_str(json).unwrap();
+        let tools = req.tools.expect("expected Some(tools)");
+        assert_eq!(tools.len(), 1);
+        assert!(matches!(
+            tools[0],
+            everruns_core::ToolDefinition::ClientSide(_)
+        ));
     }
 
     // Strict-mode coverage lives in `tests/strict_client_tools.rs` so it

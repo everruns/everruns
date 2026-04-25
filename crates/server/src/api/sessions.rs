@@ -146,8 +146,13 @@ pub(crate) fn filter_or_reject_client_side_tools(
     }
     // Soft-warn surface for the deprecation window: log type names only, no
     // payloads, so request fields like prompts or arguments cannot leak into
-    // logs from the request body.
-    let dropped_kinds: Vec<&'static str> = dropped.iter().map(tool_definition_kind_name).collect();
+    // logs from the request body. Dedupe + sort the kind labels so a request
+    // with many non-`client_side` entries doesn't allocate a huge Vec or
+    // amplify telemetry — the count carries the cardinality, not the labels.
+    let mut dropped_kinds: Vec<&'static str> =
+        dropped.iter().map(tool_definition_kind_name).collect();
+    dropped_kinds.sort_unstable();
+    dropped_kinds.dedup();
     tracing::warn!(
         target = "client_tools_deprecation",
         dropped_count = dropped.len(),

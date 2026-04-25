@@ -8,13 +8,26 @@
 
 use everruns_server::api::sessions::CreateSessionRequest;
 use everruns_server::domains::agents::types::{CreateAgentRequest, UpdateAgentRequest};
+use std::sync::Once;
 
 const TEST_HARNESS_ID: &str = "harness_550e8400e29b41d4a716446655440000";
 
+static STRICT_MODE: Once = Once::new();
+
 fn enable_strict_mode() {
-    // SAFETY: integration-test binary owns its own process; setting env
-    // applies for every test in this binary.
-    unsafe { std::env::set_var("EVERRUNS_REJECT_NON_CLIENT_SIDE_TOOLS", "1") };
+    // Rust tests in a single binary run in parallel; a naive `set_var` per
+    // test races with sibling threads calling `reject_non_client_side_tools_enabled()`.
+    // `Once::call_once` runs the env write exactly once and blocks every
+    // other caller until it has completed, so the env is observably set
+    // before any test reads it.
+    STRICT_MODE.call_once(|| {
+        // SAFETY: this integration-test binary owns its own process, and the
+        // `Once` ensures the write happens before any caller proceeds past
+        // initialization. No tests in this binary rely on the absence of
+        // this var, so leaving it set for the lifetime of the process is
+        // correct.
+        unsafe { std::env::set_var("EVERRUNS_REJECT_NON_CLIENT_SIDE_TOOLS", "1") };
+    });
 }
 
 #[test]
