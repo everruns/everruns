@@ -109,12 +109,12 @@ See `crates/core/src/permissions.rs` for evaluation logic. Policies support both
 
 ### Capability Risk Gate
 
-Beside the `Permission` / `Policy` contract there is one hardcoded role gate at the API layer: **assigning a `RiskLevel::High` capability to an agent requires `OrgRole::Admin`**.
+Besides the `Permission` / `Policy` contract there is one hardcoded role gate in agent create/update enforcement: **assigning a `RiskLevel::High` capability to an agent requires `OrgRole::Admin`**.
 
-- **Where.** `require_admin_for_high_risk` in `crates/server/src/api/agents.rs` — runs from `create_agent` and `update_agent` (TM-AGENT-005).
+- **Where.** Canonical create/update enforcement is `check_high_risk_caps` in `crates/server/src/domains/agents/commands.rs` (invoked from `CreateAgent::execute`, `UpdateAgent::execute`, and `UpsertAgent::execute`). The sibling `require_admin_for_high_risk` helper in `crates/server/src/api/agents.rs` enforces the same contract on agent-import / copy paths (TM-AGENT-005).
 - **Trigger.** Any capability whose `risk_level()` returns `High`. Today: `docker_container`, `daytona`, `e2b`, `deno`, `virtual_bash`, `web_fetch`. The full contract — including the rationale for `virtual_bash` / `web_fetch` and migration semantics for grandfathered agents — lives in `specs/capabilities.md` ("Admin-Only Tier Decision").
 - **Failure mode.** HTTP 403 with the offending capability ids; the request does not partially succeed.
-- **Why it lives outside the `Permission` enum.** The gate is per-capability metadata, not a per-action permission, and the set of capabilities is open (extensions can add them). Treating it as a hardcoded gate avoids a combinatorial explosion of `org:capability:<id>` permissions while still keeping the trust boundary explicit and centralized.
+- **Why it lives outside the `Permission` enum.** The gate is based on per-capability metadata, not a per-action permission, and the set of capabilities is open (extensions can add them). Keeping it as a centralized hardcoded check in the agent enforcement path avoids a combinatorial explosion of `org:capability:<id>` permissions while preserving an explicit trust boundary.
 
 ## UI: Policy Results API
 

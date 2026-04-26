@@ -16,12 +16,15 @@
 //! Trust boundary (TM-AGENT-005, TM-BASH-001..016):
 //! - `risk_level()` returns `High`. Per the capability admin-only tier contract
 //!   (`specs/capabilities.md`, `specs/permissions.md`), assigning `virtual_bash`
-//!   to an agent requires `OrgRole::Admin`; the gate is enforced at agent
-//!   create/update time by `require_admin_for_high_risk` in
-//!   `crates/server/src/api/agents.rs`. Existing member-owned agents that
-//!   already had `virtual_bash` before the elevation continue to run
-//!   (gate is creation/update only, not runtime). New assignments by
-//!   non-admin members are rejected with HTTP 403.
+//!   to an agent requires `OrgRole::Admin`; the canonical create/update gate is
+//!   `check_high_risk_caps` in `crates/server/src/domains/agents/commands.rs`
+//!   (invoked from `CreateAgent::execute`, `UpdateAgent::execute`, and
+//!   `UpsertAgent::execute`). The sibling `require_admin_for_high_risk` helper
+//!   in `crates/server/src/api/agents.rs` enforces the same contract on
+//!   agent-import / copy paths. Existing member-owned agents that already had
+//!   `virtual_bash` before the elevation continue to run (gate is
+//!   creation/update only, not runtime). New assignments by non-admin members
+//!   are rejected with HTTP 403.
 //! - Rationale: `virtual_bash` exposes scripted code execution. Even though
 //!   the bashkit sandbox provides workspace-only filesystem access and no
 //!   real network, the combination of arbitrary command composition + LLM-

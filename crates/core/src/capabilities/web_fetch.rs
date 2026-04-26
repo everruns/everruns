@@ -10,12 +10,15 @@
 //! Trust boundary (TM-AGENT-013, TM-AGENT-018, TM-API-008):
 //! - `risk_level()` returns `High`. Per the capability admin-only tier contract
 //!   (`specs/capabilities.md`, `specs/permissions.md`), assigning `web_fetch`
-//!   to an agent requires `OrgRole::Admin`; the gate is enforced at agent
-//!   create/update time by `require_admin_for_high_risk` in
-//!   `crates/server/src/api/agents.rs`. Existing member-owned agents that
-//!   already had `web_fetch` before the elevation continue to run
-//!   (gate is creation/update only, not runtime). New assignments by
-//!   non-admin members are rejected with HTTP 403.
+//!   to an agent requires `OrgRole::Admin`; the canonical create/update gate is
+//!   `check_high_risk_caps` in `crates/server/src/domains/agents/commands.rs`
+//!   (invoked from `CreateAgent::execute`, `UpdateAgent::execute`, and
+//!   `UpsertAgent::execute`). The sibling `require_admin_for_high_risk` helper
+//!   in `crates/server/src/api/agents.rs` enforces the same contract on
+//!   agent-import / copy paths. Existing member-owned agents that already had
+//!   `web_fetch` before the elevation continue to run (gate is creation/update
+//!   only, not runtime). New assignments by non-admin members are rejected
+//!   with HTTP 403.
 //! - Rationale: outbound HTTP from an agent doubles as both a data-exfiltration
 //!   channel (TM-AGENT-013) and an SSRF vector if egress is not strictly
 //!   isolated (TM-API-008 mitigates loopback/RFC1918 via `DnsPolicy::block_private_ips()`,
