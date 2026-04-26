@@ -84,7 +84,7 @@ pub fn build_toolset(ctx: CatalogContext, mode: ToolsetMode) -> ScriptingToolSet
         }
         let def = command_descriptor_to_def(desc);
         let callback = make_inventory_callback(desc, ctx.clone());
-        builder = builder.async_tool(def, callback);
+        builder = builder.async_tool_fn(def, callback);
     }
 
     builder.build()
