@@ -107,6 +107,15 @@ See `crates/core/src/permissions.rs` for evaluation logic. Policies support both
 
 `PolicyError` maps to HTTP 403 at the API layer. See `crates/core/src/permissions.rs` for the `PolicyError` type.
 
+### Capability Risk Gate
+
+Beside the `Permission` / `Policy` contract there is one hardcoded role gate at the API layer: **assigning a `RiskLevel::High` capability to an agent requires `OrgRole::Admin`**.
+
+- **Where.** `require_admin_for_high_risk` in `crates/server/src/api/agents.rs` — runs from `create_agent` and `update_agent` (TM-AGENT-005).
+- **Trigger.** Any capability whose `risk_level()` returns `High`. Today: `docker_container`, `daytona`, `e2b`, `deno`, `virtual_bash`, `web_fetch`. The full contract — including the rationale for `virtual_bash` / `web_fetch` and migration semantics for grandfathered agents — lives in `specs/capabilities.md` ("Admin-Only Tier Decision").
+- **Failure mode.** HTTP 403 with the offending capability ids; the request does not partially succeed.
+- **Why it lives outside the `Permission` enum.** The gate is per-capability metadata, not a per-action permission, and the set of capabilities is open (extensions can add them). Treating it as a hardcoded gate avoids a combinatorial explosion of `org:capability:<id>` permissions while still keeping the trust boundary explicit and centralized.
+
 ## UI: Policy Results API
 
 Per-resource config endpoints return which policies the caller satisfies.

@@ -263,11 +263,23 @@ Each capability declares a `RiskLevel` via the `Capability` trait. The API enfor
 |-------|-------------|-------------|
 | `low` | Default. No special requirements. | Any org member |
 | `medium` | Logged but allowed for org members. | Any org member |
-| `high` | Can access external compute or resources. | Requires Admin role |
+| `high` | Can access external compute or resources, or perform unrestricted outbound network calls, or run scripted code execution. | Requires Admin role |
 
-High-risk built-in capabilities: `docker_container`, `daytona`, `e2b`, `deno`.
+High-risk built-in capabilities: `docker_container`, `daytona`, `e2b`, `deno`, `virtual_bash`, `web_fetch`.
 
 See `crates/core/src/capabilities/mod.rs` for the `RiskLevel` enum and `crates/server/src/api/agents.rs` for `require_admin_for_high_risk()`.
+
+#### Admin-Only Tier Decision (PRs #1485, #1500, EVE-395)
+
+`virtual_bash` (previously `Low`) and `web_fetch` (previously `Medium`) were elevated to `High` and the high-risk admin gate now applies to them.
+
+- **Trust rationale.**
+  - `virtual_bash` is sandboxed (workspace-only FS, no real network), but exposes scripted code execution. Combined with LLM-driven invocation it is a meaningful trust elevation versus single-purpose tools.
+  - `web_fetch` doubles as a data-exfiltration channel (TM-AGENT-013) and a partial SSRF vector. Loopback/RFC1918 are blocked at the fetchkit layer (TM-API-008), but no general outbound URL allowlist exists yet (TM-AGENT-018 is OPEN). Admin assignment is the explicit trust gate until a per-org outbound policy lands.
+- **Gate location.** `require_admin_for_high_risk` runs at agent create / update only (`crates/server/src/api/agents.rs`). Member-attempted assignments are rejected with HTTP 403 and an error message that names the offending capability ids.
+- **Migration / grandfathering.** The gate is *not* enforced at runtime. Member-owned agents that already had `virtual_bash` or `web_fetch` before this change continue to run. Members can still edit other fields on those agents; the gate fires only when a member request would *add or keep* a high-risk capability that violates the role contract on a write that is itself reshaping the capability set.
+- **Member experience.** Members trying to add `virtual_bash` or `web_fetch` see a 403 with the locked capability id. Admin approval is the path: an admin must either own the agent or perform the update on the member's behalf. A self-serve "request admin approval" UI flow is not part of this contract; it is tracked separately and may be added later without breaking the gate.
+- **What this is *not*.** This is not a per-capability policy override. There is no env var or org setting today that downgrades `virtual_bash` / `web_fetch` to member-assignable. If product later wants a tunable, it will be added explicitly (org-level policy `members_can_use_high_risk_capabilities` per-capability override) rather than emerging from constant edits in capability source files.
 
 ### Built-in Capabilities
 

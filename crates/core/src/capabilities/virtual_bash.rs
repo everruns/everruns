@@ -12,6 +12,22 @@
 //! - Context-aware tool that requires session filesystem access
 //! - SearchCapable impl delegates grep to SessionFileStore::grep_files for
 //!   single-query indexed search instead of per-file linear scan
+//!
+//! Trust boundary (TM-AGENT-005, TM-BASH-001..016):
+//! - `risk_level()` returns `High`. Per the capability admin-only tier contract
+//!   (`specs/capabilities.md`, `specs/permissions.md`), assigning `virtual_bash`
+//!   to an agent requires `OrgRole::Admin`; the gate is enforced at agent
+//!   create/update time by `require_admin_for_high_risk` in
+//!   `crates/server/src/api/agents.rs`. Existing member-owned agents that
+//!   already had `virtual_bash` before the elevation continue to run
+//!   (gate is creation/update only, not runtime). New assignments by
+//!   non-admin members are rejected with HTTP 403.
+//! - Rationale: `virtual_bash` exposes scripted code execution. Even though
+//!   the bashkit sandbox provides workspace-only filesystem access and no
+//!   real network, the combination of arbitrary command composition + LLM-
+//!   driven invocation makes this a meaningful trust elevation versus
+//!   single-purpose tools. Org admins are the only principals expected to
+//!   accept that surface for shared agents.
 
 use super::{Capability, CapabilityStatus, RiskLevel};
 use crate::background::{

@@ -6,6 +6,22 @@
 //! - Bot-auth (Ed25519 request signing per RFC 9421) enabled via server-wide env vars
 //! - Binary content accepted for file downloads, rejected for inline responses
 //! - See specs/fetchkit.md for design details
+//!
+//! Trust boundary (TM-AGENT-013, TM-AGENT-018, TM-API-008):
+//! - `risk_level()` returns `High`. Per the capability admin-only tier contract
+//!   (`specs/capabilities.md`, `specs/permissions.md`), assigning `web_fetch`
+//!   to an agent requires `OrgRole::Admin`; the gate is enforced at agent
+//!   create/update time by `require_admin_for_high_risk` in
+//!   `crates/server/src/api/agents.rs`. Existing member-owned agents that
+//!   already had `web_fetch` before the elevation continue to run
+//!   (gate is creation/update only, not runtime). New assignments by
+//!   non-admin members are rejected with HTTP 403.
+//! - Rationale: outbound HTTP from an agent doubles as both a data-exfiltration
+//!   channel (TM-AGENT-013) and an SSRF vector if egress is not strictly
+//!   isolated (TM-API-008 mitigates loopback/RFC1918 via `DnsPolicy::block_private_ips()`,
+//!   but no general outbound URL allowlist exists yet — TM-AGENT-018 OPEN).
+//!   Until a per-org outbound policy lands, admin assignment is the explicit
+//!   trust gate.
 
 use super::{Capability, CapabilityStatus, RiskLevel};
 use crate::tool_types::ToolHints;
