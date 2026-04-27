@@ -103,7 +103,7 @@ candidate bumps the router's `updated_at`; deleting a router cascades.
 | `route_id`        | UUID FK     | `ON DELETE CASCADE`.                        |
 | `model_id`        | UUID FK     | `REFERENCES llm_models(id)`. The concrete model to invoke. |
 | `request_overrides` | JSONB     | Provider-agnostic overrides (`reasoning_effort`, `temperature`, `max_output_tokens`, ...). |
-| `weight`          | INTEGER?    | Used by `weighted` strategy; default `1`.   |
+| `weight`          | INTEGER     | Used by `weighted` strategy; default `1`.   |
 | `rules`           | JSONB?      | Used by `rules` strategy. Free-form rules document validated by the server. |
 | `position`        | INTEGER     | Used by `ordered_fallback` strategy.        |
 | `created_at` / `updated_at` | TIMESTAMPTZ |                                  |
@@ -119,7 +119,7 @@ site. The migration that adds those columns ships in the next vertical slice
 
 | Strategy           | Behavior                                                                                                                                  |
 |--------------------|-------------------------------------------------------------------------------------------------------------------------------------------|
-| `single`           | Exactly one candidate; trivial selection. Useful as a starting point and for direct routes.                                              |
+| `single`           | Exactly one candidate (no more, no less); trivial selection. Useful as a starting point and for direct routes.                            |
 | `ordered_fallback` | Try candidates in `position` order. Fall through to the next candidate on transient errors (rate limit, timeout, retryable provider error). |
 | `weighted`         | Sample a candidate by `weight` (per-call random selection). Useful for A/B and canary rollouts.                                           |
 | `rules`            | Evaluate the candidate's `rules` against the binding's `params` (e.g. `{ "if": { "tier": "fast" }, "then": "model_xyz" }`). First match wins. |
@@ -233,8 +233,9 @@ runtime-resolver vertical slice.
 The first PR delivering this spec lands:
 
 * `specs/model-router.md` (this document).
-* `ModelRouterId` typed id (`mrtr_<32-hex>`) and child `route_id` /
-  `candidate_id` types.
+* `ModelRouterId` typed id (`mrtr_<32-hex>`). Route and candidate IDs remain
+  raw `Uuid` values in the foundation PR; typed IDs for them can land later
+  if a binding-site needs to surface them externally.
 * Migration `026_model_routers.sql` (tables `model_routers`,
   `model_router_routes`, `model_router_candidates`).
 * `crates/core/src/model_router.rs` — entity types, strategy enum, candidate

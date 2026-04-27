@@ -119,8 +119,9 @@ pub struct ModelRouter {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     /// JSON Schema describing caller-supplied params validated at binding
-    /// time. `{}` means no parameters expected.
-    #[serde(default)]
+    /// time. Defaults to an empty object — `{}` means no parameters expected
+    /// — never JSON `null`, so wire and DB shapes stay consistent.
+    #[serde(default = "default_empty_object")]
     pub param_schema: serde_json::Value,
     pub status: ModelRouterStatus,
     pub created_at: DateTime<Utc>,
@@ -172,7 +173,9 @@ pub struct ModelRouterCandidate {
     pub model_id: ModelId,
     /// Provider-agnostic overrides applied at LLM-call time
     /// (`reasoning_effort`, `temperature`, `max_output_tokens`, ...).
-    #[serde(default)]
+    /// Defaults to an empty object so missing fields stay object-shaped on
+    /// the wire, matching the DB JSONB default of `{}`.
+    #[serde(default = "default_empty_object")]
     pub request_overrides: serde_json::Value,
     /// Used by `weighted` strategy. Defaults to `1` (uniform).
     #[serde(default = "default_weight")]
@@ -188,6 +191,10 @@ pub struct ModelRouterCandidate {
 
 fn default_weight() -> i32 {
     1
+}
+
+fn default_empty_object() -> serde_json::Value {
+    serde_json::Value::Object(serde_json::Map::new())
 }
 
 /// Maximum length for a route key (matches the DB column).
@@ -254,9 +261,9 @@ pub fn validate_candidate_shape(
 /// enforced at the storage layer via unique indexes.
 pub fn validate_route_shape(route: &ModelRouterRoute) -> Result<(), String> {
     validate_route_key(&route.key)?;
-    if matches!(route.strategy, ModelRouterStrategy::Single) && route.candidates.len() > 1 {
+    if matches!(route.strategy, ModelRouterStrategy::Single) && route.candidates.len() != 1 {
         return Err(format!(
-            "route '{}' has strategy 'single' but {} candidates; single-strategy routes must have at most one candidate",
+            "route '{}' has strategy 'single' but {} candidates; single-strategy routes must have exactly one candidate",
             route.key,
             route.candidates.len()
         ));
@@ -384,6 +391,39 @@ mod tests {
     }
 
     #[test]
+    fn route_shape_rejects_single_with_zero_candidates() {
+        let route = ModelRouterRoute {
+            id: Uuid::nil(),
+            key: "base".into(),
+            purpose: "default route".into(),
+            when_to_use: "use this when no specific route fits".into(),
+            strategy: ModelRouterStrategy::Single,
+            position: 0,
+            candidates: vec![],
+            created_at: now(),
+            updated_at: now(),
+        };
+        let err = validate_route_shape(&route).unwrap_err();
+        assert!(err.contains("single"));
+    }
+
+    #[test]
+    fn route_shape_accepts_single_with_exactly_one_candidate() {
+        let route = ModelRouterRoute {
+            id: Uuid::nil(),
+            key: "base".into(),
+            purpose: "default route".into(),
+            when_to_use: "use this when no specific route fits".into(),
+            strategy: ModelRouterStrategy::Single,
+            position: 0,
+            candidates: vec![candidate(1, None)],
+            created_at: now(),
+            updated_at: now(),
+        };
+        assert!(validate_route_shape(&route).is_ok());
+    }
+
+    #[test]
     fn route_shape_accepts_ordered_fallback_with_multiple_candidates() {
         let route = ModelRouterRoute {
             id: Uuid::nil(),
@@ -410,5 +450,46 @@ mod tests {
         }"#;
         let cand: ModelRouterCandidate = serde_json::from_str(json).unwrap();
         assert_eq!(cand.weight, 1);
+    }
+
+    #[test]
+    fn candidate_default_request_overrides_is_empty_object() {
+        // Wire and DB shapes must match: missing `request_overrides` defaults
+        // to `{}`, never JSON `null`, so downstream consumers can rely on an
+        // object-shaped value.
+        let json = r#"{
+            "id": "00000000-0000-0000-0000-000000000000",
+            "model_id": "model_00000000000000000000000000000001",
+            "position": 0,
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-01-01T00:00:00Z"
+        }"#;
+        let cand: ModelRouterCandidate = serde_json::from_str(json).unwrap();
+        assert!(
+            cand.request_overrides.is_object(),
+            "expected default request_overrides to be a JSON object, got {:?}",
+            cand.request_overrides
+        );
+        assert_eq!(cand.request_overrides.as_object().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn router_default_param_schema_is_empty_object() {
+        // Wire and DB shapes must match: missing `param_schema` defaults to
+        // `{}`, never JSON `null`.
+        let json = r#"{
+            "id": "mrtr_00000000000000000000000000000001",
+            "name": "default",
+            "status": "active",
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-01-01T00:00:00Z"
+        }"#;
+        let router: ModelRouter = serde_json::from_str(json).unwrap();
+        assert!(
+            router.param_schema.is_object(),
+            "expected default param_schema to be a JSON object, got {:?}",
+            router.param_schema
+        );
+        assert_eq!(router.param_schema.as_object().unwrap().len(), 0);
     }
 }
