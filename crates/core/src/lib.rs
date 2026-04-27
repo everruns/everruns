@@ -77,6 +77,7 @@ pub mod session_sandbox;
 pub mod session_schedule;
 pub mod session_sqldb;
 pub mod skill;
+pub mod volume;
 
 // Multi-platform channel abstractions (thread context, delivery, routing)
 pub mod channel;
