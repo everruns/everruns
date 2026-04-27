@@ -67,6 +67,7 @@ pub mod llm_model_profiles;
 pub mod llm_models;
 pub mod mcp_server;
 pub mod memory_store;
+pub mod model_router;
 pub mod network_access;
 pub mod organization;
 pub mod principal;
