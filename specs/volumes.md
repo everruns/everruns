@@ -53,7 +53,7 @@ Volumes follow the standard building-block lifecycle from `specs/models.md`:
 | Column                    | Type        | Notes                                                  |
 |---------------------------|-------------|--------------------------------------------------------|
 | `id`                      | UUID PK     | Internal primary key.                                  |
-| `org_id`                  | BIGINT FK   | Organization scope. `ON DELETE CASCADE`.               |
+| `org_id`                  | BIGINT FK   | Organization scope.                                    |
 | `public_id`               | TEXT        | `vol_<32-hex>`. Unique per `org_id`.                   |
 | `name`                    | VARCHAR     | Unique within `org_id` while not deleted.              |
 | `description`             | TEXT?       |                                                        |

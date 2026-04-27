@@ -190,20 +190,24 @@ pub struct WorkspaceVolumesConfig {
 /// that capability `validate_config` and any clientside form validation
 /// share semantics.
 pub fn validate_mount_config_shape(mount: &VolumeMountConfig) -> Result<(), String> {
-    // Volume reference must be a syntactically valid VolumeId.
-    if !mount.volume.starts_with("vol_") {
+    // Volume reference must be a syntactically valid VolumeId
+    // (vol_<32-lowercase-hex>) — match the DB CHECK constraint exactly so
+    // structurally invalid IDs cannot pass capability validation and reach
+    // domain code or the database.
+    if VolumeId::parse(&mount.volume).is_err() {
         return Err(format!(
-            "mount.volume must be a vol_-prefixed Volume ID, got '{}'",
+            "mount.volume must be a valid Volume ID of the form vol_<32-lowercase-hex>, got '{}'",
             mount.volume
         ));
     }
 
-    // Mount path must be under /workspace, must not contain `..` or null bytes,
-    // must not have empty segments, must not have a trailing slash.
+    // Mount path must be either exactly `/workspace` or descend from it via a
+    // `/workspace/` boundary (rejects lookalikes such as `/workspacefoo`).
+    // It must not contain `..`, null bytes, empty segments, or a trailing slash.
     let path = &mount.path;
-    if !path.starts_with("/workspace") {
+    if path != "/workspace" && !path.starts_with("/workspace/") {
         return Err(format!(
-            "mount.path must start with /workspace, got '{path}'"
+            "mount.path must be /workspace or start with /workspace/, got '{path}'"
         ));
     }
     if path.contains("//") {
@@ -300,6 +304,39 @@ mod tests {
         let cfg = VolumeMountConfig {
             volume: "vol_00000000000000000000000000000001".into(),
             path: "/etc/passwd".into(),
+            mode: VolumeMountAccess::ReadOnly,
+        };
+        assert!(validate_mount_config_shape(&cfg).is_err());
+    }
+
+    #[test]
+    fn validate_rejects_workspace_prefix_lookalike() {
+        // /workspacefoo must NOT pass the /workspace boundary check.
+        let cfg = VolumeMountConfig {
+            volume: "vol_00000000000000000000000000000001".into(),
+            path: "/workspacefoo".into(),
+            mode: VolumeMountAccess::ReadOnly,
+        };
+        assert!(validate_mount_config_shape(&cfg).is_err());
+    }
+
+    #[test]
+    fn validate_accepts_workspace_root() {
+        let cfg = VolumeMountConfig {
+            volume: "vol_00000000000000000000000000000001".into(),
+            path: "/workspace".into(),
+            mode: VolumeMountAccess::ReadOnly,
+        };
+        assert!(validate_mount_config_shape(&cfg).is_ok());
+    }
+
+    #[test]
+    fn validate_rejects_invalid_hex_in_volume_id() {
+        // vol_-prefixed but not 32 lowercase hex chars must be rejected so
+        // structurally invalid IDs cannot reach the database.
+        let cfg = VolumeMountConfig {
+            volume: "vol_not-hex".into(),
+            path: "/workspace/r".into(),
             mode: VolumeMountAccess::ReadOnly,
         };
         assert!(validate_mount_config_shape(&cfg).is_err());
