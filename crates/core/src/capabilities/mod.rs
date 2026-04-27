@@ -115,6 +115,7 @@ mod test_weather;
 mod tool_output_persistence;
 mod virtual_bash;
 mod web_fetch;
+mod workspace_volumes;
 
 // Re-export capabilities
 pub use a2ui::{A2UI_CAPABILITY_ID, A2UiCapability};
@@ -213,6 +214,7 @@ pub use virtual_bash::{BashTool, VirtualBashCapability};
 pub use web_fetch::{
     BotAuthPublicKey, WebFetchCapability, WebFetchTool, derive_bot_auth_public_key,
 };
+pub use workspace_volumes::{WORKSPACE_VOLUMES_CAPABILITY_ID, WorkspaceVolumesCapability};
 
 // ============================================================================
 // System Prompt Context
@@ -682,6 +684,7 @@ impl CapabilityRegistry {
         registry.register(ResearchCapability);
         registry.register(PlatformManagementCapability);
         registry.register(FileSystemCapability);
+        registry.register(WorkspaceVolumesCapability);
         registry.register(SessionStorageCapability);
         registry.register(SessionCapability);
         registry.register(SessionSqlDatabaseCapability);
@@ -1562,6 +1565,7 @@ mod tests {
             "research",
             "platform_management",
             "session_file_system",
+            "workspace_volumes",
             "session_storage",
             "session",
             "session_sql_database",

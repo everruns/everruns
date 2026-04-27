@@ -483,6 +483,13 @@ impl IdMarker for LedgerEntryIdMarker {
     const PREFIX: &'static str = "ledger";
 }
 
+/// Marker for Volume IDs (workspace volumes — see `specs/volumes.md`)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct VolumeIdMarker;
+impl IdMarker for VolumeIdMarker {
+    const PREFIX: &'static str = "vol";
+}
+
 // ============================================================================
 // Type aliases for convenience
 // ============================================================================
@@ -541,6 +548,8 @@ pub type EvalResultId = TypedId<EvalResultIdMarker>;
 pub type BudgetId = TypedId<BudgetIdMarker>;
 /// Budget Ledger Entry ID
 pub type LedgerEntryId = TypedId<LedgerEntryIdMarker>;
+/// Volume ID (workspace volumes — see `specs/volumes.md`)
+pub type VolumeId = TypedId<VolumeIdMarker>;
 
 // ============================================================================
 // Well-known IDs (for seeding and defaults)
