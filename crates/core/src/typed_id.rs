@@ -490,6 +490,13 @@ impl IdMarker for VolumeIdMarker {
     const PREFIX: &'static str = "vol";
 }
 
+/// Marker for Model Router IDs (semantic LLM selection — see `specs/model-router.md`)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ModelRouterIdMarker;
+impl IdMarker for ModelRouterIdMarker {
+    const PREFIX: &'static str = "mrtr";
+}
+
 // ============================================================================
 // Type aliases for convenience
 // ============================================================================
@@ -550,6 +557,8 @@ pub type BudgetId = TypedId<BudgetIdMarker>;
 pub type LedgerEntryId = TypedId<LedgerEntryIdMarker>;
 /// Volume ID (workspace volumes — see `specs/volumes.md`)
 pub type VolumeId = TypedId<VolumeIdMarker>;
+/// Model Router ID (semantic LLM selection — see `specs/model-router.md`)
+pub type ModelRouterId = TypedId<ModelRouterIdMarker>;
 
 // ============================================================================
 // Well-known IDs (for seeding and defaults)
