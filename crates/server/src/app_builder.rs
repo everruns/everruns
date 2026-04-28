@@ -1178,6 +1178,15 @@ impl ServerAppBuilder {
         // creating the span above. See specs/correlation-ids.md.
         let app = app.layer(RequestIdLayer);
 
+        // Per-request access log: applied as route_layer so axum's MatchedPath
+        // extractor is available for low-cardinality `route` labels. Emits one
+        // tracing event per request with method, route, status, latency_ms,
+        // and request_id (DEBUG for /health and /metrics, WARN for 5xx,
+        // INFO otherwise). See EVE-399 / specs/correlation-ids.md.
+        let app = app.route_layer(axum::middleware::from_fn(
+            crate::middleware::http_access_log_layer,
+        ));
+
         // HTTP request duration histogram: applied as route_layer so axum's
         // MatchedPath extractor is available for low-cardinality path labels.
         let app = if prometheus_handle.is_some() {
