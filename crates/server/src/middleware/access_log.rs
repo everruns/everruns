@@ -9,8 +9,11 @@
 //
 // Decisions:
 // - Uses `MatchedPath` (e.g. `/v1/sessions/{id}`) instead of the raw URI to
-//   keep log/index cardinality bounded. Falls back to `unmatched` for 404s
-//   so scanners cannot blow up downstream indexes.
+//   keep log/index cardinality bounded. Falls back to `unmatched` only when
+//   `MatchedPath` is unavailable while this middleware still runs (e.g. a
+//   fallback handler), so mis-wired usage cannot blow up downstream indexes.
+//   Note: completely unmatched paths (404s outside any route) do not fire
+//   this middleware at all because `route_layer` only runs on matched routes.
 // - Must be applied as `route_layer` so axum populates `MatchedPath` before
 //   this middleware runs.
 // - Health and metrics endpoints are downgraded to DEBUG to keep INFO

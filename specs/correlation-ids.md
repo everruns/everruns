@@ -60,14 +60,17 @@ The W3C `traceparent` / `tracestate` headers are handled automatically by the OT
 ## Middleware Stack Position
 
 ```
-RequestIdLayer      ← outermost: extracts/generates request_id, stores in extensions, echoes in response
-  TraceLayer        ← reads request_id from extensions, creates span with request_id + session_id fields
+RequestIdLayer            ← outermost: extracts/generates request_id, stores in extensions, echoes in response
+  TraceLayer              ← reads request_id from extensions, creates span with request_id + session_id fields
     CORS
     Security headers
-      Handlers      ← record session_id on span; extract RequestId extension for CreateMessageContext
+      route_layer:        ← inner layers, run only for matched routes (MatchedPath populated)
+        http_access_log_layer  ← emits one INFO/WARN/DEBUG event per request with method, route, status, latency_ms, request_id
+        prometheus http_metrics_layer  ← records HTTP request duration histogram with matched-path labels
+        Handlers          ← record session_id on span; extract RequestId extension for CreateMessageContext
 ```
 
-The `RequestIdLayer` must sit outside `TraceLayer` so the span has the ID when it is created.
+The `RequestIdLayer` must sit outside `TraceLayer` so the span has the ID when it is created. The `http_access_log_layer` and prometheus middleware sit inside as `route_layer` so axum's `MatchedPath` extractor is populated before they run; this means completely unmatched paths (404 outside any route) are not logged via the access-log middleware but are still wrapped by the outer `TraceLayer` span.
 
 ---
 
