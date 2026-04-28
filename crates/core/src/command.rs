@@ -10,6 +10,7 @@
 // system commands. The UI fetches available commands and renders autocomplete.
 
 use crate::message::Controls;
+use crate::user_facing_error::UserFacingErrorFields;
 use serde::{Deserialize, Serialize};
 
 #[cfg(feature = "openapi")]
@@ -77,4 +78,13 @@ pub struct CommandResult {
     pub success: bool,
     /// Human-readable message describing the result
     pub message: String,
+    /// Stable error code when `success` is false. Mirrors the codes emitted on
+    /// chat error messages so the UI can localize the copy.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error_code: Option<String>,
+    /// Optional structured fields associated with `error_code` (provider,
+    /// model_id, retry_after, …).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
+    pub error_fields: Option<UserFacingErrorFields>,
 }

@@ -22,6 +22,7 @@ use everruns_core::message::{Controls, Message, MessageRole};
 use everruns_core::runtime_context::{inspect_turn_context, resolve_runtime_capabilities};
 use everruns_core::traits::{AgentStore, HarnessStore, ImageResolver, SessionStore};
 use everruns_core::typed_id::{ModelId, SessionId};
+use everruns_core::user_facing_error::{UserFacingErrorContext, classify_runtime_error_message};
 use everruns_core::{Agent, Caller, CapabilityRegistry, DriverRegistry, Harness, ResolvedImage};
 use everruns_worker::worker_adapters::{
     AdapterAgentStore, AdapterHarnessStore, AdapterImageResolver, AdapterLlmProviderStore,
@@ -269,12 +270,12 @@ impl SessionCommandService {
             llm_messages.push(llm_msg);
         }
 
+        let provider_type_str = model.provider_type.to_string();
         let provider = ProviderConfig {
             provider_type: provider_type_from_llm(model.provider_type)?,
             api_key: model.api_key.clone(),
             base_url: model.base_url.clone(),
         };
-        let driver = self.driver_registry.create_driver(&provider)?;
 
         let mut llm_config_builder = LlmCallConfigBuilder::from(&turn_context.runtime_agent)
             .tools(vec![])
@@ -293,16 +294,23 @@ impl SessionCommandService {
             .with_metadata("command", BTW_COMMAND_NAME)
             .build();
 
-        let response = driver.chat_completion(llm_messages, &llm_config).await?;
-        let message = response.text.trim().to_string();
-        if message.is_empty() {
-            return Err(anyhow!("System command /btw returned an empty response"));
-        }
+        let context = UserFacingErrorContext::default()
+            .with_provider(provider_type_str)
+            .with_model_id(model.model.to_string());
 
-        Ok(CommandResult {
-            success: true,
-            message,
-        })
+        // Mirror the worker's ReasonAtom path: provider/runtime errors during
+        // /btw should be classified and returned as `success: false` instead of
+        // bubbling up as HTTP 500. The frontend uses `error_code` to localize.
+        match run_btw_completion(&self.driver_registry, &provider, llm_messages, &llm_config).await
+        {
+            Ok(message) => Ok(CommandResult {
+                success: true,
+                message,
+                error_code: None,
+                error_fields: None,
+            }),
+            Err(error) => Ok(classify_btw_error(error, &context)),
+        }
     }
 
     async fn resolve_model(
@@ -330,6 +338,39 @@ impl SessionCommandService {
             api_key: resolved.api_key,
             base_url: resolved.base_url,
         }))
+    }
+}
+
+async fn run_btw_completion(
+    driver_registry: &DriverRegistry,
+    provider: &ProviderConfig,
+    llm_messages: Vec<LlmMessage>,
+    llm_config: &everruns_core::llm_driver_registry::LlmCallConfig,
+) -> Result<String> {
+    let driver = driver_registry
+        .create_driver(provider)
+        .map_err(|err| anyhow!(err.to_string()))?;
+
+    let response = driver
+        .chat_completion(llm_messages, llm_config)
+        .await
+        .map_err(|err| anyhow!(err.to_string()))?;
+
+    let message = response.text.trim().to_string();
+    if message.is_empty() {
+        return Err(anyhow!("System command /btw returned an empty response"));
+    }
+    Ok(message)
+}
+
+fn classify_btw_error(error: anyhow::Error, context: &UserFacingErrorContext) -> CommandResult {
+    let chain = format!("{error:#}");
+    let classified = classify_runtime_error_message(&chain, context);
+    CommandResult {
+        success: false,
+        message: classified.fallback_message(),
+        error_code: Some(classified.code.clone()),
+        error_fields: classified.error_fields(),
     }
 }
 
@@ -404,4 +445,68 @@ async fn resolve_images(
         }
     }
     resolved
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn classify_btw_error_maps_401_to_provider_misconfigured() {
+        let err = anyhow!("OpenAI API error (401): unauthorized");
+        let context = UserFacingErrorContext::default()
+            .with_provider("openai")
+            .with_model_id("gpt-5");
+
+        let result = classify_btw_error(err, &context);
+
+        assert!(!result.success);
+        assert_eq!(result.error_code.as_deref(), Some("provider_misconfigured"));
+        assert_eq!(
+            result.message,
+            "There is a misconfiguration with the AI provider. Please contact support."
+        );
+        let fields = result.error_fields.expect("error_fields populated");
+        assert_eq!(
+            fields.get("provider").and_then(|v| v.as_str()),
+            Some("openai")
+        );
+        assert_eq!(
+            fields.get("model_id").and_then(|v| v.as_str()),
+            Some("gpt-5")
+        );
+    }
+
+    #[test]
+    fn classify_btw_error_maps_429_to_rate_limited() {
+        let err = anyhow!("OpenAI API error (429): rate limit exceeded");
+        let context = UserFacingErrorContext::default().with_provider("openai");
+
+        let result = classify_btw_error(err, &context);
+
+        assert!(!result.success);
+        assert_eq!(result.error_code.as_deref(), Some("provider_rate_limited"));
+    }
+
+    #[test]
+    fn classify_btw_error_falls_back_to_processing_error() {
+        let err = anyhow!("something exploded");
+        let context = UserFacingErrorContext::default();
+
+        let result = classify_btw_error(err, &context);
+
+        assert!(!result.success);
+        assert_eq!(result.error_code.as_deref(), Some("processing_error"));
+    }
+
+    #[test]
+    fn classify_btw_error_handles_missing_api_key() {
+        let err = anyhow!("API key is required. Configure the API key in provider settings.");
+        let context = UserFacingErrorContext::default().with_provider("openai");
+
+        let result = classify_btw_error(err, &context);
+
+        assert!(!result.success);
+        assert_eq!(result.error_code.as_deref(), Some("provider_misconfigured"));
+    }
 }

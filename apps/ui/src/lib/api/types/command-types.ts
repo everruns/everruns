@@ -30,4 +30,6 @@ export interface ExecuteCommandRequest {
 export interface CommandResult {
   success: boolean;
   message: string;
+  error_code?: string;
+  error_fields?: Record<string, unknown>;
 }
