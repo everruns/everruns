@@ -72,9 +72,17 @@ jobs:
         run: doppler run -- ${{ matrix.command }}
 
   duckduckgo-integration-test:
-    name: DuckDuckGo API Tests
+    name: ${{ matrix.name }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: DuckDuckGo API Tests
+            command: cargo test -p everruns-integrations-duckduckgo --features integration
+          - name: Parallel MCP Tests
+            command: cargo test -p everruns-integrations-parallel --features integration
 
     steps:
       - uses: actions/checkout@v4
@@ -88,7 +96,7 @@ jobs:
           shared-key: "debug"
 
       - name: Run integration tests
-        run: cargo test -p everruns-integrations-duckduckgo --features integration
+        run: ${{ matrix.command }}
 
   container-sandbox-live-test:
     name: Container Sandbox Live API Tests

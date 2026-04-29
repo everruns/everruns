@@ -12,6 +12,7 @@ extern crate everruns_integrations_deno;
 extern crate everruns_integrations_docker;
 extern crate everruns_integrations_duckduckgo;
 extern crate everruns_integrations_e2b;
+extern crate everruns_integrations_parallel;
 extern crate everruns_integrations_sprites;
 
 // API routes and types (shared for OpenAPI generation)

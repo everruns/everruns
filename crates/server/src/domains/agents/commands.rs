@@ -859,6 +859,8 @@ impl Command for PreviewAgent {
         tools.extend(
             crate::domains::mcp_servers::scoped_mcp::build_scoped_mcp_tool_definitions(
                 &self.mcp_servers,
+                None,
+                None,
             )
             .await
             .map_err(classify_anyhow)?,

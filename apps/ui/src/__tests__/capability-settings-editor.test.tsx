@@ -66,6 +66,43 @@ function imageGenerationCapability(): Capability {
   });
 }
 
+function parallelCapability(): Capability {
+  return capability({
+    id: "parallel_search",
+    config_schema: {
+      type: "object",
+      properties: {
+        auth: {
+          type: "string",
+          title: "Authentication",
+          description: "Free works without setup. API key uses Settings > Connections > Parallel.",
+          default: "free",
+          oneOf: [
+            { const: "free", title: "Free" },
+            { const: "connection", title: "Parallel API Key" },
+          ],
+        },
+        endpoint: {
+          type: "string",
+          title: "MCP Endpoint",
+          description:
+            "OAuth MCP uses https://search.parallel.ai/mcp-oauth and requires a Parallel API key.",
+          default: "free",
+          oneOf: [
+            { const: "free", title: "Free MCP" },
+            { const: "oauth", title: "OAuth MCP" },
+          ],
+        },
+      },
+    },
+    config_ui_schema: {
+      "ui:order": ["auth", "endpoint"],
+      auth: { "ui:widget": "select" },
+      endpoint: { "ui:widget": "select" },
+    },
+  });
+}
+
 describe("CapabilitySettingsEditor", () => {
   it("exposes settings when a capability provides config schema", () => {
     expect(hasCapabilitySettings(capability({ id: "gpt_image_gen" }))).toBe(false);
@@ -122,5 +159,21 @@ describe("CapabilitySettingsEditor", () => {
 
     expect(screen.getByLabelText("Endpoint URL")).toHaveValue("https://example.com");
     expect(screen.getByText("Base URL used by the capability.")).toBeInTheDocument();
+  });
+
+  it("renders Parallel settings from schema metadata", () => {
+    render(
+      <CapabilitySettingsEditor
+        capability={parallelCapability()}
+        config={{}}
+        onChange={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Authentication")).toBeInTheDocument();
+    expect(screen.getByText("Free")).toBeInTheDocument();
+    expect(screen.getByText("MCP Endpoint")).toBeInTheDocument();
+    expect(screen.getByText("Free MCP")).toBeInTheDocument();
+    expect(screen.getByText(/works without setup/i)).toBeInTheDocument();
   });
 });

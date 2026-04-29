@@ -464,6 +464,9 @@ mod tests {
                 transport_type: McpServerTransportType::Http,
                 url: "https://base.example.com/mcp".to_string(),
                 headers: Default::default(),
+                auth_mode: crate::McpServerAuthMode::None,
+                oauth_provider_id: None,
+                tool_discovery: true,
             },
         );
 
@@ -474,6 +477,9 @@ mod tests {
                 transport_type: McpServerTransportType::Http,
                 url: "https://overlay.example.com/mcp".to_string(),
                 headers: Default::default(),
+                auth_mode: crate::McpServerAuthMode::None,
+                oauth_provider_id: None,
+                tool_discovery: true,
             },
         );
         overlay_servers.insert(
@@ -482,6 +488,9 @@ mod tests {
                 transport_type: McpServerTransportType::Http,
                 url: "https://search.example.com/mcp".to_string(),
                 headers: Default::default(),
+                auth_mode: crate::McpServerAuthMode::None,
+                oauth_provider_id: None,
+                tool_discovery: true,
             },
         );
 

@@ -1,0 +1,43 @@
+name: Parallel Integration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'integrations/parallel/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'integrations/parallel/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  integration-test:
+    name: Parallel MCP Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "debug"
+
+      - name: Run integration tests
+        run: cargo test -p everruns-integrations-parallel --features integration

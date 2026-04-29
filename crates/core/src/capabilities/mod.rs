@@ -20,6 +20,7 @@
 
 use crate::command::CommandDescriptor;
 use crate::deployment::DeploymentGrade;
+use crate::mcp_server::{ScopedMcpServers, merge_scoped_mcp_servers};
 use crate::message_filter::MessageFilterProvider;
 use crate::runtime_agent::RuntimeAgent;
 use crate::tool_types::{ToolCall, ToolDefinition};
@@ -473,6 +474,20 @@ pub trait Capability: Send + Sync {
     /// MCP write paths share the same server-side guardrail.
     fn validate_config(&self, _config: &serde_json::Value) -> Result<(), String> {
         Ok(())
+    }
+
+    /// Returns remote MCP servers contributed by this capability.
+    ///
+    /// These are merged into harness/agent/session scoped MCP config at runtime.
+    /// Explicit scoped MCP config overrides capability-contributed defaults by
+    /// logical server name.
+    fn mcp_servers(&self) -> ScopedMcpServers {
+        ScopedMcpServers::default()
+    }
+
+    /// Returns config-aware remote MCP server contributions.
+    fn mcp_servers_with_config(&self, _config: &serde_json::Value) -> ScopedMcpServers {
+        self.mcp_servers()
     }
 
     /// Returns a message filter provider if this capability modifies message retrieval.
@@ -972,6 +987,8 @@ pub struct CollectedCapabilities {
     pub tool_definition_hooks: Vec<Arc<dyn ToolDefinitionHook>>,
     /// Hooks that inspect or transform model-produced tool calls.
     pub tool_call_hooks: Vec<Arc<dyn ToolCallHook>>,
+    /// Scoped remote MCP servers contributed by capabilities.
+    pub mcp_servers: ScopedMcpServers,
 }
 
 impl CollectedCapabilities {
@@ -1070,6 +1087,28 @@ pub fn collect_message_filters_only(
     CollectedMessageFilters {
         message_filter_providers,
     }
+}
+
+pub fn collect_capability_mcp_servers(
+    capability_configs: &[AgentCapabilityConfig],
+    registry: &CapabilityRegistry,
+) -> ScopedMcpServers {
+    let mut servers = ScopedMcpServers::default();
+
+    for cap_config in capability_configs {
+        let cap_id = cap_config.capability_ref.as_str();
+        if let Some(capability) = registry.get(cap_id) {
+            if capability.status() != CapabilityStatus::Available {
+                continue;
+            }
+            servers = merge_scoped_mcp_servers(
+                &servers,
+                &capability.mcp_servers_with_config(&cap_config.config),
+            );
+        }
+    }
+
+    servers
 }
 
 // ============================================================================
@@ -1397,6 +1436,7 @@ pub async fn collect_capabilities_with_configs(
     let mut prompt_cache: Option<crate::llm_driver_registry::PromptCacheConfig> = None;
     let mut tool_definition_hooks: Vec<Arc<dyn ToolDefinitionHook>> = Vec::new();
     let mut tool_call_hooks: Vec<Arc<dyn ToolCallHook>> = Vec::new();
+    let mut mcp_servers = ScopedMcpServers::default();
 
     for cap_config in capability_configs {
         let cap_id = cap_config.capability_ref.as_str();
@@ -1469,6 +1509,11 @@ pub async fn collect_capabilities_with_configs(
             // Collect mount points
             mounts.extend(capability.mounts());
 
+            mcp_servers = merge_scoped_mcp_servers(
+                &mcp_servers,
+                &capability.mcp_servers_with_config(&cap_config.config),
+            );
+
             // Normalize capability-contributed skills into mount points under
             // `/.agents/skills/{name}/`. Discovery/activation stays with the
             // built-in `skills` capability — see specs/skills-registry.md.
@@ -1499,6 +1544,7 @@ pub async fn collect_capabilities_with_configs(
         prompt_cache,
         tool_definition_hooks,
         tool_call_hooks,
+        mcp_servers,
     }
 }
 

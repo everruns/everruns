@@ -33,7 +33,8 @@ use uuid::Uuid;
 use crate::domains::budgets::BudgetService;
 use crate::domains::mcp_servers::McpServerService;
 use crate::domains::mcp_servers::scoped_mcp::{
-    build_scoped_mcp_tool_definitions, resolve_scoped_mcp_server, validate_scoped_mcp_servers,
+    build_scoped_mcp_tool_definitions, merge_effective_scoped_mcp_servers_with_capabilities,
+    resolve_scoped_mcp_server_with_capabilities, validate_scoped_mcp_servers,
 };
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
@@ -1158,9 +1159,13 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 None => None,
             };
 
-            if let Some(resolved) =
-                resolve_scoped_mcp_server(&harness, agent.as_ref(), &session, server_prefix)
-            {
+            if let Some(resolved) = resolve_scoped_mcp_server_with_capabilities(
+                &harness,
+                agent.as_ref(),
+                &session,
+                server_prefix,
+                &self.capability_registry,
+            ) {
                 return Ok(McpServerInfo {
                     id: resolved.id,
                     name: resolved.name,
@@ -1241,23 +1246,27 @@ impl WorkerAdapters for DirectWorkerAdapters {
             .await?;
 
         let local_mcp_tool_definitions = if let Some(ref harness) = harness {
-            let effective =
-                crate::domains::mcp_servers::scoped_mcp::merge_effective_scoped_mcp_servers(
-                    harness,
-                    agent.as_ref(),
-                    &session,
-                );
+            let effective = merge_effective_scoped_mcp_servers_with_capabilities(
+                harness,
+                agent.as_ref(),
+                &session,
+                &self.capability_registry,
+            );
 
             if let Err(error) = validate_scoped_mcp_servers(&effective) {
                 tracing::warn!(error = %error, "Invalid scoped MCP server config, skipping");
                 vec![]
             } else {
-                build_scoped_mcp_tool_definitions(&effective)
-                    .await
-                    .unwrap_or_else(|error| {
-                        tracing::warn!(error = %error, "Failed to build scoped MCP tool definitions");
-                        vec![]
-                    })
+                build_scoped_mcp_tool_definitions(
+                    &effective,
+                    Some(session.id),
+                    self.connection_resolver.as_ref(),
+                )
+                .await
+                .unwrap_or_else(|error| {
+                    tracing::warn!(error = %error, "Failed to build scoped MCP tool definitions");
+                    vec![]
+                })
             }
         } else {
             vec![]

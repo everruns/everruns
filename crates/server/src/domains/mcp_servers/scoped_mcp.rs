@@ -6,12 +6,16 @@
 // narrowly scoped and avoid mutating config rows during runtime.
 
 use anyhow::{Result, anyhow};
+use everruns_core::capabilities::{CapabilityRegistry, collect_capability_mcp_servers};
 use everruns_core::mcp_server::sanitize_mcp_server_name;
+use everruns_core::traits::UserConnectionResolver;
 use everruns_core::{
     Agent, Capability, Harness, McpCapability, McpServerAuthMode, ScopedMcpServers, Session,
-    ToolDefinition, merge_scoped_mcp_servers, validate_safe_url,
+    SessionId, ToolDefinition, merge_scoped_mcp_servers, resolve_runtime_capabilities,
+    validate_safe_url,
 };
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::domains::mcp_servers::McpServerResolved;
@@ -28,6 +32,25 @@ pub fn merge_effective_scoped_mcp_servers(
     }
     layers.push(&session.mcp_servers);
     merge_scoped_mcp_server_layers(layers)
+}
+
+pub fn merge_effective_scoped_mcp_servers_with_capabilities(
+    harness: &Harness,
+    agent: Option<&Agent>,
+    session: &Session,
+    capability_registry: &CapabilityRegistry,
+) -> ScopedMcpServers {
+    let explicit = merge_effective_scoped_mcp_servers(harness, agent, session);
+    let resolved = resolve_runtime_capabilities(
+        std::slice::from_ref(harness),
+        agent,
+        session,
+        capability_registry,
+    );
+    let contributed =
+        collect_capability_mcp_servers(&resolved.resolved_capability_configs, capability_registry);
+
+    merge_scoped_mcp_servers(&contributed, &explicit)
 }
 
 pub fn merge_scoped_mcp_server_layers<'a, I>(layers: I) -> ScopedMcpServers
@@ -62,8 +85,34 @@ pub fn resolve_scoped_mcp_server(
             id: scoped_mcp_server_uuid(session.id.uuid(), &name),
             name,
             url: server.url,
-            auth_mode: McpServerAuthMode::None,
-            oauth_provider_id: None,
+            auth_mode: server.auth_mode,
+            oauth_provider_id: server.oauth_provider_id,
+            api_key: None,
+            headers: server.headers,
+        })
+    })
+}
+
+pub fn resolve_scoped_mcp_server_with_capabilities(
+    harness: &Harness,
+    agent: Option<&Agent>,
+    session: &Session,
+    server_prefix: &str,
+    capability_registry: &CapabilityRegistry,
+) -> Option<McpServerResolved> {
+    let effective = merge_effective_scoped_mcp_servers_with_capabilities(
+        harness,
+        agent,
+        session,
+        capability_registry,
+    );
+    effective.into_iter().find_map(|(name, server)| {
+        (sanitize_mcp_server_name(&name) == server_prefix).then(|| McpServerResolved {
+            id: scoped_mcp_server_uuid(session.id.uuid(), &name),
+            name,
+            url: server.url,
+            auth_mode: server.auth_mode,
+            oauth_provider_id: server.oauth_provider_id,
             api_key: None,
             headers: server.headers,
         })
@@ -72,16 +121,109 @@ pub fn resolve_scoped_mcp_server(
 
 pub async fn build_scoped_mcp_tool_definitions(
     servers: &ScopedMcpServers,
+    session_id: Option<SessionId>,
+    connection_resolver: Option<&Arc<dyn UserConnectionResolver>>,
 ) -> Result<Vec<ToolDefinition>> {
     let mut definitions = Vec::new();
 
     for (name, server) in servers {
-        let tools = fetch_mcp_tools(&server.url, None, &server.headers).await?;
+        if !server.tool_discovery {
+            tracing::debug!(
+                server_name = %name,
+                "Skipping scoped MCP tool discovery by server config"
+            );
+            continue;
+        }
+
+        let bearer_token =
+            match resolve_scoped_mcp_discovery_token(name, server, session_id, connection_resolver)
+                .await
+            {
+                Ok(bearer_token) => bearer_token,
+                Err(error) => {
+                    tracing::warn!(
+                        server_name = %name,
+                        error = %error,
+                        "Failed to resolve scoped MCP discovery token, skipping server"
+                    );
+                    continue;
+                }
+            };
+        let has_authorization_header = has_authorization_header(&server.headers);
+        if server.auth_mode == McpServerAuthMode::OAuth
+            && !has_authorization_header
+            && bearer_token.is_none()
+        {
+            tracing::debug!(
+                server_name = %name,
+                "Skipping scoped MCP tool discovery because no user connection token is available"
+            );
+            continue;
+        }
+
+        let tools =
+            match fetch_mcp_tools(&server.url, bearer_token.as_deref(), &server.headers).await {
+                Ok(tools) => tools,
+                Err(error) => {
+                    tracing::warn!(
+                        server_name = %name,
+                        error = %error,
+                        "Failed to discover scoped MCP tools, skipping server"
+                    );
+                    continue;
+                }
+            };
         let capability = McpCapability::new(Uuid::nil(), name.clone(), None, tools);
         definitions.extend(capability.tool_definitions());
     }
 
     Ok(definitions)
+}
+
+async fn resolve_scoped_mcp_discovery_token(
+    server_name: &str,
+    server: &everruns_core::ScopedMcpServer,
+    session_id: Option<SessionId>,
+    connection_resolver: Option<&Arc<dyn UserConnectionResolver>>,
+) -> Result<Option<String>> {
+    if server.auth_mode != McpServerAuthMode::OAuth || has_authorization_header(&server.headers) {
+        return Ok(None);
+    }
+
+    let Some(provider) = server.oauth_provider_id.as_deref() else {
+        tracing::debug!(
+            server_name,
+            "Skipping scoped MCP discovery token lookup because oauth_provider_id is missing"
+        );
+        return Ok(None);
+    };
+    let Some(session_id) = session_id else {
+        tracing::debug!(
+            server_name,
+            provider,
+            "Skipping scoped MCP discovery token lookup because session_id is unavailable"
+        );
+        return Ok(None);
+    };
+    let Some(resolver) = connection_resolver else {
+        tracing::debug!(
+            server_name,
+            provider,
+            "Skipping scoped MCP discovery token lookup because connection resolver is unavailable"
+        );
+        return Ok(None);
+    };
+
+    resolver
+        .get_connection_token(session_id, provider)
+        .await
+        .map_err(|error| anyhow!("Failed to resolve scoped MCP discovery token: {error}"))
+}
+
+fn has_authorization_header(headers: &HashMap<String, String>) -> bool {
+    headers
+        .keys()
+        .any(|header_name| header_name.eq_ignore_ascii_case("Authorization"))
 }
 
 pub fn validate_scoped_mcp_servers(servers: &ScopedMcpServers) -> Result<()> {
@@ -128,7 +270,19 @@ mod tests {
             transport_type: everruns_core::McpServerTransportType::Http,
             url: url.to_string(),
             headers: Default::default(),
+            auth_mode: McpServerAuthMode::None,
+            oauth_provider_id: None,
+            tool_discovery: true,
         }
+    }
+
+    #[test]
+    fn detects_authorization_header_case_insensitively() {
+        let mut headers = HashMap::new();
+        assert!(!has_authorization_header(&headers));
+
+        headers.insert("authorization".to_string(), "Bearer token".to_string());
+        assert!(has_authorization_header(&headers));
     }
 
     fn test_harness() -> Harness {
