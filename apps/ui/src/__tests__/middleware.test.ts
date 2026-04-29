@@ -31,8 +31,25 @@ describe("auth proxy", () => {
     expect(response.headers.get("location")).toBeNull();
   });
 
+  it("adds agent discovery Link headers to the homepage", () => {
+    const request = {
+      cookies: { has: () => false },
+      nextUrl: new URL("http://localhost/"),
+      url: "http://localhost/",
+    } as Parameters<typeof proxy>[0];
+
+    const response = proxy(request);
+
+    expect(response.headers.get("x-middleware-next")).toBe("1");
+    expect(response.headers.get("location")).toBeNull();
+    expect(response.headers.get("link")).toBe(
+      '</api-doc/openapi.json>; rel="service-desc"; type="application/json", <https://docs.everruns.com/api/>; rel="service-doc"; type="text/html"',
+    );
+  });
+
   it("protects the main application routes", () => {
     expect(config.matcher).toEqual([
+      "/",
       "/agent-identities/:path*",
       "/agents/:path*",
       "/apps/:path*",
