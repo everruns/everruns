@@ -56,6 +56,17 @@ type MigrationFn =
 type BackgroundTaskFn =
     Box<dyn FnOnce(ServerContext) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send>;
 
+type ApiKeyRoutesWrapFn = Box<dyn FnOnce(Router) -> Router + Send>;
+
+/// Apply the optional API-key-routes wrap closure to the api-key router.
+/// Identity when no wrap is configured.
+fn apply_api_key_routes_wrap(wrap: Option<ApiKeyRoutesWrapFn>, router: Router) -> Router {
+    match wrap {
+        Some(wrap) => wrap(router),
+        None => router,
+    }
+}
+
 // =========================================================================
 // ServerContext
 // =========================================================================
@@ -139,6 +150,7 @@ pub struct ServerAppBuilder {
     error_reporter: Option<SharedErrorReporter>,
     migrations: Vec<MigrationFn>,
     background_tasks: Vec<BackgroundTaskFn>,
+    api_key_routes_wrap: Option<ApiKeyRoutesWrapFn>,
 }
 
 impl ServerAppBuilder {
@@ -153,6 +165,7 @@ impl ServerAppBuilder {
             error_reporter: None,
             migrations: Vec::new(),
             background_tasks: Vec::new(),
+            api_key_routes_wrap: None,
         }
     }
 
@@ -212,6 +225,21 @@ impl ServerAppBuilder {
     {
         self.migrations
             .push(Box::new(move |pool| Box::pin(f(pool))));
+        self
+    }
+
+    /// Wrap the auto-mounted API key CRUD router (`/v1/auth/api-keys*`) before
+    /// it is merged into the main API surface.
+    ///
+    /// Lets embedders apply route-specific layers — for example, a stricter rate
+    /// limiter — without re-mounting the same paths and duplicating routes.
+    /// The closure receives the API-key router and must return a router with
+    /// the same paths.
+    pub fn wrap_api_key_routes<F>(mut self, wrap: F) -> Self
+    where
+        F: FnOnce(Router) -> Router + Send + 'static,
+    {
+        self.api_key_routes_wrap = Some(Box::new(wrap));
         self
     }
 
@@ -1019,12 +1047,17 @@ impl ServerAppBuilder {
             api_routes = api_routes.merge(api::session_sandbox::routes(session_sandbox_state));
         }
 
-        // API key CRUD — auth-provider-agnostic, always mounted
-        api_routes = api_routes.merge(crate::auth::api_key_routes(crate::auth::ApiKeyState {
+        // API key CRUD — auth-provider-agnostic, always mounted.
+        // Embedders can wrap this router via `wrap_api_key_routes()` to attach
+        // route-specific middleware (e.g. stricter rate limits) without
+        // re-mounting and duplicating the paths.
+        let api_key_router = crate::auth::api_key_routes(crate::auth::ApiKeyState {
             db: db.clone(),
             auth: auth_state.clone(),
             resource_limits: crate::server::ResourceLimitsConfig::from_env(),
-        }));
+        });
+        let api_key_router = apply_api_key_routes_wrap(self.api_key_routes_wrap, api_key_router);
+        api_routes = api_routes.merge(api_key_router);
 
         // Auth-specific routes (login, register, OAuth — provider-dependent)
         if let Some(auth_routes) = auth_backend.auth_routes() {
@@ -1727,5 +1760,66 @@ mod tests {
         assert_eq!(config.stream_window, 2 * 1024 * 1024); // falls back to default
         assert_eq!(config.connection_window, 16 * 1024 * 1024); // falls back to default
         assert_eq!(config.max_concurrent_streams, 256); // not set, default
+    }
+
+    // EVE-401: embedders can layer route-specific middleware on the auto-mounted
+    // API key CRUD router via `wrap_api_key_routes()` without re-mounting.
+    #[tokio::test]
+    async fn wrap_api_key_routes_applies_custom_layer() {
+        use axum::body::Body;
+        use axum::http::{HeaderName, HeaderValue, Request, StatusCode};
+        use axum::routing::get;
+        use tower::ServiceExt;
+        use tower_http::set_header::SetResponseHeaderLayer;
+
+        let base = Router::new().route("/v1/auth/api-keys", get(|| async { "ok" }));
+        let wrap: ApiKeyRoutesWrapFn = Box::new(|r: Router| {
+            r.layer(SetResponseHeaderLayer::if_not_present(
+                HeaderName::from_static("x-eve-401-marker"),
+                HeaderValue::from_static("applied"),
+            ))
+        });
+
+        let router = apply_api_key_routes_wrap(Some(wrap), base);
+
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/auth/api-keys")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get("x-eve-401-marker").unwrap(),
+            "applied"
+        );
+    }
+
+    #[tokio::test]
+    async fn wrap_api_key_routes_passthrough_when_none() {
+        use axum::body::Body;
+        use axum::http::{Request, StatusCode};
+        use axum::routing::get;
+        use tower::ServiceExt;
+
+        let base = Router::new().route("/v1/auth/api-keys", get(|| async { "ok" }));
+        let router = apply_api_key_routes_wrap(None, base);
+
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/auth/api-keys")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(response.headers().get("x-eve-401-marker").is_none());
     }
 }
