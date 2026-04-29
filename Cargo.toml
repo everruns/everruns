@@ -22,6 +22,7 @@ members = [
     "integrations/daytona",
     "integrations/deno",
     "integrations/brave-search",
+    "integrations/parallel",
     "integrations/duckduckgo",
     "integrations/browserless",
     "integrations/e2b",

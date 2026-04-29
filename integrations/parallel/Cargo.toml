@@ -1,0 +1,24 @@
+# Parallel MCP Integration
+# Decision: Capability contributes a remote MCP server rather than reimplementing search tools.
+# Decision: Free by default; optional user connection supplies a Parallel API key as bearer auth.
+
+[package]
+name = "everruns-integrations-parallel"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Parallel MCP integration for Everruns"
+
+[dependencies]
+everruns-core = { path = "../../crates/core" }
+inventory.workspace = true
+reqwest.workspace = true
+serde_json.workspace = true
+async-trait.workspace = true
+
+[features]
+integration = []
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }

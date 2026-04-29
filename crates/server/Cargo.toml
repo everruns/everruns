@@ -73,6 +73,7 @@ everruns-core = { path = "../core", features = ["openapi", "sqlx", "tree-sitter-
 everruns-macros = { path = "../macros" }
 everruns-integrations-docker = { path = "../../integrations/docker" }
 everruns-integrations-brave-search = { path = "../../integrations/brave-search" }
+everruns-integrations-parallel = { path = "../../integrations/parallel" }
 everruns-integrations-duckduckgo = { path = "../../integrations/duckduckgo" }
 everruns-integrations-daytona = { path = "../../integrations/daytona" }
 everruns-integrations-deno = { path = "../../integrations/deno" }

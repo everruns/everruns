@@ -62,6 +62,12 @@ impl From<&str> for McpServerAuthMode {
     }
 }
 
+impl McpServerAuthMode {
+    pub fn is_none(&self) -> bool {
+        matches!(self, McpServerAuthMode::None)
+    }
+}
+
 impl std::fmt::Display for McpServerTransportType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -192,12 +198,32 @@ pub struct ScopedMcpServer {
     /// Additional HTTP headers sent on MCP requests.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub headers: HashMap<String, String>,
+    /// Authentication mode used when executing tools from this scoped server.
+    #[serde(default, skip_serializing_if = "McpServerAuthMode::is_none")]
+    pub auth_mode: McpServerAuthMode,
+    /// Provider id used to resolve a user-scoped bearer token.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub oauth_provider_id: Option<String>,
+    /// Whether to discover tool definitions live from this server.
+    #[serde(
+        default = "default_scoped_tool_discovery",
+        skip_serializing_if = "is_true"
+    )]
+    pub tool_discovery: bool,
 }
 
 pub type ScopedMcpServers = BTreeMap<String, ScopedMcpServer>;
 
 fn default_scoped_transport_type() -> McpServerTransportType {
     McpServerTransportType::Http
+}
+
+fn default_scoped_tool_discovery() -> bool {
+    true
+}
+
+fn is_true(value: &bool) -> bool {
+    *value
 }
 
 pub fn scoped_mcp_servers_is_empty(servers: &ScopedMcpServers) -> bool {

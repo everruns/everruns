@@ -5663,6 +5663,10 @@
             "url"
           ],
           "properties": {
+            "auth_mode": {
+              "$ref": "#/components/schemas/McpServerAuthMode",
+              "description": "Authentication mode used when executing tools from this scoped server."
+            },
             "headers": {
               "type": "object",
               "description": "Additional HTTP headers sent on MCP requests.",
@@ -5672,6 +5676,17 @@
               "propertyNames": {
                 "type": "string"
               }
+            },
+            "oauth_provider_id": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Provider id used to resolve a user-scoped bearer token."
+            },
+            "tool_discovery": {
+              "type": "boolean",
+              "description": "Whether to discover tool definitions live from this server."
             },
             "type": {
               "$ref": "#/components/schemas/McpServerTransportType",

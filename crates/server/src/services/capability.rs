@@ -63,6 +63,10 @@ impl CapabilityService {
         }
     }
 
+    pub fn registry(&self) -> &CapabilityRegistry {
+        &self.registry
+    }
+
     /// Invalidate the cached skill list for an org. Called by skill mutation
     /// commands after create/update/delete.
     pub async fn invalidate_skills_cache(&self, org_id: i64) {
@@ -356,6 +360,14 @@ impl CapabilityService {
             system_prompt_parts.push(prefix);
         }
         tool_definitions.extend(collected.tool_definitions);
+        tool_definitions.extend(
+            crate::domains::mcp_servers::scoped_mcp::build_scoped_mcp_tool_definitions(
+                &collected.mcp_servers,
+                None,
+                None,
+            )
+            .await?,
+        );
 
         // Collect from MCP capabilities using cached tools only (no refresh)
         // Note: MCP capabilities don't have dependencies

@@ -225,12 +225,12 @@ impl WorkerService for WorkerServiceImpl {
         // Append org-scoped tool definitions first so scoped definitions win on
         // name collisions when RuntimeAgentBuilder deduplicates with last-wins.
         let local_mcp_tool_definitions = if let Some(ref harness) = harness {
-            let effective =
-                crate::domains::mcp_servers::scoped_mcp::merge_effective_scoped_mcp_servers(
-                    harness,
-                    agent.as_ref(),
-                    &session,
-                );
+            let effective = crate::domains::mcp_servers::scoped_mcp::merge_effective_scoped_mcp_servers_with_capabilities(
+                harness,
+                agent.as_ref(),
+                &session,
+                self.capability_service.registry(),
+            );
 
             if let Err(error) =
                 crate::domains::mcp_servers::scoped_mcp::validate_scoped_mcp_servers(&effective)
@@ -240,6 +240,8 @@ impl WorkerService for WorkerServiceImpl {
             } else {
                 crate::domains::mcp_servers::scoped_mcp::build_scoped_mcp_tool_definitions(
                     &effective,
+                    Some(session.id),
+                    self.connection_resolver.as_ref(),
                 )
                 .await
                 .map(|defs| {
@@ -2186,11 +2188,12 @@ impl WorkerService for WorkerServiceImpl {
                     None
                 };
 
-                if let Some(r) = crate::domains::mcp_servers::scoped_mcp::resolve_scoped_mcp_server(
+                if let Some(r) = crate::domains::mcp_servers::scoped_mcp::resolve_scoped_mcp_server_with_capabilities(
                     &harness,
                     agent.as_ref(),
                     &session,
                     &req.server_prefix,
+                    self.capability_service.registry(),
                 ) {
                     return Ok(Response::new(GetMcpServerByPrefixResponse {
                         server: Some(McpServerInfo {
