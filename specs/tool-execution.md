@@ -80,6 +80,12 @@ If `narration_noun` is set but no `operation` argument exists, falls back to gen
 
 **Requirement:** All new tools with an `operation`/`action` parameter **must** set `narration_noun` in their hints. Tools without operation semantics get reasonable default narration from `display_name` and need no special configuration.
 
+**Model-authored narration via `human_intent`:** The `human_intent` capability uses capability hooks to add an optional `human_intent` string argument to every active tool schema sent to the LLM. The model may fill this with concise user-facing narration of the intended action, such as `"Listing all harnesses"`. A tool-call hook reads this value for backend-authored tool event narration, then strips it from the tool call used for actual execution so built-in and MCP tools do not receive the UI-only argument.
+
+Capability hooks involved:
+- `ToolDefinitionHook`: transforms the final merged tool definition list before provider serialization.
+- `ToolCallHook`: can read a model-produced tool call for narration and transform the execution copy of that call before invoking the tool.
+
 **Design rules:**
 - Hints are informational — they do not enforce policy. Use `ToolPolicy` for execution gating.
 - Tools should set hints via the `Tool::hints()` trait method or directly on `BuiltinTool.hints`.

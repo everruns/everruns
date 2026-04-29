@@ -1784,8 +1784,12 @@ async fn test_get_generic_harness() {
         .collect();
     assert_eq!(
         cap_ids.len(),
-        15,
-        "Generic harness should have 15 capabilities"
+        16,
+        "Generic harness should have 16 capabilities"
+    );
+    assert!(
+        cap_ids.contains(&"human_intent"),
+        "Should have human intent narration"
     );
     assert!(
         cap_ids.contains(&"session_file_system"),
@@ -2314,8 +2318,14 @@ async fn test_copy_seed_generic_harness() {
     // Generic harness capabilities should be preserved on copy
     assert_eq!(
         copied.capabilities.len(),
-        15,
-        "Copied harness should have same 15 capabilities"
+        16,
+        "Copied harness should have same 16 capabilities"
+    );
+    assert!(
+        copied
+            .capabilities
+            .iter()
+            .any(|cap| cap.capability_id() == "human_intent")
     );
 }
 

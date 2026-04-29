@@ -15,7 +15,7 @@
 
 use crate::agent::Agent;
 use crate::capabilities::{
-    CapabilityRegistry, SystemPromptContext, collect_capabilities_with_configs,
+    CapabilityRegistry, SystemPromptContext, ToolDefinitionHook, collect_capabilities_with_configs,
     resolve_capability_configs,
 };
 use crate::config_layer::AgentConfigOverlay;
@@ -111,6 +111,7 @@ impl Default for RuntimeAgent {
 /// `model()`, `temperature()`, etc. Call `build()` to get the final runtime agent.
 pub struct RuntimeAgentBuilder {
     runtime_agent: RuntimeAgent,
+    tool_definition_hooks: Vec<std::sync::Arc<dyn ToolDefinitionHook>>,
 }
 
 impl RuntimeAgentBuilder {
@@ -118,6 +119,7 @@ impl RuntimeAgentBuilder {
     pub fn new() -> Self {
         Self {
             runtime_agent: RuntimeAgent::default(),
+            tool_definition_hooks: Vec::new(),
         }
     }
 
@@ -294,6 +296,9 @@ impl RuntimeAgentBuilder {
             self.runtime_agent.prompt_cache = Some(pc_config);
         }
 
+        self.tool_definition_hooks
+            .extend(collected.tool_definition_hooks);
+
         self
     }
 
@@ -409,6 +414,11 @@ impl RuntimeAgentBuilder {
             }
             deduped.reverse();
             self.runtime_agent.tools = deduped;
+        }
+
+        for hook in &self.tool_definition_hooks {
+            self.runtime_agent.tools =
+                hook.transform(std::mem::take(&mut self.runtime_agent.tools));
         }
 
         if self.runtime_agent.tool_search.is_some() {

@@ -262,6 +262,7 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
 struct RuntimeExecutionCapabilities {
     tool_registry: ToolRegistry,
     post_tool_hooks: Vec<Arc<dyn everruns_core::PostToolExecHook>>,
+    tool_call_hooks: Vec<Arc<dyn everruns_core::ToolCallHook>>,
 }
 
 async fn load_execution_capabilities<A: RuntimeHostAdapter>(
@@ -287,6 +288,7 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
         return Ok(RuntimeExecutionCapabilities {
             tool_registry: registry,
             post_tool_hooks: Vec::new(),
+            tool_call_hooks: Vec::new(),
         });
     }
 
@@ -350,10 +352,21 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
                 .unwrap_or_default()
         })
         .collect();
+    let tool_call_hooks = resolved
+        .resolved_capability_configs
+        .iter()
+        .flat_map(|config| {
+            capability_registry
+                .get(config.capability_id())
+                .map(|capability| capability.tool_call_hooks())
+                .unwrap_or_default()
+        })
+        .collect();
 
     Ok(RuntimeExecutionCapabilities {
         tool_registry: registry,
         post_tool_hooks,
+        tool_call_hooks,
     })
 }
 
@@ -744,7 +757,8 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
             .expect("internal org id converts to valid public org id"),
     )
     .with_capability_registry(adapter.capability_registry())
-    .with_post_tool_hooks(execution_capabilities.post_tool_hooks);
+    .with_post_tool_hooks(execution_capabilities.post_tool_hooks)
+    .with_tool_call_hooks(execution_capabilities.tool_call_hooks);
 
     if let Some(storage_store) = adapter.storage_store() {
         atom = atom.with_storage_store(storage_store);

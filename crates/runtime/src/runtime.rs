@@ -426,6 +426,16 @@ impl InProcessRuntime {
                     .unwrap_or_default()
             })
             .collect::<Vec<_>>();
+        let tool_call_hooks = assembled
+            .resolved_capability_configs
+            .iter()
+            .flat_map(|config| {
+                capability_registry
+                    .get(config.capability_id())
+                    .map(|capability| capability.tool_call_hooks())
+                    .unwrap_or_default()
+            })
+            .collect::<Vec<_>>();
 
         let tool_registry = build_tool_registry(collected.tools);
         let synthetic_agent_id = session
@@ -466,7 +476,8 @@ impl InProcessRuntime {
         .with_memory_store(self.memory_store.clone())
         .with_org_id(org_public_id)
         .with_capability_registry(capability_registry)
-        .with_post_tool_hooks(post_tool_hooks);
+        .with_post_tool_hooks(post_tool_hooks)
+        .with_tool_call_hooks(tool_call_hooks);
 
         let mut previous_response_id: Option<String> = None;
         let mut last_reason_result: Option<everruns_core::ReasonResult> = None;
