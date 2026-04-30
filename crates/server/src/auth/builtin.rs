@@ -7,7 +7,9 @@
 
 use async_trait::async_trait;
 use axum::Router;
-use everruns_core::{DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, OrgMembership, OrgRole};
+use everruns_core::{
+    DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, OrgMembership, OrgRole, PlatformDefinition,
+};
 use moka::future::Cache;
 use std::sync::Arc;
 use std::time::Duration;
@@ -31,12 +33,32 @@ const API_KEY_CACHE_MAX_CAPACITY: u64 = 10_000;
 
 /// Built-in authentication backend (JWT + password + OAuth + API keys).
 /// This is the default for OSS deployments.
+///
+/// HARNESS-SEED SAFETY NET (see also `specs/authentication.md`):
+/// `register` and `oauth_callback` both add new users to `DEFAULT_ORG_ID`.
+/// The background seed task (see `seed::spawn_seed_task_with_platform_definition`)
+/// provisions built-in harnesses for that org, but it runs asynchronously
+/// with a 500 ms initial delay — so a user who signs up during the startup
+/// window (cold boot, slow DB, or a partial seed failure that will
+/// self-retry) can otherwise land in an org that has no harnesses and see
+/// the chat/session UI 404.
+///
+/// PR #1462 removed an earlier safety-net call that used
+/// `oss_built_in_harnesses()`, because that could override an operator's
+/// custom `PlatformDefinition`. The fix is to keep the safety net but
+/// drive it from `platform_definition.built_in_harnesses()` instead, so a
+/// custom platform definition is never overwritten. `platform_definition`
+/// is owned by this backend for that purpose.
 #[derive(Clone)]
 pub struct BuiltinAuthBackend {
     pub config: AuthConfig,
     pub jwt_service: Arc<JwtService>,
     pub db: Arc<StorageBackend>,
     pub rate_limiter: AuthRateLimiter,
+    /// Platform-defined harness set. Used by the signup safety-net in
+    /// `register` / `oauth_callback` so a pre-seed signup still lands in an
+    /// org with the correct (operator-chosen) harnesses.
+    pub platform_definition: Arc<PlatformDefinition>,
     /// In-process cache: key_hash -> AuthUser. Avoids 4 sequential DB queries per API-key request.
     api_key_cache: Cache<String, AuthUser>,
 }
@@ -68,25 +90,36 @@ fn platform_user_from_roles(roles: &[String]) -> bool {
 
 impl BuiltinAuthBackend {
     /// Create with in-memory rate limiting (per-instance).
-    pub fn new(config: AuthConfig, db: Arc<StorageBackend>) -> Self {
+    pub fn new(
+        config: AuthConfig,
+        db: Arc<StorageBackend>,
+        platform_definition: Arc<PlatformDefinition>,
+    ) -> Self {
         let jwt_service = Arc::new(JwtService::new(config.jwt.clone()));
         Self {
             config,
             jwt_service,
             db,
             rate_limiter: AuthRateLimiter::new(),
+            platform_definition,
             api_key_cache: build_api_key_cache(),
         }
     }
 
     /// Create with Valkey-backed distributed rate limiting.
-    pub fn with_valkey(config: AuthConfig, db: Arc<StorageBackend>, valkey: ValkeyClient) -> Self {
+    pub fn with_valkey(
+        config: AuthConfig,
+        db: Arc<StorageBackend>,
+        platform_definition: Arc<PlatformDefinition>,
+        valkey: ValkeyClient,
+    ) -> Self {
         let jwt_service = Arc::new(JwtService::new(config.jwt.clone()));
         Self {
             config,
             jwt_service,
             db,
             rate_limiter: AuthRateLimiter::with_valkey(valkey),
+            platform_definition,
             api_key_cache: build_api_key_cache(),
         }
     }
@@ -518,7 +551,11 @@ mod tests {
         #[tokio::test]
         async fn validate_api_key_rejects_after_key_deleted_from_db() {
             let db = Arc::new(StorageBackend::in_memory());
-            let backend = BuiltinAuthBackend::new(AuthConfig::default(), db.clone());
+            let backend = BuiltinAuthBackend::new(
+                AuthConfig::default(),
+                db.clone(),
+                Arc::new(crate::platform::oss_platform_definition()),
+            );
             let (user_id, key_id, plaintext_key) =
                 seed_user_with_key(&db, "revoked@example.com", "Revoked User").await;
 
@@ -542,7 +579,11 @@ mod tests {
         #[tokio::test]
         async fn validate_api_key_reflects_fresh_user_state_on_revalidation() {
             let db = Arc::new(StorageBackend::in_memory());
-            let backend = BuiltinAuthBackend::new(AuthConfig::default(), db.clone());
+            let backend = BuiltinAuthBackend::new(
+                AuthConfig::default(),
+                db.clone(),
+                Arc::new(crate::platform::oss_platform_definition()),
+            );
             let (user_id, _key_id, plaintext_key) =
                 seed_user_with_key(&db, "user@example.com", "Original Name").await;
 
@@ -577,7 +618,11 @@ mod tests {
         #[tokio::test]
         async fn validate_api_key_rejects_invalid_format_without_db_lookup() {
             let db = Arc::new(StorageBackend::in_memory());
-            let backend = BuiltinAuthBackend::new(AuthConfig::default(), db.clone());
+            let backend = BuiltinAuthBackend::new(
+                AuthConfig::default(),
+                db.clone(),
+                Arc::new(crate::platform::oss_platform_definition()),
+            );
 
             let result = backend.validate_api_key("not-an-api-key").await;
             assert!(result.is_err(), "malformed key must be rejected");

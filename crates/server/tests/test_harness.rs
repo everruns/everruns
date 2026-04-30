@@ -204,7 +204,11 @@ impl TestServer {
                 .to_string(),
             ..auth::AuthConfig::default()
         };
-        let auth_backend = auth::BuiltinAuthBackend::new(auth_config.clone(), db.clone());
+        let auth_backend = auth::BuiltinAuthBackend::new(
+            auth_config.clone(),
+            db.clone(),
+            platform_definition.clone(),
+        );
         let auth_state = auth::AuthState::new(auth_config.clone(), Arc::new(auth_backend.clone()));
 
         // Create runner with PostgreSQL backend

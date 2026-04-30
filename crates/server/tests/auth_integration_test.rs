@@ -38,7 +38,11 @@ async fn auth_router() -> (Router, Arc<StorageBackend>) {
         ..Default::default()
     };
 
-    let backend = BuiltinAuthBackend::new(config, db.clone());
+    let backend = BuiltinAuthBackend::new(
+        config,
+        db.clone(),
+        std::sync::Arc::new(everruns_server::platform::oss_platform_definition()),
+    );
     let router = auth::routes(backend);
     (router, db)
 }
@@ -509,4 +513,178 @@ async fn test_auth_config_returns_full_mode() {
     assert_eq!(body["mode"], "full");
     assert_eq!(body["password_auth_enabled"], true);
     assert_eq!(body["signup_enabled"], true);
+}
+
+// ============================================
+// Default-org harness-seed safety net (EVE-390)
+// ============================================
+//
+// Invariants under test:
+// 1. A user registering before the async seed task provisions harnesses
+//    for DEFAULT_ORG_ID still lands in an org that has the built-in
+//    harnesses (the safety net fires).
+// 2. The safety net drives from `platform_definition.built_in_harnesses()`
+//    rather than `oss_built_in_harnesses()`. A custom `PlatformDefinition`
+//    that ships only a single harness must NOT have OSS defaults re-added
+//    on signup. This preserves the fix from PR #1462 (TM-AUTH-016).
+
+use everruns_core::{
+    BuiltInHarnessDefinition, BuiltInHarnessRole, CapabilityRegistry, DEFAULT_ORG_ID,
+    DEFAULT_ORG_PUBLIC_ID, DriverRegistry, PlatformDefinition,
+};
+use everruns_server::storage::models::CreateOrganizationRow;
+
+fn single_custom_harness(name: &str) -> BuiltInHarnessDefinition {
+    BuiltInHarnessDefinition::new(
+        name,
+        "Custom",
+        "custom harness used in tests",
+        "custom system prompt",
+    )
+    // Mark this sole harness as both Default and Base so the org-settings
+    // pointers the provisioner needs can be resolved.
+    .with_roles([BuiltInHarnessRole::Default, BuiltInHarnessRole::Base])
+}
+
+fn custom_platform_definition_with_single_harness(harness_name: &str) -> PlatformDefinition {
+    let mut def = PlatformDefinition::new(
+        CapabilityRegistry::with_builtins(),
+        DriverRegistry::default(),
+    );
+    def.add_built_in_harness(single_custom_harness(harness_name));
+    def
+}
+
+async fn custom_platform_auth_router(
+    platform_definition: PlatformDefinition,
+) -> (Router, Arc<StorageBackend>) {
+    let db = Arc::new(StorageBackend::in_memory());
+
+    // Deliberately do NOT call `seed::seed_all` — this simulates the cold-boot
+    // window before the async seed task has provisioned harnesses for
+    // DEFAULT_ORG_ID. Only the org row itself is created so `register` can
+    // add the new user to it.
+    db.create_organization_with_id(
+        DEFAULT_ORG_ID,
+        CreateOrganizationRow {
+            public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
+            name: "Default Organization".to_string(),
+            created_by: None,
+        },
+    )
+    .await
+    .expect("create default org");
+
+    let config = AuthConfig {
+        mode: AuthMode::Full,
+        jwt: JwtConfig {
+            secret: "test-secret-for-auth-integration-tests".to_string(),
+            access_token_lifetime: Duration::from_secs(900),
+            refresh_token_lifetime: Duration::from_secs(86400),
+        },
+        ..Default::default()
+    };
+
+    let backend = BuiltinAuthBackend::new(config, db.clone(), Arc::new(platform_definition));
+    let router = auth::routes(backend);
+    (router, db)
+}
+
+#[tokio::test]
+async fn test_register_safety_net_uses_platform_definition_not_oss_defaults() {
+    let custom_name = "custom-safety-net-harness";
+    let (router, db) =
+        custom_platform_auth_router(custom_platform_definition_with_single_harness(custom_name))
+            .await;
+
+    // Pre-condition: no harnesses seeded for DEFAULT_ORG_ID.
+    let pre = db
+        .list_harnesses(DEFAULT_ORG_ID, None, false)
+        .await
+        .expect("list harnesses (pre)");
+    assert!(pre.is_empty(), "default org must start with no harnesses");
+
+    // Register a fresh user.
+    let (status, _body, _cookies) = send(
+        &router,
+        "POST",
+        "/v1/auth/register",
+        Some(json!({
+            "email": "new-user@example.com",
+            "password": "super-secret-password",
+            "name": "New User",
+        })),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED, "register should succeed");
+
+    // Post-condition: default org now has exactly the platform-defined
+    // harness. No OSS defaults (base/generic/etc) should have been added.
+    let post = db
+        .list_harnesses(DEFAULT_ORG_ID, None, false)
+        .await
+        .expect("list harnesses (post)");
+    let names: Vec<String> = post.iter().map(|h| h.name.clone()).collect();
+    assert_eq!(
+        names,
+        vec![custom_name.to_string()],
+        "safety net must only provision the platform-defined harness set (got {:?})",
+        names
+    );
+}
+
+#[tokio::test]
+async fn test_register_safety_net_is_idempotent_when_seed_already_ran() {
+    // When the harness already exists (seed task completed first), registering
+    // must not create duplicates — the upsert is idempotent.
+    let custom_name = "custom-idempotent-harness";
+    let (router, db) =
+        custom_platform_auth_router(custom_platform_definition_with_single_harness(custom_name))
+            .await;
+
+    // Pre-provision harnesses to simulate the seed task finishing first.
+    everruns_server::org_init::initialize_org_harnesses_with_definitions(
+        &db,
+        DEFAULT_ORG_ID,
+        &[single_custom_harness(custom_name)],
+    )
+    .await
+    .expect("pre-seed");
+
+    let before = db
+        .list_harnesses(DEFAULT_ORG_ID, None, false)
+        .await
+        .expect("list harnesses (before)");
+    assert_eq!(before.len(), 1);
+    let before_id = before[0].id;
+
+    // Register — safety net must not create a second row.
+    let (status, _body, _cookies) = send(
+        &router,
+        "POST",
+        "/v1/auth/register",
+        Some(json!({
+            "email": "second-user@example.com",
+            "password": "another-secret-password",
+            "name": "Second User",
+        })),
+        None,
+    )
+    .await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    let after = db
+        .list_harnesses(DEFAULT_ORG_ID, None, false)
+        .await
+        .expect("list harnesses (after)");
+    assert_eq!(
+        after.len(),
+        1,
+        "safety net must not duplicate harnesses on pre-seeded orgs"
+    );
+    assert_eq!(
+        after[0].id, before_id,
+        "safety net must keep the same harness row identity (idempotent upsert)"
+    );
 }

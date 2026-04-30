@@ -42,7 +42,11 @@ async fn test_cli_exchange_no_orgs_returns_422() {
         ..Default::default()
     };
 
-    let backend = BuiltinAuthBackend::new(config.clone(), db.clone());
+    let backend = BuiltinAuthBackend::new(
+        config.clone(),
+        db.clone(),
+        std::sync::Arc::new(everruns_server::platform::oss_platform_definition()),
+    );
     let auth_state = AuthState::new(config, Arc::new(backend));
     let cli_state = CliAuthState {
         db: db.clone(),
@@ -136,7 +140,11 @@ async fn test_cli_exchange_code_is_one_time_use() {
         ..Default::default()
     };
 
-    let backend = BuiltinAuthBackend::new(config.clone(), db.clone());
+    let backend = BuiltinAuthBackend::new(
+        config.clone(),
+        db.clone(),
+        std::sync::Arc::new(everruns_server::platform::oss_platform_definition()),
+    );
     let auth_state = AuthState::new(config, Arc::new(backend));
     let cli_state = CliAuthState {
         db: db.clone(),

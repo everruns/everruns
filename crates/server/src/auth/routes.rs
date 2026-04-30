@@ -411,6 +411,25 @@ pub async fn register(
             // Continue anyway - user is created, they just might not have org membership
         });
 
+    // Harness-seed safety net: the async seed task (500 ms delay, see
+    // `seed::spawn_seed_task_with_platform_definition`) may not have
+    // provisioned DEFAULT_ORG_ID's built-in harnesses yet when a user
+    // registers immediately after server startup. Re-run the provisioner
+    // using the *platform definition*'s harness set (NOT the OSS default)
+    // so a custom `PlatformDefinition` is never overridden — that was the
+    // security concern addressed by PR #1462. The call is idempotent: if
+    // seeding has already completed, every harness is "unchanged". See
+    // EVE-390 and `specs/authentication.md`.
+    if let Err(e) = crate::org_init::initialize_org_harnesses_with_definitions(
+        &state.db,
+        DEFAULT_ORG_ID,
+        state.platform_definition.built_in_harnesses(),
+    )
+    .await
+    {
+        tracing::warn!(error = %e, "Failed to ensure default org harnesses (non-fatal)");
+    }
+
     let organizations = builtin::fetch_user_organizations(&state.db, user.id)
         .await
         .unwrap_or_default();
@@ -788,6 +807,20 @@ pub async fn oauth_callback(
                 // Continue anyway
             });
 
+        // Harness-seed safety net (see equivalent comment in `register` and
+        // EVE-390). Drive the provisioner from `platform_definition`, not
+        // `oss_built_in_harnesses()`, so a custom platform definition is
+        // never overridden on OAuth signup.
+        if let Err(e) = crate::org_init::initialize_org_harnesses_with_definitions(
+            &state.db,
+            DEFAULT_ORG_ID,
+            state.platform_definition.built_in_harnesses(),
+        )
+        .await
+        {
+            tracing::warn!(error = %e, "Failed to ensure default org harnesses (non-fatal)");
+        }
+
         created_user
     };
 
@@ -957,9 +990,18 @@ async fn get_or_create_admin_user(
                 // Continue anyway
             });
 
-        // Ensure default org has built-in harnesses (safety net — background seed task
-        // may not have completed yet or may have failed silently).
-        if let Err(e) = crate::org_init::initialize_org_harnesses(&state.db, DEFAULT_ORG_ID).await {
+        // Ensure default org has built-in harnesses (safety net — background
+        // seed task may not have completed yet or may have failed silently).
+        // Drive from `platform_definition` (not `oss_built_in_harnesses()`)
+        // so operator-customized harnesses are never overridden — see
+        // EVE-390 and PR #1462.
+        if let Err(e) = crate::org_init::initialize_org_harnesses_with_definitions(
+            &state.db,
+            DEFAULT_ORG_ID,
+            state.platform_definition.built_in_harnesses(),
+        )
+        .await
+        {
             tracing::warn!(error = %e, "Failed to ensure default org harnesses (non-fatal)");
         }
 

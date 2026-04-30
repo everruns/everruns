@@ -147,6 +147,18 @@ See `crates/server/migrations/001_base_schema.sql` for `users`, `api_keys`, and 
 
 For `auth=none` mode, a well-known anonymous user is seeded via `crates/server/src/seed.rs`. Constants in `crates/core/src/organization.rs`: `ANONYMOUS_USER_ID`, `ANONYMOUS_USER_EMAIL`, `ANONYMOUS_USER_NAME`. The anonymous user has admin role and belongs to the default organization.
 
+#### Default-Org Harness-Seed Guarantee
+
+The server's background seed task (`seed::spawn_seed_task_with_platform_definition`) provisions the platform-defined built-in harnesses for every organization — including `DEFAULT_ORG_ID` — using the active `PlatformDefinition`. The task runs asynchronously with a 500 ms initial delay, so there is a window on cold boot where a user could register via `register` or `oauth_callback` before `DEFAULT_ORG_ID` has its harnesses.
+
+To close that window, both handlers re-run `initialize_org_harnesses_with_definitions(db, DEFAULT_ORG_ID, platform_definition.built_in_harnesses())` as a safety net after adding the user to the default org. Invariants:
+
+- **Correctness**: every newly-signed-up user lands in an org that has built-in harnesses, even if the async seed task has not completed. The provisioner is idempotent (upsert keyed on harness name), so the second call is a no-op once seeding is done.
+- **No operator override**: the safety net drives from `state.platform_definition.built_in_harnesses()` (the operator-configured set), **not** from `oss_built_in_harnesses()`. This preserves the fix from PR #1462 — public signup cannot reintroduce OSS harnesses that a custom `PlatformDefinition` removed. Tracked as threat-model entry `TM-AUTH-016` in `specs/threat-model.md` and originally surfaced in EVE-390.
+- **Non-fatal on failure**: if the provisioner errors, the signup still succeeds (user is already created). The failure is logged at warn level so operators can diagnose seeding issues without blocking onboarding.
+
+The admin-bootstrap path (first-admin login in `login`) uses the same safety net for the same reasons.
+
 ### Security Considerations
 
 1. **JWT Secret**: Must be a secure random string (minimum 32 bytes recommended)

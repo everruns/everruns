@@ -41,7 +41,9 @@ async fn main() -> Result<()> {
     // Start server with built-in auth backend (OSS default)
     let auth_config = auth::AuthConfig::from_env();
     ServerAppBuilder::new(config)
-        .auth(move |db| Arc::new(auth::BuiltinAuthBackend::new(auth_config, db)))
+        .auth(move |db, platform| {
+            Arc::new(auth::BuiltinAuthBackend::new(auth_config, db, platform))
+        })
         .run()
         .await
 }
