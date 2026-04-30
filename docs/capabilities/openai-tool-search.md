@@ -1,6 +1,6 @@
 ---
 title: OpenAI Tool Search
-description: Deferred tool loading for agents with many tools, reducing prompt token usage on OpenAI GPT-5.4+ models. Tools are loaded on demand based on semantic search.
+description: Deferred tool loading for agents with many tools, reducing prompt token usage on supported OpenAI models. Tools are loaded on demand based on semantic search.
 sidebar:
   order: 90
 ---
@@ -42,11 +42,11 @@ Each tool has a `deferrable` policy that controls whether its schema can be defe
 
 Tool search requires model-level support. Currently supported:
 
-| Model | Supported |
+| Model family | Supported |
 |---|---|
-| `gpt-5.4` | Yes |
-| `gpt-5.4-pro` | Yes |
-| All other models | No (capability is silently ignored) |
+| `gpt-5.5*` | Yes |
+| `gpt-5.4*` | Yes |
+| Models outside the `gpt-5.4*` and `gpt-5.5*` families | No (capability is silently ignored) |
 
 When the capability is enabled but the model doesn't support tool_search, the feature is silently skipped — no errors, no behavior change.
 
@@ -92,7 +92,7 @@ An agent with 20 tools and `openai_tool_search` enabled:
 ## Limitations
 
 - **OpenAI-only** — tool_search is an OpenAI Responses API feature; other providers (Anthropic, Gemini) ignore this capability
-- **GPT-5.4+ only** — earlier OpenAI models don't support tool_search
+- **Supported OpenAI reasoning models only** — earlier OpenAI models don't support tool_search
 - **No client-side tools** — currently only applies to built-in (server-executed) tools
 
 ## See Also

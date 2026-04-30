@@ -20,7 +20,7 @@ OpenAI's implementation has two modes:
 
 ```json
 {
-  "model": "gpt-5.4",
+  "model": "gpt-5.5",
   "tools": [
     {
       "type": "namespace",
@@ -191,7 +191,7 @@ Track tool_search effectiveness via existing metadata:
 ### Phase 1: Model Profile + Driver (Low Risk)
 
 1. Add `tool_search: bool` to `LlmModelProfile` (default false)
-2. Set `tool_search: true` for GPT-5.4 family
+2. Set `tool_search: true` for supported GPT-5.4 and GPT-5.5 family models
 3. Add `category: Option<String>` to `BuiltinTool` / `ToolDefinition`
 4. Propagate capability category to tool definitions in `collect_capabilities()`
 5. Extend `ResponsesTool` enum with `Namespace` and `ToolSearch` variants
@@ -208,6 +208,6 @@ Track tool_search effectiveness via existing metadata:
 ## References
 
 - [OpenAI Tool Search Guide](https://developers.openai.com/api/docs/guides/tools-tool-search/)
-- [GPT-5.4 Announcement](https://openai.com/index/introducing-gpt-5-4/)
+- [Using GPT-5.5](https://developers.openai.com/api/docs/guides/latest-model)
 - [OpenAI Responses API](https://platform.openai.com/docs/api-reference/responses)
 - Internal: `specs/capabilities.md`, `specs/llm-drivers.md`

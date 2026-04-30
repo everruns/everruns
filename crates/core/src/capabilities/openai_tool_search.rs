@@ -1,9 +1,9 @@
 // OpenAI Tool Search Capability
 //
 // When added to an agent, enables tool_search (deferred tool loading) for
-// models that support it (GPT-5.4+). Tools are grouped into namespaces
-// based on capability categories, and their full parameter schemas are
-// loaded on-demand by the model instead of sent upfront.
+// models with tool_search=true in their profile. Tools are grouped into
+// namespaces based on capability categories, and their full parameter schemas
+// are loaded on-demand by the model instead of sent upfront.
 //
 // This capability does not provide any tools itself — it configures the
 // LLM driver to use tool_search when constructing the API request.
@@ -68,7 +68,7 @@ impl Capability for OpenAiToolSearchCapability {
     }
 
     fn description(&self) -> &str {
-        "Enables deferred tool loading for models that support it (GPT-5.4+). \
+        "Enables deferred tool loading for models that support it (GPT-5.4 and newer). \
          Reduces token usage by loading tool schemas on-demand instead of upfront."
     }
 

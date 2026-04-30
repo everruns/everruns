@@ -10766,7 +10766,7 @@
           },
           "supports_phases": {
             "type": "boolean",
-            "description": "Whether the model supports native execution phases (\"commentary\" / \"final_answer\").\nWhen true, the driver sends the `phase` field on assistant messages in the wire format.\nCurrently supported by GPT-5.4+ via OpenAI Responses API."
+            "description": "Whether the model supports native execution phases (\"commentary\" / \"final_answer\").\nWhen true, the driver sends the `phase` field on assistant messages in the wire format.\nCurrently supported by GPT-5.4 and newer via OpenAI Responses API."
           },
           "temperature": {
             "type": "boolean",
@@ -10778,7 +10778,7 @@
           },
           "tool_search": {
             "type": "boolean",
-            "description": "Whether the model supports tool_search (deferred tool loading).\nWhen true, the driver can use namespaces and defer_loading to reduce\ntoken usage for large tool sets. Currently supported by GPT-5.4+."
+            "description": "Whether the model supports tool_search (deferred tool loading).\nWhen true, the driver can use namespaces and defer_loading to reduce\ntoken usage for large tool sets. Currently supported by GPT-5.4 and newer."
           }
         }
       },

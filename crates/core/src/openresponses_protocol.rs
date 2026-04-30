@@ -583,7 +583,7 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
         config: &LlmCallConfig,
     ) -> Result<LlmResponseStream> {
         // Check model profile to determine if phases should be sent in the wire format.
-        // Only GPT-5.4+ models support native execution phases.
+        // GPT-5.4 and newer models support native execution phases.
         let supports_phases = crate::llm_model_profiles::get_model_profile(
             &crate::llm_models::LlmProviderType::Openai,
             &config.model,
