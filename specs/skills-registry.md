@@ -56,7 +56,7 @@ Two independent boolean frontmatter fields control who can invoke a skill:
 | npm | Central registry (npmjs.com) | tar.gz packages | `npm search`, web UI | package.json schema, semver |
 | Docker Hub | Central registry | OCI images (layers) | `docker search`, web UI | Dockerfile linting, manifest validation |
 | VS Code Marketplace | Central registry | .vsix (zip) | Marketplace web, CLI | manifest.json schema, publisher verification |
-| Claude Code Skills | Local `.claude/skills/` dirs | Directories with SKILL.md | Filesystem scan | SKILL.md frontmatter parsing |
+| Agent Skills | Local `.agents/skills/` dirs | Directories with SKILL.md | Filesystem scan | SKILL.md frontmatter parsing |
 | MCP Servers (Everruns) | PostgreSQL | API (URL + config) | API listing, capability system | Name/URL validation, tool caching |
 
 **Key insight**: Most registries combine a metadata store (for discovery) with a content store (for the actual payload). For Everruns, PostgreSQL handles metadata and content in a single system, matching the MCP server pattern.

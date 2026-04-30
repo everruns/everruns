@@ -265,7 +265,7 @@ Key test scenarios (unit and integration):
 
 ## Smoke Test Scenarios
 
-Smoke test script at `.claude/skills/smoke-test/smoke-test-schedules.sh` covers: create schedule, verify in list, manual trigger, wait for execution completion, pause, resume, delete.
+Smoke test script at `.agents/skills/smoke-test/smoke-test-schedules.sh` covers: create schedule, verify in list, manual trigger, wait for execution completion, pause, resume, delete.
 
 ## Implementation Phases
 

@@ -23,7 +23,7 @@ All cloud secrets are in Doppler (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GITHUB
 
 ### Linear
 
-We use [Linear](https://linear.app) for issue tracking (project: **OSS**, team: **EVE**). MCP server configured in `.mcp.json`. Token (`LINEAR_API_KEY`) is in Doppler. Use [`/process-issues`](.claude/skills/process-issues/SKILL.md) to process open issues (one PR per issue, up to 5 in parallel). All issues for this repo belong to the OSS project.
+We use [Linear](https://linear.app) for issue tracking (project: **OSS**, team: **EVE**). MCP server configured in `.mcp.json`. Token (`LINEAR_API_KEY`) is in Doppler. Use [`/process-issues`](.agents/skills/process-issues/SKILL.md) to process open issues (one PR per issue, up to 5 in parallel). All issues for this repo belong to the OSS project.
 
 Quickcheck:
 
@@ -148,7 +148,7 @@ Always make sure you are working on top of latest main from remote.
 
 ### Test Cases
 
-`test_cases/` - manual test cases by feature. Format in `specs/test-cases.md`. Use [`/manual-ui-testing`](.claude/skills/manual-ui-testing/SKILL.md) to execute UI test cases with `agent-browser`.
+`test_cases/` - manual test cases by feature. Format in `specs/test-cases.md`. Use [`/manual-ui-testing`](.agents/skills/manual-ui-testing/SKILL.md) to execute UI test cases with `agent-browser`.
 
 ### Local Dev
 
@@ -222,13 +222,13 @@ If checks fail, auto-fix with `just fmt`, then re-run `just pre-push`.
 
 "Ship" means: achieve the requested goal, produce enough evidence that it works, perform a structured security review, create a mergeable PR, address every review comment, and merge only after CI is green.
 
-Use [`/ship`](.claude/skills/ship/SKILL.md) for the canonical shipping workflow. It is an invokable skill and intentionally goal-oriented: start from the goal and changed risk surface, choose the smallest evidence that proves the change, and expand only when risk demands it. Security review against `specs/threat-model.md` categories is mandatory for all code, configuration, and infrastructure changes.
+Use [`/ship`](.agents/skills/ship/SKILL.md) for the canonical shipping workflow. It is an invokable skill and intentionally goal-oriented: start from the goal and changed risk surface, choose the smallest evidence that proves the change, and expand only when risk demands it. Security review against `specs/threat-model.md` categories is mandatory for all code, configuration, and infrastructure changes.
 
 See [`specs/shipping.md`](specs/shipping.md) for the shipping success bar and constraints. When asked to "fix and ship", implement the fix first, then run `/ship`.
 
 ### Maintenance
 
-Use [`/maintenance`](.claude/skills/maintenance/SKILL.md) for repo maintenance and release-readiness work. It is an invokable skill and intentionally goal-oriented: start from the risk surface, fix the highest-value issues first, and gather evidence instead of walking a rigid checklist.
+Use [`/maintenance`](.agents/skills/maintenance/SKILL.md) for repo maintenance and release-readiness work. It is an invokable skill and intentionally goal-oriented: start from the risk surface, fix the highest-value issues first, and gather evidence instead of walking a rigid checklist.
 
 ### Common Deep Checks
 

@@ -58,5 +58,5 @@ Migrations are the most common source of merge conflicts because multiple branch
 This is called out in:
 - `AGENTS.md` (Branch Base section)
 - `specs/shipping.md` (Required Outcomes, item 1)
-- `.claude/skills/ship/SKILL.md`
+- `.agents/skills/ship/SKILL.md`
 - `crates/server/migrations/AGENTS.md`
