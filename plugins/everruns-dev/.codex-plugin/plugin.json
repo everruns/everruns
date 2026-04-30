@@ -23,14 +23,14 @@
     "shortDescription": "Query or execute Everruns dev workflows from Codex over MCP",
     "longDescription": "Bring the Everruns dev agent platform into Codex. Query Everruns dev state through the read-only `query` tool, use `execute` for workflows with side effects, manage harnesses and sessions, browse the API catalog, and drive the full platform through the bundled skill, slash commands, and MCP connection.",
     "developerName": "Everruns",
-    "category": "Coding",
+    "category": "Agents",
     "capabilities": [
       "Interactive",
       "Write"
     ],
     "websiteURL": "https://everruns.com",
     "defaultPrompt": [
-      "Create an Everruns dev agent, pick the right harness and capabilities, and run it against this task"
+      "Create an Everruns agent to summarize news from https://news.ycombinator.com/, pick the right harness and capabilities, and run it against this task"
     ],
     "brandColor": "#D4A43A",
     "composerIcon": "./assets/everruns-small.svg",
