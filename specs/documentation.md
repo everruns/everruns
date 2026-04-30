@@ -63,6 +63,11 @@ OpenAPI-generated routes such as `/api/operations/*` and `/api/operations/tags/*
 
 ### Content Requirements
 
+`docs/` is public product documentation. It must not contain research proposals,
+internal proposals, draft specs, temporary investigations, or scratch analysis.
+Durable internal design intent belongs in `specs/`; temporary research belongs
+outside the repo.
+
 Each markdown file must include YAML frontmatter:
 
 ```yaml
