@@ -100,6 +100,19 @@ The login page accepts exactly one public query parameter for auth resume:
 
 Implementations: `apps/ui/src/lib/auth-redirect.ts` (`sanitizeReturnTo`) and `apps/ui/src/app/(auth)/login/page.tsx`.
 
+### External Mode and OAuth Providers
+
+`AUTH_MODE=external` and the built-in OAuth flow are mutually exclusive. External mode delegates user identity to a third-party provider (PropelAuth, Auth0, Clerk, etc.); the platform's own OAuth handlers (`/v1/auth/oauth/{provider}`, `/v1/auth/callback/{provider}`) are disabled.
+
+To prevent silent 401s for hybrid deployments that accidentally configure both at once, `AuthConfig::validate()` runs at startup (inside `AuthConfig::from_env()`) and **panics with a clear message** when `AUTH_MODE=external` and any of the following are set:
+
+- `AUTH_GOOGLE_CLIENT_ID` / `AUTH_GOOGLE_CLIENT_SECRET`
+- `AUTH_GITHUB_CLIENT_ID` / `AUTH_GITHUB_CLIENT_SECRET`
+
+The error names both the conflicting mode and the specific env vars, and points operators to remove the OAuth env vars or switch `AUTH_MODE=full`. The repo-access GitHub App config (`GITHUB_APP_ID` / `GITHUB_APP_PRIVATE_KEY`) is **not** affected — it powers per-user repo connections, not the login flow, so External mode + GitHub App is supported.
+
+This is a fail-fast validation: operators see the misconfiguration at deploy time, not during a built-in OAuth login attempt on `/v1/auth/oauth/{provider}` or its callback `/v1/auth/callback/{provider}` after rollout. See `crates/server/src/auth/config.rs::validate` for the implementation and the top-of-file decision comment.
+
 ### OAuth Providers
 
 When configured, supports OAuth2 with:

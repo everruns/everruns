@@ -1,6 +1,20 @@
 // Authentication configuration loaded from environment variables.
 // Decision: Follow Langfuse pattern with AUTH_ prefix for all auth config
 // Decision: Default to "none" mode for local development
+//
+// Trust boundary (External mode + OAuth providers): when `AUTH_MODE=external`
+// the platform delegates user identity to a third-party provider (PropelAuth,
+// Auth0, Clerk, etc.) and the built-in OAuth flow is intentionally disabled.
+// Since #1492 the runtime quietly hides configured providers and returns 401 on
+// `/v1/auth/oauth/{provider}` and `/v1/auth/callback/{provider}` (the login
+// OAuth handlers — distinct from the MCP `/oauth/...` handlers). That made
+// hybrid deployments fail silently — operators saw 401s only at request
+// time. We now fail fast at startup: `AuthConfig::validate()` rejects
+// `mode == External` when any OAuth provider config is present, with a clear
+// message that names both the conflicting mode and the specific providers.
+// Operators must remove `google`/`github` config or change `AUTH_MODE`
+// before the server starts. See `specs/authentication.md` (External Mode
+// and OAuth Providers).
 
 use std::time::Duration;
 
@@ -296,7 +310,7 @@ impl AuthConfig {
             .map(|mins: u64| Duration::from_secs(mins * 60))
             .unwrap_or_else(|| Duration::from_secs(30 * 24 * 60 * 60));
 
-        Self {
+        let config = Self {
             mode,
             base_url,
             frontend_url,
@@ -308,7 +322,47 @@ impl AuthConfig {
             disable_password_auth,
             disable_signup,
             session_max_age,
+        };
+
+        // Fail fast on conflicting auth-config combinations so operators see
+        // the problem at startup instead of as silent 401s at request time.
+        // See top-of-file decision comment for rationale.
+        if let Err(err) = config.validate() {
+            panic!("{err}");
         }
+        config
+    }
+
+    /// Validate cross-field invariants on the assembled config. Returns a
+    /// human-readable error message that operators can paste into a chat
+    /// channel without further translation.
+    ///
+    /// Currently enforces:
+    /// - `mode == External` is incompatible with any built-in OAuth provider
+    ///   (`google` or `github`). External mode delegates identity to a
+    ///   third-party provider; configuring both at once is ambiguous and
+    ///   was the source of the silent 401s in #1492.
+    pub fn validate(&self) -> Result<(), String> {
+        if self.mode == AuthMode::External {
+            let mut configured: Vec<&str> = Vec::new();
+            if self.google.is_some() {
+                configured.push("AUTH_GOOGLE_CLIENT_ID, AUTH_GOOGLE_CLIENT_SECRET");
+            }
+            if self.github.is_some() {
+                configured.push("AUTH_GITHUB_CLIENT_ID, AUTH_GITHUB_CLIENT_SECRET");
+            }
+            if !configured.is_empty() {
+                return Err(format!(
+                    "AUTH_MODE=external is incompatible with built-in OAuth providers \
+                     ({}). External mode delegates identity to a third-party provider; \
+                     remove the OAuth env vars or set AUTH_MODE=full to use the built-in \
+                     OAuth flow. See specs/authentication.md (External Mode and OAuth \
+                     Providers).",
+                    configured.join("; ")
+                ));
+            }
+        }
+        Ok(())
     }
 
     /// Check if authentication is enabled
@@ -515,6 +569,122 @@ mod tests {
             !config.signup_enabled(),
             "Admin mode should never allow signup"
         );
+    }
+
+    fn make_google_config() -> GoogleOAuthConfig {
+        GoogleOAuthConfig {
+            base: OAuthProviderConfig {
+                client_id: "id".to_string(),
+                client_secret: "secret".to_string(),
+                redirect_uri: "https://example.com/callback".to_string(),
+            },
+            allowed_domains: None,
+        }
+    }
+
+    fn make_github_config() -> GitHubOAuthConfig {
+        GitHubOAuthConfig {
+            base: OAuthProviderConfig {
+                client_id: "id".to_string(),
+                client_secret: "secret".to_string(),
+                redirect_uri: "https://example.com/callback".to_string(),
+            },
+        }
+    }
+
+    #[test]
+    fn test_validate_external_mode_with_google_oauth_rejected() {
+        let config = AuthConfig {
+            mode: AuthMode::External,
+            google: Some(make_google_config()),
+            ..Default::default()
+        };
+        let err = config.validate().expect_err("expected validation error");
+        assert!(err.contains("AUTH_MODE=external"), "got: {err}");
+        assert!(err.contains("AUTH_GOOGLE_CLIENT_ID"), "got: {err}");
+    }
+
+    #[test]
+    fn test_validate_external_mode_with_github_oauth_rejected() {
+        let config = AuthConfig {
+            mode: AuthMode::External,
+            github: Some(make_github_config()),
+            ..Default::default()
+        };
+        let err = config.validate().expect_err("expected validation error");
+        assert!(err.contains("AUTH_MODE=external"), "got: {err}");
+        assert!(err.contains("AUTH_GITHUB_CLIENT_ID"), "got: {err}");
+    }
+
+    #[test]
+    fn test_validate_external_mode_with_both_providers_lists_both() {
+        let config = AuthConfig {
+            mode: AuthMode::External,
+            google: Some(make_google_config()),
+            github: Some(make_github_config()),
+            ..Default::default()
+        };
+        let err = config.validate().expect_err("expected validation error");
+        assert!(err.contains("AUTH_GOOGLE_CLIENT_ID"), "got: {err}");
+        assert!(err.contains("AUTH_GITHUB_CLIENT_ID"), "got: {err}");
+    }
+
+    #[test]
+    fn test_validate_external_mode_without_oauth_passes() {
+        // External mode without any built-in OAuth config is the supported
+        // setup — third-party provider handles identity, no conflict.
+        let config = AuthConfig {
+            mode: AuthMode::External,
+            ..Default::default()
+        };
+        config.validate().expect("expected validation to pass");
+    }
+
+    #[test]
+    fn test_validate_full_mode_with_oauth_passes() {
+        // Full mode supports built-in OAuth when providers are configured;
+        // that combination must validate successfully. (Full mode is also
+        // valid without OAuth — password / API-key auth still work — and
+        // that case is covered by `test_full_mode_password_auth`.)
+        let config = AuthConfig {
+            mode: AuthMode::Full,
+            google: Some(make_google_config()),
+            github: Some(make_github_config()),
+            ..Default::default()
+        };
+        config.validate().expect("expected validation to pass");
+    }
+
+    #[test]
+    fn test_validate_admin_mode_with_oauth_passes() {
+        // Admin mode doesn't surface OAuth either, but the validator only
+        // catches the External-mode conflict — Admin + configured OAuth is
+        // unusual but harmless (login goes through admin credentials).
+        let config = AuthConfig {
+            mode: AuthMode::Admin,
+            google: Some(make_google_config()),
+            ..Default::default()
+        };
+        config.validate().expect("expected validation to pass");
+    }
+
+    #[test]
+    fn test_validate_github_connection_does_not_conflict_with_external() {
+        // The repo-access GitHub App (GITHUB_APP_ID / GITHUB_APP_PRIVATE_KEY)
+        // is unrelated to the login OAuth flow — it's a per-user connection
+        // for repo access. Operators running External mode can still wire
+        // the GitHub App for repo features.
+        let config = AuthConfig {
+            mode: AuthMode::External,
+            github_connection: Some(GitHubConnectionConfig {
+                app_id: "1".to_string(),
+                private_key: "key".to_string(),
+                app_slug: "everruns".to_string(),
+                setup_url: "https://example.com/setup".to_string(),
+            }),
+            ..Default::default()
+        };
+        config.validate().expect("expected validation to pass");
     }
 
     // TM-AUTH-002: Verify the insecure hardcoded fallback is removed
