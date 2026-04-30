@@ -210,7 +210,7 @@ export default defineConfig({
             },
           ],
           {
-            exclude: ["/", "/api/**", "/proposals/**"],
+            exclude: ["/", "/api/**"],
           },
         ),
         apiSidebarFix(),

@@ -63,6 +63,8 @@ Always make sure you are working on top of latest main from remote.
 
 **Spec content principle:** Specs are *durable memory* — they preserve design intent, rationale, and constraints across sessions and contributors. They capture the "why" and "what", not exhaustive "how". Don't use specs for temporary analysis, one-off investigations, or scratch notes; those belong outside the repo. Don't duplicate what's readable from code (struct fields, enum variants, exact API shapes, SQL DDL). Instead, link to the source file. Example: "See `crates/core/src/models/agent.rs` for full field list." This keeps specs maintainable and prevents drift.
 
+**Docs boundary:** `docs/` is public product documentation. Never put research proposals, internal proposals, draft specs, temporary investigations, or scratch analysis under `docs/`. Durable internal design intent belongs in `specs/`; temporary research belongs outside the repo.
+
 - `specs/concepts.md` - Core entities, relationships, and concept diagram
 - `specs/architecture.md` - System architecture, crate structure, infrastructure
 - `specs/production-deployment.md` - Production deployment aggregation spec and reverse proxy contract
