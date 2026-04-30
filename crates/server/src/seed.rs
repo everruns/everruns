@@ -1802,8 +1802,8 @@ const SEED_MODELS: &[SeedModel] = &[
     },
 ];
 
-/// Default model ID for org settings seeding (GPT-5.4)
-const DEFAULT_MODEL_ID: Uuid = seed_ids::GPT_5_4;
+/// Default model ID for org settings seeding (GPT-5.5)
+const DEFAULT_MODEL_ID: Uuid = seed_ids::GPT_5_5;
 
 /// Seed organization settings (default model, etc.)
 async fn seed_organization_settings(db: &StorageBackend) -> anyhow::Result<SeedResult> {
@@ -2603,6 +2603,10 @@ mod tests {
             .id;
         assert_eq!(settings.default_harness_id, Some(generic_id));
         assert_eq!(settings.base_harness_id, Some(base_id));
+        assert_eq!(
+            settings.default_model_id,
+            Some(everruns_core::ModelId::from_uuid(DEFAULT_MODEL_ID))
+        );
     }
 
     #[tokio::test]

@@ -348,12 +348,12 @@ pub struct LlmModelProfile {
     pub reasoning_effort: Option<ReasoningEffortConfig>,
     /// Whether the model supports tool_search (deferred tool loading).
     /// When true, the driver can use namespaces and defer_loading to reduce
-    /// token usage for large tool sets. Currently supported by GPT-5.4+.
+    /// token usage for large tool sets. Currently supported by GPT-5.4 and newer.
     #[serde(default)]
     pub tool_search: bool,
     /// Whether the model supports native execution phases ("commentary" / "final_answer").
     /// When true, the driver sends the `phase` field on assistant messages in the wire format.
-    /// Currently supported by GPT-5.4+ via OpenAI Responses API.
+    /// Currently supported by GPT-5.4 and newer via OpenAI Responses API.
     #[serde(default)]
     pub supports_phases: bool,
 }

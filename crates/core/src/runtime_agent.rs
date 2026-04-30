@@ -392,7 +392,7 @@ impl RuntimeAgentBuilder {
     /// Build the runtime agent.
     ///
     /// Validates that tool_search is only enabled for models that support it
-    /// (currently GPT-5.4+). Clears tool_search for unsupported models to
+    /// (currently GPT-5.4 and newer). Clears tool_search for unsupported models to
     /// prevent 400 errors from the OpenAI API.
     ///
     /// tool_search is capability-driven: it is only set when the
