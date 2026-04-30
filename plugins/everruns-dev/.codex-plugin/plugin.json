@@ -30,7 +30,7 @@
     ],
     "websiteURL": "https://everruns.com",
     "defaultPrompt": [
-      "Create an Everruns agent summarize news from https://news.ycombinator.com/ , pick the right harness and capabilities, and run it against this task"
+      "Create an Everruns agent to summarize news from https://news.ycombinator.com/, pick the right harness and capabilities, and run it against this task"
     ],
     "brandColor": "#D4A43A",
     "composerIcon": "./assets/everruns-small.svg",
