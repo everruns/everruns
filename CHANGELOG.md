@@ -9,6 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.8.23] - 2026-04-30
+
+### Highlights
+
+- **Default model bumped to `gpt-5.5`** - The out-of-the-box default model is now `gpt-5.5`, replacing the previous default. Existing agents and sessions with explicit `default_model_id` are unaffected.
+- **Embeddable auth & search MCP integration** - New `ServerAppBuilder` hook lets embedders wrap the API key CRUD router ([#1617](https://github.com/everruns/everruns/pull/1617)), and the parallel-search MCP integration adds a first-class search backend that capabilities can consume.
+- **Human-intent tool hooks** - Core gains explicit hooks for human-intent tool flows, giving capabilities a structured place to participate in user-driven tool execution.
+- **Per-request HTTP access logs** - Server now emits one `INFO` log per HTTP request with `request_id`, status, and latency ([#1614](https://github.com/everruns/everruns/pull/1614)), so operators get a uniform request audit trail without enabling debug-level logs.
+- **Auth hardening** - External OAuth misconfiguration now fails fast at startup, the signup harness-seed safety net is restored via `platform_definition`, and `/btw` LLM errors are classified instead of returning `500` ([#1613](https://github.com/everruns/everruns/pull/1613)).
+
+### What's Changed
+
+- fix(commands): classify /btw LLM errors instead of returning 500 ([#1613](https://github.com/everruns/everruns/pull/1613)) by [@chaliy](https://github.com/chaliy)
+- feat(server): emit one INFO log per HTTP request with request_id, status, latency ([#1614](https://github.com/everruns/everruns/pull/1614)) by [@chaliy](https://github.com/chaliy)
+- feat(core): add human intent tool hooks by [@chaliy](https://github.com/chaliy)
+- fix(discovery): add homepage link headers by [@chaliy](https://github.com/chaliy)
+- feat(auth): add ServerAppBuilder hook to wrap API key CRUD router ([#1617](https://github.com/everruns/everruns/pull/1617)) by [@chaliy](https://github.com/chaliy)
+- feat(parallel): add search mcp integration by [@chaliy](https://github.com/chaliy)
+- chore(agents): make agents dirs source of truth ([#1618](https://github.com/everruns/everruns/pull/1618)) by [@chaliy](https://github.com/chaliy)
+- chore(docs): keep proposals out of public docs by [@chaliy](https://github.com/chaliy)
+- fix(auth): restore signup harness-seed safety net via platform_definition by [@chaliy](https://github.com/chaliy)
+- fix(auth): fail fast on external OAuth config by [@chaliy](https://github.com/chaliy)
+- chore(plugins): update everruns dev metadata by [@chaliy](https://github.com/chaliy)
+- feat(models): default to gpt-5.5 by [@chaliy](https://github.com/chaliy)
+
 ## [0.8.22] - 2026-04-27
 
 ### Highlights
