@@ -4,7 +4,7 @@
 
 This specification defines goal-oriented maintenance for Everruns. Maintenance should improve release readiness and repo health with evidence, not by mechanically executing a fixed checklist.
 
-The canonical agent workflow lives in [`.claude/skills/maintenance/SKILL.md`](../.claude/skills/maintenance/SKILL.md). That skill is intentionally user-invocable so maintenance can be requested directly as `/maintenance`.
+The canonical agent workflow lives in [`.agents/skills/maintenance/SKILL.md`](../.agents/skills/maintenance/SKILL.md). That skill is intentionally user-invocable so maintenance can be requested directly as `/maintenance`.
 
 ## Design Goals
 

@@ -675,7 +675,7 @@ fn glob_base_dir(pattern: &str) -> &str {
 /// Expand initial_files glob patterns from agent frontmatter into CollectedFile entries.
 /// String entries are treated as relative paths resolved against `base_dir`.
 /// All workspace paths are computed relative to `base_dir` so subdirectory
-/// prefixes are preserved (e.g. ".agents/skills/SKILL.md" → "/workspace/.agents/skills/SKILL.md").
+/// prefixes are preserved (e.g. ".agents/config.json" → "/workspace/.agents/config.json").
 /// Object entries (already-expanded InitialFile) are passed through as-is.
 fn expand_initial_files_globs(
     agent: &serde_json::Value,
@@ -1245,12 +1245,8 @@ mod tests {
     fn test_glob_initial_files_includes_dot_agents() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("agent.md"), "# Agent").unwrap();
-        std::fs::create_dir_all(dir.path().join(".agents/skills/search")).unwrap();
-        std::fs::write(
-            dir.path().join(".agents/skills/search/SKILL.md"),
-            "# Search skill",
-        )
-        .unwrap();
+        std::fs::create_dir_all(dir.path().join(".agents")).unwrap();
+        std::fs::write(dir.path().join(".agents/config.json"), "{}").unwrap();
 
         let files = glob_initial_files(dir.path().to_str().unwrap(), false, &[]).unwrap();
         assert_eq!(files.len(), 2);
@@ -1258,7 +1254,7 @@ mod tests {
         assert!(
             files
                 .iter()
-                .any(|f| f.path == "/workspace/.agents/skills/search/SKILL.md")
+                .any(|f| f.path == "/workspace/.agents/config.json")
         );
     }
 
@@ -1353,8 +1349,8 @@ mod tests {
     fn test_expand_initial_files_globs_subdirectory() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("root.txt"), "root").unwrap();
-        std::fs::create_dir_all(dir.path().join(".agents/skills")).unwrap();
-        std::fs::write(dir.path().join(".agents/skills/SKILL.md"), "# Skill").unwrap();
+        std::fs::create_dir_all(dir.path().join(".agents")).unwrap();
+        std::fs::write(dir.path().join(".agents/config.json"), "{}").unwrap();
         std::fs::create_dir(dir.path().join("sub")).unwrap();
         std::fs::write(dir.path().join("sub/nested.txt"), "nested").unwrap();
 
@@ -1366,7 +1362,7 @@ mod tests {
 
         let files = expand_initial_files_globs(&agent, dir.path(), false).unwrap();
         assert_eq!(files.len(), 1);
-        assert_eq!(files[0].path, "/workspace/.agents/skills/SKILL.md");
+        assert_eq!(files[0].path, "/workspace/.agents/config.json");
 
         // Regular subdirectory also preserves prefix
         let agent2 = serde_json::json!({
@@ -1383,8 +1379,8 @@ mod tests {
     fn test_expand_initial_files_globs_with_wildcard() {
         let dir = tempfile::tempdir().unwrap();
         std::fs::write(dir.path().join("root.txt"), "root").unwrap();
-        std::fs::create_dir_all(dir.path().join(".agents/skills")).unwrap();
-        std::fs::write(dir.path().join(".agents/skills/SKILL.md"), "# Skill").unwrap();
+        std::fs::create_dir_all(dir.path().join(".agents")).unwrap();
+        std::fs::write(dir.path().join(".agents/config.json"), "{}").unwrap();
 
         // ".agents/*" should work — the * is stripped, .agents/ is walked
         let agent = serde_json::json!({
@@ -1394,7 +1390,7 @@ mod tests {
 
         let files = expand_initial_files_globs(&agent, dir.path(), false).unwrap();
         assert_eq!(files.len(), 1);
-        assert_eq!(files[0].path, "/workspace/.agents/skills/SKILL.md");
+        assert_eq!(files[0].path, "/workspace/.agents/config.json");
     }
 
     #[test]
@@ -1520,8 +1516,12 @@ mod tests {
 
     #[test]
     fn test_expand_initial_files_includes_default_dev_dot_dirs() {
-        // Common dev-ecosystem dot directories ship by default without opt-in.
+        // Common dev-ecosystem dot directories ship by default without
+        // requiring `initial_files_allow_hidden`. This is only about file
+        // collection policy; the CLI does not interpret tool-specific files.
         let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join(".agents")).unwrap();
+        std::fs::write(dir.path().join(".agents/config.json"), "{}").unwrap();
         std::fs::create_dir_all(dir.path().join(".github/workflows")).unwrap();
         std::fs::write(dir.path().join(".github/workflows/ci.yml"), "name: ci").unwrap();
         std::fs::create_dir_all(dir.path().join(".vscode")).unwrap();
@@ -1530,10 +1530,14 @@ mod tests {
             "{\"editor.tabSize\":2}",
         )
         .unwrap();
-        std::fs::create_dir_all(dir.path().join(".claude/skills")).unwrap();
-        std::fs::write(dir.path().join(".claude/skills/SKILL.md"), "# Skill").unwrap();
+        std::fs::create_dir_all(dir.path().join(".claude")).unwrap();
+        std::fs::write(
+            dir.path().join(".claude/settings.json"),
+            "{\"permissions\":{}}",
+        )
+        .unwrap();
 
-        for dot_path in [".github", ".vscode", ".claude"] {
+        for dot_path in [".agents", ".github", ".vscode", ".claude"] {
             let agent = serde_json::json!({
                 "name": "test",
                 "initial_files": [dot_path]

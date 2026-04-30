@@ -4,7 +4,7 @@
 
 This specification defines goal-oriented shipping for Everruns. Shipping should complete the requested goal, gather convincing evidence, create a mergeable PR, and merge only after CI is green.
 
-The canonical agent workflow lives in [`.claude/skills/ship/SKILL.md`](../.claude/skills/ship/SKILL.md). That skill is intentionally user-invocable so shipping can be requested directly as `/ship`.
+The canonical agent workflow lives in [`.agents/skills/ship/SKILL.md`](../.agents/skills/ship/SKILL.md). That skill is intentionally user-invocable so shipping can be requested directly as `/ship`.
 
 ## Design Goals
 

@@ -16,7 +16,7 @@ We use [Linear](https://linear.app) for issue tracking. All issues for this repo
 
 ## Processing Issues
 
-Use the [`/process-issues`](../.claude/skills/process-issues/SKILL.md) skill to pick up, fix, and ship open issues. One PR per issue, up to 5 in parallel.
+Use the [`/process-issues`](../.agents/skills/process-issues/SKILL.md) skill to pick up, fix, and ship open issues. One PR per issue, up to 5 in parallel.
 
 Before claiming an issue, check whether someone else is already working on it:
 
