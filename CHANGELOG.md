@@ -9,10 +9,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
-### Fixed
-
-- Restore the default-org harness-seed safety net in `register` / `oauth_callback` / admin-bootstrap. PR #1462 removed it to prevent public signup from re-applying OSS harness defaults over a custom `PlatformDefinition`; this re-adds it using `state.platform_definition.built_in_harnesses()` instead of `oss_built_in_harnesses()`, so new users landing in `DEFAULT_ORG_ID` before the async seed task completes still get built-in harnesses without re-opening the override path. `BuiltinAuthBackend` now carries `platform_definition`; the `.auth()` factory signature on `ServerAppBuilder` is now `Fn(Arc<StorageBackend>, Arc<PlatformDefinition>) -> Arc<dyn AuthBackend>`. See `specs/authentication.md` "Default-Org Harness-Seed Guarantee" and threat-model entry TM-AUTH-016 (EVE-390).
-
 ## [0.8.22] - 2026-04-27
 
 ### Highlights
