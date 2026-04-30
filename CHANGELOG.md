@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### What's Changed
 
-- fix(auth): fail fast on `AUTH_MODE=external` + built-in OAuth provider config. The platform's own OAuth flow is disabled in External mode (the third-party provider handles identity), so accidentally configuring both used to surface as silent 401s on `/v1/auth/oauth/{provider}` and `/v1/auth/callback/{provider}` at request time. `AuthConfig::validate()` now runs inside `AuthConfig::from_env()` and panics at startup with a clear message naming the conflicting mode and the specific env vars (`AUTH_GOOGLE_CLIENT_ID/SECRET`, `AUTH_GITHUB_CLIENT_ID/SECRET`). The repo-access GitHub App config (`GITHUB_APP_ID` / `GITHUB_APP_PRIVATE_KEY`) is unaffected. See `specs/authentication.md` (External Mode and OAuth Providers).
+- fix(auth): fail fast on `AUTH_MODE=external` + built-in OAuth provider config. The platform's own OAuth flow is disabled in External mode (the third-party provider handles identity), so accidentally configuring both used to surface as silent 401s on `/v1/auth/oauth/{provider}` and `/v1/auth/callback/{provider}` at request time. `AuthConfig::validate()` now runs inside `AuthConfig::from_env()` and panics at startup with a clear message naming the conflicting mode and the specific env vars (`AUTH_GOOGLE_CLIENT_ID`, `AUTH_GOOGLE_CLIENT_SECRET`, `AUTH_GITHUB_CLIENT_ID`, `AUTH_GITHUB_CLIENT_SECRET`). The repo-access GitHub App config (`GITHUB_APP_ID` / `GITHUB_APP_PRIVATE_KEY`) is unaffected. See `specs/authentication.md` (External Mode and OAuth Providers).
 
 ## [0.8.22] - 2026-04-27
 

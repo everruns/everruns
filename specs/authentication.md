@@ -111,7 +111,7 @@ To prevent silent 401s for hybrid deployments that accidentally configure both a
 
 The error names both the conflicting mode and the specific env vars, and points operators to remove the OAuth env vars or switch `AUTH_MODE=full`. The repo-access GitHub App config (`GITHUB_APP_ID` / `GITHUB_APP_PRIVATE_KEY`) is **not** affected — it powers per-user repo connections, not the login flow, so External mode + GitHub App is supported.
 
-This is a fail-fast validation: operators see the misconfiguration at deploy time, not as a 401 on `/oauth/redirect` after rollout. See `crates/server/src/auth/config.rs::validate` for the implementation and the top-of-file decision comment.
+This is a fail-fast validation: operators see the misconfiguration at deploy time, not during a built-in OAuth login attempt on `/v1/auth/oauth/{provider}` or its callback `/v1/auth/callback/{provider}` after rollout. See `crates/server/src/auth/config.rs::validate` for the implementation and the top-of-file decision comment.
 
 ### OAuth Providers
 

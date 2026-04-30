@@ -5,7 +5,7 @@
 // Trust boundary (External mode + OAuth providers): when `AUTH_MODE=external`
 // the platform delegates user identity to a third-party provider (PropelAuth,
 // Auth0, Clerk, etc.) and the built-in OAuth flow is intentionally disabled.
-// Pre-#1492 the runtime quietly hid configured providers and returned 401 on
+// Since #1492 the runtime quietly hides configured providers and returns 401 on
 // `/v1/auth/oauth/{provider}` and `/v1/auth/callback/{provider}` (the login
 // OAuth handlers — distinct from the MCP `/oauth/...` handlers). That made
 // hybrid deployments fail silently — operators saw 401s only at request
