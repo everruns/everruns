@@ -1851,11 +1851,17 @@ async fn test_oauth_register_and_metadata() {
             .ends_with("/oauth/token")
     );
 
-    // Test protected resource metadata endpoint
+    // Test path-specific protected resource metadata endpoint (RFC 9728 §3.1).
     let resource: Value = server
-        .get("/.well-known/oauth-protected-resource")
+        .get("/.well-known/oauth-protected-resource/mcp")
         .await
         .assert_success()
         .json();
     assert!(resource["resource"].as_str().unwrap().ends_with("/mcp"));
+
+    // Root PRM URL is no longer served — clients must use the path-derived URL.
+    server
+        .get("/.well-known/oauth-protected-resource")
+        .await
+        .assert_status(StatusCode::NOT_FOUND);
 }

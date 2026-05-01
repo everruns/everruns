@@ -197,9 +197,10 @@ pub struct AppState {
     pub chat_harness_name: Option<String>,
     pub chat_session_title: Option<String>,
     pub sqldb_store: Option<Arc<dyn SessionSqlDbStore>>,
-    /// Absolute URL of `/.well-known/oauth-protected-resource`, used to
+    /// Absolute URL of `/.well-known/oauth-protected-resource/mcp`, used to
     /// populate the `WWW-Authenticate: Bearer resource_metadata="..."` header
     /// on 401 responses per RFC 9728 §5.1 and the MCP 2025-06-18 auth spec.
+    /// Path-derived per RFC 9728 §3.1 for the `/mcp` resource.
     /// `None` disables the header (e.g. tests without an issuer configured).
     pub resource_metadata_url: Option<String>,
 }
@@ -1340,7 +1341,7 @@ mod www_authenticate_tests {
     use axum::routing::any;
     use tower::ServiceExt;
 
-    const METADATA_URL: &str = "https://example.com/.well-known/oauth-protected-resource";
+    const METADATA_URL: &str = "https://example.com/.well-known/oauth-protected-resource/mcp";
 
     fn app_with_layer(status: StatusCode) -> Router {
         let header_value = parse_www_authenticate_value(METADATA_URL).expect("valid header");

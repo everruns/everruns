@@ -212,8 +212,12 @@ impl FromRef<McpOAuthState> for AuthState {
 /// discovers them via `/.well-known/oauth-authorization-server`.
 pub fn mcp_oauth_routes(state: McpOAuthState) -> Router {
     Router::new()
+        // RFC 9728 §3.1 path-derived discovery: resource `{root}/mcp` →
+        // PRM at `{root}/.well-known/oauth-protected-resource/mcp`. Real MCP
+        // providers (Atlassian, etc.) only serve the path-specific URL, so
+        // OSS canonicalises on it too and SaaS no longer needs a root alias.
         .route(
-            "/.well-known/oauth-protected-resource",
+            "/.well-known/oauth-protected-resource/mcp",
             get(oauth_protected_resource_metadata),
         )
         .route(
@@ -248,10 +252,10 @@ async fn try_resolve_user(state: &McpOAuthState, jar: &CookieJar) -> Option<Auth
 // Handlers
 // ============================================
 
-/// GET /.well-known/oauth-protected-resource — Protected resource metadata (RFC 9728)
+/// GET /.well-known/oauth-protected-resource/mcp — Protected resource metadata (RFC 9728)
 ///
 /// MCP clients fetch this first to discover which authorization server protects
-/// the resource. Points to the authorization server metadata URL.
+/// the resource. Path-derived per RFC 9728 §3.1 for the `/mcp` resource.
 async fn oauth_protected_resource_metadata(
     State(state): State<McpOAuthState>,
 ) -> Json<OAuthProtectedResourceMetadata> {
