@@ -3,6 +3,7 @@
     "everruns-dev": {
       "type": "http",
       "url": "https://dev.everruns.com/mcp",
+      "oauth_resource": "https://dev.everruns.com/mcp",
       "note": "Everruns Dev MCP endpoint. Your MCP host will handle OAuth on first use."
     }
   }

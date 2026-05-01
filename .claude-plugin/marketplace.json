@@ -9,7 +9,7 @@
       "name": "everruns-dev",
       "source": "./plugins/everruns-dev",
       "description": "Interact with the Everruns dev agent platform - create and run agents, manage harnesses and sessions, browse the API catalog.",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "author": {
         "name": "Everruns",
         "url": "https://everruns.com"
