@@ -1,6 +1,6 @@
 {
   "name": "everruns-dev",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Interact with the Everruns dev agent platform from Codex over MCP, with read-only `query` and full-access `execute` workflows.",
   "author": {
     "name": "Everruns",
