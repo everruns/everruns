@@ -40,7 +40,7 @@ Relevant references:
 - Maintenance is risk-proportional, not sweep-proportional. A larger checklist is not inherently better.
 - The selected maintenance scope must be explained, including what was skipped and why.
 - If maintenance changes code or behavior, affected artifacts must stay in sync: specs, docs, OpenAPI, threat model, test cases, agent instructions, and release materials as applicable.
-- When maintenance covers repo workflow hygiene, treat the Claude Code plugin surface as a maintained workflow artifact. Review recent upstream Claude Code changes before claiming the plugin is current.
+- When maintenance covers repo workflow hygiene, treat Codex and Claude Code plugin surfaces as maintained workflow artifacts. Review recent upstream plugin-platform changes before claiming either plugin is current, and verify the shared Everruns Dev plugin metadata stays in parity across Codex and Claude manifests.
 - Specs should not duplicate operational workflow text that belongs in skills or commands.
 - Maintenance should prefer concrete fixes over ceremonial audits when a safe local fix exists.
 
@@ -67,7 +67,7 @@ Before a release, maintenance should cover:
 - Linear issues already marked `In Progress` whose `updatedAt` is older than 1 day, signaling execution drift; use that `updatedAt` threshold as the default review threshold unless the task sets a stricter bar
 - GitHub Security tab: security overview, Dependabot alerts, and open secret scanning alerts
 - dependency versions across all packages (Cargo workspace crates, npm packages, CLI) checked for outdated major versions and deprecated crates
-- the Claude Code plugin surface reviewed against recent upstream Claude Code changes: inspect the latest changelog, the weekly "What's New" digest, and the plugins reference, then compare them to `.claude-plugin/marketplace.json`, `plugins/everruns-dev/.claude-plugin/plugin.json`, and shipped plugin behavior; if upstream changes affect compatibility, versioning, or discoverability, update the plugin or record a follow-up with evidence before claiming release readiness
+- the Codex and Claude Code plugin surfaces reviewed against recent upstream plugin-platform changes: inspect the latest relevant platform references, then compare them to `.agents/plugins/marketplace.json`, `.claude-plugin/marketplace.json`, `plugins/everruns-dev/.codex-plugin/plugin.json`, `plugins/everruns-dev/.claude-plugin/plugin.json`, and shipped plugin behavior; run `scripts/test-everruns-dev-plugin.sh` or equivalent metadata validation to prove registration and version parity before claiming release readiness
 
 A full-repo sweep is not mandatory if the evidence is already strong. The bar is confidence, not checklist completion theater.
 
