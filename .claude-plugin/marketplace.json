@@ -1,5 +1,6 @@
 {
   "name": "everruns-dev",
+  "description": "Everruns plugins for Claude Code — connect Claude to the Everruns dev agent platform over MCP to manage agents, harnesses, and sessions.",
   "owner": {
     "name": "Everruns",
     "url": "https://everruns.com"

@@ -75,5 +75,18 @@ if codex_source.get("source") != "local" or codex_source.get("path") != "./plugi
         "Codex marketplace must point at local ./plugins/everruns-dev"
     )
 
+if "category" in claude:
+    raise SystemExit(
+        "Claude plugin.json must not declare 'category' — it is not part of "
+        "the Claude Code plugin manifest schema. Put it on the marketplace "
+        "plugin entry instead."
+    )
+
+if not claude_marketplace.get("description"):
+    raise SystemExit(
+        "marketplace.json must declare a top-level 'description' so the "
+        "marketplace renders correctly in Claude Code's plugin browser."
+    )
+
 print("everruns-dev plugin metadata checks passed")
 PY

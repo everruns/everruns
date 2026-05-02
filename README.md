@@ -74,6 +74,17 @@ curl -X POST http://localhost:9300/api/v1/sessions/{session_id}/messages \
   -d '{"message": {"content": [{"type": "text", "text": "Hello!"}]}}'
 ```
 
+## Use from Claude Code
+
+This repo is also a [Claude Code plugin marketplace](https://code.claude.com/docs/en/plugin-marketplaces) that ships the `everruns-dev` plugin. Connect Claude Code to the Everruns dev platform over MCP:
+
+```text
+/plugin marketplace add everruns/everruns
+/plugin install everruns-dev@everruns-dev
+```
+
+Then run `/everruns-dev:whoami` and complete the OAuth flow on first use. See [`plugins/everruns-dev/README.md`](./plugins/everruns-dev/README.md) for full install options (local clone, Codex, custom deployments).
+
 ## Contributing
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for local development setup and guidelines.
