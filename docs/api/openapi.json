@@ -1648,13 +1648,10 @@
           {
             "name": "from-example",
             "in": "query",
-            "description": "Import from a built-in harness example by name (e.g. `data-analyst`).",
-            "required": false,
+            "description": "Import from a built-in harness example by name (e.g. `data-analyst`).\nRequired: the only currently supported import mode is from-example.",
+            "required": true,
             "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
+              "type": "string"
             }
           }
         ],

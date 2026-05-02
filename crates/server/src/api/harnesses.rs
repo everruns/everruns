@@ -22,7 +22,7 @@ use everruns_core::{
 };
 
 use super::common::{
-    ApiResult, ErrorResponse, ListResponse, UrlBuilder, WithUrls, impl_auth_state,
+    ApiResult, ApiResultExt, ErrorResponse, ListResponse, UrlBuilder, WithUrls, impl_auth_state,
 };
 use serde::Deserialize;
 use std::sync::Arc;
@@ -103,8 +103,9 @@ pub fn routes(state: AppState) -> Router {
 #[derive(Debug, Clone, Deserialize, IntoParams, ToSchema)]
 pub struct ImportHarnessQuery {
     /// Import from a built-in harness example by name (e.g. `data-analyst`).
+    /// Required: the only currently supported import mode is from-example.
     #[serde(rename = "from-example")]
-    pub from_example: Option<String>,
+    pub from_example: String,
 }
 
 /// POST /v1/harnesses/import - Adopt a harness example as a regular org-owned harness.
@@ -134,10 +135,13 @@ pub async fn import_harness(
     State(state): State<AppState>,
     Query(query): Query<ImportHarnessQuery>,
 ) -> Result<(StatusCode, Json<WithUrls<Harness>>), (StatusCode, Json<ErrorResponse>)> {
-    let name = query.from_example.ok_or_else(|| {
-        ErrorResponse::new("missing required `from-example` query parameter")
-            .into_response(StatusCode::BAD_REQUEST)
-    })?;
+    let name = query.from_example.trim().to_string();
+    if name.is_empty() {
+        return Err(
+            ErrorResponse::new("`from-example` query parameter must not be empty")
+                .into_response(StatusCode::BAD_REQUEST),
+        );
+    }
 
     let example = crate::harnesses::find_harness_example(&name)
         .ok_or_else(|| ErrorResponse::not_found(&format!("harness example '{name}'")))?;
@@ -171,10 +175,7 @@ pub async fn import_harness(
             .db
             .get_harness_by_name(org.org_id, parent_name)
             .await
-            .map_err(|e| {
-                ErrorResponse::new(format!("failed to resolve parent harness: {e}"))
-                    .into_response(StatusCode::INTERNAL_SERVER_ERROR)
-            })?
+            .log_internal_error_json("resolve parent harness for example import")?
             .ok_or_else(|| {
                 ErrorResponse::new(format!(
                     "Required parent harness `{parent_name}` is not provisioned for this org"
