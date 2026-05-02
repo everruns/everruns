@@ -1478,6 +1478,30 @@
         }
       }
     },
+    "/v1/harness-examples": {
+      "get": {
+        "tags": [
+          "harness-examples"
+        ],
+        "summary": "GET /v1/harness-examples — list all available harness examples.",
+        "operationId": "list_examples",
+        "responses": {
+          "200": {
+            "description": "List of harness examples",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/HarnessExample"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/harnesses": {
       "get": {
         "tags": [
@@ -1605,6 +1629,69 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ResourceConfigResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/harnesses/import": {
+      "post": {
+        "tags": [
+          "harnesses"
+        ],
+        "summary": "POST /v1/harnesses/import - Adopt a harness example as a regular org-owned harness.",
+        "description": "Creates a normal harness (`is_built_in = false`) from a code-defined\nexample. The new harness inherits from the org's `generic` harness by\nname — no UUIDs are hardcoded. Capabilities and other config flow through\nthe same validation paths as `POST /v1/harnesses`.\n\nReturns 201 on creation. If the example name collides with an existing\nharness in the org, a random alphanumeric suffix is appended (parity with\nagent example import).",
+        "operationId": "import_harness",
+        "parameters": [
+          {
+            "name": "from-example",
+            "in": "query",
+            "description": "Import from a built-in harness example by name (e.g. `data-analyst`).\nRequired: the only currently supported import mode is from-example.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Harness adopted from example",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithUrls_Harness"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input or missing capabilities",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Example not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -7951,6 +8038,57 @@
             "type": "string",
             "format": "date-time",
             "description": "Timestamp when the harness was last updated."
+          }
+        }
+      },
+      "HarnessExample": {
+        "type": "object",
+        "description": "A read-only harness example defined in code.",
+        "required": [
+          "name",
+          "display_name",
+          "description",
+          "tags",
+          "capabilities",
+          "dev_only"
+        ],
+        "properties": {
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentCapabilityConfig"
+            },
+            "description": "Capabilities the example will assign with their per-harness config."
+          },
+          "description": {
+            "type": "string",
+            "description": "Short description."
+          },
+          "dev_only": {
+            "type": "boolean",
+            "description": "Whether this example is only available when experimental features are on."
+          },
+          "display_name": {
+            "type": "string",
+            "description": "Human-readable display name (e.g. `Data Analyst`)."
+          },
+          "name": {
+            "type": "string",
+            "description": "Unique slug (e.g. `data-analyst`)."
+          },
+          "parent_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Name of the parent harness this example inherits from when adopted\n(e.g. `generic`). Resolved per-org at import time — no UUIDs are\nhardcoded."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Tags for categorization."
           }
         }
       },

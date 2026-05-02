@@ -209,6 +209,20 @@ impl InMemoryDatabase {
         Ok(None)
     }
 
+    /// Release built-in flag for a named harness (in-memory backend variant).
+    pub async fn release_built_in_harness(&self, org_id: i64, name: &str) -> Result<bool> {
+        let mut harnesses = self.harnesses.write();
+        let target = harnesses
+            .values_mut()
+            .find(|h| h.org_id == org_id && h.name == name && h.is_built_in);
+        if let Some(h) = target {
+            h.is_built_in = false;
+            h.updated_at = Self::now();
+            return Ok(true);
+        }
+        Ok(false)
+    }
+
     pub async fn delete_harness(&self, org_id: i64, id: HarnessId) -> Result<bool> {
         let mut harnesses = self.harnesses.write();
         if let Some(harness) = harnesses.get_mut(&id) {

@@ -762,11 +762,19 @@ impl ServerAppBuilder {
             capability_service.clone(),
             auth_state.clone(),
         );
+        let grade_for_harnesses = everruns_core::DeploymentGrade::from_env();
         let harnesses_state = api::harnesses::AppState::new(
             db.clone(),
             capability_service.clone(),
             auth_state.clone(),
+            grade_for_harnesses,
+            platform_definition.clone(),
         );
+        let harness_examples_state = api::harness_examples::AppState {
+            auth: auth_state.clone(),
+            grade: grade_for_harnesses,
+            platform_definition: platform_definition.clone(),
+        };
         let commands_state = api::commands::AppState::new(
             capability_service.clone(),
             command_service,
@@ -998,6 +1006,7 @@ impl ServerAppBuilder {
             ))
             .merge(api::apps::routes(apps_state))
             // Evals routes are conditionally merged below based on feature flag.
+            .merge(api::harness_examples::routes(harness_examples_state))
             .merge(api::harnesses::routes(harnesses_state))
             .merge(api::sessions::routes(sessions_state))
             .merge(api::messages::routes(messages_state))

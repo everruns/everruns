@@ -25,6 +25,29 @@ The `name` field works like a GitHub repository name: lowercase alphanumeric wit
 - **POST /v1/sessions** — Accepts `harness_name` as an alternative to `harness_id`. The two fields are mutually exclusive.
 - **CLI** — `everruns sessions create --harness generic` accepts both IDs and names. Non-ID values are resolved via `GET /v1/harnesses/{name}` before session creation.
 
+## Default Built-in Harnesses vs Harness Examples
+
+Two categories of code-defined harnesses exist:
+
+| Category | What it is | Where it lives | Adoption |
+|----------|-----------|----------------|----------|
+| **Default built-ins** | Platform-essential harnesses provisioned automatically into every org with `is_built_in = true`. | `crates/server/src/harnesses/{base,generic,platform_chat}.rs`, collected by `built_in_harnesses()`. | Created on org initialization. Read-only by default. |
+| **Harness examples** | Adoptable templates the user opts into when needed. Shown in the UI gallery. | `crates/server/src/harnesses/examples.rs` (catalogue) plus the per-harness module file (e.g. `data_analyst.rs`). | Listed via `GET /v1/harness-examples`; adopted via `POST /v1/harnesses/import?from-example={name}`, which creates a normal `is_built_in = false` row that the user can edit. |
+
+**Default built-ins are the minimum required for the platform to function:**
+
+- `base` — required as a fallback parent for sessions without an explicit harness.
+- `generic` — required as the default parent harness referenced by examples and most user harnesses.
+- `platform-chat` — required by the global chat path (singleton per-user session pattern).
+
+**Harness examples** today: `coding-daytona`, `coding-container`, `data-analyst`. Examples whose required capabilities are not registered for the deployment (for example, `coding-container` when the `container_sandbox` plugin is disabled) are filtered out of `/v1/harness-examples` automatically, mirroring the agent examples behaviour.
+
+**Why the split:** specialised harnesses like `data-analyst` were previously installed into every org by default, polluting fresh installs and creating reconciliation churn for orgs that never used them. Moving them to examples keeps fresh orgs lean while making the same templates discoverable from the UI gallery on demand.
+
+### Migration of legacy built-in rows
+
+Existing orgs that already had `data-analyst`, `coding-daytona`, or `coding-container` provisioned as `is_built_in = true` keep those rows during reconciliation. The reconciliation step demotes them to regular org-owned harnesses (`is_built_in = false`) so existing sessions and agents that reference them keep working, while users gain the ability to edit, archive, or delete them like any custom harness. The demotion is idempotent and only flips the `is_built_in` flag — no data is rewritten and no UUIDs change.
+
 ## Built-in Harness Types
 
 ### Base
@@ -127,6 +150,10 @@ Built-in harnesses are managed by `crates/server/src/org_init.rs`:
 
 Harness seed UUIDs occupy the `0x600-0x6FF` range. These fixed UUIDs exist solely so historical default-org rows stay stable across upgrades; they are an implementation detail of org seeding and are not addressable identity. New code, tests, and migrations must always use name-based lookups. See `crates/server/src/seed.rs` for seed harness definitions and capability assignments.
 
+## Harness Examples (adoptable templates)
+
+These templates are not auto-installed. They appear in the UI gallery (`/harnesses`, `/harnesses/examples`) and are adopted via `POST /v1/harnesses/import?from-example={name}`. Adoption creates a normal `is_built_in = false` row in the caller's org, inheriting from the org's `generic` harness by name (no hardcoded UUIDs). Required capabilities must be registered for the deployment, otherwise the example is filtered out of the listing and import returns 400.
+
 ### Data Analyst
 
 Data analysis harness with SQL databases, persistent memory, interactive charts via OpenUI, and a structured analysis pipeline inspired by OpenAI's Kepler data agent and the open-source [Dash](https://github.com/agno-agi/dash) project. Inherits from Generic.
@@ -154,6 +181,14 @@ Data analysis harness with SQL databases, persistent memory, interactive charts 
 - Interactive data exploration with visualization
 - Agents that learn from corrections across sessions
 - Analytics workflows with curated knowledge bases
+
+### Coding (Daytona)
+
+Coding harness with Daytona cloud sandboxes (real filesystem, full process execution, git integration). Inherits from Generic. Visible only when the `daytona` capability plugin is registered (the OSS deployment registers it whenever the integration is built in). See `crates/server/src/harnesses/coding_daytona.rs`.
+
+### Coding (Container)
+
+Coding harness backed by self-hosted Docker container sandboxes. Inherits from Generic. Visible only when the `container_sandbox` capability plugin is registered (gated by the `FEATURE_CONTAINER_SANDBOX` flag). See `crates/server/src/harnesses/coding_container.rs` for the harness definition and [`crates/container-sandbox/SPEC.md`](../crates/container-sandbox/SPEC.md) for the underlying capability spec.
 
 ## Future Harness Types
 

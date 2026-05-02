@@ -318,6 +318,8 @@ impl TestServer {
             db.clone(),
             capability_service.clone(),
             auth_state.clone(),
+            grade,
+            platform_definition.clone(),
         );
         let commands_state = api::commands::AppState::new(
             capability_service.clone(),

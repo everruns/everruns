@@ -1,6 +1,12 @@
 # Coding Daytona Harness
 
-Built-in harness for coding agents using Daytona cloud sandboxes.
+Adoptable harness example for coding agents using Daytona cloud sandboxes.
+
+This harness is no longer auto-installed into every org. It lives in the harness
+example catalogue (`crates/server/src/harnesses/examples.rs`) and is adopted on
+demand via `POST /v1/harnesses/import?from-example=coding-daytona`. See
+[`harness-types.md`](harness-types.md#harness-examples-adoptable-templates) for
+the default-built-ins-vs-examples split and migration behaviour.
 
 ## Design
 

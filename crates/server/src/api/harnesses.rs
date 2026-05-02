@@ -16,14 +16,17 @@ use axum::{
     http::StatusCode,
     routing::{get, post},
 };
-use everruns_core::{Caller, Harness, ResourceConfigResponse, evaluate_policies_with};
+use everruns_core::{
+    AgentCapabilityConfig, Caller, DeploymentGrade, Harness, PlatformDefinition,
+    ResourceConfigResponse, evaluate_policies_with,
+};
 
 use super::common::{
-    ApiResult, ErrorResponse, ListResponse, UrlBuilder, WithUrls, impl_auth_state,
+    ApiResult, ApiResultExt, ErrorResponse, ListResponse, UrlBuilder, WithUrls, impl_auth_state,
 };
 use serde::Deserialize;
 use std::sync::Arc;
-use utoipa::IntoParams;
+use utoipa::{IntoParams, ToSchema};
 
 use crate::services::CapabilityService;
 
@@ -42,6 +45,8 @@ pub struct AppState {
     pub db: Arc<StorageBackend>,
     pub capability_service: Arc<CapabilityService>,
     pub auth: AuthState,
+    pub grade: DeploymentGrade,
+    pub platform_definition: Arc<PlatformDefinition>,
 }
 
 impl AppState {
@@ -49,11 +54,15 @@ impl AppState {
         db: Arc<StorageBackend>,
         capability_service: Arc<CapabilityService>,
         auth: AuthState,
+        grade: DeploymentGrade,
+        platform_definition: Arc<PlatformDefinition>,
     ) -> Self {
         Self {
             db,
             capability_service,
             auth,
+            grade,
+            platform_definition,
         }
     }
 
@@ -71,13 +80,14 @@ impl AppState {
 
 impl_auth_state!(AppState);
 
-/// Create harness routes (no import/export)
+/// Create harness routes
 pub fn routes(state: AppState) -> Router {
     Router::new()
         .route("/v1/harnesses", post(create_harness).get(list_harnesses))
         .route("/v1/harnesses/check-name", get(check_harness_name))
         .route("/v1/harnesses/config", get(harness_config))
         .route("/v1/harnesses/preview", post(preview_harness))
+        .route("/v1/harnesses/import", post(import_harness))
         .route(
             "/v1/harnesses/{harness_id}",
             get(get_harness)
@@ -87,6 +97,157 @@ pub fn routes(state: AppState) -> Router {
         .route("/v1/harnesses/{harness_id}/delete", post(destroy_harness))
         .route("/v1/harnesses/{harness_id}/copy", post(copy_harness))
         .with_state(state)
+}
+
+/// Query parameters for `POST /v1/harnesses/import`.
+#[derive(Debug, Clone, Deserialize, IntoParams, ToSchema)]
+pub struct ImportHarnessQuery {
+    /// Import from a built-in harness example by name (e.g. `data-analyst`).
+    /// Required: the only currently supported import mode is from-example.
+    #[serde(rename = "from-example")]
+    pub from_example: String,
+}
+
+/// POST /v1/harnesses/import - Adopt a harness example as a regular org-owned harness.
+///
+/// Creates a normal harness (`is_built_in = false`) from a code-defined
+/// example. The new harness inherits from the org's `generic` harness by
+/// name — no UUIDs are hardcoded. Capabilities and other config flow through
+/// the same validation paths as `POST /v1/harnesses`.
+///
+/// Returns 201 on creation. If the example name collides with an existing
+/// harness in the org, a random alphanumeric suffix is appended (parity with
+/// agent example import).
+#[utoipa::path(
+    post,
+    path = "/v1/harnesses/import",
+    params(ImportHarnessQuery),
+    responses(
+        (status = 201, description = "Harness adopted from example", body = WithUrls<Harness>),
+        (status = 400, description = "Invalid input or missing capabilities", body = ErrorResponse),
+        (status = 404, description = "Example not found", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    tag = "harnesses"
+)]
+pub async fn import_harness(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Query(query): Query<ImportHarnessQuery>,
+) -> Result<(StatusCode, Json<WithUrls<Harness>>), (StatusCode, Json<ErrorResponse>)> {
+    let name = query.from_example.trim().to_string();
+    if name.is_empty() {
+        return Err(
+            ErrorResponse::new("`from-example` query parameter must not be empty")
+                .into_response(StatusCode::BAD_REQUEST),
+        );
+    }
+
+    let example = crate::harnesses::find_harness_example(&name)
+        .ok_or_else(|| ErrorResponse::not_found(&format!("harness example '{name}'")))?;
+
+    if example.dev_only && !state.grade.experimental_features_enabled() {
+        return Err(ErrorResponse::not_found(&format!(
+            "harness example '{name}'"
+        )));
+    }
+
+    let missing: Vec<&str> = example
+        .definition
+        .capabilities
+        .iter()
+        .map(|c| c.id.as_str())
+        .filter(|id| !state.platform_definition.capability_registry().has(id))
+        .collect();
+    if !missing.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: format!("Example requires unregistered capabilities: {missing:?}"),
+            }),
+        ));
+    }
+
+    // Resolve parent harness ID by name within this org. Examples are required
+    // to inherit by name (no hardcoded UUIDs).
+    let parent_harness_id = if let Some(parent_name) = example.definition.parent_name.as_deref() {
+        let parent_row = state
+            .db
+            .get_harness_by_name(org.org_id, parent_name)
+            .await
+            .log_internal_error_json("resolve parent harness for example import")?
+            .ok_or_else(|| {
+                ErrorResponse::new(format!(
+                    "Required parent harness `{parent_name}` is not provisioned for this org"
+                ))
+                .into_response(StatusCode::INTERNAL_SERVER_ERROR)
+            })?;
+        Some(parent_row.id)
+    } else {
+        None
+    };
+
+    let capabilities: Vec<AgentCapabilityConfig> = example
+        .definition
+        .capabilities
+        .iter()
+        .map(|cap| AgentCapabilityConfig::with_config(cap.id.clone(), cap.config.clone()))
+        .collect();
+
+    // Pick a non-colliding name with random suffix retry — same strategy as
+    // agent example import. Concurrency-safe enough for a manual UI action.
+    let unique_name = {
+        use rand::Rng;
+        let base = example.definition.name.as_str();
+        let mut selected = None;
+
+        for attempt in 0..10 {
+            let candidate = if attempt == 0 {
+                base.to_string()
+            } else {
+                let suffix: String = rand::rng()
+                    .sample_iter(&rand::distr::Alphanumeric)
+                    .take(5)
+                    .map(|c| (c as char).to_ascii_lowercase())
+                    .collect();
+                format!("{base}-{suffix}")
+            };
+
+            let result = crate::domains::harnesses::CheckHarnessName {
+                name: candidate.clone(),
+                exclude_id: None,
+            }
+            .run(&state.ctx(&org))
+            .await?;
+
+            if result.available {
+                selected = Some(candidate);
+                break;
+            }
+        }
+
+        selected.ok_or_else(ErrorResponse::internal_error)?
+    };
+
+    let req = CreateHarnessRequest {
+        name: unique_name,
+        display_name: Some(example.definition.display_name.clone()),
+        description: Some(example.definition.description.clone()),
+        system_prompt: example.definition.system_prompt.clone(),
+        parent_harness_id,
+        default_model_id: None,
+        tags: example.definition.tags.clone(),
+        capabilities,
+        initial_files: vec![],
+        mcp_servers: Default::default(),
+        network_access: None,
+    };
+
+    let harness = crate::domains::harnesses::CreateHarness(req)
+        .run(&state.ctx(&org))
+        .await?;
+    let urls = UrlBuilder::from_auth_config(&state.auth.config);
+    Ok((StatusCode::CREATED, Json(urls.wrap(harness))))
 }
 
 /// GET /v1/harnesses/config
