@@ -162,6 +162,12 @@ command has exactly one required primary-key-like parameter. See EVE-323.
 read-only MCP `query` tool. The default is GET-only; override it for safe
 POST-style commands such as previews or structured search helpers.
 
+`Command::output_schema()` and `Command::output_shape()` feed MCP `discover`.
+Every command reports a valid output schema; commands whose output shape is
+important for jq scripting should override both. Use `output_shape = "paginated"`
+for `{data,total,offset,limit}` list responses and `output_shape = "array"` for
+bare array responses.
+
 ## Writing a Command
 
 Canonical pattern (see `domains/agents/commands.rs` for reference):
@@ -254,6 +260,10 @@ descriptors:
   true; `execute` exposes the full catalog.
 - `CatalogContext::to_domain_ctx()` constructs the domain `Ctx` from the
   MCP `AppState` (db, capability_service, encryption).
+- The top-level MCP `discover` tool reads inventory descriptors directly and
+  returns JSON with `input_schema`, `output_schema`, and `output_shape` for
+  focused searches. This avoids guessing whether a list command should be
+  consumed with jq `.data[]` or `.[]`.
 - Adding `inventory::submit! { CommandDescriptor::of::<Cmd>() }` makes the
   command immediately discoverable in MCP — no other wiring needed.
 
