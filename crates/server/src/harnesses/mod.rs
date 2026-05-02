@@ -1,32 +1,42 @@
 //! Built-in harness definitions.
 //!
-//! Each submodule defines one built-in harness (system prompt, capabilities,
-//! tags, roles). The top-level `built_in_harnesses()` function collects them
-//! into the ordered list consumed by `oss_built_in_harnesses()` in platform.rs.
+//! Decision: Only platform-essential harnesses are auto-provisioned per org —
+//! `base`, `generic`, and `platform-chat`. Specialized harnesses
+//! (`coding-container`, `coding-daytona`, `data-analyst`) live in the
+//! `examples` module and are adopted on demand via `/v1/harness-examples`
+//! and `POST /v1/harnesses/import?from-example=…`.
+//!
+//! Each submodule still defines one harness (system prompt, capabilities,
+//! tags, roles). The top-level `built_in_harnesses()` function collects the
+//! always-installed ones into the ordered list consumed by
+//! `oss_built_in_harnesses()` in platform.rs.
 
 mod base;
 mod coding_container;
 mod coding_daytona;
 mod coding_session_sandbox;
 mod data_analyst;
+pub mod examples;
 mod generic;
 mod platform_chat;
 
 use everruns_core::BuiltInHarnessDefinition;
 
+pub use examples::{
+    HarnessExampleDef, LEGACY_BUILT_IN_NAMES, find_harness_example, harness_examples,
+};
+
 /// All built-in harness definitions in provisioning order.
+///
+/// Only platform-essential harnesses are listed here. Specialized harnesses
+/// (data analyst, coding sandboxes) are adopted from `harness_examples()`.
 pub fn built_in_harnesses() -> Vec<BuiltInHarnessDefinition> {
     let internal_flags = everruns_core::InternalFeatureFlags::from_env();
     let mut harnesses = vec![
         base::definition(),
         generic::definition(),
-        data_analyst::definition(),
-        coding_daytona::definition(),
+        platform_chat::definition(),
     ];
-    if internal_flags.container_sandbox {
-        harnesses.push(coding_container::definition());
-    }
-    harnesses.push(platform_chat::definition());
     if internal_flags.session_sandbox {
         harnesses.push(coding_session_sandbox::definition());
     }
@@ -70,25 +80,27 @@ mod tests {
     }
 
     #[test]
-    fn test_coding_container_preserves_previous_provisioning_order_when_enabled() {
+    fn built_in_list_excludes_example_harnesses() {
         let _lock = lock_env();
-        let _env_guard =
-            EnvVarGuard::capture(&["FEATURE_CONTAINER_SANDBOX", "FEATURE_DOCKER_CAPABILITY"]);
+        let _env_guard = EnvVarGuard::capture(&[
+            "FEATURE_CONTAINER_SANDBOX",
+            "FEATURE_DOCKER_CAPABILITY",
+            "FEATURE_SESSION_SANDBOX",
+        ]);
         unsafe { std::env::set_var("FEATURE_CONTAINER_SANDBOX", "true") };
         unsafe { std::env::remove_var("FEATURE_DOCKER_CAPABILITY") };
+        unsafe { std::env::remove_var("FEATURE_SESSION_SANDBOX") };
 
         let names: Vec<String> = built_in_harnesses().into_iter().map(|h| h.name).collect();
 
-        assert_eq!(
-            names,
-            vec![
-                "base",
-                "generic",
-                "data-analyst",
-                "coding-daytona",
-                "coding-container",
-                "platform-chat",
-            ]
-        );
+        // The default built-in list now contains only platform-essential
+        // harnesses. Specialized coding/data harnesses moved to examples.
+        assert_eq!(names, vec!["base", "generic", "platform-chat",]);
+        for legacy in LEGACY_BUILT_IN_NAMES {
+            assert!(
+                !names.iter().any(|n| n == legacy),
+                "{legacy} should no longer be a default built-in"
+            );
+        }
     }
 }

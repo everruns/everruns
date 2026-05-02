@@ -171,6 +171,18 @@ export interface UpdateHarnessRequest {
   status?: HarnessStatus;
 }
 
+/** Read-only harness example defined in code, adoptable as a real Harness */
+export interface HarnessExample {
+  name: string;
+  display_name: string;
+  description: string;
+  tags: string[];
+  /** Name of the parent harness (e.g. `generic`) the example will inherit from when imported. */
+  parent_name?: string;
+  capabilities: AgentCapabilityConfig[];
+  dev_only: boolean;
+}
+
 /** Request to preview the final harness shape with capabilities applied */
 export interface PreviewHarnessRequest {
   /** The base system prompt (before capability additions) */

@@ -55,6 +55,12 @@ pub async fn initialize_org_harnesses_with_definitions(
 ) -> Result<InitResult> {
     let mut result = InitResult::default();
 
+    // Release legacy built-ins that were demoted to example harnesses.
+    // We keep the rows (so existing sessions/agents that reference them keep
+    // working) but flip `is_built_in` to false so they become editable, regular
+    // org-owned harnesses. New orgs are unaffected because no row exists.
+    release_legacy_built_ins(db, org_id).await?;
+
     for harness in harnesses {
         let parent_harness_id = resolve_built_in_parent_id(db, org_id, harnesses, harness)
             .await
@@ -121,6 +127,23 @@ pub async fn initialize_org_harnesses_with_definitions(
     sync_org_harness_settings_with_definitions(db, org_id, harnesses).await?;
 
     Ok(result)
+}
+
+/// Demote any rows for the legacy default built-ins (`coding-container`,
+/// `coding-daytona`, `data-analyst`) to regular org-owned harnesses. Idempotent
+/// — only flips rows that are still flagged `is_built_in = true`.
+async fn release_legacy_built_ins(db: &StorageBackend, org_id: i64) -> Result<()> {
+    for name in crate::harnesses::LEGACY_BUILT_IN_NAMES {
+        let flipped = db.release_built_in_harness(org_id, name).await?;
+        if flipped {
+            tracing::info!(
+                org_id,
+                name,
+                "Released legacy built-in harness; row preserved as org-owned"
+            );
+        }
+    }
+    Ok(())
 }
 
 async fn resolve_built_in_parent_id(
@@ -626,6 +649,55 @@ mod tests {
         let result2 = initialize_org_harnesses(&db, DEFAULT_ORG_ID).await.unwrap();
         assert_eq!(result2.created, 0, "should be idempotent");
         assert_eq!(result2.unchanged, harnesses().len());
+    }
+
+    #[tokio::test]
+    async fn test_legacy_built_ins_are_released_on_reconcile() {
+        // Simulates an org upgraded from a previous version where
+        // `data-analyst` was a default built-in. After reconciliation, the row
+        // must remain (so existing references keep working) but with
+        // `is_built_in = false` so the user can edit/manage it.
+        let db = make_db();
+        seed_default_org(&db).await;
+
+        // Provision today's built-ins first so generic/base exist for parents.
+        initialize_org_harnesses(&db, DEFAULT_ORG_ID).await.unwrap();
+
+        // Inject a stale `data-analyst` built-in row directly.
+        let row = db
+            .create_harness(
+                DEFAULT_ORG_ID,
+                crate::storage::models::CreateHarnessRow {
+                    name: "data-analyst".to_string(),
+                    display_name: Some("Data Analyst".to_string()),
+                    description: Some("legacy".to_string()),
+                    system_prompt: "legacy prompt".to_string(),
+                    parent_harness_id: None,
+                    default_model_id: None,
+                    tags: vec![],
+                    initial_files: serde_json::json!([]),
+                    mcp_servers: serde_json::json!({}),
+                    network_access: None,
+                    is_built_in: true,
+                },
+            )
+            .await
+            .unwrap();
+        assert!(row.is_built_in);
+
+        // Run reconciliation again — should release the legacy built-in.
+        initialize_org_harnesses(&db, DEFAULT_ORG_ID).await.unwrap();
+
+        let after = db
+            .get_harness_by_name(DEFAULT_ORG_ID, "data-analyst")
+            .await
+            .unwrap()
+            .expect("data-analyst row must still exist after reconcile");
+        assert!(
+            !after.is_built_in,
+            "legacy data-analyst row must no longer be flagged as built-in"
+        );
+        assert_eq!(after.id, row.id, "row identity preserved");
     }
 
     async fn seed_default_org(db: &StorageBackend) {

@@ -114,6 +114,9 @@ use utoipa::OpenApi;
         api::harnesses::copy_harness,
         api::harnesses::preview_harness,
         api::harnesses::harness_config,
+        api::harnesses::import_harness,
+        // Harness examples
+        api::harness_examples::list_examples,
         // Agents - additional
         api::agents::preview_agent,
         api::agents::upsert_agent,
@@ -193,6 +196,7 @@ use utoipa::OpenApi;
             domains::harnesses::types::UpdateHarnessRequest,
             domains::harnesses::types::PreviewHarnessRequest,
             domains::harnesses::types::HarnessPreviewResponse,
+            api::harness_examples::HarnessExample,
             ListResponse<everruns_core::Harness>,
             api::users::User,
             api::users::ListUsersQuery,

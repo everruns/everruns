@@ -2389,7 +2389,7 @@ mod tests {
     }
 
     #[test]
-    fn test_coding_container_harness_capabilities_are_registered_when_flag_enabled() {
+    fn test_coding_container_example_capabilities_are_registered_when_flag_enabled() {
         let _lock = lock_env();
         let _env_guard =
             EnvVarGuard::capture(&["FEATURE_CONTAINER_SANDBOX", "FEATURE_DOCKER_CAPABILITY"]);
@@ -2400,35 +2400,47 @@ mod tests {
             everruns_core::DeploymentGrade::Dev,
         );
 
-        let built_in_harnesses = built_in_harnesses();
-        let coding_container = built_in_harnesses
-            .iter()
-            .find(|h| h.name == "coding-container")
-            .expect("Coding (Container) harness should exist when the feature is enabled");
+        // Container example is always present in the example catalogue but its
+        // capabilities only appear in `/v1/harness-examples` when registered.
+        let example = crate::harnesses::find_harness_example("coding-container")
+            .expect("coding-container should exist in the example catalogue");
 
-        for cap in &coding_container.capabilities {
+        for cap in &example.definition.capabilities {
             assert!(
                 registry.has(&cap.id),
-                "Capability '{}' referenced by Coding (Container) harness must be registered",
+                "Capability '{}' referenced by Coding (Container) example must be registered",
                 cap.id
             );
         }
     }
 
     #[test]
-    fn test_coding_container_harness_hidden_when_flag_disabled() {
+    fn test_coding_container_capability_unregistered_when_flag_disabled() {
         let _lock = lock_env();
         let _env_guard =
             EnvVarGuard::capture(&["FEATURE_CONTAINER_SANDBOX", "FEATURE_DOCKER_CAPABILITY"]);
         unsafe { std::env::remove_var("FEATURE_CONTAINER_SANDBOX") };
         unsafe { std::env::remove_var("FEATURE_DOCKER_CAPABILITY") };
 
+        let registry = everruns_core::capabilities::CapabilityRegistry::with_builtins_for_grade(
+            everruns_core::DeploymentGrade::Dev,
+        );
+
+        // The Coding (Container) example is filtered out of `/v1/harness-examples`
+        // when its `container_sandbox` capability isn't registered. We assert
+        // the registry-level fact that powers the filter.
+        assert!(
+            !registry.has("container_sandbox"),
+            "container_sandbox capability should not be registered when feature flag is off"
+        );
+
+        // Defensive: built-in list never contains coding-container by default.
         let built_in_harnesses = built_in_harnesses();
         assert!(
             built_in_harnesses
                 .iter()
                 .all(|h| h.name != "coding-container"),
-            "Coding (Container) harness should be hidden when container_sandbox is disabled"
+            "Coding (Container) is no longer a default built-in"
         );
     }
 

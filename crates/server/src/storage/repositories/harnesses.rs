@@ -223,6 +223,28 @@ impl Database {
         Ok(row)
     }
 
+    /// Release built-in flag on the harness with `name` in `org_id`, if it
+    /// exists and is currently flagged as built-in. Used during reconciliation
+    /// when a previously default-installed harness is moved to the example
+    /// catalogue: existing rows are kept (so sessions and agents that
+    /// reference them keep working) but become editable, org-owned harnesses.
+    /// Returns true when a row was actually flipped.
+    pub async fn release_built_in_harness(&self, org_id: i64, name: &str) -> Result<bool> {
+        let result = sqlx::query(
+            r#"
+            UPDATE harnesses
+            SET is_built_in = false, updated_at = NOW()
+            WHERE org_id = $1 AND name = $2 AND is_built_in = true
+            "#,
+        )
+        .bind(org_id)
+        .bind(name)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(result.rows_affected() > 0)
+    }
+
     pub async fn list_child_harnesses(
         &self,
         org_id: i64,

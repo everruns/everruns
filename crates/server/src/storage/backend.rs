@@ -473,6 +473,10 @@ impl StorageBackend {
         dispatch!(self, list_child_harnesses, org_id, parent_id)
     }
 
+    pub async fn release_built_in_harness(&self, org_id: i64, name: &str) -> Result<bool> {
+        dispatch!(self, release_built_in_harness, org_id, name)
+    }
+
     pub async fn delete_harness(&self, org_id: i64, id: HarnessId) -> Result<bool> {
         dispatch!(self, delete_harness, org_id, id)
     }

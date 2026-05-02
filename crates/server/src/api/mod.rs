@@ -19,6 +19,7 @@ pub mod durable;
 pub mod evals;
 pub mod events;
 pub mod feature_flags;
+pub mod harness_examples;
 pub mod harnesses;
 pub mod http_signing_keys;
 pub mod images;
