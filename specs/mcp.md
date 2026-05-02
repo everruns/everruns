@@ -10,7 +10,7 @@ Routing is intentionally split:
 - MCP OAuth lives at `/oauth/*` (authorize, token, register)
 - MCP JSON-RPC lives at `/mcp`
 - OAuth discovery metadata lives at `/.well-known/oauth-authorization-server`
-- Protected-resource metadata lives at `/.well-known/oauth-protected-resource`
+- Protected-resource metadata lives at `/.well-known/oauth-protected-resource/mcp` (RFC 9728 §3.1 path-derived for the `/mcp` resource)
 
 Everruns also acts as an **MCP client** (connecting to remote MCP servers). That side is covered in [`specs/mcp-servers.md`](mcp-servers.md).
 
@@ -124,9 +124,11 @@ The `issuer` is the backend root URL (e.g. `https://app.example.com`). OAuth end
 }
 ```
 
-#### GET /.well-known/oauth-protected-resource
+#### GET /.well-known/oauth-protected-resource/mcp
 
 Protected Resource Metadata for MCP-aware OAuth clients. No auth required.
+
+The path-specific URL is derived per [RFC 9728 §3.1](https://datatracker.ietf.org/doc/html/rfc9728#section-3.1) for the `/mcp` resource: `{root}/mcp` → `{root}/.well-known/oauth-protected-resource/mcp`. The root `/.well-known/oauth-protected-resource` URL is intentionally **not** served — it would be the PRM for a resource at `/`, which Everruns does not expose. Real MCP providers (e.g. Atlassian) only serve the path-specific URL, so OSS canonicalises on the same shape.
 
 Everruns advertises `/mcp` as the protected resource and points clients at the same OAuth issuer and token endpoints used by the rest of the MCP flow.
 
@@ -135,10 +137,10 @@ Everruns advertises `/mcp` as the protected resource and points clients at the s
 Per [RFC 9728 §5.1](https://datatracker.ietf.org/doc/html/rfc9728#section-5.1) and the MCP 2025-06-18 auth spec, unauthenticated requests to `/mcp` return `401 Unauthorized` with a `WWW-Authenticate` header pointing at the protected-resource metadata document:
 
 ```
-WWW-Authenticate: Bearer realm="mcp", resource_metadata="https://app.example.com/.well-known/oauth-protected-resource"
+WWW-Authenticate: Bearer realm="mcp", resource_metadata="https://app.example.com/.well-known/oauth-protected-resource/mcp"
 ```
 
-The `resource_metadata` URL is derived from the configured API base URL (stripping `/api` or `$API_PREFIX`) so it matches the origin of the `.well-known` endpoints. Implementation: `crates/server/src/api/mcp_endpoint/mod.rs` attaches a tower layer to the MCP router that injects the header on 401 responses and leaves other status codes untouched.
+The `resource_metadata` URL is derived from the configured API base URL (stripping `/api` or `$API_PREFIX`) and uses the path-specific PRM URL for the `/mcp` resource. Implementation: `crates/server/src/api/mcp_endpoint/mod.rs` attaches a tower layer to the MCP router that injects the header on 401 responses and leaves other status codes untouched.
 
 #### POST /oauth/register
 
