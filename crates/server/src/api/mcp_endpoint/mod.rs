@@ -6,7 +6,7 @@
 //   → Direct service calls, first-class support for the agent conversation loop
 // - Tier 2 tools: discover, query, execute
 //   → Backed by bashkit ScriptedTool with API operations exposed as builtins
-//   → discover: uses ScriptedTool's built-in `discover` command
+//   → discover: reads inventory descriptors and returns schema-bearing JSON
 //   → query: runs bash scripts with the read-only subset of API ops
 //   → execute: runs bash scripts with the full API surface, including writes
 // - Tier 0 tools: me, list_organizations, switch_organization
@@ -1140,30 +1140,121 @@ async fn tool_session_get_status(
 }
 
 // ============================================================================
-// Tier 2: discover — delegates to ScriptedTool's built-in discover command
+// Tier 2: discover — structured catalog from inventory descriptors
 // ============================================================================
 
 async fn tool_discover(
     args: &Value,
-    org: &ResolvedOrg,
-    state: &AppState,
+    _org: &ResolvedOrg,
+    _state: &AppState,
 ) -> Result<String, String> {
     let show_all = args.get("all").and_then(|v| v.as_bool()).unwrap_or(false);
+    let include_schemas = args
+        .get("include_schemas")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(!show_all);
 
-    let command = if show_all {
-        "discover --categories".to_string()
-    } else {
-        let query = args.get("query").and_then(|v| v.as_str()).unwrap_or("");
+    let mut entries = crate::domains::common::catalog_entries_with_schemas(include_schemas);
+    entries.sort_by_key(|entry| (entry.category, entry.name));
+
+    if !show_all {
+        let query = args
+            .get("query")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim();
         if query.is_empty() {
             return Err(
                 "Provide a 'query' to search or set 'all: true' to list everything.".into(),
             );
         }
-        format!("discover --search '{}'", query.replace('\'', "'\\''"))
+
+        entries.retain(|entry| catalog_entry_matches(entry, query));
+    }
+
+    let operation_json = |entry: &crate::domains::common::CommandCatalogEntry| {
+        let mut value = json!({
+            "name": entry.name,
+            "category": entry.category,
+            "description": entry.description,
+            "method": entry.method,
+            "path": entry.path,
+            "read_only": entry.read_only,
+            "output_shape": entry.output_shape,
+        });
+        if let Some(positional_arg) = entry.positional_arg {
+            value["positional_arg"] = json!(positional_arg);
+        }
+        if include_schemas {
+            value["input_schema"] = entry.input_schema.clone();
+            value["output_schema"] = entry.output_schema.clone();
+        }
+        value
     };
 
-    let toolset = build_toolset(org, state, catalog::ToolsetMode::Full);
-    execute_script(&toolset, &command, 10_000).await
+    if show_all {
+        let mut by_category: std::collections::BTreeMap<&str, Vec<Value>> =
+            std::collections::BTreeMap::new();
+        for entry in &entries {
+            by_category
+                .entry(entry.category)
+                .or_default()
+                .push(operation_json(entry));
+        }
+
+        let categories: Vec<Value> = by_category
+            .into_iter()
+            .map(|(category, operations)| {
+                json!({
+                    "category": category,
+                    "count": operations.len(),
+                    "operations": operations,
+                })
+            })
+            .collect();
+
+        pretty_json(&json!({
+            "count": entries.len(),
+            "include_schemas": include_schemas,
+            "categories": categories,
+            "shape_hints": output_shape_hints(),
+        }))
+    } else {
+        pretty_json(&json!({
+            "count": entries.len(),
+            "include_schemas": include_schemas,
+            "operations": entries.iter().map(operation_json).collect::<Vec<_>>(),
+            "shape_hints": output_shape_hints(),
+        }))
+    }
+}
+
+fn catalog_entry_matches(entry: &crate::domains::common::CommandCatalogEntry, query: &str) -> bool {
+    let haystack = format!(
+        "{} {} {} {}",
+        entry.name,
+        entry.name.replace('_', " "),
+        entry.category,
+        entry.description
+    )
+    .to_lowercase();
+
+    let normalized_query = query.replace('_', " ").to_lowercase();
+    query
+        .to_lowercase()
+        .split_whitespace()
+        .all(|term| haystack.contains(term))
+        || normalized_query
+            .split_whitespace()
+            .all(|term| haystack.contains(term))
+}
+
+fn output_shape_hints() -> Value {
+    json!({
+        "array": "Root JSON value is an array. Use jq '.[]'.",
+        "paginated": "Root JSON value is an object with data/total/offset/limit. Use jq '.data[]'.",
+        "unknown": "Inspect output_schema or run a small sample before choosing a jq path."
+    })
 }
 
 // ============================================================================
@@ -1262,12 +1353,29 @@ async fn execute_script(
                         response.exit_code
                     ))
                 } else {
-                    Err(trimmed.to_string())
+                    Err(sanitize_script_error(trimmed))
                 }
             }
         }
         Err(_) => Err(format!("Command timed out after {timeout_ms}ms")),
     }
+}
+
+fn sanitize_script_error(message: &str) -> String {
+    if message.contains("jq: runtime error")
+        || (message.contains("jq: error") && message.contains("Cannot index"))
+    {
+        let cause = if message.to_lowercase().contains("cannot index") {
+            "cannot index input with requested path"
+        } else {
+            "filter failed against input value"
+        };
+        return format!(
+            "jq: runtime error: {cause}. Input value omitted; use discover output_shape/output_schema to choose the jq path."
+        );
+    }
+
+    message.to_string()
 }
 
 #[cfg(test)]

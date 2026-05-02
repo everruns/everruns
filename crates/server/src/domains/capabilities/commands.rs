@@ -42,6 +42,14 @@ impl Command for ListCapabilities {
         }
     }
 
+    fn output_schema() -> serde_json::Value {
+        paginated_output_schema(output_schema_for::<CapabilityInfo>())
+    }
+
+    fn output_shape() -> &'static str {
+        "paginated"
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<Paginated<CapabilityInfo>, CommandError> {
         let mut capabilities = ctx
             .capability_service

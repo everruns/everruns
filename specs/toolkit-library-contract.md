@@ -293,6 +293,14 @@ Fetch content from a URL and return it as text or markdown.
 
 The exact sections vary by tool — the contract is that `help()` is comprehensive enough to use the tool without reading source code.
 
+#### Runtime error hygiene
+
+Toolkit-owned interpreters must format runtime errors as concise user-facing
+messages. Errors should name the failing builtin and cause, but must not dump
+entire structured input values or prompt-sized fields. Consumers can add
+defense-in-depth truncation, but the toolkit owns avoiding verbose `Debug`
+renders from embedded engines such as jq.
+
 #### Locale affects
 
 Locale controls the language of human-readable text:

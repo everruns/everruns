@@ -88,6 +88,15 @@ to create, update, delete, or trigger actions.
 `execute` runs the full catalog. Always use `discover` if you are unsure which
 builtin to call.
 
+`discover` returns JSON. Focused searches include each operation's
+`input_schema`, `output_schema`, and `output_shape`. Use `output_shape` before
+writing jq:
+
+- `paginated` means the root is `{data,total,offset,limit}`; iterate with
+  `.data[]`.
+- `array` means the root is a bare array; iterate with `.[]`.
+- `unknown` means inspect `output_schema` or run a small sample first.
+
 ### Finding operations
 
 ```text
@@ -119,6 +128,14 @@ Rules of thumb:
 
 ```bash
 query { "commands": "list_agents | jq '.data[] | {id, name, default_model_id}'" }
+```
+
+**List harnesses.**
+
+`list_harnesses` returns a bare array, not a paginated object:
+
+```bash
+query { "commands": "list_harnesses | jq '.[] | {id, name, display_name, description, status, parent_harness_id}'" }
 ```
 
 **Create a harness and an agent, then run the agent.**

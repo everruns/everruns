@@ -265,6 +265,14 @@ impl Command for ListAgents {
         Some(&AGENT_VIEW)
     }
 
+    fn output_schema() -> serde_json::Value {
+        paginated_output_schema(output_schema_for::<Agent>())
+    }
+
+    fn output_shape() -> &'static str {
+        "paginated"
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<Paginated<Agent>, CommandError> {
         let pg = pagination(self.offset, self.limit);
         let (rows, total) = ctx

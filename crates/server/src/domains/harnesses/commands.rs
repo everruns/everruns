@@ -227,6 +227,14 @@ impl Command for ListHarnesses {
         Some(&HARNESS_VIEW)
     }
 
+    fn output_schema() -> serde_json::Value {
+        array_output_schema(output_schema_for::<Harness>())
+    }
+
+    fn output_shape() -> &'static str {
+        "array"
+    }
+
     async fn execute(self, ctx: &Ctx) -> Result<Vec<Harness>, CommandError> {
         let rows = ctx
             .db

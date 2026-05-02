@@ -355,7 +355,7 @@ async fn test_mcp_tools_list() {
         discover["inputSchema"]["properties"]["organization_id"]["pattern"],
         "^org_[0-9a-f]{32}$"
     );
-    assert!(discover.as_object().unwrap().get("outputSchema").is_none());
+    assert_eq!(discover["outputSchema"]["type"], "object");
     assert!(discover.as_object().unwrap().get("_meta").is_none());
 
     let query = tools.iter().find(|tool| tool["name"] == "query").unwrap();
@@ -873,7 +873,7 @@ async fn test_mcp_session_get_status_nonexistent() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_mcp_discover_agents() {
-    let server = TestServer::new().await;
+    let server = TestServer::in_memory().await;
     let resp = mcp_tool_call(&server, "discover", json!({ "query": "agents" })).await;
 
     assert!(
@@ -881,16 +881,28 @@ async fn test_mcp_discover_agents() {
         "discover failed: {}",
         tool_text(&resp)
     );
-    let text = tool_text(&resp);
+    let payload = tool_json(&resp);
+    let text = payload.to_string();
     assert!(
         text.contains("list_agents"),
         "discover should find list_agents, got: {text}"
+    );
+    let list_agents = payload["operations"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|op| op["name"] == "list_agents")
+        .expect("list_agents operation");
+    assert_eq!(list_agents["output_shape"], "paginated");
+    assert_eq!(
+        list_agents["output_schema"]["properties"]["data"]["type"],
+        "array"
     );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_mcp_discover_sessions() {
-    let server = TestServer::new().await;
+    let server = TestServer::in_memory().await;
     let resp = mcp_tool_call(&server, "discover", json!({ "query": "sessions" })).await;
 
     assert!(
@@ -898,7 +910,8 @@ async fn test_mcp_discover_sessions() {
         "discover failed: {}",
         tool_text(&resp)
     );
-    let text = tool_text(&resp);
+    let payload = tool_json(&resp);
+    let text = payload.to_string();
     // "sessions" matches list_sessions, create_session, get_session, etc.
     assert!(
         text.contains("list_sessions"),
@@ -908,7 +921,7 @@ async fn test_mcp_discover_sessions() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_mcp_discover_harnesses() {
-    let server = TestServer::new().await;
+    let server = TestServer::in_memory().await;
     let resp = mcp_tool_call(&server, "discover", json!({ "query": "harnesses" })).await;
 
     assert!(
@@ -916,16 +929,25 @@ async fn test_mcp_discover_harnesses() {
         "discover failed: {}",
         tool_text(&resp)
     );
-    let text = tool_text(&resp);
+    let payload = tool_json(&resp);
+    let text = payload.to_string();
     assert!(
         text.contains("list_harnesses"),
         "discover should find list_harnesses"
     );
+    let list_harnesses = payload["operations"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|op| op["name"] == "list_harnesses")
+        .expect("list_harnesses operation");
+    assert_eq!(list_harnesses["output_shape"], "array");
+    assert_eq!(list_harnesses["output_schema"]["type"], "array");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_mcp_discover_mcp_servers() {
-    let server = TestServer::new().await;
+    let server = TestServer::in_memory().await;
     let resp = mcp_tool_call(&server, "discover", json!({ "query": "mcp" })).await;
 
     assert!(
@@ -933,7 +955,8 @@ async fn test_mcp_discover_mcp_servers() {
         "discover failed: {}",
         tool_text(&resp)
     );
-    let text = tool_text(&resp);
+    let payload = tool_json(&resp);
+    let text = payload.to_string();
     assert!(
         text.contains("mcp"),
         "discover should find MCP-related operations"
@@ -942,14 +965,31 @@ async fn test_mcp_discover_mcp_servers() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_mcp_discover_missing_query() {
-    let server = TestServer::new().await;
+    let server = TestServer::in_memory().await;
     let resp = mcp_tool_call(&server, "discover", json!({})).await;
     assert!(tool_is_error(&resp), "Expected error for missing query");
+    assert!(
+        tool_text(&resp).contains("query"),
+        "Expected query guidance, got: {}",
+        tool_text(&resp)
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_discover_empty_query() {
+    let server = TestServer::in_memory().await;
+    let resp = mcp_tool_call(&server, "discover", json!({ "query": "" })).await;
+    assert!(tool_is_error(&resp), "Expected error for empty query");
+    assert!(
+        tool_text(&resp).contains("all: true"),
+        "Expected all:true guidance, got: {}",
+        tool_text(&resp)
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_mcp_discover_all() {
-    let server = TestServer::new().await;
+    let server = TestServer::in_memory().await;
     let resp = mcp_tool_call(&server, "discover", json!({ "all": true })).await;
 
     assert!(
@@ -957,21 +997,37 @@ async fn test_mcp_discover_all() {
         "discover --all failed: {}",
         tool_text(&resp)
     );
-    let text = tool_text(&resp);
+    let payload = tool_json(&resp);
+    let categories = payload["categories"].as_array().expect("categories array");
     assert!(
-        text.contains("## agents"),
-        "Should list agents category heading"
+        categories.iter().any(|cat| cat["category"] == "agents"),
+        "Should list agents category"
     );
     assert!(
-        text.contains("## sessions"),
-        "Should list sessions category heading"
+        categories.iter().any(|cat| cat["category"] == "sessions"),
+        "Should list sessions category"
     );
-    assert!(text.contains("create_agent"), "Should include create_agent");
+    assert!(
+        payload.to_string().contains("create_agent"),
+        "Should include create_agent"
+    );
+    assert_eq!(payload["include_schemas"], false);
+    let first_operation = payload["categories"][0]["operations"][0]
+        .as_object()
+        .expect("operation object");
+    assert!(
+        !first_operation.contains_key("input_schema"),
+        "discover --all should omit input schemas by default"
+    );
+    assert!(
+        !first_operation.contains_key("output_schema"),
+        "discover --all should omit output schemas by default"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_mcp_discover_fuzzy_search() {
-    let server = TestServer::new().await;
+    let server = TestServer::in_memory().await;
     // "create agent" should match "create_agent" via token matching
     let resp = mcp_tool_call(&server, "discover", json!({ "query": "create agent" })).await;
 
@@ -980,7 +1036,8 @@ async fn test_mcp_discover_fuzzy_search() {
         "discover fuzzy search failed: {}",
         tool_text(&resp)
     );
-    let text = tool_text(&resp);
+    let payload = tool_json(&resp);
+    let text = payload.to_string();
     assert!(
         text.contains("create_agent"),
         "fuzzy search 'create agent' should find create_agent, got: {text}"
@@ -989,7 +1046,7 @@ async fn test_mcp_discover_fuzzy_search() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_mcp_discover_capabilities() {
-    let server = TestServer::new().await;
+    let server = TestServer::in_memory().await;
     let resp = mcp_tool_call(&server, "discover", json!({ "query": "capabilities" })).await;
 
     assert!(
@@ -997,7 +1054,8 @@ async fn test_mcp_discover_capabilities() {
         "discover capabilities failed: {}",
         tool_text(&resp)
     );
-    let text = tool_text(&resp);
+    let payload = tool_json(&resp);
+    let text = payload.to_string();
     assert!(
         text.contains("list_capabilities"),
         "Should find list_capabilities, got: {text}"
@@ -1006,6 +1064,13 @@ async fn test_mcp_discover_capabilities() {
         text.contains("get_capability"),
         "Should find get_capability, got: {text}"
     );
+    let list_capabilities = payload["operations"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|op| op["name"] == "list_capabilities")
+        .expect("list_capabilities operation");
+    assert_eq!(list_capabilities["output_shape"], "paginated");
 }
 
 // ============================================================================
@@ -1025,6 +1090,67 @@ async fn test_mcp_query_list_harnesses() {
     let result = tool_json(&resp);
     let harnesses = result.as_array().expect("Expected harnesses array");
     assert!(!harnesses.is_empty(), "Should have seed harnesses");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_query_missing_commands() {
+    let server = TestServer::in_memory().await;
+    let resp = mcp_tool_call(&server, "query", json!({})).await;
+    assert!(tool_is_error(&resp), "Expected error for missing commands");
+    assert!(
+        tool_text(&resp).contains("commands"),
+        "Expected commands guidance, got: {}",
+        tool_text(&resp)
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_execute_missing_commands() {
+    let server = TestServer::in_memory().await;
+    let resp = mcp_tool_call(&server, "execute", json!({})).await;
+    assert!(tool_is_error(&resp), "Expected error for missing commands");
+    assert!(
+        tool_text(&resp).contains("commands"),
+        "Expected commands guidance, got: {}",
+        tool_text(&resp)
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_query_list_harnesses_wrong_jq_shape_is_concise() {
+    let server = TestServer::in_memory().await;
+    let resp = mcp_tool_call(
+        &server,
+        "query",
+        json!({
+            "commands": "list_harnesses --limit 100 | jq -c '.data[] | {id, name, system_prompt}'"
+        }),
+    )
+    .await;
+
+    assert!(tool_is_error(&resp), "Expected jq shape mismatch error");
+    let text = tool_text(&resp);
+    assert!(
+        text.contains("jq: runtime error") || text.contains("jq: error"),
+        "Expected jq error, got: {text}"
+    );
+    assert!(
+        text.contains("output_shape"),
+        "Expected discover guidance, got: {text}"
+    );
+    assert!(
+        !text.contains("system_prompt"),
+        "Error must not dump harness fields: {text}"
+    );
+    assert!(
+        !text.contains("You are"),
+        "Error must not dump prompt content: {text}"
+    );
+    assert!(
+        text.len() < 240,
+        "Error should be concise, got {} chars: {text}",
+        text.len()
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

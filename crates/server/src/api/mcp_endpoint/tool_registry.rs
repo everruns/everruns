@@ -366,7 +366,7 @@ fn discover_tool(protocol_version: &str, org_id_description: &str) -> McpEndpoin
         protocol_version,
         "discover",
         "Discover Operations",
-        "Search the Everruns API catalog to find available operations. Returns matching operations with description and parameters. Use all: true to list every operation grouped by category. Read-only operations are available as bash builtins in query; the full catalog is available in execute.",
+        "Search the Everruns API catalog to find available operations. Returns matching operations with input/output schemas and jq-oriented output shape hints. Use all: true to list every operation grouped by category. Read-only operations are available as bash builtins in query; the full catalog is available in execute.",
         object_schema(
             vec![
                 (
@@ -384,6 +384,13 @@ fn discover_tool(protocol_version: &str, org_id_description: &str) -> McpEndpoin
                     }),
                 ),
                 (
+                    "include_schemas",
+                    json!({
+                        "type": "boolean",
+                        "description": "Include input_schema and output_schema in results. Defaults to true for search and false for all."
+                    }),
+                ),
+                (
                     "organization_id",
                     json!({
                         "type": "string",
@@ -394,7 +401,7 @@ fn discover_tool(protocol_version: &str, org_id_description: &str) -> McpEndpoin
             ],
             vec![],
         ),
-        None,
+        Some(discover_output_schema()),
         Some(read_only_annotations()),
         10_000,
     )
@@ -593,5 +600,62 @@ fn me_output_schema() -> Value {
             }
         },
         "required": ["user", "current_organization", "organizations"]
+    })
+}
+
+fn discover_output_schema() -> Value {
+    let operation_schema = json!({
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+            "name": { "type": "string" },
+            "category": { "type": "string" },
+            "description": { "type": "string" },
+            "method": { "type": "string" },
+            "path": { "type": "string" },
+            "read_only": { "type": "boolean" },
+            "positional_arg": { "type": "string" },
+            "input_schema": { "type": "object", "additionalProperties": true },
+            "output_schema": { "type": "object", "additionalProperties": true },
+            "output_shape": {
+                "type": "string",
+                "enum": ["array", "paginated", "unknown"]
+            }
+        },
+        "required": ["name", "category", "description", "method", "path", "read_only", "output_shape"]
+    });
+
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "count": { "type": "integer" },
+            "include_schemas": { "type": "boolean" },
+            "operations": {
+                "type": "array",
+                "items": operation_schema
+            },
+            "categories": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "category": { "type": "string" },
+                        "count": { "type": "integer" },
+                        "operations": {
+                            "type": "array",
+                            "items": operation_schema
+                        }
+                    },
+                    "required": ["category", "count", "operations"]
+                }
+            },
+            "shape_hints": {
+                "type": "object",
+                "additionalProperties": { "type": "string" }
+            }
+        },
+        "required": ["count", "include_schemas", "shape_hints"]
     })
 }

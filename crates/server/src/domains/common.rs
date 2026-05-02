@@ -425,6 +425,24 @@ pub trait Command: DeserializeOwned + Send + 'static + CommandSchema {
         json_schema_for_command::<Self>()
     }
 
+    /// JSON Schema for the command output surfaced in MCP discovery.
+    ///
+    /// Commands should override this when the output shape is important for
+    /// scripting. The default remains a valid open schema so discovery can
+    /// always report an output contract without blocking command migration.
+    fn output_schema() -> Value {
+        serde_json::json!({
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Output schema is not declared for this command yet."
+        })
+    }
+
+    /// Short jq-oriented output shape hint for MCP scripting callers.
+    fn output_shape() -> &'static str {
+        "unknown"
+    }
+
     /// Execute the command. Validation + business logic + persistence.
     ///
     /// SECURITY: Do not call this directly from HTTP/MCP/gRPC adapters —
@@ -479,6 +497,37 @@ where
     T: ToSchema,
 {
     json_schema_for::<T>()
+}
+
+pub fn output_schema_for<T>() -> Value
+where
+    T: ToSchema,
+{
+    json_schema_for::<T>()
+}
+
+pub fn array_output_schema(item_schema: Value) -> Value {
+    serde_json::json!({
+        "type": "array",
+        "items": item_schema
+    })
+}
+
+pub fn paginated_output_schema(item_schema: Value) -> Value {
+    serde_json::json!({
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+            "data": {
+                "type": "array",
+                "items": item_schema
+            },
+            "total": { "type": "integer" },
+            "offset": { "type": "integer" },
+            "limit": { "type": "integer" }
+        },
+        "required": ["data", "total", "offset", "limit"]
+    })
 }
 
 fn json_schema_for<T>() -> Value
@@ -584,6 +633,8 @@ pub struct CommandDescriptor {
     pub read_only: fn() -> bool,
     pub positional_arg: fn() -> Option<&'static str>,
     pub param_schema: fn() -> Value,
+    pub output_schema: fn() -> Value,
+    pub output_shape: fn() -> &'static str,
     // SECURITY: Exposed so the policy-coverage test can assert every
     // mutating command declares a policy; do not drop.
     pub policy: fn() -> Option<&'static Policy>,
@@ -600,6 +651,8 @@ impl CommandDescriptor {
             read_only: C::read_only,
             positional_arg: C::positional_arg,
             param_schema: <C as Command>::param_schema,
+            output_schema: C::output_schema,
+            output_shape: C::output_shape,
             policy: C::policy,
             dispatch: dispatch_for::<C>,
         }
@@ -653,6 +706,50 @@ pub fn catalog_entries() -> Vec<CommandMeta> {
     inventory::iter::<CommandDescriptor>
         .into_iter()
         .map(|desc| (desc.meta)())
+        .collect()
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CommandCatalogEntry {
+    pub name: &'static str,
+    pub category: &'static str,
+    pub description: &'static str,
+    pub method: &'static str,
+    pub path: &'static str,
+    pub read_only: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub positional_arg: Option<&'static str>,
+    pub input_schema: Value,
+    pub output_schema: Value,
+    pub output_shape: &'static str,
+}
+
+pub fn catalog_entries_with_schemas(include_schemas: bool) -> Vec<CommandCatalogEntry> {
+    inventory::iter::<CommandDescriptor>
+        .into_iter()
+        .map(|desc| {
+            let meta = (desc.meta)();
+            CommandCatalogEntry {
+                name: meta.name,
+                category: meta.category,
+                description: meta.description,
+                method: meta.method,
+                path: meta.path,
+                read_only: (desc.read_only)(),
+                positional_arg: (desc.positional_arg)(),
+                input_schema: if include_schemas {
+                    (desc.param_schema)()
+                } else {
+                    Value::Null
+                },
+                output_schema: if include_schemas {
+                    (desc.output_schema)()
+                } else {
+                    Value::Null
+                },
+                output_shape: (desc.output_shape)(),
+            }
+        })
         .collect()
 }
 
