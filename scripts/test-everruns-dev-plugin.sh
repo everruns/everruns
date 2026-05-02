@@ -33,17 +33,47 @@ if server.get("scopes"):
 
 codex = json.loads((plugin_dir / ".codex-plugin" / "plugin.json").read_text())
 claude = json.loads((plugin_dir / ".claude-plugin" / "plugin.json").read_text())
-marketplace = json.loads((root / ".claude-plugin" / "marketplace.json").read_text())
-marketplace_plugin = marketplace["plugins"][0]
+claude_marketplace = json.loads((root / ".claude-plugin" / "marketplace.json").read_text())
+codex_marketplace = json.loads((root / ".agents" / "plugins" / "marketplace.json").read_text())
+
+
+def marketplace_plugin(label, marketplace, name):
+    for plugin in marketplace["plugins"]:
+        if plugin["name"] == name:
+            return plugin
+    raise SystemExit(f"{label} marketplace is missing {name} plugin registration")
+
+
+claude_marketplace_plugin = marketplace_plugin(
+    "Claude Code", claude_marketplace, "everruns-dev"
+)
+codex_marketplace_plugin = marketplace_plugin(
+    "Codex", codex_marketplace, "everruns-dev"
+)
+
+for label, plugin in {"codex": codex, "claude": claude}.items():
+    if plugin["name"] != "everruns-dev":
+        raise SystemExit(f"Everruns Dev {label} plugin name drifted: {plugin['name']}")
 
 versions = {
     "codex": codex["version"],
     "claude": claude["version"],
-    "marketplace": marketplace_plugin["version"],
+    "claude_marketplace": claude_marketplace_plugin["version"],
 }
 
 if len(set(versions.values())) != 1:
     raise SystemExit(f"Everruns Dev plugin versions diverged: {versions}")
+
+if claude_marketplace_plugin["source"] != "./plugins/everruns-dev":
+    raise SystemExit(
+        "Claude Code marketplace must point at ./plugins/everruns-dev"
+    )
+
+codex_source = codex_marketplace_plugin["source"]
+if codex_source.get("source") != "local" or codex_source.get("path") != "./plugins/everruns-dev":
+    raise SystemExit(
+        "Codex marketplace must point at local ./plugins/everruns-dev"
+    )
 
 print("everruns-dev plugin metadata checks passed")
 PY
