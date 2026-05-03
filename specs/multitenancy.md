@@ -607,7 +607,7 @@ resource and the UI shows a "not found" screen — a recurring papercut.
 |----------------------|--------------------------------------------------------------------------------------------------------------------------|
 | Entity APIs          | UNCHANGED — still return 404 for resources in other orgs. Preserves the enumeration guarantee on lines 127–128.          |
 | `GET /v1/resolve-org`| Authenticated endpoint. Given a prefixed public ID, returns the owning org ONLY when the caller is a member of that org. |
-| UI                   | On 404 from an entity detail fetch, calls the resolver and, if a member-owned org is returned, switches and retries.     |
+| UI                   | On 404 from an entity detail fetch, suppresses final "not found" UI while checking the resolver; if a member-owned org is returned, switches and retries. |
 
 Because the resolver reveals only orgs the caller already belongs to, the
 set of answers it can produce is a subset of the information the caller can
@@ -633,12 +633,12 @@ endpoint dispatches by prefix; adding a new top entity requires:
 1. A storage method `get_<entity>_organization_id(public_id: &str) -> Result<Option<i64>>`
    on the PG and in-memory backends (no caller-side org scoping).
 2. One `inventory::submit!` block in `domains/org_resolver.rs`.
-3. Nothing else — the resolver endpoint picks up the new prefix on startup,
-   and any entity-detail React hook built on `useDetail` automatically gets
-   the fallback.
+3. Nothing else on the backend — the resolver endpoint picks up the new
+   prefix on startup.
 
 Existing registrations cover: `session`, `agent`, `harness`, `app`,
-`skill`, `mcp`, `identity`, `eval`.
+`skill`, `mcp`, `identity`, `eval`. Virtual capability IDs (`mcp:<uuid>` and
+`skill:<uuid>`) resolve through their underlying MCP server or skill rows.
 
 ### UI integration
 
@@ -648,14 +648,23 @@ Existing registrations cover: `session`, `agent`, `harness`, `app`,
   `setCurrentOrg(target, { stayOnPage: true })` when the owner is a
   membership. The `stayOnPage` option skips the default org-switch redirect
   that would otherwise send the user back to the list page.
-- It is wired into `useDetail` (shared CRUD factory) and the bespoke
-  `useSession` / `useAgentIdentity` hooks so every top-level detail route
-  gets the fallback for free.
+- While the resolver check or resulting org switch is pending, the hook
+  exposes `isCheckingOtherOrgs`. Detail hooks MUST fold that into their
+  loading state so users see loading/checking UI instead of a brief red 404.
+  Render final "not found" only after the fallback is exhausted.
+- For ordinary CRUD-style entities, `hooks/create-crud-hooks.ts::useDetail`
+  is the generic integration point. Agents, harnesses, apps, skills, MCP
+  servers, and evals inherit the fallback through this helper.
+- Bespoke detail hooks that do not use `createCrudHooks` MUST call
+  `useResourceOrgFallback` themselves and include `isCheckingOtherOrgs` in
+  their returned loading state. Current bespoke integrations: `useSession`,
+  `useAgentIdentity`, and `useCapability`.
 
 ### Invariants
 
-- The fallback fires **at most once per resource id per mount** (tracked
-  via a ref inside the hook) to avoid ping-pong when the new org also 404s.
+- The fallback fires **at most once per resource id + current org pair**
+  (tracked via a ref inside the hook) to avoid ping-pong when the new org
+  also 404s.
 - The entity API's 404 behaviour is never relaxed. The only cross-org
   information disclosure happens through `GET /v1/resolve-org`, which is
   membership-gated.

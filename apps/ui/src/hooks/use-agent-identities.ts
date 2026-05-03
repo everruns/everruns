@@ -39,12 +39,15 @@ export function useAgentIdentity(identityId: string | undefined) {
     queryFn: () => getAgentIdentity(identityId!),
     enabled: !!org && !!identityId,
   });
-  useResourceOrgFallback({
+  const fallback = useResourceOrgFallback({
     resourceId: identityId,
     error: query.error,
     isLoading: orgLoading || query.isLoading,
   });
-  return { ...query, isLoading: orgLoading || query.isLoading };
+  return {
+    ...query,
+    isLoading: orgLoading || query.isLoading || fallback.isCheckingOtherOrgs,
+  };
 }
 
 export function useCreateAgentIdentity() {

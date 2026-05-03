@@ -17,7 +17,10 @@ use std::future::Future;
 use std::pin::Pin;
 
 use anyhow::Result;
-use everruns_core::typed_id::SessionId;
+use everruns_core::{
+    CapabilityId,
+    typed_id::{McpServerId, SessionId, SkillId},
+};
 
 use crate::storage::StorageBackend;
 
@@ -49,6 +52,16 @@ inventory::collect!(ResourceOrgResolver);
 /// exist. Callers MUST filter the returned `org_id` against the user's
 /// memberships before revealing it to the client.
 pub async fn resolve_resource_org(db: &StorageBackend, id: &str) -> Result<Option<i64>> {
+    let capability_id = CapabilityId::new(id);
+    if let Some(server_id) = capability_id.mcp_server_id() {
+        let public_id = McpServerId::from_uuid(server_id).to_string();
+        return db.get_mcp_server_organization_id(&public_id).await;
+    }
+    if let Some(skill_id) = capability_id.skill_id() {
+        let public_id = SkillId::from_uuid(skill_id).to_string();
+        return db.get_skill_organization_id(&public_id).await;
+    }
+
     let prefix = match id.split_once('_') {
         Some((p, _)) if !p.is_empty() => p,
         _ => return Ok(None),
@@ -218,5 +231,62 @@ mod tests {
             .await
             .unwrap();
         assert!(org.is_none());
+    }
+
+    #[tokio::test]
+    async fn resolve_virtual_capability_returns_underlying_resource_org_id() {
+        use crate::storage::models::{CreateMcpServerRow, CreateSkillRow};
+        use everruns_core::{
+            capabilities::{mcp_capability_id, skill_capability_id},
+            typed_id::SkillId,
+        };
+
+        let db = StorageBackend::in_memory();
+
+        let mcp = db
+            .create_mcp_server(
+                42,
+                CreateMcpServerRow {
+                    name: "tools".to_string(),
+                    description: None,
+                    url: "https://mcp.example.test".to_string(),
+                    transport_type: "streamable_http".to_string(),
+                    api_key_encrypted: None,
+                    headers: None,
+                    settings: None,
+                },
+            )
+            .await
+            .unwrap();
+        let mcp_capability_id = mcp_capability_id(mcp.id.uuid());
+
+        let skill_id = SkillId::new();
+        db.create_skill(
+            43,
+            CreateSkillRow {
+                public_id: skill_id.to_string(),
+                name: "helper".to_string(),
+                description: "Helper skill".to_string(),
+                license: None,
+                compatibility: None,
+                metadata: serde_json::json!({}),
+                allowed_tools: None,
+                instructions: "Do useful things.".to_string(),
+                source_type: "manual".to_string(),
+                archive_data: None,
+                version: "1.0.0".to_string(),
+            },
+        )
+        .await
+        .unwrap();
+        let skill_capability_id = skill_capability_id(skill_id.uuid());
+
+        let org = resolve_resource_org(&db, &mcp_capability_id).await.unwrap();
+        assert_eq!(org, Some(42));
+
+        let org = resolve_resource_org(&db, &skill_capability_id)
+            .await
+            .unwrap();
+        assert_eq!(org, Some(43));
     }
 }
