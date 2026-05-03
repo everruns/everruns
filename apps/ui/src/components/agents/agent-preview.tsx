@@ -18,7 +18,8 @@ import { Wrench, FileText, AlertCircle } from "lucide-react";
 interface AgentPreviewProps {
   systemPrompt: string;
   capabilities: AgentCapabilityConfig[];
-  initialFiles: InitialFile[];
+  // Accept missing `initial_files` from agents persisted before that field existed.
+  initialFiles: InitialFile[] | null | undefined;
   tools?: ToolDefinition[];
 }
 

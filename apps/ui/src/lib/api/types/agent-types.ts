@@ -26,7 +26,8 @@ export interface Agent {
   tags: string[];
   /** Capabilities with per-agent configuration */
   capabilities: AgentCapabilityConfig[];
-  initial_files: InitialFile[];
+  /** Initial files. Optional: older records and serializers that strip empty arrays may omit this field. */
+  initial_files?: InitialFile[];
   /** Tool definitions (including client-side tools), defaults to [] */
   tools?: ToolDefinition[];
   /** Network access list for URL filtering */
@@ -124,7 +125,8 @@ export interface Harness {
   tags: string[];
   /** Capabilities with per-harness configuration */
   capabilities: AgentCapabilityConfig[];
-  initial_files: InitialFile[];
+  /** Initial files. Optional: older records and serializers that strip empty arrays may omit this field. */
+  initial_files?: InitialFile[];
   /** Network access list for URL filtering */
   network_access?: NetworkAccessList | null;
   /** Whether this harness is built-in (system-managed, readonly) */

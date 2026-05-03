@@ -24,7 +24,9 @@ import {
 } from "lucide-react";
 
 interface InitialFilesPreviewProps {
-  files: InitialFile[];
+  // Accept undefined/null so older API responses that omit `initial_files`
+  // do not crash the preview surface with `TypeError: t is not iterable`.
+  files: InitialFile[] | null | undefined;
   title?: string;
   description?: string;
 }
@@ -35,7 +37,10 @@ export function InitialFilesPreview({
   description = "Files configured on this item. New sessions may merge files from other layers, with later layers overriding earlier files by path.",
 }: InitialFilesPreviewProps) {
   const sortedFiles = useMemo(
-    () => [...files].sort((left, right) => left.path.localeCompare(right.path)),
+    () =>
+      Array.isArray(files)
+        ? [...files].sort((left, right) => left.path.localeCompare(right.path))
+        : [],
     [files],
   );
   const [selectedPath, setSelectedPath] = useState<string | null>(sortedFiles[0]?.path ?? null);
