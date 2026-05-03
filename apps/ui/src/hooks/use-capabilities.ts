@@ -8,6 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import { getCapability, listCapabilities } from "@/lib/api/capabilities";
 import type { CapabilityId } from "@/lib/api/types";
 import { useOrg } from "@/providers/org-provider";
+import { useResourceOrgFallback } from "./use-resource-org-fallback";
 
 export function useCapabilities() {
   const { currentOrg, isLoading: orgLoading } = useOrg();
@@ -36,9 +37,15 @@ export function useCapability(capabilityId: CapabilityId | undefined) {
     enabled: !!org && !!capabilityId,
   });
 
+  const fallback = useResourceOrgFallback({
+    resourceId: capabilityId,
+    error: query.error,
+    isLoading: orgLoading || query.isLoading,
+  });
+
   // Include org loading state so pages show skeleton while org initializes
   return {
     ...query,
-    isLoading: orgLoading || query.isLoading,
+    isLoading: orgLoading || query.isLoading || fallback.isCheckingOtherOrgs,
   };
 }

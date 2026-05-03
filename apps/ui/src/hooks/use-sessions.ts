@@ -85,7 +85,7 @@ export function useSession(
   // Cross-org fallback: auto-switch to the owning org when the user follows a
   // direct link to a session in another org they are a member of.
   // See specs/multitenancy.md (Cross-Org Resource Resolution).
-  useResourceOrgFallback({
+  const fallback = useResourceOrgFallback({
     resourceId: sessionId,
     error: query.error,
     isLoading: orgLoading || query.isLoading,
@@ -94,7 +94,7 @@ export function useSession(
   // Include org loading state so pages show skeleton while org initializes
   return {
     ...query,
-    isLoading: orgLoading || query.isLoading,
+    isLoading: orgLoading || query.isLoading || fallback.isCheckingOtherOrgs,
   };
 }
 

@@ -337,6 +337,9 @@ contract. When introducing a new such entity, add:
 1. A storage method `get_<entity>_organization_id(public_id: &str) -> Result<Option<i64>>`
    (PG + in-memory).
 2. One `inventory::submit!` block in `domains/org_resolver.rs`.
+3. A UI detail hook that uses `hooks/create-crud-hooks.ts::useDetail`, or a
+   bespoke hook that calls `hooks/use-resource-org-fallback.ts` and folds
+   `isCheckingOtherOrgs` into its loading state.
 
 ### Shared services (`crates/server/src/services/`)
 

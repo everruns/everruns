@@ -10,7 +10,7 @@
 
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ApiError } from "@/lib/api/client";
 import { resolveOrgForResource } from "@/lib/api/resolver";
 import { useOrg } from "@/providers/org-provider";
@@ -31,6 +31,14 @@ function is404(error: unknown): boolean {
   return error instanceof ApiError && error.status === 404;
 }
 
+export interface ResourceOrgFallbackState {
+  /**
+   * True while a 404 might still be recoverable by switching to another org.
+   * Detail pages should hide final "not found" UI while this is true.
+   */
+  isCheckingOtherOrgs: boolean;
+}
+
 /**
  * Attempt to recover from a 404 on an entity detail route by switching to the
  * owning org (if the caller is a member of it).
@@ -40,28 +48,61 @@ function is404(error: unknown): boolean {
  * `stayOnPage: true`, React Query invalidates, and the detail query re-runs
  * in the new org context.
  */
-export function useResourceOrgFallback({ resourceId, error, isLoading }: Options): void {
-  const { currentOrg, organizations, setCurrentOrg, isSwitching } = useOrg();
-  const attemptedRef = useRef<string | null>(null);
+export function useResourceOrgFallback({
+  resourceId,
+  error,
+  isLoading,
+}: Options): ResourceOrgFallbackState {
+  const { currentOrg, organizations = [], setCurrentOrg, isSwitching } = useOrg();
+  const attemptedKeysRef = useRef<Set<string>>(new Set());
+  const [exhaustedKeys, setExhaustedKeys] = useState<Set<string>>(() => new Set());
+
+  const lookupKey = resourceId && currentOrg ? `${resourceId}:${currentOrg.public_id}` : undefined;
+  const shouldCheck =
+    !!lookupKey && !isLoading && !isSwitching && is404(error) && !exhaustedKeys.has(lookupKey);
+
+  const organizationsById = useMemo(
+    () => new Map(organizations.map((org) => [org.public_id, org])),
+    [organizations],
+  );
+
+  const markExhausted = useCallback((key: string) => {
+    setExhaustedKeys((prev) => {
+      if (prev.has(key)) return prev;
+      const next = new Set(prev);
+      next.add(key);
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
-    if (!resourceId || !currentOrg || isLoading || isSwitching) return;
-    if (!is404(error)) return;
-    // Only try once per resource id per mount to avoid ping-pong if the
-    // target org also returns 404.
-    if (attemptedRef.current === resourceId) return;
-    attemptedRef.current = resourceId;
+    if (!resourceId || !currentOrg || !lookupKey || !shouldCheck) return;
+    // Only try once per resource+org pair. If switching succeeds but the
+    // target org still 404s, the key changes and we can mark that final state
+    // exhausted instead of hiding the error forever.
+    if (attemptedKeysRef.current.has(lookupKey)) return;
+    attemptedKeysRef.current.add(lookupKey);
 
     let cancelled = false;
     (async () => {
       try {
         const result = await resolveOrgForResource(resourceId);
-        if (cancelled || !result) return;
-        if (result.org_id === currentOrg.public_id) return;
-        const target = organizations.find((o) => o.public_id === result.org_id);
-        if (!target) return;
+        if (cancelled) return;
+        if (!result || result.org_id === currentOrg.public_id) {
+          markExhausted(lookupKey);
+          return;
+        }
+        const target = organizationsById.get(result.org_id);
+        if (!target) {
+          markExhausted(lookupKey);
+          return;
+        }
         setCurrentOrg(target, { stayOnPage: true });
+        markExhausted(lookupKey);
       } catch (e) {
+        if (!cancelled) {
+          markExhausted(lookupKey);
+        }
         console.warn("Failed to resolve owning org for resource:", e);
       }
     })();
@@ -69,5 +110,15 @@ export function useResourceOrgFallback({ resourceId, error, isLoading }: Options
     return () => {
       cancelled = true;
     };
-  }, [resourceId, error, isLoading, isSwitching, currentOrg, organizations, setCurrentOrg]);
+  }, [
+    resourceId,
+    currentOrg,
+    lookupKey,
+    shouldCheck,
+    organizationsById,
+    markExhausted,
+    setCurrentOrg,
+  ]);
+
+  return { isCheckingOtherOrgs: shouldCheck || (isSwitching && is404(error)) };
 }
