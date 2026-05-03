@@ -9,3 +9,4 @@ export {
   defaultDevNavigation,
 } from "./sidebar";
 export { MainLayout } from "./main-layout";
+export { PageShell, PageHeader, PageBody } from "./page-shell";
