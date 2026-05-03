@@ -18,7 +18,8 @@ import { Wrench, FileText, AlertCircle } from "lucide-react";
 interface HarnessPreviewProps {
   systemPrompt: string;
   capabilities: AgentCapabilityConfig[];
-  initialFiles: InitialFile[];
+  // Accept missing `initial_files` from harnesses persisted before that field existed.
+  initialFiles: InitialFile[] | null | undefined;
   parentHarnessId?: string;
 }
 

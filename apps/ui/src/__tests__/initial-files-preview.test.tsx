@@ -19,6 +19,14 @@ describe("InitialFilesPreview", () => {
     expect(screen.getByText("No initial files configured.")).toBeInTheDocument();
   });
 
+  // Regression: agents/harnesses persisted before `initial_files` existed (or stripped
+  // by serializers) hand the component `undefined`. It must not throw "t is not iterable".
+  it.each([undefined, null])("renders empty state when files prop is %p", (files) => {
+    render(<InitialFilesPreview files={files as InitialFile[] | null | undefined} />);
+
+    expect(screen.getByText("No initial files configured.")).toBeInTheDocument();
+  });
+
   it("shows text file contents inline and lets the user switch files", () => {
     const files: InitialFile[] = [
       {
