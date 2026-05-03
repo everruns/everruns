@@ -5,17 +5,24 @@
 // impl_auth_state!: macro to eliminate repeated FromRef<AppState> for AuthState impls
 
 use axum::Json;
-use axum::http::StatusCode;
+use axum::body::{Body, to_bytes};
+use axum::extract::Request;
+use axum::http::{StatusCode, header};
+use axum::middleware::Next;
+use axum::response::{IntoResponse, Response};
 use everruns_core::typed_id::SessionId;
 use everruns_durable::UpdateField;
 use serde::{
     Deserialize, Deserializer, Serialize,
     de::{DeserializeOwned, Error as DeError},
 };
+use serde_json::Value;
 use std::sync::Arc;
 use utoipa::ToSchema;
 
 use crate::storage::StorageBackend;
+
+const LINK_DECORATION_MAX_RESPONSE_BYTES: u64 = 16 * 1024 * 1024;
 
 /// Standard return type for API handlers that return JSON with error responses.
 ///
@@ -363,14 +370,15 @@ impl UrlBuilder {
         Self::new(&config.base_url, &config.frontend_url)
     }
 
-    /// Wrap a single resource with `self_url` and `view_url`.
+    /// Wrap a single resource with API and UI links.
     pub fn wrap<T: ResourceUrlable + Serialize>(&self, item: T) -> WithUrls<T> {
-        let id = item.resource_id();
-        let api_path = T::api_path();
-        let ui_path = T::ui_path();
+        let api_path = item.api_url_path();
+        let ui_path = item.ui_url_path();
+        let view_url = format!("{}/{}", self.ui_base, ui_path);
         WithUrls {
-            self_url: format!("{}/{}/{}", self.api_base, api_path, id),
-            view_url: format!("{}/{}/{}", self.ui_base, ui_path, id),
+            self_url: format!("{}/{}", self.api_base, api_path),
+            view_url: view_url.clone(),
+            ui_link: view_url,
             inner: item,
         }
     }
@@ -379,6 +387,247 @@ impl UrlBuilder {
     pub fn wrap_vec<T: ResourceUrlable + Serialize>(&self, items: Vec<T>) -> Vec<WithUrls<T>> {
         items.into_iter().map(|item| self.wrap(item)).collect()
     }
+
+    /// Add resource links to any recognizable entity objects in a JSON value.
+    ///
+    /// This is the protocol-agnostic link aspect used for command/MCP output
+    /// and final API responses. It is additive only: existing link fields win.
+    pub fn decorate_value_links(&self, value: &mut Value) -> bool {
+        decorate_value_links(value, self)
+    }
+}
+
+/// Middleware that enriches successful JSON API responses with entity links.
+///
+/// This covers endpoints that return command/domain DTOs directly instead of
+/// using `WithUrls`, while preserving non-JSON, streaming, and error responses.
+pub async fn decorate_json_response_links(
+    builder: UrlBuilder,
+    req: Request,
+    next: Next,
+) -> Response {
+    let response = next.run(req).await;
+    if !response.status().is_success()
+        || !response_is_json(&response)
+        || !response_within_link_decoration_limit(&response)
+    {
+        return response;
+    }
+
+    let (mut parts, body) = response.into_parts();
+    let bytes = match to_bytes(body, LINK_DECORATION_MAX_RESPONSE_BYTES as usize).await {
+        Ok(bytes) => bytes,
+        Err(err) => {
+            tracing::warn!(error = %err, "failed to read JSON response body for link decoration");
+            return ErrorResponse::internal_error().into_response();
+        }
+    };
+    if bytes.is_empty() {
+        return Response::from_parts(parts, Body::from(bytes));
+    }
+
+    let mut value = match serde_json::from_slice::<Value>(&bytes) {
+        Ok(value) => value,
+        Err(_) => return Response::from_parts(parts, Body::from(bytes)),
+    };
+    if !builder.decorate_value_links(&mut value) {
+        return Response::from_parts(parts, Body::from(bytes));
+    }
+
+    match serde_json::to_vec(&value) {
+        Ok(body) => {
+            parts.headers.remove(header::CONTENT_LENGTH);
+            Response::from_parts(parts, Body::from(body))
+        }
+        Err(err) => {
+            tracing::warn!(error = %err, "failed to serialize link-decorated JSON response");
+            Response::from_parts(parts, Body::from(bytes))
+        }
+    }
+}
+
+fn response_within_link_decoration_limit(response: &Response) -> bool {
+    response
+        .headers()
+        .get(header::CONTENT_LENGTH)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<u64>().ok())
+        .is_some_and(|length| length <= LINK_DECORATION_MAX_RESPONSE_BYTES)
+}
+
+fn response_is_json(response: &Response) -> bool {
+    response
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| {
+            value
+                .split(';')
+                .next()
+                .is_some_and(|mime| mime.trim().eq_ignore_ascii_case("application/json"))
+        })
+}
+
+fn decorate_value_links(value: &mut Value, builder: &UrlBuilder) -> bool {
+    match value {
+        Value::Object(map) => {
+            let mut changed = false;
+            if !map.contains_key("ui_link")
+                && let Some(view_url) = map.get("view_url").and_then(Value::as_str)
+            {
+                map.insert("ui_link".to_string(), Value::String(view_url.to_string()));
+                changed = true;
+            }
+            if let Some(route) = route_for_object(map) {
+                if !map.contains_key("self_url")
+                    && let Some(api_path) = route.api_path
+                {
+                    map.insert(
+                        "self_url".to_string(),
+                        Value::String(format!("{}/{}", builder.api_base, api_path)),
+                    );
+                    changed = true;
+                }
+                if !map.contains_key("view_url") {
+                    let view_url = format!("{}/{}", builder.ui_base, route.ui_path);
+                    map.insert("view_url".to_string(), Value::String(view_url.clone()));
+                    changed = true;
+                    if !map.contains_key("ui_link") {
+                        map.insert("ui_link".to_string(), Value::String(view_url));
+                        changed = true;
+                    }
+                } else if !map.contains_key("ui_link")
+                    && let Some(view_url) = map.get("view_url").and_then(Value::as_str)
+                {
+                    map.insert("ui_link".to_string(), Value::String(view_url.to_string()));
+                    changed = true;
+                }
+            }
+
+            for child in map.values_mut() {
+                changed |= decorate_value_links(child, builder);
+            }
+            changed
+        }
+        Value::Array(items) => {
+            let mut changed = false;
+            for item in items {
+                changed |= decorate_value_links(item, builder);
+            }
+            changed
+        }
+        _ => false,
+    }
+}
+
+struct LinkRoute {
+    api_path: Option<String>,
+    ui_path: String,
+}
+
+struct ResourceId {
+    value: String,
+    include_self_url: bool,
+}
+
+fn route_for_object(map: &serde_json::Map<String, Value>) -> Option<LinkRoute> {
+    let id = own_resource_id(map)?;
+    let mut route = route_for_id(&id.value, map)?;
+    if !id.include_self_url {
+        route.api_path = None;
+    }
+    Some(route)
+}
+
+fn own_resource_id(map: &serde_json::Map<String, Value>) -> Option<ResourceId> {
+    for key in ["id", "public_id"] {
+        if let Some(id) = map.get(key).and_then(Value::as_str)
+            && route_for_id(id, map).is_some()
+        {
+            return Some(ResourceId {
+                value: id.to_string(),
+                include_self_url: true,
+            });
+        }
+    }
+
+    for key in [
+        "session_id",
+        "agent_id",
+        "harness_id",
+        "app_id",
+        "identity_id",
+        "mcp_server_id",
+        "skill_id",
+        "provider_id",
+        "model_id",
+        "eval_id",
+        "budget_id",
+    ] {
+        if let Some(id) = map.get(key).and_then(Value::as_str)
+            && route_for_id(id, map).is_some()
+        {
+            return Some(ResourceId {
+                value: id.to_string(),
+                include_self_url: false,
+            });
+        }
+    }
+
+    None
+}
+
+fn route_for_id(id: &str, map: &serde_json::Map<String, Value>) -> Option<LinkRoute> {
+    let Some((prefix, _)) = id.split_once('_') else {
+        return looks_like_capability(map).then(|| LinkRoute {
+            api_path: Some(format!("v1/capabilities/{id}")),
+            ui_path: format!("capabilities/{id}"),
+        });
+    };
+    let route = match prefix {
+        "agent" => ("v1/agents", format!("agents/{id}")),
+        "harness" => ("v1/harnesses", format!("harnesses/{id}")),
+        "session" => ("v1/sessions", format!("sessions/{id}/chat")),
+        "app" => ("v1/apps", format!("apps/{id}")),
+        "identity" => ("v1/agent-identities", format!("agent-identities/{id}")),
+        "mcp" => ("v1/mcp-servers", "mcp-servers".to_string()),
+        "skill" => ("v1/skills", "skills".to_string()),
+        "provider" => ("v1/llm-providers", "settings/providers".to_string()),
+        "model" => ("v1/llm-models", "models".to_string()),
+        "eval" => ("v1/evals", format!("evals/{id}")),
+        "bdgt" => ("v1/budgets", "budgets".to_string()),
+        "sched" => {
+            let session_id = map.get("session_id").and_then(Value::as_str)?;
+            return Some(LinkRoute {
+                api_path: Some(format!("v1/sessions/{session_id}/schedules/{id}")),
+                ui_path: format!("sessions/{session_id}/schedules"),
+            });
+        }
+        _ if looks_like_capability(map) => {
+            return Some(LinkRoute {
+                api_path: Some(format!("v1/capabilities/{id}")),
+                ui_path: format!("capabilities/{id}"),
+            });
+        }
+        _ => return None,
+    };
+    Some(LinkRoute {
+        api_path: Some(format!("{}/{id}", route.0)),
+        ui_path: route.1,
+    })
+}
+
+fn looks_like_capability(map: &serde_json::Map<String, Value>) -> bool {
+    map.contains_key("tool_definitions")
+        || map.contains_key("tool_count")
+        || map.contains_key("dependencies")
+        || map.contains_key("config_schema")
+        || map
+            .get("type")
+            .and_then(Value::as_str)
+            .is_some_and(|value| matches!(value, "builtin" | "mcp_server" | "skill"))
+        || map.contains_key("is_mcp")
+        || map.contains_key("is_skill")
 }
 
 /// Trait for resources that can have `url` and `view_url` generated.
@@ -389,9 +638,17 @@ pub trait ResourceUrlable {
     fn ui_path() -> &'static str;
     /// The resource's public ID as a string.
     fn resource_id(&self) -> String;
+    /// API path for this concrete resource, including its ID.
+    fn api_url_path(&self) -> String {
+        format!("{}/{}", Self::api_path(), self.resource_id())
+    }
+    /// UI path for this concrete resource.
+    fn ui_url_path(&self) -> String {
+        format!("{}/{}", Self::ui_path(), self.resource_id())
+    }
 }
 
-/// Wrapper that adds `self_url` and `view_url` to a serialized resource.
+/// Wrapper that adds API and UI links to a serialized resource.
 ///
 /// Uses `self_url` (not `url`) for the API link to avoid collision with
 /// resources that already have a `url` field (e.g. McpServer).
@@ -401,6 +658,8 @@ pub struct WithUrls<T: Serialize> {
     pub self_url: String,
     /// Full UI URL for viewing this resource.
     pub view_url: String,
+    /// Alias for `view_url`, used by command and MCP outputs.
+    pub ui_link: String,
     /// The resource itself (fields are flattened into the parent object).
     #[serde(flatten)]
     pub inner: T,
@@ -446,35 +705,138 @@ macro_rules! impl_resource_urlable {
 }
 
 impl_resource_urlable!(everruns_core::Agent, "v1/agents", "agents", public_id);
-impl_resource_urlable!(everruns_core::Session, "v1/sessions", "sessions", id);
 impl_resource_urlable!(everruns_core::Harness, "v1/harnesses", "harnesses", id);
-impl_resource_urlable!(everruns_core::Skill, "v1/skills", "skills", id);
-impl_resource_urlable!(everruns_core::budget::Budget, "v1/budgets", "budgets", id);
-impl_resource_urlable!(
-    everruns_core::McpServer,
-    "v1/mcp-servers",
-    "mcp-servers",
-    id
-);
 impl_resource_urlable!(everruns_core::App, "v1/apps", "apps", public_id);
-impl_resource_urlable!(
-    everruns_core::llm_models::LlmProvider,
-    "v1/llm-providers",
-    "llm-providers",
-    id
-);
-impl_resource_urlable!(
-    everruns_core::llm_models::LlmModel,
-    "v1/llm-models",
-    "llm-models",
-    id
-);
-impl_resource_urlable!(
-    everruns_core::LlmModelWithProvider,
-    "v1/llm-models",
-    "llm-models",
-    id
-);
+
+impl ResourceUrlable for everruns_core::budget::Budget {
+    fn api_path() -> &'static str {
+        "v1/budgets"
+    }
+    fn ui_path() -> &'static str {
+        "budgets"
+    }
+    fn resource_id(&self) -> String {
+        self.id.to_string()
+    }
+    fn ui_url_path(&self) -> String {
+        "budgets".to_string()
+    }
+}
+
+impl ResourceUrlable for everruns_core::Session {
+    fn api_path() -> &'static str {
+        "v1/sessions"
+    }
+    fn ui_path() -> &'static str {
+        "sessions"
+    }
+    fn resource_id(&self) -> String {
+        self.id.to_string()
+    }
+    fn ui_url_path(&self) -> String {
+        format!("sessions/{}/chat", self.id)
+    }
+}
+
+impl ResourceUrlable for everruns_core::AgentIdentity {
+    fn api_path() -> &'static str {
+        "v1/agent-identities"
+    }
+    fn ui_path() -> &'static str {
+        "agent-identities"
+    }
+    fn resource_id(&self) -> String {
+        self.id.to_string()
+    }
+}
+
+impl ResourceUrlable for everruns_core::eval::Eval {
+    fn api_path() -> &'static str {
+        "v1/evals"
+    }
+    fn ui_path() -> &'static str {
+        "evals"
+    }
+    fn resource_id(&self) -> String {
+        self.public_id.to_string()
+    }
+}
+
+impl ResourceUrlable for everruns_core::McpServer {
+    fn api_path() -> &'static str {
+        "v1/mcp-servers"
+    }
+    fn ui_path() -> &'static str {
+        "mcp-servers"
+    }
+    fn resource_id(&self) -> String {
+        self.id.to_string()
+    }
+    fn ui_url_path(&self) -> String {
+        "mcp-servers".to_string()
+    }
+}
+
+impl ResourceUrlable for everruns_core::Skill {
+    fn api_path() -> &'static str {
+        "v1/skills"
+    }
+    fn ui_path() -> &'static str {
+        "skills"
+    }
+    fn resource_id(&self) -> String {
+        self.id.to_string()
+    }
+    fn ui_url_path(&self) -> String {
+        "skills".to_string()
+    }
+}
+
+impl ResourceUrlable for everruns_core::llm_models::LlmProvider {
+    fn api_path() -> &'static str {
+        "v1/llm-providers"
+    }
+    fn ui_path() -> &'static str {
+        "settings/providers"
+    }
+    fn resource_id(&self) -> String {
+        self.id.to_string()
+    }
+    fn ui_url_path(&self) -> String {
+        "settings/providers".to_string()
+    }
+}
+
+impl ResourceUrlable for everruns_core::llm_models::LlmModel {
+    fn api_path() -> &'static str {
+        "v1/llm-models"
+    }
+    fn ui_path() -> &'static str {
+        "models"
+    }
+    fn resource_id(&self) -> String {
+        self.id.to_string()
+    }
+    fn ui_url_path(&self) -> String {
+        "models".to_string()
+    }
+}
+
+impl ResourceUrlable for everruns_core::LlmModelWithProvider {
+    fn api_path() -> &'static str {
+        "v1/llm-models"
+    }
+    fn ui_path() -> &'static str {
+        "models"
+    }
+    fn resource_id(&self) -> String {
+        self.id.to_string()
+    }
+    fn ui_url_path(&self) -> String {
+        "models".to_string()
+    }
+}
+
 impl ResourceUrlable for everruns_core::session_schedule::SessionSchedule {
     fn api_path() -> &'static str {
         "v1/sessions"
@@ -484,6 +846,9 @@ impl ResourceUrlable for everruns_core::session_schedule::SessionSchedule {
     }
     fn resource_id(&self) -> String {
         format!("{}/schedules/{}", self.session_id, self.id)
+    }
+    fn ui_url_path(&self) -> String {
+        format!("sessions/{}/schedules", self.session_id)
     }
 }
 
@@ -519,6 +884,25 @@ pub async fn verify_session_ownership(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[derive(Serialize)]
+    struct TestResource {
+        id: String,
+    }
+
+    impl ResourceUrlable for TestResource {
+        fn api_path() -> &'static str {
+            "v1/test-resources"
+        }
+
+        fn ui_path() -> &'static str {
+            "test-resources"
+        }
+
+        fn resource_id(&self) -> String {
+            self.id.clone()
+        }
+    }
 
     #[test]
     fn test_error_response_new() {
@@ -614,6 +998,128 @@ mod tests {
         assert_eq!(parsed["total"], 50);
         assert_eq!(parsed["offset"], 10);
         assert_eq!(parsed["limit"], 5);
+    }
+
+    #[test]
+    fn test_url_builder_wrap_includes_ui_link_alias() {
+        let builder = UrlBuilder::new("https://api.example/api", "https://app.example");
+        let wrapped = builder.wrap(TestResource {
+            id: "resource_1".to_string(),
+        });
+
+        assert_eq!(
+            wrapped.self_url,
+            "https://api.example/api/v1/test-resources/resource_1"
+        );
+        assert_eq!(
+            wrapped.view_url,
+            "https://app.example/test-resources/resource_1"
+        );
+        assert_eq!(wrapped.ui_link, wrapped.view_url);
+    }
+
+    #[test]
+    fn test_link_decoration_requires_bounded_content_length() {
+        let missing_length = Response::builder()
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::empty())
+            .unwrap();
+        assert!(!response_within_link_decoration_limit(&missing_length));
+
+        let large_response = Response::builder()
+            .header(header::CONTENT_TYPE, "application/json")
+            .header(
+                header::CONTENT_LENGTH,
+                (LINK_DECORATION_MAX_RESPONSE_BYTES + 1).to_string(),
+            )
+            .body(Body::empty())
+            .unwrap();
+        assert!(!response_within_link_decoration_limit(&large_response));
+
+        let bounded_response = Response::builder()
+            .header(header::CONTENT_TYPE, "application/json")
+            .header(header::CONTENT_LENGTH, "128")
+            .body(Body::empty())
+            .unwrap();
+        assert!(response_within_link_decoration_limit(&bounded_response));
+    }
+
+    #[test]
+    fn test_decorate_value_links_adds_command_session_link() {
+        let builder = UrlBuilder::new("https://api.example/api", "https://app.example");
+        let mut value = serde_json::json!({
+            "session_id": "session_00000000000000000000000000000001",
+            "message_id": "message_00000000000000000000000000000002"
+        });
+
+        assert!(builder.decorate_value_links(&mut value));
+        assert!(value.get("self_url").is_none());
+        assert_eq!(
+            value["ui_link"],
+            "https://app.example/sessions/session_00000000000000000000000000000001/chat"
+        );
+    }
+
+    #[test]
+    fn test_decorate_value_links_adds_nested_capability_link() {
+        let builder = UrlBuilder::new("https://api.example/api", "https://app.example");
+        let mut value = serde_json::json!({
+            "data": [{
+                "id": "platform_management",
+                "name": "Platform Management",
+                "type": "builtin"
+            }]
+        });
+
+        assert!(builder.decorate_value_links(&mut value));
+        assert_eq!(
+            value["data"][0]["view_url"],
+            "https://app.example/capabilities/platform_management"
+        );
+    }
+
+    #[test]
+    fn test_decorate_value_links_aligns_budget_ui_link() {
+        let builder = UrlBuilder::new("https://api.example/api", "https://app.example");
+        let mut value = serde_json::json!({
+            "id": "bdgt_00000000000000000000000000000001",
+            "subject_type": "session"
+        });
+
+        assert!(builder.decorate_value_links(&mut value));
+        assert_eq!(value["view_url"], "https://app.example/budgets");
+        assert_eq!(value["ui_link"], value["view_url"]);
+    }
+
+    #[test]
+    fn test_decorate_value_links_preserves_existing_links() {
+        let builder = UrlBuilder::new("https://api.example/api", "https://app.example");
+        let mut value = serde_json::json!({
+            "id": "agent_00000000000000000000000000000001",
+            "self_url": "https://custom.example/api",
+            "view_url": "https://custom.example/view"
+        });
+
+        assert!(builder.decorate_value_links(&mut value));
+        assert_eq!(value["self_url"], "https://custom.example/api");
+        assert_eq!(value["view_url"], "https://custom.example/view");
+        assert_eq!(value["ui_link"], "https://custom.example/view");
+    }
+
+    #[test]
+    fn test_decorate_value_links_aliases_existing_view_url() {
+        let builder = UrlBuilder::new("https://api.example/api", "https://app.example");
+        let mut value = serde_json::json!({
+            "id": "compaction",
+            "name": "Compaction",
+            "view_url": "https://app.example/capabilities/compaction"
+        });
+
+        assert!(builder.decorate_value_links(&mut value));
+        assert_eq!(
+            value["ui_link"],
+            "https://app.example/capabilities/compaction"
+        );
     }
 
     #[test]

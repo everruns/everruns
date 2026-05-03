@@ -555,7 +555,9 @@ async fn read_capabilities(org: &ResolvedOrg, state: &AppState) -> Result<String
         })
         .collect();
 
-    serde_json::to_string(&summary).map_err(|e| format!("Serialization error: {e}"))
+    let mut value = Value::Array(summary);
+    link_builder(state).decorate_value_links(&mut value);
+    serde_json::to_string(&value).map_err(|e| format!("Serialization error: {e}"))
 }
 
 async fn read_harnesses(org: &ResolvedOrg, state: &AppState) -> Result<String, String> {
@@ -580,7 +582,9 @@ async fn read_harnesses(org: &ResolvedOrg, state: &AppState) -> Result<String, S
         })
         .collect();
 
-    serde_json::to_string(&summary).map_err(|e| format!("Serialization error: {e}"))
+    let mut value = Value::Array(summary);
+    link_builder(state).decorate_value_links(&mut value);
+    serde_json::to_string(&value).map_err(|e| format!("Serialization error: {e}"))
 }
 
 async fn read_models(org: &ResolvedOrg, state: &AppState) -> Result<String, String> {
@@ -601,7 +605,9 @@ async fn read_models(org: &ResolvedOrg, state: &AppState) -> Result<String, Stri
         })
         .collect();
 
-    serde_json::to_string(&summary).map_err(|e| format!("Serialization error: {e}"))
+    let mut value = Value::Array(summary);
+    link_builder(state).decorate_value_links(&mut value);
+    serde_json::to_string(&value).map_err(|e| format!("Serialization error: {e}"))
 }
 
 async fn read_agents(org: &ResolvedOrg, state: &AppState) -> Result<String, String> {
@@ -628,7 +634,9 @@ async fn read_agents(org: &ResolvedOrg, state: &AppState) -> Result<String, Stri
         })
         .collect();
 
-    serde_json::to_string(&summary).map_err(|e| format!("Serialization error: {e}"))
+    let mut value = Value::Array(summary);
+    link_builder(state).decorate_value_links(&mut value);
+    serde_json::to_string(&value).map_err(|e| format!("Serialization error: {e}"))
 }
 
 async fn handle_tools_call(
@@ -937,6 +945,10 @@ fn pretty_json(value: &Value) -> Result<String, String> {
     serde_json::to_string_pretty(value).map_err(|e| format!("Internal error: {e}"))
 }
 
+fn link_builder(state: &AppState) -> crate::api::common::UrlBuilder {
+    crate::api::common::UrlBuilder::from_auth_config(&state.auth.config)
+}
+
 // ============================================================================
 // Tier 1: agent_run
 // ============================================================================
@@ -1007,6 +1019,7 @@ async fn tool_agent_run(
     if let Some(bid) = budget_id {
         result["budget_id"] = json!(bid);
     }
+    link_builder(state).decorate_value_links(&mut result);
 
     pretty_json(&result)
 }
@@ -1043,11 +1056,14 @@ async fn tool_session_send_message(
     let session_params = json!({ "session_id": session_id });
     let session = dispatch_command("get_session", session_params, org, state).await?;
 
-    pretty_json(&json!({
+    let mut result = json!({
         "message_id": msg["id"],
         "session_status": session["status"],
+        "session_id": session_id,
         "hint": "Use session_get_status to poll for completion"
-    }))
+    });
+    link_builder(state).decorate_value_links(&mut result);
+    pretty_json(&result)
 }
 
 // ============================================================================
@@ -1123,7 +1139,7 @@ async fn tool_session_get_status(
         .last()
         .and_then(|e| e.get("id").and_then(|v| v.as_str()));
 
-    pretty_json(&json!({
+    let mut result = json!({
         "session_id": session_id,
         "status": session["status"],
         "agent_id": session["agent_id"],
@@ -1136,7 +1152,9 @@ async fn tool_session_get_status(
             "type": e["event_type"],
             "ts": e["ts"],
         })).collect::<Vec<_>>()
-    }))
+    });
+    link_builder(state).decorate_value_links(&mut result);
+    pretty_json(&result)
 }
 
 // ============================================================================
@@ -1303,6 +1321,7 @@ fn catalog_context(org: &ResolvedOrg, state: &AppState) -> catalog::CatalogConte
     catalog::CatalogContext {
         state: state.clone(),
         caller: Caller::from(org),
+        link_builder: link_builder(state),
     }
 }
 
