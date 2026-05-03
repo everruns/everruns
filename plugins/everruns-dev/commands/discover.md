@@ -1,5 +1,5 @@
 ---
-description: Search the Everruns Dev API catalog for operations
+description: Search the Everruns(Dev) API catalog for available operations
 argument-hint: "<query> | --all"
 ---
 

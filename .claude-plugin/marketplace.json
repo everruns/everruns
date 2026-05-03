@@ -1,6 +1,6 @@
 {
   "name": "everruns-dev",
-  "description": "Everruns plugins for Claude Code — connect Claude to the Everruns dev agent platform over MCP to manage agents, harnesses, and sessions.",
+  "description": "Everruns plugins for Claude Code - connect Claude to the Everruns(Dev) managed harnesses platform to manage agents, harnesses, capabilities, sessions, and apps.",
   "owner": {
     "name": "Everruns",
     "url": "https://everruns.com"
@@ -9,8 +9,8 @@
     {
       "name": "everruns-dev",
       "source": "./plugins/everruns-dev",
-      "description": "Interact with the Everruns dev agent platform - create and run agents, manage harnesses and sessions, browse the API catalog.",
-      "version": "0.1.1",
+      "description": "Interact with the Everruns(Dev) managed harnesses platform. Manage harnesses, agents, and capabilities. Run agentic sessions. Create and deploy agentic applications.",
+      "version": "0.1.2",
       "author": {
         "name": "Everruns",
         "url": "https://everruns.com"
