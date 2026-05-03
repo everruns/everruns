@@ -22,12 +22,6 @@ const settingsSections: NavSection[] = [
     label: "Organisation",
     items: [
       {
-        name: "General",
-        href: "/settings/organisation",
-        icon: Building2,
-        description: "Manage organisation settings",
-      },
-      {
         name: "Organisations",
         href: "/settings/organisations",
         icon: Building2,

@@ -42,6 +42,12 @@ describe("OrganisationsPage", () => {
     render(<OrganisationsPage />);
 
     expect(screen.getByRole("heading", { name: "Organisations" })).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "Organisations" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Organisation" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "ID" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Role" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Status" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Actions" })).toBeInTheDocument();
     expect(screen.getByText("Current Org")).toBeInTheDocument();
     expect(screen.getByText("Second Org")).toBeInTheDocument();
     expect(screen.getByText("org-1")).toBeInTheDocument();
@@ -52,7 +58,7 @@ describe("OrganisationsPage", () => {
   it("switches to another organisation", () => {
     render(<OrganisationsPage />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Switch" }));
+    fireEvent.click(screen.getByRole("button", { name: "Switch to Second Org" }));
 
     expect(mockSetCurrentOrg).toHaveBeenCalledWith({
       public_id: "org-2",

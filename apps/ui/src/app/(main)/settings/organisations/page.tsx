@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Building2, Check, Plus } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
@@ -15,8 +16,23 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { useCreateOrganization } from "@/hooks/use-organizations";
 import { useOrg } from "@/providers/org-provider";
+import type { OrgRole } from "@/lib/api/types";
+
+const ROLE_LABELS: Record<OrgRole, string> = {
+  owner: "Owner",
+  admin: "Admin",
+  member: "Member",
+};
 
 export default function OrganisationsPage() {
   const router = useRouter();
@@ -61,43 +77,54 @@ export default function OrganisationsPage() {
             </p>
           </Card>
         ) : (
-          <div className="space-y-3">
-            {organizations.map((org) => {
-              const isCurrent = currentOrg?.public_id === org.public_id;
-              return (
-                <Card
-                  key={org.public_id}
-                  className={`p-4 flex items-center justify-between gap-4 ${isCurrent ? "border-primary/50" : ""}`}
-                >
-                  <div className="flex min-w-0 items-center gap-3">
-                    <div className={`p-2 ${isCurrent ? "bg-primary/10" : "bg-muted"}`}>
-                      <Building2
-                        className={`h-4 w-4 ${isCurrent ? "text-primary" : "text-muted-foreground"}`}
-                      />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="truncate font-medium">{org.name}</p>
-                      <p className="truncate text-xs text-muted-foreground font-mono">
+          <Card className="overflow-hidden">
+            <Table aria-label="Organisations">
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Organisation</TableHead>
+                  <TableHead>ID</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {organizations.map((org) => {
+                  const isCurrent = currentOrg?.public_id === org.public_id;
+                  return (
+                    <TableRow key={org.public_id} data-state={isCurrent ? "selected" : undefined}>
+                      <TableCell className="font-medium">{org.name}</TableCell>
+                      <TableCell className="font-mono text-xs text-muted-foreground">
                         {org.public_id}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    {isCurrent ? (
-                      <span className="flex items-center gap-1 text-sm text-primary">
-                        <Check className="h-4 w-4" />
-                        Current
-                      </span>
-                    ) : (
-                      <Button variant="outline" size="sm" onClick={() => setCurrentOrg(org)}>
-                        Switch
-                      </Button>
-                    )}
-                  </div>
-                </Card>
-              );
-            })}
-          </div>
+                      </TableCell>
+                      <TableCell>{ROLE_LABELS[org.role]}</TableCell>
+                      <TableCell>
+                        {isCurrent ? (
+                          <Badge variant="accent">
+                            <Check className="h-3 w-3" />
+                            Current
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground">Available</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={isCurrent}
+                          aria-label={`Switch to ${org.name}`}
+                          onClick={() => setCurrentOrg(org)}
+                        >
+                          Switch
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </Card>
         )}
       </section>
 
