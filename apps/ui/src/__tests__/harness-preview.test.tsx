@@ -100,9 +100,7 @@ describe("HarnessPreview", () => {
   it.each([undefined, null])("does not crash when harness.initial_files is %p", (initialFiles) => {
     mockUsePreviewHarness.mockReturnValue(makeMutationStub({ data: sampleResponse }));
 
-    render(
-      <HarnessPreview systemPrompt="hi" capabilities={[]} initialFiles={initialFiles as never} />,
-    );
+    render(<HarnessPreview systemPrompt="hi" capabilities={[]} initialFiles={initialFiles} />);
 
     expect(screen.getByText("Initial Files")).toBeInTheDocument();
     expect(screen.getByText("No initial files configured.")).toBeInTheDocument();

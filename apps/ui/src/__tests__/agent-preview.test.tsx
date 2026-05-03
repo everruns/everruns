@@ -102,9 +102,7 @@ describe("AgentPreview", () => {
   it.each([undefined, null])("does not crash when agent.initial_files is %p", (initialFiles) => {
     mockUsePreviewAgent.mockReturnValue(makeMutationStub({ data: sampleResponse }));
 
-    render(
-      <AgentPreview systemPrompt="hi" capabilities={[]} initialFiles={initialFiles as never} />,
-    );
+    render(<AgentPreview systemPrompt="hi" capabilities={[]} initialFiles={initialFiles} />);
 
     expect(screen.getByText("Initial Files")).toBeInTheDocument();
     expect(screen.getByText("No initial files configured.")).toBeInTheDocument();
