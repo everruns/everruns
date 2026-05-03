@@ -180,12 +180,6 @@ const NAVIGATION_PAGES: NavigationPage[] = [
     keywords: ["openai", "anthropic", "credentials"],
   },
   {
-    title: "Settings > Organisation",
-    href: "/settings/organisation",
-    icon: Settings,
-    keywords: ["org", "organization", "team"],
-  },
-  {
     title: "Settings > Organisations",
     href: "/settings/organisations",
     icon: Settings,
