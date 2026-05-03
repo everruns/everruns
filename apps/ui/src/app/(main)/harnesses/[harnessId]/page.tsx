@@ -11,6 +11,7 @@ import {
 } from "@/hooks";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { ResourceNotFound } from "@/components/resource-not-found";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -93,12 +94,13 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
 
   if (!harness) {
     return (
-      <div className="container mx-auto p-6">
-        <div className="text-red-500">Harness not found</div>
-        <Link href="/harnesses" className="text-blue-500 hover:underline">
-          Back to harnesses
-        </Link>
-      </div>
+      <ResourceNotFound
+        title="Harness not found"
+        description="This harness may have been deleted, moved to another organization, or the URL may be wrong."
+        backHref="/harnesses"
+        backLabel="Back to harnesses"
+        resourceId={harnessId}
+      />
     );
   }
 

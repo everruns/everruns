@@ -3,6 +3,7 @@
 import { use, useCallback } from "react";
 import { useEval, useEvalRun, useCancelEvalRun } from "@/hooks";
 import Link from "next/link";
+import { ResourceNotFound } from "@/components/resource-not-found";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -151,12 +152,13 @@ export default function EvalRunDetailPage({
 
   if (!run) {
     return (
-      <div className="container mx-auto p-6">
-        <div className="text-red-500">Run not found</div>
-        <Link href={`/evals/${evalId}`} className="text-blue-500 hover:underline">
-          Back to eval
-        </Link>
-      </div>
+      <ResourceNotFound
+        title="Run not found"
+        description="This eval run may have been deleted, moved to another organization, or the URL may be wrong."
+        backHref={`/evals/${evalId}`}
+        backLabel="Back to eval"
+        resourceId={runId}
+      />
     );
   }
 

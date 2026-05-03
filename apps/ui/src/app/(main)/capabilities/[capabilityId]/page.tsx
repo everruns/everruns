@@ -3,6 +3,7 @@
 import { use } from "react";
 import { useCapability, useCapabilities } from "@/hooks";
 import Link from "next/link";
+import { ResourceNotFound } from "@/components/resource-not-found";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -89,14 +90,17 @@ export default function CapabilityDetailPage({
 
   if (error || !capability) {
     return (
-      <div className="container mx-auto p-6">
-        <div className="text-red-500 mb-4">
-          {error ? `Error loading capability: ${error.message}` : "Capability not found"}
-        </div>
-        <Link href="/capabilities" className="text-blue-500 hover:underline">
-          Back to capabilities
-        </Link>
-      </div>
+      <ResourceNotFound
+        title={error ? "Capability unavailable" : "Capability not found"}
+        description={
+          error
+            ? `The capability could not be loaded: ${error.message}`
+            : "This capability may have been deleted, moved to another organization, or the URL may be wrong."
+        }
+        backHref="/capabilities"
+        backLabel="Back to capabilities"
+        resourceId={capabilityId}
+      />
     );
   }
 

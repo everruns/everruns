@@ -22,6 +22,7 @@ import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/query-keys";
 import Link from "next/link";
+import { ResourceNotFound } from "@/components/resource-not-found";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -187,11 +188,6 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
   );
   const slackConfig = slackChannel?.channel_config as SlackChannelConfig | undefined;
   const hasSlackConfig = slackConfig?.signing_secret && slackConfig?.bot_token;
-  const agUiChannel = app?.channels?.find(
-    (ch: AppChannel) => ch.channel_type === "ag_ui" && ch.enabled,
-  );
-  const agUiConfig = agUiChannel?.channel_config as AgUiChannelConfig | undefined;
-  const hasAgUiConfig = agUiConfig?.anonymous ?? !!agUiChannel;
   const canPublishApp =
     app?.channels?.some((channel) => {
       if (!channel.enabled) {
@@ -400,12 +396,13 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
 
   if (!app) {
     return (
-      <div className="container mx-auto p-6">
-        <div className="text-red-500">App not found</div>
-        <Link href="/apps" className="text-blue-500 hover:underline">
-          Back to Apps
-        </Link>
-      </div>
+      <ResourceNotFound
+        title="App not found"
+        description="This app may have been deleted, moved to another organization, or the URL may be wrong."
+        backHref="/apps"
+        backLabel="Back to apps"
+        resourceId={appId}
+      />
     );
   }
 

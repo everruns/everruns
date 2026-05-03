@@ -10,6 +10,7 @@ import {
   useDestroyAgentIdentity,
   useUpdateAgentIdentity,
 } from "@/hooks/use-agent-identities";
+import { ResourceNotFound } from "@/components/resource-not-found";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -122,12 +123,13 @@ export default function AgentIdentityDetailPage({
 
   if (!identity) {
     return (
-      <div className="container mx-auto p-6">
-        <div className="text-red-500">Identity not found</div>
-        <Link href="/agent-identities" className="text-blue-500 hover:underline">
-          Back to Agent Identities
-        </Link>
-      </div>
+      <ResourceNotFound
+        title="Identity not found"
+        description="This agent identity may have been deleted, moved to another organization, or the URL may be wrong."
+        backHref="/agent-identities"
+        backLabel="Back to agent identities"
+        resourceId={identityId}
+      />
     );
   }
 

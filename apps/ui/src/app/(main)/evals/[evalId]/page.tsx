@@ -11,6 +11,7 @@ import {
 } from "@/hooks";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { ResourceNotFound } from "@/components/resource-not-found";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -357,12 +358,13 @@ export default function EvalDetailPage({ params }: { params: Promise<{ evalId: s
 
   if (!ev) {
     return (
-      <div className="container mx-auto p-6">
-        <div className="text-red-500">Eval not found</div>
-        <Link href="/evals" className="text-blue-500 hover:underline">
-          Back to evals
-        </Link>
-      </div>
+      <ResourceNotFound
+        title="Eval not found"
+        description="This eval may have been deleted, moved to another organization, or the URL may be wrong."
+        backHref="/evals"
+        backLabel="Back to evals"
+        resourceId={evalId}
+      />
     );
   }
 
