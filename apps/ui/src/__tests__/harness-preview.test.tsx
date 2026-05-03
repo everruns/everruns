@@ -25,10 +25,7 @@ function makeMutationStub(opts: {
 }) {
   return {
     mutate: jest.fn(
-      (
-        _req: unknown,
-        callbacks?: { onSuccess?: (d: AgentPreviewResponse) => void },
-      ) => {
+      (_req: unknown, callbacks?: { onSuccess?: (d: AgentPreviewResponse) => void }) => {
         if (opts.data && callbacks?.onSuccess) callbacks.onSuccess(opts.data);
       },
     ),
@@ -57,13 +54,7 @@ describe("HarnessPreview", () => {
   it("shows skeletons while the preview request is pending", () => {
     mockUsePreviewHarness.mockReturnValue(makeMutationStub({ isPending: true }));
 
-    render(
-      <HarnessPreview
-        systemPrompt="hi"
-        capabilities={[]}
-        initialFiles={[]}
-      />,
-    );
+    render(<HarnessPreview systemPrompt="hi" capabilities={[]} initialFiles={[]} />);
 
     expect(screen.queryByText("Full System Prompt")).not.toBeInTheDocument();
   });
@@ -96,17 +87,9 @@ describe("HarnessPreview", () => {
   });
 
   it("shows the error card when the preview mutation fails", () => {
-    mockUsePreviewHarness.mockReturnValue(
-      makeMutationStub({ error: new Error("boom") }),
-    );
+    mockUsePreviewHarness.mockReturnValue(makeMutationStub({ error: new Error("boom") }));
 
-    render(
-      <HarnessPreview
-        systemPrompt="hi"
-        capabilities={[]}
-        initialFiles={[]}
-      />,
-    );
+    render(<HarnessPreview systemPrompt="hi" capabilities={[]} initialFiles={[]} />);
 
     expect(screen.getByText("Preview Error")).toBeInTheDocument();
     expect(screen.getByText(/boom/)).toBeInTheDocument();
@@ -114,23 +97,16 @@ describe("HarnessPreview", () => {
 
   // Regression for "TypeError: t is not iterable" in the harness preview tab when an
   // older harness record arrives without the `initial_files` field.
-  it.each([undefined, null])(
-    "does not crash when harness.initial_files is %p",
-    (initialFiles) => {
-      mockUsePreviewHarness.mockReturnValue(makeMutationStub({ data: sampleResponse }));
+  it.each([undefined, null])("does not crash when harness.initial_files is %p", (initialFiles) => {
+    mockUsePreviewHarness.mockReturnValue(makeMutationStub({ data: sampleResponse }));
 
-      render(
-        <HarnessPreview
-          systemPrompt="hi"
-          capabilities={[]}
-          initialFiles={initialFiles as never}
-        />,
-      );
+    render(
+      <HarnessPreview systemPrompt="hi" capabilities={[]} initialFiles={initialFiles as never} />,
+    );
 
-      expect(screen.getByText("Initial Files")).toBeInTheDocument();
-      expect(screen.getByText("No initial files configured.")).toBeInTheDocument();
-    },
-  );
+    expect(screen.getByText("Initial Files")).toBeInTheDocument();
+    expect(screen.getByText("No initial files configured.")).toBeInTheDocument();
+  });
 
   it("passes parent_harness_id through to the preview mutation", () => {
     const stub = makeMutationStub({ data: sampleResponse });

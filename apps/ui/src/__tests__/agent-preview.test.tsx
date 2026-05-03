@@ -27,10 +27,7 @@ function makeMutationStub(opts: {
   // We invoke onSuccess synchronously when data is supplied to drive the success path.
   return {
     mutate: jest.fn(
-      (
-        _req: unknown,
-        callbacks?: { onSuccess?: (d: AgentPreviewResponse) => void },
-      ) => {
+      (_req: unknown, callbacks?: { onSuccess?: (d: AgentPreviewResponse) => void }) => {
         if (opts.data && callbacks?.onSuccess) callbacks.onSuccess(opts.data);
       },
     ),
@@ -59,13 +56,7 @@ describe("AgentPreview", () => {
   it("shows skeletons while the preview request is pending", () => {
     mockUsePreviewAgent.mockReturnValue(makeMutationStub({ isPending: true }));
 
-    render(
-      <AgentPreview
-        systemPrompt="hi"
-        capabilities={[]}
-        initialFiles={[]}
-      />,
-    );
+    render(<AgentPreview systemPrompt="hi" capabilities={[]} initialFiles={[]} />);
 
     expect(screen.queryByText("Full System Prompt")).not.toBeInTheDocument();
   });
@@ -98,17 +89,9 @@ describe("AgentPreview", () => {
   });
 
   it("shows the error card when the preview mutation fails", () => {
-    mockUsePreviewAgent.mockReturnValue(
-      makeMutationStub({ error: new Error("boom") }),
-    );
+    mockUsePreviewAgent.mockReturnValue(makeMutationStub({ error: new Error("boom") }));
 
-    render(
-      <AgentPreview
-        systemPrompt="hi"
-        capabilities={[]}
-        initialFiles={[]}
-      />,
-    );
+    render(<AgentPreview systemPrompt="hi" capabilities={[]} initialFiles={[]} />);
 
     expect(screen.getByText("Preview Error")).toBeInTheDocument();
     expect(screen.getByText(/boom/)).toBeInTheDocument();
@@ -116,21 +99,14 @@ describe("AgentPreview", () => {
 
   // Regression for "TypeError: t is not iterable" in the agent preview tab when an
   // older agent record arrives without the `initial_files` field.
-  it.each([undefined, null])(
-    "does not crash when agent.initial_files is %p",
-    (initialFiles) => {
-      mockUsePreviewAgent.mockReturnValue(makeMutationStub({ data: sampleResponse }));
+  it.each([undefined, null])("does not crash when agent.initial_files is %p", (initialFiles) => {
+    mockUsePreviewAgent.mockReturnValue(makeMutationStub({ data: sampleResponse }));
 
-      render(
-        <AgentPreview
-          systemPrompt="hi"
-          capabilities={[]}
-          initialFiles={initialFiles as never}
-        />,
-      );
+    render(
+      <AgentPreview systemPrompt="hi" capabilities={[]} initialFiles={initialFiles as never} />,
+    );
 
-      expect(screen.getByText("Initial Files")).toBeInTheDocument();
-      expect(screen.getByText("No initial files configured.")).toBeInTheDocument();
-    },
-  );
+    expect(screen.getByText("Initial Files")).toBeInTheDocument();
+    expect(screen.getByText("No initial files configured.")).toBeInTheDocument();
+  });
 });
