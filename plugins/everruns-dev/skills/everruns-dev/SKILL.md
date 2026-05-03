@@ -1,16 +1,16 @@
 ---
 name: everruns-dev
-description: Reference for working with the Everruns dev agent platform (https://dev.everruns.com) over MCP - core concepts, how to connect capabilities to agents and harnesses, and how to drive the API with the `discover`, `query`, and `execute` tools. Use whenever the user asks about Everruns Dev agents, harnesses, capabilities, sessions, models, or wants to call the Everruns Dev API.
+description: Reference for working with the Everruns(Dev) managed harnesses platform (https://dev.everruns.com) - core concepts, UI links, entity naming, and API workflows for agents, harnesses, capabilities, sessions, models, and apps.
 ---
 
-# Everruns Dev
+# Everruns(Dev)
 
-Everruns Dev is the dev deployment of the durable Everruns agentic harness engine. Docs:
-<https://docs.everruns.com>. This plugin talks to the Everruns dev deployment
-over MCP and exposes read-only API operations as bash builtins inside `query`
-and the full API surface inside `execute`.
+Everruns(Dev) is the dev deployment of the durable Everruns agentic harness
+engine. Docs: <https://docs.everruns.com>. This plugin talks to the
+Everruns(Dev) deployment over MCP and exposes both focused session tools and
+scriptable API access.
 
-If a user asks something Everruns Dev-related, prefer the MCP tools over guessing.
+If a user asks something Everruns(Dev)-related, prefer the MCP tools over guessing.
 When the exact shape of an operation is unclear, call `discover` first.
 
 ## Core concepts
@@ -45,7 +45,7 @@ Harness --has--> Capability
   `paused`. Sessions live indefinitely.
 - **Model** - an LLM like `gpt-4o` or `claude-sonnet-4`. Resolution priority:
   per-message controls -> session override -> agent default -> system default.
-- **MCP server** - a remote server exposing tools; integrated into Everruns Dev as
+- **MCP server** - a remote server exposing tools; integrated into Everruns(Dev) as
   a virtual capability (`mcp:{uuid}`).
 - **App** - binds a Harness + Agent to a channel (Slack, web widget, etc.) for
   external deployment.
@@ -60,13 +60,57 @@ Harness --has--> Capability
 3. Run the agent with `agent_run` - that creates a session (using the default
    harness), sends the first user message, and triggers the turn loop. To pin a
    specific harness, create the session directly via
-   `create_session --harness_id ...` and then call `send_message`.
+   `create_session --harness_id ...` and then call `create_message`.
 
 Capabilities are the answer to "how does my agent get tool X?" - attach the
 capability at the harness level for org-wide defaults, at the agent level for
 agent-specific tools, or at the session level for one-off additions.
 
-## MCP tools exposed by Everruns Dev
+## UI links
+
+All user-facing outputs should include links to the relevant Everruns(Dev) UI
+objects when an object is created, updated, inspected, or returned as a primary
+result. Use Markdown links. Default base URL: `https://dev.everruns.com` unless
+the user provides another deployment URL.
+
+Top-level UI paths:
+
+- Dashboard: `https://dev.everruns.com/dashboard`
+- Sessions list: `https://dev.everruns.com/sessions`
+- Session chat: `https://dev.everruns.com/sessions/{session_id}/chat`
+- Session events/files/resources/schedules/storage:
+  `https://dev.everruns.com/sessions/{session_id}/{tab}`
+- Agent: `https://dev.everruns.com/agents/{agent_id}`
+- Harness: `https://dev.everruns.com/harnesses/{harness_id}`
+- Capability: `https://dev.everruns.com/capabilities/{capability_id}`
+- App: `https://dev.everruns.com/apps/{app_id}`
+- MCP servers list: `https://dev.everruns.com/mcp-servers`
+- Models list: `https://dev.everruns.com/models`
+- Organization: `https://dev.everruns.com/orgs/{org_id}`
+
+Examples:
+
+- `[Support Triage](https://dev.everruns.com/agents/agent_01933b5a00007000800000000000001)`
+- `[Session](https://dev.everruns.com/sessions/session_01933b5a00007000800000000000003/chat)`
+- `[Base Harness](https://dev.everruns.com/harnesses/harness_01933b5a00007000800000000000002)`
+- `[Web Fetch](https://dev.everruns.com/capabilities/web_fetch)`
+
+## Names and IDs
+
+- `id` is the stable API and UI-link identifier. Use it for follow-up calls,
+  joins, and links. Core IDs are prefixed, such as `agent_...`, `harness_...`,
+  `session_...`, `app_...`, and `org_...`. Capability IDs are capability refs,
+  such as `web_fetch`, `session_storage`, `mcp:{uuid}`, or `skill:{id}`.
+- `name` is the addressable slug for agents and harnesses. It is lowercase,
+  URL-friendly, and good for search or operator-facing references, but `id` is
+  safer for exact operations.
+- `display_name` is the human-readable UI label for agents and harnesses.
+  Render entities as `display_name || name || id`. Apps use `name`; sessions use
+  `title || preview || id`; capabilities use `name || id`.
+- When returning a list, include both a readable label and the stable ID. Link
+  the readable label when possible.
+
+## MCP tools exposed by Everruns(Dev)
 
 | Tool | When to use |
 |---|---|
@@ -76,8 +120,8 @@ agent-specific tools, or at the session level for one-off additions.
 | `session_send_message` | Follow-up user message in an existing session. |
 | `session_get_status` | Poll session status + latest agent message + recent events. Supports `since_event_id` for incremental polling and `event_types` to filter. |
 | `discover` | Search the API catalog. Returns operation name, category, description, parameters. |
-| `query` | Run a bash script where only read-only Everruns Dev API operations are builtins. `jq` is available. Prefer this for inspection, search, preview, export, grep, and status checks. |
-| `execute` | Run a bash script where every Everruns Dev API operation is a builtin. `jq` is available. Use this when the workflow needs side effects. |
+| `query` | Run a bash script where only read-only Everruns(Dev) API operations are builtins. `jq` is available. Prefer this for inspection, search, preview, export, grep, and status checks. |
+| `execute` | Run a bash script where every Everruns(Dev) API operation is a builtin. `jq` is available. Use this when the workflow needs side effects. |
 
 Default to `query` for reads. Switch to `execute` only when the workflow needs
 to create, update, delete, or trigger actions.

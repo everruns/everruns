@@ -1,5 +1,5 @@
 ---
-description: Show the current Everruns Dev user and active organization
+description: Show the current Everruns(Dev) user and active organization
 ---
 
 Call the `me` MCP tool. If it fails with an auth error, tell the user to

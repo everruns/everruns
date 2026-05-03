@@ -1,7 +1,7 @@
 {
   "name": "everruns-dev",
-  "version": "0.1.1",
-  "description": "Interact with the Everruns dev agent platform from Codex over MCP, with read-only `query` and full-access `execute` workflows.",
+  "version": "0.1.2",
+  "description": "Interact with the Everruns(Dev) managed harnesses platform from Codex. Manage harnesses, agents, and capabilities. Run agentic sessions. Create and deploy agentic applications.",
   "author": {
     "name": "Everruns",
     "url": "https://everruns.com"
@@ -19,9 +19,9 @@
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
-    "displayName": "Everruns Dev",
-    "shortDescription": "Query or execute Everruns dev workflows from Codex over MCP",
-    "longDescription": "Bring the Everruns dev agent platform into Codex. Query Everruns dev state through the read-only `query` tool, use `execute` for workflows with side effects, manage harnesses and sessions, browse the API catalog, and drive the full platform through the bundled skill, slash commands, and MCP connection.",
+    "displayName": "Everruns(Dev)",
+    "shortDescription": "Manage harnesses, agents, capabilities, sessions, and apps on Everruns(Dev).",
+    "longDescription": "Use Everruns(Dev) from Codex to manage durable harnesses, configure agents and capabilities, run agentic sessions, and create deployable agentic applications. Useful for data analysis, customer support, operational workflows, research automation, and other agent-powered products.",
     "developerName": "Everruns",
     "category": "Agents",
     "capabilities": [
@@ -30,7 +30,7 @@
     ],
     "websiteURL": "https://everruns.com",
     "defaultPrompt": [
-      "Create an Everruns agent to summarize news from https://news.ycombinator.com/, pick the right harness and capabilities, and run it against this task"
+      "Create an Everruns(Dev) agent to summarize news from https://news.ycombinator.com/, pick the right harness and capabilities, and run it against this task"
     ],
     "brandColor": "#D4A43A",
     "composerIcon": "./assets/everruns-small.svg",
