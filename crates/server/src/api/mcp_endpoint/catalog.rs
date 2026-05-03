@@ -106,53 +106,101 @@ fn command_descriptor_to_def(desc: &crate::domains::common::CommandDescriptor) -
         })
 }
 
+// EVE-409: bashkit's flag parser only coerces scalar types (integer, number,
+// boolean) and treats everything else as raw `string`. So array/object fields
+// like `--capabilities '[...]'` or `--tags '[...]'` arrive at dispatch as JSON
+// strings. We bridge this in two complementary passes:
+//
+// 1. `bashkit_inventory_schema` rewrites every aggregate property to
+//    `type: "string"` so bashkit's `tools/list` advertises a flat string flag
+//    and `parse_flags` accepts the raw JSON text without typed coercion
+//    attempts (which still don't reach into `allOf`/`$ref` composition;
+//    bashkit#1516/#1527 only coerces top-level array/object schemas).
+// 2. `coerce_json_text_params` parses those JSON strings back into typed
+//    values before the domain dispatcher sees them.
+//
+// Both passes walk `$ref` into `$defs`/`definitions`, traverse `allOf`,
+// `oneOf`, `anyOf` branches, and recurse into nested `$defs` entries — this
+// is what makes the `#[serde(flatten)]` shape used by `UpdateAgentCmd`
+// (`allOf: [{$ref: ".../UpdateAgentRequest"}, {properties: {id}}]`) work the
+// same as the simpler `CreateAgentCmd` shape with direct top-level
+// properties.
+const SCHEMA_WALK_MAX_DEPTH: u8 = 8;
+
 fn bashkit_inventory_schema(mut schema: serde_json::Value) -> serde_json::Value {
-    let Some(properties) = schema
+    let defs_snapshot = schema
+        .get("$defs")
+        .or_else(|| schema.get("definitions"))
+        .and_then(|value| value.as_object())
+        .cloned();
+    retype_aggregate_properties_in_place(&mut schema, defs_snapshot.as_ref(), 0);
+    schema
+}
+
+fn retype_aggregate_properties_in_place(
+    schema: &mut serde_json::Value,
+    defs: Option<&serde_json::Map<String, serde_json::Value>>,
+    depth: u8,
+) {
+    if depth >= SCHEMA_WALK_MAX_DEPTH {
+        return;
+    }
+    if let Some(properties) = schema
         .get_mut("properties")
         .and_then(|value| value.as_object_mut())
-    else {
-        return schema;
-    };
-
-    // EVE-409: bashkit's flag parser only coerces scalar types and falls back
-    // to `string` for anything else, leaving array/object fields as raw strings
-    // by the time they reach the dispatcher. Generic operations (`update_agent
-    // --capabilities '[...]'`, `--tags '[...]'`, etc.) then fail to deserialize.
-    // Re-shape every non-scalar property to `type: string` with a JSON-text
-    // hint here, and let `make_inventory_callback` parse those JSON strings
-    // back into structured values before dispatch.
-    for (_name, property) in properties.iter_mut() {
-        let Some(object) = property.as_object_mut() else {
-            continue;
-        };
-        let is_non_scalar = object
-            .get("type")
-            .and_then(|value| value.as_str())
-            .is_some_and(|value| matches!(value, "array" | "object"))
-            || object.contains_key("items")
-            || object.contains_key("properties");
-        if !is_non_scalar {
-            continue;
+    {
+        for (_name, property) in properties.iter_mut() {
+            if !property_is_aggregate(property, defs, 0) {
+                continue;
+            }
+            let Some(object) = property.as_object_mut() else {
+                continue;
+            };
+            object.insert(
+                "type".to_string(),
+                serde_json::Value::String("string".to_string()),
+            );
+            // Drop type-discriminating constructs that no longer apply after
+            // retyping; this keeps `tools/list` consumers from generating
+            // bogus item validators or following stale composition branches.
+            object.remove("items");
+            object.remove("properties");
+            object.remove("oneOf");
+            object.remove("anyOf");
+            object.remove("allOf");
+            object.remove("$ref");
+            let description = object
+                .get("description")
+                .and_then(|value| value.as_str())
+                .map(|value| format!("{value} Pass JSON text in bash mode."))
+                .unwrap_or_else(|| "Pass JSON text in bash mode.".to_string());
+            object.insert(
+                "description".to_string(),
+                serde_json::Value::String(description),
+            );
         }
-        object.insert(
-            "type".to_string(),
-            serde_json::Value::String("string".to_string()),
-        );
-        // Drop array-only metadata that no longer applies after retyping; this
-        // keeps `tools/list` consumers from generating bogus item validators.
-        object.remove("items");
-        let description = object
-            .get("description")
-            .and_then(|value| value.as_str())
-            .map(|value| format!("{value} Pass JSON text in bash mode."))
-            .unwrap_or_else(|| "Pass JSON text in bash mode.".to_string());
-        object.insert(
-            "description".to_string(),
-            serde_json::Value::String(description),
-        );
     }
-
-    schema
+    let defs_key = if schema.get("$defs").is_some() {
+        Some("$defs")
+    } else if schema.get("definitions").is_some() {
+        Some("definitions")
+    } else {
+        None
+    };
+    if let Some(key) = defs_key
+        && let Some(defs_obj) = schema.get_mut(key).and_then(|value| value.as_object_mut())
+    {
+        for (_, def) in defs_obj.iter_mut() {
+            retype_aggregate_properties_in_place(def, defs, depth + 1);
+        }
+    }
+    for key in ["allOf", "oneOf", "anyOf"] {
+        if let Some(branches) = schema.get_mut(key).and_then(|value| value.as_array_mut()) {
+            for branch in branches.iter_mut() {
+                retype_aggregate_properties_in_place(branch, defs, depth + 1);
+            }
+        }
+    }
 }
 
 /// Walk the original param schema and parse JSON-text values for properties
@@ -169,26 +217,23 @@ fn coerce_json_text_params(
     schema: &serde_json::Value,
     params: &mut serde_json::Value,
 ) -> Result<(), String> {
-    let (Some(properties), Some(params_obj)) = (
-        schema.get("properties").and_then(|value| value.as_object()),
-        params.as_object_mut(),
-    ) else {
+    let Some(params_obj) = params.as_object_mut() else {
         return Ok(());
     };
-    for (name, property) in properties.iter() {
-        let needs_parse = property
-            .get("type")
-            .and_then(|value| value.as_str())
-            .is_some_and(|value| matches!(value, "array" | "object"))
-            || property.get("items").is_some()
-            || property.get("properties").is_some();
-        if !needs_parse {
-            continue;
-        }
-        let Some(raw) = params_obj.get(name) else {
+    let defs = schema
+        .get("$defs")
+        .or_else(|| schema.get("definitions"))
+        .and_then(|value| value.as_object());
+    let mut all_properties = serde_json::Map::new();
+    collect_all_properties(schema, defs, &mut all_properties, 0);
+    for (name, value) in params_obj.iter_mut() {
+        let Some(property) = all_properties.get(name) else {
             continue;
         };
-        let serde_json::Value::String(text) = raw else {
+        if !property_is_aggregate(property, defs, 0) {
+            continue;
+        }
+        let serde_json::Value::String(text) = value else {
             continue;
         };
         if text.trim().is_empty() {
@@ -196,9 +241,99 @@ fn coerce_json_text_params(
         }
         let parsed = serde_json::from_str::<serde_json::Value>(text.trim())
             .map_err(|err| format!("--{name}: invalid JSON ({err})"))?;
-        params_obj.insert(name.clone(), parsed);
+        *value = parsed;
     }
     Ok(())
+}
+
+/// Merge property maps across `$ref`, `allOf`, `oneOf`, and `anyOf` branches
+/// so composed command schemas surface every declared field. The outermost
+/// schema's own `properties` are visited first, then `$ref` resolution and
+/// composition branches; combined with `or_insert_with` this gives outer
+/// declarations precedence over nested copies on key conflicts.
+fn collect_all_properties(
+    schema: &serde_json::Value,
+    defs: Option<&serde_json::Map<String, serde_json::Value>>,
+    out: &mut serde_json::Map<String, serde_json::Value>,
+    depth: u8,
+) {
+    if depth >= SCHEMA_WALK_MAX_DEPTH {
+        return;
+    }
+    if let Some(properties) = schema.get("properties").and_then(|value| value.as_object()) {
+        for (name, property) in properties {
+            out.entry(name.clone()).or_insert_with(|| property.clone());
+        }
+    }
+    if let Some(reference) = schema.get("$ref").and_then(|value| value.as_str())
+        && let Some(name) = reference
+            .strip_prefix("#/$defs/")
+            .or_else(|| reference.strip_prefix("#/definitions/"))
+        && let Some(defs) = defs
+        && let Some(resolved) = defs.get(name)
+    {
+        collect_all_properties(resolved, Some(defs), out, depth + 1);
+    }
+    for key in ["allOf", "oneOf", "anyOf"] {
+        if let Some(branches) = schema.get(key).and_then(|value| value.as_array()) {
+            for branch in branches {
+                collect_all_properties(branch, defs, out, depth + 1);
+            }
+        }
+    }
+}
+
+/// Decide whether a property's declared schema represents an array or object
+/// aggregate, including the utoipa-style nullable shapes (`type: ["array",
+/// "null"]`, `oneOf` with a `null` branch + array branch) and `$ref` chains
+/// into `$defs`.
+fn property_is_aggregate(
+    schema: &serde_json::Value,
+    defs: Option<&serde_json::Map<String, serde_json::Value>>,
+    depth: u8,
+) -> bool {
+    if depth >= SCHEMA_WALK_MAX_DEPTH {
+        return false;
+    }
+    if let Some(value) = schema.get("type") {
+        if let Some(name) = value.as_str()
+            && matches!(name, "array" | "object")
+        {
+            return true;
+        }
+        if let Some(types) = value.as_array()
+            && types.iter().any(|entry| {
+                entry
+                    .as_str()
+                    .is_some_and(|name| matches!(name, "array" | "object"))
+            })
+        {
+            return true;
+        }
+    }
+    if schema.get("items").is_some() || schema.get("properties").is_some() {
+        return true;
+    }
+    if let Some(reference) = schema.get("$ref").and_then(|value| value.as_str())
+        && let Some(name) = reference
+            .strip_prefix("#/$defs/")
+            .or_else(|| reference.strip_prefix("#/definitions/"))
+        && let Some(defs) = defs
+        && let Some(resolved) = defs.get(name)
+        && property_is_aggregate(resolved, Some(defs), depth + 1)
+    {
+        return true;
+    }
+    for key in ["allOf", "oneOf", "anyOf"] {
+        if let Some(branches) = schema.get(key).and_then(|value| value.as_array())
+            && branches
+                .iter()
+                .any(|branch| property_is_aggregate(branch, defs, depth + 1))
+        {
+            return true;
+        }
+    }
+    false
 }
 
 /// Stable, lower_snake_case label for a `CommandError` variant. Surfaced as
@@ -410,6 +545,110 @@ mod tests {
                 "blank input {blank:?} should pass through untouched",
             );
         }
+    }
+
+    #[test]
+    fn bashkit_schema_retypes_aggregate_fields_buried_under_allof_and_ref() {
+        // `UpdateAgentCmd` shape: `#[serde(flatten)]` projects the wrapped
+        // request's properties into an `allOf: [{$ref}, {properties: {id}}]`
+        // composition. Top-level `properties` is empty; aggregate flags
+        // (`capabilities`, `tags`, `mcpServers`) live under
+        // `$defs.UpdateAgentRequest.properties`. The retyper must reach them
+        // so bashkit advertises plain `string` flags instead of typed
+        // arrays/objects (which bashkit#1516/#1527 still does not coerce
+        // through `allOf`/`$ref`).
+        let schema = serde_json::json!({
+            "type": "object",
+            "$defs": {
+                "UpdateAgentRequest": {
+                    "type": "object",
+                    "properties": {
+                        "tags": {
+                            "type": ["array", "null"],
+                            "items": { "type": "string" }
+                        },
+                        "capabilities": {
+                            "type": ["array", "null"],
+                            "items": { "$ref": "#/$defs/AgentCapabilityConfig" }
+                        },
+                        "mcpServers": {
+                            "oneOf": [
+                                { "type": "null" },
+                                { "$ref": "#/$defs/ScopedMcpServers" }
+                            ]
+                        }
+                    }
+                },
+                "AgentCapabilityConfig": { "type": "object", "properties": {} },
+                "ScopedMcpServers": { "type": "object", "properties": {} }
+            },
+            "allOf": [
+                { "$ref": "#/$defs/UpdateAgentRequest" },
+                {
+                    "type": "object",
+                    "properties": { "id": { "type": "string" } },
+                    "required": ["id"]
+                }
+            ]
+        });
+        let rewritten = bashkit_inventory_schema(schema);
+        let req_props = rewritten["$defs"]["UpdateAgentRequest"]["properties"]
+            .as_object()
+            .expect("UpdateAgentRequest properties");
+        for key in ["tags", "capabilities", "mcpServers"] {
+            assert_eq!(
+                req_props[key]["type"], "string",
+                "{key} should be retyped to string under $defs"
+            );
+            assert!(
+                req_props[key].get("items").is_none(),
+                "{key} items metadata should be dropped"
+            );
+            assert!(
+                req_props[key].get("oneOf").is_none(),
+                "{key} oneOf branches should be dropped"
+            );
+        }
+        // Top-level allOf id flag remains a plain string.
+        let id_props = rewritten["allOf"][1]["properties"].as_object().unwrap();
+        assert_eq!(id_props["id"]["type"], "string");
+    }
+
+    #[test]
+    fn coerce_walks_allof_ref_to_parse_flatten_aggregate_fields() {
+        // Same `UpdateAgentCmd` shape as above. Bashkit hands us the
+        // string-typed value because we advertised the field as `string`;
+        // the coercer must walk into `$defs` via the `allOf` `$ref` to
+        // discover that `capabilities` was originally an array and parse it.
+        let schema = serde_json::json!({
+            "$defs": {
+                "UpdateAgentRequest": {
+                    "properties": {
+                        "tags": { "type": ["array", "null"], "items": {} },
+                        "capabilities": {
+                            "type": ["array", "null"],
+                            "items": { "type": "object" }
+                        }
+                    }
+                }
+            },
+            "allOf": [
+                { "$ref": "#/$defs/UpdateAgentRequest" },
+                { "properties": { "id": { "type": "string" } } }
+            ]
+        });
+        let mut params = serde_json::json!({
+            "id": "agent_x",
+            "capabilities": "[{\"ref\":\"current_time\"}]",
+            "tags": "[\"a\",\"b\"]"
+        });
+        coerce_json_text_params(&schema, &mut params).expect("coerce");
+        assert_eq!(params["id"], "agent_x");
+        assert_eq!(
+            params["capabilities"],
+            serde_json::json!([{ "ref": "current_time" }])
+        );
+        assert_eq!(params["tags"], serde_json::json!(["a", "b"]));
     }
 
     #[test]

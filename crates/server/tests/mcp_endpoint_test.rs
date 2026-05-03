@@ -2092,6 +2092,105 @@ async fn test_mcp_execute_agent_crud_workflow() {
     );
 }
 
+// EVE-409: bashkit's flag parser stringifies any flag whose schema is not a
+// scalar, so JSON arrays/objects passed to generated builtins arrive at the
+// MCP catalog callback as strings. `coerce_json_text_params` parses them
+// back into structured JSON before the domain dispatcher sees them. These
+// tests exercise both `create_agent` and `update_agent` end-to-end through
+// the bashkit pipeline to make sure the fix works for every typed-aggregate
+// field on every generated operation, including the `#[serde(flatten)]`
+// shape used by `UpdateAgentCmd`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_execute_array_flags_create_and_update_agent() {
+    let (_server, url) = TestServer::serving().await;
+
+    // create_agent with --capabilities and --tags as JSON-stringified arrays.
+    let suffix = unique_suffix();
+    let create_cmd = format!(
+        "create_agent --name 'eve409-arr-{suffix}' --display_name 'EVE-409 Array Flags' \
+         --system_prompt 'Test array flags.' \
+         --tags '[\"alpha\",\"beta\"]' \
+         --capabilities '[{{\"ref\":\"current_time\"}}]'"
+    );
+    let resp = execute_http_command(&url, create_cmd).await;
+    assert!(
+        !tool_is_error(&resp),
+        "create_agent with array flags failed: {}",
+        tool_text(&resp)
+    );
+    let created = tool_json(&resp);
+    let agent_id = created["id"].as_str().unwrap().to_string();
+    assert_eq!(
+        created["tags"],
+        json!(["alpha", "beta"]),
+        "tags should round-trip as an array"
+    );
+    let cap_refs: Vec<String> = created["capabilities"]
+        .as_array()
+        .expect("capabilities array")
+        .iter()
+        .map(|c| c["ref"].as_str().unwrap_or_default().to_string())
+        .collect();
+    assert!(
+        cap_refs.iter().any(|r| r == "current_time"),
+        "expected current_time capability, got: {cap_refs:?}"
+    );
+
+    // update_agent --capabilities '[{"ref":"current_time"}]' — the exact
+    // failing case from EVE-409.
+    let update_resp = execute_http_command(
+        &url,
+        format!("update_agent --id {agent_id} --capabilities '[{{\"ref\":\"current_time\"}}]'"),
+    )
+    .await;
+    assert!(
+        !tool_is_error(&update_resp),
+        "update_agent --capabilities failed: {}",
+        tool_text(&update_resp)
+    );
+    let updated_caps: Vec<String> = tool_json(&update_resp)["capabilities"]
+        .as_array()
+        .expect("capabilities array")
+        .iter()
+        .map(|c| c["ref"].as_str().unwrap_or_default().to_string())
+        .collect();
+    assert!(
+        updated_caps.iter().any(|r| r == "current_time"),
+        "update_agent should persist capabilities, got: {updated_caps:?}"
+    );
+
+    // update_agent --tags '["a","b"]'
+    let tags_resp = execute_http_command(
+        &url,
+        format!("update_agent --id {agent_id} --tags '[\"codex-created\",\"joke\"]'"),
+    )
+    .await;
+    assert!(
+        !tool_is_error(&tags_resp),
+        "update_agent --tags failed: {}",
+        tool_text(&tags_resp)
+    );
+    assert_eq!(
+        tool_json(&tags_resp)["tags"],
+        json!(["codex-created", "joke"]),
+        "update_agent --tags should round-trip"
+    );
+
+    // Malformed JSON in an array flag must still fail loudly so the user
+    // gets a non-zero exit. Bashkit sanitizes the callback message itself
+    // (THREAT[TM-INF-030]) so we only assert that the call errors out and
+    // that we did not silently coerce garbage into success.
+    let bad_resp = execute_http_command(
+        &url,
+        format!("update_agent --id {agent_id} --tags '[not, valid'"),
+    )
+    .await;
+    assert!(
+        tool_is_error(&bad_resp),
+        "expected error for malformed --tags JSON"
+    );
+}
+
 // ============================================================================
 // Tier 1 + Tier 2 combined: full flow via MCP
 // ============================================================================
