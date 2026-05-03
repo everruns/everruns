@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.8.24] - 2026-05-03
+
+### Highlights
+
+- **Harness examples gallery** - New gallery surfaces built-in harness examples so users can browse and adopt them more easily ([#1629](https://github.com/everruns/everruns/pull/1629)).
+- **MCP discover exposes output schemas** - `discover` now includes command output schemas, giving MCP clients richer typing information ([#1627](https://github.com/everruns/everruns/pull/1627)).
+- **MCP OAuth metadata reliability** - Path-specific OAuth protected-resource metadata URL fixes resource discovery for clients that probe per-endpoint metadata ([#1623](https://github.com/everruns/everruns/pull/1623)), and the Everruns Dev plugin declares its `oauth_resource` so Codex MCP login satisfies RFC 8707 ([#1624](https://github.com/everruns/everruns/pull/1624)).
+- **bashkit bumped to v0.3.0** - Picks up the latest sandbox capabilities and hardening from upstream bashkit ([#1630](https://github.com/everruns/everruns/pull/1630), [#1625](https://github.com/everruns/everruns/pull/1625)).
+- **Everruns Dev plugin docs** - Plugin README and metadata aligned with the Claude Code spec for clearer surfacing in marketplaces ([#1628](https://github.com/everruns/everruns/pull/1628)).
+
+### What's Changed
+
+- fix(plugin): add Everruns Dev MCP OAuth resource ([#1624](https://github.com/everruns/everruns/pull/1624)) by [@chaliy](https://github.com/chaliy)
+- fix(mcp): use path-specific OAuth protected-resource metadata URL ([#1623](https://github.com/everruns/everruns/pull/1623)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump bashkit to v0.2.1 ([#1625](https://github.com/everruns/everruns/pull/1625)) by [@chaliy](https://github.com/chaliy)
+- chore(plugins): enforce maintenance parity checks by [@chaliy](https://github.com/chaliy)
+- fix(mcp): expose command output schemas in discover ([#1627](https://github.com/everruns/everruns/pull/1627)) by [@chaliy](https://github.com/chaliy)
+- docs(plugin): align everruns-dev with Claude Code spec and surface in README ([#1628](https://github.com/everruns/everruns/pull/1628)) by [@chaliy](https://github.com/chaliy)
+- feat(harnesses): add harness examples gallery ([#1629](https://github.com/everruns/everruns/pull/1629)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump bashkit to v0.3.0 ([#1630](https://github.com/everruns/everruns/pull/1630)) by [@chaliy](https://github.com/chaliy)
+
 ## [0.8.23] - 2026-04-30
 
 ### Highlights
