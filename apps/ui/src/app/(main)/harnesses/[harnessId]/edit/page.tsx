@@ -13,6 +13,7 @@ import {
   useHarnessNameAvailability,
 } from "@/hooks";
 import { usePolicies } from "@/hooks/use-policies";
+import { ResourceNotFound } from "@/components/resource-not-found";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -216,12 +217,13 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
 
   if (!harness) {
     return (
-      <div className="container mx-auto p-6">
-        <div className="text-red-500">Harness not found</div>
-        <Link href="/harnesses" className="text-blue-500 hover:underline">
-          Back to harnesses
-        </Link>
-      </div>
+      <ResourceNotFound
+        title="Harness not found"
+        description="This harness may have been deleted, moved to another organization, or the URL may be wrong."
+        backHref="/harnesses"
+        backLabel="Back to harnesses"
+        resourceId={harnessId}
+      />
     );
   }
 

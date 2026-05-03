@@ -3,6 +3,7 @@
 import { use, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
+import { ResourceNotFound } from "@/components/resource-not-found";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -282,12 +283,13 @@ function SessionLayoutContent({ children, sessionId }: SessionLayoutContentProps
 
   if (!session) {
     return (
-      <div className="container mx-auto p-6">
-        <div className="text-destructive">Session not found</div>
-        <Link href="/sessions" className="text-sm text-muted-foreground hover:text-foreground">
-          Back to sessions
-        </Link>
-      </div>
+      <ResourceNotFound
+        title="Session not found"
+        description="This session may have been deleted, moved to another organization, or the URL may be wrong."
+        backHref="/sessions"
+        backLabel="Back to sessions"
+        resourceId={sessionId}
+      />
     );
   }
 

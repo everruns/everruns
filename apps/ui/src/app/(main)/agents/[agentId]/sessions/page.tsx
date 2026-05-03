@@ -4,6 +4,7 @@ import { use, useState, useMemo } from "react";
 import { useAgent, useHarnesses, useSessions, useCreateSession, useLlmModels } from "@/hooks";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { ResourceNotFound } from "@/components/resource-not-found";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -74,12 +75,13 @@ export default function SessionsListPage({ params }: { params: Promise<{ agentId
 
   if (!agent) {
     return (
-      <div className="container mx-auto p-6">
-        <div className="text-red-500">Agent not found</div>
-        <Link href="/agents" className="text-blue-500 hover:underline">
-          Back to agents
-        </Link>
-      </div>
+      <ResourceNotFound
+        title="Agent not found"
+        description="This agent may have been deleted, moved to another organization, or the URL may be wrong."
+        backHref="/agents"
+        backLabel="Back to agents"
+        resourceId={agentId}
+      />
     );
   }
 

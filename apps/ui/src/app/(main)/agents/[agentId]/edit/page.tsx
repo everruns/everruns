@@ -12,6 +12,7 @@ import {
   useAgentNameAvailability,
 } from "@/hooks";
 import { usePolicies } from "@/hooks/use-policies";
+import { ResourceNotFound } from "@/components/resource-not-found";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -212,12 +213,13 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
 
   if (!agent) {
     return (
-      <div className="container mx-auto p-6">
-        <div className="text-red-500">Agent not found</div>
-        <Link href="/agents" className="text-blue-500 hover:underline">
-          Back to agents
-        </Link>
-      </div>
+      <ResourceNotFound
+        title="Agent not found"
+        description="This agent may have been deleted, moved to another organization, or the URL may be wrong."
+        backHref="/agents"
+        backLabel="Back to agents"
+        resourceId={agentId}
+      />
     );
   }
 
