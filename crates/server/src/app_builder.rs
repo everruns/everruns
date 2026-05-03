@@ -1096,6 +1096,12 @@ impl ServerAppBuilder {
 
         // TM-DOS: Global per-IP API rate limiting (applied to API routes only,
         // not /health or /metrics). Set RATE_LIMIT_API_REQUESTS_PER_MINUTE=0 to disable.
+        let link_builder = api::common::UrlBuilder::from_auth_config(&auth_state.config);
+        let api_routes = api_routes.layer(axum::middleware::from_fn(move |req, next| {
+            let link_builder = link_builder.clone();
+            api::common::decorate_json_response_links(link_builder, req, next)
+        }));
+
         let api_routes = if crate::auth::rate_limit::ApiRateLimiter::is_disabled() {
             tracing::info!("API rate limiting disabled via RATE_LIMIT_API_REQUESTS_PER_MINUTE=0");
             api_routes

@@ -577,6 +577,7 @@ impl Tool for ManageHarnessesTool {
                 match store.delete_harness(id).await {
                     Ok(()) => ToolExecutionResult::success(json!({
                         "harness_id": id_str,
+                        "ui_link": format!("{}/harnesses/{}", base_url, id_str),
                         "message": "Harness archived successfully"
                     })),
                     Err(e) => {
@@ -927,6 +928,7 @@ impl Tool for ManageAgentsTool {
                 match store.delete_agent(id).await {
                     Ok(()) => ToolExecutionResult::success(json!({
                         "agent_id": id_str,
+                        "ui_link": format!("{}/agents/{}", base_url, id_str),
                         "message": "Agent archived successfully"
                     })),
                     Err(e) => {
@@ -1314,6 +1316,7 @@ impl Tool for ManageAppsTool {
                 match store.delete_app(app_id).await {
                     Ok(()) => ToolExecutionResult::success(json!({
                         "app_id": app_id_str,
+                        "ui_link": format!("{}/apps/{}", base_url, app_id_str),
                         "message": "App archived successfully"
                     })),
                     Err(e) => {
@@ -1338,6 +1341,7 @@ impl Tool for ManageAppsTool {
                 match store.destroy_app(app_id).await {
                     Ok(()) => ToolExecutionResult::success(json!({
                         "app_id": app_id_str,
+                        "ui_link": format!("{}/apps", base_url),
                         "message": "App destroyed successfully"
                     })),
                     Err(e) => {
@@ -1585,6 +1589,7 @@ impl Tool for ManageAppChannelsTool {
                     Ok(()) => ToolExecutionResult::success(json!({
                         "app_id": app_id_str,
                         "channel_id": channel_id_str,
+                        "ui_link": format!("{}/apps/{}", base_url, app_id),
                         "message": "App channel deleted successfully"
                     })),
                     Err(e) => ToolExecutionResult::tool_error(format!(
@@ -1888,6 +1893,7 @@ impl Tool for ManageSessionsTool {
                 match store.delete_session(id).await {
                     Ok(()) => ToolExecutionResult::success(json!({
                         "session_id": id_str,
+                        "ui_link": format!("{}/sessions/{}/chat", base_url, id_str),
                         "message": "Session archived successfully"
                     })),
                     Err(e) => {
@@ -2257,6 +2263,7 @@ impl Tool for ReadCapabilitiesTool {
             Ok(s) => s,
             Err(e) => return e,
         };
+        let base_url = store.base_url();
 
         let id_filter = get_str(&arguments, "id");
         let search = get_str(&arguments, "search");
@@ -2274,6 +2281,7 @@ impl Tool for ReadCapabilitiesTool {
                             "name": c.name,
                             "description": c.description,
                             "status": c.status.to_string(),
+                            "ui_link": format!("{}/capabilities/{}", base_url, c.id.as_str()),
                         });
                         if let Some(cat) = &c.category {
                             item["category"] = json!(cat);
@@ -3270,6 +3278,7 @@ mod tests {
                     assert!(cap["id"].is_string());
                     assert!(cap["name"].is_string());
                     assert!(cap["type"].is_string());
+                    assert!(cap["ui_link"].as_str().unwrap().contains("/capabilities/"));
                 }
                 assert!(v["hint"].as_str().unwrap().contains("capability IDs"));
             }

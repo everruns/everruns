@@ -11,6 +11,7 @@ use std::sync::LazyLock;
 pub struct CatalogContext {
     pub state: super::AppState,
     pub caller: everruns_core::permissions::Caller,
+    pub link_builder: crate::api::common::UrlBuilder,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -145,12 +146,26 @@ fn make_inventory_callback(
     move |args: ToolArgs| {
         let params = args.params;
         let domain_ctx = ctx.to_domain_ctx();
+        let link_builder = ctx.link_builder.clone();
         Box::pin(async move {
-            (desc.dispatch)(params, &domain_ctx)
+            let result = (desc.dispatch)(params, &domain_ctx)
                 .await
-                .map_err(|error| error.to_string())
+                .map_err(|error| error.to_string())?;
+            decorate_command_output(&result, &link_builder)
         })
     }
+}
+
+fn decorate_command_output(
+    result: &str,
+    link_builder: &crate::api::common::UrlBuilder,
+) -> Result<String, String> {
+    let mut value = match serde_json::from_str::<serde_json::Value>(result) {
+        Ok(value) => value,
+        Err(_) => return Ok(result.to_string()),
+    };
+    link_builder.decorate_value_links(&mut value);
+    serde_json::to_string(&value).map_err(|error| format!("Internal error: {error}"))
 }
 
 #[cfg(test)]
@@ -176,6 +191,38 @@ mod tests {
         assert_ne!(
             def.input_schema.get("additionalProperties"),
             Some(&serde_json::Value::Bool(true))
+        );
+    }
+
+    #[test]
+    fn command_output_decoration_adds_ui_link_for_mcp_execute_results() {
+        let builder =
+            crate::api::common::UrlBuilder::new("https://api.example/api", "https://app.example");
+        let result = decorate_command_output(
+            r#"{"id":"agent_00000000000000000000000000000001","name":"demo"}"#,
+            &builder,
+        )
+        .expect("decorated output");
+        let value: serde_json::Value = serde_json::from_str(&result).unwrap();
+
+        assert_eq!(
+            value["self_url"],
+            "https://api.example/api/v1/agents/agent_00000000000000000000000000000001"
+        );
+        assert_eq!(
+            value["ui_link"],
+            "https://app.example/agents/agent_00000000000000000000000000000001"
+        );
+    }
+
+    #[test]
+    fn command_output_decoration_preserves_non_json_results() {
+        let builder =
+            crate::api::common::UrlBuilder::new("https://api.example/api", "https://app.example");
+
+        assert_eq!(
+            decorate_command_output("plain result", &builder).expect("decorated output"),
+            "plain result"
         );
     }
 }
