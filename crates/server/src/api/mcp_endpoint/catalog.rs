@@ -113,17 +113,33 @@ fn bashkit_inventory_schema(mut schema: serde_json::Value) -> serde_json::Value 
         return schema;
     };
 
-    for (name, property) in properties.iter_mut() {
-        if name != "channel_config" {
-            continue;
-        }
+    // EVE-409: bashkit's flag parser only coerces scalar types and falls back
+    // to `string` for anything else, leaving array/object fields as raw strings
+    // by the time they reach the dispatcher. Generic operations (`update_agent
+    // --capabilities '[...]'`, `--tags '[...]'`, etc.) then fail to deserialize.
+    // Re-shape every non-scalar property to `type: string` with a JSON-text
+    // hint here, and let `make_inventory_callback` parse those JSON strings
+    // back into structured values before dispatch.
+    for (_name, property) in properties.iter_mut() {
         let Some(object) = property.as_object_mut() else {
             continue;
         };
+        let is_non_scalar = object
+            .get("type")
+            .and_then(|value| value.as_str())
+            .is_some_and(|value| matches!(value, "array" | "object"))
+            || object.contains_key("items")
+            || object.contains_key("properties");
+        if !is_non_scalar {
+            continue;
+        }
         object.insert(
             "type".to_string(),
             serde_json::Value::String("string".to_string()),
         );
+        // Drop array-only metadata that no longer applies after retyping; this
+        // keeps `tools/list` consumers from generating bogus item validators.
+        object.remove("items");
         let description = object
             .get("description")
             .and_then(|value| value.as_str())
@@ -138,6 +154,52 @@ fn bashkit_inventory_schema(mut schema: serde_json::Value) -> serde_json::Value 
     schema
 }
 
+/// Walk the original param schema and parse JSON-text values for properties
+/// whose declared type is array or object back into structured JSON. Bashkit's
+/// flag parser keeps these as raw strings; the domain dispatcher expects the
+/// typed shape.
+///
+/// Empty / whitespace-only strings are left untouched so optional fields that
+/// rely on `deserialize_opt_json_value_lenient` (e.g. `channel_config`) keep
+/// their `--flag ''` → `None` behavior. The dispatcher applies the same trim
+/// rule for non-empty strings, so we only intervene when there is JSON to
+/// parse on the bash side.
+fn coerce_json_text_params(
+    schema: &serde_json::Value,
+    params: &mut serde_json::Value,
+) -> Result<(), String> {
+    let (Some(properties), Some(params_obj)) = (
+        schema.get("properties").and_then(|value| value.as_object()),
+        params.as_object_mut(),
+    ) else {
+        return Ok(());
+    };
+    for (name, property) in properties.iter() {
+        let needs_parse = property
+            .get("type")
+            .and_then(|value| value.as_str())
+            .is_some_and(|value| matches!(value, "array" | "object"))
+            || property.get("items").is_some()
+            || property.get("properties").is_some();
+        if !needs_parse {
+            continue;
+        }
+        let Some(raw) = params_obj.get(name) else {
+            continue;
+        };
+        let serde_json::Value::String(text) = raw else {
+            continue;
+        };
+        if text.trim().is_empty() {
+            continue;
+        }
+        let parsed = serde_json::from_str::<serde_json::Value>(text.trim())
+            .map_err(|err| format!("--{name}: invalid JSON ({err})"))?;
+        params_obj.insert(name.clone(), parsed);
+    }
+    Ok(())
+}
+
 fn make_inventory_callback(
     desc: &'static crate::domains::common::CommandDescriptor,
     ctx: CatalogContext,
@@ -146,10 +208,16 @@ fn make_inventory_callback(
 + Sync
 + 'static {
     move |args: ToolArgs| {
-        let params = args.params;
+        let mut params = args.params;
         let domain_ctx = ctx.to_domain_ctx();
         let link_builder = ctx.link_builder.clone();
         Box::pin(async move {
+            // Schema rewriting in `bashkit_inventory_schema` advertises array
+            // and object fields as `string` so bashkit's parser accepts JSON
+            // text on the command line. Translate them back here so the
+            // domain dispatcher sees the structured value it expects.
+            let original_schema = (desc.param_schema)();
+            coerce_json_text_params(&original_schema, &mut params)?;
             let result = (desc.dispatch)(params, &domain_ctx)
                 .await
                 .map_err(|error| error.to_string())?;
@@ -215,6 +283,123 @@ mod tests {
             value["ui_link"],
             "https://app.example/agents/agent_00000000000000000000000000000001"
         );
+    }
+
+    #[test]
+    fn bashkit_schema_retypes_array_and_object_fields_to_string() {
+        let schema = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "id": { "type": "string" },
+                "capabilities": {
+                    "type": "array",
+                    "items": { "type": "object" },
+                    "description": "List of capabilities"
+                },
+                "tags": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                },
+                "channel_config": {
+                    "type": "object",
+                    "description": "Channel config"
+                }
+            }
+        });
+        let rewritten = bashkit_inventory_schema(schema);
+        let props = rewritten["properties"].as_object().unwrap();
+        // Scalars unchanged
+        assert_eq!(props["id"]["type"], "string");
+        // Arrays and objects retyped to string with JSON-text hint
+        for key in ["capabilities", "tags", "channel_config"] {
+            assert_eq!(
+                props[key]["type"], "string",
+                "{key} should be retyped to string",
+            );
+            assert!(
+                props[key]["description"]
+                    .as_str()
+                    .unwrap()
+                    .contains("JSON text in bash mode"),
+            );
+            assert!(
+                props[key].get("items").is_none(),
+                "items metadata should be dropped for {key}",
+            );
+        }
+    }
+
+    #[test]
+    fn coerce_parses_json_text_for_array_and_object_fields() {
+        let schema = serde_json::json!({
+            "properties": {
+                "id": { "type": "string" },
+                "capabilities": { "type": "array", "items": { "type": "object" } },
+                "tags": { "type": "array", "items": { "type": "string" } }
+            }
+        });
+        let mut params = serde_json::json!({
+            "id": "agent_1",
+            "capabilities": "[{\"ref\":\"current_time\"}]",
+            "tags": "[\"a\",\"b\"]"
+        });
+        coerce_json_text_params(&schema, &mut params).expect("coerce");
+        assert_eq!(params["id"], "agent_1");
+        assert_eq!(
+            params["capabilities"],
+            serde_json::json!([{"ref": "current_time"}]),
+        );
+        assert_eq!(params["tags"], serde_json::json!(["a", "b"]));
+    }
+
+    #[test]
+    fn coerce_surfaces_json_parse_errors_with_field_name() {
+        let schema = serde_json::json!({
+            "properties": {
+                "capabilities": { "type": "array", "items": {} }
+            }
+        });
+        let mut params = serde_json::json!({ "capabilities": "[not-json" });
+        let err = coerce_json_text_params(&schema, &mut params).unwrap_err();
+        assert!(err.starts_with("--capabilities:"), "got: {err}");
+        assert!(err.contains("invalid JSON"));
+    }
+
+    #[test]
+    fn coerce_leaves_empty_and_whitespace_strings_untouched() {
+        // Optional non-scalar fields like `channel_config` rely on
+        // `deserialize_opt_json_value_lenient`, which maps empty/whitespace
+        // strings to `None`. Eagerly parsing those would regress the bash
+        // ergonomics (`--channel_config ''` should still mean "unset").
+        let schema = serde_json::json!({
+            "properties": {
+                "channel_config": { "type": "object", "properties": {} }
+            }
+        });
+        for blank in ["", "   ", "\t\n"] {
+            let mut params = serde_json::json!({ "channel_config": blank });
+            coerce_json_text_params(&schema, &mut params).expect("coerce");
+            assert_eq!(
+                params["channel_config"],
+                serde_json::Value::String(blank.to_string()),
+                "blank input {blank:?} should pass through untouched",
+            );
+        }
+    }
+
+    #[test]
+    fn coerce_passes_through_already_parsed_values() {
+        let schema = serde_json::json!({
+            "properties": {
+                "capabilities": { "type": "array", "items": {} }
+            }
+        });
+        // Non-bash MCP clients send the structured value directly; the coercer
+        // must leave it alone.
+        let original = serde_json::json!([{ "ref": "current_time" }]);
+        let mut params = serde_json::json!({ "capabilities": original.clone() });
+        coerce_json_text_params(&schema, &mut params).expect("coerce");
+        assert_eq!(params["capabilities"], original);
     }
 
     #[test]

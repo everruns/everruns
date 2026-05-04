@@ -168,6 +168,21 @@ important for jq scripting should override both. Use `output_shape = "paginated"
 for `{data,total,offset,limit}` list responses and `output_shape = "array"` for
 bare array responses.
 
+### Array and object parameters in bashkit builtins
+
+`api/mcp_endpoint/catalog.rs::bashkit_inventory_schema` rewrites every
+non-scalar property (any field whose type is `array`/`object`, or that carries
+`items`/`properties`) into `type: "string"` with a "Pass JSON text in bash
+mode" hint, then `make_inventory_callback` runs `coerce_json_text_params` to
+parse those JSON strings back into structured values before dispatch. Without
+this, bashkit's flag parser falls through to `string` for every non-scalar
+type and the dispatcher fails to deserialise generic operations like
+`update_agent --capabilities '[{"ref":"current_time"}]'` or
+`update_agent --tags '["a","b"]'`. The translation is generic so every
+inventory-registered command gets the same treatment automatically; do not
+special-case individual fields. JSON parse errors surface a `--<field>:
+invalid JSON (...)` message instead of the opaque `callback failed`.
+
 ## Writing a Command
 
 Canonical pattern (see `domains/agents/commands.rs` for reference):
