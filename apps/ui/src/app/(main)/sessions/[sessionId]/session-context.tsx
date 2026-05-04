@@ -40,7 +40,7 @@ export interface ToolOutputStreams {
   stderr: string;
 }
 
-interface SessionContextValue {
+export interface SessionContextValue {
   // IDs
   agentId: string | undefined;
   sessionId: string;
@@ -97,7 +97,7 @@ interface SessionContextValue {
   ) => Array<{ id: string; name: string; arguments: Record<string, unknown> }>;
 }
 
-const SessionContext = createContext<SessionContextValue | null>(null);
+export const SessionContext = createContext<SessionContextValue | null>(null);
 
 export function useSessionContext() {
   const context = useContext(SessionContext);
