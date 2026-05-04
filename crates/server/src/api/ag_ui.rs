@@ -137,7 +137,7 @@ async fn run_agent(
     // Mitigation: Reject any non-{user,assistant} role at the runtime trust
     // boundary, and reject duplicate message IDs. The error is a generic
     // `invalid_request` so we don't echo the offending role back.
-    validate_input_messages(&req.messages)?;
+    validate_input_messages(&req.messages).map_err(|err| *err)?;
 
     let request_id = req_id.map(|Extension(r)| r.0);
     let peer_addr = connect_info.map(|Extension(ConnectInfo(addr))| addr);
@@ -949,7 +949,7 @@ fn internal_error(err: anyhow::Error) -> Response {
 /// `developer`, or `tool` messages and have them flow into the LLM context
 /// alongside the agent's real system prompt. We refuse such requests with a
 /// generic 400 `invalid_request` and never echo the offending role.
-fn validate_input_messages(messages: &[AgUiMessage]) -> Result<(), Response> {
+fn validate_input_messages(messages: &[AgUiMessage]) -> Result<(), Box<Response>> {
     use std::collections::HashSet;
     let mut seen_ids: HashSet<&AgUiMessageId> = HashSet::with_capacity(messages.len());
     for message in messages {
@@ -959,12 +959,12 @@ fn validate_input_messages(messages: &[AgUiMessage]) -> Result<(), Response> {
             | AgUiMessage::Developer { .. }
             | AgUiMessage::Tool { .. } => {
                 tracing::warn!("AG-UI request rejected: disallowed message role");
-                return Err(bad_request("invalid_request"));
+                return Err(Box::new(bad_request("invalid_request")));
             }
         }
         if !seen_ids.insert(message.id()) {
             tracing::warn!("AG-UI request rejected: duplicate message id");
-            return Err(bad_request("invalid_request"));
+            return Err(Box::new(bad_request("invalid_request")));
         }
     }
     Ok(())

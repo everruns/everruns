@@ -504,13 +504,13 @@ See `specs/permissions.md` for the full policy model, `ResourceConfigResponse` d
 
 Global per-IP rate limiting applies to all `/v1` API routes (excluding `/health` and `/metrics`), including unauthenticated endpoints. See `crates/server/src/auth/rate_limit.rs` for implementation.
 
-| Scope | Default Limit | Env Var |
-|-------|---------------|---------|
-| Global API | 1200 req/min per IP | `RATE_LIMIT_API_REQUESTS_PER_MINUTE` |
+| Scope | Default Limit | Configured By |
+|-------|---------------|---------------|
+| Global API | 1200 req/min per IP | env: `RATE_LIMIT_API_REQUESTS_PER_MINUTE` |
 | Login | 10 req/min per IP | — |
 | Register | 5 req/min per IP | — |
 | Token refresh | 30 req/min per IP | — |
-| AG-UI per-app | configurable per app, no default | `AgUiChannelConfig.rate_limit_per_minute` |
+| AG-UI per-app | configurable per app, no default | app config: `AgUiChannelConfig.rate_limit_per_minute` |
 
 Set `RATE_LIMIT_API_REQUESTS_PER_MINUTE=0` to disable global API rate limiting. Auth endpoint limits are not configurable. Returns `429 Too Many Requests` when exceeded.
 

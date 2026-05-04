@@ -12,9 +12,10 @@
 use std::collections::HashMap;
 use std::net::IpAddr;
 use std::num::NonZeroU32;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 use governor::{Quota, RateLimiter, clock::DefaultClock, state::keyed::DashMapStateStore};
+use parking_lot::RwLock;
 
 use crate::valkey::ValkeyClient;
 
@@ -69,13 +70,14 @@ impl AgUiRateLimiter {
         match &self.backend {
             Backend::InMemory { cache } => {
                 let key = (app_id.to_string(), limit);
+                // parking_lot::RwLock does not poison; this stays panic-free
+                // even if a writer panics holding the lock.
                 let limiter = {
-                    if let Some(existing) = cache.read().expect("limiter cache poisoned").get(&key)
-                    {
+                    if let Some(existing) = cache.read().get(&key) {
                         existing.clone()
                     } else {
-                        let mut writer = cache.write().expect("limiter cache poisoned");
-                        writer
+                        cache
+                            .write()
                             .entry(key)
                             .or_insert_with(|| {
                                 Arc::new(RateLimiter::keyed(Quota::per_minute(
