@@ -376,6 +376,12 @@ pub struct AgUiChannelConfig {
     /// Defaults to 6 hours.
     #[serde(default = "default_session_expiration_seconds")]
     pub session_expiration_seconds: u32,
+    /// Optional per-IP rate limit applied to this app's AG-UI endpoint, in
+    /// requests per minute. `None` or `Some(0)` disables the per-app limit
+    /// (the global API limit still applies). Set a positive value to enforce
+    /// a stricter cap on anonymous traffic for this app.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rate_limit_per_minute: Option<u32>,
 }
 
 fn default_session_expiration_seconds() -> u32 {
@@ -614,6 +620,7 @@ mod tests {
             config.session_expiration_seconds,
             DEFAULT_SESSION_EXPIRATION_SECONDS
         );
+        assert!(config.rate_limit_per_minute.is_none());
     }
 
     #[test]
@@ -621,11 +628,13 @@ mod tests {
         let config = AgUiChannelConfig {
             anonymous: true,
             session_expiration_seconds: 3600,
+            rate_limit_per_minute: Some(120),
         };
         let json = serde_json::to_string(&config).unwrap();
         let parsed: AgUiChannelConfig = serde_json::from_str(&json).unwrap();
         assert!(parsed.anonymous);
         assert_eq!(parsed.session_expiration_seconds, 3600);
+        assert_eq!(parsed.rate_limit_per_minute, Some(120));
     }
 
     #[test]
@@ -633,6 +642,17 @@ mod tests {
         let config: AgUiChannelConfig =
             serde_json::from_str(r#"{"session_expiration_seconds": 0}"#).unwrap();
         assert_eq!(config.session_expiration_seconds, 0);
+    }
+
+    #[test]
+    fn test_ag_ui_channel_config_omits_rate_limit_when_unset() {
+        let config = AgUiChannelConfig {
+            anonymous: true,
+            session_expiration_seconds: DEFAULT_SESSION_EXPIRATION_SECONDS,
+            rate_limit_per_minute: None,
+        };
+        let json = serde_json::to_value(&config).unwrap();
+        assert!(json.get("rate_limit_per_minute").is_none());
     }
 
     #[test]

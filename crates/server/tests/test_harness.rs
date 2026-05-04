@@ -455,6 +455,7 @@ impl TestServer {
             feature_flags.notifications,
             event_delivery.clone(),
             sse_tracker.clone(),
+            api::ag_ui_rate_limit::AgUiRateLimiter::in_memory(),
         );
         let mcp_endpoint_state = api::mcp_endpoint::AppState::new(
             db.clone(),

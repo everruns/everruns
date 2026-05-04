@@ -8,6 +8,7 @@ interface AgUiSetupGuidanceProps {
   isPublished: boolean;
   anonymousEnabled: boolean;
   sessionExpirationSeconds: number;
+  rateLimitPerMinute?: number;
   onConfigure?: () => void;
 }
 
@@ -34,8 +35,10 @@ export function AgUiSetupGuidance({
   isPublished,
   anonymousEnabled,
   sessionExpirationSeconds,
+  rateLimitPerMinute,
   onConfigure,
 }: AgUiSetupGuidanceProps) {
+  const hasRateLimit = !!rateLimitPerMinute && rateLimitPerMinute > 0;
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
@@ -63,6 +66,15 @@ export function AgUiSetupGuidance({
           {sessionExpirationSeconds > 0
             ? " — after this, requests reusing the same threadId are rejected with 410 Gone and the client must start a new thread"
             : " — threads can be resumed indefinitely"}
+        </p>
+      </div>
+
+      <div>
+        <p className="text-sm font-medium">Rate limit</p>
+        <p className="text-sm text-muted-foreground">
+          {hasRateLimit
+            ? `${rateLimitPerMinute} requests per minute, per IP`
+            : "No per-app cap (global API limit applies)"}
         </p>
       </div>
 

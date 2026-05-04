@@ -10,10 +10,11 @@
 use axum::{
     body::Body,
     extract::ConnectInfo,
-    http::{Request, StatusCode},
+    http::{HeaderMap, Request, StatusCode},
     response::{IntoResponse, Response},
 };
 use governor::{Quota, RateLimiter, clock::DefaultClock, state::keyed::DashMapStateStore};
+use std::net::SocketAddr;
 use std::{net::IpAddr, num::NonZeroU32, sync::Arc};
 
 use crate::valkey::ValkeyClient;
@@ -145,8 +146,8 @@ impl From<RateLimitError> for Response {
     }
 }
 
-fn extract_forwarded_ip(req: &Request<Body>) -> Option<IpAddr> {
-    if let Some(forwarded) = req.headers().get("x-forwarded-for")
+fn extract_forwarded_ip_from_headers(headers: &HeaderMap) -> Option<IpAddr> {
+    if let Some(forwarded) = headers.get("x-forwarded-for")
         && let Ok(val) = forwarded.to_str()
         && let Some(first) = val.split(',').next()
         && let Ok(ip) = first.trim().parse::<IpAddr>()
@@ -157,8 +158,8 @@ fn extract_forwarded_ip(req: &Request<Body>) -> Option<IpAddr> {
     None
 }
 
-fn extract_real_ip(req: &Request<Body>) -> Option<IpAddr> {
-    if let Some(real_ip) = req.headers().get("x-real-ip")
+fn extract_real_ip_from_headers(headers: &HeaderMap) -> Option<IpAddr> {
+    if let Some(real_ip) = headers.get("x-real-ip")
         && let Ok(val) = real_ip.to_str()
         && let Ok(ip) = val.trim().parse::<IpAddr>()
     {
@@ -183,14 +184,26 @@ fn is_trusted_proxy_ip(ip: IpAddr) -> bool {
 /// trusted proxy (loopback/private ranges). Direct clients cannot spoof
 /// X-Forwarded-For / X-Real-IP to influence rate-limit keys.
 pub fn extract_client_ip(req: &Request<Body>) -> IpAddr {
-    if let Some(connect_info) = req.extensions().get::<ConnectInfo<std::net::SocketAddr>>() {
-        let peer_ip = connect_info.0.ip();
+    let peer = req
+        .extensions()
+        .get::<ConnectInfo<SocketAddr>>()
+        .map(|info| info.0);
+    extract_client_ip_from_parts(peer, req.headers())
+}
+
+/// Extract client IP from a peer address and header map.
+///
+/// Same trusted-proxy contract as `extract_client_ip`, but callable from
+/// handlers that have already consumed the request body.
+pub fn extract_client_ip_from_parts(peer: Option<SocketAddr>, headers: &HeaderMap) -> IpAddr {
+    if let Some(peer) = peer {
+        let peer_ip = peer.ip();
 
         if is_trusted_proxy_ip(peer_ip) {
-            if let Some(ip) = extract_forwarded_ip(req) {
+            if let Some(ip) = extract_forwarded_ip_from_headers(headers) {
                 return ip;
             }
-            if let Some(ip) = extract_real_ip(req) {
+            if let Some(ip) = extract_real_ip_from_headers(headers) {
                 return ip;
             }
         }

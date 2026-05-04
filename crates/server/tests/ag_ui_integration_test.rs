@@ -253,6 +253,127 @@ async fn test_ag_ui_rejects_duplicate_message_ids() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_ag_ui_per_app_rate_limit_returns_429() {
+    let server = TestServer::in_memory().await;
+    let agent_id = create_llmsim_agent(&server).await;
+
+    let app: App = server
+        .post(
+            "/v1/apps",
+            json!({
+                "name": unique_id("Rate Limited AG-UI App"),
+                "harness_id": server.seed_base_harness_id,
+                "agent_id": agent_id,
+                "channel_type": "ag_ui",
+                "channel_config": {
+                    "anonymous": true,
+                    "rate_limit_per_minute": 2
+                }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    server
+        .post(&format!("/v1/apps/{}/publish", app.public_id), json!({}))
+        .await
+        .assert_success();
+
+    // Use a payload that the handler validates after the rate-limit check.
+    // This keeps the test deterministic and decoupled from the agent runner —
+    // each call still consumes a rate-limit token before failing with 400.
+    let payload = json!({
+        "threadId": raw_uuid(),
+        "runId": raw_uuid(),
+        "state": {},
+        "messages": [],
+        "tools": [],
+        "context": [],
+        "forwardedProps": {}
+    });
+
+    for _ in 0..2 {
+        send_ag_ui_run(&server, &app.public_id, &payload)
+            .await
+            .assert_status(StatusCode::BAD_REQUEST);
+    }
+
+    send_ag_ui_run(&server, &app.public_id, &payload)
+        .await
+        .assert_status(StatusCode::TOO_MANY_REQUESTS);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_ag_ui_rate_limit_zero_disables_per_app_cap() {
+    let server = TestServer::in_memory().await;
+    let agent_id = create_llmsim_agent(&server).await;
+
+    let app: App = server
+        .post(
+            "/v1/apps",
+            json!({
+                "name": unique_id("Uncapped AG-UI App"),
+                "harness_id": server.seed_base_harness_id,
+                "agent_id": agent_id,
+                "channel_type": "ag_ui",
+                "channel_config": {
+                    "anonymous": true,
+                    "rate_limit_per_minute": 0
+                }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    server
+        .post(&format!("/v1/apps/{}/publish", app.public_id), json!({}))
+        .await
+        .assert_success();
+
+    let payload = json!({
+        "threadId": raw_uuid(),
+        "runId": raw_uuid(),
+        "state": {},
+        "messages": [],
+        "tools": [],
+        "context": [],
+        "forwardedProps": {}
+    });
+
+    // With rate_limit_per_minute=0 the per-app cap is disabled, so 5 in a row
+    // must each fail at message validation (400) rather than hitting 429.
+    for _ in 0..5 {
+        let response = send_ag_ui_run(&server, &app.public_id, &payload).await;
+        assert_ne!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_ag_ui_rate_limit_rejects_absurd_values() {
+    let server = TestServer::in_memory().await;
+    let agent_id = create_llmsim_agent(&server).await;
+
+    server
+        .post(
+            "/v1/apps",
+            json!({
+                "name": unique_id("Bad Rate AG-UI App"),
+                "harness_id": server.seed_base_harness_id,
+                "agent_id": agent_id,
+                "channel_type": "ag_ui",
+                "channel_config": {
+                    "anonymous": true,
+                    "rate_limit_per_minute": 9_999_999_u32
+                }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_ag_ui_unpublished_app_rejected() {
     let server = TestServer::in_memory().await;
     let agent_id = create_llmsim_agent(&server).await;
