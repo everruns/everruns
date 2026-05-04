@@ -66,6 +66,7 @@ use crate::api::common::ErrorResponse;
 use crate::api::messages::{
     CreateMessageRequest, InputContentPart, InputMessage, MessageRole as ApiMessageRole,
 };
+use crate::api::public::PublicError;
 use crate::api::sessions::CreateSessionRequest;
 use crate::api::sse::SseConnectionTracker;
 use crate::domains::messages::{CreateMessageContext, MessageService};
@@ -318,14 +319,9 @@ async fn run_agent(
             }
 
             let Some(event) = state.subscription.recv().await else {
-                let (message, code) = public_run_error(None);
                 state
                     .queue
-                    .push_back(AgUiEvent::RunError(AgUiRunErrorEvent {
-                        base: agui_base_event(),
-                        message,
-                        code: Some(code),
-                    }));
+                    .push_back(public_run_error_event(PublicError::fallback()));
                 state.finished = true;
                 continue;
             };
@@ -845,22 +841,15 @@ fn translate_event(state: &mut AgUiStreamState, event: &everruns_core::Event) {
             state.finished = true;
         }
         "turn.failed" | "turn.cancelled" => {
-            // AG-UI is a public, app-scoped channel: never surface raw provider
-            // strings, model IDs, HTTP status codes, or internal error fields to
-            // unauthenticated callers. Map the internal error_code to a small set
-            // of generic, actionable messages.
+            // AG-UI is a public, app-scoped channel — see specs/public-endpoints.md.
+            // Sanitize via the shared `PublicError` so internal codes, provider
+            // strings, model IDs, and quota state never reach the wire.
             let internal_code = parse_event_data::<TurnFailedData>(event)
                 .ok()
                 .and_then(|data| data.error_code);
             if !state.finished {
-                let (message, code) = public_run_error(internal_code.as_deref());
-                state
-                    .queue
-                    .push_back(AgUiEvent::RunError(AgUiRunErrorEvent {
-                        base: agui_base_event(),
-                        message,
-                        code: Some(code),
-                    }));
+                let error = PublicError::from_internal_code(internal_code.as_deref());
+                state.queue.push_back(public_run_error_event(error));
                 state.finished = true;
             }
         }
@@ -890,38 +879,15 @@ fn agui_base_event() -> AgUiBaseEvent {
     }
 }
 
-// AG-UI is unauthenticated and app-scoped. Internal error chains may contain
-// provider names, model IDs, HTTP statuses, billing state, and stack-trace-ish
-// strings — none of that is appropriate for the public channel. Map the
-// internal classification to a small, stable set of public codes with
-// generic, user-facing messages. No "contact support" or "contact admin"
-// phrasing — public users have no relationship to those entities.
-fn public_run_error(internal_code: Option<&str>) -> (String, String) {
-    let public_code = match internal_code {
-        Some(user_facing_error_codes::PROVIDER_RATE_LIMITED) => "rate_limited",
-        Some(user_facing_error_codes::REQUEST_TOO_LARGE) => "request_too_large",
-        Some(
-            user_facing_error_codes::PROVIDER_UNAVAILABLE
-            | user_facing_error_codes::DEPENDENCY_UNAVAILABLE
-            | user_facing_error_codes::PROVIDER_MISCONFIGURED
-            | user_facing_error_codes::MODEL_UNAVAILABLE
-            | user_facing_error_codes::BUDGET_EXHAUSTED
-            | user_facing_error_codes::BUDGET_PAUSED
-            | user_facing_error_codes::SOFT_LIMIT_REACHED,
-        ) => "service_unavailable",
-        _ => "internal_error",
-    };
-    let message = match public_code {
-        "rate_limited" => "The service is busy right now. Please try again in a moment.",
-        "service_unavailable" => {
-            "The service is temporarily unavailable. Please try again shortly."
-        }
-        "request_too_large" => {
-            "Your message is too long to process. Please start a new conversation or send a shorter message."
-        }
-        _ => "Something went wrong. Please try again.",
-    };
-    (message.to_string(), public_code.to_string())
+/// Adapt a sanitized `PublicError` into an AG-UI `RunError` event. All public
+/// error emission on this endpoint must go through here so the contract from
+/// `specs/public-endpoints.md` is enforced in one place.
+fn public_run_error_event(error: PublicError) -> AgUiEvent {
+    AgUiEvent::RunError(AgUiRunErrorEvent {
+        base: agui_base_event(),
+        message: error.message.to_string(),
+        code: Some(error.code.as_str().to_string()),
+    })
 }
 
 fn agui_sse(event: &AgUiEvent) -> SseEvent {
@@ -1375,30 +1341,7 @@ mod tests {
         );
     }
 
-    #[test]
-    fn public_messages_never_mention_admin_or_support() {
-        for code in [
-            None,
-            Some(user_facing_error_codes::PROVIDER_RATE_LIMITED),
-            Some(user_facing_error_codes::PROVIDER_UNAVAILABLE),
-            Some(user_facing_error_codes::PROVIDER_MISCONFIGURED),
-            Some(user_facing_error_codes::DEPENDENCY_UNAVAILABLE),
-            Some(user_facing_error_codes::MODEL_UNAVAILABLE),
-            Some(user_facing_error_codes::BUDGET_EXHAUSTED),
-            Some(user_facing_error_codes::BUDGET_PAUSED),
-            Some(user_facing_error_codes::SOFT_LIMIT_REACHED),
-            Some(user_facing_error_codes::REQUEST_TOO_LARGE),
-            Some(user_facing_error_codes::PROCESSING_ERROR),
-            Some("some_unknown_future_code"),
-        ] {
-            let (message, _) = public_run_error(code);
-            let lower = message.to_lowercase();
-            assert!(!lower.contains("admin"), "leaked admin: {message}");
-            assert!(!lower.contains("support"), "leaked support: {message}");
-            assert!(!lower.contains("billing"), "leaked billing: {message}");
-            assert!(!lower.contains("provider"), "leaked provider: {message}");
-            assert!(!lower.contains("openai"), "leaked openai: {message}");
-            assert!(!lower.contains("api key"), "leaked api key: {message}");
-        }
-    }
+    // Note: the exhaustive "never leaks internal concepts" property is
+    // verified in crates/server/src/api/public.rs::tests, since the
+    // sanitization logic now lives there.
 }
