@@ -18,6 +18,11 @@ use uuid::Uuid;
 use crate::grpc_durable_store::{GrpcDurableStore, WorkflowStatus as GrpcWorkflowStatus};
 use crate::runner::AgentRunner;
 
+#[async_trait]
+pub trait DurableTaskNotifier: Send + Sync {
+    async fn notify_task_available(&self, activity_type: &str);
+}
+
 /// Output metadata for durable turns.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct DurableTurnOutput {
@@ -416,6 +421,7 @@ impl DurableStoreBackend for InMemoryDurableStore {
 /// This runner maps runtime turn state onto the durable engine.
 pub struct DurableRunner {
     store: Arc<Mutex<dyn DurableStoreBackend>>,
+    task_notifier: Option<Arc<dyn DurableTaskNotifier>>,
 }
 
 impl DurableRunner {
@@ -428,6 +434,7 @@ impl DurableRunner {
         let store = GrpcDurableStore::connect(grpc_address).await?;
         Ok(Self {
             store: Arc::new(Mutex::new(store)),
+            task_notifier: None,
         })
     }
 
@@ -436,6 +443,19 @@ impl DurableRunner {
         let store = DirectDurableStore::new(pool);
         Self {
             store: Arc::new(Mutex::new(store)),
+            task_notifier: None,
+        }
+    }
+
+    pub fn new_with_pool_and_task_notifier(
+        pool: sqlx::PgPool,
+        task_notifier: Arc<dyn DurableTaskNotifier>,
+    ) -> Self {
+        info!("Initializing durable runner (direct DB mode with task notifier)");
+        let store = DirectDurableStore::new(pool);
+        Self {
+            store: Arc::new(Mutex::new(store)),
+            task_notifier: Some(task_notifier),
         }
     }
 
@@ -444,6 +464,7 @@ impl DurableRunner {
         let store = InMemoryDurableStore::new();
         Self {
             store: Arc::new(Mutex::new(store)),
+            task_notifier: None,
         }
     }
 
@@ -452,13 +473,25 @@ impl DurableRunner {
         let store = InMemoryDurableStore::from_shared(shared_store);
         Self {
             store: Arc::new(Mutex::new(store)),
+            task_notifier: None,
         }
+    }
+
+    pub fn with_task_notifier(mut self, task_notifier: Arc<dyn DurableTaskNotifier>) -> Self {
+        self.task_notifier = Some(task_notifier);
+        self
     }
 
     pub async fn from_env() -> Result<Self> {
         let grpc_address =
             std::env::var("WORKER_GRPC_ADDRESS").unwrap_or_else(|_| "127.0.0.1:9001".to_string());
         Self::new(&grpc_address).await
+    }
+
+    async fn notify_task_available(&self, activity_type: &str) {
+        if let Some(task_notifier) = &self.task_notifier {
+            task_notifier.notify_task_available(activity_type).await;
+        }
     }
 }
 
@@ -495,98 +528,116 @@ impl AgentRunner for DurableRunner {
         };
         let workflow_id = session_id.uuid();
         let input_json = serde_json::to_value(&input)?;
-        let mut store = self.store.lock().await;
+        let notify_activity = {
+            let mut store = self.store.lock().await;
 
-        match store.try_claim_workflow_for_new_turn(workflow_id).await {
-            Ok(true) => {
-                if let Err(error) = store
-                    .enqueue_task(
-                        workflow_id,
-                        format!("input_{}", Uuid::now_v7()),
-                        "process_input".to_string(),
-                        input_json,
-                    )
-                    .await
-                {
-                    let _ = store
-                        .update_workflow_status(workflow_id, WorkflowStatus::Completed, None, None)
-                        .await;
-                    return Err(anyhow::anyhow!("Failed to enqueue task: {error}"));
+            match store.try_claim_workflow_for_new_turn(workflow_id).await {
+                Ok(true) => {
+                    if let Err(error) = store
+                        .enqueue_task(
+                            workflow_id,
+                            format!("input_{}", Uuid::now_v7()),
+                            "process_input".to_string(),
+                            input_json,
+                        )
+                        .await
+                    {
+                        let _ = store
+                            .update_workflow_status(
+                                workflow_id,
+                                WorkflowStatus::Completed,
+                                None,
+                                None,
+                            )
+                            .await;
+                        return Err(anyhow::anyhow!("Failed to enqueue task: {error}"));
+                    }
+                    Some("process_input")
                 }
-            }
-            Ok(false) => {
-                let signal = WorkflowSignal::new(
-                    everruns_durable::signal_types::USER_MESSAGE,
-                    serde_json::json!({
-                        "input_message_id": input_message_id.to_string(),
-                        "org_id": org_id,
-                        "harness_id": harness_id.to_string(),
-                        "agent_id": agent_id.map(|id| id.to_string()),
-                    }),
-                );
-                if let Err(error) = store.send_signal(workflow_id, signal).await {
-                    tracing::warn!(
-                        session_id = %session_id,
-                        %error,
-                        "failed to send steering signal"
+                Ok(false) => {
+                    let signal = WorkflowSignal::new(
+                        everruns_durable::signal_types::USER_MESSAGE,
+                        serde_json::json!({
+                            "input_message_id": input_message_id.to_string(),
+                            "org_id": org_id,
+                            "harness_id": harness_id.to_string(),
+                            "agent_id": agent_id.map(|id| id.to_string()),
+                        }),
                     );
+                    if let Err(error) = store.send_signal(workflow_id, signal).await {
+                        tracing::warn!(
+                            session_id = %session_id,
+                            %error,
+                            "failed to send steering signal"
+                        );
+                    }
+                    None
                 }
-                return Ok(());
-            }
-            Err(error) => {
-                let err = error.to_string();
-                if !err.contains("not found") && !err.contains("NOT_FOUND") {
-                    return Err(anyhow::anyhow!("Failed to check workflow status: {error}"));
+                Err(error) => {
+                    let err = error.to_string();
+                    if !err.contains("not found") && !err.contains("NOT_FOUND") {
+                        return Err(anyhow::anyhow!("Failed to check workflow status: {error}"));
+                    }
+
+                    store
+                        .create_workflow(workflow_id, "turn_workflow", input_json.clone())
+                        .await
+                        .map_err(|e| anyhow::anyhow!("Failed to create workflow: {e}"))?;
+
+                    let activity_id = format!("input_{}", Uuid::now_v7());
+                    let sequence = store
+                        .append_events(
+                            workflow_id,
+                            0,
+                            vec![WorkflowEvent::WorkflowStarted {
+                                input: input_json.clone(),
+                            }],
+                        )
+                        .await
+                        .map_err(|e| {
+                            anyhow::anyhow!("Failed to append WorkflowStarted event: {e}")
+                        })?;
+
+                    store
+                        .enqueue_task(
+                            workflow_id,
+                            activity_id.clone(),
+                            "process_input".to_string(),
+                            input_json.clone(),
+                        )
+                        .await
+                        .map_err(|e| anyhow::anyhow!("Failed to enqueue task: {e}"))?;
+
+                    store
+                        .update_workflow_status(workflow_id, WorkflowStatus::Running, None, None)
+                        .await
+                        .map_err(|e| {
+                            anyhow::anyhow!("Failed to set new workflow to Running: {e}")
+                        })?;
+
+                    let _ = store
+                        .append_events(
+                            workflow_id,
+                            sequence,
+                            vec![WorkflowEvent::ActivityScheduled {
+                                activity_id,
+                                activity_type: "process_input".to_string(),
+                                input: input_json,
+                                options: everruns_durable::ActivityOptions::default(),
+                            }],
+                        )
+                        .await
+                        .map_err(|e| {
+                            anyhow::anyhow!("Failed to append ActivityScheduled event: {e}")
+                        })?;
+
+                    Some("process_input")
                 }
-
-                store
-                    .create_workflow(workflow_id, "turn_workflow", input_json.clone())
-                    .await
-                    .map_err(|e| anyhow::anyhow!("Failed to create workflow: {e}"))?;
-
-                let activity_id = format!("input_{}", Uuid::now_v7());
-                let sequence = store
-                    .append_events(
-                        workflow_id,
-                        0,
-                        vec![WorkflowEvent::WorkflowStarted {
-                            input: input_json.clone(),
-                        }],
-                    )
-                    .await
-                    .map_err(|e| anyhow::anyhow!("Failed to append WorkflowStarted event: {e}"))?;
-
-                store
-                    .enqueue_task(
-                        workflow_id,
-                        activity_id.clone(),
-                        "process_input".to_string(),
-                        input_json.clone(),
-                    )
-                    .await
-                    .map_err(|e| anyhow::anyhow!("Failed to enqueue task: {e}"))?;
-
-                store
-                    .update_workflow_status(workflow_id, WorkflowStatus::Running, None, None)
-                    .await
-                    .map_err(|e| anyhow::anyhow!("Failed to set new workflow to Running: {e}"))?;
-
-                let _ = store
-                    .append_events(
-                        workflow_id,
-                        sequence,
-                        vec![WorkflowEvent::ActivityScheduled {
-                            activity_id,
-                            activity_type: "process_input".to_string(),
-                            input: input_json,
-                            options: everruns_durable::ActivityOptions::default(),
-                        }],
-                    )
-                    .await
-                    .map_err(|e| {
-                        anyhow::anyhow!("Failed to append ActivityScheduled event: {e}")
-                    })?;
             }
+        };
+
+        if let Some(activity_type) = notify_activity {
+            self.notify_task_available(activity_type).await;
         }
 
         Ok(())
@@ -639,6 +690,8 @@ impl AgentRunner for DurableRunner {
                 .await;
             return Err(anyhow::anyhow!("Failed to enqueue reason task: {error}"));
         }
+        drop(store);
+        self.notify_task_available("reason").await;
 
         Ok(())
     }
@@ -698,6 +751,30 @@ fn runtime_to_grpc_status(status: WorkflowStatus) -> GrpcWorkflowStatus {
 mod tests {
     use super::*;
 
+    #[derive(Default)]
+    struct RecordingTaskNotifier {
+        activity_types: std::sync::Mutex<Vec<String>>,
+    }
+
+    impl RecordingTaskNotifier {
+        fn activity_types(&self) -> Vec<String> {
+            self.activity_types
+                .lock()
+                .expect("recorded activity types lock poisoned")
+                .clone()
+        }
+    }
+
+    #[async_trait]
+    impl DurableTaskNotifier for RecordingTaskNotifier {
+        async fn notify_task_available(&self, activity_type: &str) {
+            self.activity_types
+                .lock()
+                .expect("recorded activity types lock poisoned")
+                .push(activity_type.to_string());
+        }
+    }
+
     #[tokio::test]
     async fn start_run_creates_new_workflow_and_input_task() {
         let shared = Arc::new(InMemoryWorkflowEventStore::new());
@@ -723,6 +800,28 @@ mod tests {
             .expect("task should be claimable");
         assert_eq!(claimed.len(), 1);
         assert_eq!(claimed[0].activity_type, "process_input");
+    }
+
+    #[tokio::test]
+    async fn start_run_notifies_initial_process_input_task() {
+        let shared = Arc::new(InMemoryWorkflowEventStore::new());
+        let notifier = Arc::new(RecordingTaskNotifier::default());
+        let runner = DurableRunner::new_with_shared_store(shared.clone())
+            .with_task_notifier(notifier.clone());
+
+        runner
+            .start_run(
+                1,
+                SessionId::new(),
+                HarnessId::new(),
+                None,
+                MessageId::new(),
+                None,
+            )
+            .await
+            .expect("start_run should create workflow");
+
+        assert_eq!(notifier.activity_types(), vec!["process_input"]);
     }
 
     #[tokio::test]
@@ -873,5 +972,50 @@ mod tests {
             .expect("reason task should be claimable");
         assert_eq!(claimed.len(), 1);
         assert_eq!(claimed[0].activity_type, "reason");
+    }
+
+    #[tokio::test]
+    async fn resume_after_tool_results_notifies_reason_task() {
+        let shared = Arc::new(InMemoryWorkflowEventStore::new());
+        let notifier = Arc::new(RecordingTaskNotifier::default());
+        let session_id = SessionId::new();
+        let saved_input = DurableTurnInput {
+            org_id: 1,
+            session_id,
+            harness_id: HarnessId::new(),
+            agent_id: Some(AgentId::new()),
+            input_message_id: MessageId::new(),
+            turn_id: None,
+            previous_response_id: Some("resp_123".to_string()),
+            iteration: 3,
+            request_id: None,
+        };
+        shared
+            .create_workflow(
+                session_id.uuid(),
+                "turn_workflow",
+                serde_json::to_value(&saved_input).expect("serialize input"),
+                None,
+            )
+            .await
+            .expect("create workflow");
+        shared
+            .update_workflow_status(
+                session_id.uuid(),
+                WorkflowStatus::Completed,
+                Some(serde_json::to_value(&saved_input).expect("serialize result")),
+                None,
+            )
+            .await
+            .expect("mark completed");
+
+        let runner = DurableRunner::new_with_shared_store(shared.clone())
+            .with_task_notifier(notifier.clone());
+        runner
+            .resume_after_tool_results(session_id)
+            .await
+            .expect("resume should enqueue reason");
+
+        assert_eq!(notifier.activity_types(), vec!["reason"]);
     }
 }

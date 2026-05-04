@@ -22,6 +22,7 @@ use crate::{api, seed, services};
 use crate::middleware::RequestIdLayer;
 use crate::middleware::request_id::RequestId;
 use anyhow::{Context, Result};
+use async_trait::async_trait;
 use axum::http::{Method, header};
 use axum::{Json, Router, extract::State, routing::get};
 use everruns_core::{
@@ -32,7 +33,8 @@ use everruns_durable::{
     InMemoryWorkflowEventStore, PostgresWorkflowEventStore, WorkflowEventStore,
 };
 use everruns_worker::{
-    AgentRunner, RunnerBackend, TaskWorker, TaskWorkerConfig, create_runner_with_backend,
+    AgentRunner, DurableTaskNotifier, RunnerBackend, TaskWorker, TaskWorkerConfig,
+    create_runner_with_backend,
 };
 use serde::Serialize;
 use sqlx::PgPool;
@@ -58,6 +60,17 @@ type BackgroundTaskFn =
     Box<dyn FnOnce(ServerContext) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send>;
 
 type ApiKeyRoutesWrapFn = Box<dyn FnOnce(Router) -> Router + Send>;
+
+struct ServerTaskNotifier {
+    broadcaster: Arc<crate::task_notifications::TaskBroadcaster>,
+}
+
+#[async_trait]
+impl DurableTaskNotifier for ServerTaskNotifier {
+    async fn notify_task_available(&self, activity_type: &str) {
+        self.broadcaster.notify_task_available(activity_type).await;
+    }
+}
 
 /// Apply the optional API-key-routes wrap closure to the api-key router.
 /// Identity when no wrap is configured.
@@ -279,6 +292,8 @@ impl ServerAppBuilder {
         // =====================================================================
         // Phase 1: Storage backend & runner
         // =====================================================================
+        let database_unpooled_url = std::env::var("DATABASE_UNPOOLED_URL").ok();
+        let task_broadcaster: Option<Arc<crate::task_notifications::TaskBroadcaster>>;
         let (db, runner, shared_durable_store, database_url) = if self.config.dev_mode {
             tracing::info!("Starting in DEV MODE (in-memory storage, no PostgreSQL required)");
 
@@ -288,6 +303,7 @@ impl ServerAppBuilder {
                 create_runner_with_backend(RunnerBackend::SharedInMemory(shared_store.clone()))
                     .await
                     .context("Failed to create in-memory agent runner")?;
+            task_broadcaster = None;
 
             tracing::info!(
                 "Using in-memory storage and durable execution engine with in-process worker"
@@ -345,7 +361,21 @@ impl ServerAppBuilder {
                 .pool()
                 .expect("PostgreSQL backend should have pool")
                 .clone();
-            let runner = create_runner_with_backend(RunnerBackend::Postgres(pool))
+            task_broadcaster = crate::task_notifications::TaskBroadcaster::from_env(
+                Some(database_url.as_str()),
+                database_unpooled_url.as_deref(),
+            )
+            .await
+            .map(Arc::new);
+            let runner_backend = if let Some(broadcaster) = task_broadcaster.clone() {
+                RunnerBackend::PostgresWithNotifier {
+                    pool,
+                    task_notifier: Arc::new(ServerTaskNotifier { broadcaster }),
+                }
+            } else {
+                RunnerBackend::Postgres(pool)
+            };
+            let runner = create_runner_with_backend(runner_backend)
                 .await
                 .context("Failed to create agent runner")?;
 
@@ -572,7 +602,6 @@ impl ServerAppBuilder {
         } else {
             crate::event_delivery::EventDelivery::from_env().await
         };
-        let database_unpooled_url = std::env::var("DATABASE_UNPOOLED_URL").ok();
         let resolve_listener_database_url = || {
             database_url
                 .as_deref()
@@ -874,18 +903,6 @@ impl ServerAppBuilder {
                         as Arc<dyn WorkflowEventStore + Send + Sync>
                 })
             };
-        // Create TaskBroadcaster early so it can be shared between durable_state and gRPC service
-        let task_broadcaster = if !self.config.dev_mode {
-            crate::task_notifications::TaskBroadcaster::from_env(
-                database_url.as_deref(),
-                database_unpooled_url.as_deref(),
-            )
-            .await
-            .map(Arc::new)
-        } else {
-            None
-        };
-
         // TM-DURABLE-010: All durable endpoints require admin role
         let durable_state = api::durable::AppState::new(
             durable_store.clone(),
