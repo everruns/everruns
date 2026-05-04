@@ -65,6 +65,10 @@ const messages = {
     expand_tool_activity: "Expand tool activity",
     collapse_activity_group: "Collapse activity group",
     expand_activity_group: "Expand activity group",
+    chat_error_title: "Something went wrong",
+    chat_error_description:
+      "Try sending your message again. If it keeps happening, share feedback so we can investigate.",
+    chat_error_fallback: "Message failed.",
     error_prefix: "Error: {value}",
     runtime_error_budget_exhausted_reached:
       "Budget exhausted. {spent} {currency} spent reached the {limit} {currency} limit. Increase the budget to continue.",
@@ -194,6 +198,10 @@ const messages = {
     expand_tool_activity: "Розгорнути активність інструментів",
     collapse_activity_group: "Згорнути групу активності",
     expand_activity_group: "Розгорнути групу активності",
+    chat_error_title: "Щось пішло не так",
+    chat_error_description:
+      "Спробуйте надіслати повідомлення ще раз. Якщо це повторюється, надішліть відгук, щоб ми могли дослідити проблему.",
+    chat_error_fallback: "Повідомлення не вдалося надіслати.",
     error_prefix: "Помилка: {value}",
     runtime_error_budget_exhausted_reached:
       "Бюджет вичерпано. Витрачено {spent} {currency}, що досягло ліміту {limit} {currency}. Збільште бюджет, щоб продовжити.",

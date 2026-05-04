@@ -6,25 +6,25 @@ import { SessionProvider } from "@/app/(main)/sessions/[sessionId]/session-conte
 import { useGlobalChat } from "@/hooks/use-global-chat";
 import { useFeatureFlag } from "@/providers/feature-flags-provider";
 import { ExperimentalPageBadge } from "@/components/ui/experimental-badge";
+import { ChatErrorAlert } from "@/components/chat/chat-error-alert";
 
 function GlobalChatEnabledContent() {
   const { sessionId, isLoading, error } = useGlobalChat();
+
+  if (error) {
+    return (
+      <div className="flex h-full items-center justify-center bg-background bg-brand-dots p-6">
+        <div className="w-full max-w-3xl">
+          <ChatErrorAlert message={error.message} />
+        </div>
+      </div>
+    );
+  }
 
   if (isLoading || !sessionId) {
     return (
       <div className="flex h-full items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <div className="text-center text-muted-foreground">
-          <p className="text-lg font-medium">Failed to load chat</p>
-          <p className="text-sm">{error.message}</p>
-        </div>
       </div>
     );
   }

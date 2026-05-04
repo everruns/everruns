@@ -23,6 +23,8 @@ const mockSessionContext = {
   llmModel: null,
   chatEvents: [],
   toolResultsMap: new Map(),
+  toolProgressMap: new Map(),
+  toolOutputMap: new Map(),
   eventsLoading: false,
   isActive: false,
   reasoningEffort: "",
@@ -287,6 +289,12 @@ describe("ChatPanel compaction divider", () => {
 describe("ChatPanel placeholder", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockExecuteSessionCommand.mockReset();
+    mockSessionContext.chatEvents = [];
+    mockSessionContext.llmModel = null;
+    mockSessionContext.reasoningEffort = "";
+    mockSessionContext.sendMessage.mutateAsync.mockReset();
+    mockUseSessionCommands.mockReturnValue({ data: { commands: [] } });
   });
 
   it("does not advertise slash commands when none are available", () => {
@@ -393,5 +401,45 @@ describe("ChatPanel placeholder", () => {
     expect(mockSessionContext.sendMessage.mutateAsync).not.toHaveBeenCalled();
     expect(await screen.findByText("Side answer")).toBeInTheDocument();
     expect(screen.getByText("/btw")).toBeInTheDocument();
+  });
+
+  it("renders a chat error alert for failed turns", () => {
+    mockSessionContext.chatEvents = [
+      {
+        id: "evt-failed-1",
+        type: "turn.failed",
+        session_id: "session-1",
+        ts: new Date().toISOString(),
+        context: { turn_id: "turn-1" },
+        data: {
+          turn_id: "turn-1",
+          error: "backend temporarily unavailable",
+          error_code: "dependency_unavailable",
+        },
+      },
+    ];
+
+    render(<ChatPanel />);
+
+    expect(screen.getByText("Something went wrong")).toBeInTheDocument();
+    expect(
+      screen.getByText("Execution stopped because a required dependency is unavailable."),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/backend temporarily unavailable/)).toBeInTheDocument();
+  });
+
+  it("renders a chat error alert when sending a message fails", async () => {
+    mockSessionContext.sendMessage.mutateAsync.mockRejectedValueOnce(
+      new Error("backend temporarily unavailable"),
+    );
+
+    render(<ChatPanel />);
+
+    const textarea = screen.getByPlaceholderText("Type a message... (Enter to send)");
+    fireEvent.change(textarea, { target: { value: "hello" } });
+    fireEvent.keyDown(textarea, { key: "Enter", code: "Enter" });
+
+    expect(await screen.findByText("Something went wrong")).toBeInTheDocument();
+    expect(screen.getByText("backend temporarily unavailable")).toBeInTheDocument();
   });
 });

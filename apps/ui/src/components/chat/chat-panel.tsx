@@ -17,6 +17,7 @@ import { executeSessionCommand } from "@/lib/api/commands";
 import { sendUserMessageWithImages } from "@/lib/api/messages";
 import { useMutation } from "@tanstack/react-query";
 import { chatSurfaceStyles } from "@/components/chat/chat-surface";
+import { ChatErrorAlert } from "@/components/chat/chat-error-alert";
 import { ChatMessageList } from "@/components/chat/chat-message-list";
 import { ChatComposer } from "@/components/chat/chat-composer";
 import { MessageContent } from "@/components/chat/message-content";
@@ -98,6 +99,7 @@ export function ChatPanel() {
 
   const { data: llmModels = [] } = useLlmModels();
   const [inputValue, setInputValue] = useState("");
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const {
@@ -265,6 +267,7 @@ export function ChatPanel() {
 
   const submitMessage = async (controls?: Controls) => {
     if (!canSubmit) return;
+    setSubmitError(null);
 
     const parsedSystemCommand = hasImages
       ? null
@@ -299,6 +302,7 @@ export function ChatPanel() {
       setIsWaitingForResponse(true);
     } catch (error) {
       console.error("Failed to send message:", error);
+      setSubmitError(error instanceof Error ? error.message : "Failed to send message.");
     }
   };
 
@@ -363,6 +367,12 @@ export function ChatPanel() {
                 ) : null}
               </div>
             </div>
+          </div>
+        )}
+
+        {submitError && (
+          <div className="mt-4">
+            <ChatErrorAlert message={submitError} />
           </div>
         )}
 
