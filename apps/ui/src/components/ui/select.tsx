@@ -6,12 +6,52 @@ import { CheckIcon, ChevronDownIcon } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
-// Wrapper to provide backwards-compatible onValueChange API
-interface SelectProps extends Omit<SelectPrimitive.Root.Props<string>, "onValueChange"> {
-  onValueChange?: (value: string) => void;
+// Select must always show the human-readable label of the selected item, never
+// the raw internal value (e.g. show "Webhook", not "webhook"). base-ui resolves
+// labels from <Select.Value> using its `items` prop, so the wrapper auto-walks
+// <SelectItem> children and forwards a value→label map by default.
+// Spec: specs/code-organization.md "Dropdowns must show display names".
+type SelectItemsMap = Record<string, React.ReactNode>;
+
+function collectSelectItemLabels(
+  node: React.ReactNode,
+  acc: SelectItemsMap,
+  visited: WeakSet<object>,
+): void {
+  React.Children.forEach(node, (child) => {
+    if (!React.isValidElement(child)) return;
+    if (visited.has(child)) return;
+    visited.add(child);
+
+    if (child.type === SelectItem) {
+      const props = child.props as { value?: unknown; children?: React.ReactNode };
+      if (props.value !== undefined && props.value !== null) {
+        const key = String(props.value);
+        if (!(key in acc)) {
+          acc[key] = props.children;
+        }
+      }
+      // SelectItem children are the label content — don't descend further.
+      return;
+    }
+
+    const grandChildren = (child.props as { children?: React.ReactNode } | null)?.children;
+    if (grandChildren !== undefined && grandChildren !== null) {
+      collectSelectItemLabels(grandChildren, acc, visited);
+    }
+  });
 }
 
-function Select({ onValueChange, ...props }: SelectProps) {
+interface SelectProps extends Omit<SelectPrimitive.Root.Props<string>, "onValueChange" | "items"> {
+  onValueChange?: (value: string) => void;
+  /**
+   * Optional explicit value→label map. When omitted, labels are auto-collected
+   * from <SelectItem> children so <SelectValue> always shows the display name.
+   */
+  items?: SelectItemsMap | ReadonlyArray<{ value: string; label: React.ReactNode }>;
+}
+
+function Select({ onValueChange, items, children, ...props }: SelectProps) {
   const handleValueChange = React.useCallback(
     (value: string | null) => {
       if (value !== null && onValueChange) {
@@ -21,66 +61,45 @@ function Select({ onValueChange, ...props }: SelectProps) {
     [onValueChange],
   );
 
-  return <SelectPrimitive.Root<string> onValueChange={handleValueChange} {...props} />;
+  const itemsMap = React.useMemo<SelectItemsMap>(() => {
+    const acc: SelectItemsMap = {};
+    if (items) {
+      if (Array.isArray(items)) {
+        for (const item of items) acc[item.value] = item.label;
+      } else {
+        Object.assign(acc, items as SelectItemsMap);
+      }
+    }
+    collectSelectItemLabels(children, acc, new WeakSet());
+    return acc;
+  }, [items, children]);
+
+  return (
+    <SelectPrimitive.Root<string> onValueChange={handleValueChange} items={itemsMap} {...props}>
+      {children}
+    </SelectPrimitive.Root>
+  );
 }
 
 function SelectGroup({ ...props }: SelectPrimitive.Group.Props) {
   return <SelectPrimitive.Group data-slot="select-group" {...props} />;
 }
 
-// Children override the default display text (which may show raw IDs from
-// base-ui's Value when portal items haven't mounted). Always pass children
-// when the select value is an ID or otherwise not human-readable.
+// Renders the label of the selected item. base-ui resolves the label from the
+// `items` map provided by <Select> above. Pass children only when overriding
+// the default lookup (e.g. compose icon + label in the trigger).
 function SelectValue({
   placeholder,
   children,
   ...props
 }: SelectPrimitive.Value.Props & {
-  placeholder?: string;
-  children?: React.ReactNode;
+  placeholder?: React.ReactNode;
+  children?: React.ReactNode | ((value: unknown) => React.ReactNode);
 }) {
-  if (children !== undefined && children !== null) {
-    return (
-      <SelectPrimitive.Value
-        render={(_, { value }) => {
-          // Show children when we have a value, placeholder otherwise
-          if (value && children) {
-            return <span data-slot="select-value">{children}</span>;
-          }
-          if (placeholder) {
-            return (
-              <span data-slot="select-value" className="text-muted-foreground">
-                {placeholder}
-              </span>
-            );
-          }
-          return <span data-slot="select-value">{children}</span>;
-        }}
-        {...props}
-      />
-    );
-  }
-
-  if (!placeholder) {
-    return <SelectPrimitive.Value data-slot="select-value" {...props} />;
-  }
-
   return (
-    <SelectPrimitive.Value
-      render={(_, { value }) => {
-        if (value) {
-          return <SelectPrimitive.Value data-slot="select-value" {...props} />;
-        }
-
-        // Placeholder
-        return (
-          <span data-slot="select-value" className="text-muted-foreground">
-            {placeholder}
-          </span>
-        );
-      }}
-      {...props}
-    />
+    <SelectPrimitive.Value data-slot="select-value" placeholder={placeholder} {...props}>
+      {children}
+    </SelectPrimitive.Value>
   );
 }
 

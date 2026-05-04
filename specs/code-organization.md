@@ -398,6 +398,21 @@ Uses `Swatinem/rust-cache@v2` with shared keys for cross-job cache reuse:
 
 ## UI Patterns
 
+### Dropdowns Must Show Display Names
+
+**Rule:** Every dropdown (Select/Combobox) must show the human-readable display name of the selected option, never the raw internal value (e.g. `"Webhook"`, not `"webhook"`; `"Shared Session"`, not `"shared_session"`).
+
+**How it works:** The shared `<Select>` wrapper at `components/ui/select.tsx` walks its `<SelectItem>` children at render time and forwards a `value → label` map to base-ui's `items` prop. base-ui's `<SelectValue>` then resolves the label automatically. Callers do not need to do anything special — just render `<SelectItem value="..."><Label/></SelectItem>` and `<SelectValue />`.
+
+**Authoring rules:**
+- Always put a human-readable label in `<SelectItem>` children — never just the raw value.
+- Use `<SelectValue />` (no children, no manual lookup) for the common case. The wrapper resolves the label.
+- Pass an explicit `<SelectValue>{node}</SelectValue>` only when composing extra trigger content (e.g. icon + label).
+- For dynamic options that aren't rendered as static JSX children of `<Select>`, pass an `items={{ ... }}` prop on `<Select>`.
+- For combobox/autocomplete, options must be `{ value, label }` pairs and the trigger must show `label`.
+
+**Why:** Internal values like `shared_session` or `webhook` leak implementation details into the UI and look unprofessional. Centralising the resolution in the shared wrapper makes "display name" the default and prevents the bug from recurring.
+
 ### Entity Select Components
 
 Most entities have an ID (used as value) and a display name. When creating dropdowns for entity selection, create dedicated `{Entity}Select` components that handle the ID-to-name mapping internally.
