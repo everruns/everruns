@@ -604,6 +604,18 @@ impl Command for ListAppBudgets {
             ));
         }
 
+        // THREAT[TM-TENANT-001]: org-scoped lookup before reading any channel
+        // metadata — without this an attacker could pass another org's app_id
+        // and learn its channel public_ids via the include_channels expansion
+        // (the budget query that follows is org-filtered, but the channel list
+        // would still leak). 404 (not 403) keeps cross-org existence opaque.
+        let app_row = ctx
+            .db
+            .get_app_by_public_id(ctx.org_id(), &self.app_id)
+            .await
+            .map_err(classify_anyhow)?
+            .ok_or_else(|| CommandError::not_found("App"))?;
+
         let mut rows = ctx
             .db
             .list_budgets(ctx.org_id(), Some("app"), Some(&self.app_id))
@@ -611,16 +623,9 @@ impl Command for ListAppBudgets {
             .map_err(classify_anyhow)?;
 
         if self.include_channels {
-            // Pull every channel attached to the app and aggregate channel-scoped budgets.
-            let app_internal_id = match everruns_core::typed_id::AppId::parse(&self.app_id) {
-                Ok(parsed) => parsed.uuid(),
-                Err(_) => {
-                    return Err(CommandError::bad_request("Invalid app_id"));
-                }
-            };
             let channels = ctx
                 .db
-                .list_app_channels(app_internal_id)
+                .list_app_channels(app_row.id)
                 .await
                 .map_err(classify_anyhow)?;
             for channel in channels {

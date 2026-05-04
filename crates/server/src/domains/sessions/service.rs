@@ -205,6 +205,22 @@ impl SessionService {
         if !caller.is_internal && req.tags.iter().any(|tag| tag.starts_with("__internal:")) {
             anyhow::bail!("Tags with '__internal:' prefix are reserved");
         }
+        // THREAT[TM-AUTHZ-009]: `app:<id>` and `app_channel:<id>` tags drive
+        // budget hierarchy attribution (see specs/budgeting.md). Allowing
+        // external callers to forge these would let an org member opt their
+        // session into another app's budget — corrupting spend attribution and
+        // potentially exhausting that app's cap. Only the apps domain (which
+        // uses `Caller::internal`) is permitted to stamp these.
+        if !caller.is_internal
+            && req
+                .tags
+                .iter()
+                .any(|tag| tag.starts_with("app:") || tag.starts_with("app_channel:"))
+        {
+            anyhow::bail!(
+                "Tags with 'app:' or 'app_channel:' prefix are reserved for the apps system"
+            );
+        }
 
         let owner_principal = self
             .principal_service
@@ -701,6 +717,18 @@ impl SessionService {
                 .is_some_and(|tags| tags.iter().any(|tag| tag.starts_with("__internal:")))
         {
             anyhow::bail!("Tags with '__internal:' prefix are reserved");
+        }
+        // THREAT[TM-AUTHZ-009]: same reservation enforced on update — see
+        // create() for the rationale.
+        if !caller.is_internal
+            && req.tags.as_ref().is_some_and(|tags| {
+                tags.iter()
+                    .any(|tag| tag.starts_with("app:") || tag.starts_with("app_channel:"))
+            })
+        {
+            anyhow::bail!(
+                "Tags with 'app:' or 'app_channel:' prefix are reserved for the apps system"
+            );
         }
 
         let agent_identity_id = match req.agent_identity_id {
@@ -2084,6 +2112,110 @@ mod tests {
         assert!(
             err.to_string()
                 .contains("Tags with '__internal:' prefix are reserved")
+        );
+    }
+
+    #[tokio::test]
+    async fn update_rejects_reserved_app_tags_for_external_callers() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let session_service = SessionService::new(db.clone());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+        let ctx = test_ctx(caller.clone(), db.clone());
+
+        let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+            name: "harness".to_string(),
+            display_name: Some("Harness".to_string()),
+            description: None,
+            system_prompt: "Harness prompt".to_string(),
+            parent_harness_id: None,
+            default_model_id: None,
+            tags: vec![],
+            capabilities: vec![],
+            initial_files: vec![],
+            mcp_servers: Default::default(),
+            network_access: None,
+        })
+        .execute(&ctx)
+        .await
+        .unwrap();
+
+        let session = session_service
+            .create(
+                &caller,
+                harness.id.uuid(),
+                None,
+                None,
+                build_create_request(harness.id, None, None),
+            )
+            .await
+            .unwrap();
+
+        for forbidden in [
+            vec!["app:app_other".to_string()],
+            vec!["app_channel:appchan_other".to_string()],
+        ] {
+            let err = session_service
+                .update(
+                    &external_caller(DEFAULT_ORG_ID),
+                    session.id.uuid(),
+                    UpdateSessionRequest {
+                        title: None,
+                        agent_identity_id: UpdateField::Unchanged,
+                        locale: None,
+                        tags: Some(forbidden),
+                    },
+                )
+                .await
+                .unwrap_err();
+            assert!(
+                err.to_string()
+                    .contains("'app:' or 'app_channel:' prefix are reserved"),
+                "got: {err}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn create_rejects_reserved_app_tags_for_external_callers() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let session_service = SessionService::new(db.clone());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+        let ctx = test_ctx(caller.clone(), db.clone());
+
+        let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+            name: "harness".to_string(),
+            display_name: Some("Harness".to_string()),
+            description: None,
+            system_prompt: "Harness prompt".to_string(),
+            parent_harness_id: None,
+            default_model_id: None,
+            tags: vec![],
+            capabilities: vec![],
+            initial_files: vec![],
+            mcp_servers: Default::default(),
+            network_access: None,
+        })
+        .execute(&ctx)
+        .await
+        .unwrap();
+
+        let mut req = build_create_request(harness.id, None, None);
+        req.tags = vec!["app:app_someone_else".to_string()];
+
+        let err = session_service
+            .create(
+                &external_caller(DEFAULT_ORG_ID),
+                harness.id.uuid(),
+                None,
+                None,
+                req,
+            )
+            .await
+            .unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("'app:' or 'app_channel:' prefix are reserved"),
+            "got: {err}"
         );
     }
 }
