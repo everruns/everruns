@@ -7,8 +7,10 @@ A **public endpoint** is an HTTP endpoint that accepts unauthenticated traffic a
 | Endpoint | Route | Source | Notes |
 |---|---|---|---|
 | AG-UI | `POST /v1/apps/{app_id}/ag-ui` | `crates/server/src/api/ag_ui.rs` | Anonymous, app-scoped, SSE stream |
+| Slack events | `POST /v1/apps/{app_id}/slack/events` | `crates/server/src/api/slack_events.rs` | Anonymous Slack webhook (signature-verified) |
+| Slack manifest | `GET /v1/apps/{app_id}/slack/manifest` | `crates/server/src/api/slack_events.rs` | Anonymous YAML manifest fetch |
 
-AG-UI is currently the only public endpoint. Any new public endpoint MUST be added to this table and MUST follow the rules below.
+Any new public endpoint MUST be added to this table and MUST follow the rules below. Existing endpoints that pre-date this contract may not yet route every error path through `PublicError`; aligning them is tracked separately and applies whenever those endpoints stream payload-phase errors to the caller.
 
 ## Mandatory Behavior
 
@@ -26,20 +28,22 @@ Public endpoints MUST NOT surface internal information to callers:
 
 ### 2. Stable public error contract
 
-Every error a public endpoint emits MUST come from `crates/server/src/api/public.rs`. The stable public error code set is:
+Every **payload-phase / stream-body** error a public endpoint emits MUST come from `crates/server/src/api/public.rs`. The stable public error code set is:
 
 | Code | When | Caller action |
 |---|---|---|
 | `rate_limited` | Service is busy or upstream-rate-limited | Retry shortly |
 | `service_unavailable` | Provider outage, misconfiguration, budget exhaustion, model unavailable, dependency failure | Wait and retry; cannot be self-fixed |
-| `request_too_large` | Caller's input exceeds model context | Shorten input or start a new conversation |
+| `request_too_large` | Conversation context exceeds the configured limit | Start a new conversation |
 | `internal_error` | **Universal fallback** for anything else, including unknown internal codes and unexpected runtime errors | Retry; if persistent, the operator must investigate |
 
 These four codes are part of the public contract. They MUST NOT be renamed or removed without a deprecation cycle. New codes MAY be added but only when they give callers a *new* actionable distinction; otherwise, fold the case into an existing code.
 
+Pre-stream HTTP errors (4xx malformed-input rejection, generic 500s, generic 404s) are out of scope — see *Non-Goals* below. They MUST still avoid leaking internal state; they just don't carry a public `code` from this set.
+
 ### 3. Universal fallback
 
-`internal_error` is the canonical fallback. Every code path that emits a public error MUST be reachable from a default branch that produces `internal_error` rather than any internal string. `PublicError::default()` and `PublicError::fallback()` both return this value, and `PublicError::from_internal_code(None)` does as well. When in doubt, fall back — never improvise.
+`internal_error` is the canonical fallback. Every payload-phase code path that emits a public error MUST be reachable from a default branch that produces `internal_error` rather than any internal string. `PublicError::default()` and `PublicError::fallback()` both return this value, and `PublicError::from_internal_code(None)` does as well. When in doubt, fall back — never improvise.
 
 ### 4. Internal observability is unchanged
 

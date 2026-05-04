@@ -50,8 +50,11 @@ impl PublicErrorCode {
             Self::ServiceUnavailable => {
                 "The service is temporarily unavailable. Please try again shortly."
             }
+            // Covers both an oversized last message and accumulated context that no
+            // longer fits — the public message therefore points at the conversation,
+            // not just the latest message.
             Self::RequestTooLarge => {
-                "Your message is too long to process. Please start a new conversation or send a shorter message."
+                "The conversation has become too long to process. Please start a new conversation."
             }
             Self::InternalError => "Something went wrong. Please try again.",
         }

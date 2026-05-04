@@ -840,7 +840,22 @@ fn translate_event(state: &mut AgUiStreamState, event: &everruns_core::Event) {
                 }));
             state.finished = true;
         }
-        "turn.failed" | "turn.cancelled" => {
+        // Cancellation is a deliberate terminal state (typically client-initiated),
+        // not a server fault. Emit RUN_FINISHED so AG-UI clients see a clean end
+        // rather than a misleading internal_error. The cancellation reason lives
+        // in the internal session events for operators.
+        "turn.cancelled" if !state.finished => {
+            state
+                .queue
+                .push_back(AgUiEvent::RunFinished(AgUiRunFinishedEvent {
+                    base: agui_base_event(),
+                    thread_id: state.thread_id.clone(),
+                    run_id: state.run_id.clone(),
+                    result: None,
+                }));
+            state.finished = true;
+        }
+        "turn.failed" => {
             // AG-UI is a public, app-scoped channel — see specs/public-endpoints.md.
             // Sanitize via the shared `PublicError` so internal codes, provider
             // strings, model IDs, and quota state never reach the wire.
@@ -1344,4 +1359,60 @@ mod tests {
     // Note: the exhaustive "never leaks internal concepts" property is
     // verified in crates/server/src/api/public.rs::tests, since the
     // sanitization logic now lives there.
+
+    #[tokio::test]
+    async fn turn_cancelled_emits_run_finished_not_run_error() {
+        // Cancellations are a deliberate terminal state. Public AG-UI clients
+        // must see a clean RUN_FINISHED, not an internal_error.
+        use everruns_core::TurnCancelledData;
+
+        let mut state = test_stream_state().await;
+        let turn_id = TurnId::new();
+        let input_message_id = MessageId::parse(&state.input_message_id).unwrap();
+        let event = Event::new(
+            SessionId::from_uuid(state.session_id),
+            EventContext::turn(turn_id, input_message_id),
+            TurnCancelledData {
+                turn_id,
+                reason: Some("client cancelled".to_string()),
+                usage: None,
+            },
+        );
+
+        translate_event(&mut state, &event);
+
+        assert_eq!(state.queue.len(), 1);
+        match state.queue.front() {
+            Some(AgUiEvent::RunFinished(_)) => {}
+            other => panic!("expected RunFinished for cancellation, got {other:?}"),
+        }
+        assert!(state.finished);
+    }
+
+    // Regression test for the stream_closed branch in run_agent. We exercise the
+    // helper directly (the run_agent stream_closed path constructs the same
+    // event) so the public RUN_ERROR contract for unexpected stream termination
+    // stays pinned to PublicError::fallback() — internal_error / generic message.
+    #[test]
+    fn stream_closed_falls_back_to_internal_error() {
+        let event = public_run_error_event(PublicError::fallback());
+        match event {
+            AgUiEvent::RunError(event) => {
+                assert_eq!(event.code.as_deref(), Some("internal_error"));
+                assert_eq!(event.message, "Something went wrong. Please try again.");
+                let lower = event.message.to_lowercase();
+                assert!(
+                    !lower.contains("stream"),
+                    "leaked stream detail: {}",
+                    event.message
+                );
+                assert!(
+                    !lower.contains("subscription"),
+                    "leaked subscription detail: {}",
+                    event.message
+                );
+            }
+            other => panic!("expected RunError, got {other:?}"),
+        }
+    }
 }
