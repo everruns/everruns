@@ -418,6 +418,51 @@ impl MessageQuery {
         // Insert end injections
         messages.extend(end_injections);
     }
+
+    /// Apply offset and latest-message limiting.
+    ///
+    /// `limit` means "keep the latest N messages" while preserving chronological
+    /// order in the returned slice. This is the prompt-window behavior expected
+    /// by long-context capabilities such as `infinity_context`.
+    pub fn apply_window_bounds(&self, messages: &mut Vec<Message>) {
+        if let Some(offset) = self.offset {
+            let offset = offset.max(0) as usize;
+            if offset < messages.len() {
+                messages.drain(0..offset);
+            } else {
+                messages.clear();
+            }
+        }
+
+        if let Some(limit) = self.limit {
+            let limit = limit.max(0) as usize;
+            if messages.len() > limit {
+                let skip_count = messages.len() - limit;
+                messages.drain(0..skip_count);
+            }
+        }
+    }
+
+    /// Prepend the dynamic hidden-history notice, if configured.
+    pub fn prepend_excluded_notice(&self, messages: &mut Vec<Message>, count_before_limit: usize) {
+        if let Some(ref transform) = self.prepend_transform {
+            let ctx = FilterContext {
+                total_count: count_before_limit,
+                filtered_count: messages.len(),
+                excluded_count: count_before_limit.saturating_sub(messages.len()),
+            };
+            if let Some(prepend_msg) = transform.transform(&ctx) {
+                messages.insert(0, prepend_msg);
+            }
+        }
+    }
+
+    /// Apply offset, latest-message limiting, and optional prepend notice.
+    pub fn apply_windowing(&self, messages: &mut Vec<Message>) {
+        let count_before_limit = messages.len();
+        self.apply_window_bounds(messages);
+        self.prepend_excluded_notice(messages, count_before_limit);
+    }
 }
 
 // ============================================================================
@@ -542,6 +587,38 @@ mod tests {
 
         assert_eq!(messages.len(), 3);
         assert_eq!(messages[2].text(), Some("Injected at end"));
+    }
+
+    #[test]
+    fn test_apply_windowing_keeps_latest_messages_chronological() {
+        let session_id: SessionId = Uuid::now_v7().into();
+        let query = MessageQuery::new(session_id).with_limit(2);
+        let mut messages = vec![
+            Message::user("oldest"),
+            Message::user("middle"),
+            Message::user("newest"),
+        ];
+
+        query.apply_windowing(&mut messages);
+
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0].text(), Some("middle"));
+        assert_eq!(messages[1].text(), Some("newest"));
+    }
+
+    #[test]
+    fn test_apply_windowing_prepends_excluded_notice() {
+        let session_id: SessionId = Uuid::now_v7().into();
+        let query = MessageQuery::new(session_id)
+            .with_limit(1)
+            .with_prepend_transform(Arc::new(ExcludedNoticeTransform::new("{} hidden")));
+        let mut messages = vec![Message::user("first"), Message::user("second")];
+
+        query.apply_windowing(&mut messages);
+
+        assert_eq!(messages.len(), 2);
+        assert_eq!(messages[0].text(), Some("1 hidden"));
+        assert_eq!(messages[1].text(), Some("second"));
     }
 
     #[test]

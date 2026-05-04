@@ -76,7 +76,8 @@ When searching history:
   ```json
   {
     "context_budget_tokens": 100000,
-    "min_recent_messages": 10
+    "min_recent_messages": 10,
+    "max_recent_messages": null
   }
   ```
 
@@ -142,6 +143,13 @@ def select_messages(all_messages, budget_tokens, min_recent):
     excluded = [m for m in all_messages if m not in selected]
     return selected, excluded
 ```
+
+Implementations MAY expose `max_recent_messages` as a hard cap for constrained
+surfaces such as public support chat. When set, the live prompt keeps no more
+than that many persisted messages, even if `context_budget_tokens` would allow
+more. Message limits always mean the latest N messages, returned in
+chronological order; older excluded messages remain available through
+`query_history`.
 
 ### History Notice Format
 

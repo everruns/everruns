@@ -122,6 +122,15 @@ impl MessageRetriever for DbMessageRetriever {
         // Check if we have any custom filters that need in-memory processing
         let has_custom_filters = query.has_custom_filters();
 
+        let count_before_limit = if query.prepend_transform.is_some() {
+            self.db
+                .count_message_events(query.session_id)
+                .await
+                .store_err()? as usize
+        } else {
+            0
+        };
+
         // Load events using the filtered query
         let events = self
             .db
@@ -149,6 +158,9 @@ impl MessageRetriever for DbMessageRetriever {
                 })
             });
         }
+
+        query.apply_window_bounds(&mut messages);
+        query.prepend_excluded_notice(&mut messages, count_before_limit);
 
         // Apply injections
         if query.has_injections() {

@@ -22,7 +22,9 @@ use everruns_core::traits::{
     StoredImageInfo,
 };
 use everruns_core::typed_id::{AgentId, LeasedResourceId, MessageId, ModelId, SessionId};
-use everruns_core::{Agent, Harness, HarnessStatus, Message, Session, SessionStatus};
+use everruns_core::{
+    Agent, Harness, HarnessStatus, Message, MessageFilter, MessageRole, Session, SessionStatus,
+};
 use everruns_internal_protocol::proto;
 use everruns_internal_protocol::{
     WorkerServiceClient, json_to_proto_list, json_to_proto_struct, proto_list_to_json,
@@ -832,6 +834,56 @@ impl MessageRetriever for GrpcAdapter {
             .into_iter()
             .map(proto_message_to_message)
             .collect()
+    }
+
+    async fn load_filtered(
+        &self,
+        query: everruns_core::message_filter::MessageQuery,
+    ) -> Result<Vec<Message>> {
+        let mut messages = self.load(query.session_id).await?;
+
+        for filter in &query.filters {
+            match filter {
+                MessageFilter::TimeRange { from, to } => {
+                    messages.retain(|m| {
+                        let after_from = from.is_none_or(|t| m.created_at >= t);
+                        let before_to = to.is_none_or(|t| m.created_at <= t);
+                        after_from && before_to
+                    });
+                }
+                MessageFilter::EventTypes(types) => {
+                    messages.retain(|m| {
+                        types.iter().any(|event_type| match event_type.as_str() {
+                            "input.message" => m.role == MessageRole::User,
+                            "output.message.completed" => m.role == MessageRole::Agent,
+                            "tool.completed" => m.role == MessageRole::ToolResult,
+                            _ => false,
+                        })
+                    });
+                }
+                MessageFilter::Search(q) => {
+                    let q_lower = q.to_lowercase();
+                    messages.retain(|m| {
+                        m.text()
+                            .is_some_and(|t| t.to_lowercase().contains(&q_lower))
+                    });
+                }
+                MessageFilter::Custom(predicate) => {
+                    messages.retain(|m| predicate(m));
+                }
+                MessageFilter::ToolName(_)
+                | MessageFilter::ExcludeIds(_)
+                | MessageFilter::IncludeIds(_) => {}
+            }
+        }
+
+        query.apply_windowing(&mut messages);
+
+        if query.has_injections() {
+            query.apply_injections(&mut messages);
+        }
+
+        Ok(messages)
     }
 }
 

@@ -2560,6 +2560,20 @@ async fn test_search_filter_empty_string_matches_all() {
 }
 
 #[tokio::test]
+async fn test_filtered_message_limit_keeps_latest_events_chronological() {
+    let db = InMemoryDatabase::new();
+    let session_id = create_session_with_content_events(&db).await;
+
+    let query = MessageQuery::new(session_id).with_limit(2);
+
+    let events = db.list_message_events_filtered(&query).await.unwrap();
+
+    assert_eq!(events.len(), 2);
+    assert_eq!(events[0].event_type, "tool.completed");
+    assert_eq!(events[1].event_type, "output.message.completed");
+}
+
+#[tokio::test]
 async fn test_session_system_prompt_and_initial_files_round_trip() {
     let db = InMemoryDatabase::new();
 
