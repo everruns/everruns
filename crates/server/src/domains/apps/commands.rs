@@ -147,9 +147,20 @@ fn validate_channel_config(
             }
         }
         ChannelType::AgUi => {
-            serde_json::from_value::<AgUiChannelConfig>(channel_config.clone()).map_err(|e| {
-                CommandError::bad_request(format!("Invalid AG-UI channel config: {e}"))
-            })?;
+            let config: AgUiChannelConfig = serde_json::from_value(channel_config.clone())
+                .map_err(|e| {
+                    CommandError::bad_request(format!("Invalid AG-UI channel config: {e}"))
+                })?;
+            // Reject obviously broken caps (e.g. > 1M req/min) so a typo can't
+            // silently disable the per-app limit by overflowing reasonable
+            // expectations. `0` is allowed and means "no per-app cap".
+            if let Some(limit) = config.rate_limit_per_minute
+                && limit > 1_000_000
+            {
+                return Err(CommandError::bad_request(
+                    "AG-UI rate_limit_per_minute must be at most 1,000,000",
+                ));
+            }
         }
         ChannelType::Schedule => {
             let config: ScheduleChannelConfig = serde_json::from_value(channel_config.clone())

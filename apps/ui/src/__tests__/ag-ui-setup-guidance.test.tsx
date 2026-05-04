@@ -60,4 +60,29 @@ describe("formatSessionExpiration", () => {
     expect(formatSessionExpiration(0)).toBe("Never");
     expect(formatSessionExpiration(-1)).toBe("Never");
   });
+
+  it("displays rate limit when configured", () => {
+    render(
+      <AgUiSetupGuidance
+        endpointUrl="https://example.com/api/v1/apps/app-123/ag-ui"
+        isPublished={true}
+        anonymousEnabled={true}
+        rateLimitPerMinute={120}
+      />,
+    );
+
+    expect(screen.getByText("120 requests per minute, per IP")).toBeInTheDocument();
+  });
+
+  it("falls back to global cap message when rate limit is not configured", () => {
+    render(
+      <AgUiSetupGuidance
+        endpointUrl="https://example.com/api/v1/apps/app-123/ag-ui"
+        isPublished={true}
+        anonymousEnabled={true}
+      />,
+    );
+
+    expect(screen.getByText("No per-app cap (global API limit applies)")).toBeInTheDocument();
+  });
 });

@@ -40,9 +40,12 @@ use ag_ui_core::types::{
 };
 use axum::{
     Extension, Json, Router,
-    extract::{Path, State},
-    http::StatusCode,
-    response::sse::{Event as SseEvent, KeepAlive, Sse},
+    extract::{ConnectInfo, Path, State},
+    http::{HeaderMap, StatusCode},
+    response::{
+        IntoResponse, Response,
+        sse::{Event as SseEvent, KeepAlive, Sse},
+    },
     routing::post,
 };
 use everruns_core::events::{
@@ -62,6 +65,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use uuid::Uuid;
 
+use crate::api::ag_ui_rate_limit::AgUiRateLimiter;
 use crate::api::common::ErrorResponse;
 use crate::api::messages::{
     CreateMessageRequest, InputContentPart, InputMessage, MessageRole as ApiMessageRole,
@@ -69,6 +73,7 @@ use crate::api::messages::{
 use crate::api::public::PublicError;
 use crate::api::sessions::CreateSessionRequest;
 use crate::api::sse::SseConnectionTracker;
+use crate::auth::rate_limit::extract_client_ip_from_parts;
 use crate::domains::messages::{CreateMessageContext, MessageService};
 use crate::domains::sessions::SessionService;
 use crate::execution_metadata;
@@ -84,6 +89,7 @@ pub struct AgUiState {
     pub message_service: Arc<MessageService>,
     pub event_service: Arc<EventService>,
     pub sse_tracker: Arc<SseConnectionTracker>,
+    pub rate_limiter: AgUiRateLimiter,
 }
 
 impl AgUiState {
@@ -94,6 +100,7 @@ impl AgUiState {
         notifications_enabled: bool,
         event_delivery: crate::event_delivery::EventDelivery,
         sse_tracker: Arc<SseConnectionTracker>,
+        rate_limiter: AgUiRateLimiter,
     ) -> Self {
         Self {
             session_service: Arc::new(SessionService::new(db.clone())),
@@ -105,6 +112,7 @@ impl AgUiState {
             )),
             event_service: Arc::new(EventService::new(db.clone(), event_delivery)),
             sse_tracker,
+            rate_limiter,
             encryption,
             db,
         }
@@ -121,18 +129,20 @@ async fn run_agent(
     State(state): State<AgUiState>,
     Path(app_id): Path<String>,
     req_id: Option<Extension<RequestId>>,
+    connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
+    headers: HeaderMap,
     Json(req): Json<AgUiRunAgentInput>,
-) -> Result<Sse<impl Stream<Item = Result<SseEvent, Infallible>>>, (StatusCode, Json<ErrorResponse>)>
-{
+) -> Result<Sse<impl Stream<Item = Result<SseEvent, Infallible>>>, Response> {
     // THREAT[TM-LLM-020]: Anonymous AG-UI clients must not be able to forge
     // privileged message roles (system/developer/tool) into the LLM context
     // that the server builds from the request body.
     // Mitigation: Reject any non-{user,assistant} role at the runtime trust
     // boundary, and reject duplicate message IDs. The error is a generic
     // `invalid_request` so we don't echo the offending role back.
-    validate_input_messages(&req.messages)?;
+    validate_input_messages(&req.messages).map_err(|err| *err)?;
 
     let request_id = req_id.map(|Extension(r)| r.0);
+    let peer_addr = connect_info.map(|Extension(ConnectInfo(addr))| addr);
     let app = crate::domains::apps::queries::get_by_public_id_unscoped(
         &state.db,
         state.encryption.as_ref(),
@@ -158,6 +168,23 @@ async fn run_agent(
         .ok_or_else(|| bad_request("Invalid AG-UI channel configuration"))?;
     if !channel_config.anonymous {
         return Err(forbidden("Anonymous AG-UI access is disabled"));
+    }
+
+    // THREAT[TM-DOS-010]: Anonymous AG-UI traffic must respect a configurable
+    // per-app, per-IP cap in addition to the global API limit. App owners
+    // tune `rate_limit_per_minute` based on expected client traffic.
+    if let Some(limit) = channel_config.rate_limit_per_minute
+        && limit > 0
+    {
+        let client_ip = extract_client_ip_from_parts(peer_addr, &headers);
+        if state
+            .rate_limiter
+            .check(&app.public_id.to_string(), client_ip, limit)
+            .await
+            .is_err()
+        {
+            return Err(too_many_requests("AG-UI rate limit exceeded for this app"));
+        }
     }
 
     let trigger_message = req
@@ -200,14 +227,7 @@ async fn run_agent(
     let sse_guard = state
         .sse_tracker
         .try_acquire(app.org_id, session.session.id.uuid())
-        .map_err(|rejection| {
-            (
-                StatusCode::TOO_MANY_REQUESTS,
-                Json(ErrorResponse {
-                    error: rejection.to_string(),
-                }),
-            )
-        })?;
+        .map_err(|rejection| too_many_requests(&rejection.to_string()))?;
 
     // Seed prior history only on first use of the thread so a new AG-UI client can
     // carry conversation context into the durable session without triggering old runs.
@@ -371,7 +391,7 @@ enum SessionError {
 }
 
 impl SessionError {
-    fn into_response(self) -> (StatusCode, Json<ErrorResponse>) {
+    fn into_response(self) -> Response {
         match self {
             SessionError::Expired {
                 age_seconds,
@@ -383,7 +403,8 @@ impl SessionError {
                         "AG-UI thread expired after {age_seconds}s (limit {max_seconds}s); start a new thread"
                     ),
                 }),
-            ),
+            )
+                .into_response(),
             SessionError::Internal(err) => internal_error(err),
         }
     }
@@ -928,7 +949,7 @@ fn parse_event_data<T: for<'de> Deserialize<'de>>(
     serde_json::from_value(serde_json::to_value(&event.data)?)
 }
 
-fn internal_error(err: anyhow::Error) -> (StatusCode, Json<ErrorResponse>) {
+fn internal_error(err: anyhow::Error) -> Response {
     tracing::error!(error = %err, "AG-UI route failed");
     (
         StatusCode::INTERNAL_SERVER_ERROR,
@@ -936,6 +957,7 @@ fn internal_error(err: anyhow::Error) -> (StatusCode, Json<ErrorResponse>) {
             error: "Internal server error".to_string(),
         }),
     )
+        .into_response()
 }
 
 /// Reject AG-UI request bodies that smuggle non-{user,assistant} message
@@ -946,9 +968,7 @@ fn internal_error(err: anyhow::Error) -> (StatusCode, Json<ErrorResponse>) {
 /// `developer`, or `tool` messages and have them flow into the LLM context
 /// alongside the agent's real system prompt. We refuse such requests with a
 /// generic 400 `invalid_request` and never echo the offending role.
-fn validate_input_messages(
-    messages: &[AgUiMessage],
-) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+fn validate_input_messages(messages: &[AgUiMessage]) -> Result<(), Box<Response>> {
     use std::collections::HashSet;
     let mut seen_ids: HashSet<&AgUiMessageId> = HashSet::with_capacity(messages.len());
     for message in messages {
@@ -958,42 +978,56 @@ fn validate_input_messages(
             | AgUiMessage::Developer { .. }
             | AgUiMessage::Tool { .. } => {
                 tracing::warn!("AG-UI request rejected: disallowed message role");
-                return Err(bad_request("invalid_request"));
+                return Err(Box::new(bad_request("invalid_request")));
             }
         }
         if !seen_ids.insert(message.id()) {
             tracing::warn!("AG-UI request rejected: duplicate message id");
-            return Err(bad_request("invalid_request"));
+            return Err(Box::new(bad_request("invalid_request")));
         }
     }
     Ok(())
 }
 
-fn bad_request(message: &str) -> (StatusCode, Json<ErrorResponse>) {
+fn bad_request(message: &str) -> Response {
     (
         StatusCode::BAD_REQUEST,
         Json(ErrorResponse {
             error: message.to_string(),
         }),
     )
+        .into_response()
 }
 
-fn forbidden(message: &str) -> (StatusCode, Json<ErrorResponse>) {
+fn forbidden(message: &str) -> Response {
     (
         StatusCode::FORBIDDEN,
         Json(ErrorResponse {
             error: message.to_string(),
         }),
     )
+        .into_response()
 }
 
-fn not_found() -> (StatusCode, Json<ErrorResponse>) {
+fn not_found() -> Response {
     (
         StatusCode::NOT_FOUND,
         Json(ErrorResponse {
             error: "App not found".to_string(),
         }),
     )
+        .into_response()
+}
+
+fn too_many_requests(message: &str) -> Response {
+    (
+        StatusCode::TOO_MANY_REQUESTS,
+        [("retry-after", "60")],
+        Json(ErrorResponse {
+            error: message.to_string(),
+        }),
+    )
+        .into_response()
 }
 
 #[cfg(test)]

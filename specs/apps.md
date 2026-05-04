@@ -50,7 +50,8 @@ Channel config is stored as JSONB and validated at the application layer per cha
 ```json
 {
   "anonymous": true,
-  "session_expiration_seconds": 21600
+  "session_expiration_seconds": 21600,
+  "rate_limit_per_minute": 60
 }
 ```
 
@@ -69,6 +70,7 @@ AG-UI uses an app-scoped anonymous ingress for the initial rollout:
   underlying session. After the window elapses, AG-UI requests with that
   `threadId` are rejected with `410 Gone` and the client must start a new
   thread. Defaults to `21600` (6 hours). Set to `0` to disable expiration.
+- `rate_limit_per_minute` is an optional per-IP, per-app cap. `0` or absent disables the per-app cap and only the global API limit applies. Values above 1,000,000 are rejected at write time. Counters are shared across instances when `VALKEY_URL` is set; otherwise enforcement is per-instance.
 
 `schedule` and `webhook` are app invocation channels, not interactive messaging adapters:
 

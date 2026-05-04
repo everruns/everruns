@@ -431,6 +431,10 @@ impl ServerAppBuilder {
             "Authentication configured"
         );
 
+        // Reused later by the AG-UI per-app rate limiter so distributed
+        // deployments share counters across instances.
+        let valkey_for_agui = valkey_client.clone();
+
         let auth_backend = match self.auth_factory {
             Some(factory) => factory(db.clone(), platform_definition.clone()),
             None => {
@@ -863,6 +867,10 @@ impl ServerAppBuilder {
             notifications_enabled,
             event_delivery.clone(),
         );
+        let ag_ui_rate_limiter = match valkey_for_agui.clone() {
+            Some(client) => api::ag_ui_rate_limit::AgUiRateLimiter::with_valkey(client),
+            None => api::ag_ui_rate_limit::AgUiRateLimiter::in_memory(),
+        };
         let ag_ui_state = api::ag_ui::AgUiState::new(
             db.clone(),
             encryption.clone(),
@@ -870,6 +878,7 @@ impl ServerAppBuilder {
             notifications_enabled,
             event_delivery.clone(),
             sse_tracker.clone(),
+            ag_ui_rate_limiter,
         );
         let session_files_state = api::session_files::AppState::new(
             db.clone(),

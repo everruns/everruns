@@ -31,6 +31,12 @@ export interface AgUiChannelConfig {
    * Defaults to 6 hours.
    */
   session_expiration_seconds?: number;
+  /**
+   * Per-IP requests-per-minute cap on the public AG-UI endpoint for this
+   * app. `0` or absent disables the per-app cap (the global API cap still
+   * applies). Server-side validation rejects values above 1,000,000.
+   */
+  rate_limit_per_minute?: number;
 }
 
 export interface ScheduleChannelConfig {

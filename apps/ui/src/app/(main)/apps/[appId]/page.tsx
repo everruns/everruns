@@ -129,6 +129,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
     DEFAULT_AG_UI_SESSION_EXPIRATION_SECONDS / 3600,
   );
   const [editChannelEnabled, setEditChannelEnabled] = useState(true);
+  const [editAgUiRateLimitPerMinute, setEditAgUiRateLimitPerMinute] = useState<string>("");
 
   const [creatingSlackApp, setCreatingSlackApp] = useState(false);
 
@@ -282,6 +283,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
     setEditWebhookToken("");
     setEditAgUiExpirationHours(DEFAULT_AG_UI_SESSION_EXPIRATION_SECONDS / 3600);
     setEditChannelEnabled(true);
+    setEditAgUiRateLimitPerMinute("");
   };
 
   const buildChannelConfig = (channelType: ChannelType): ChannelConfigInput => {
@@ -290,9 +292,14 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
         const hours = Number.isFinite(editAgUiExpirationHours)
           ? Math.max(0, editAgUiExpirationHours)
           : DEFAULT_AG_UI_SESSION_EXPIRATION_SECONDS / 3600;
+        const trimmed = editAgUiRateLimitPerMinute.trim();
+        const parsed = trimmed === "" ? undefined : Number.parseInt(trimmed, 10);
         return {
           anonymous: true,
           session_expiration_seconds: Math.round(hours * 3600),
+          ...(parsed !== undefined && Number.isFinite(parsed) && parsed > 0
+            ? { rate_limit_per_minute: parsed }
+            : {}),
         };
       }
       case "schedule":
@@ -322,8 +329,20 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
 
   const isChannelConfigValid = (channelType: ChannelType) => {
     switch (channelType) {
-      case "ag_ui":
-        return Number.isFinite(editAgUiExpirationHours) && editAgUiExpirationHours >= 0;
+      case "ag_ui": {
+        if (!Number.isFinite(editAgUiExpirationHours) || editAgUiExpirationHours < 0) {
+          return false;
+        }
+        const trimmed = editAgUiRateLimitPerMinute.trim();
+        if (trimmed === "") return true;
+        const parsed = Number.parseInt(trimmed, 10);
+        return (
+          Number.isFinite(parsed) &&
+          parsed >= 0 &&
+          parsed <= 1_000_000 &&
+          String(parsed) === trimmed
+        );
+      }
       case "schedule":
         return !!editScheduleCronExpression && !!editChannelMessage;
       case "webhook":
@@ -341,6 +360,11 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
       const expSeconds =
         config?.session_expiration_seconds ?? DEFAULT_AG_UI_SESSION_EXPIRATION_SECONDS;
       setEditAgUiExpirationHours(expSeconds / 3600);
+      setEditAgUiRateLimitPerMinute(
+        config?.rate_limit_per_minute && config.rate_limit_per_minute > 0
+          ? String(config.rate_limit_per_minute)
+          : "",
+      );
     } else if (channel.channel_type === "slack") {
       const config = channel.channel_config as SlackChannelConfig;
       setEditSigningSecret(config?.signing_secret ?? "");
@@ -480,6 +504,26 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
                 After this window, requests reusing the same `threadId` are rejected with{" "}
                 <code>410 Gone</code> and the client must start a new thread. Set to `0` to allow
                 resumption indefinitely. Default is 6 hours.
+              </p>
+            </div>
+
+            <div>
+              <Label htmlFor={`ag_ui_rate_limit_${formId}`}>
+                Rate limit (requests per minute, per IP)
+              </Label>
+              <Input
+                id={`ag_ui_rate_limit_${formId}`}
+                type="number"
+                min={0}
+                max={1000000}
+                step={1}
+                value={editAgUiRateLimitPerMinute}
+                onChange={(e) => setEditAgUiRateLimitPerMinute(e.target.value)}
+                placeholder="Leave blank to disable per-app cap"
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Throttles anonymous traffic to this app&apos;s AG-UI endpoint. Leave blank or set to
+                0 to rely on the global API rate limit only. Maximum 1,000,000 per minute.
               </p>
             </div>
           </>
@@ -710,6 +754,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
             sessionExpirationSeconds={
               config?.session_expiration_seconds ?? DEFAULT_AG_UI_SESSION_EXPIRATION_SECONDS
             }
+            rateLimitPerMinute={config?.rate_limit_per_minute}
             onConfigure={() => startEditChannel(channel)}
           />
         </div>
