@@ -61,18 +61,19 @@ function Select({ onValueChange, items, children, ...props }: SelectProps) {
     [onValueChange],
   );
 
-  const itemsMap = React.useMemo<SelectItemsMap>(() => {
-    const acc: SelectItemsMap = {};
-    if (items) {
-      if (Array.isArray(items)) {
-        for (const item of items) acc[item.value] = item.label;
-      } else {
-        Object.assign(acc, items as SelectItemsMap);
-      }
+  // Computed inline on every render: children is a fresh ReactNode tree each
+  // render, so memoizing on [items, children] would invalidate every time.
+  // The traversal is bounded by the number of <SelectItem> children — tiny
+  // for typical selects.
+  const itemsMap: SelectItemsMap = {};
+  if (items) {
+    if (Array.isArray(items)) {
+      for (const item of items) itemsMap[item.value] = item.label;
+    } else {
+      Object.assign(itemsMap, items as SelectItemsMap);
     }
-    collectSelectItemLabels(children, acc, new WeakSet());
-    return acc;
-  }, [items, children]);
+  }
+  collectSelectItemLabels(children, itemsMap, new WeakSet());
 
   return (
     <SelectPrimitive.Root<string> onValueChange={handleValueChange} items={itemsMap} {...props}>

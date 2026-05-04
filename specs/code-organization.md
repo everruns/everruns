@@ -408,7 +408,7 @@ Uses `Swatinem/rust-cache@v2` with shared keys for cross-job cache reuse:
 - Always put a human-readable label in `<SelectItem>` children — never just the raw value.
 - Use `<SelectValue />` (no children, no manual lookup) for the common case. The wrapper resolves the label.
 - Pass an explicit `<SelectValue>{node}</SelectValue>` only when composing extra trigger content (e.g. icon + label).
-- For dynamic options that aren't rendered as static JSX children of `<Select>`, pass an `items={{ ... }}` prop on `<Select>`.
+- Auto-collection traverses the JSX tree passed as `<Select>` children — it does **not** render custom wrapper components that internally return a `<SelectItem>` (e.g. `<MySelectItem />`). For such cases, or for options that aren't visible as static JSX children of `<Select>` (lists built far from the root, portals, async loads), pass an explicit `items={{ value: label, ... }}` prop on `<Select>`.
 - For combobox/autocomplete, options must be `{ value, label }` pairs and the trigger must show `label`.
 
 **Why:** Internal values like `shared_session` or `webhook` leak implementation details into the UI and look unprofessional. Centralising the resolution in the shared wrapper makes "display name" the default and prevents the bug from recurring.
