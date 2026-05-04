@@ -121,20 +121,20 @@ impl MessageRetriever for DbMessageRetriever {
     async fn load_filtered(&self, query: MessageQuery) -> Result<Vec<Message>> {
         // Check if we have any custom filters that need in-memory processing
         let has_custom_filters = query.has_custom_filters();
+        let needs_exact_filtered_count =
+            query.prepend_transform.is_some() && !query.filters.is_empty();
+        let needs_unbounded_candidates = has_custom_filters || needs_exact_filtered_count;
+        let mut db_query = query.clone();
 
-        let count_before_limit = if query.prepend_transform.is_some() {
-            self.db
-                .count_message_events(query.session_id)
-                .await
-                .store_err()? as usize
-        } else {
-            0
-        };
+        if needs_unbounded_candidates {
+            db_query.limit = None;
+            db_query.offset = None;
+        }
 
         // Load events using the filtered query
         let events = self
             .db
-            .list_message_events_filtered(&query)
+            .list_message_events_filtered(&db_query)
             .await
             .store_err()?;
 
@@ -158,6 +158,17 @@ impl MessageRetriever for DbMessageRetriever {
                 })
             });
         }
+
+        let count_before_limit = if query.prepend_transform.is_none() {
+            0
+        } else if needs_unbounded_candidates {
+            messages.len()
+        } else {
+            self.db
+                .count_message_events(query.session_id)
+                .await
+                .store_err()? as usize
+        };
 
         query.apply_window_bounds(&mut messages);
         query.prepend_excluded_notice(&mut messages, count_before_limit);
@@ -285,10 +296,79 @@ pub fn create_db_message_retriever(db: Arc<StorageBackend>) -> DbMessageRetrieve
 mod tests {
     use everruns_core::events::EventContext;
     use everruns_core::typed_id::SessionId;
-    use everruns_core::{ContentPart, Event, ToolCall};
+    use everruns_core::{ContentPart, Event, ExcludedNoticeTransform, MessageRetriever, ToolCall};
     use serde_json::json;
 
     use super::*;
+
+    async fn add_user_messages(
+        retriever: &DbMessageRetriever,
+        session_id: SessionId,
+        texts: &[&str],
+    ) {
+        for text in texts {
+            retriever
+                .add(session_id.uuid(), InputMessage::user(*text))
+                .await
+                .unwrap();
+        }
+    }
+
+    #[tokio::test]
+    async fn load_filtered_applies_custom_filter_before_latest_limit() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let retriever = DbMessageRetriever::new(db);
+        let session_id = SessionId::new();
+
+        add_user_messages(
+            &retriever,
+            session_id,
+            &["keep 1", "drop 1", "keep 2", "drop 2", "keep 3"],
+        )
+        .await;
+
+        let query = MessageQuery::new(session_id)
+            .with_filter(MessageFilter::Custom(Arc::new(|message| {
+                message.text().is_some_and(|text| text.starts_with("keep"))
+            })))
+            .with_limit(2);
+
+        let messages = retriever.load_filtered(query).await.unwrap();
+
+        let texts: Vec<_> = messages.iter().filter_map(Message::text).collect();
+        assert_eq!(texts, vec!["keep 2", "keep 3"]);
+    }
+
+    #[tokio::test]
+    async fn load_filtered_notice_counts_filtered_candidates_before_limit() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let retriever = DbMessageRetriever::new(db);
+        let session_id = SessionId::new();
+
+        add_user_messages(
+            &retriever,
+            session_id,
+            &["rust 1", "go 1", "rust 2", "go 2", "rust 3"],
+        )
+        .await;
+
+        let query = MessageQuery::new(session_id)
+            .with_filter(MessageFilter::Search("rust".to_string()))
+            .with_limit(2)
+            .with_prepend_transform(Arc::new(ExcludedNoticeTransform::infinity_context()));
+
+        let messages = retriever.load_filtered(query).await.unwrap();
+
+        assert_eq!(messages.len(), 3);
+        assert!(
+            messages[0]
+                .text()
+                .is_some_and(|text| text.contains("1 earlier messages"))
+        );
+
+        let visible_texts: Vec<_> = messages[1..].iter().filter_map(Message::text).collect();
+        assert_eq!(visible_texts, vec!["rust 2", "rust 3"]);
+    }
 
     // ========================================================================
     // Test: Message constructors

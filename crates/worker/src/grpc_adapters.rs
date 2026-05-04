@@ -817,30 +817,26 @@ impl MessageRetriever for GrpcAdapter {
     }
 
     async fn load(&self, session_id: SessionId) -> Result<Vec<Message>> {
-        let mut client = self.client.inner.lock().await;
-
-        let request = proto::LoadMessagesRequest {
-            session_id: Some(uuid_to_proto(session_id.uuid())),
-        };
-
-        let response = client
-            .load_messages(request)
-            .await
-            .map_err(grpc_status_to_error)?;
-
-        response
-            .into_inner()
-            .messages
-            .into_iter()
-            .map(proto_message_to_message)
-            .collect()
+        let (messages, _) = self.load_with_message_limit(session_id, None).await?;
+        Ok(messages)
     }
 
     async fn load_filtered(
         &self,
         query: everruns_core::message_filter::MessageQuery,
     ) -> Result<Vec<Message>> {
-        let mut messages = self.load(query.session_id).await?;
+        let simple_window_query =
+            query.filters.is_empty() && query.offset.is_none() && query.limit.is_some();
+        let message_limit = if simple_window_query {
+            query
+                .limit
+                .map(|limit| limit.clamp(0, i32::MAX as i64) as i32)
+        } else {
+            None
+        };
+        let (mut messages, total_count) = self
+            .load_with_message_limit(query.session_id, message_limit)
+            .await?;
 
         for filter in &query.filters {
             match filter {
@@ -863,27 +859,68 @@ impl MessageRetriever for GrpcAdapter {
                 }
                 MessageFilter::Search(q) => {
                     let q_lower = q.to_lowercase();
-                    messages.retain(|m| {
-                        m.text()
-                            .is_some_and(|t| t.to_lowercase().contains(&q_lower))
-                    });
+                    messages
+                        .retain(|m| m.content_to_llm_string().to_lowercase().contains(&q_lower));
                 }
                 MessageFilter::Custom(predicate) => {
                     messages.retain(|m| predicate(m));
                 }
                 MessageFilter::ToolName(_)
                 | MessageFilter::ExcludeIds(_)
-                | MessageFilter::IncludeIds(_) => {}
+                | MessageFilter::IncludeIds(_) => {
+                    return Err(AgentLoopError::store(format!(
+                        "gRPC MessageRetriever does not support filter: {filter:?}"
+                    )));
+                }
             }
         }
 
-        query.apply_windowing(&mut messages);
+        if simple_window_query {
+            query.apply_window_bounds(&mut messages);
+            query.prepend_excluded_notice(&mut messages, total_count);
+        } else {
+            query.apply_windowing(&mut messages);
+        }
 
         if query.has_injections() {
             query.apply_injections(&mut messages);
         }
 
         Ok(messages)
+    }
+}
+
+impl GrpcAdapter {
+    async fn load_with_message_limit(
+        &self,
+        session_id: SessionId,
+        message_limit: Option<i32>,
+    ) -> Result<(Vec<Message>, usize)> {
+        let mut client = self.client.inner.lock().await;
+
+        let request = proto::LoadMessagesRequest {
+            session_id: Some(uuid_to_proto(session_id.uuid())),
+            message_limit,
+        };
+
+        let response = client
+            .load_messages(request)
+            .await
+            .map_err(grpc_status_to_error)?;
+        let response = response.into_inner();
+        let total_count = if response.total_count > 0 {
+            response.total_count as usize
+        } else {
+            response.messages.len()
+        };
+
+        let messages = response
+            .messages
+            .into_iter()
+            .map(proto_message_to_message)
+            .collect::<Result<Vec<_>>>()?;
+
+        Ok((messages, total_count))
     }
 }
 

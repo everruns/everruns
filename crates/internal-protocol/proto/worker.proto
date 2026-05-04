@@ -468,10 +468,12 @@ message GetMessageResponse {
 
 message LoadMessagesRequest {
     Uuid session_id = 1;
+    optional int32 message_limit = 2;
 }
 
 message LoadMessagesResponse {
     repeated Message messages = 1;
+    int32 total_count = 2;
 }
 
 message AddMessageRequest {
