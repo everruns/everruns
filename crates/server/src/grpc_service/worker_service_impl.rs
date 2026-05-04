@@ -514,13 +514,20 @@ impl WorkerService for WorkerServiceImpl {
     ) -> Result<Response<LoadMessagesResponse>, Status> {
         let req = request.into_inner();
         let session_id = parse_uuid(req.session_id.as_ref())?;
+        let message_limit = req.message_limit.map(|limit| limit.max(0));
 
         // Query events for message-related event types using EventService
         let events = self
             .event_service
-            .list_message_events(session_id)
+            .list_message_events_limited(session_id, message_limit)
             .await
             .map_err(|e| Status::internal(format!("Failed to list messages: {}", e)))?;
+        let total_count = self
+            .db
+            .count_message_events(everruns_core::SessionId::from_uuid(session_id))
+            .await
+            .map_err(|e| Status::internal(format!("Failed to count messages: {}", e)))?
+            .min(i32::MAX as i64) as i32;
 
         let mut proto_messages: Vec<proto::Message> = Vec::with_capacity(events.len());
 
@@ -543,6 +550,7 @@ impl WorkerService for WorkerServiceImpl {
 
         Ok(Response::new(LoadMessagesResponse {
             messages: proto_messages,
+            total_count,
         }))
     }
 

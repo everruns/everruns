@@ -349,7 +349,11 @@ impl InMemoryDatabase {
             result = result.into_iter().skip(offset as usize).collect();
         }
         if let Some(limit) = query.limit {
-            result.truncate(limit as usize);
+            let limit = limit.max(0) as usize;
+            if result.len() > limit {
+                let skip_count = result.len() - limit;
+                result.drain(0..skip_count);
+            }
         }
 
         Ok(result)

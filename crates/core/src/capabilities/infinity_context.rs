@@ -84,6 +84,13 @@ struct InfinityContextConfig {
     /// Minimum number of recent messages to keep even when the budget is tight.
     #[serde(default = "default_min_recent_messages")]
     min_recent_messages: usize,
+
+    /// Optional hard cap on recent messages kept in the live prompt.
+    ///
+    /// Useful for public support chats where the prompt must stay small even
+    /// when the token-budget estimate would allow more messages.
+    #[serde(default)]
+    max_recent_messages: Option<usize>,
 }
 
 fn default_context_budget_tokens() -> usize {
@@ -99,6 +106,7 @@ impl Default for InfinityContextConfig {
         Self {
             context_budget_tokens: default_context_budget_tokens(),
             min_recent_messages: default_min_recent_messages(),
+            max_recent_messages: None,
         }
     }
 }
@@ -109,6 +117,15 @@ fn calculate_message_limit(budget_tokens: usize, min_recent_messages: usize) -> 
     (budget_tokens / AVG_TOKENS_PER_MESSAGE).max(min_recent_messages)
 }
 
+fn resolve_message_limit(config: &InfinityContextConfig) -> usize {
+    let estimated =
+        calculate_message_limit(config.context_budget_tokens, config.min_recent_messages);
+    config
+        .max_recent_messages
+        .map(|max| estimated.min(max.max(1)))
+        .unwrap_or(estimated)
+}
+
 struct InfinityContextFilterProvider;
 
 impl MessageFilterProvider for InfinityContextFilterProvider {
@@ -116,10 +133,7 @@ impl MessageFilterProvider for InfinityContextFilterProvider {
         let config: InfinityContextConfig =
             serde_json::from_value(config.clone()).unwrap_or_default();
 
-        query.limit = Some(calculate_message_limit(
-            config.context_budget_tokens,
-            config.min_recent_messages,
-        ) as i64);
+        query.limit = Some(resolve_message_limit(&config) as i64);
         query.prepend_transform = Some(Arc::new(ExcludedNoticeTransform::infinity_context()));
     }
 
@@ -423,6 +437,17 @@ mod tests {
     }
 
     #[test]
+    fn test_resolve_message_limit_respects_hard_cap() {
+        let config = InfinityContextConfig {
+            context_budget_tokens: 10_000,
+            min_recent_messages: 10,
+            max_recent_messages: Some(30),
+        };
+
+        assert_eq!(resolve_message_limit(&config), 30);
+    }
+
+    #[test]
     fn test_capability_metadata() {
         let capability = InfinityContextCapability;
 
@@ -444,6 +469,23 @@ mod tests {
         );
 
         assert_eq!(query.limit, Some(4));
+        assert!(query.prepend_transform.is_some());
+    }
+
+    #[test]
+    fn test_filter_provider_allows_small_public_chat_window() {
+        let mut query = MessageQuery::new(SessionId::new());
+        let provider = InfinityContextFilterProvider;
+        provider.apply_filters(
+            &mut query,
+            &json!({
+                "context_budget_tokens": 10_000,
+                "min_recent_messages": 10,
+                "max_recent_messages": 30
+            }),
+        );
+
+        assert_eq!(query.limit, Some(30));
         assert!(query.prepend_transform.is_some());
     }
 

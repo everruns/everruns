@@ -431,7 +431,12 @@ impl Database {
             }
         }
 
-        sql.push_str(" ORDER BY sequence ASC");
+        let latest_window = query.limit.is_some() && query.offset.is_none();
+        if latest_window {
+            sql.push_str(" ORDER BY sequence DESC");
+        } else {
+            sql.push_str(" ORDER BY sequence ASC");
+        }
 
         // Apply limit/offset
         if let Some(limit) = query.limit {
@@ -467,8 +472,10 @@ impl Database {
         if include_ids.is_some() {
             db_query = db_query.bind(include_ids);
         }
-
-        let rows = db_query.fetch_all(&self.pool).await?;
+        let mut rows = db_query.fetch_all(&self.pool).await?;
+        if latest_window {
+            rows.reverse();
+        }
 
         Ok(rows)
     }
