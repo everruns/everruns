@@ -17,9 +17,11 @@ use everruns_core::{
     Agent, AgentCapabilityConfig, Caller, DeploymentGrade, InitialFile, OrgRole,
     PlatformDefinition, ResourceConfigResponse, ScopedMcpServers, evaluate_policies_with,
 };
+use futures::future::try_join_all;
 
 use super::common::{
-    ApiResult, ErrorResponse, PaginatedResponse, UrlBuilder, WithUrls, impl_auth_state,
+    ApiResult, ApiResultExt, ErrorResponse, PaginatedResponse, ResourceWithCounts, UrlBuilder,
+    WithUrls, impl_auth_state,
 };
 use super::validation::{
     validate_agent_name_format, validate_create_agent_input, validate_import_file_size,
@@ -155,6 +157,44 @@ impl AppState {
 
 impl_auth_state!(AppState);
 
+async fn add_agent_counts(
+    db: &StorageBackend,
+    org_id: i64,
+    agent: Agent,
+) -> Result<ResourceWithCounts<Agent>, (StatusCode, Json<ErrorResponse>)> {
+    let agent_id = AgentId::from_uuid(agent.internal_id);
+    let session_count = async {
+        db.count_sessions_for_agent(org_id, agent_id)
+            .await
+            .log_internal_error_json("count agent sessions")
+    };
+    let app_count = async {
+        db.count_apps_for_agent(org_id, agent_id)
+            .await
+            .log_internal_error_json("count agent apps")
+    };
+    let (session_count, app_count) = tokio::try_join!(session_count, app_count)?;
+
+    Ok(ResourceWithCounts {
+        session_count,
+        app_count,
+        inner: agent,
+    })
+}
+
+async fn add_agents_counts(
+    db: &StorageBackend,
+    org_id: i64,
+    agents: Vec<Agent>,
+) -> Result<Vec<ResourceWithCounts<Agent>>, (StatusCode, Json<ErrorResponse>)> {
+    try_join_all(
+        agents
+            .into_iter()
+            .map(|agent| add_agent_counts(db, org_id, agent)),
+    )
+    .await
+}
+
 /// GET /v1/agents/check-name
 ///
 /// Returns whether an agent name is available for use. Optionally excludes
@@ -285,7 +325,7 @@ pub async fn create_agent(
     path = "/v1/agents",
     params(ListAgentsQuery),
     responses(
-        (status = 200, description = "Paginated list of agents", body = PaginatedResponse<WithUrls<Agent>>),
+        (status = 200, description = "Paginated list of agents", body = PaginatedResponse<WithUrls<ResourceWithCounts<Agent>>>),
         (status = 500, description = "Internal server error")
     ),
     tag = "agents"
@@ -294,7 +334,7 @@ pub async fn list_agents(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Query(query): Query<ListAgentsQuery>,
-) -> ApiResult<PaginatedResponse<WithUrls<Agent>>> {
+) -> ApiResult<PaginatedResponse<WithUrls<ResourceWithCounts<Agent>>>> {
     let result = crate::domains::agents::ListAgents {
         search: query.search,
         include_archived: query.include_archived.unwrap_or(false),
@@ -304,10 +344,10 @@ pub async fn list_agents(
     .run(&state.ctx(&org))
     .await?;
 
+    let data = add_agents_counts(&state.db, org.org_id, result.data).await?;
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(
-        PaginatedResponse::new(result.data, result.total, result.offset, result.limit)
-            .with_urls(&builder),
+        PaginatedResponse::new(data, result.total, result.offset, result.limit).with_urls(&builder),
     ))
 }
 
@@ -322,7 +362,7 @@ pub async fn list_agents(
         ("agent_id" = String, Path, description = "Agent ID (prefixed) or name")
     ),
     responses(
-        (status = 200, description = "Agent found", body = WithUrls<Agent>),
+        (status = 200, description = "Agent found", body = WithUrls<ResourceWithCounts<Agent>>),
         (status = 400, description = "Invalid agent ID"),
         (status = 404, description = "Agent not found"),
         (status = 500, description = "Internal server error")
@@ -333,12 +373,13 @@ pub async fn get_agent(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(agent_id_or_name): Path<String>,
-) -> ApiResult<WithUrls<Agent>> {
+) -> ApiResult<WithUrls<ResourceWithCounts<Agent>>> {
     let agent = crate::domains::agents::GetAgent {
         id: agent_id_or_name,
     }
     .run(&state.ctx(&org))
     .await?;
+    let agent = add_agent_counts(&state.db, org.org_id, agent).await?;
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(builder.wrap(agent)))
 }

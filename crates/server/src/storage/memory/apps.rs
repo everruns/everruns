@@ -4,6 +4,7 @@ use super::super::models::*;
 use super::InMemoryDatabase;
 use super::matches_search_tokens;
 use anyhow::Result;
+use everruns_core::typed_id::{AgentId, HarnessId};
 use uuid::Uuid;
 
 impl InMemoryDatabase {
@@ -91,6 +92,28 @@ impl InMemoryDatabase {
             .collect();
         result.sort_by_key(|app| std::cmp::Reverse(app.created_at));
         Ok(result)
+    }
+
+    pub async fn count_apps_for_agent(&self, org_id: i64, agent_id: AgentId) -> Result<u64> {
+        Ok(self
+            .apps
+            .read()
+            .values()
+            .filter(|a| {
+                a.org_id == org_id && a.agent_id == Some(agent_id.uuid()) && a.status != "deleted"
+            })
+            .count() as u64)
+    }
+
+    pub async fn count_apps_for_harness(&self, org_id: i64, harness_id: HarnessId) -> Result<u64> {
+        Ok(self
+            .apps
+            .read()
+            .values()
+            .filter(|a| {
+                a.org_id == org_id && a.harness_id == harness_id.uuid() && a.status != "deleted"
+            })
+            .count() as u64)
     }
 
     pub async fn update_app(

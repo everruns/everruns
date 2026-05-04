@@ -34,7 +34,7 @@ import {
   getEntityStatusBadgeVariant,
 } from "@/lib/entity-lifecycle";
 import { useOrganization } from "@/hooks/use-organizations";
-import { formatTokens } from "@/lib/formatting";
+import { formatTokens, pluralize } from "@/lib/formatting";
 import { normalizeTags } from "@/lib/tags";
 
 // Helper function to calculate total tokens
@@ -118,6 +118,8 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
 
   // Capabilities are now part of the agent resource
   const agentCapabilities = agent?.capabilities ?? [];
+  const agentSessionCount = agent?.session_count ?? totalSessions;
+  const agentAppCount = agent?.app_count ?? 0;
 
   if (agentLoading) {
     return (
@@ -334,6 +336,27 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
                       </div>
                     </div>
                   )}
+
+                  <div>
+                    <p className="text-sm font-medium mb-2">Usage</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Link
+                        href={`/agents/${agentId}/sessions`}
+                        className="border bg-muted/50 p-2 hover:bg-muted"
+                      >
+                        <p className="text-sm font-medium">{agentSessionCount}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {pluralize(agentSessionCount, "session")}
+                        </p>
+                      </Link>
+                      <div className="border bg-muted/50 p-2">
+                        <p className="text-sm font-medium">{agentAppCount}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {pluralize(agentAppCount, "app")}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
 
                   {agent.usage && (
                     <div>

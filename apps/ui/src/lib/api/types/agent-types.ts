@@ -39,6 +39,10 @@ export interface Agent {
   deleted_at: string | null;
   /** Cumulative token usage across all sessions for this agent */
   usage?: TokenUsage;
+  /** Number of sessions using this agent. Present on list/detail API responses. */
+  session_count?: number;
+  /** Number of non-deleted apps using this agent. Present on list/detail API responses. */
+  app_count?: number;
 }
 
 export interface CreateAgentRequest {
@@ -136,6 +140,10 @@ export interface Harness {
   updated_at: string;
   archived_at: string | null;
   deleted_at: string | null;
+  /** Number of sessions using this harness. Present on list/detail API responses. */
+  session_count?: number;
+  /** Number of non-deleted apps using this harness. Present on list/detail API responses. */
+  app_count?: number;
 }
 
 export interface CreateHarnessRequest {

@@ -31,6 +31,7 @@ import {
   getEntityNameClassName,
   getEntityStatusBadgeVariant,
 } from "@/lib/entity-lifecycle";
+import { pluralize } from "@/lib/formatting";
 import { normalizeTags } from "@/lib/tags";
 
 export default function HarnessDetailPage({ params }: { params: Promise<{ harnessId: string }> }) {
@@ -62,6 +63,8 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
 
   const harnessCapabilities = harness?.capabilities ?? [];
   const deleteError = deleteHarness.error;
+  const harnessSessionCount = harness?.session_count ?? 0;
+  const harnessAppCount = harness?.app_count ?? 0;
 
   const handleDelete = async () => {
     if (!confirm("Archive this harness? It will become read-only and stop being assignable.")) {
@@ -285,6 +288,24 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
                       </div>
                     </div>
                   )}
+
+                  <div>
+                    <p className="text-sm font-medium mb-2">Usage</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="border bg-muted/50 p-2">
+                        <p className="text-sm font-medium">{harnessSessionCount}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {pluralize(harnessSessionCount, "session")}
+                        </p>
+                      </div>
+                      <div className="border bg-muted/50 p-2">
+                        <p className="text-sm font-medium">{harnessAppCount}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {pluralize(harnessAppCount, "app")}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
 
                   <div>
                     <p className="text-sm font-medium">Created</p>

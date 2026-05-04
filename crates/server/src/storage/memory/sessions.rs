@@ -5,7 +5,7 @@ use super::InMemoryDatabase;
 use super::matches_search_tokens;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
-use everruns_core::{AgentId, EventId, PrincipalId, SessionId};
+use everruns_core::{AgentId, EventId, HarnessId, PrincipalId, SessionId};
 use uuid::Uuid;
 
 impl InMemoryDatabase {
@@ -135,6 +135,28 @@ impl InMemoryDatabase {
         let paginated = result.into_iter().skip(offset).take(limit).collect();
 
         Ok((paginated, total))
+    }
+
+    pub async fn count_sessions_for_agent(&self, org_id: i64, agent_id: AgentId) -> Result<u64> {
+        Ok(self
+            .sessions
+            .read()
+            .values()
+            .filter(|s| s.org_id == org_id && s.agent_id == Some(agent_id))
+            .count() as u64)
+    }
+
+    pub async fn count_sessions_for_harness(
+        &self,
+        org_id: i64,
+        harness_id: HarnessId,
+    ) -> Result<u64> {
+        Ok(self
+            .sessions
+            .read()
+            .values()
+            .filter(|s| s.org_id == org_id && s.harness_id == Some(harness_id))
+            .count() as u64)
     }
 
     /// List child sessions (subagents) for a parent session.

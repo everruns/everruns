@@ -15,6 +15,7 @@ import {
   getEntityNameClassName,
   getEntityStatusBadgeVariant,
 } from "@/lib/entity-lifecycle";
+import { formatCountLabel } from "@/lib/formatting";
 import { normalizeTags } from "@/lib/tags";
 
 interface AgentCardProps {
@@ -37,6 +38,8 @@ export function AgentCard({
   // Capabilities are now directly on the agent
   const agentCapabilities = agent.capabilities ?? [];
   const tags = normalizeTags(agent.tags);
+  const sessionCount = agent.session_count ?? 0;
+  const appCount = agent.app_count ?? 0;
 
   return (
     <Card className="bg-background transition-colors hover:bg-card">
@@ -102,9 +105,13 @@ export function AgentCard({
 
         {/* Footer */}
         <div className="flex items-center justify-between">
-          <span className="text-xs text-muted-foreground">
-            Created {new Date(agent.created_at).toLocaleDateString()}
-          </span>
+          <div className="min-w-0 text-xs text-muted-foreground">
+            <span>Created {new Date(agent.created_at).toLocaleDateString()}</span>
+            <span className="mx-2">·</span>
+            <span>
+              {formatCountLabel(sessionCount, "session")} · {formatCountLabel(appCount, "app")}
+            </span>
+          </div>
           {showEditButton && agent.status === "active" && (
             <Link href={`/agents/${agent.id}/edit`}>
               <Button variant="ghost" size="icon" className="h-8 w-8">
