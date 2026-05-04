@@ -186,6 +186,68 @@ impl InMemoryDatabase {
         Ok(counts.into_iter().collect())
     }
 
+    /// Aggregate session and turn execution stats for an optional agent or harness scope.
+    pub async fn session_aggregate_stats(
+        &self,
+        org_id: i64,
+        agent_id: Option<AgentId>,
+        harness_id: Option<HarnessId>,
+    ) -> Result<SessionAggregateStatsRow> {
+        let sessions = self.sessions.read();
+        let events = self.events.read();
+        let mut stats = SessionAggregateStatsRow::default();
+        let mut session_ids = std::collections::HashSet::new();
+
+        for session in sessions.values().filter(|session| {
+            session.org_id == org_id
+                && agent_id.is_none_or(|id| session.agent_id == Some(id))
+                && harness_id.is_none_or(|id| session.harness_id == Some(id))
+        }) {
+            stats.session_count += 1;
+            match session.status.as_str() {
+                "active" => stats.active_session_count += 1,
+                "idle" => stats.idle_session_count += 1,
+                "started" => stats.started_session_count += 1,
+                "waiting_for_tool_results" => stats.waiting_for_tool_results_session_count += 1,
+                _ => {}
+            }
+
+            let start = session.started_at.unwrap_or(session.created_at);
+            let end = session.finished_at.unwrap_or(session.updated_at);
+            let duration_ms = end.signed_duration_since(start).num_milliseconds().max(0);
+            stats.total_session_duration_ms += duration_ms;
+            stats.total_input_tokens += session.total_input_tokens;
+            stats.total_output_tokens += session.total_output_tokens;
+            stats.total_cache_read_tokens += session.total_cache_read_tokens;
+            stats.total_cache_creation_tokens += session.total_cache_creation_tokens;
+            stats.first_session_at = Some(
+                stats
+                    .first_session_at
+                    .map_or(session.created_at, |current| {
+                        current.min(session.created_at)
+                    }),
+            );
+            stats.last_session_at =
+                Some(stats.last_session_at.map_or(session.created_at, |current| {
+                    current.max(session.created_at)
+                }));
+            session_ids.insert(session.id);
+        }
+
+        for event in events.values().filter(|event| {
+            session_ids.contains(&event.session_id) && event.event_type == "turn.started"
+        }) {
+            stats.execution_count += 1;
+            stats.last_execution_at = Some(
+                stats
+                    .last_execution_at
+                    .map_or(event.ts, |current| current.max(event.ts)),
+            );
+        }
+
+        Ok(stats)
+    }
+
     /// Find active sessions with Slack tags (for startup recovery).
     pub async fn find_active_slack_sessions(&self) -> Result<Vec<SessionRow>> {
         let sessions = self.sessions.read();

@@ -1,8 +1,13 @@
 // Harness hooks
 "use client";
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { copyHarness, harnessesCrudApi, previewHarness } from "@/lib/api/harnesses";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  copyHarness,
+  getHarnessStats,
+  harnessesCrudApi,
+  previewHarness,
+} from "@/lib/api/harnesses";
 import type {
   CreateHarnessRequest,
   PreviewHarnessRequest,
@@ -10,6 +15,7 @@ import type {
 } from "@/lib/api/types";
 import { queryKeys } from "@/lib/query-keys";
 import { createCrudHooks } from "./create-crud-hooks";
+import { useOrg } from "@/providers/org-provider";
 
 const harnessCrudHooks = createCrudHooks<
   Awaited<ReturnType<typeof harnessesCrudApi.get>>,
@@ -25,6 +31,22 @@ export const useHarness = harnessCrudHooks.useDetail;
 export const useCreateHarness = harnessCrudHooks.useCreate;
 export const useDeleteHarness = harnessCrudHooks.useDelete;
 export const useDestroyHarness = harnessCrudHooks.useDestroy;
+
+export function useHarnessStats(harnessId: string | undefined) {
+  const { currentOrg, isLoading: orgLoading } = useOrg();
+  const org = currentOrg?.public_id;
+
+  const query = useQuery({
+    queryKey: queryKeys.harnesses.stats(org, harnessId),
+    queryFn: () => getHarnessStats(harnessId!),
+    enabled: !!org && !!harnessId,
+  });
+
+  return {
+    ...query,
+    isLoading: orgLoading || query.isLoading,
+  };
+}
 
 export function useUpdateHarness() {
   const mutation = harnessCrudHooks.useUpdate();

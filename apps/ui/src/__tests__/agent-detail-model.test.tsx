@@ -156,6 +156,7 @@ const mockUseExportAgent = jest.fn();
 const mockUseCopyAgent = jest.fn();
 const mockUseHarnesses = jest.fn();
 const mockUseOrganization = jest.fn();
+const mockUseAgentStats = jest.fn();
 
 jest.mock("@/hooks", () => ({
   useAgent: (...args: unknown[]) => mockUseAgent(...args),
@@ -166,6 +167,7 @@ jest.mock("@/hooks", () => ({
   useExportAgent: () => mockUseExportAgent(),
   useCopyAgent: () => mockUseCopyAgent(),
   useHarnesses: () => mockUseHarnesses(),
+  useAgentStats: (...args: unknown[]) => mockUseAgentStats(...args),
 }));
 
 jest.mock("@/hooks/use-organizations", () => ({
@@ -201,6 +203,7 @@ describe("AgentDetailPage - LLM Model Display in Sessions List", () => {
     mockUseCopyAgent.mockReturnValue({ mutateAsync: jest.fn(), isPending: false });
     mockUseHarnesses.mockReturnValue({ data: [] });
     mockUseOrganization.mockReturnValue({ data: null });
+    mockUseAgentStats.mockReturnValue({ data: undefined, isLoading: false, error: null });
   });
 
   it("renders agent page structure", async () => {

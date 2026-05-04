@@ -10,6 +10,7 @@ import {
   useLlmModels,
   useExportAgent,
   useCopyAgent,
+  useAgentStats,
 } from "@/hooks";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -24,8 +25,19 @@ import { ProviderIcon } from "@/components/providers/provider-icon";
 import { SessionCard } from "@/components/session/session-card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { AgentPreview } from "@/components/agents/agent-preview";
-import { ArrowLeft, Plus, Pencil, Download, Copy, Zap, Eye, LayoutDashboard } from "lucide-react";
+import {
+  ArrowLeft,
+  Plus,
+  Pencil,
+  Download,
+  Copy,
+  Zap,
+  Eye,
+  LayoutDashboard,
+  BarChart3,
+} from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
+import { ResourceStatsPanel } from "@/components/stats/resource-stats-panel";
 import type { Capability, LlmModelWithProvider, TokenUsage } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
 import {
@@ -56,6 +68,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
   const hasMoreSessions = totalSessions > 10;
   const { data: allCapabilities } = useCapabilities();
   const { data: llmModels } = useLlmModels();
+  const { data: stats, isLoading: statsLoading, error: statsError } = useAgentStats(agentId);
   const createSession = useCreateSession();
   const { data: organization } = useOrganization();
   const exportAgent = useExportAgent();
@@ -199,6 +212,10 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
           <TabsTrigger value="preview">
             <Eye className="w-4 h-4 mr-2" />
             Preview
+          </TabsTrigger>
+          <TabsTrigger value="stats">
+            <BarChart3 className="w-4 h-4 mr-2" />
+            Stats
           </TabsTrigger>
         </TabsList>
 
@@ -407,6 +424,10 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
             initialFiles={agent.initial_files}
             tools={agent.tools ?? []}
           />
+        </TabsContent>
+
+        <TabsContent value="stats">
+          <ResourceStatsPanel stats={stats} isLoading={statsLoading} error={statsError} />
         </TabsContent>
       </Tabs>
     </div>

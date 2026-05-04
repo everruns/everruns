@@ -17,6 +17,7 @@ export const queryKeys = {
     all: ["agents"] as const,
     list: (includeArchived = false) => ["agents", { includeArchived }] as const,
     detail: (agentId: string) => ["agent", agentId] as const,
+    stats: (org?: string, agentId?: string) => ["agent", org, agentId, "stats"] as const,
   },
 
   // Agent example queries
@@ -30,6 +31,7 @@ export const queryKeys = {
     all: ["harnesses"] as const,
     list: (includeArchived = false) => ["harnesses", { includeArchived }] as const,
     detail: (harnessId: string) => ["harness", harnessId] as const,
+    stats: (org?: string, harnessId?: string) => ["harness", org, harnessId, "stats"] as const,
   },
 
   // Harness example queries

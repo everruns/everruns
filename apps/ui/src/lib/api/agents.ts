@@ -8,6 +8,7 @@ import type {
   AgentPreviewResponse,
   CreateAgentRequest,
   PreviewAgentRequest,
+  ResourceStats,
   UpdateAgentRequest,
 } from "./types";
 
@@ -51,6 +52,11 @@ export async function importAgent(markdown: string): Promise<Agent> {
 
 export async function copyAgent(agentId: string): Promise<Agent> {
   const response = await api.post<Agent>(`/v1/agents/${agentId}/copy`, {});
+  return response.data;
+}
+
+export async function getAgentStats(agentId: string): Promise<ResourceStats> {
+  const response = await api.get<ResourceStats>(`/v1/agents/${agentId}/stats`);
   return response.data;
 }
 

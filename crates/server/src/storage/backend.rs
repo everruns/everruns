@@ -611,6 +611,16 @@ impl StorageBackend {
         dispatch!(self, count_sessions_by_status, org_id)
     }
 
+    /// Aggregate session and execution stats for an optional agent or harness scope.
+    pub async fn session_aggregate_stats(
+        &self,
+        org_id: i64,
+        agent_id: Option<AgentId>,
+        harness_id: Option<HarnessId>,
+    ) -> Result<SessionAggregateStatsRow> {
+        dispatch!(self, session_aggregate_stats, org_id, agent_id, harness_id)
+    }
+
     /// Find active sessions with Slack tags (for startup recovery).
     pub async fn find_active_slack_sessions(&self) -> Result<Vec<SessionRow>> {
         dispatch!(self, find_active_slack_sessions)

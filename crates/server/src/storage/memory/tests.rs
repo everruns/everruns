@@ -107,6 +107,119 @@ async fn test_create_and_list_sessions() {
 }
 
 #[tokio::test]
+async fn test_session_aggregate_stats_by_agent_and_harness() {
+    let db = InMemoryDatabase::new();
+
+    let agent = db
+        .create_agent(
+            DEFAULT_ORG_ID,
+            CreateAgentRow {
+                public_id: AgentId::new().to_string(),
+                name: "stats-agent".to_string(),
+                display_name: Some("Stats Agent".to_string()),
+                description: None,
+                system_prompt: String::new(),
+                default_model_id: None,
+                tags: vec![],
+                initial_files: serde_json::json!([]),
+                tools: serde_json::json!([]),
+                mcp_servers: serde_json::json!({}),
+                network_access: None,
+                max_iterations: None,
+            },
+        )
+        .await
+        .unwrap();
+    let harness = db
+        .create_harness(
+            DEFAULT_ORG_ID,
+            CreateHarnessRow {
+                name: "stats-harness".to_string(),
+                display_name: Some("Stats Harness".to_string()),
+                description: None,
+                system_prompt: String::new(),
+                parent_harness_id: None,
+                default_model_id: None,
+                tags: vec![],
+                initial_files: serde_json::json!([]),
+                mcp_servers: serde_json::json!({}),
+                network_access: None,
+                is_built_in: false,
+            },
+        )
+        .await
+        .unwrap();
+
+    let session = db
+        .create_session(CreateSessionRow {
+            org_id: DEFAULT_ORG_ID,
+            harness_id: Some(harness.id),
+            agent_id: Some(agent.id),
+            agent_identity_id: None,
+            owner_principal_id: everruns_core::PrincipalId::from_seed(1),
+            resolved_owner_user_id: None,
+            title: Some("Stats Session".to_string()),
+            locale: None,
+            tags: vec![],
+            model_id: None,
+            capabilities: serde_json::json!([]),
+            tools: serde_json::json!([]),
+            mcp_servers: serde_json::json!({}),
+            system_prompt: None,
+            initial_files: serde_json::Value::Array(vec![]),
+            hints: None,
+            network_access: None,
+            max_iterations: None,
+            blueprint_id: None,
+            blueprint_config: None,
+        })
+        .await
+        .unwrap();
+    let started_at = Utc::now() - chrono::Duration::seconds(10);
+    let finished_at = started_at + chrono::Duration::seconds(4);
+    db.update_session(
+        DEFAULT_ORG_ID,
+        session.id,
+        UpdateSession {
+            status: Some("idle".to_string()),
+            started_at: Some(started_at),
+            finished_at: Some(finished_at),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    db.create_event(CreateEventRow {
+        session_id: session.id,
+        event_type: "turn.started".to_string(),
+        ts: started_at,
+        context: serde_json::json!({}),
+        data: serde_json::json!({}),
+        metadata: None,
+        tags: None,
+    })
+    .await
+    .unwrap();
+
+    let stats = db
+        .session_aggregate_stats(DEFAULT_ORG_ID, Some(agent.id), None)
+        .await
+        .unwrap();
+    assert_eq!(stats.session_count, 1);
+    assert_eq!(stats.idle_session_count, 1);
+    assert_eq!(stats.execution_count, 1);
+    assert_eq!(stats.total_session_duration_ms, 4000);
+    assert_eq!(stats.last_execution_at, Some(started_at));
+
+    let harness_stats = db
+        .session_aggregate_stats(DEFAULT_ORG_ID, None, Some(harness.id))
+        .await
+        .unwrap();
+    assert_eq!(harness_stats.session_count, 1);
+    assert_eq!(harness_stats.execution_count, 1);
+}
+
+#[tokio::test]
 async fn test_session_updated_at() {
     let db = InMemoryDatabase::new();
 
