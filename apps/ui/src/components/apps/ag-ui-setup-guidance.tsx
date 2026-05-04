@@ -61,7 +61,7 @@ export function AgUiSetupGuidance({
         <p className="text-sm text-muted-foreground">
           {formatSessionExpiration(sessionExpirationSeconds)}
           {sessionExpirationSeconds > 0
-            ? " — after this, the same threadId starts a new session"
+            ? " — after this, requests reusing the same threadId are rejected with 410 Gone and the client must start a new thread"
             : " — threads can be resumed indefinitely"}
         </p>
       </div>

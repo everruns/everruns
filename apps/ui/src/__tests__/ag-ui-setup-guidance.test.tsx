@@ -18,7 +18,7 @@ describe("AgUiSetupGuidance", () => {
     expect(screen.getByText("Responses stream back as AG-UI SSE events.")).toBeInTheDocument();
     expect(screen.getByText("Thread expiration")).toBeInTheDocument();
     expect(
-      screen.getByText(/6 hours.*after this, the same threadId starts a new session/),
+      screen.getByText(/6 hours.*requests reusing the same threadId are rejected with 410 Gone/),
     ).toBeInTheDocument();
   });
 

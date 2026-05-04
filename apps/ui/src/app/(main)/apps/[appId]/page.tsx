@@ -125,7 +125,6 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
     useState<InvocationSessionMode>("shared_session");
   const [editChannelMessage, setEditChannelMessage] = useState("");
   const [editWebhookToken, setEditWebhookToken] = useState("");
-  const [editAgUiAnonymous, setEditAgUiAnonymous] = useState(true);
   const [editAgUiExpirationHours, setEditAgUiExpirationHours] = useState(
     DEFAULT_AG_UI_SESSION_EXPIRATION_SECONDS / 3600,
   );
@@ -281,7 +280,6 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
     setEditInvocationSessionMode("shared_session");
     setEditChannelMessage("");
     setEditWebhookToken("");
-    setEditAgUiAnonymous(true);
     setEditAgUiExpirationHours(DEFAULT_AG_UI_SESSION_EXPIRATION_SECONDS / 3600);
     setEditChannelEnabled(true);
   };
@@ -293,7 +291,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
           ? Math.max(0, editAgUiExpirationHours)
           : DEFAULT_AG_UI_SESSION_EXPIRATION_SECONDS / 3600;
         return {
-          anonymous: editAgUiAnonymous,
+          anonymous: true,
           session_expiration_seconds: Math.round(hours * 3600),
         };
       }
@@ -340,7 +338,6 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
     setEditChannelEnabled(channel.enabled);
     if (channel.channel_type === "ag_ui") {
       const config = channel.channel_config as AgUiChannelConfig;
-      setEditAgUiAnonymous(config?.anonymous ?? true);
       const expSeconds =
         config?.session_expiration_seconds ?? DEFAULT_AG_UI_SESSION_EXPIRATION_SECONDS;
       setEditAgUiExpirationHours(expSeconds / 3600);
@@ -463,15 +460,9 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
 
         {formChannelType === "ag_ui" && (
           <>
-            <div className="flex items-center justify-between rounded-md border p-3">
-              <div className="space-y-1">
-                <p className="text-sm font-medium">Anonymous access</p>
-                <p className="text-xs text-muted-foreground">
-                  When enabled, anyone with the endpoint URL can start a thread without
-                  authentication.
-                </p>
-              </div>
-              <Switch checked={editAgUiAnonymous} onCheckedChange={setEditAgUiAnonymous} />
+            <div className="rounded-md border p-3 text-sm text-muted-foreground">
+              AG-UI requests are accepted anonymously for now. Publish the app, then point an AG-UI
+              client at the endpoint shown on this page.
             </div>
 
             <div>
@@ -486,8 +477,9 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
                 placeholder="6"
               />
               <p className="mt-1 text-xs text-muted-foreground">
-                After this window the same `threadId` cannot resume the existing session and a new
-                one is started. Set to `0` to allow resumption indefinitely. Default is 6 hours.
+                After this window, requests reusing the same `threadId` are rejected with{" "}
+                <code>410 Gone</code> and the client must start a new thread. Set to `0` to allow
+                resumption indefinitely. Default is 6 hours.
               </p>
             </div>
           </>
