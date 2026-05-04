@@ -118,8 +118,18 @@ fi
 rm -f "$TEMP_SPEC"
 echo ""
 
-# 9. Docs build
-echo "9️⃣  Building docs..."
+# 9. Migration ordering
+echo "9️⃣  Checking migration ordering..."
+if bash "$PROJECT_ROOT/scripts/lib/check-migration-ordering.sh"; then
+  echo "   ✅ migrations sequential"
+else
+  echo "   ❌ migration ordering broken (see specs/migrations.md)"
+  FAILED=1
+fi
+echo ""
+
+# 10. Docs build
+echo "🔟 Building docs..."
 cd "$PROJECT_ROOT/apps/docs"
 if npm run check && npm run build; then
   echo "   ✅ Docs build passed"

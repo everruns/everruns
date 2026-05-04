@@ -62,25 +62,13 @@ fi
 
 # 6. Migration ordering check
 echo "6/8 Migration ordering"
-MIGRATION_DIR="$PROJECT_ROOT/crates/server/migrations"
-if [ -d "$MIGRATION_DIR" ]; then
-  EXPECTED=1
-  ORDER_OK=true
-  for f in "$MIGRATION_DIR"/[0-9]*.sql; do
-    NUM=$(basename "$f" | grep -oE '^[0-9]+' | sed 's/^0*//')
-    if [ "$NUM" != "$EXPECTED" ]; then
-      ORDER_OK=false
-      break
-    fi
-    EXPECTED=$((EXPECTED + 1))
-  done
-  if $ORDER_OK; then
-    pass "migrations sequential (001..$((EXPECTED - 1)))"
-  else
-    fail "migration ordering broken at $(basename "$f") — expected $(printf '%03d' "$EXPECTED"), got $(printf '%03d' "$NUM")"
-  fi
+if MIGRATION_ORDERING_OUTPUT="$(
+  bash "$PROJECT_ROOT/scripts/lib/check-migration-ordering.sh" 2>&1
+)"; then
+  pass "$MIGRATION_ORDERING_OUTPUT"
 else
-  echo "   ⏭️  skipped (no migrations dir)"
+  printf '%s\n' "$MIGRATION_ORDERING_OUTPUT" | sed 's/^/   /'
+  fail "migration ordering check failed"
 fi
 
 # 7. Migration immutability check
