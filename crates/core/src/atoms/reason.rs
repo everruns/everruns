@@ -31,9 +31,9 @@ use crate::error::{AgentLoopError, Result};
 use crate::events::{
     EventContext, EventRequest, LlmCompactionInfo, LlmGenerationData, LlmPromptCacheInfo,
     LlmRequestOptions, LlmRetryInfo, LlmToolSearchInfo, OutputMessageCompletedData,
-    OutputMessageDeltaData, OutputMessageStartedData, ReasonCompletedData, ReasonStartedData,
-    ReasonThinkingCompletedData, ReasonThinkingDeltaData, ReasonThinkingStartedData, TokenUsage,
-    ToolDefinitionSummary,
+    OutputMessageDeltaData, OutputMessageReplacedData, OutputMessageStartedData,
+    ReasonCompletedData, ReasonStartedData, ReasonThinkingCompletedData, ReasonThinkingDeltaData,
+    ReasonThinkingStartedData, TokenUsage, ToolDefinitionSummary,
 };
 use crate::llm_driver_registry::{
     DriverRegistry, LlmCallConfigBuilder, LlmCompletionMetadata, LlmMessage, LlmMessageContent,
@@ -44,6 +44,9 @@ use crate::message::{Message, MessageRole};
 use crate::message_retriever::MessageRetriever;
 use crate::openresponses_protocol::{
     CompactInputItem, CompactRequest, compact_output_to_messages, messages_to_compact_input,
+};
+use crate::output_guardrail::{
+    ArmedGuardrail, OutputGuardrailContext, TrippedGuardrail, evaluate_guardrails,
 };
 use crate::runtime_context::{AssembledTurnContext, assemble_turn_context};
 use crate::tool_types::{ToolCall, ToolDefinition};
@@ -658,7 +661,37 @@ impl ReasonAtom {
         let resolved_model_id = assembled.resolved_model_id;
         let resolved_locale = assembled.resolved_locale;
         let compaction_config = assembled.compaction_config;
+        let resolved_capability_configs = assembled.resolved_capability_configs;
         let runtime_agent = assembled.runtime_agent;
+
+        // Collect streaming output guardrail providers contributed by enabled
+        // capabilities. Each tuple carries the contributing capability id, a
+        // borrow of that capability's per-agent config (so arming below doesn't
+        // need a second scan), and the provider itself. Capabilities that
+        // contribute no guardrails — the common case — are skipped at zero
+        // allocation cost.
+        let guardrail_providers: Vec<(
+            &str,
+            &serde_json::Value,
+            Arc<dyn crate::output_guardrail::OutputGuardrail>,
+        )> = resolved_capability_configs
+            .iter()
+            .filter_map(|cfg| {
+                let cap_id = cfg.capability_ref.as_str();
+                let cap = self.capability_registry.get(cap_id)?;
+                let guards = cap.output_guardrails();
+                if guards.is_empty() {
+                    return None;
+                }
+                Some(
+                    guards
+                        .into_iter()
+                        .map(move |g| (cap_id, &cfg.config, g))
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .flatten()
+            .collect();
 
         // 7. Create LLM driver using factory
         let llm_driver = self.create_llm_driver(&model_with_provider)?;
@@ -799,6 +832,29 @@ impl ReasonAtom {
         // 13. Emit output.message.started event BEFORE starting LLM call
         // This allows UI to show a thinking indicator immediately
         let streaming_event_context = EventContext::from_atom_context(context);
+
+        // Arm output guardrails for this stream. Each guardrail sees the
+        // assembled system prompt and its own per-capability config (already
+        // borrowed in `guardrail_providers` above, so no second scan over
+        // `resolved_capability_configs`). Guardrails that decline to arm —
+        // e.g. the canary couldn't extract a long-enough sentence — are
+        // skipped, leaving the streaming hot path entirely free of work.
+        let mut armed_guardrails: Vec<ArmedGuardrail> = Vec::new();
+        for (cap_id, cfg, provider) in &guardrail_providers {
+            let ctx = OutputGuardrailContext {
+                system_prompt: &runtime_agent.system_prompt,
+                config: cfg,
+            };
+            let guardrail_id = provider.id().to_string();
+            if let Some(run) = provider.arm(&ctx) {
+                armed_guardrails.push(ArmedGuardrail {
+                    capability_id: (*cap_id).to_string(),
+                    guardrail_id,
+                    run,
+                });
+            }
+        }
+        let mut tripped: Option<TrippedGuardrail> = None;
         tracing::info!(
             session_id = %session_id,
             turn_id = %context.turn_id,
@@ -1403,6 +1459,29 @@ impl ReasonAtom {
                         text.push_str(&delta);
                         pending_delta.push_str(&delta);
 
+                        // Run output guardrails on the new accumulated text.
+                        // Cheap by contract — runs in the streaming hot path.
+                        // On block: suppress the pending delta (the bad text
+                        // never reaches the client as a delta), record the
+                        // trip, and break the loop. The replacement message is
+                        // emitted below after the streaming block.
+                        if !armed_guardrails.is_empty()
+                            && let Some(t) =
+                                evaluate_guardrails(&mut armed_guardrails, &text, &delta)
+                        {
+                            tracing::warn!(
+                                session_id = %session_id,
+                                turn_id = %context.turn_id,
+                                guardrail_capability_id = %t.capability_id,
+                                guardrail_id = %t.guardrail_id,
+                                reason_code = %t.block.reason_code,
+                                "ReasonAtom: output guardrail tripped, replacing assistant message"
+                            );
+                            pending_delta.clear();
+                            tripped = Some(t);
+                            break;
+                        }
+
                         // Emit batched delta if interval elapsed
                         if last_delta_emit.elapsed().as_millis() as u64 >= DELTA_BATCH_INTERVAL_MS
                             && !pending_delta.is_empty()
@@ -1609,6 +1688,45 @@ impl ReasonAtom {
                 time_to_first_token_ms,
             )
         };
+        let (mut text, mut thinking, thinking_signature, mut tool_calls) =
+            (text, thinking, thinking_signature, tool_calls);
+
+        // If a streaming output guardrail tripped, emit
+        // output.message.replaced and overwrite the assistant output now so
+        // every downstream event (llm.generation, output.message.completed)
+        // carries the replacement instead of the model's withheld tokens.
+        // The original tokens are never persisted or replayed.
+        if let Some(ref t) = tripped {
+            let replaced_event_context = EventContext::from_atom_context(context).with_span(
+                trace_id.to_string(),
+                Uuid::now_v7().to_string(),
+                Some(reason_span_id.to_string()),
+            );
+            if let Err(e) = self
+                .event_emitter
+                .emit(EventRequest::new(
+                    session_id,
+                    replaced_event_context,
+                    OutputMessageReplacedData {
+                        turn_id: context.turn_id,
+                        guardrail_capability_id: t.capability_id.clone(),
+                        guardrail_id: t.guardrail_id.clone(),
+                        reason_code: t.block.reason_code.clone(),
+                        replacement: t.block.replacement.clone(),
+                    },
+                ))
+                .await
+            {
+                tracing::warn!(
+                    session_id = %session_id,
+                    error = %e,
+                    "ReasonAtom: failed to emit output.message.replaced event"
+                );
+            }
+            text = t.block.replacement.clone();
+            tool_calls.clear();
+            thinking.clear();
+        }
 
         let llm_duration_ms = llm_start.elapsed().as_millis() as u64;
 

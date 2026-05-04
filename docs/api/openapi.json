@@ -7464,6 +7464,9 @@
             "$ref": "#/components/schemas/OutputMessageStartedData"
           },
           {
+            "$ref": "#/components/schemas/OutputMessageReplacedData"
+          },
+          {
             "$ref": "#/components/schemas/OutputMessageCompletedData"
           },
           {
@@ -11897,6 +11900,40 @@
           "turn_id": {
             "type": "string",
             "description": "Turn ID this delta belongs to",
+            "example": "turn_01933b5a00007000800000000000001"
+          }
+        }
+      },
+      "OutputMessageReplacedData": {
+        "type": "object",
+        "description": "Data for `output.message.replaced` event.\n\nEmitted between the last (suppressed) `output.message.delta` and the final\n`output.message.completed`. Tells the client to discard everything it has\naccumulated for `turn_id` and use `replacement` as the assistant message\ntext. The original model output is never persisted or replayed.",
+        "required": [
+          "turn_id",
+          "guardrail_capability_id",
+          "guardrail_id",
+          "reason_code",
+          "replacement"
+        ],
+        "properties": {
+          "guardrail_capability_id": {
+            "type": "string",
+            "description": "Stable ID of the capability that contributed the guardrail\n(e.g. `\"prompt_canary_guardrail\"`)."
+          },
+          "guardrail_id": {
+            "type": "string",
+            "description": "Stable ID of the guardrail itself (e.g. `\"prompt_canary\"`)."
+          },
+          "reason_code": {
+            "type": "string",
+            "description": "Stable machine-readable reason code (e.g. `\"system_prompt_leak\"`).\nClients localize their copy from this rather than the human text."
+          },
+          "replacement": {
+            "type": "string",
+            "description": "Replacement text shown to the user and stored as the assistant message."
+          },
+          "turn_id": {
+            "type": "string",
+            "description": "Turn ID this replacement belongs to.",
             "example": "turn_01933b5a00007000800000000000001"
           }
         }

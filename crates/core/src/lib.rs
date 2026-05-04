@@ -107,6 +107,7 @@ pub mod openai_protocol;
 pub mod openresponses_protocol;
 pub mod openresponses_types;
 pub mod outline;
+pub mod output_guardrail;
 pub mod platform_definition;
 pub mod platform_store;
 pub mod resource_ownership;
@@ -307,10 +308,11 @@ pub use events::{
     ContextCompactingData, Event, EventBuilder, EventContext, EventData, EventRequest,
     FILE_WRITTEN, FileWrittenData, INPUT_MESSAGE, InputMessageData, LLM_GENERATION,
     LlmCompactionInfo, LlmGenerationData, LlmGenerationMetadata, LlmGenerationOutput, LlmRetryInfo,
-    ModelMetadata, OUTPUT_MESSAGE_COMPLETED, OUTPUT_MESSAGE_DELTA, OUTPUT_MESSAGE_STARTED,
-    OutputMessageCompletedData, OutputMessageDeltaData, OutputMessageStartedData, REASON_COMPLETED,
-    REASON_STARTED, REASON_THINKING_COMPLETED, REASON_THINKING_DELTA, REASON_THINKING_STARTED,
-    ReasonCompletedData, ReasonStartedData, ReasonThinkingCompletedData, ReasonThinkingDeltaData,
+    ModelMetadata, OUTPUT_MESSAGE_COMPLETED, OUTPUT_MESSAGE_DELTA, OUTPUT_MESSAGE_REPLACED,
+    OUTPUT_MESSAGE_STARTED, OutputMessageCompletedData, OutputMessageDeltaData,
+    OutputMessageReplacedData, OutputMessageStartedData, REASON_COMPLETED, REASON_STARTED,
+    REASON_THINKING_COMPLETED, REASON_THINKING_DELTA, REASON_THINKING_STARTED, ReasonCompletedData,
+    ReasonStartedData, ReasonThinkingCompletedData, ReasonThinkingDeltaData,
     ReasonThinkingStartedData, SESSION_ACTIVATED, SESSION_IDLED, SESSION_STARTED,
     SessionActivatedData, SessionIdledData, SessionStartedData, TOOL_CALL_REQUESTED,
     TOOL_COMPLETED, TOOL_OUTPUT_DELTA, TOOL_PROGRESS, TOOL_STARTED, TURN_CANCELLED, TURN_COMPLETED,

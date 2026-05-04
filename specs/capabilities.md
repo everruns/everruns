@@ -528,6 +528,16 @@ Following the agentskills.io specification:
 - **Config**: `{"threshold": N}` — number of consecutive identical tool-call batches before warning (default 3)
 - **Source**: `crates/core/src/capabilities/loop_detection.rs`
 
+#### PromptCanaryGuardrail
+
+- **ID**: `prompt_canary_guardrail`
+- **Purpose**: Streaming output guardrail that withholds the assistant message when the model echoes the first sentence of its system prompt
+- **Tools**: None (uses `output_guardrails()` only)
+- **Config**: `{"replacement": "..."}` — optional replacement text shown in place of the leak (default: a generic "withheld" message)
+- **Risk**: `Low` — read-only inspection of model output
+- **Source**: `crates/core/src/capabilities/prompt_canary_guardrail.rs`
+- **Behavior**: At stream arm time, extracts the first sentence of the assembled system prompt whose normalized form is ≥ 30 chars and uses it as a substring needle (lowercased, whitespace-collapsed). Each batched delta runs the substring check; on hit, the stream is aborted and `output.message.replaced` is emitted. The original tokens are never persisted or replayed. See [Output Guardrails](#output-guardrails).
+
 ### MCP Virtual Capabilities
 
 MCP servers (see `specs/mcp-servers.md`) are integrated as "virtual capabilities" alongside built-in capabilities. This allows agents to use MCP tools through the same capability selection UI.
@@ -839,6 +849,49 @@ Ephemeral messages can be injected into the result set without persistence (summ
 | Database efficiency? | Most filters map to SQL; only `Custom` requires in-memory filtering |
 | DEV_MODE parity? | In-memory storage implements the same filter semantics |
 
+### Output Guardrails
+
+Capabilities can contribute streaming output guardrails that inspect the model's text deltas as they arrive and, post factum, replace the assistant message when a violation is detected. This is the same extension pattern as message filters, but operates on the agent's outgoing stream rather than the message history.
+
+#### How Output Guardrails Work
+
+1. **Contribution**: Capabilities implement `output_guardrails()` returning a list of `Arc<dyn OutputGuardrail>` providers
+2. **Arming**: At the start of each assistant message stream, `ReasonAtom` calls `OutputGuardrail::arm(ctx)` per provider. `ctx` carries the fully assembled system prompt and the contributing capability's per-agent config. Providers may return `None` to skip arming for this stream (e.g. nothing useful to derive from the prompt)
+3. **Streaming check**: After each text delta is appended to the accumulated assistant text, every armed `OutputGuardrailRun::check(accumulated, delta)` runs synchronously in the streaming hot path. The contract is that `check` is cheap — substring matches, regex, hash lookups; not network calls or LLM inference
+4. **Block decision**: A guardrail returns `GuardrailDecision::Block { reason_code, replacement }` to abort the stream. The pending (unsuppressed) delta is dropped, the LLM stream is dropped, and `output.message.replaced` is emitted. The replacement text becomes the assistant message body in `output.message.completed`; the original tokens are never persisted or replayed on subsequent turns
+5. **Pass decision**: `GuardrailDecision::Pass` lets streaming continue. The next delta runs the check again
+
+#### Streaming Timeline With a Trip
+
+```
+output.message.started
+        │
+        ▼
+output.message.delta  ← (model text accumulating)
+output.message.delta
+        │
+        ▼            (guardrail trips on the next delta — pending delta is suppressed)
+output.message.replaced  ← UI discards accumulated text, shows replacement
+        │
+        ▼
+output.message.completed  ← persisted message body = replacement
+```
+
+#### Trait + Helpers
+
+See `crates/core/src/output_guardrail.rs` for `OutputGuardrail`, `OutputGuardrailRun`, `OutputGuardrailContext`, `GuardrailDecision`, `GuardrailBlock`, `ArmedGuardrail`, and the `evaluate_guardrails` helper used by `ReasonAtom`.
+
+#### Design Decisions
+
+| Question | Decision |
+|----------|----------|
+| Sync vs async `check`? | Sync. Guardrails run on every batched delta in the hot path; slow checks would throttle the stream. Heavy guardrails (e.g. an LLM moderator) must run elsewhere |
+| Where do guardrails live? | On `Capability` trait, not `RuntimeAgent`. They are derived from `resolved_capability_configs` at execution time so `RuntimeAgent` stays serializable |
+| What surface is checked? | Assistant text only (`output.message.delta`). `tool.output.delta` and `reason.thinking.delta` are out of scope for v1 — easy to extend later by adding a surface enum |
+| Original tokens persisted? | No. After replacement, every downstream event (`llm.generation`, `output.message.completed`) carries the replacement text. The model itself never sees the leak on subsequent turns |
+| What if multiple guardrails trip? | The first to return `Block` (in capability registration order) wins. Subsequent guardrails are not consulted on a blocked stream |
+| Per-stream state? | Yes. `arm()` returns a fresh `Box<dyn OutputGuardrailRun>` per stream so guardrails can hold cursors, dedup tables, etc. without sharing across sessions |
+
 ### Extension Points (Future)
 
 1. **Custom Capabilities**: User-defined capabilities with custom tools
@@ -846,3 +899,4 @@ Ephemeral messages can be injected into the result set without persistence (summ
 3. **Capability Versioning**: Track capability API versions for compatibility
 4. **Dynamic Mount Sources**: External file sources (URLs, S3, etc.)
 5. **OR Filter Semantics**: Support for OR combinations of filters
+6. **Guardrail Surfaces**: Extend output guardrails to `tool.output.delta` and `reason.thinking.delta` via a surface enum on `OutputGuardrail`

@@ -681,6 +681,7 @@ The agent loop is a core trust boundary: an LLM decides which tools to call with
 | TM-AGENT-018 | No outbound URL filtering on web_fetch | Medium | Agent with `web_fetch` can POST session data to any URL; no allowlist/blocklist for outbound destinations; prompt injection could chain file read + web_fetch for exfiltration | **OPEN** |
 | TM-AGENT-019 | Internal network probing via high-risk execution capabilities | High | `daytona` and `e2b` provide full network access by design; `docker_container` uses host networking in dev mode; all rely on Admin-only assignment plus infrastructure egress isolation | **ACCEPTED** |
 | TM-AGENT-020 | Cross-session resource reuse via stale or guessed external IDs | Critical | Provider-owned resource IDs are checked against the active session's leased-resource/session-resource ownership before tool execution; raw sandbox list endpoints are filtered to owned IDs only | MITIGATED |
+| TM-AGENT-021 | System prompt regurgitation | Medium | Opt-in `prompt_canary_guardrail` capability runs a streaming output guardrail that replaces the assistant message when the first sentence of the system prompt appears verbatim in the model output; original tokens are dropped and never persisted. Catches verbatim leaks only — paraphrased or partial leaks pass through. See `specs/capabilities.md` § Output Guardrails | MITIGATED (partial, opt-in) |
 
 ### Mitigation Details
 

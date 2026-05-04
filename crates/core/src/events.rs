@@ -42,6 +42,11 @@ pub const INPUT_MESSAGE: &str = "input.message";
 pub const OUTPUT_MESSAGE_STARTED: &str = "output.message.started";
 pub const OUTPUT_MESSAGE_DELTA: &str = "output.message.delta";
 pub const OUTPUT_MESSAGE_COMPLETED: &str = "output.message.completed";
+/// Streaming output was withheld by an output guardrail. Clients should
+/// discard everything they accumulated for `turn_id` and show `replacement`
+/// instead. The subsequent `output.message.completed` event carries the
+/// replacement as the persisted assistant message.
+pub const OUTPUT_MESSAGE_REPLACED: &str = "output.message.replaced";
 
 // Turn lifecycle events
 pub const TURN_STARTED: &str = "turn.started";
@@ -103,6 +108,7 @@ pub const VALID_EVENT_TYPES: &[&str] = &[
     OUTPUT_MESSAGE_STARTED,
     OUTPUT_MESSAGE_DELTA,
     OUTPUT_MESSAGE_COMPLETED,
+    OUTPUT_MESSAGE_REPLACED,
     TURN_STARTED,
     TURN_COMPLETED,
     TURN_FAILED,
@@ -591,6 +597,34 @@ impl OutputMessageCompletedData {
         error.apply_to_event_fields(&mut self.error_code, &mut self.error_fields);
         self
     }
+}
+
+/// Data for `output.message.replaced` event.
+///
+/// Emitted between the last (suppressed) `output.message.delta` and the final
+/// `output.message.completed`. Tells the client to discard everything it has
+/// accumulated for `turn_id` and use `replacement` as the assistant message
+/// text. The original model output is never persisted or replayed.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct OutputMessageReplacedData {
+    /// Turn ID this replacement belongs to.
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "turn_01933b5a00007000800000000000001"))]
+    pub turn_id: TurnId,
+
+    /// Stable ID of the capability that contributed the guardrail
+    /// (e.g. `"prompt_canary_guardrail"`).
+    pub guardrail_capability_id: String,
+
+    /// Stable ID of the guardrail itself (e.g. `"prompt_canary"`).
+    pub guardrail_id: String,
+
+    /// Stable machine-readable reason code (e.g. `"system_prompt_leak"`).
+    /// Clients localize their copy from this rather than the human text.
+    pub reason_code: String,
+
+    /// Replacement text shown to the user and stored as the assistant message.
+    pub replacement: String,
 }
 
 // ============================================================================
@@ -1808,6 +1842,10 @@ pub enum EventData {
     // comes first, it will match OutputMessageDelta JSON and discard delta/accumulated fields.
     OutputMessageDelta(OutputMessageDeltaData),
     OutputMessageStarted(OutputMessageStartedData),
+    // OutputMessageReplaced has more required fields than OutputMessageCompleted's
+    // optional-heavy schema, so it is listed before to keep untagged
+    // deserialization deterministic.
+    OutputMessageReplaced(OutputMessageReplacedData),
     OutputMessageCompleted(OutputMessageCompletedData),
 
     // Turn lifecycle events
@@ -1887,6 +1925,7 @@ impl EventData {
             EventData::InputMessage(_) => INPUT_MESSAGE,
             EventData::OutputMessageStarted(_) => OUTPUT_MESSAGE_STARTED,
             EventData::OutputMessageDelta(_) => OUTPUT_MESSAGE_DELTA,
+            EventData::OutputMessageReplaced(_) => OUTPUT_MESSAGE_REPLACED,
             EventData::OutputMessageCompleted(_) => OUTPUT_MESSAGE_COMPLETED,
             EventData::TurnStarted(_) => TURN_STARTED,
             EventData::TurnCompleted(_) => TURN_COMPLETED,
@@ -1964,6 +2003,10 @@ pub fn deserialize_event_data(event_type: &str, data: serde_json::Value) -> Even
             }
             OUTPUT_MESSAGE_DELTA => serde_json::from_value::<OutputMessageDeltaData>(data.clone())
                 .map(EventData::OutputMessageDelta),
+            OUTPUT_MESSAGE_REPLACED => {
+                serde_json::from_value::<OutputMessageReplacedData>(data.clone())
+                    .map(EventData::OutputMessageReplaced)
+            }
             OUTPUT_MESSAGE_COMPLETED => {
                 serde_json::from_value::<OutputMessageCompletedData>(data.clone())
                     .map(EventData::OutputMessageCompleted)
@@ -2074,6 +2117,7 @@ impl_from_event_data! {
     InputMessageData => InputMessage,
     OutputMessageStartedData => OutputMessageStarted,
     OutputMessageDeltaData => OutputMessageDelta,
+    OutputMessageReplacedData => OutputMessageReplaced,
     OutputMessageCompletedData => OutputMessageCompleted,
     TurnStartedData => TurnStarted,
     TurnCompletedData => TurnCompleted,

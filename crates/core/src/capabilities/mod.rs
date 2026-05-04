@@ -100,6 +100,7 @@ mod openui;
 pub mod persistent_memory;
 mod platform_management;
 mod prompt_caching;
+mod prompt_canary_guardrail;
 mod research;
 mod sample_data;
 mod self_budget;
@@ -190,6 +191,11 @@ pub use platform_management::{
     SessionReadMessagesTool, SessionReadResponseTool, SessionSendMessageTool,
 };
 pub use prompt_caching::{PROMPT_CACHING_CAPABILITY_ID, PromptCachingCapability};
+pub use prompt_canary_guardrail::{
+    DEFAULT_REPLACEMENT as PROMPT_CANARY_DEFAULT_REPLACEMENT,
+    PROMPT_CANARY_GUARDRAIL_CAPABILITY_ID, PromptCanaryGuardrailCapability,
+    REASON_CODE_SYSTEM_PROMPT_LEAK,
+};
 pub use research::ResearchCapability;
 pub use sample_data::SampleDataCapability;
 pub use self_budget::{SELF_BUDGET_CAPABILITY_ID, SelfBudgetCapability};
@@ -585,6 +591,20 @@ pub trait Capability: Send + Sync {
     fn contribute_skills(&self) -> Vec<SkillContribution> {
         vec![]
     }
+
+    /// Returns streaming output guardrails contributed by this capability.
+    ///
+    /// Each provider is armed once per assistant message stream with the
+    /// fully assembled system prompt and per-capability config; the returned
+    /// per-stream `OutputGuardrailRun` is invoked after every batched delta
+    /// in the streaming hot path. Returning `Block` aborts the stream and
+    /// the client is told to replace the accumulated text with a canned
+    /// message. See [`crate::output_guardrail`].
+    ///
+    /// Default: no guardrails.
+    fn output_guardrails(&self) -> Vec<Arc<dyn crate::output_guardrail::OutputGuardrail>> {
+        vec![]
+    }
 }
 
 pub trait ToolDefinitionHook: Send + Sync {
@@ -780,6 +800,10 @@ impl CapabilityRegistry {
 
         // Loop detection (EVE-227: detect repeated identical tool calls)
         registry.register(LoopDetectionCapability);
+
+        // Prompt canary guardrail: replace assistant output if it leaks the
+        // first sentence of the system prompt. Streaming-output guardrail.
+        registry.register(PromptCanaryGuardrailCapability);
 
         // OpenUI generative UI (all environments)
         registry.register(OpenUiCapability);
@@ -989,6 +1013,11 @@ pub struct CollectedCapabilities {
     pub tool_call_hooks: Vec<Arc<dyn ToolCallHook>>,
     /// Scoped remote MCP servers contributed by capabilities.
     pub mcp_servers: ScopedMcpServers,
+    // NOTE: output guardrails are intentionally NOT collected here. They are
+    // re-derived per turn in `ReasonAtom` directly from the resolved capability
+    // configs + registry, because they need the assembled system prompt at
+    // arming time (which only exists once the runtime agent is built). Storing
+    // them here would duplicate that work for callers that don't run a stream.
 }
 
 impl CollectedCapabilities {
@@ -1458,6 +1487,8 @@ pub async fn collect_capabilities_with_configs(
             tools.extend(capability.tools_with_config(&cap_config.config));
             tool_definition_hooks.extend(capability.tool_definition_hooks());
             tool_call_hooks.extend(capability.tool_call_hooks());
+            // Output guardrails are NOT collected here — see CollectedCapabilities
+            // for rationale. ReasonAtom re-derives them at stream-arming time.
 
             // Collect tool definitions, propagating capability category if not already set
             let cap_category = capability.category();
@@ -1702,6 +1733,7 @@ mod tests {
             "fake_crm",
             "fake_financial",
             "loop_detection",
+            "prompt_canary_guardrail",
         ]
         .into_iter()
         .collect()

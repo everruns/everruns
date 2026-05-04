@@ -303,6 +303,40 @@ Streaming text update during LLM generation. Events are batched (~100ms) to redu
 }
 ```
 
+#### `output.message.replaced`
+
+Streaming output was withheld by an output guardrail (see `specs/capabilities.md` § Output Guardrails). Emitted between the last (suppressed) `output.message.delta` and the final `output.message.completed`. Clients should discard everything they accumulated for `turn_id` and use `replacement` as the assistant message text. The model's original tokens are never persisted or replayed on subsequent turns.
+
+```json
+{
+  "id": "...",
+  "type": "output.message.replaced",
+  "ts": "...",
+  "session_id": "...",
+  "context": {
+    "turn_id": "...",
+    "input_message_id": "..."
+  },
+  "data": {
+    "turn_id": "...",
+    "guardrail_capability_id": "prompt_canary_guardrail",
+    "guardrail_id": "prompt_canary",
+    "reason_code": "system_prompt_leak",
+    "replacement": "[Response withheld: the model attempted to reveal protected instructions.]"
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `turn_id` | TurnId (string, prefixed UUIDv7 — e.g. `"turn_01933b5a..."`) | yes | Turn the replaced output belongs to |
+| `guardrail_capability_id` | string | yes | Capability that contributed the guardrail (e.g. `"prompt_canary_guardrail"`) |
+| `guardrail_id` | string | yes | Stable id of the guardrail itself (e.g. `"prompt_canary"`) |
+| `reason_code` | string | yes | Stable machine-readable reason (e.g. `"system_prompt_leak"`). Clients localize their copy from this rather than `replacement` |
+| `replacement` | string | yes | Replacement text shown to the user and persisted as the assistant message |
+
+The subsequent `output.message.completed` event carries `replacement` as the message body — it is the canonical assistant message. There is no separate "leaked" message anywhere in the event stream.
+
 #### `output.message.completed`
 
 Agent response message. Emitted when LLM generation completes.
