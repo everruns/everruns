@@ -1,194 +1,145 @@
 "use client";
 
-import { ToolActivityGroup } from "@/components/chat/tool-activity-group";
-import { TodoListRenderer } from "@/components/chat/todo-list-renderer";
-import { MessageInfoIcon } from "@/components/chat/message-info-icon";
-import { ImageAttachments } from "@/components/chat/image-attachments";
-import { ChatErrorAlert } from "@/components/chat/chat-error-alert";
-import type { Event, ToolCompletedData } from "@/lib/api/types";
-import type { ToolCallContent } from "@/components/chat/tool-call-utils";
-import type { PendingImage } from "@/lib/api/images";
+import { useMemo, useRef, useState } from "react";
 import { DevPageShell } from "@/app/dev/_components/dev-page-shell";
+import { DevChatRuntimeScene } from "@/app/dev/_components/dev-chat-runtime-preview";
+import {
+  devCommands,
+  devModels,
+  makePendingImages,
+} from "@/app/dev/_fixtures/chat-runtime-fixtures";
+import { ChatComposer } from "@/components/chat/chat-composer";
+import { ChatMessageList } from "@/components/chat/chat-message-list";
+import { chatSurfaceStyles } from "@/components/chat/chat-surface";
+import type { PendingImage } from "@/lib/api/images";
+import type { ReasoningEffortConfig } from "@/lib/api/types";
 
-const infoEvent: Event = {
-  id: "evt-chat-components",
-  type: "output.message.completed",
-  ts: "2026-03-07T21:45:00Z",
-  session_id: "session-chat-components",
-  context: {},
-  data: {
-    message: {
-      id: "msg-chat-components",
-      session_id: "session-chat-components",
-      sequence: 1,
-      role: "agent",
-      content: [
-        {
-          type: "text",
-          text: "Components now follow the canonical chat style.",
-        },
-      ],
-      tool_call_id: null,
-      created_at: "2026-03-07T21:45:00Z",
-      metadata: { model: "kimi-k2.5", reasoning_effort: "medium" },
-    },
-    metadata: { model: "kimi-k2.5" },
-    usage: { input_tokens: 318, output_tokens: 52 },
-  },
+const reasoningEffortConfig: ReasoningEffortConfig = {
+  default: "medium",
+  values: [
+    { value: "low", name: "Low" },
+    { value: "medium", name: "Medium" },
+    { value: "high", name: "High" },
+  ],
 };
 
-const toolCalls: ToolCallContent[] = [
-  { id: "component-list", name: "list_files", arguments: { path: "." } },
-  {
-    id: "component-read",
-    name: "read_file",
-    arguments: { path: "/workspace/AGENTS.md" },
-  },
-  {
-    id: "component-search",
-    name: "search_web",
-    arguments: { query: "chat ui reference" },
-  },
-];
-
-const toolResults = new Map<string, ToolCompletedData>([
-  [
-    "component-list",
-    {
-      tool_call_id: "component-list",
-      tool_name: "list_files",
-      success: true,
-      status: "success",
-      result: [{ type: "text", text: "apps/\ncrates/\nscripts/\nAGENTS.md" }],
-    },
-  ],
-  [
-    "component-read",
-    {
-      tool_call_id: "component-read",
-      tool_name: "read_file",
-      success: true,
-      status: "success",
-      result: [{ type: "text", text: "Use a port prefix per worktree/session." }],
-    },
-  ],
-]);
-
-const pendingImages: PendingImage[] = [
-  {
-    tempId: "pending-1",
-    file: null,
-    uploadPromise: null,
-    // Dev fixtures stay self-contained: no backend image record exists here.
-    imageId: null,
-    filename: "layout.png",
-    previewUrl:
-      "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'%3E%3Crect fill='%23ece7db' width='80' height='80'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%230a1636' font-size='10'%3EPNG%3C/text%3E%3C/svg%3E",
-    status: "uploaded",
-  },
-  {
-    tempId: "pending-2",
-    file: null,
-    uploadPromise: null,
-    imageId: null,
-    filename: "annotated.jpg",
-    previewUrl:
-      "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'%3E%3Crect fill='%23f6e7c1' width='80' height='80'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%23d4a43a' font-size='10'%3EJPG%3C/text%3E%3C/svg%3E",
-    status: "uploading",
-  },
-];
-
-function Section({
-  title,
-  description,
-  children,
-}: {
-  title: string;
-  description: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="border border-border bg-card">
-      <div className="border-b border-border px-4 py-4">
-        <div className="text-[10px] uppercase tracking-[0.24em] text-muted-foreground">{title}</div>
-        <p className="mt-1 text-sm text-muted-foreground">{description}</p>
-      </div>
-      <div className="p-4">{children}</div>
-    </section>
-  );
-}
-
 export default function DevChatComponentsPage() {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [inputValue, setInputValue] = useState("/ship tighten the tool transcript UI");
+  const [selectedModelId, setSelectedModelId] = useState(devModels[0]?.id ?? "");
+  const [reasoningEffort, setReasoningEffort] = useState("medium");
+  const [pendingImages, setPendingImages] = useState<PendingImage[]>(() => makePendingImages());
+
+  const emptyToolResults = useMemo(() => new Map(), []);
+  const emptyToolProgress = useMemo(() => new Map(), []);
+  const emptyToolOutputs = useMemo(() => new Map(), []);
+
   return (
     <DevPageShell
-      eyebrow="Chat Components"
-      title="Canonical component gallery"
-      description="These are the chat-specific primitives used by the runtime chat surface."
+      eyebrow="Chat UI"
+      title="Chat UI"
+      description="Runtime chat surfaces driven by the real transcript and composer components."
+      widthClassName="max-w-7xl"
     >
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Section
-          title="Message Info"
-          description="Metadata affordance for user and assistant messages."
-        >
-          <div className="flex items-center justify-between border border-border bg-background px-4 py-3">
-            <div className="text-sm text-foreground">
-              Components now follow the canonical chat style.
-            </div>
-            <MessageInfoIcon event={infoEvent} />
+      <div className="space-y-6">
+        <section className="space-y-3">
+          <div className="space-y-1">
+            <h2 className="text-lg font-semibold text-foreground">Tool-heavy runtime scene</h2>
+            <p className="text-sm text-muted-foreground">
+              Full session chrome plus the actual chat panel, using the Daytona-style transcript
+              flow.
+            </p>
           </div>
-        </Section>
+          <DevChatRuntimeScene scenario="tool-activity" />
+        </section>
 
-        <Section
-          title="Attachments"
-          description="Pending image attachments now use the same runtime treatment."
-        >
-          <ImageAttachments images={pendingImages} onRemove={() => undefined} />
-        </Section>
+        <section className="space-y-3">
+          <div className="space-y-1">
+            <h2 className="text-lg font-semibold text-foreground">
+              Transcript-focused runtime scene
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              Same runtime stack, but tuned to text, todos, and file mutation output.
+            </p>
+          </div>
+          <DevChatRuntimeScene scenario="chat-components" />
+        </section>
 
-        <Section
-          title="Tool Activity"
-          description="Grouped execution cards used inline in transcripts."
-        >
-          <ToolActivityGroup toolCalls={toolCalls} toolResultsMap={toolResults} />
-        </Section>
+        <section className="space-y-3 border border-border/70 bg-card/90 p-4 shadow-[inset_0_1px_0_hsl(var(--background)/0.92)]">
+          <div className="space-y-1">
+            <h2 className="text-lg font-semibold text-foreground">Empty state and composer</h2>
+            <p className="text-sm text-muted-foreground">
+              Direct preview of the empty transcript state and the production composer controls.
+            </p>
+          </div>
 
-        <Section title="Execution Plan" description="Persistent todo card for long-running turns.">
-          <TodoListRenderer
-            arguments={{
-              todos: [
-                {
-                  content: "Read current implementation",
-                  activeForm: "Reading current implementation",
-                  status: "completed",
-                },
-                {
-                  content: "Apply canonical styling",
-                  activeForm: "Applying canonical styling",
-                  status: "in_progress",
-                },
-                {
-                  content: "Verify main routes",
-                  activeForm: "Verifying main routes",
-                  status: "pending",
-                },
-              ],
-            }}
-            isExecuting
-          />
-        </Section>
+          <div className="overflow-hidden border border-border/70 bg-background">
+            <div className="flex min-h-[720px] flex-col">
+              <div className="flex-1 px-4 py-4">
+                <ChatMessageList
+                  events={[]}
+                  chatEvents={[]}
+                  sessionId="session-chat-empty"
+                  toolResultsMap={emptyToolResults}
+                  toolProgressMap={emptyToolProgress}
+                  toolOutputMap={emptyToolOutputs}
+                  eventsLoading={false}
+                  hasMoreEvents={false}
+                  loadingOlderEvents={false}
+                  getMessageText={() => ""}
+                  getToolCalls={() => []}
+                />
+              </div>
 
-        <Section title="Error Handling" description="Failure treatment used by chat surfaces.">
-          <ChatErrorAlert
-            message="backend temporarily unavailable"
-            details={[
-              "event_id: evt-failed-1",
-              "event_type: turn.failed",
-              "turn_id: turn-1",
-              "error_code: dependency_unavailable",
-              "error: backend temporarily unavailable",
-            ].join("\n")}
-          />
-        </Section>
+              <div className={chatSurfaceStyles.composerSection}>
+                <ChatComposer
+                  commands={devCommands}
+                  llmModels={devModels}
+                  inputValue={inputValue}
+                  onInputChange={setInputValue}
+                  onSubmit={async () => undefined}
+                  onCommandSelect={async () => undefined}
+                  pendingImages={pendingImages}
+                  hasImages={pendingImages.length > 0}
+                  removeImage={(tempId) =>
+                    setPendingImages((current) =>
+                      current.filter((image) => image.tempId !== tempId),
+                    )
+                  }
+                  addFiles={() => undefined}
+                  isDraggingOver={false}
+                  dropZoneProps={{}}
+                  handlePaste={() => undefined}
+                  selectedModelId={selectedModelId}
+                  onModelChange={setSelectedModelId}
+                  modelTriggerLabel={
+                    devModels.find((model) => model.id === selectedModelId)?.display_name ??
+                    "Default model"
+                  }
+                  defaultModelOptionLabel="Default model"
+                  supportsReasoning
+                  reasoningEffort={reasoningEffort}
+                  reasoningEffortConfig={reasoningEffortConfig}
+                  defaultEffortName="Medium"
+                  getReasoningEffortName={(value) =>
+                    reasoningEffortConfig.values.find((effort) => effort.value === value)?.name ??
+                    value
+                  }
+                  onReasoningEffortChange={setReasoningEffort}
+                  isActive={false}
+                  cancelCurrentTurn={{
+                    mutate: () => undefined,
+                    isPending: false,
+                  }}
+                  canSubmit={inputValue.trim().length > 0 || pendingImages.length > 0}
+                  isUploading={pendingImages.some((image) => image.status === "uploading")}
+                  sendPending={false}
+                  textareaRef={textareaRef}
+                />
+              </div>
+            </div>
+          </div>
+        </section>
       </div>
     </DevPageShell>
   );

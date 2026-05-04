@@ -13,34 +13,24 @@ test.describe("Chat Components Page", () => {
   });
 
   test("should render the page title", async ({ page }) => {
-    await expect(
-      page.getByRole("heading", { name: "Canonical component gallery" }),
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Chat UI" })).toBeVisible();
   });
 
   test("should render the shared chat primitives", async ({ page }) => {
-    await expect(page.getByText("Message Info", { exact: true })).toBeVisible();
-    await expect(page.getByText("Attachments", { exact: true })).toBeVisible();
+    await expect(page.getByText("Tool-heavy runtime scene", { exact: true })).toBeVisible();
     await expect(
-      page.getByText("Tool Activity", { exact: true }),
+      page.getByText("Transcript-focused runtime scene", { exact: true }),
     ).toBeVisible();
-    await expect(
-      page.getByText("Execution Plan", { exact: true }),
-    ).toBeVisible();
-    await expect(
-      page.getByText("Components now follow the canonical chat style."),
-    ).toBeVisible();
+    await expect(page.getByText("Empty state and composer", { exact: true })).toBeVisible();
+    await expect(page.getByText("/ship tighten the tool transcript UI")).toBeVisible();
     await expect(page.getByText("layout.png")).toBeVisible();
-    await expect(
-      page.getByText("Applying canonical styling").first(),
-    ).toBeVisible();
   });
 
   test("should use self-contained attachment previews in the gallery", async ({
     page,
   }) => {
     const uploadedPreview = page.locator('img[alt="layout.png"]');
-    const uploadingPreview = page.locator('img[alt="annotated.jpg"]');
+    const uploadingPreview = page.locator('img[alt="sandbox-daytona.jpg"]');
 
     await expect(uploadedPreview).toBeVisible();
     await expect(uploadedPreview).toHaveAttribute("src", /data:image\/svg\+xml/);
@@ -58,20 +48,15 @@ test.describe("Tool Activity Page", () => {
   });
 
   test("should render the transcript preview", async ({ page }) => {
-    await expect(
-      page.getByRole("heading", { name: "Minimal execution states" }),
-    ).toBeVisible();
-    await expect(
-      page.getByText(
-        "Can you inspect this project and sketch the rewrite steps?",
-      ),
-    ).toBeVisible();
-    await expect(
-      page.getByText("Rewrite it so it supports a rock collection instead."),
-    ).toBeVisible();
-    await expect(page.getByText("/ship")).toBeVisible();
-    await expect(page.getByText("Pick File")).toBeVisible();
-    await expect(page.getByText("Tool activity preview")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Tool Outputs", exact: true })).toBeVisible();
+    await expect(page.getByText("Standalone tool outputs", { exact: true })).toBeVisible();
+    await expect(page.getByText("Bash output", { exact: true })).toBeVisible();
+    await expect(page.getByText("Todo plan output", { exact: true })).toBeVisible();
+    await expect(page.getByText("Grouped activity", { exact: true })).toBeVisible();
+    await expect(page.getByText("Narrated tool timeline", { exact: true })).toBeVisible();
+    await expect(page.getByText("Created Daytona sandbox")).toBeVisible();
+    await expect(page.getByText("hello from dev.everruns.com").first()).toBeVisible();
+    await expect(page.getByText("Combined transcript grouping", { exact: true })).toBeVisible();
   });
 });
 
@@ -92,11 +77,9 @@ test.describe("Dev Index Page", () => {
   test("should navigate to chat components page", async ({ page }) => {
     await page.goto("/dev");
 
-    await page.getByRole("link", { name: /Chat Components/i }).click();
+    await page.getByRole("link", { name: /Chat UI/i }).click();
 
     await expect(page).toHaveURL("/dev/chat-components");
-    await expect(
-      page.getByRole("heading", { name: "Canonical component gallery" }),
-    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Chat UI" })).toBeVisible();
   });
 });

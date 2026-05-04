@@ -18,20 +18,20 @@ const isDev = process.env.NODE_ENV === "development";
 
 const devPages = [
   {
-    title: "Chat Components",
-    description: "Chat-specific: messages, tool calls, todo lists, image attachments",
+    title: "Chat UI",
+    description: "Real chat runtime scenes plus empty-state and composer showcases",
     href: "/dev/chat-components",
     icon: MessageSquare,
   },
   {
-    title: "Tool Activity",
-    description: "Grouped tool execution with animations, summaries, and todo progress cards",
+    title: "Tool Outputs",
+    description: "Standalone, grouped, and narrated tool transcript components",
     href: "/dev/tool-activity",
     icon: MessageSquare,
   },
   {
     title: "Session Components",
-    description: "Session-level: token usage, status badges, session headers",
+    description: "Real session headers, badges, navigation, and session cards",
     href: "/dev/session-components",
     icon: Gauge,
   },
