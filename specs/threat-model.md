@@ -256,6 +256,7 @@ Prior to the command runner, only MCP/gRPC `dispatch` evaluated `Command::policy
 | TM-API-013 | LLM provider base URL SSRF | High | `url_validation::validate_url()` blocks private IPs, loopback, link-local, cloud metadata, non-HTTPS on provider create/update (EVE-69) | MITIGATED |
 | TM-API-014 | Search query SQL wildcard injection | Low | LIKE wildcards (`%`, `_`, `\`) in `?search=` input are escaped; tokens capped at 8 to prevent query amplification from long inputs | MITIGATED |
 | TM-API-015 | Provider secret leakage via leased-resource metadata | High | Leased-resource metadata is explicitly non-secret; cleanup reconstructs provider auth from user connections/session secrets, and session resources stay org/session scoped | MITIGATED |
+| TM-API-016 | Public-endpoint internal error leakage | High | Public, unauthenticated endpoints (currently AG-UI) route every error through `crates/server/src/api/public.rs::PublicError`, mapping internal codes to a stable public set (`rate_limited`, `service_unavailable`, `request_too_large`, `internal_error`); raw provider strings, model IDs, HTTP status codes, quota state, and stack traces never reach the wire. Universal fallback is `internal_error`. See `specs/public-endpoints.md` | MITIGATED |
 
 ### Mitigation Details
 
