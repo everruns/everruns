@@ -7,13 +7,33 @@ interface AgUiSetupGuidanceProps {
   endpointUrl: string;
   isPublished: boolean;
   anonymousEnabled: boolean;
+  sessionExpirationSeconds: number;
   onConfigure?: () => void;
+}
+
+export function formatSessionExpiration(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    return "Never";
+  }
+  const hours = seconds / 3600;
+  if (hours >= 1 && Number.isInteger(hours)) {
+    return `${hours} ${hours === 1 ? "hour" : "hours"}`;
+  }
+  if (hours >= 1) {
+    return `${hours.toFixed(1)} hours`;
+  }
+  const minutes = seconds / 60;
+  if (minutes >= 1 && Number.isInteger(minutes)) {
+    return `${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
+  }
+  return `${seconds} ${seconds === 1 ? "second" : "seconds"}`;
 }
 
 export function AgUiSetupGuidance({
   endpointUrl,
   isPublished,
   anonymousEnabled,
+  sessionExpirationSeconds,
   onConfigure,
 }: AgUiSetupGuidanceProps) {
   return (
@@ -34,6 +54,16 @@ export function AgUiSetupGuidance({
           <code className="flex-1 truncate text-sm">{endpointUrl}</code>
           <CopyButton value={endpointUrl} />
         </div>
+      </div>
+
+      <div>
+        <p className="text-sm font-medium">Thread expiration</p>
+        <p className="text-sm text-muted-foreground">
+          {formatSessionExpiration(sessionExpirationSeconds)}
+          {sessionExpirationSeconds > 0
+            ? " — after this, requests reusing the same threadId are rejected with 410 Gone and the client must start a new thread"
+            : " — threads can be resumed indefinitely"}
+        </p>
       </div>
 
       <div className="space-y-1 text-sm text-muted-foreground">

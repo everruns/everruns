@@ -49,7 +49,8 @@ Channel config is stored as JSONB and validated at the application layer per cha
 **AG-UI channel config example:**
 ```json
 {
-  "anonymous": true
+  "anonymous": true,
+  "session_expiration_seconds": 21600
 }
 ```
 
@@ -60,6 +61,10 @@ AG-UI uses an app-scoped anonymous ingress for the initial rollout:
 - Responses stream back as AG-UI SSE events translated from the durable runtime
 - Anonymous access is currently required when the channel is enabled
 - Session routing is per `threadId`, with sessions tagged by app and thread
+- `session_expiration_seconds` caps how long a `threadId` can resume the
+  underlying session. After the window elapses, AG-UI requests with that
+  `threadId` are rejected with `410 Gone` and the client must start a new
+  thread. Defaults to `21600` (6 hours). Set to `0` to disable expiration.
 
 `schedule` and `webhook` are app invocation channels, not interactive messaging adapters:
 

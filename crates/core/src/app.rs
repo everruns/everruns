@@ -357,6 +357,9 @@ pub struct SlackChannelConfig {
     pub first_message_received_at: Option<DateTime<Utc>>,
 }
 
+/// Default session expiration for public channel threads (6 hours).
+pub const DEFAULT_SESSION_EXPIRATION_SECONDS: u32 = 6 * 60 * 60;
+
 /// Typed AG-UI channel configuration.
 ///
 /// Parsed from the `channel_config` JSON field on App.
@@ -367,6 +370,16 @@ pub struct AgUiChannelConfig {
     /// Enabled by default for the initial AG-UI rollout.
     #[serde(default = "default_true")]
     pub anonymous: bool,
+    /// How long (in seconds) a thread can be resumed after its session was
+    /// created. Once this elapses, the same `thread_id` cannot reuse the
+    /// existing session and must start a new one. `0` disables expiration.
+    /// Defaults to 6 hours.
+    #[serde(default = "default_session_expiration_seconds")]
+    pub session_expiration_seconds: u32,
+}
+
+fn default_session_expiration_seconds() -> u32 {
+    DEFAULT_SESSION_EXPIRATION_SECONDS
 }
 
 /// How app-triggered invocations route into sessions.
@@ -597,14 +610,29 @@ mod tests {
     fn test_ag_ui_channel_config_defaults_to_anonymous() {
         let config: AgUiChannelConfig = serde_json::from_str("{}").unwrap();
         assert!(config.anonymous);
+        assert_eq!(
+            config.session_expiration_seconds,
+            DEFAULT_SESSION_EXPIRATION_SECONDS
+        );
     }
 
     #[test]
     fn test_ag_ui_channel_config_roundtrip() {
-        let config = AgUiChannelConfig { anonymous: true };
+        let config = AgUiChannelConfig {
+            anonymous: true,
+            session_expiration_seconds: 3600,
+        };
         let json = serde_json::to_string(&config).unwrap();
         let parsed: AgUiChannelConfig = serde_json::from_str(&json).unwrap();
         assert!(parsed.anonymous);
+        assert_eq!(parsed.session_expiration_seconds, 3600);
+    }
+
+    #[test]
+    fn test_ag_ui_channel_config_zero_disables_expiration() {
+        let config: AgUiChannelConfig =
+            serde_json::from_str(r#"{"session_expiration_seconds": 0}"#).unwrap();
+        assert_eq!(config.session_expiration_seconds, 0);
     }
 
     #[test]

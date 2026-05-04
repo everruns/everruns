@@ -50,7 +50,9 @@ use everruns_core::events::{
     ReasonThinkingDeltaData, ReasonThinkingStartedData, ToolCompletedData, ToolStartedData,
 };
 use everruns_core::message_retriever::InputMessage as StoredInputMessage;
-use everruns_core::{App, AppStatus, Caller, ContentPart, ExternalActor, MessageRole};
+use everruns_core::{
+    AgUiChannelConfig, App, AppStatus, Caller, ContentPart, ExternalActor, MessageRole,
+};
 use futures::{
     StreamExt,
     stream::{self, Stream},
@@ -170,9 +172,16 @@ async fn run_agent(
         format!("ag_ui:app:{}", app.public_id),
         format!("ag_ui:thread:{}", thread_tag),
     ];
-    let session = find_or_create_session(&state, &app, &routing_tags, &thread_tag, &req)
-        .await
-        .map_err(internal_error)?;
+    let session = find_or_create_session(
+        &state,
+        &app,
+        &channel_config,
+        &routing_tags,
+        &thread_tag,
+        &req,
+    )
+    .await
+    .map_err(SessionError::into_response)?;
 
     // THREAT[TM-DOS-010]: Anonymous AG-UI streams must still respect server-wide
     // SSE connection limits.
@@ -347,13 +356,47 @@ struct SessionResolution {
     is_new: bool,
 }
 
+/// Errors that can come back from `find_or_create_session`. Distinguishes
+/// expected client failures (expired threads) from internal errors so the
+/// caller can return the right HTTP status.
+enum SessionError {
+    Expired { age_seconds: i64, max_seconds: u32 },
+    Internal(anyhow::Error),
+}
+
+impl SessionError {
+    fn into_response(self) -> (StatusCode, Json<ErrorResponse>) {
+        match self {
+            SessionError::Expired {
+                age_seconds,
+                max_seconds,
+            } => (
+                StatusCode::GONE,
+                Json(ErrorResponse {
+                    error: format!(
+                        "AG-UI thread expired after {age_seconds}s (limit {max_seconds}s); start a new thread"
+                    ),
+                }),
+            ),
+            SessionError::Internal(err) => internal_error(err),
+        }
+    }
+}
+
+impl From<anyhow::Error> for SessionError {
+    fn from(err: anyhow::Error) -> Self {
+        SessionError::Internal(err)
+    }
+}
+
 async fn find_or_create_session(
     state: &AgUiState,
     app: &App,
+    config: &AgUiChannelConfig,
     routing_tags: &[String],
     thread_id: &str,
     req: &AgUiRunAgentInput,
-) -> anyhow::Result<SessionResolution> {
+) -> Result<SessionResolution, SessionError> {
     let org_row = state
         .db
         .get_organization(app.org_id)
@@ -367,6 +410,27 @@ async fn find_or_create_session(
         .await?
     {
         Some(row) => {
+            // THREAT[TM-AUTHZ-005]: Public AG-UI threads must not be resumable
+            // forever. After the configured expiration the thread_id can no
+            // longer carry forward an existing conversation.
+            if let Some(age) = expired_age_seconds(
+                row.created_at,
+                config.session_expiration_seconds,
+                chrono::Utc::now(),
+            ) {
+                tracing::info!(
+                    app_id = %app.public_id,
+                    session_id = %row.id,
+                    age_seconds = age,
+                    max_seconds = config.session_expiration_seconds,
+                    "Rejecting AG-UI resume on expired thread"
+                );
+                return Err(SessionError::Expired {
+                    age_seconds: age,
+                    max_seconds: config.session_expiration_seconds,
+                });
+            }
+
             let fallback = if row.harness_id.is_none() {
                 Some(crate::org_init::base_harness_id(&state.db, app.org_id).await?)
             } else {
@@ -792,6 +856,21 @@ fn translate_event(state: &mut AgUiStreamState, event: &everruns_core::Event) {
     }
 }
 
+/// Returns the age of a session (in seconds) when it has exceeded the
+/// configured expiration. Returns `None` when expiration is disabled
+/// (`max_seconds == 0`) or when the session is still within the window.
+fn expired_age_seconds(
+    created_at: chrono::DateTime<chrono::Utc>,
+    max_seconds: u32,
+    now: chrono::DateTime<chrono::Utc>,
+) -> Option<i64> {
+    if max_seconds == 0 {
+        return None;
+    }
+    let age = now.signed_duration_since(created_at).num_seconds().max(0);
+    (age > max_seconds as i64).then_some(age)
+}
+
 fn agui_base_event() -> AgUiBaseEvent {
     AgUiBaseEvent {
         timestamp: None,
@@ -863,10 +942,39 @@ fn not_found() -> (StatusCode, Json<ErrorResponse>) {
 mod tests {
     use super::*;
     use ag_ui_core::event::EventType as AgUiEventType;
+    use chrono::Duration as ChronoDuration;
     use everruns_core::{
         Event, EventContext, Message, MessageId, OutputMessageCompletedData,
         OutputMessageDeltaData, SessionId, ToolCall, ToolCompletedData, ToolStartedData, TurnId,
     };
+
+    #[test]
+    fn test_expired_age_seconds_within_window() {
+        let now = chrono::Utc::now();
+        let created = now - ChronoDuration::seconds(100);
+        assert_eq!(expired_age_seconds(created, 200, now), None);
+    }
+
+    #[test]
+    fn test_expired_age_seconds_past_window() {
+        let now = chrono::Utc::now();
+        let created = now - ChronoDuration::seconds(300);
+        assert_eq!(expired_age_seconds(created, 200, now), Some(300));
+    }
+
+    #[test]
+    fn test_expired_age_seconds_zero_disables_expiration() {
+        let now = chrono::Utc::now();
+        let created = now - ChronoDuration::days(30);
+        assert_eq!(expired_age_seconds(created, 0, now), None);
+    }
+
+    #[test]
+    fn test_expired_age_seconds_clock_skew() {
+        let now = chrono::Utc::now();
+        let created = now + ChronoDuration::seconds(5);
+        assert_eq!(expired_age_seconds(created, 60, now), None);
+    }
 
     async fn test_stream_state() -> AgUiStreamState {
         let session_id = SessionId::new();
