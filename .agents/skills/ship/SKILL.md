@@ -28,7 +28,8 @@ Use this skill when the user asks to:
    - Do not ship from `main` or `master`.
    - The working tree must be clean before the final push.
    - Rebase onto the latest `origin/main` before merge.
-   - **After rebasing**, check `crates/server/migrations/` for duplicate version numbers. Migrations are the most common conflict source. Renumber your migration if a conflict exists.
+   - **After rebasing**, run `bash scripts/lib/check-migration-ordering.sh` to verify `crates/server/migrations/` numbers are strictly sequential. Migrations are the most common conflict source — multiple branches often add the same next number, and rebase silently keeps both. If the check fails, renumber your migration to the next available number.
+   - **Immediately before `gh pr merge`** (after CI is green and review threads are resolved), re-run `bash scripts/lib/check-migration-ordering.sh`. Other PRs may have merged a colliding number while yours was in review.
 2. The requested goal is achieved with evidence.
    - Review the delta with `git diff origin/main...HEAD` and `git log origin/main..HEAD`.
    - Confirm the requested behavior is actually implemented.
@@ -117,6 +118,7 @@ Pick only what matches the changed surface:
 - `cd apps/ui && npm run format:check && npm run lint && npm run build`
 - `./scripts/export-openapi.sh`
 - `cd apps/docs && npm run check && npm run build`
+- `bash scripts/lib/check-migration-ordering.sh` (migration sequentiality, ~instant)
 
 ## PR And Merge
 

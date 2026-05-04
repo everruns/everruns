@@ -40,9 +40,11 @@ Historical `NNN_vX.Y.Z.sql` files remain valid and must stay unchanged, but new 
 
 ## Sequential Ordering Validation
 
-Migration numbers must be strictly sequential with no gaps and no duplicates. Both `just pre-push` and `/ship` must validate this before pushing or merging.
+Migration numbers must be strictly sequential with no gaps and no duplicates. `just pre-push`, `just pre-pr`, and `/ship` (after rebase and again immediately before merge) all validate this.
 
 **Validation rule:** filenames in `crates/server/migrations/` sorted lexicographically must have numbers 001, 002, ..., N with no gaps or repeats.
+
+**Validator:** `scripts/lib/check-migration-ordering.sh` is the single source of truth. It is invoked by `pre-push.sh`, `pre-pr.sh`, and the `/ship` skill.
 
 ## Execution
 
