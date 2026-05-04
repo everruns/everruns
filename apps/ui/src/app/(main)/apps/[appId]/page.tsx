@@ -67,6 +67,7 @@ import type {
   SlackReplyMode,
   WebhookChannelConfig,
 } from "@/lib/api/types";
+import { DEFAULT_AG_UI_SESSION_EXPIRATION_SECONDS } from "@/lib/api/types/app-types";
 import {
   getDisplayName,
   getEntityNameClassName,
@@ -124,6 +125,10 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
     useState<InvocationSessionMode>("shared_session");
   const [editChannelMessage, setEditChannelMessage] = useState("");
   const [editWebhookToken, setEditWebhookToken] = useState("");
+  const [editAgUiAnonymous, setEditAgUiAnonymous] = useState(true);
+  const [editAgUiExpirationHours, setEditAgUiExpirationHours] = useState(
+    DEFAULT_AG_UI_SESSION_EXPIRATION_SECONDS / 3600,
+  );
   const [editChannelEnabled, setEditChannelEnabled] = useState(true);
 
   const [creatingSlackApp, setCreatingSlackApp] = useState(false);
@@ -276,13 +281,22 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
     setEditInvocationSessionMode("shared_session");
     setEditChannelMessage("");
     setEditWebhookToken("");
+    setEditAgUiAnonymous(true);
+    setEditAgUiExpirationHours(DEFAULT_AG_UI_SESSION_EXPIRATION_SECONDS / 3600);
     setEditChannelEnabled(true);
   };
 
   const buildChannelConfig = (channelType: ChannelType): ChannelConfigInput => {
     switch (channelType) {
-      case "ag_ui":
-        return { anonymous: true };
+      case "ag_ui": {
+        const hours = Number.isFinite(editAgUiExpirationHours)
+          ? Math.max(0, editAgUiExpirationHours)
+          : DEFAULT_AG_UI_SESSION_EXPIRATION_SECONDS / 3600;
+        return {
+          anonymous: editAgUiAnonymous,
+          session_expiration_seconds: Math.round(hours * 3600),
+        };
+      }
       case "schedule":
         return {
           cron_expression: editScheduleCronExpression,
@@ -311,7 +325,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
   const isChannelConfigValid = (channelType: ChannelType) => {
     switch (channelType) {
       case "ag_ui":
-        return true;
+        return Number.isFinite(editAgUiExpirationHours) && editAgUiExpirationHours >= 0;
       case "schedule":
         return !!editScheduleCronExpression && !!editChannelMessage;
       case "webhook":
@@ -324,7 +338,13 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
   const startEditChannel = (channel: AppChannel) => {
     resetChannelForm(channel.channel_type);
     setEditChannelEnabled(channel.enabled);
-    if (channel.channel_type === "slack") {
+    if (channel.channel_type === "ag_ui") {
+      const config = channel.channel_config as AgUiChannelConfig;
+      setEditAgUiAnonymous(config?.anonymous ?? true);
+      const expSeconds =
+        config?.session_expiration_seconds ?? DEFAULT_AG_UI_SESSION_EXPIRATION_SECONDS;
+      setEditAgUiExpirationHours(expSeconds / 3600);
+    } else if (channel.channel_type === "slack") {
       const config = channel.channel_config as SlackChannelConfig;
       setEditSigningSecret(config?.signing_secret ?? "");
       setEditBotToken(config?.bot_token ?? "");
@@ -442,10 +462,35 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
         </div>
 
         {formChannelType === "ag_ui" && (
-          <div className="rounded-md border p-3 text-sm text-muted-foreground">
-            AG-UI requests are accepted anonymously for now. Publish the app, then point an AG-UI
-            client at the endpoint shown on this page.
-          </div>
+          <>
+            <div className="flex items-center justify-between rounded-md border p-3">
+              <div className="space-y-1">
+                <p className="text-sm font-medium">Anonymous access</p>
+                <p className="text-xs text-muted-foreground">
+                  When enabled, anyone with the endpoint URL can start a thread without
+                  authentication.
+                </p>
+              </div>
+              <Switch checked={editAgUiAnonymous} onCheckedChange={setEditAgUiAnonymous} />
+            </div>
+
+            <div>
+              <Label htmlFor={`ag_ui_expiration_${formId}`}>Thread expiration (hours)</Label>
+              <Input
+                id={`ag_ui_expiration_${formId}`}
+                type="number"
+                min="0"
+                step="0.25"
+                value={editAgUiExpirationHours}
+                onChange={(e) => setEditAgUiExpirationHours(Number(e.target.value))}
+                placeholder="6"
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                After this window the same `threadId` cannot resume the existing session and a new
+                one is started. Set to `0` to allow resumption indefinitely. Default is 6 hours.
+              </p>
+            </div>
+          </>
         )}
 
         {formChannelType === "slack" && (
@@ -670,6 +715,9 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
             endpointUrl={agUiEndpointUrl}
             isPublished={isPublished}
             anonymousEnabled={config?.anonymous ?? true}
+            sessionExpirationSeconds={
+              config?.session_expiration_seconds ?? DEFAULT_AG_UI_SESSION_EXPIRATION_SECONDS
+            }
             onConfigure={() => startEditChannel(channel)}
           />
         </div>

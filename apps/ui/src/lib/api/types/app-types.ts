@@ -19,8 +19,18 @@ export interface SlackChannelConfig {
   first_message_received_at?: string | null;
 }
 
+/** Default thread expiration window for AG-UI (6 hours, in seconds). */
+export const DEFAULT_AG_UI_SESSION_EXPIRATION_SECONDS = 6 * 60 * 60;
+
 export interface AgUiChannelConfig {
   anonymous?: boolean;
+  /**
+   * How long an AG-UI thread can be resumed (in seconds) after the underlying
+   * session was created. After this elapses the same `thread_id` cannot reuse
+   * the existing session and must start a new one. `0` disables expiration.
+   * Defaults to 6 hours.
+   */
+  session_expiration_seconds?: number;
 }
 
 export interface ScheduleChannelConfig {
