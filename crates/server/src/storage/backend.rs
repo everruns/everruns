@@ -2386,6 +2386,22 @@ impl StorageBackend {
         )
     }
 
+    pub async fn get_active_budgets_for_subjects(
+        &self,
+        org_id: i64,
+        lookup: crate::storage::repositories::BudgetSubjectLookup<'_>,
+    ) -> Result<Vec<BudgetRow>> {
+        dispatch!(self, get_active_budgets_for_subjects, org_id, lookup)
+    }
+
+    pub async fn reset_budget_period(
+        &self,
+        id: Uuid,
+        period_started_at: DateTime<Utc>,
+    ) -> Result<Option<BudgetRow>> {
+        dispatch!(self, reset_budget_period, id, period_started_at)
+    }
+
     pub async fn update_budget(
         &self,
         org_id: i64,

@@ -7,6 +7,46 @@ use uuid::Uuid;
 use crate::storage::Database;
 use crate::storage::models::*;
 
+/// Subject identifiers used to look up the active budgets that cascade onto
+/// a single LLM generation. Any field set to `None` is silently skipped, so
+/// callers can pass exactly the layers they have resolved.
+#[derive(Debug, Clone, Default)]
+pub struct BudgetSubjectLookup<'a> {
+    pub session_id: Option<&'a str>,
+    pub agent_id: Option<&'a str>,
+    pub user_id: Option<&'a str>,
+    pub org_public_id: Option<&'a str>,
+    pub app_id: Option<&'a str>,
+    pub app_channel_id: Option<&'a str>,
+}
+
+impl<'a> BudgetSubjectLookup<'a> {
+    /// Flatten into `(subject_type, subject_id)` pairs, preserving hierarchy
+    /// order from most specific (session) to most general (org).
+    pub fn to_pairs(&self) -> Vec<(&'a str, &'a str)> {
+        let mut pairs = Vec::new();
+        if let Some(id) = self.session_id {
+            pairs.push(("session", id));
+        }
+        if let Some(id) = self.app_channel_id {
+            pairs.push(("app_channel", id));
+        }
+        if let Some(id) = self.app_id {
+            pairs.push(("app", id));
+        }
+        if let Some(id) = self.agent_id {
+            pairs.push(("agent", id));
+        }
+        if let Some(id) = self.user_id {
+            pairs.push(("user", id));
+        }
+        if let Some(id) = self.org_public_id {
+            pairs.push(("org", id));
+        }
+        pairs
+    }
+}
+
 impl Database {
     // ============================================
     // Budget CRUD
@@ -14,13 +54,14 @@ impl Database {
 
     pub async fn create_budget(&self, input: CreateBudgetRow) -> Result<BudgetRow> {
         let public_id = format!("bdgt_{}", Uuid::now_v7().simple());
+        let period_started_at = input.period.as_ref().map(|_| chrono::Utc::now());
         let row = sqlx::query_as::<_, BudgetRow>(
             r#"
             INSERT INTO budgets (org_id, subject_type, subject_id, currency, "limit", soft_limit,
-                                balance, period, metadata, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $5, $7, $8, 'active')
+                                balance, period, period_started_at, metadata, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $5, $7, $8, $9, 'active')
             RETURNING id, org_id, subject_type, subject_id, currency, "limit", soft_limit,
-                      balance, period, metadata, status, created_at, updated_at
+                      balance, period, period_started_at, metadata, status, created_at, updated_at
             "#,
         )
         .bind(input.org_id)
@@ -30,6 +71,7 @@ impl Database {
         .bind(input.limit)
         .bind(input.soft_limit)
         .bind(&input.period)
+        .bind(period_started_at)
         .bind(&input.metadata)
         .fetch_one(&self.pool)
         .await?;
@@ -43,7 +85,7 @@ impl Database {
         let row = sqlx::query_as::<_, BudgetRow>(
             r#"
             SELECT id, org_id, subject_type, subject_id, currency, "limit", soft_limit,
-                   balance, period, metadata, status, created_at, updated_at
+                   balance, period, period_started_at, metadata, status, created_at, updated_at
             FROM budgets
             WHERE org_id = $1 AND id = $2
             "#,
@@ -64,7 +106,7 @@ impl Database {
         let rows = sqlx::query_as::<_, BudgetRow>(
             r#"
             SELECT id, org_id, subject_type, subject_id, currency, "limit", soft_limit,
-                   balance, period, metadata, status, created_at, updated_at
+                   balance, period, period_started_at, metadata, status, created_at, updated_at
             FROM budgets
             WHERE org_id = $1
               AND ($2::TEXT IS NULL OR subject_type = $2)
@@ -82,7 +124,9 @@ impl Database {
         Ok(rows)
     }
 
-    /// Get all active budgets applicable to a session (session + agent + user + org budgets).
+    /// Get all active budgets applicable to a session, walking the full
+    /// `session → app_channel → app → agent → user → org` hierarchy.
+    /// Empty/missing layers are silently skipped.
     pub async fn get_active_budgets_for_session(
         &self,
         org_id: i64,
@@ -91,26 +135,39 @@ impl Database {
         user_id: Option<&str>,
         org_public_id: Option<&str>,
     ) -> Result<Vec<BudgetRow>> {
-        // Build a list of (subject_type, subject_id) pairs to look up
-        let mut subject_pairs: Vec<(&str, &str)> = vec![("session", session_id)];
-        if let Some(aid) = agent_id {
-            subject_pairs.push(("agent", aid));
-        }
-        if let Some(uid) = user_id {
-            subject_pairs.push(("user", uid));
-        }
-        if let Some(oid) = org_public_id {
-            subject_pairs.push(("org", oid));
+        self.get_active_budgets_for_subjects(
+            org_id,
+            BudgetSubjectLookup {
+                session_id: Some(session_id),
+                agent_id,
+                user_id,
+                org_public_id,
+                app_id: None,
+                app_channel_id: None,
+            },
+        )
+        .await
+    }
+
+    /// Generalised hierarchy lookup — supports app and app_channel subjects in
+    /// addition to the legacy session/agent/user/org levels.
+    pub async fn get_active_budgets_for_subjects(
+        &self,
+        org_id: i64,
+        lookup: BudgetSubjectLookup<'_>,
+    ) -> Result<Vec<BudgetRow>> {
+        let pairs = lookup.to_pairs();
+        if pairs.is_empty() {
+            return Ok(vec![]);
         }
 
-        // Use a single query with ANY for each pair
-        let types: Vec<&str> = subject_pairs.iter().map(|(t, _)| *t).collect();
-        let ids: Vec<&str> = subject_pairs.iter().map(|(_, i)| *i).collect();
+        let types: Vec<&str> = pairs.iter().map(|(t, _)| *t).collect();
+        let ids: Vec<&str> = pairs.iter().map(|(_, i)| *i).collect();
 
         let rows = sqlx::query_as::<_, BudgetRow>(
             r#"
             SELECT id, org_id, subject_type, subject_id, currency, "limit", soft_limit,
-                   balance, period, metadata, status, created_at, updated_at
+                   balance, period, period_started_at, metadata, status, created_at, updated_at
             FROM budgets
             WHERE org_id = $1
               AND status = 'active'
@@ -126,6 +183,35 @@ impl Database {
         .fetch_all(&self.pool)
         .await?;
         Ok(rows)
+    }
+
+    /// Reset a budget's window: set balance back to limit and stamp
+    /// `period_started_at`. Used by the budget service when a `Duration`
+    /// or `Calendar` window has elapsed.
+    pub async fn reset_budget_period(
+        &self,
+        id: Uuid,
+        period_started_at: chrono::DateTime<chrono::Utc>,
+    ) -> Result<Option<BudgetRow>> {
+        let row = sqlx::query_as::<_, BudgetRow>(
+            r#"
+            UPDATE budgets
+               SET balance = "limit",
+                   period_started_at = $2,
+                   status = CASE
+                       WHEN status IN ('paused', 'exhausted') THEN 'active'
+                       ELSE status
+                   END
+             WHERE id = $1
+         RETURNING id, org_id, subject_type, subject_id, currency, "limit", soft_limit,
+                   balance, period, period_started_at, metadata, status, created_at, updated_at
+            "#,
+        )
+        .bind(id)
+        .bind(period_started_at)
+        .fetch_optional(&self.pool)
+        .await?;
+        Ok(row)
     }
 
     pub async fn update_budget(
@@ -149,7 +235,7 @@ impl Database {
                 metadata = COALESCE($7, metadata)
             WHERE org_id = $1 AND id = $2
             RETURNING id, org_id, subject_type, subject_id, currency, "limit", soft_limit,
-                      balance, period, metadata, status, created_at, updated_at
+                      balance, period, period_started_at, metadata, status, created_at, updated_at
             "#,
         )
         .bind(org_id)
@@ -243,7 +329,7 @@ impl Database {
             let _budget = sqlx::query_as::<_, BudgetRow>(
                 r#"
                 SELECT id, org_id, subject_type, subject_id, currency, "limit", soft_limit,
-                       balance, period, metadata, status, created_at, updated_at
+                       balance, period, period_started_at, metadata, status, created_at, updated_at
                 FROM budgets
                 WHERE id = $1
                 FOR UPDATE
@@ -260,7 +346,7 @@ impl Database {
                     SET balance = balance - $2
                     WHERE id = $1
                     RETURNING id, org_id, subject_type, subject_id, currency, "limit", soft_limit,
-                              balance, period, metadata, status, created_at, updated_at
+                              balance, period, period_started_at, metadata, status, created_at, updated_at
                     "#,
                 )
                 .bind(budget_id)
@@ -319,7 +405,7 @@ impl Database {
         let budget = sqlx::query_as::<_, BudgetRow>(
             r#"
             SELECT id, org_id, subject_type, subject_id, currency, "limit", soft_limit,
-                   balance, period, metadata, status, created_at, updated_at
+                   balance, period, period_started_at, metadata, status, created_at, updated_at
             FROM budgets
             WHERE id = $1
             "#,
@@ -430,7 +516,7 @@ impl Database {
             UPDATE budgets SET status = $2
             WHERE id = $1
             RETURNING id, org_id, subject_type, subject_id, currency, "limit", soft_limit,
-                      balance, period, metadata, status, created_at, updated_at
+                      balance, period, period_started_at, metadata, status, created_at, updated_at
             "#,
         )
         .bind(id)

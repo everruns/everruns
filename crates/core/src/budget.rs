@@ -62,16 +62,29 @@ pub enum BudgetSubjectType {
     Agent,
     User,
     Organization,
+    /// Bound to an `App` (every session created for the app counts).
+    App,
+    /// Bound to a single `AppChannel` (only sessions for that channel count).
+    AppChannel,
+}
+
+impl BudgetSubjectType {
+    /// Wire string used in storage and the API.
+    pub fn as_wire(&self) -> &'static str {
+        match self {
+            BudgetSubjectType::Session => "session",
+            BudgetSubjectType::Agent => "agent",
+            BudgetSubjectType::User => "user",
+            BudgetSubjectType::Organization => "org",
+            BudgetSubjectType::App => "app",
+            BudgetSubjectType::AppChannel => "app_channel",
+        }
+    }
 }
 
 impl std::fmt::Display for BudgetSubjectType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            BudgetSubjectType::Session => write!(f, "session"),
-            BudgetSubjectType::Agent => write!(f, "agent"),
-            BudgetSubjectType::User => write!(f, "user"),
-            BudgetSubjectType::Organization => write!(f, "org"),
-        }
+        f.write_str(self.as_wire())
     }
 }
 
@@ -82,20 +95,69 @@ impl From<&str> for BudgetSubjectType {
             "agent" => BudgetSubjectType::Agent,
             "user" => BudgetSubjectType::User,
             "org" | "organization" => BudgetSubjectType::Organization,
+            "app" => BudgetSubjectType::App,
+            "app_channel" => BudgetSubjectType::AppChannel,
             _ => BudgetSubjectType::Session,
         }
     }
 }
 
 /// Budget period configuration for recurring budgets.
+///
+/// Periods drive automatic balance reset:
+/// - `Duration` is a fixed-length sliding window (e.g. last 5 hours, last 30 days)
+///   measured from `Budget::period_started_at`. When the window elapses the
+///   balance is reset to `limit` and the window restarts.
+/// - `Calendar` aligns to a calendar boundary (`hour | day | week | month | year`)
+///   in UTC. The balance resets when the next boundary is crossed.
+/// - `Rolling` is preserved for backwards compatibility and parses common
+///   shorthand (`24h`, `5h`, `7d`, `30d`) into a `Duration`-equivalent reset
+///   policy.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum BudgetPeriod {
-    /// Rolling window (e.g. "last 24 hours").
+    /// Sliding window of a configurable number of seconds.
+    Duration { seconds: u64 },
+    /// Rolling window described as a humanized string ("5h", "24h", "30d").
     Rolling { window: String },
-    /// Calendar-aligned (e.g. "per month").
+    /// Calendar-aligned (`hour`, `day`, `week`, `month`, `year`).
     Calendar { unit: String },
+}
+
+impl BudgetPeriod {
+    /// Length of the period in seconds, if it can be expressed as a fixed
+    /// duration. Calendar periods return `None` (handled separately).
+    pub fn duration_seconds(&self) -> Option<u64> {
+        match self {
+            BudgetPeriod::Duration { seconds } => Some(*seconds),
+            BudgetPeriod::Rolling { window } => parse_rolling_window(window),
+            BudgetPeriod::Calendar { .. } => None,
+        }
+    }
+}
+
+/// Parse a rolling window shorthand like "5h", "30m", "7d" into seconds.
+fn parse_rolling_window(window: &str) -> Option<u64> {
+    let trimmed = window.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let (digits, suffix) = trimmed.split_at(
+        trimmed
+            .find(|c: char| !c.is_ascii_digit())
+            .unwrap_or(trimmed.len()),
+    );
+    let value: u64 = digits.parse().ok()?;
+    let multiplier: u64 = match suffix.trim().to_ascii_lowercase().as_str() {
+        "" | "s" | "sec" | "secs" | "second" | "seconds" => 1,
+        "m" | "min" | "mins" | "minute" | "minutes" => 60,
+        "h" | "hr" | "hrs" | "hour" | "hours" => 3_600,
+        "d" | "day" | "days" => 86_400,
+        "w" | "wk" | "wks" | "week" | "weeks" => 604_800,
+        _ => return None,
+    };
+    value.checked_mul(multiplier)
 }
 
 /// Budget — a spending cap for a subject in a currency.
@@ -121,6 +183,11 @@ pub struct Budget {
     /// Optional period for recurring budgets.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub period: Option<BudgetPeriod>,
+    /// When the current period started (used to detect period rollover for
+    /// `Duration` / `Rolling` periods, and to display "resets at" in the UI).
+    /// `None` for budgets without a period.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub period_started_at: Option<DateTime<Utc>>,
     /// Arbitrary metadata.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metadata: Option<serde_json::Value>,

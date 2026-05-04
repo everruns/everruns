@@ -6,9 +6,11 @@
 // See specs/budgeting.md for full specification.
 
 use async_trait::async_trait;
+use chrono::{DateTime, Datelike, Timelike, Utc};
 use everruns_core::EventListener;
 use everruns_core::budget::{
-    Budget, BudgetAction, BudgetCheckResult, BudgetStatus, BudgetSubjectType, LedgerEntry,
+    Budget, BudgetAction, BudgetCheckResult, BudgetPeriod, BudgetStatus, BudgetSubjectType,
+    LedgerEntry,
 };
 use everruns_core::events::{Event, EventData, LLM_GENERATION};
 use everruns_core::llm_model_profiles::get_model_profile;
@@ -17,10 +19,11 @@ use everruns_core::typed_id::{AgentId, BudgetId, SessionId};
 use everruns_core::{UserFacingError, user_facing_error_codes};
 use std::collections::HashSet;
 use std::sync::Arc;
-use tracing::{error, info, instrument, warn};
+use tracing::{debug, error, info, instrument, warn};
 
 use crate::storage::StorageBackend;
 use crate::storage::models::*;
+use crate::storage::repositories::BudgetSubjectLookup;
 
 // ============================================================================
 // BudgetService
@@ -35,11 +38,31 @@ struct BudgetScope {
     agent_subject_id: Option<String>,
     user_subject_id: Option<String>,
     org_subject_id: String,
+    /// Public ID of the owning app, extracted from session tags (`app:<app_id>`)
+    /// when the session was created via an app channel. `None` for ad-hoc
+    /// sessions that don't belong to an app.
+    app_subject_id: Option<String>,
+    /// Public ID of the originating app channel, extracted from session tags
+    /// (`app_channel:<channel_id>`). `None` for ad-hoc sessions.
+    app_channel_subject_id: Option<String>,
     session_id: Option<uuid::Uuid>,
     user_id: Option<uuid::Uuid>,
     principal_id: Option<uuid::Uuid>,
     agent_id: Option<uuid::Uuid>,
     harness_id: Option<uuid::Uuid>,
+}
+
+impl BudgetScope {
+    fn lookup(&self) -> BudgetSubjectLookup<'_> {
+        BudgetSubjectLookup {
+            session_id: Some(self.session_subject_id.as_str()),
+            agent_id: self.agent_subject_id.as_deref(),
+            user_id: self.user_subject_id.as_deref(),
+            org_public_id: Some(self.org_subject_id.as_str()),
+            app_id: self.app_subject_id.as_deref(),
+            app_channel_id: self.app_channel_subject_id.as_deref(),
+        }
+    }
 }
 
 impl BudgetService {
@@ -62,6 +85,7 @@ impl BudgetService {
                 .period
                 .as_ref()
                 .and_then(|v| serde_json::from_value(v.clone()).ok()),
+            period_started_at: row.period_started_at,
             metadata: row.metadata.clone(),
             status: BudgetStatus::from(row.status.as_str()),
             created_at: row.created_at,
@@ -103,6 +127,8 @@ impl BudgetService {
             agent_subject_id: agent_id.map(ToOwned::to_owned),
             user_subject_id: None,
             org_subject_id: everruns_core::org_public_id_from_internal(org_id),
+            app_subject_id: None,
+            app_channel_subject_id: None,
             session_id: SessionId::parse(session_id).ok().map(|id| id.uuid()),
             user_id: None,
             principal_id: None,
@@ -118,6 +144,7 @@ impl BudgetService {
         session_subject_id: &str,
         agent_id_override: Option<&str>,
     ) -> BudgetScope {
+        let (app_subject_id, app_channel_subject_id) = extract_app_subjects(&session.tags);
         BudgetScope {
             session_subject_id: session_subject_id.to_string(),
             agent_subject_id: agent_id_override
@@ -125,6 +152,8 @@ impl BudgetService {
                 .or_else(|| session.agent_id.map(|id| id.to_string())),
             user_subject_id: session.resolved_owner_user_id.map(|id| id.to_string()),
             org_subject_id: everruns_core::org_public_id_from_internal(session.org_id),
+            app_subject_id,
+            app_channel_subject_id,
             session_id: Some(session.id.uuid()),
             user_id: session.resolved_owner_user_id,
             principal_id: Some(session.owner_principal_id.uuid()),
@@ -155,6 +184,8 @@ impl BudgetService {
         let mut budgets = Vec::new();
         for (subject_type, subject_id) in [
             ("session", Some(scope.session_subject_id.as_str())),
+            ("app_channel", scope.app_channel_subject_id.as_deref()),
+            ("app", scope.app_subject_id.as_deref()),
             ("agent", scope.agent_subject_id.as_deref()),
             ("user", scope.user_subject_id.as_deref()),
             ("org", Some(scope.org_subject_id.as_str())),
@@ -170,6 +201,8 @@ impl BudgetService {
                 Ok(rows) => {
                     for row in rows {
                         if seen.insert(row.id) {
+                            // Apply lazy period rollover before returning to callers.
+                            let row = self.maybe_reset_period(row).await;
                             budgets.push(row);
                         }
                     }
@@ -230,13 +263,7 @@ impl BudgetService {
         // Find all active budgets in the subject hierarchy
         let budgets = match self
             .db
-            .get_active_budgets_for_session(
-                session.org_id,
-                &scope.session_subject_id,
-                scope.agent_subject_id.as_deref(),
-                scope.user_subject_id.as_deref(),
-                Some(scope.org_subject_id.as_str()),
-            )
+            .get_active_budgets_for_subjects(session.org_id, scope.lookup())
             .await
         {
             Ok(b) => b,
@@ -248,6 +275,14 @@ impl BudgetService {
                 return;
             }
         };
+
+        // Period rollover before metering: if a budget's window has elapsed,
+        // refresh balance/limit so the new generation is charged against the
+        // new period rather than against an exhausted snapshot.
+        let mut budgets: Vec<BudgetRow> =
+            futures::future::join_all(budgets.into_iter().map(|b| self.maybe_reset_period(b)))
+                .await;
+        budgets.retain(|b| b.status == "active");
 
         if budgets.is_empty() {
             return; // No budgets — nothing to track
@@ -477,6 +512,46 @@ impl BudgetService {
     }
 
     // ============================================================================
+    // Period rollover
+    // ============================================================================
+
+    /// If `budget` has a configured period and the period has elapsed, reset
+    /// the balance to the limit and stamp the new `period_started_at`.
+    /// Otherwise return the row unchanged. Calendar periods reset on the next
+    /// boundary (UTC).
+    pub(crate) async fn maybe_reset_period(&self, budget: BudgetRow) -> BudgetRow {
+        let Some(period_value) = budget.period.as_ref() else {
+            return budget;
+        };
+        let Ok(period) = serde_json::from_value::<BudgetPeriod>(period_value.clone()) else {
+            return budget;
+        };
+        let now = Utc::now();
+        let started = budget.period_started_at.unwrap_or(budget.created_at);
+        if !period_elapsed(&period, started, now) {
+            return budget;
+        }
+        match self.db.reset_budget_period(budget.id, now).await {
+            Ok(Some(new_row)) => {
+                debug!(
+                    budget_id = %new_row.id,
+                    "Budget period elapsed, balance reset"
+                );
+                new_row
+            }
+            Ok(None) => budget,
+            Err(error) => {
+                warn!(
+                    budget_id = %budget.id,
+                    error = %error,
+                    "Failed to reset budget period; using stale row"
+                );
+                budget
+            }
+        }
+    }
+
+    // ============================================================================
     // Public API for checking budgets (called by worker between atoms)
     // ============================================================================
 
@@ -607,5 +682,116 @@ impl EventListener for BudgetService {
 
     fn name(&self) -> &'static str {
         "BudgetService"
+    }
+}
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+/// Pull `(app_id, app_channel_id)` from session tags. Both legacy
+/// `slack:app:<id>` and the canonical `app:<id>` / `app_channel:<id>` forms
+/// are recognised.
+fn extract_app_subjects(tags: &[String]) -> (Option<String>, Option<String>) {
+    let mut app_id: Option<String> = None;
+    let mut channel_id: Option<String> = None;
+    for tag in tags {
+        if let Some(rest) = tag.strip_prefix("app:") {
+            app_id.get_or_insert_with(|| rest.to_string());
+        } else if let Some(rest) = tag.strip_prefix("app_channel:") {
+            channel_id.get_or_insert_with(|| rest.to_string());
+        } else if let Some(rest) = tag.strip_prefix("slack:app:") {
+            app_id.get_or_insert_with(|| rest.to_string());
+        }
+    }
+    (app_id, channel_id)
+}
+
+/// Decide whether a budget's period has elapsed and the balance should reset.
+fn period_elapsed(period: &BudgetPeriod, started: DateTime<Utc>, now: DateTime<Utc>) -> bool {
+    if let Some(seconds) = period.duration_seconds() {
+        return (now - started).num_seconds() as u64 >= seconds;
+    }
+    if let BudgetPeriod::Calendar { unit } = period {
+        return calendar_boundary_crossed(unit, started, now);
+    }
+    false
+}
+
+fn calendar_boundary_crossed(unit: &str, started: DateTime<Utc>, now: DateTime<Utc>) -> bool {
+    match unit.to_ascii_lowercase().as_str() {
+        "hour" => started.date_naive() != now.date_naive() || started.hour() != now.hour(),
+        "day" => started.date_naive() != now.date_naive(),
+        "week" => iso_week_key(started) != iso_week_key(now),
+        "month" => (started.year(), started.month()) != (now.year(), now.month()),
+        "year" => started.year() != now.year(),
+        _ => false,
+    }
+}
+
+fn iso_week_key(dt: DateTime<Utc>) -> (i32, u32) {
+    let iso = dt.iso_week();
+    (iso.year(), iso.week())
+}
+
+#[cfg(test)]
+mod period_tests {
+    use super::*;
+    use chrono::TimeZone;
+
+    fn at(y: i32, mo: u32, d: u32, h: u32, mi: u32) -> DateTime<Utc> {
+        Utc.with_ymd_and_hms(y, mo, d, h, mi, 0).unwrap()
+    }
+
+    #[test]
+    fn duration_period_elapses_after_window() {
+        let period = BudgetPeriod::Duration { seconds: 3_600 };
+        let started = at(2025, 1, 1, 10, 0);
+        assert!(!period_elapsed(&period, started, at(2025, 1, 1, 10, 30)));
+        assert!(period_elapsed(&period, started, at(2025, 1, 1, 11, 0)));
+    }
+
+    #[test]
+    fn rolling_5h_parses_to_5_hours() {
+        let period = BudgetPeriod::Rolling {
+            window: "5h".into(),
+        };
+        let started = at(2025, 1, 1, 0, 0);
+        assert!(!period_elapsed(&period, started, at(2025, 1, 1, 4, 59)));
+        assert!(period_elapsed(&period, started, at(2025, 1, 1, 5, 0)));
+    }
+
+    #[test]
+    fn calendar_month_resets_at_month_boundary() {
+        let period = BudgetPeriod::Calendar {
+            unit: "month".into(),
+        };
+        let started = at(2025, 1, 31, 23, 0);
+        assert!(!period_elapsed(&period, started, at(2025, 1, 31, 23, 30)));
+        assert!(period_elapsed(&period, started, at(2025, 2, 1, 0, 0)));
+    }
+
+    #[test]
+    fn calendar_unknown_unit_never_elapses() {
+        let period = BudgetPeriod::Calendar {
+            unit: "fortnight".into(),
+        };
+        let started = at(2025, 1, 1, 0, 0);
+        assert!(!period_elapsed(&period, started, at(2030, 1, 1, 0, 0)));
+    }
+
+    #[test]
+    fn extract_subjects_handles_both_tag_styles() {
+        let tags = vec![
+            "app:app_abc".to_string(),
+            "app_channel:appchan_xyz".to_string(),
+        ];
+        let (app, ch) = extract_app_subjects(&tags);
+        assert_eq!(app.as_deref(), Some("app_abc"));
+        assert_eq!(ch.as_deref(), Some("appchan_xyz"));
+
+        let legacy = vec!["slack:app:app_legacy".to_string()];
+        let (app, _) = extract_app_subjects(&legacy);
+        assert_eq!(app.as_deref(), Some("app_legacy"));
     }
 }

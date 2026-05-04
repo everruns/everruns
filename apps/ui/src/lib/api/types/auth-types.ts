@@ -12,6 +12,7 @@ export interface FeatureFlags {
   notifications: boolean;
   mcp_endpoint: boolean;
   evals: boolean;
+  app_budgets: boolean;
 }
 
 export interface AuthConfigResponse {

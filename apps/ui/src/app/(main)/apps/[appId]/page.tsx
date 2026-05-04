@@ -53,9 +53,11 @@ import {
 import { ArrowLeft, Globe, GlobeLock, Trash2, Pencil, Check, X, Rocket, Plus } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
 import { AgUiSetupGuidance } from "@/components/apps/ag-ui-setup-guidance";
+import { AppBudgetsCard } from "@/components/apps/app-budgets-card";
 import { ScheduleSetupGuidance } from "@/components/apps/schedule-setup-guidance";
 import { SlackSetupGuidance } from "@/components/apps/slack-setup-guidance";
 import { WebhookSetupGuidance } from "@/components/apps/webhook-setup-guidance";
+import { useFeatureFlag } from "@/providers/feature-flags-provider";
 import type {
   AgUiChannelConfig,
   AppChannel,
@@ -97,6 +99,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
   const publishApp = usePublishApp();
   const unpublishApp = useUnpublishApp();
   const { can: canPolicies } = usePolicies("apps");
+  const appBudgetsEnabled = useFeatureFlag("app_budgets");
 
   const [editingBasic, setEditingBasic] = useState(false);
   const [editingChannelId, setEditingChannelId] = useState<string | null>(null);
@@ -955,6 +958,8 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
               Add Channel
             </Button>
           )}
+
+          {appBudgetsEnabled && <AppBudgetsCard app={app} readOnly={isReadOnly} />}
 
           {/* Add Channel form */}
           {showAddChannel && (
