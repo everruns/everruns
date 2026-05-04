@@ -381,6 +381,10 @@ impl StorageBackend {
         )
     }
 
+    pub async fn count_sessions_for_agent(&self, org_id: i64, agent_id: AgentId) -> Result<u64> {
+        dispatch!(self, count_sessions_for_agent, org_id, agent_id)
+    }
+
     pub async fn get_agent_by_name(&self, org_id: i64, name: &str) -> Result<Option<AgentRow>> {
         dispatch!(self, get_agent_by_name, org_id, name)
     }
@@ -454,6 +458,14 @@ impl StorageBackend {
         include_archived: bool,
     ) -> Result<Vec<HarnessRow>> {
         dispatch!(self, list_harnesses, org_id, search, include_archived)
+    }
+
+    pub async fn count_sessions_for_harness(
+        &self,
+        org_id: i64,
+        harness_id: HarnessId,
+    ) -> Result<u64> {
+        dispatch!(self, count_sessions_for_harness, org_id, harness_id)
     }
 
     pub async fn update_harness(
@@ -2127,6 +2139,14 @@ impl StorageBackend {
         include_archived: bool,
     ) -> Result<Vec<AppRow>> {
         dispatch!(self, list_apps, org_id, search, include_archived)
+    }
+
+    pub async fn count_apps_for_agent(&self, org_id: i64, agent_id: AgentId) -> Result<u64> {
+        dispatch!(self, count_apps_for_agent, org_id, agent_id)
+    }
+
+    pub async fn count_apps_for_harness(&self, org_id: i64, harness_id: HarnessId) -> Result<u64> {
+        dispatch!(self, count_apps_for_harness, org_id, harness_id)
     }
 
     pub async fn update_app(

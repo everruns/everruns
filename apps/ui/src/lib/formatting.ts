@@ -12,6 +12,14 @@ export function formatCompactNumber(value: number): string {
   return value.toString();
 }
 
+export function pluralize(count: number, singular: string): string {
+  return `${singular}${count === 1 ? "" : "s"}`;
+}
+
+export function formatCountLabel(count: number, singular: string): string {
+  return `${count} ${pluralize(count, singular)}`;
+}
+
 /**
  * Format token count in compact form
  * @alias formatCompactNumber - provided for semantic clarity

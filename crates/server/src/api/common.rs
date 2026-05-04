@@ -665,6 +665,32 @@ pub struct WithUrls<T: Serialize> {
     pub inner: T,
 }
 
+/// Wrapper that flattens lightweight relationship counts into resource responses.
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ResourceWithCounts<T: Serialize> {
+    /// Number of sessions using this resource.
+    pub session_count: u64,
+    /// Number of non-deleted apps using this resource.
+    pub app_count: u64,
+    /// The resource itself (fields are flattened into the parent object).
+    #[serde(flatten)]
+    pub inner: T,
+}
+
+impl<T: ResourceUrlable + Serialize> ResourceUrlable for ResourceWithCounts<T> {
+    fn api_path() -> &'static str {
+        T::api_path()
+    }
+
+    fn ui_path() -> &'static str {
+        T::ui_path()
+    }
+
+    fn resource_id(&self) -> String {
+        self.inner.resource_id()
+    }
+}
+
 impl<T: ResourceUrlable + Serialize> PaginatedResponse<T> {
     /// Map all items through `UrlBuilder::wrap`.
     pub fn with_urls(self, builder: &UrlBuilder) -> PaginatedResponse<WithUrls<T>> {

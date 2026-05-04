@@ -7,7 +7,7 @@ use anyhow::Result;
 use chrono::{DateTime, Utc};
 use everruns_core::AgentIdentityId;
 use everruns_core::PrincipalId;
-use everruns_core::typed_id::{AgentId, SessionId};
+use everruns_core::typed_id::{AgentId, HarnessId, SessionId};
 use uuid::Uuid;
 
 impl Database {
@@ -183,6 +183,32 @@ impl Database {
             .await?;
 
         Ok((rows, total.0 as u32))
+    }
+
+    pub async fn count_sessions_for_agent(&self, org_id: i64, agent_id: AgentId) -> Result<u64> {
+        let (count,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM sessions WHERE org_id = $1 AND agent_id = $2")
+                .bind(org_id)
+                .bind(agent_id)
+                .fetch_one(&self.pool)
+                .await?;
+
+        Ok(count as u64)
+    }
+
+    pub async fn count_sessions_for_harness(
+        &self,
+        org_id: i64,
+        harness_id: HarnessId,
+    ) -> Result<u64> {
+        let (count,): (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM sessions WHERE org_id = $1 AND harness_id = $2")
+                .bind(org_id)
+                .bind(harness_id)
+                .fetch_one(&self.pool)
+                .await?;
+
+        Ok(count as u64)
     }
 
     /// List child sessions (subagents) for a parent session.

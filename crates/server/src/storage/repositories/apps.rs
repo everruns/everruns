@@ -4,6 +4,7 @@ use super::super::models::*;
 use super::Database;
 use super::build_search_sql;
 use anyhow::Result;
+use everruns_core::typed_id::{AgentId, HarnessId};
 use uuid::Uuid;
 
 impl Database {
@@ -108,6 +109,30 @@ impl Database {
             query = query.bind(pat);
         }
         Ok(query.fetch_all(&self.pool).await?)
+    }
+
+    pub async fn count_apps_for_agent(&self, org_id: i64, agent_id: AgentId) -> Result<u64> {
+        let (count,): (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM apps WHERE org_id = $1 AND agent_id = $2 AND status != 'deleted'",
+        )
+        .bind(org_id)
+        .bind(agent_id.uuid())
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(count as u64)
+    }
+
+    pub async fn count_apps_for_harness(&self, org_id: i64, harness_id: HarnessId) -> Result<u64> {
+        let (count,): (i64,) = sqlx::query_as(
+            "SELECT COUNT(*) FROM apps WHERE org_id = $1 AND harness_id = $2 AND status != 'deleted'",
+        )
+        .bind(org_id)
+        .bind(harness_id.uuid())
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(count as u64)
     }
 
     pub async fn update_app(

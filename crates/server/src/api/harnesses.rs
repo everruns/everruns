@@ -20,9 +20,11 @@ use everruns_core::{
     AgentCapabilityConfig, Caller, DeploymentGrade, Harness, PlatformDefinition,
     ResourceConfigResponse, evaluate_policies_with,
 };
+use futures::future::try_join_all;
 
 use super::common::{
-    ApiResult, ApiResultExt, ErrorResponse, ListResponse, UrlBuilder, WithUrls, impl_auth_state,
+    ApiResult, ApiResultExt, ErrorResponse, ListResponse, ResourceWithCounts, UrlBuilder, WithUrls,
+    impl_auth_state,
 };
 use serde::Deserialize;
 use std::sync::Arc;
@@ -79,6 +81,43 @@ impl AppState {
 }
 
 impl_auth_state!(AppState);
+
+async fn add_harness_counts(
+    db: &StorageBackend,
+    org_id: i64,
+    harness: Harness,
+) -> Result<ResourceWithCounts<Harness>, (StatusCode, Json<ErrorResponse>)> {
+    let session_count = async {
+        db.count_sessions_for_harness(org_id, harness.id)
+            .await
+            .log_internal_error_json("count harness sessions")
+    };
+    let app_count = async {
+        db.count_apps_for_harness(org_id, harness.id)
+            .await
+            .log_internal_error_json("count harness apps")
+    };
+    let (session_count, app_count) = tokio::try_join!(session_count, app_count)?;
+
+    Ok(ResourceWithCounts {
+        session_count,
+        app_count,
+        inner: harness,
+    })
+}
+
+async fn add_harnesses_counts(
+    db: &StorageBackend,
+    org_id: i64,
+    harnesses: Vec<Harness>,
+) -> Result<Vec<ResourceWithCounts<Harness>>, (StatusCode, Json<ErrorResponse>)> {
+    try_join_all(
+        harnesses
+            .into_iter()
+            .map(|harness| add_harness_counts(db, org_id, harness)),
+    )
+    .await
+}
 
 /// Create harness routes
 pub fn routes(state: AppState) -> Router {
@@ -336,7 +375,7 @@ pub async fn create_harness(
     get,
     path = "/v1/harnesses",
     responses(
-        (status = 200, description = "List of harnesses", body = ListResponse<WithUrls<Harness>>),
+        (status = 200, description = "List of harnesses", body = ListResponse<WithUrls<ResourceWithCounts<Harness>>>),
         (status = 403, description = "Forbidden"),
         (status = 500, description = "Internal server error")
     ),
@@ -347,7 +386,7 @@ pub async fn list_harnesses(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Query(query): Query<ListHarnessesQuery>,
-) -> ApiResult<ListResponse<WithUrls<Harness>>> {
+) -> ApiResult<ListResponse<WithUrls<ResourceWithCounts<Harness>>>> {
     let harnesses = crate::domains::harnesses::ListHarnesses {
         search: query.search,
         include_archived: query.include_archived.unwrap_or(false),
@@ -355,6 +394,7 @@ pub async fn list_harnesses(
     .run(&state.ctx(&org))
     .await?;
 
+    let harnesses = add_harnesses_counts(&state.db, org.org_id, harnesses).await?;
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(ListResponse::new(harnesses).with_urls(&urls)))
 }
@@ -371,7 +411,7 @@ pub async fn list_harnesses(
         ("harness_id" = String, Path, description = "Harness ID (prefixed) or name")
     ),
     responses(
-        (status = 200, description = "Harness found", body = WithUrls<Harness>),
+        (status = 200, description = "Harness found", body = WithUrls<ResourceWithCounts<Harness>>),
         (status = 403, description = "Forbidden"),
         (status = 404, description = "Harness not found"),
         (status = 500, description = "Internal server error")
@@ -382,12 +422,13 @@ pub async fn get_harness(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(harness_id_or_name): Path<String>,
-) -> ApiResult<WithUrls<Harness>> {
+) -> ApiResult<WithUrls<ResourceWithCounts<Harness>>> {
     let harness = crate::domains::harnesses::GetHarness {
         id: harness_id_or_name,
     }
     .run(&state.ctx(&org))
     .await?;
+    let harness = add_harness_counts(&state.db, org.org_id, harness).await?;
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(urls.wrap(harness)))
 }
