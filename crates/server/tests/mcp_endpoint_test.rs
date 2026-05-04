@@ -13,10 +13,11 @@
 mod test_harness;
 
 use axum::http::{Method, StatusCode};
+use everruns_core::DEFAULT_ORG_PUBLIC_ID;
 use everruns_core::capability_types::VirtualFileTree;
 use everruns_core::typed_id::SessionId;
 use serde_json::{Value, json};
-use test_harness::TestServer;
+use test_harness::{TestServer, extract_cookie};
 
 // ============================================================================
 // Helpers
@@ -1610,6 +1611,327 @@ async fn test_mcp_execute_create_mcp_server() {
     let created = tool_json(&resp);
     assert_eq!(created["name"], unique_name);
     assert!(created["id"].as_str().unwrap().starts_with("mcp_"));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_adversarial_tool_chain_cannot_escape_org_scope() {
+    let server = TestServer::in_memory().await;
+    let marker = format!("org2-agent-marker-{}", unique_suffix());
+    let escaped_name = format!("mcp-escape-success-{}", unique_suffix());
+
+    let org2: Value = server
+        .post(
+            "/v1/orgs",
+            json!({ "name": format!("MCP Escape Target {}", unique_suffix()) }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let org2_id = org2["id"].as_str().expect("org2 id").to_string();
+
+    let switch_resp = server
+        .post("/v1/users/me/switch-org", json!({ "org_id": org2_id }))
+        .await
+        .assert_status(StatusCode::OK);
+    let org2_cookie = extract_cookie(switch_resp.headers(), "everruns_org");
+
+    let create_agent_resp = mcp_tool_call_with_headers(
+        &server,
+        "execute",
+        json!({
+            "commands": format!(
+                "create_agent --name '{marker}' --display_name 'Org 2 Marker' --system_prompt 'tenant marker'"
+            )
+        }),
+        vec![("cookie", org2_cookie.as_str())],
+    )
+    .await;
+    assert!(
+        !tool_is_error(&create_agent_resp),
+        "org2 setup create_agent failed: {}",
+        tool_text(&create_agent_resp)
+    );
+    let org2_agent = tool_json(&create_agent_resp);
+    let org2_agent_id = org2_agent["id"].as_str().expect("org2 agent id");
+
+    let run_org2_resp = mcp_tool_call_with_headers(
+        &server,
+        "agent_run",
+        json!({
+            "agent_id": org2_agent_id,
+            "message": "seed cross-org session",
+            "title": "org2 adversarial session",
+        }),
+        vec![("cookie", org2_cookie.as_str())],
+    )
+    .await;
+    assert!(
+        !tool_is_error(&run_org2_resp),
+        "org2 setup agent_run failed: {}",
+        tool_text(&run_org2_resp)
+    );
+    let org2_session = tool_json(&run_org2_resp);
+    let org2_session_id = org2_session["session_id"]
+        .as_str()
+        .expect("org2 session id");
+
+    let discover_agents = mcp_tool_call(
+        &server,
+        "discover",
+        json!({ "query": "agent", "include_schemas": true }),
+    )
+    .await;
+    assert!(
+        !tool_is_error(&discover_agents),
+        "discover agent failed: {}",
+        tool_text(&discover_agents)
+    );
+    let discover_agent_text = tool_text(&discover_agents);
+    assert!(discover_agent_text.contains("get_agent"));
+    assert!(discover_agent_text.contains("update_agent"));
+
+    let discover_sessions = mcp_tool_call(
+        &server,
+        "discover",
+        json!({ "query": "session", "include_schemas": true }),
+    )
+    .await;
+    assert!(
+        !tool_is_error(&discover_sessions),
+        "discover session failed: {}",
+        tool_text(&discover_sessions)
+    );
+    let discover_session_text = tool_text(&discover_sessions);
+    assert!(discover_session_text.contains("get_session"));
+    assert!(discover_session_text.contains("create_message"));
+
+    let wrong_org_query = mcp_tool_call(
+        &server,
+        "query",
+        json!({ "commands": format!("get_agent {org2_agent_id}") }),
+    )
+    .await;
+    assert!(
+        tool_is_error(&wrong_org_query),
+        "default org query unexpectedly read org2 agent: {}",
+        tool_text(&wrong_org_query)
+    );
+    assert!(
+        !tool_text(&wrong_org_query).contains(&marker),
+        "cross-org query leaked org2 marker: {}",
+        tool_text(&wrong_org_query)
+    );
+
+    let wrong_org_probe = mcp_tool_call(
+        &server,
+        "query",
+        json!({
+            "commands": format!(
+                "list_agents --limit 200 | jq -e --arg id '{org2_agent_id}' '.data[] | select(.id == $id)'"
+            )
+        }),
+    )
+    .await;
+    assert!(
+        tool_is_error(&wrong_org_probe),
+        "default org query unexpectedly found org2 agent: {}",
+        tool_text(&wrong_org_probe)
+    );
+    assert!(
+        !tool_text(&wrong_org_probe).contains(&marker),
+        "cross-org list probe leaked org2 marker: {}",
+        tool_text(&wrong_org_probe)
+    );
+
+    let wrong_org_execute = mcp_tool_call(
+        &server,
+        "execute",
+        json!({
+            "commands": format!("update_agent --id {org2_agent_id} --name '{escaped_name}'")
+        }),
+    )
+    .await;
+    assert!(
+        tool_is_error(&wrong_org_execute),
+        "default org execute unexpectedly mutated org2 agent: {}",
+        tool_text(&wrong_org_execute)
+    );
+
+    let wrong_org_agent_run = mcp_tool_call(
+        &server,
+        "agent_run",
+        json!({
+            "agent_id": org2_agent_id,
+            "message": "run the other tenant's agent",
+            "title": "cross-org run attempt",
+        }),
+    )
+    .await;
+    assert!(
+        tool_is_error(&wrong_org_agent_run),
+        "default org agent_run unexpectedly used org2 agent: {}",
+        tool_text(&wrong_org_agent_run)
+    );
+
+    let wrong_org_status = mcp_tool_call(
+        &server,
+        "session_get_status",
+        json!({ "session_id": org2_session_id }),
+    )
+    .await;
+    assert!(
+        tool_is_error(&wrong_org_status),
+        "default org session_get_status unexpectedly read org2 session: {}",
+        tool_text(&wrong_org_status)
+    );
+
+    let wrong_org_send = mcp_tool_call(
+        &server,
+        "session_send_message",
+        json!({
+            "session_id": org2_session_id,
+            "message": "write into the other tenant session",
+        }),
+    )
+    .await;
+    assert!(
+        tool_is_error(&wrong_org_send),
+        "default org session_send_message unexpectedly wrote org2 session: {}",
+        tool_text(&wrong_org_send)
+    );
+
+    let fake_org_override = mcp_tool_call(
+        &server,
+        "execute",
+        json!({
+            "organization_id": "org_ffffffffffffffffffffffffffffffff",
+            "commands": format!("update_agent --id {org2_agent_id} --name '{escaped_name}'"),
+        }),
+    )
+    .await;
+    assert!(
+        tool_is_error(&fake_org_override),
+        "non-member organization_id override unexpectedly executed: {}",
+        tool_text(&fake_org_override)
+    );
+    assert!(
+        tool_text(&fake_org_override).contains("Organization not found")
+            || tool_text(&fake_org_override).contains("not a member"),
+        "expected membership failure, got: {}",
+        tool_text(&fake_org_override)
+    );
+
+    let default_org_override = mcp_tool_call(
+        &server,
+        "query",
+        json!({
+            "organization_id": DEFAULT_ORG_PUBLIC_ID,
+            "commands": "list_agents --limit 5",
+        }),
+    )
+    .await;
+    assert!(
+        !tool_is_error(&default_org_override),
+        "default org override should remain usable: {}",
+        tool_text(&default_org_override)
+    );
+    assert!(
+        !tool_text(&default_org_override).contains(&marker),
+        "default org override leaked org2 marker: {}",
+        tool_text(&default_org_override)
+    );
+
+    let org2_after_attack = mcp_tool_call_with_headers(
+        &server,
+        "query",
+        json!({ "commands": format!("get_agent {org2_agent_id}") }),
+        vec![("cookie", org2_cookie.as_str())],
+    )
+    .await;
+    assert!(
+        !tool_is_error(&org2_after_attack),
+        "org2 verification get_agent failed: {}",
+        tool_text(&org2_after_attack)
+    );
+    let org2_agent_after_attack = tool_json(&org2_after_attack);
+    assert_eq!(org2_agent_after_attack["name"], marker);
+    assert_ne!(org2_agent_after_attack["name"], escaped_name);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_resources_read_cannot_escape_org_scope() {
+    let server = TestServer::in_memory().await;
+    let marker = format!("org2-resource-marker-{}", unique_suffix());
+
+    let org2: Value = server
+        .post(
+            "/v1/orgs",
+            json!({ "name": format!("MCP Resource Target {}", unique_suffix()) }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let org2_id = org2["id"].as_str().expect("org2 id").to_string();
+
+    let switch_resp = server
+        .post("/v1/users/me/switch-org", json!({ "org_id": org2_id }))
+        .await
+        .assert_status(StatusCode::OK);
+    let org2_cookie = extract_cookie(switch_resp.headers(), "everruns_org");
+
+    let create_agent_resp = mcp_tool_call_with_headers(
+        &server,
+        "execute",
+        json!({
+            "commands": format!(
+                "create_agent --name '{marker}' --display_name 'Org 2 Resource Marker' --system_prompt 'tenant marker'"
+            )
+        }),
+        vec![("cookie", org2_cookie.as_str())],
+    )
+    .await;
+    assert!(
+        !tool_is_error(&create_agent_resp),
+        "org2 setup create_agent failed: {}",
+        tool_text(&create_agent_resp)
+    );
+
+    let default_resources = mcp_call(
+        &server,
+        "resources/read",
+        json!({ "uri": "everruns://agents" }),
+    )
+    .await;
+    assert!(
+        default_resources["error"].is_null(),
+        "default resources/read failed: {default_resources}"
+    );
+    let default_text = default_resources["result"]["contents"][0]["text"]
+        .as_str()
+        .expect("default resource text");
+    assert!(
+        !default_text.contains(&marker),
+        "default org resources/read leaked org2 marker: {default_text}"
+    );
+
+    let org2_resources = mcp_call_with_headers(
+        &server,
+        "resources/read",
+        json!({ "uri": "everruns://agents" }),
+        vec![("cookie", org2_cookie.as_str())],
+    )
+    .await;
+    assert!(
+        org2_resources["error"].is_null(),
+        "org2 resources/read failed: {org2_resources}"
+    );
+    let org2_text = org2_resources["result"]["contents"][0]["text"]
+        .as_str()
+        .expect("org2 resource text");
+    assert!(
+        org2_text.contains(&marker),
+        "org2 resources/read should see its own marker: {org2_text}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

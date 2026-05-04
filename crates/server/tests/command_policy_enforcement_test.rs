@@ -13,6 +13,7 @@
 //!     role map (including denying an Owner) — the SaaS enforcement contract.
 //!  4. `dispatch()` (MCP + gRPC `ExecuteCommand`) enforces identically.
 //!  5. Inventory coverage: every mutating command declares `policy()`.
+//!  6. MCP `query` exposes only reviewed non-GET read-only helpers.
 //!
 //! Run with: cargo test -p everruns-server --test command_policy_enforcement_test
 
@@ -247,8 +248,40 @@ fn every_non_readonly_command_declares_policy() {
     );
 }
 
+#[test]
+fn mcp_query_read_only_overrides_are_allowlisted() {
+    use everruns_server::domains::common::CommandDescriptor;
+
+    let mut non_get_read_only: Vec<&'static str> = inventory::iter::<CommandDescriptor>
+        .into_iter()
+        .filter_map(|desc| {
+            let meta = (desc.meta)();
+            ((desc.read_only)() && meta.method != "GET").then_some(meta.name)
+        })
+        .collect();
+    non_get_read_only.sort_unstable();
+
+    let mut allowed = ALLOWED_NON_GET_READ_ONLY.to_vec();
+    allowed.sort_unstable();
+
+    assert_eq!(
+        non_get_read_only, allowed,
+        "MCP query exposes every read_only() command. Non-GET read-only overrides \
+         must stay intentionally reviewed so mutating commands do not drift into query."
+    );
+}
+
 /// Commands intentionally exposed without a policy (public reads, probes).
 /// Keep tiny; justify every entry in a comment.
 const ALLOWED_PUBLIC: &[&str] = &[
     // (none today)
+];
+
+/// POST-style helpers intentionally available through MCP `query`.
+/// They do not persist state and each still declares a view policy.
+const ALLOWED_NON_GET_READ_ONLY: &[&str] = &[
+    "grep_session_files",
+    "preview_agent",
+    "preview_harness",
+    "stat_session_file",
 ];

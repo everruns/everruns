@@ -760,6 +760,8 @@ async fn resolve_org_override(
     default_org: &ResolvedOrg,
     state: &AppState,
 ) -> Result<ResolvedOrg, String> {
+    // THREAT[TM-MCP-001]: External MCP clients can pass organization_id on
+    // server tools; resolve it through fresh membership before dispatch.
     let org_public_id = match args.get("organization_id").and_then(|v| v.as_str()) {
         Some(id) => id,
         None => return Ok(default_org.clone()),

@@ -27,6 +27,7 @@ Format: `TM-<CATEGORY>-<NNN>`
 | TM-BASH | Bash Sandbox | Bashkit sandbox escape, resource exhaustion, VFS boundary |
 | TM-DOS | Denial of Service | Resource exhaustion, large payloads |
 | TM-CLIENT | Client-Side Tools | Tool ID spoofing, timeout abuse |
+| TM-MCP | MCP Server | First-party `/mcp` endpoint, MCP OAuth, external MCP clients, MCP server tool discovery/execution |
 | TM-SLACK | Slack Integration | Webhook forgery, signing secret leak, bot loops |
 
 ### Managing Threat IDs
@@ -460,6 +461,33 @@ ZIP archive extraction in `SkillService::create_from_archive()` enforces:
 3. Per-file size limit: 1 MB per individual file
 4. Total decompressed size limit: 10 MB
 5. Files extracted into `skill_files` table as individual rows (no runtime ZIP extraction)
+
+## 7b. MCP Server (TM-MCP)
+
+This section covers Everruns acting as an MCP server for external MCP clients. It does not cover harness/session tool execution or Everruns acting as an MCP client to remote MCP servers; those belong under `TM-TOOL`, `TM-AGENT`, and integration-specific categories.
+
+| ID | Threat | Severity | Mitigation | Status |
+|----|--------|----------|------------|--------|
+| TM-MCP-001 | Everruns MCP server tenant escape | Critical | The first-party `/mcp` endpoint resolves org context before every tool call; `query` exposes only read-only inventory commands; `execute` and tier-1 agent/session tools dispatch through org-scoped domain commands and `Command::run` policy checks. Regression coverage in `crates/server/tests/mcp_endpoint_test.rs` chains `discover`, `query`, `execute`, `agent_run`, `session_get_status`, and `session_send_message` against cross-org bait and verifies no read/write escape; resources/read is also covered against cross-org bait. | MITIGATED |
+| TM-MCP-002 | Mutating command exposed through read-only `query` | High | `query` builds a read-only command toolset from `Command::read_only()`. Inventory coverage in `crates/server/tests/command_policy_enforcement_test.rs` allows only a small reviewed set of POST-style read helpers to override `read_only() == true`. | MITIGATED |
+
+### Mitigation Details
+
+**TM-MCP-001 — Everruns MCP Server Tenant Escape:**
+The first-party MCP endpoint is both a discovery surface and an execution surface: `discover` publishes the command catalog, `query` runs bashkit scripts over read-only builtins, `execute` runs scripts over the full command set, and tier-1 tools (`agent_run`, `session_send_message`, `session_get_status`) compose session and message commands directly. The threat is a caller using catalog discovery plus scripted control flow, guessed IDs, or `organization_id` overrides to read or mutate another organization.
+
+Mitigations are layered:
+- The request `ResolvedOrg` is derived from authenticated org membership; per-tool `organization_id` overrides are resolved against fresh membership before dispatch.
+- API-key callers cannot use per-tool org overrides to switch away from the org selected by request auth.
+- `query` receives a read-only toolset built from inventory descriptors whose `read_only()` flag is true.
+- `execute` and tier-1 tools dispatch through domain commands, preserving repository org filters and `Command::run` policy checks.
+- MCP `resources/read` routes through policy-gated list commands instead of raw storage reads.
+- Bashkit runs the scripted surface with parser, input, command-count, loop, function-depth, AST-depth, and timeout limits.
+
+Regression coverage: `test_mcp_adversarial_tool_chain_cannot_escape_org_scope` creates real cross-org bait, discovers the relevant agent/session operations, then attacks the wrong org with `query`, `execute`, `agent_run`, `session_get_status`, `session_send_message`, and a non-member `organization_id` override. `test_mcp_resources_read_cannot_escape_org_scope` verifies resource reads do not leak cross-org agent summaries. Both tests assert no data leak and no mutation.
+
+**TM-MCP-002 — Read-Only Query Catalog Drift:**
+The MCP `query` tool is intentionally safer than `execute`, but that safety depends on the inventory metadata for every command. By default, only `GET` commands are read-only. POST-style helpers must explicitly override `read_only() == true`; each such override is reviewed in `mcp_query_read_only_overrides_are_allowlisted` to prevent a future mutating command from becoming available through `query`.
 
 **TM-TOOL-015 — Browserless URL Validation (MITIGATED):**
 Browserless tools now reuse the shared `validate_safe_url()` policy from core. This blocks:

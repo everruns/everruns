@@ -80,6 +80,8 @@ pub fn build_toolset(ctx: CatalogContext, mode: ToolsetMode) -> ScriptingToolSet
         );
 
     for desc in inventory::iter::<crate::domains::common::CommandDescriptor> {
+        // THREAT[TM-MCP-002]: MCP `query` must not expose mutating server
+        // tools. Read-only classification is backed by inventory tests.
         if mode == ToolsetMode::ReadOnly && !(desc.read_only)() {
             continue;
         }
