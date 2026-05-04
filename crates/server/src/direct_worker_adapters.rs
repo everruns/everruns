@@ -2955,6 +2955,7 @@ mod tests {
 
         db.create_session(CreateSessionRow {
             org_id,
+            app_id: None,
             harness_id: Some(harness_id),
             agent_id: None,
             agent_identity_id: None,
@@ -3770,6 +3771,7 @@ mod tests {
             .db
             .create_session(CreateSessionRow {
                 org_id: everruns_core::DEFAULT_ORG_ID,
+                app_id: None,
                 agent_id: Some(AgentId::from_uuid(agent_id)),
                 agent_identity_id: None,
                 harness_id: Some(HarnessId::from_seed(1)),

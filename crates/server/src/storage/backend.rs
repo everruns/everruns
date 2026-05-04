@@ -644,6 +644,16 @@ impl StorageBackend {
         dispatch!(self, find_session_by_tags, org_id, tags)
     }
 
+    /// Find a single app-owned session matching ALL given tags within an org.
+    pub async fn find_app_session_by_tags(
+        &self,
+        org_id: i64,
+        app_id: Uuid,
+        tags: &[String],
+    ) -> Result<Option<SessionRow>> {
+        dispatch!(self, find_app_session_by_tags, org_id, app_id, tags)
+    }
+
     /// Find a single session matching ALL given tags + owner within an org.
     pub async fn find_session_by_tags_and_owner(
         &self,
@@ -655,6 +665,24 @@ impl StorageBackend {
             self,
             find_session_by_tags_and_owner,
             org_id,
+            owner_principal_id,
+            tags
+        )
+    }
+
+    /// Find a single app-owned session matching ALL given tags + owner within an org.
+    pub async fn find_app_session_by_tags_and_owner(
+        &self,
+        org_id: i64,
+        app_id: Uuid,
+        owner_principal_id: PrincipalId,
+        tags: &[String],
+    ) -> Result<Option<SessionRow>> {
+        dispatch!(
+            self,
+            find_app_session_by_tags_and_owner,
+            org_id,
+            app_id,
             owner_principal_id,
             tags
         )
@@ -2135,6 +2163,10 @@ impl StorageBackend {
         public_id: &str,
     ) -> Result<Option<AppRow>> {
         dispatch!(self, get_app_by_public_id, org_id, public_id)
+    }
+
+    pub async fn get_app_by_id(&self, org_id: i64, id: Uuid) -> Result<Option<AppRow>> {
+        dispatch!(self, get_app_by_id, org_id, id)
     }
 
     /// Lookup app by public_id without org scoping (for unauthenticated webhooks).

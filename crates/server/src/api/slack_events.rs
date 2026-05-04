@@ -591,81 +591,85 @@ async fn process_slack_message(
     let desired_tags = desired_session_tags(&routing_tags, slack_config.reply_mode);
 
     // Find or create session
-    let (session, is_new_session) =
-        match state.db.find_session_by_tags(org_id, &routing_tags).await? {
-            Some(row) => {
-                tracing::debug!(
-                    session_id = %row.id,
-                    tags = ?routing_tags,
-                    "Found existing Slack session"
-                );
-                let fallback = if row.harness_id.is_none() {
-                    Some(crate::org_init::base_harness_id(&state.db, org_id).await?)
-                } else {
-                    None
-                };
-                let session = SessionService::row_to_session(row, &org_public_id, fallback);
-                let mut synced_tags = session.tags.clone();
-                sync_slack_reply_mode_tags(&mut synced_tags, slack_config.reply_mode);
-                if synced_tags != session.tags
-                    && let Err(error) = state
-                        .db
-                        .update_session(
-                            org_id,
-                            session.id,
-                            UpdateSession {
-                                tags: Some(synced_tags),
-                                ..Default::default()
-                            },
-                        )
-                        .await
-                {
-                    tracing::warn!(
-                        session_id = %session.id,
-                        error = %error,
-                        "Failed to sync Slack reply-mode session tags"
-                    );
-                }
-                (session, false)
-            }
-            None => {
-                tracing::info!(
-                    tags = ?desired_tags,
-                    "Creating new Slack session"
-                );
-                let title = build_session_title(slack_config, event);
-                let req = CreateSessionRequest {
-                    harness_id: Some(app.harness_id),
-                    harness_name: None,
-                    agent_id: app.agent_id,
-                    title: Some(title),
-                    locale: None,
-                    tags: desired_tags.clone(),
-                    agent_identity_id: app.agent_identity_id,
-                    model_id: None,
-                    capabilities: vec![],
-                    tools: vec![],
-                    mcp_servers: Default::default(),
-                    system_prompt: None,
-                    initial_files: vec![],
-                    hints: None,
-                    network_access: None,
-                    max_iterations: None,
-                };
-                let internal_caller = Caller::internal(org_id);
-                let s = state
-                    .session_service
-                    .create(
-                        &internal_caller,
-                        app.harness_id.uuid(),
-                        app.agent_id.map(|agent_id| agent_id.uuid()),
-                        app.agent_id,
-                        req,
+    let (session, is_new_session) = match state
+        .db
+        .find_app_session_by_tags(org_id, app.internal_id, &routing_tags)
+        .await?
+    {
+        Some(row) => {
+            tracing::debug!(
+                session_id = %row.id,
+                tags = ?routing_tags,
+                "Found existing Slack session"
+            );
+            let fallback = if row.harness_id.is_none() {
+                Some(crate::org_init::base_harness_id(&state.db, org_id).await?)
+            } else {
+                None
+            };
+            let session = SessionService::row_to_session(row, &org_public_id, fallback);
+            let mut synced_tags = session.tags.clone();
+            sync_slack_reply_mode_tags(&mut synced_tags, slack_config.reply_mode);
+            if synced_tags != session.tags
+                && let Err(error) = state
+                    .db
+                    .update_session(
+                        org_id,
+                        session.id,
+                        UpdateSession {
+                            tags: Some(synced_tags),
+                            ..Default::default()
+                        },
                     )
-                    .await?;
-                (s, true)
+                    .await
+            {
+                tracing::warn!(
+                    session_id = %session.id,
+                    error = %error,
+                    "Failed to sync Slack reply-mode session tags"
+                );
             }
-        };
+            (session, false)
+        }
+        None => {
+            tracing::info!(
+                tags = ?desired_tags,
+                "Creating new Slack session"
+            );
+            let title = build_session_title(slack_config, event);
+            let req = CreateSessionRequest {
+                harness_id: Some(app.harness_id),
+                harness_name: None,
+                agent_id: app.agent_id,
+                title: Some(title),
+                locale: None,
+                tags: desired_tags.clone(),
+                agent_identity_id: app.agent_identity_id,
+                model_id: None,
+                capabilities: vec![],
+                tools: vec![],
+                mcp_servers: Default::default(),
+                system_prompt: None,
+                initial_files: vec![],
+                hints: None,
+                network_access: None,
+                max_iterations: None,
+            };
+            let internal_caller = Caller::internal(org_id);
+            let s = state
+                .session_service
+                .create_from_app(
+                    &internal_caller,
+                    app.harness_id.uuid(),
+                    app.agent_id.map(|agent_id| agent_id.uuid()),
+                    app.agent_id,
+                    app.internal_id,
+                    req,
+                )
+                .await?;
+            (s, true)
+        }
+    };
 
     // Track participant via ThreadContext (channel abstraction).
     // ThreadContext accumulates participants across the session lifetime.
@@ -751,20 +755,7 @@ async fn process_slack_message(
             content,
         },
         controls: None,
-        metadata: Some(
-            [
-                (
-                    "slack_channel".to_string(),
-                    serde_json::Value::String(event.channel.clone().unwrap_or_default()),
-                ),
-                (
-                    "slack_ts".to_string(),
-                    serde_json::Value::String(event.ts.clone().unwrap_or_default()),
-                ),
-            ]
-            .into_iter()
-            .collect(),
-        ),
+        metadata: Some(slack_message_metadata(app, event)),
         tags: None,
         external_actor,
     };
@@ -853,6 +844,25 @@ async fn process_slack_message(
     }
 
     Ok(())
+}
+
+fn slack_message_metadata(app: &App, event: &SlackEvent) -> HashMap<String, serde_json::Value> {
+    [
+        (
+            "_app_id".to_string(),
+            serde_json::Value::String(app.public_id.to_string()),
+        ),
+        (
+            "slack_channel".to_string(),
+            serde_json::Value::String(event.channel.clone().unwrap_or_default()),
+        ),
+        (
+            "slack_ts".to_string(),
+            serde_json::Value::String(event.ts.clone().unwrap_or_default()),
+        ),
+    ]
+    .into_iter()
+    .collect()
 }
 
 /// Supported image MIME types for Slack file attachments.
@@ -2086,6 +2096,23 @@ mod tests {
         }
     }
 
+    #[test]
+    fn slack_message_metadata_includes_system_app_id() {
+        let app = test_app();
+        let event = test_event("C123", Some("1234.5678"), None);
+
+        let metadata = slack_message_metadata(&app, &event);
+
+        assert_eq!(
+            metadata.get("_app_id"),
+            Some(&serde_json::Value::String(app.public_id.to_string()))
+        );
+        assert_eq!(
+            metadata.get("slack_ts"),
+            Some(&serde_json::Value::String("1234.5678".to_string()))
+        );
+    }
+
     // ==========================================
     // InboundChannelEvent parsing (channel abstractions)
     // ==========================================
@@ -2382,6 +2409,7 @@ mod tests {
 
         let row = CreateSessionRow {
             org_id: 1,
+            app_id: None,
             harness_id: Some(everruns_core::typed_id::HarnessId::from_uuid(
                 uuid::Uuid::nil(),
             )),

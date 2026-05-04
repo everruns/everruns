@@ -490,6 +490,8 @@ pub struct SessionRow {
     pub id: SessionId,
     pub org_id: i64,
     #[sqlx(default)]
+    pub app_id: Option<Uuid>,
+    #[sqlx(default)]
     pub harness_id: Option<HarnessId>,
     pub agent_id: Option<AgentId>,
     #[sqlx(default)]
@@ -580,6 +582,7 @@ pub struct SessionAggregateStatsRow {
 #[derive(Debug, Clone)]
 pub struct CreateSessionRow {
     pub org_id: i64,
+    pub app_id: Option<Uuid>,
     pub harness_id: Option<HarnessId>,
     pub agent_id: Option<AgentId>,
     pub agent_identity_id: Option<AgentIdentityId>,

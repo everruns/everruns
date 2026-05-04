@@ -18,14 +18,15 @@ impl Database {
     pub async fn create_session(&self, input: CreateSessionRow) -> Result<SessionRow> {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
-            INSERT INTO sessions (org_id, harness_id, agent_id, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, blueprint_id, blueprint_config, status)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, 'started')
-            RETURNING id, org_id, harness_id, agent_id, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, status, created_at, updated_at, started_at, finished_at,
+            INSERT INTO sessions (org_id, app_id, harness_id, agent_id, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, blueprint_id, blueprint_config, status)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, 'started')
+            RETURNING id, org_id, app_id, harness_id, agent_id, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, status, created_at, updated_at, started_at, finished_at,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status,
                       blueprint_id, blueprint_config
             "#,
         )
         .bind(input.org_id)
+        .bind(input.app_id)
         .bind(input.harness_id.map(|h| h.uuid()))
         .bind(input.agent_id.map(|a| a.uuid()))
         .bind(input.agent_identity_id.map(|a: AgentIdentityId| a.uuid()))
@@ -55,7 +56,7 @@ impl Database {
     pub async fn get_session(&self, org_id: i64, id: SessionId) -> Result<Option<SessionRow>> {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
-            SELECT id, org_id, harness_id, agent_id, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, status, created_at, updated_at, started_at, finished_at,
+            SELECT id, org_id, app_id, harness_id, agent_id, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, status, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status,
                    blueprint_id, blueprint_config
             FROM sessions
@@ -87,7 +88,7 @@ impl Database {
                 subagent_task = $5,
                 subagent_status = $6
             WHERE org_id = $1 AND id = $2
-            RETURNING id, org_id, harness_id, agent_id, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, status, created_at, updated_at, started_at, finished_at,
+            RETURNING id, org_id, app_id, harness_id, agent_id, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, status, created_at, updated_at, started_at, finished_at,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status,
                       blueprint_id, blueprint_config
             "#,
@@ -108,7 +109,7 @@ impl Database {
     pub async fn get_session_unscoped(&self, id: SessionId) -> Result<Option<SessionRow>> {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
-            SELECT id, org_id, harness_id, agent_id, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, status, created_at, updated_at, started_at, finished_at,
+            SELECT id, org_id, app_id, harness_id, agent_id, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, status, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status,
                    blueprint_id, blueprint_config
             FROM sessions
@@ -168,7 +169,7 @@ impl Database {
         let limit_idx = param_idx;
         let offset_idx = param_idx + 1;
         let select_sql = format!(
-            r#"SELECT id, org_id, harness_id, agent_id, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, status, created_at, updated_at, started_at, finished_at,
+            r#"SELECT id, org_id, app_id, harness_id, agent_id, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, status, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status,
                    blueprint_id, blueprint_config
             FROM sessions {where_clause}
@@ -218,7 +219,7 @@ impl Database {
     ) -> Result<Vec<SessionRow>> {
         let rows = sqlx::query_as::<_, SessionRow>(
             r#"
-            SELECT id, org_id, harness_id, agent_id, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, status, created_at, updated_at, started_at, finished_at,
+            SELECT id, org_id, app_id, harness_id, agent_id, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, status, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status,
                    blueprint_id, blueprint_config
             FROM sessions
@@ -310,7 +311,7 @@ impl Database {
     ) -> Result<Option<SessionRow>> {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
-            SELECT id, org_id, harness_id, agent_id, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, status, created_at, updated_at, started_at, finished_at,
+            SELECT id, org_id, app_id, harness_id, agent_id, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, status, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status,
                    blueprint_id, blueprint_config
             FROM sessions
@@ -327,6 +328,33 @@ impl Database {
         Ok(row)
     }
 
+    /// Find a single app-owned session matching ALL given tags within an org.
+    pub async fn find_app_session_by_tags(
+        &self,
+        org_id: i64,
+        app_id: Uuid,
+        tags: &[String],
+    ) -> Result<Option<SessionRow>> {
+        let row = sqlx::query_as::<_, SessionRow>(
+            r#"
+            SELECT id, org_id, app_id, harness_id, agent_id, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, status, created_at, updated_at, started_at, finished_at,
+                   total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status,
+                   blueprint_id, blueprint_config
+            FROM sessions
+            WHERE org_id = $1 AND app_id = $2 AND tags @> $3
+            ORDER BY created_at ASC
+            LIMIT 1
+            "#,
+        )
+        .bind(org_id)
+        .bind(app_id)
+        .bind(tags)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
     /// Find a single session matching ALL given tags + owner within an org.
     pub async fn find_session_by_tags_and_owner(
         &self,
@@ -336,7 +364,7 @@ impl Database {
     ) -> Result<Option<SessionRow>> {
         let row = sqlx::query_as::<_, SessionRow>(
             r#"
-            SELECT id, org_id, harness_id, agent_id, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, status, created_at, updated_at, started_at, finished_at,
+            SELECT id, org_id, app_id, harness_id, agent_id, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, status, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status,
                    blueprint_id, blueprint_config
             FROM sessions
@@ -354,20 +382,48 @@ impl Database {
         Ok(row)
     }
 
-    /// Find all active sessions with Slack tags (for startup recovery).
-    /// Returns sessions where status = 'active' and any tag starts with 'slack:app:'.
-    pub async fn find_active_slack_sessions(&self) -> Result<Vec<SessionRow>> {
-        let rows = sqlx::query_as::<_, SessionRow>(
+    /// Find a single app-owned session matching ALL given tags + owner within an org.
+    pub async fn find_app_session_by_tags_and_owner(
+        &self,
+        org_id: i64,
+        app_id: Uuid,
+        owner_principal_id: PrincipalId,
+        tags: &[String],
+    ) -> Result<Option<SessionRow>> {
+        let row = sqlx::query_as::<_, SessionRow>(
             r#"
-            SELECT id, org_id, harness_id, agent_id, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, status, created_at, updated_at, started_at, finished_at,
+            SELECT id, org_id, app_id, harness_id, agent_id, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, status, created_at, updated_at, started_at, finished_at,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status,
                    blueprint_id, blueprint_config
             FROM sessions
-            WHERE status = 'active'
-              AND EXISTS (
-                  SELECT 1 FROM unnest(tags) AS t
-                  WHERE t LIKE 'slack:app:%'
-              )
+            WHERE org_id = $1 AND app_id = $2 AND owner_principal_id = $3 AND tags @> $4
+            ORDER BY created_at ASC
+            LIMIT 1
+            "#,
+        )
+        .bind(org_id)
+        .bind(app_id)
+        .bind(owner_principal_id)
+        .bind(tags)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    /// Find all active sessions with Slack tags (for startup recovery).
+    /// Returns active sessions owned by apps with Slack channel configuration.
+    pub async fn find_active_slack_sessions(&self) -> Result<Vec<SessionRow>> {
+        let rows = sqlx::query_as::<_, SessionRow>(
+            r#"
+            SELECT s.id, s.org_id, s.app_id, s.harness_id, s.agent_id, s.agent_identity_id, s.owner_principal_id, s.resolved_owner_user_id, s.title, s.locale, s.tags, s.model_id, s.capabilities, s.tools, s.mcp_servers, s.system_prompt, s.initial_files, s.hints, s.network_access, s.max_iterations, s.status, s.created_at, s.updated_at, s.started_at, s.finished_at,
+                   s.total_input_tokens, s.total_output_tokens, s.total_cache_read_tokens, s.total_cache_creation_tokens, s.parent_session_id, s.subagent_name, s.subagent_task, s.subagent_status,
+                   s.blueprint_id, s.blueprint_config
+            FROM sessions s
+            JOIN apps a ON a.id = s.app_id AND a.org_id = s.org_id
+            WHERE s.status = 'active'
+              AND a.channel_type = 'slack'
+              AND a.status != 'deleted'
             "#,
         )
         .fetch_all(&self.pool)
@@ -421,7 +477,7 @@ impl Database {
                 started_at = COALESCE($14, started_at),
                 finished_at = COALESCE($15, finished_at)
             WHERE org_id = $1 AND id = $2
-            RETURNING id, org_id, harness_id, agent_id, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, status, created_at, updated_at, started_at, finished_at,
+            RETURNING id, org_id, app_id, harness_id, agent_id, agent_identity_id, owner_principal_id, resolved_owner_user_id, title, locale, tags, model_id, capabilities, tools, mcp_servers, system_prompt, initial_files, hints, network_access, max_iterations, status, created_at, updated_at, started_at, finished_at,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens, parent_session_id, subagent_name, subagent_task, subagent_status,
                       blueprint_id, blueprint_config
             "#,

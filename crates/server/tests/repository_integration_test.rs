@@ -20,11 +20,12 @@ use everruns_durable::UpdateField;
 use everruns_server::api::common::Pagination;
 use everruns_server::org_init;
 use everruns_server::storage::{
-    CreateAgentCapabilityRow, CreateAgentRow, CreateEventRow, CreateHarnessRow, CreateImageRow,
-    CreateLlmModelRow, CreateLlmProviderRow, CreateMcpServerRow, CreateOrganizationRow,
-    CreatePrincipalRow, CreateSessionFileRow, CreateSessionRow, CreateUserConnectionRow,
-    CreateUserRow, Database, StorageBackend, UpdateAgent, UpdateLlmModel, UpdateLlmProvider,
-    UpdateOrganization, UpdateOrganizationSettings, UpdateSession, UpdateSessionFile,
+    CreateAgentCapabilityRow, CreateAgentRow, CreateAppRow, CreateEventRow, CreateHarnessRow,
+    CreateImageRow, CreateLlmModelRow, CreateLlmProviderRow, CreateMcpServerRow,
+    CreateOrganizationRow, CreatePrincipalRow, CreateSessionFileRow, CreateSessionRow,
+    CreateUserConnectionRow, CreateUserRow, Database, StorageBackend, UpdateAgent, UpdateLlmModel,
+    UpdateLlmProvider, UpdateOrganization, UpdateOrganizationSettings, UpdateSession,
+    UpdateSessionFile,
 };
 use test_harness::get_database_url;
 
@@ -312,6 +313,7 @@ async fn test_session_connection_resolution_uses_resolved_owner_user() {
     let session = backend
         .create_session(CreateSessionRow {
             org_id: TEST_ORG_ID,
+            app_id: None,
             harness_id: None,
             agent_id: None,
             agent_identity_id: None,
@@ -474,7 +476,7 @@ async fn test_session_crud() {
             TEST_ORG_ID,
             CreateAgentRow {
                 public_id: everruns_core::AgentId::new().to_string(),
-                name: format!("session-test-agent-{}", &Uuid::now_v7().to_string()[..8]),
+                name: format!("session-test-agent-{}", Uuid::now_v7()),
                 display_name: Some("Session Test Agent".to_string()),
                 description: None,
                 system_prompt: "Test".to_string(),
@@ -492,9 +494,48 @@ async fn test_session_crud() {
 
     // Create session
     let owner_principal_id = create_test_principal(&backend, TEST_ORG_ID).await;
+    let app_harness = backend
+        .create_harness(
+            TEST_ORG_ID,
+            CreateHarnessRow {
+                name: format!("repo-test-app-harness-{}", Uuid::now_v7()),
+                display_name: Some("Repo Test App Harness".to_string()),
+                description: None,
+                system_prompt: "Test".to_string(),
+                parent_harness_id: None,
+                default_model_id: None,
+                tags: vec![],
+                initial_files: serde_json::json!([]),
+                mcp_servers: serde_json::json!({}),
+                network_access: None,
+                is_built_in: false,
+            },
+        )
+        .await
+        .expect("Failed to create app harness");
+    let app = backend
+        .create_app(
+            TEST_ORG_ID,
+            CreateAppRow {
+                public_id: everruns_core::typed_id::AppId::new().to_string(),
+                name: "Repository Test App".to_string(),
+                description: None,
+                harness_id: app_harness.id.uuid(),
+                agent_id: None,
+                agent_identity_id: None,
+                owner_principal_id,
+                resolved_owner_user_id: None,
+                channel_type: Some("webhook".to_string()),
+                channel_config: json!({}),
+                channel_config_encrypted: None,
+            },
+        )
+        .await
+        .expect("Failed to create app");
     let session = backend
         .create_session(CreateSessionRow {
             org_id: TEST_ORG_ID,
+            app_id: Some(app.id),
             harness_id: None,
             agent_id: Some(agent.id),
             agent_identity_id: None,
@@ -519,6 +560,7 @@ async fn test_session_crud() {
         .expect("Failed to create session");
 
     assert_eq!(session.agent_id, Some(agent.id));
+    assert_eq!(session.app_id, Some(app.id));
 
     // Get session
     let fetched = backend
@@ -527,6 +569,7 @@ async fn test_session_crud() {
         .expect("Failed to get session")
         .expect("Session not found");
     assert_eq!(fetched.id, session.id);
+    assert_eq!(fetched.app_id, Some(app.id));
 
     // Update session
     let updated = backend
@@ -644,6 +687,7 @@ async fn test_event_crud() {
     let session = backend
         .create_session(CreateSessionRow {
             org_id: TEST_ORG_ID,
+            app_id: None,
             harness_id: None,
             agent_id: Some(agent.id),
             agent_identity_id: None,
@@ -734,6 +778,7 @@ async fn test_event_exclude_types() {
     let session = backend
         .create_session(CreateSessionRow {
             org_id: TEST_ORG_ID,
+            app_id: None,
             harness_id: None,
             agent_id: Some(agent.id),
             agent_identity_id: None,
@@ -832,6 +877,7 @@ async fn test_event_filter_types() {
     let session = backend
         .create_session(CreateSessionRow {
             org_id: TEST_ORG_ID,
+            app_id: None,
             harness_id: None,
             agent_id: Some(agent.id),
             agent_identity_id: None,
@@ -1132,6 +1178,7 @@ async fn test_session_file_crud() {
     let session = backend
         .create_session(CreateSessionRow {
             org_id: TEST_ORG_ID,
+            app_id: None,
             harness_id: None,
             agent_id: Some(agent.id),
             agent_identity_id: None,
@@ -1593,6 +1640,7 @@ async fn test_session_usage_tracking() {
     let session = backend
         .create_session(CreateSessionRow {
             org_id: TEST_ORG_ID,
+            app_id: None,
             harness_id: None,
             agent_id: Some(agent.id),
             agent_identity_id: None,
@@ -1689,6 +1737,7 @@ async fn test_session_previews() {
     let session = backend
         .create_session(CreateSessionRow {
             org_id: TEST_ORG_ID,
+            app_id: None,
             harness_id: None,
             agent_id: Some(agent.id),
             agent_identity_id: None,

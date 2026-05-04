@@ -31,6 +31,13 @@ if ! violations="$(
 fi
 
 if [ -n "$violations" ]; then
+  # Approved repair for a merged duplicate migration version: main contained
+  # both 027_app_budgets.sql and 027_session_stats_indexes.sql, which breaks
+  # SQLx on fresh databases. Keep this exception scoped to the exact rename.
+  violations="$(printf '%s\n' "$violations" | grep -v $'^R100\tcrates/server/migrations/027_session_stats_indexes.sql\tcrates/server/migrations/028_session_stats_indexes.sql$' || true)"
+fi
+
+if [ -n "$violations" ]; then
   echo "Existing migrations are immutable once merged to main." >&2
   echo "Add a new sequential migration instead of modifying, deleting, or renaming an existing one." >&2
   echo "" >&2

@@ -272,6 +272,7 @@ mod tests {
     async fn create_test_session(db: &StorageBackend) -> SessionId {
         db.create_session(CreateSessionRow {
             org_id: DEFAULT_ORG_ID,
+            app_id: None,
             harness_id: None,
             agent_id: None,
             agent_identity_id: None,

@@ -256,6 +256,22 @@ pub async fn get_by_public_id(
     }
 }
 
+/// Resolve app by internal ID. Returns None if not found or deleted.
+pub async fn get_by_internal_id(
+    db: &StorageBackend,
+    encryption: Option<&Arc<EncryptionService>>,
+    org_id: i64,
+    id: Uuid,
+) -> anyhow::Result<Option<App>> {
+    let row = db.get_app_by_id(org_id, id).await?;
+    match row {
+        Some(row) if row.status != "deleted" => {
+            Ok(Some(row_to_app(db, encryption, row, org_id).await))
+        }
+        _ => Ok(None),
+    }
+}
+
 /// Load a list of app rows into full App structs.
 pub async fn load_apps_list(
     db: &StorageBackend,

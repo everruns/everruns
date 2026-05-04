@@ -271,14 +271,7 @@ async fn run_agent(
                     content: vec![InputContentPart::text(trigger_content)],
                 },
                 controls: None,
-                metadata: Some(
-                    [
-                        ("ag_ui_thread_id".to_string(), Value::String(thread_tag)),
-                        ("ag_ui_run_id".to_string(), Value::String(run_tag)),
-                    ]
-                    .into_iter()
-                    .collect(),
-                ),
+                metadata: Some(ag_ui_message_metadata(&app, thread_tag, run_tag)),
                 tags: None,
                 external_actor: build_external_actor(trigger_name.as_ref()),
             },
@@ -377,6 +370,23 @@ async fn run_agent(
     ))
 }
 
+fn ag_ui_message_metadata(
+    app: &App,
+    thread_tag: String,
+    run_tag: String,
+) -> HashMap<String, Value> {
+    [
+        (
+            "_app_id".to_string(),
+            Value::String(app.public_id.to_string()),
+        ),
+        ("ag_ui_thread_id".to_string(), Value::String(thread_tag)),
+        ("ag_ui_run_id".to_string(), Value::String(run_tag)),
+    ]
+    .into_iter()
+    .collect()
+}
+
 struct SessionResolution {
     session: everruns_core::Session,
     is_new: bool,
@@ -433,7 +443,7 @@ async fn find_or_create_session(
 
     match state
         .db
-        .find_session_by_tags(app.org_id, routing_tags)
+        .find_app_session_by_tags(app.org_id, app.internal_id, routing_tags)
         .await?
     {
         Some(row) => {
@@ -472,11 +482,12 @@ async fn find_or_create_session(
             let title = format!("AG-UI thread {}", thread_id);
             let session = state
                 .session_service
-                .create(
+                .create_from_app(
                     &Caller::internal(app.org_id),
                     app.harness_id.uuid(),
                     app.agent_id.map(|agent_id| agent_id.uuid()),
                     app.agent_id,
+                    app.internal_id,
                     CreateSessionRequest {
                         harness_id: Some(app.harness_id),
                         harness_name: None,
@@ -1089,6 +1100,48 @@ mod tests {
             tool_call_ids: HashMap::new(),
             finished: false,
         }
+    }
+
+    fn test_app() -> App {
+        use everruns_core::typed_id::{AppId, HarnessId, PrincipalId};
+
+        let now = chrono::Utc::now();
+        App {
+            public_id: AppId::from_seed(1),
+            internal_id: Uuid::nil(),
+            org_id: 1,
+            name: "Test App".to_string(),
+            description: None,
+            harness_id: HarnessId::from_seed(2),
+            agent_id: None,
+            agent_identity_id: None,
+            owner_principal_id: PrincipalId::from_seed(3),
+            resolved_owner_user_id: None,
+            owner: None,
+            effective_owner: None,
+            channels: vec![],
+            status: AppStatus::Published,
+            published_at: None,
+            created_at: now,
+            updated_at: now,
+            archived_at: None,
+            deleted_at: None,
+        }
+    }
+
+    #[test]
+    fn ag_ui_message_metadata_includes_system_app_id() {
+        let app = test_app();
+        let metadata = ag_ui_message_metadata(&app, "thread-1".to_string(), "run-1".to_string());
+
+        assert_eq!(
+            metadata.get("_app_id"),
+            Some(&Value::String(app.public_id.to_string()))
+        );
+        assert_eq!(
+            metadata.get("ag_ui_thread_id"),
+            Some(&Value::String("thread-1".to_string()))
+        );
     }
 
     #[tokio::test]
