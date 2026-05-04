@@ -664,30 +664,34 @@ impl ReasonAtom {
         let resolved_capability_configs = assembled.resolved_capability_configs;
         let runtime_agent = assembled.runtime_agent;
 
-        // Arm streaming output guardrails contributed by capabilities. Each
-        // armed guardrail sees the fully assembled system prompt and its own
-        // per-capability config. Guardrails that decline to arm (e.g. the
-        // canary couldn't extract a sentence) are skipped here.
-        let guardrail_providers: Vec<(String, Arc<dyn crate::output_guardrail::OutputGuardrail>)> =
-            resolved_capability_configs
-                .iter()
-                .filter_map(|cfg| {
-                    let cap_id = cfg.capability_ref.as_str();
-                    let cap = self.capability_registry.get(cap_id)?;
-                    let guards = cap.output_guardrails();
-                    if guards.is_empty() {
-                        None
-                    } else {
-                        Some(
-                            guards
-                                .into_iter()
-                                .map(move |g| (cap_id.to_string(), g))
-                                .collect::<Vec<_>>(),
-                        )
-                    }
-                })
-                .flatten()
-                .collect();
+        // Collect streaming output guardrail providers contributed by enabled
+        // capabilities. Each tuple carries the contributing capability id, a
+        // borrow of that capability's per-agent config (so arming below doesn't
+        // need a second scan), and the provider itself. Capabilities that
+        // contribute no guardrails — the common case — are skipped at zero
+        // allocation cost.
+        let guardrail_providers: Vec<(
+            &str,
+            &serde_json::Value,
+            Arc<dyn crate::output_guardrail::OutputGuardrail>,
+        )> = resolved_capability_configs
+            .iter()
+            .filter_map(|cfg| {
+                let cap_id = cfg.capability_ref.as_str();
+                let cap = self.capability_registry.get(cap_id)?;
+                let guards = cap.output_guardrails();
+                if guards.is_empty() {
+                    return None;
+                }
+                Some(
+                    guards
+                        .into_iter()
+                        .map(move |g| (cap_id, &cfg.config, g))
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .flatten()
+            .collect();
 
         // 7. Create LLM driver using factory
         let llm_driver = self.create_llm_driver(&model_with_provider)?;
@@ -830,25 +834,21 @@ impl ReasonAtom {
         let streaming_event_context = EventContext::from_atom_context(context);
 
         // Arm output guardrails for this stream. Each guardrail sees the
-        // assembled system prompt and its own per-capability config; the
-        // returned per-stream `OutputGuardrailRun`s are evaluated after every
-        // text delta in the streaming loop. Capabilities that contribute no
-        // guardrails — the common case — produce an empty vec at zero cost.
+        // assembled system prompt and its own per-capability config (already
+        // borrowed in `guardrail_providers` above, so no second scan over
+        // `resolved_capability_configs`). Guardrails that decline to arm —
+        // e.g. the canary couldn't extract a long-enough sentence — are
+        // skipped, leaving the streaming hot path entirely free of work.
         let mut armed_guardrails: Vec<ArmedGuardrail> = Vec::new();
-        for (cap_id, provider) in &guardrail_providers {
-            let cfg = resolved_capability_configs
-                .iter()
-                .find(|c| c.capability_ref.as_str() == cap_id)
-                .map(|c| &c.config);
-            let empty_cfg = serde_json::Value::Object(Default::default());
+        for (cap_id, cfg, provider) in &guardrail_providers {
             let ctx = OutputGuardrailContext {
                 system_prompt: &runtime_agent.system_prompt,
-                config: cfg.unwrap_or(&empty_cfg),
+                config: cfg,
             };
             let guardrail_id = provider.id().to_string();
             if let Some(run) = provider.arm(&ctx) {
                 armed_guardrails.push(ArmedGuardrail {
-                    capability_id: cap_id.clone(),
+                    capability_id: (*cap_id).to_string(),
                     guardrail_id,
                     run,
                 });

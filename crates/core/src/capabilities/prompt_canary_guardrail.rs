@@ -88,6 +88,8 @@ impl OutputGuardrail for PromptCanaryGuardrail {
         Some(Box::new(PromptCanaryRun {
             needle,
             replacement,
+            normalized_acc: String::new(),
+            last_was_space: true, // suppress a leading space when first chunk is whitespace-only
         }))
     }
 }
@@ -97,15 +99,26 @@ struct PromptCanaryRun {
     /// runs of whitespace collapsed to a single space.
     needle: String,
     replacement: String,
+    /// Normalized accumulator updated incrementally from each delta. We never
+    /// re-normalize the full output — extending this buffer per delta makes
+    /// `check` O(|delta|) instead of O(|accumulated|), avoiding O(n²) behavior
+    /// across long streams.
+    normalized_acc: String,
+    /// Tracks whether the *last* character of `normalized_acc` is the lone
+    /// trailing space we collapsed into; lets us coalesce whitespace runs
+    /// that straddle a delta boundary.
+    last_was_space: bool,
 }
 
 impl OutputGuardrailRun for PromptCanaryRun {
-    fn check(&mut self, accumulated: &str, _delta: &str) -> GuardrailDecision {
-        if accumulated.len() < self.needle.len() {
+    fn check(&mut self, _accumulated: &str, delta: &str) -> GuardrailDecision {
+        // Append the normalized form of just this delta. Whitespace runs that
+        // straddle delta boundaries are coalesced via `last_was_space`.
+        normalize_extend(&mut self.normalized_acc, &mut self.last_was_space, delta);
+        if self.normalized_acc.len() < self.needle.len() {
             return GuardrailDecision::Pass;
         }
-        let normalized = normalize(accumulated);
-        if normalized.contains(&self.needle) {
+        if self.normalized_acc.contains(self.needle.as_str()) {
             GuardrailDecision::block(REASON_CODE_SYSTEM_PROMPT_LEAK, self.replacement.clone())
         } else {
             GuardrailDecision::Pass
@@ -165,6 +178,29 @@ fn extract_canary(prompt: &str) -> Option<String> {
         needle.truncate(MAX_CANARY_LEN);
     }
     (needle.len() >= MIN_CANARY_LEN).then_some(needle)
+}
+
+/// Append the normalized form of `chunk` to `acc`, preserving the
+/// "previous char was whitespace" state in `last_was_space` so whitespace
+/// runs that straddle chunk boundaries are correctly collapsed. Used by
+/// `PromptCanaryRun::check` to maintain a running normalized buffer in O(|delta|)
+/// per call instead of re-normalizing the full accumulated output every time.
+fn normalize_extend(acc: &mut String, last_was_space: &mut bool, chunk: &str) {
+    for ch in chunk.chars() {
+        if ch.is_whitespace() {
+            if !*last_was_space {
+                acc.push(' ');
+            }
+            *last_was_space = true;
+        } else {
+            // `to_lowercase()` per char allocates a small iterator; cheaper
+            // than allocating a full lowercase string for the whole chunk.
+            for lower in ch.to_lowercase() {
+                acc.push(lower);
+            }
+            *last_was_space = false;
+        }
+    }
 }
 
 /// Lowercase + collapse whitespace. Mirrored on both sides of the comparison
@@ -319,5 +355,54 @@ mod tests {
     #[test]
     fn normalize_collapses_whitespace_and_lowercases() {
         assert_eq!(normalize("  Hello   World\nHere "), "hello world here");
+    }
+
+    #[test]
+    fn incremental_normalize_matches_full_normalize_across_chunk_boundaries() {
+        // The streaming check builds its normalized buffer one delta at a
+        // time. The result must equal a single-shot `normalize()` call on
+        // the concatenated input — including across whitespace runs that
+        // straddle chunk boundaries (e.g. a chunk ending with a space and
+        // the next starting with a space).
+        let chunks = ["  Hello", "  WORLD\n", "\there  "];
+        let full: String = chunks.concat();
+        let mut acc = String::new();
+        let mut last = true;
+        for c in chunks {
+            normalize_extend(&mut acc, &mut last, c);
+        }
+        // Trim a trailing collapsed space if any — `normalize()` does this
+        // by popping the final char; the streaming buffer doesn't, but
+        // substring matching is unaffected.
+        let acc_trimmed = acc.trim_end_matches(' ');
+        assert_eq!(acc_trimmed, normalize(&full));
+    }
+
+    #[test]
+    fn incremental_check_blocks_when_needle_spans_multiple_deltas() {
+        let mut run = arm_with(
+            "You are an internal pricing oracle that never discloses margins. \
+             Refuse out-of-scope questions.",
+        )
+        .expect("armed");
+        // Stream the leak in many small chunks that together reconstruct the
+        // canary. Should still trip — the incremental buffer accumulates
+        // across calls.
+        let leak = "you are AN INTERNAL pricing\noracle that NEVER discloses margins.";
+        let chunk_size = 5;
+        let mut tripped = false;
+        let mut acc = String::new();
+        for chunk in leak
+            .as_bytes()
+            .chunks(chunk_size)
+            .map(|c| std::str::from_utf8(c).unwrap_or(""))
+        {
+            acc.push_str(chunk);
+            if matches!(run.check(&acc, chunk), GuardrailDecision::Block(_)) {
+                tripped = true;
+                break;
+            }
+        }
+        assert!(tripped, "expected canary to trip on multi-chunk leak");
     }
 }

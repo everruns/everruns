@@ -1011,11 +1011,13 @@ pub struct CollectedCapabilities {
     pub tool_definition_hooks: Vec<Arc<dyn ToolDefinitionHook>>,
     /// Hooks that inspect or transform model-produced tool calls.
     pub tool_call_hooks: Vec<Arc<dyn ToolCallHook>>,
-    /// Streaming output guardrails paired with the capability id that produced them.
-    /// The id is used to label the `output.message.replaced` event.
-    pub output_guardrails: Vec<(String, Arc<dyn crate::output_guardrail::OutputGuardrail>)>,
     /// Scoped remote MCP servers contributed by capabilities.
     pub mcp_servers: ScopedMcpServers,
+    // NOTE: output guardrails are intentionally NOT collected here. They are
+    // re-derived per turn in `ReasonAtom` directly from the resolved capability
+    // configs + registry, because they need the assembled system prompt at
+    // arming time (which only exists once the runtime agent is built). Storing
+    // them here would duplicate that work for callers that don't run a stream.
 }
 
 impl CollectedCapabilities {
@@ -1463,8 +1465,6 @@ pub async fn collect_capabilities_with_configs(
     let mut prompt_cache: Option<crate::llm_driver_registry::PromptCacheConfig> = None;
     let mut tool_definition_hooks: Vec<Arc<dyn ToolDefinitionHook>> = Vec::new();
     let mut tool_call_hooks: Vec<Arc<dyn ToolCallHook>> = Vec::new();
-    let mut output_guardrails: Vec<(String, Arc<dyn crate::output_guardrail::OutputGuardrail>)> =
-        Vec::new();
     let mut mcp_servers = ScopedMcpServers::default();
 
     for cap_config in capability_configs {
@@ -1487,9 +1487,8 @@ pub async fn collect_capabilities_with_configs(
             tools.extend(capability.tools_with_config(&cap_config.config));
             tool_definition_hooks.extend(capability.tool_definition_hooks());
             tool_call_hooks.extend(capability.tool_call_hooks());
-            for guardrail in capability.output_guardrails() {
-                output_guardrails.push((cap_id.to_string(), guardrail));
-            }
+            // Output guardrails are NOT collected here — see CollectedCapabilities
+            // for rationale. ReasonAtom re-derives them at stream-arming time.
 
             // Collect tool definitions, propagating capability category if not already set
             let cap_category = capability.category();
@@ -1576,7 +1575,6 @@ pub async fn collect_capabilities_with_configs(
         prompt_cache,
         tool_definition_hooks,
         tool_call_hooks,
-        output_guardrails,
         mcp_servers,
     }
 }

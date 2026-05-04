@@ -329,7 +329,7 @@ Streaming output was withheld by an output guardrail (see `specs/capabilities.md
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `turn_id` | UUID | yes | Turn the replaced output belongs to |
+| `turn_id` | TurnId (string, prefixed UUIDv7 — e.g. `"turn_01933b5a..."`) | yes | Turn the replaced output belongs to |
 | `guardrail_capability_id` | string | yes | Capability that contributed the guardrail (e.g. `"prompt_canary_guardrail"`) |
 | `guardrail_id` | string | yes | Stable id of the guardrail itself (e.g. `"prompt_canary"`) |
 | `reason_code` | string | yes | Stable machine-readable reason (e.g. `"system_prompt_leak"`). Clients localize their copy from this rather than `replacement` |
