@@ -528,100 +528,116 @@ impl AgentRunner for DurableRunner {
         };
         let workflow_id = session_id.uuid();
         let input_json = serde_json::to_value(&input)?;
-        let mut store = self.store.lock().await;
+        let notify_activity = {
+            let mut store = self.store.lock().await;
 
-        match store.try_claim_workflow_for_new_turn(workflow_id).await {
-            Ok(true) => {
-                if let Err(error) = store
-                    .enqueue_task(
-                        workflow_id,
-                        format!("input_{}", Uuid::now_v7()),
-                        "process_input".to_string(),
-                        input_json,
-                    )
-                    .await
-                {
-                    let _ = store
-                        .update_workflow_status(workflow_id, WorkflowStatus::Completed, None, None)
-                        .await;
-                    return Err(anyhow::anyhow!("Failed to enqueue task: {error}"));
+            match store.try_claim_workflow_for_new_turn(workflow_id).await {
+                Ok(true) => {
+                    if let Err(error) = store
+                        .enqueue_task(
+                            workflow_id,
+                            format!("input_{}", Uuid::now_v7()),
+                            "process_input".to_string(),
+                            input_json,
+                        )
+                        .await
+                    {
+                        let _ = store
+                            .update_workflow_status(
+                                workflow_id,
+                                WorkflowStatus::Completed,
+                                None,
+                                None,
+                            )
+                            .await;
+                        return Err(anyhow::anyhow!("Failed to enqueue task: {error}"));
+                    }
+                    Some("process_input")
                 }
-                self.notify_task_available("process_input").await;
-            }
-            Ok(false) => {
-                let signal = WorkflowSignal::new(
-                    everruns_durable::signal_types::USER_MESSAGE,
-                    serde_json::json!({
-                        "input_message_id": input_message_id.to_string(),
-                        "org_id": org_id,
-                        "harness_id": harness_id.to_string(),
-                        "agent_id": agent_id.map(|id| id.to_string()),
-                    }),
-                );
-                if let Err(error) = store.send_signal(workflow_id, signal).await {
-                    tracing::warn!(
-                        session_id = %session_id,
-                        %error,
-                        "failed to send steering signal"
+                Ok(false) => {
+                    let signal = WorkflowSignal::new(
+                        everruns_durable::signal_types::USER_MESSAGE,
+                        serde_json::json!({
+                            "input_message_id": input_message_id.to_string(),
+                            "org_id": org_id,
+                            "harness_id": harness_id.to_string(),
+                            "agent_id": agent_id.map(|id| id.to_string()),
+                        }),
                     );
+                    if let Err(error) = store.send_signal(workflow_id, signal).await {
+                        tracing::warn!(
+                            session_id = %session_id,
+                            %error,
+                            "failed to send steering signal"
+                        );
+                    }
+                    None
                 }
-                return Ok(());
-            }
-            Err(error) => {
-                let err = error.to_string();
-                if !err.contains("not found") && !err.contains("NOT_FOUND") {
-                    return Err(anyhow::anyhow!("Failed to check workflow status: {error}"));
+                Err(error) => {
+                    let err = error.to_string();
+                    if !err.contains("not found") && !err.contains("NOT_FOUND") {
+                        return Err(anyhow::anyhow!("Failed to check workflow status: {error}"));
+                    }
+
+                    store
+                        .create_workflow(workflow_id, "turn_workflow", input_json.clone())
+                        .await
+                        .map_err(|e| anyhow::anyhow!("Failed to create workflow: {e}"))?;
+
+                    let activity_id = format!("input_{}", Uuid::now_v7());
+                    let sequence = store
+                        .append_events(
+                            workflow_id,
+                            0,
+                            vec![WorkflowEvent::WorkflowStarted {
+                                input: input_json.clone(),
+                            }],
+                        )
+                        .await
+                        .map_err(|e| {
+                            anyhow::anyhow!("Failed to append WorkflowStarted event: {e}")
+                        })?;
+
+                    store
+                        .enqueue_task(
+                            workflow_id,
+                            activity_id.clone(),
+                            "process_input".to_string(),
+                            input_json.clone(),
+                        )
+                        .await
+                        .map_err(|e| anyhow::anyhow!("Failed to enqueue task: {e}"))?;
+
+                    store
+                        .update_workflow_status(workflow_id, WorkflowStatus::Running, None, None)
+                        .await
+                        .map_err(|e| {
+                            anyhow::anyhow!("Failed to set new workflow to Running: {e}")
+                        })?;
+
+                    let _ = store
+                        .append_events(
+                            workflow_id,
+                            sequence,
+                            vec![WorkflowEvent::ActivityScheduled {
+                                activity_id,
+                                activity_type: "process_input".to_string(),
+                                input: input_json,
+                                options: everruns_durable::ActivityOptions::default(),
+                            }],
+                        )
+                        .await
+                        .map_err(|e| {
+                            anyhow::anyhow!("Failed to append ActivityScheduled event: {e}")
+                        })?;
+
+                    Some("process_input")
                 }
-
-                store
-                    .create_workflow(workflow_id, "turn_workflow", input_json.clone())
-                    .await
-                    .map_err(|e| anyhow::anyhow!("Failed to create workflow: {e}"))?;
-
-                let activity_id = format!("input_{}", Uuid::now_v7());
-                let sequence = store
-                    .append_events(
-                        workflow_id,
-                        0,
-                        vec![WorkflowEvent::WorkflowStarted {
-                            input: input_json.clone(),
-                        }],
-                    )
-                    .await
-                    .map_err(|e| anyhow::anyhow!("Failed to append WorkflowStarted event: {e}"))?;
-
-                store
-                    .enqueue_task(
-                        workflow_id,
-                        activity_id.clone(),
-                        "process_input".to_string(),
-                        input_json.clone(),
-                    )
-                    .await
-                    .map_err(|e| anyhow::anyhow!("Failed to enqueue task: {e}"))?;
-                self.notify_task_available("process_input").await;
-
-                store
-                    .update_workflow_status(workflow_id, WorkflowStatus::Running, None, None)
-                    .await
-                    .map_err(|e| anyhow::anyhow!("Failed to set new workflow to Running: {e}"))?;
-
-                let _ = store
-                    .append_events(
-                        workflow_id,
-                        sequence,
-                        vec![WorkflowEvent::ActivityScheduled {
-                            activity_id,
-                            activity_type: "process_input".to_string(),
-                            input: input_json,
-                            options: everruns_durable::ActivityOptions::default(),
-                        }],
-                    )
-                    .await
-                    .map_err(|e| {
-                        anyhow::anyhow!("Failed to append ActivityScheduled event: {e}")
-                    })?;
             }
+        };
+
+        if let Some(activity_type) = notify_activity {
+            self.notify_task_available(activity_type).await;
         }
 
         Ok(())
@@ -674,6 +690,7 @@ impl AgentRunner for DurableRunner {
                 .await;
             return Err(anyhow::anyhow!("Failed to enqueue reason task: {error}"));
         }
+        drop(store);
         self.notify_task_available("reason").await;
 
         Ok(())

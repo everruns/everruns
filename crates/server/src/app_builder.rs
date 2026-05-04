@@ -362,7 +362,7 @@ impl ServerAppBuilder {
                 .expect("PostgreSQL backend should have pool")
                 .clone();
             task_broadcaster = crate::task_notifications::TaskBroadcaster::from_env(
-                Some(&database_url),
+                Some(database_url.as_str()),
                 database_unpooled_url.as_deref(),
             )
             .await
