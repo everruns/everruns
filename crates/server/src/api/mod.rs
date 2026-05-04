@@ -32,6 +32,7 @@ pub mod messages;
 pub mod notifications;
 pub mod organizations;
 pub mod prometheus;
+pub mod public;
 pub mod resolver;
 pub mod schedules;
 pub mod session_databases;

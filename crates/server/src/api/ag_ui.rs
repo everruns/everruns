@@ -48,6 +48,7 @@ use axum::{
 use everruns_core::events::{
     OutputMessageCompletedData, OutputMessageDeltaData, ReasonThinkingCompletedData,
     ReasonThinkingDeltaData, ReasonThinkingStartedData, ToolCompletedData, ToolStartedData,
+    TurnFailedData,
 };
 use everruns_core::message_retriever::InputMessage as StoredInputMessage;
 use everruns_core::{
@@ -65,6 +66,7 @@ use crate::api::common::ErrorResponse;
 use crate::api::messages::{
     CreateMessageRequest, InputContentPart, InputMessage, MessageRole as ApiMessageRole,
 };
+use crate::api::public::PublicError;
 use crate::api::sessions::CreateSessionRequest;
 use crate::api::sse::SseConnectionTracker;
 use crate::domains::messages::{CreateMessageContext, MessageService};
@@ -319,11 +321,7 @@ async fn run_agent(
             let Some(event) = state.subscription.recv().await else {
                 state
                     .queue
-                    .push_back(AgUiEvent::RunError(AgUiRunErrorEvent {
-                        base: agui_base_event(),
-                        message: "Event stream closed before the run finished".to_string(),
-                        code: Some("stream_closed".to_string()),
-                    }));
+                    .push_back(public_run_error_event(PublicError::fallback()));
                 state.finished = true;
                 continue;
             };
@@ -842,21 +840,31 @@ fn translate_event(state: &mut AgUiStreamState, event: &everruns_core::Event) {
                 }));
             state.finished = true;
         }
-        "turn.failed" | "turn.cancelled" => {
-            let event_data = serde_json::to_value(&event.data).unwrap_or_default();
-            let message = event_data
-                .get("error")
-                .and_then(Value::as_str)
-                .or_else(|| event_data.get("message").and_then(Value::as_str))
-                .unwrap_or("Run failed");
+        // Cancellation is a deliberate terminal state (typically client-initiated),
+        // not a server fault. Emit RUN_FINISHED so AG-UI clients see a clean end
+        // rather than a misleading internal_error. The cancellation reason lives
+        // in the internal session events for operators.
+        "turn.cancelled" if !state.finished => {
+            state
+                .queue
+                .push_back(AgUiEvent::RunFinished(AgUiRunFinishedEvent {
+                    base: agui_base_event(),
+                    thread_id: state.thread_id.clone(),
+                    run_id: state.run_id.clone(),
+                    result: None,
+                }));
+            state.finished = true;
+        }
+        "turn.failed" => {
+            // AG-UI is a public, app-scoped channel — see specs/public-endpoints.md.
+            // Sanitize via the shared `PublicError` so internal codes, provider
+            // strings, model IDs, and quota state never reach the wire.
+            let internal_code = parse_event_data::<TurnFailedData>(event)
+                .ok()
+                .and_then(|data| data.error_code);
             if !state.finished {
-                state
-                    .queue
-                    .push_back(AgUiEvent::RunError(AgUiRunErrorEvent {
-                        base: agui_base_event(),
-                        message: message.to_string(),
-                        code: None,
-                    }));
+                let error = PublicError::from_internal_code(internal_code.as_deref());
+                state.queue.push_back(public_run_error_event(error));
                 state.finished = true;
             }
         }
@@ -884,6 +892,17 @@ fn agui_base_event() -> AgUiBaseEvent {
         timestamp: None,
         raw_event: None,
     }
+}
+
+/// Adapt a sanitized `PublicError` into an AG-UI `RunError` event. All public
+/// error emission on this endpoint must go through here so the contract from
+/// `specs/public-endpoints.md` is enforced in one place.
+fn public_run_error_event(error: PublicError) -> AgUiEvent {
+    AgUiEvent::RunError(AgUiRunErrorEvent {
+        base: agui_base_event(),
+        message: error.message.to_string(),
+        code: Some(error.code.as_str().to_string()),
+    })
 }
 
 fn agui_sse(event: &AgUiEvent) -> SseEvent {
@@ -982,6 +1001,8 @@ mod tests {
     use super::*;
     use ag_ui_core::event::EventType as AgUiEventType;
     use chrono::Duration as ChronoDuration;
+    use everruns_core::events::TurnFailedData;
+    use everruns_core::user_facing_error_codes;
     use everruns_core::{
         Event, EventContext, Message, MessageId, OutputMessageCompletedData,
         OutputMessageDeltaData, SessionId, ToolCall, ToolCompletedData, ToolStartedData, TurnId,
@@ -1187,6 +1208,211 @@ mod tests {
         match &state.queue[4] {
             AgUiEvent::TextMessageStart(event) => assert_eq!(event.message_id, expected_message_id),
             _ => panic!("expected text start event"),
+        }
+    }
+
+    fn turn_failed_event(state: &AgUiStreamState, data: TurnFailedData) -> Event {
+        let input_message_id = MessageId::parse(&state.input_message_id).unwrap();
+        Event::new(
+            SessionId::from_uuid(state.session_id),
+            EventContext::turn(data.turn_id, input_message_id),
+            data,
+        )
+    }
+
+    fn assert_run_error(state: &AgUiStreamState, expected_message: &str, expected_code: &str) {
+        assert_eq!(state.queue.len(), 1);
+        match state.queue.front() {
+            Some(AgUiEvent::RunError(event)) => {
+                assert_eq!(event.message, expected_message);
+                assert_eq!(event.code.as_deref(), Some(expected_code));
+            }
+            other => panic!("expected RunError, got {other:?}"),
+        }
+        assert!(state.finished);
+    }
+
+    #[tokio::test]
+    async fn turn_failed_rate_limit_returns_generic_message() {
+        let mut state = test_stream_state().await;
+        let event = turn_failed_event(
+            &state,
+            TurnFailedData {
+                turn_id: TurnId::new(),
+                error: "OpenAI API error (429): {\"error\":{\"message\":\"Rate limit reached for gpt-4o in organization org-redacted on requests per min (RPM): Limit 500\",\"code\":\"rate_limit_exceeded\"}}".to_string(),
+                error_code: Some(user_facing_error_codes::PROVIDER_RATE_LIMITED.to_string()),
+                error_fields: None,
+            },
+        );
+
+        translate_event(&mut state, &event);
+
+        assert_run_error(
+            &state,
+            "The service is busy right now. Please try again in a moment.",
+            "rate_limited",
+        );
+    }
+
+    #[tokio::test]
+    async fn turn_failed_provider_unavailable_returns_generic_message() {
+        let mut state = test_stream_state().await;
+        let event = turn_failed_event(
+            &state,
+            TurnFailedData {
+                turn_id: TurnId::new(),
+                error: "OpenAI API error (503): server overloaded".to_string(),
+                error_code: Some(user_facing_error_codes::PROVIDER_UNAVAILABLE.to_string()),
+                error_fields: None,
+            },
+        );
+
+        translate_event(&mut state, &event);
+
+        assert_run_error(
+            &state,
+            "The service is temporarily unavailable. Please try again shortly.",
+            "service_unavailable",
+        );
+    }
+
+    #[tokio::test]
+    async fn turn_failed_zero_credits_does_not_leak_quota_details() {
+        // OpenAI surfaces "no credits" as 429 + insufficient_quota; classifier
+        // currently maps it to PROVIDER_RATE_LIMITED. Either way, the public
+        // channel must not echo the raw provider body.
+        let mut state = test_stream_state().await;
+        let raw_error = "OpenAI API error (429): {\"error\":{\"message\":\"You exceeded your current quota, please check your plan and billing details.\",\"type\":\"insufficient_quota\",\"code\":\"insufficient_quota\"}}";
+        let event = turn_failed_event(
+            &state,
+            TurnFailedData {
+                turn_id: TurnId::new(),
+                error: raw_error.to_string(),
+                error_code: Some(user_facing_error_codes::PROVIDER_RATE_LIMITED.to_string()),
+                error_fields: None,
+            },
+        );
+
+        translate_event(&mut state, &event);
+
+        match state.queue.front() {
+            Some(AgUiEvent::RunError(event)) => {
+                assert!(
+                    !event.message.contains("OpenAI")
+                        && !event.message.contains("quota")
+                        && !event.message.contains("429"),
+                    "public message must not leak provider details: {}",
+                    event.message
+                );
+                assert!(!event.message.to_lowercase().contains("contact"));
+                assert!(!event.message.to_lowercase().contains("admin"));
+                assert!(!event.message.to_lowercase().contains("support"));
+            }
+            other => panic!("expected RunError, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn turn_failed_misconfigured_maps_to_service_unavailable() {
+        let mut state = test_stream_state().await;
+        let event = turn_failed_event(
+            &state,
+            TurnFailedData {
+                turn_id: TurnId::new(),
+                error: "OpenAI API error (401): invalid api key".to_string(),
+                error_code: Some(user_facing_error_codes::PROVIDER_MISCONFIGURED.to_string()),
+                error_fields: None,
+            },
+        );
+
+        translate_event(&mut state, &event);
+
+        assert_run_error(
+            &state,
+            "The service is temporarily unavailable. Please try again shortly.",
+            "service_unavailable",
+        );
+    }
+
+    #[tokio::test]
+    async fn turn_failed_unknown_code_falls_back_to_internal_error() {
+        let mut state = test_stream_state().await;
+        let event = turn_failed_event(
+            &state,
+            TurnFailedData {
+                turn_id: TurnId::new(),
+                error: "stack trace: thread 'tokio-runtime-worker' panicked at 'oops'".to_string(),
+                error_code: None,
+                error_fields: None,
+            },
+        );
+
+        translate_event(&mut state, &event);
+
+        assert_run_error(
+            &state,
+            "Something went wrong. Please try again.",
+            "internal_error",
+        );
+    }
+
+    // Note: the exhaustive "never leaks internal concepts" property is
+    // verified in crates/server/src/api/public.rs::tests, since the
+    // sanitization logic now lives there.
+
+    #[tokio::test]
+    async fn turn_cancelled_emits_run_finished_not_run_error() {
+        // Cancellations are a deliberate terminal state. Public AG-UI clients
+        // must see a clean RUN_FINISHED, not an internal_error.
+        use everruns_core::TurnCancelledData;
+
+        let mut state = test_stream_state().await;
+        let turn_id = TurnId::new();
+        let input_message_id = MessageId::parse(&state.input_message_id).unwrap();
+        let event = Event::new(
+            SessionId::from_uuid(state.session_id),
+            EventContext::turn(turn_id, input_message_id),
+            TurnCancelledData {
+                turn_id,
+                reason: Some("client cancelled".to_string()),
+                usage: None,
+            },
+        );
+
+        translate_event(&mut state, &event);
+
+        assert_eq!(state.queue.len(), 1);
+        match state.queue.front() {
+            Some(AgUiEvent::RunFinished(_)) => {}
+            other => panic!("expected RunFinished for cancellation, got {other:?}"),
+        }
+        assert!(state.finished);
+    }
+
+    // Regression test for the stream_closed branch in run_agent. We exercise the
+    // helper directly (the run_agent stream_closed path constructs the same
+    // event) so the public RUN_ERROR contract for unexpected stream termination
+    // stays pinned to PublicError::fallback() — internal_error / generic message.
+    #[test]
+    fn stream_closed_falls_back_to_internal_error() {
+        let event = public_run_error_event(PublicError::fallback());
+        match event {
+            AgUiEvent::RunError(event) => {
+                assert_eq!(event.code.as_deref(), Some("internal_error"));
+                assert_eq!(event.message, "Something went wrong. Please try again.");
+                let lower = event.message.to_lowercase();
+                assert!(
+                    !lower.contains("stream"),
+                    "leaked stream detail: {}",
+                    event.message
+                );
+                assert!(
+                    !lower.contains("subscription"),
+                    "leaked subscription detail: {}",
+                    event.message
+                );
+            }
+            other => panic!("expected RunError, got {other:?}"),
         }
     }
 }
