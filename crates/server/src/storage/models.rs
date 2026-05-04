@@ -1830,6 +1830,11 @@ pub struct BudgetRow {
     pub soft_limit: Option<f64>,
     pub balance: f64,
     pub period: Option<sqlx::types::JsonValue>,
+    /// When the current `period` window started. NULL for one-shot budgets.
+    /// Set on insert when `period` is provided, refreshed when the period
+    /// rolls over.
+    #[sqlx(default)]
+    pub period_started_at: Option<DateTime<Utc>>,
     pub metadata: Option<sqlx::types::JsonValue>,
     pub status: String,
     pub created_at: DateTime<Utc>,

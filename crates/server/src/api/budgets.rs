@@ -4,8 +4,9 @@
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::budgets::BudgetService;
 use crate::domains::budgets::{
-    CheckBudget, CheckSessionBudgets, CreateBudget, DeleteBudget, GetBudget, ListBudgetLedger,
-    ListBudgets, ListSessionBudgets, ResumeSessionBudgets, TopUpBudget, UpdateBudgetCmd,
+    CheckBudget, CheckSessionBudgets, CreateBudget, DeleteBudget, GetBudget, ListAppBudgets,
+    ListBudgetLedger, ListBudgets, ListSessionBudgets, ResumeSessionBudgets, TopUpBudget,
+    UpdateBudgetCmd,
 };
 use crate::domains::common::{Command, Ctx};
 use crate::storage::StorageBackend;
@@ -135,6 +136,7 @@ pub fn routes(state: AppState) -> Router {
             get(check_session_budgets),
         )
         .route("/v1/sessions/{session_id}/resume", post(resume_session))
+        .route("/v1/apps/{app_id}/budgets", get(list_app_budgets))
         .with_state(state)
 }
 
@@ -269,6 +271,32 @@ async fn check_session_budgets(
             .run(&state.ctx(&org))
             .await?,
     ))
+}
+
+#[derive(Debug, Clone, Deserialize, IntoParams)]
+pub struct ListAppBudgetsQuery {
+    #[serde(default = "default_include_channels")]
+    pub include_channels: bool,
+}
+
+fn default_include_channels() -> bool {
+    true
+}
+
+async fn list_app_budgets(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(app_id): Path<String>,
+    Query(query): Query<ListAppBudgetsQuery>,
+) -> Result<Json<Vec<WithUrls<Budget>>>, ApiError> {
+    let budgets = ListAppBudgets {
+        app_id,
+        include_channels: query.include_channels,
+    }
+    .run(&state.ctx(&org))
+    .await?;
+    let urls = UrlBuilder::from_auth_config(&state.auth.config);
+    Ok(Json(urls.wrap_vec(budgets)))
 }
 
 async fn resume_session(

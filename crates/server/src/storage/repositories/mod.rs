@@ -9,6 +9,7 @@ mod apps;
 mod audit_logs;
 mod auth;
 mod budgets;
+pub use budgets::BudgetSubjectLookup;
 mod evals;
 mod events;
 mod harnesses;

@@ -205,6 +205,25 @@ impl SessionService {
         if !caller.is_internal && req.tags.iter().any(|tag| tag.starts_with("__internal:")) {
             anyhow::bail!("Tags with '__internal:' prefix are reserved");
         }
+        // THREAT[TM-AUTHZ-009]: `app:<id>`, `app_channel:<id>` and the legacy
+        // `slack:app:<id>` tags all drive budget hierarchy attribution (see
+        // specs/budgeting.md and `extract_app_subjects` in
+        // `crates/server/src/domains/budgets/service.rs`). Allowing external
+        // callers to forge any of them would let an org member opt their
+        // session into another app's budget — corrupting spend attribution and
+        // potentially exhausting that app's cap. Only the apps and Slack
+        // domains (both using `Caller::internal`) are permitted to stamp them.
+        if !caller.is_internal
+            && req.tags.iter().any(|tag| {
+                tag.starts_with("app:")
+                    || tag.starts_with("app_channel:")
+                    || tag.starts_with("slack:app:")
+            })
+        {
+            anyhow::bail!(
+                "Tags with 'app:', 'app_channel:', or 'slack:app:' prefix are reserved for internal subsystems"
+            );
+        }
 
         let owner_principal = self
             .principal_service
@@ -701,6 +720,21 @@ impl SessionService {
                 .is_some_and(|tags| tags.iter().any(|tag| tag.starts_with("__internal:")))
         {
             anyhow::bail!("Tags with '__internal:' prefix are reserved");
+        }
+        // THREAT[TM-AUTHZ-009]: same reservation enforced on update — see
+        // create() for the rationale. Includes the legacy `slack:app:` tag.
+        if !caller.is_internal
+            && req.tags.as_ref().is_some_and(|tags| {
+                tags.iter().any(|tag| {
+                    tag.starts_with("app:")
+                        || tag.starts_with("app_channel:")
+                        || tag.starts_with("slack:app:")
+                })
+            })
+        {
+            anyhow::bail!(
+                "Tags with 'app:', 'app_channel:', or 'slack:app:' prefix are reserved for internal subsystems"
+            );
         }
 
         let agent_identity_id = match req.agent_identity_id {
@@ -2085,5 +2119,114 @@ mod tests {
             err.to_string()
                 .contains("Tags with '__internal:' prefix are reserved")
         );
+    }
+
+    #[tokio::test]
+    async fn update_rejects_reserved_app_tags_for_external_callers() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let session_service = SessionService::new(db.clone());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+        let ctx = test_ctx(caller.clone(), db.clone());
+
+        let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+            name: "harness".to_string(),
+            display_name: Some("Harness".to_string()),
+            description: None,
+            system_prompt: "Harness prompt".to_string(),
+            parent_harness_id: None,
+            default_model_id: None,
+            tags: vec![],
+            capabilities: vec![],
+            initial_files: vec![],
+            mcp_servers: Default::default(),
+            network_access: None,
+        })
+        .execute(&ctx)
+        .await
+        .unwrap();
+
+        let session = session_service
+            .create(
+                &caller,
+                harness.id.uuid(),
+                None,
+                None,
+                build_create_request(harness.id, None, None),
+            )
+            .await
+            .unwrap();
+
+        for forbidden in [
+            vec!["app:app_other".to_string()],
+            vec!["app_channel:appchan_other".to_string()],
+            vec!["slack:app:app_legacy_other".to_string()],
+        ] {
+            let err = session_service
+                .update(
+                    &external_caller(DEFAULT_ORG_ID),
+                    session.id.uuid(),
+                    UpdateSessionRequest {
+                        title: None,
+                        agent_identity_id: UpdateField::Unchanged,
+                        locale: None,
+                        tags: Some(forbidden.clone()),
+                    },
+                )
+                .await
+                .unwrap_err();
+            assert!(
+                err.to_string().contains("reserved for internal subsystems"),
+                "got: {err} for tags: {forbidden:?}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn create_rejects_reserved_app_tags_for_external_callers() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let session_service = SessionService::new(db.clone());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+        let ctx = test_ctx(caller.clone(), db.clone());
+
+        let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+            name: "harness".to_string(),
+            display_name: Some("Harness".to_string()),
+            description: None,
+            system_prompt: "Harness prompt".to_string(),
+            parent_harness_id: None,
+            default_model_id: None,
+            tags: vec![],
+            capabilities: vec![],
+            initial_files: vec![],
+            mcp_servers: Default::default(),
+            network_access: None,
+        })
+        .execute(&ctx)
+        .await
+        .unwrap();
+
+        for forbidden in [
+            "app:app_someone_else",
+            "app_channel:appchan_someone_else",
+            "slack:app:app_legacy_someone_else",
+        ] {
+            let mut req = build_create_request(harness.id, None, None);
+            req.tags = vec![forbidden.to_string()];
+
+            let err = session_service
+                .create(
+                    &external_caller(DEFAULT_ORG_ID),
+                    harness.id.uuid(),
+                    None,
+                    None,
+                    req,
+                )
+                .await
+                .unwrap_err();
+            assert!(
+                err.to_string().contains("reserved for internal subsystems"),
+                "got: {err} for tag: {forbidden}"
+            );
+        }
     }
 }

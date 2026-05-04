@@ -27,6 +27,16 @@ async fn create_session_with_owner(
     agent_id: Option<AgentId>,
     resolved_owner_user_id: Option<Uuid>,
 ) -> SessionRow {
+    create_session_with_owner_and_tags(db, org_id, agent_id, resolved_owner_user_id, vec![]).await
+}
+
+async fn create_session_with_owner_and_tags(
+    db: &Arc<StorageBackend>,
+    org_id: i64,
+    agent_id: Option<AgentId>,
+    resolved_owner_user_id: Option<Uuid>,
+    tags: Vec<String>,
+) -> SessionRow {
     db.create_session(CreateSessionRow {
         org_id,
         harness_id: None,
@@ -36,7 +46,7 @@ async fn create_session_with_owner(
         resolved_owner_user_id,
         title: Some("Budget test session".into()),
         locale: None,
-        tags: vec![],
+        tags,
         model_id: None,
         capabilities: serde_json::json!({}),
         tools: serde_json::json!([]),
@@ -64,6 +74,7 @@ fn make_budget_row(limit: f64, balance: f64, soft_limit: Option<f64>, currency: 
         soft_limit,
         balance,
         period: None,
+        period_started_at: None,
         metadata: None,
         status: "active".into(),
         created_at: chrono::Utc::now(),
@@ -914,6 +925,144 @@ async fn test_list_budgets_for_session_hierarchy_resolves_user_and_org_from_sess
     assert!(subjects.contains(&("agent", agent_id.to_string().as_str())));
     assert!(subjects.contains(&("user", user_id.to_string().as_str())));
     assert!(subjects.contains(&("org", org_public_id.as_str())));
+}
+
+#[tokio::test]
+async fn test_list_budgets_for_session_hierarchy_includes_app_and_channel_from_tags() {
+    let (svc, db) = make_service();
+    let session = create_session_with_owner_and_tags(
+        &db,
+        1,
+        None,
+        None,
+        vec![
+            "app:app_for_budget_test".to_string(),
+            "app_channel:appchan_for_budget_test".to_string(),
+        ],
+    )
+    .await;
+    let session_public_id = session.id.to_string();
+
+    db.create_budget(CreateBudgetRow {
+        org_id: session.org_id,
+        subject_type: "app".into(),
+        subject_id: "app_for_budget_test".into(),
+        currency: "usd".into(),
+        limit: 50.0,
+        soft_limit: None,
+        period: None,
+        metadata: None,
+    })
+    .await
+    .unwrap();
+    db.create_budget(CreateBudgetRow {
+        org_id: session.org_id,
+        subject_type: "app_channel".into(),
+        subject_id: "appchan_for_budget_test".into(),
+        currency: "usd".into(),
+        limit: 5.0,
+        soft_limit: None,
+        period: None,
+        metadata: None,
+    })
+    .await
+    .unwrap();
+
+    let budgets = svc
+        .list_budgets_for_session_hierarchy(session.org_id, &session_public_id, None)
+        .await;
+    let subjects: Vec<&str> = budgets.iter().map(|b| b.subject_type.as_str()).collect();
+    assert!(subjects.contains(&"app"), "subjects: {subjects:?}");
+    assert!(subjects.contains(&"app_channel"), "subjects: {subjects:?}");
+}
+
+#[tokio::test]
+async fn test_period_resets_balance_after_window_elapses() {
+    let (svc, db) = make_service();
+    // Zero-second sliding window — rollover triggers on the next check
+    // without any wall-clock sleeps. Keeps the test deterministic and fast.
+    let budget = db
+        .create_budget(CreateBudgetRow {
+            org_id: 1,
+            subject_type: "session".into(),
+            subject_id: "session_period".into(),
+            currency: "tokens".into(),
+            limit: 100.0,
+            soft_limit: None,
+            period: Some(serde_json::json!({"type": "duration", "seconds": 0})),
+            metadata: None,
+        })
+        .await
+        .unwrap();
+
+    // Burn the budget down to zero.
+    db.create_budget_ledger_entry(CreateBudgetLedgerRow {
+        budget_id: budget.id,
+        amount: 100.0,
+        meter_source: "llm_tokens".into(),
+        ref_type: None,
+        ref_id: None,
+        session_id: None,
+        description: None,
+    })
+    .await
+    .unwrap();
+    let before = db.get_budget(1, budget.id).await.unwrap().unwrap();
+    assert_eq!(before.balance, 0.0);
+
+    let refreshed = svc.maybe_reset_period(before.clone()).await;
+    assert_eq!(
+        refreshed.balance, 100.0,
+        "period rollover should reset balance to limit"
+    );
+    assert!(refreshed.period_started_at.is_some());
+    assert!(
+        refreshed.period_started_at.unwrap() >= before.period_started_at.unwrap(),
+        "rollover should advance period_started_at"
+    );
+}
+
+#[tokio::test]
+async fn test_period_does_not_reset_inside_window() {
+    let (svc, db) = make_service();
+    // Long window — same-tick check must NOT reset.
+    let budget = db
+        .create_budget(CreateBudgetRow {
+            org_id: 1,
+            subject_type: "session".into(),
+            subject_id: "session_period_long".into(),
+            currency: "tokens".into(),
+            limit: 100.0,
+            soft_limit: None,
+            period: Some(serde_json::json!({"type": "duration", "seconds": 3_600})),
+            metadata: None,
+        })
+        .await
+        .unwrap();
+
+    db.create_budget_ledger_entry(CreateBudgetLedgerRow {
+        budget_id: budget.id,
+        amount: 40.0,
+        meter_source: "llm_tokens".into(),
+        ref_type: None,
+        ref_id: None,
+        session_id: None,
+        description: None,
+    })
+    .await
+    .unwrap();
+    let snap = db.get_budget(1, budget.id).await.unwrap().unwrap();
+    assert_eq!(snap.balance, 60.0);
+
+    let refreshed = svc.maybe_reset_period(snap.clone()).await;
+    assert_eq!(
+        refreshed.balance, 60.0,
+        "in-window check must not reset balance"
+    );
+    assert_eq!(
+        refreshed.period_started_at, snap.period_started_at,
+        "in-window check must not advance period_started_at"
+    );
 }
 
 #[tokio::test]

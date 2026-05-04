@@ -63,7 +63,9 @@ See source files for full definitions:
 
 A spending cap bound to a **subject** (who) in a **currency** (what unit). Multiple budgets per subject allowed; the most restrictive one wins.
 
-**Subject types**: `session`, `agent`, `user`, `org` — budgets cascade through the hierarchy. A session's effective budgets include its own + its agent's + its user's + its org's.
+**Subject types**: `session`, `app_channel`, `app`, `agent`, `user`, `org` — budgets cascade through the hierarchy from most specific (session) to most general (org). A session's effective budgets include all matching levels.
+
+`app` and `app_channel` are **gated behind the experimental `app_budgets` feature flag** (`FEATURE_APP_BUDGETS`, auto-enabled in `DeploymentGrade::Dev`). Sessions opt into these levels via the standard tags emitted by the apps domain (`app:<app_id>`, `app_channel:<channel_id>`). The legacy `slack:app:<id>` tag is also recognised for backwards compatibility.
 
 **Currencies**: Strings (not enum) — new currencies added without migrations. Built-in: `usd` (via LlmModelProfile cost lookup), `tokens` (raw count), `credits` (1 credit = 1000 tokens).
 
@@ -259,15 +261,28 @@ File: `crates/core/src/capabilities/self_budget.rs`.
 | Budget scope | Per-subject with hierarchy | Flexible: session, agent, user, or org level |
 | Pause mechanism | Session status + turn loop yield | Reuses existing session lifecycle; non-destructive |
 | Multiple budgets per subject | Allowed, most restrictive wins | User may want both cost and token limits |
-| Period handling | JSONB with type discriminator | Rolling windows and calendar periods have different semantics |
+| Period handling | JSONB with type discriminator + `period_started_at` snapshot | `Duration { seconds }`, `Rolling { window }` (e.g. `5h`, `30d`), and `Calendar { unit }` (`hour | day | week | month | year`) cover sliding and calendar resets without bespoke columns. The service rolls the budget on every check by comparing `period_started_at` against the current clock. |
 | Headless enforcement | Hard stop at balance ≤ 0 | No human to interact with pause; hard stop is safer |
 | Cost lookup | `LlmModelProfile` from `llm_model_profiles.rs` | Already has per-model pricing from models.dev |
+
+## App / Channel Budgets
+
+Apps own one or more channels. Both layers can hold budgets:
+
+| Subject | When it applies |
+|---------|-----------------|
+| `app` | every session created for the app (any channel) |
+| `app_channel` | sessions originating from a specific channel only |
+
+The hierarchy resolver pulls these subjects from session tags (`app:<id>`, `app_channel:<id>`). The flag `FEATURE_APP_BUDGETS` (experimental, auto-on in dev) is required to create or list app/channel budgets via the API; the storage and check pipeline always honours existing rows so the flag can flip without a backfill.
+
+UI: the App detail page surfaces a "Budgets" card (gated by `app_budgets`) that lists every budget attached to the app or any of its channels, and exposes a form for the common period presets (sliding 1h / 5h / 24h / 7d / 30d, calendar month) plus a "Custom JSON" escape hatch that accepts the raw `BudgetPeriod` payload — the in-product DSL — so advanced rules ship without waiting for first-class form fields.
 
 ## Future Work
 
 - **ToolCallMeter**, **DataProcessedMeter** — additional meters
 - **Externalized rating rules** — replace hardcoded Rust rating with configurable scripts/expressions
-- **Rolling/calendar period support** — balance resets on period boundary
 - **Valkey-cached balance** — for high-throughput without DB round-trip per check
 - **Budget analytics dashboard** — spend by model, by agent, over time
 - **Custom meter registration API** — for external integrations
+- **Rule-based DSL** — promote the JSON escape hatch to a typed expression language with a syntax-highlighted editor

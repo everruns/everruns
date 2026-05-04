@@ -6,6 +6,7 @@ use uuid::Uuid;
 
 use super::InMemoryDatabase;
 use crate::storage::models::*;
+use crate::storage::repositories::BudgetSubjectLookup;
 
 impl InMemoryDatabase {
     // ============================================
@@ -24,6 +25,7 @@ impl InMemoryDatabase {
             limit: input.limit,
             soft_limit: input.soft_limit,
             balance: input.limit, // start with full balance
+            period_started_at: input.period.as_ref().map(|_| now),
             period: input.period,
             metadata: input.metadata,
             status: "active".to_string(),
@@ -69,18 +71,38 @@ impl InMemoryDatabase {
         user_id: Option<&str>,
         org_public_id: Option<&str>,
     ) -> Result<Vec<BudgetRow>> {
+        self.get_active_budgets_for_subjects(
+            org_id,
+            BudgetSubjectLookup {
+                session_id: Some(session_id),
+                agent_id,
+                user_id,
+                org_public_id,
+                app_id: None,
+                app_channel_id: None,
+            },
+        )
+        .await
+    }
+
+    pub async fn get_active_budgets_for_subjects(
+        &self,
+        org_id: i64,
+        lookup: BudgetSubjectLookup<'_>,
+    ) -> Result<Vec<BudgetRow>> {
+        let pairs = lookup.to_pairs();
+        if pairs.is_empty() {
+            return Ok(vec![]);
+        }
         let budgets = self.budgets.read();
         let mut result: Vec<BudgetRow> = budgets
             .values()
             .filter(|b| {
                 b.org_id == org_id
                     && b.status == "active"
-                    && ((b.subject_type == "session" && b.subject_id == session_id)
-                        || (b.subject_type == "agent"
-                            && agent_id.is_some_and(|a| b.subject_id == a))
-                        || (b.subject_type == "user" && user_id.is_some_and(|u| b.subject_id == u))
-                        || (b.subject_type == "org"
-                            && org_public_id.is_some_and(|o| b.subject_id == o)))
+                    && pairs
+                        .iter()
+                        .any(|(t, id)| b.subject_type == *t && b.subject_id == *id)
             })
             .cloned()
             .collect();
@@ -90,6 +112,24 @@ impl InMemoryDatabase {
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
         Ok(result)
+    }
+
+    pub async fn reset_budget_period(
+        &self,
+        id: Uuid,
+        period_started_at: chrono::DateTime<chrono::Utc>,
+    ) -> Result<Option<BudgetRow>> {
+        let mut budgets = self.budgets.write();
+        let Some(row) = budgets.get_mut(&id) else {
+            return Ok(None);
+        };
+        row.balance = row.limit;
+        row.period_started_at = Some(period_started_at);
+        if row.status == "paused" || row.status == "exhausted" {
+            row.status = "active".to_string();
+        }
+        row.updated_at = Self::now();
+        Ok(Some(row.clone()))
     }
 
     pub async fn update_budget(

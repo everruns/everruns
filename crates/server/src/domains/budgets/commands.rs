@@ -8,11 +8,20 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 fn validate_subject_type(subject_type: &str) -> Result<(), CommandError> {
-    if ["session", "agent", "user", "org"].contains(&subject_type) {
-        Ok(())
-    } else {
-        Err(CommandError::bad_request("Invalid subject_type"))
+    const ALWAYS_ON: &[&str] = &["session", "agent", "user", "org"];
+    const APP_BUDGET_TYPES: &[&str] = &["app", "app_channel"];
+    if ALWAYS_ON.contains(&subject_type) {
+        return Ok(());
     }
+    if APP_BUDGET_TYPES.contains(&subject_type) {
+        if everruns_core::FeatureFlags::current().app_budgets {
+            return Ok(());
+        }
+        return Err(CommandError::bad_request(
+            "App-scoped budgets are gated behind the app_budgets feature flag",
+        ));
+    }
+    Err(CommandError::bad_request("Invalid subject_type"))
 }
 
 fn validate_limit(limit: f64, soft_limit: Option<f64>) -> Result<(), CommandError> {
@@ -554,6 +563,87 @@ impl Command for ResumeSessionBudgets {
 
 inventory::submit! { CommandDescriptor::of::<ResumeSessionBudgets>() }
 
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ListAppBudgets {
+    pub app_id: String,
+    /// When true include budgets attached to any of the app's channels
+    /// (`app_channel:<id>`) in addition to the app itself.
+    #[serde(default = "default_true")]
+    pub include_channels: bool,
+}
+
+const fn default_true() -> bool {
+    true
+}
+
+impl Command for ListAppBudgets {
+    type Output = Vec<Budget>;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "list_app_budgets",
+            category: "budgets",
+            description: "List budgets attached to an app and (optionally) its channels.",
+            method: "GET",
+            path: "/v1/apps/{app_id}/budgets",
+        }
+    }
+
+    fn positional_arg() -> Option<&'static str> {
+        Some("app_id")
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&BUDGET_VIEW)
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<Vec<Budget>, CommandError> {
+        if !everruns_core::FeatureFlags::current().app_budgets {
+            return Err(CommandError::bad_request(
+                "App-scoped budgets are gated behind the app_budgets feature flag",
+            ));
+        }
+
+        // THREAT[TM-TENANT-001]: org-scoped lookup before reading any channel
+        // metadata — without this an attacker could pass another org's app_id
+        // and learn its channel public_ids via the include_channels expansion
+        // (the budget query that follows is org-filtered, but the channel list
+        // would still leak). 404 (not 403) keeps cross-org existence opaque.
+        let app_row = ctx
+            .db
+            .get_app_by_public_id(ctx.org_id(), &self.app_id)
+            .await
+            .map_err(classify_anyhow)?
+            .ok_or_else(|| CommandError::not_found("App"))?;
+
+        let mut rows = ctx
+            .db
+            .list_budgets(ctx.org_id(), Some("app"), Some(&self.app_id))
+            .await
+            .map_err(classify_anyhow)?;
+
+        if self.include_channels {
+            let channels = ctx
+                .db
+                .list_app_channels(app_row.id)
+                .await
+                .map_err(classify_anyhow)?;
+            for channel in channels {
+                let channel_rows = ctx
+                    .db
+                    .list_budgets(ctx.org_id(), Some("app_channel"), Some(&channel.public_id))
+                    .await
+                    .map_err(classify_anyhow)?;
+                rows.extend(channel_rows);
+            }
+        }
+
+        Ok(rows.iter().map(q::row_to_budget).collect())
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<ListAppBudgets>() }
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -620,5 +710,22 @@ mod tests {
         .await
         .expect("owner should pass BUDGET_MANAGE");
         assert_eq!(budget.subject_type.to_string(), "session");
+    }
+
+    /// `validate_subject_type` is the gate. It rejects unknown types and requires
+    /// the `app_budgets` feature flag for `app` / `app_channel`. We test the
+    /// always-on validation explicitly; flag-gated paths are tested via the env
+    /// var seam below.
+    #[test]
+    fn validate_subject_type_accepts_classic_subjects() {
+        for kind in ["session", "agent", "user", "org"] {
+            assert!(validate_subject_type(kind).is_ok(), "expected {kind} ok");
+        }
+    }
+
+    #[test]
+    fn validate_subject_type_rejects_unknown_subjects() {
+        assert!(validate_subject_type("unknown").is_err());
+        assert!(validate_subject_type("").is_err());
     }
 }

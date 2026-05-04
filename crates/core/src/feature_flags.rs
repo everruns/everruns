@@ -28,6 +28,9 @@ pub struct FeatureFlags {
     pub mcp_endpoint: bool,
     /// Evals (user-facing behavioral evals for agents). Experimental.
     pub evals: bool,
+    /// App / channel scoped budgets and periodic budget resets (`5h`, `1d`, ...).
+    /// Experimental.
+    pub app_budgets: bool,
 }
 
 impl FeatureFlags {
@@ -39,7 +42,14 @@ impl FeatureFlags {
             notifications: experimental_flag("FEATURE_NOTIFICATIONS", grade),
             mcp_endpoint: experimental_flag("FEATURE_MCP_ENDPOINT", grade),
             evals: experimental_flag("FEATURE_EVALS", grade),
+            app_budgets: experimental_flag("FEATURE_APP_BUDGETS", grade),
         }
+    }
+
+    /// Resolve the current feature flags from env + the env-derived deployment grade.
+    /// Convenience for callers that don't have a `FeatureFlags` instance handy.
+    pub fn current() -> Self {
+        Self::from_env(&DeploymentGrade::from_env())
     }
 
     /// Look up a flag by name (for dynamic/string-based access).
@@ -50,6 +60,7 @@ impl FeatureFlags {
             "notifications" => self.notifications,
             "mcp_endpoint" => self.mcp_endpoint,
             "evals" => self.evals,
+            "app_budgets" => self.app_budgets,
             _ => false,
         }
     }
@@ -63,6 +74,7 @@ impl FeatureFlags {
             notifications: true,
             mcp_endpoint: true,
             evals: true,
+            app_budgets: true,
         }
     }
 }
@@ -200,12 +212,14 @@ mod tests {
             notifications: true,
             mcp_endpoint: true,
             evals: true,
+            app_budgets: true,
         };
         assert!(flags.is_enabled("global_chat"));
         assert!(flags.is_enabled("apps"));
         assert!(flags.is_enabled("notifications"));
         assert!(flags.is_enabled("mcp_endpoint"));
         assert!(flags.is_enabled("evals"));
+        assert!(flags.is_enabled("app_budgets"));
         assert!(!flags.is_enabled("nonexistent"));
     }
 
@@ -217,10 +231,12 @@ mod tests {
             notifications: true,
             mcp_endpoint: true,
             evals: true,
+            app_budgets: true,
         };
         let json = serde_json::to_string(&flags).unwrap();
         assert!(json.contains("\"global_chat\":true"));
         assert!(json.contains("\"notifications\":true"));
+        assert!(json.contains("\"app_budgets\":true"));
 
         let parsed: FeatureFlags = serde_json::from_str(&json).unwrap();
         assert_eq!(flags, parsed);
