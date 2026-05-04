@@ -4,6 +4,7 @@ import { ToolActivityGroup } from "@/components/chat/tool-activity-group";
 import { TodoListRenderer } from "@/components/chat/todo-list-renderer";
 import { MessageInfoIcon } from "@/components/chat/message-info-icon";
 import { ImageAttachments } from "@/components/chat/image-attachments";
+import { ChatErrorAlert } from "@/components/chat/chat-error-alert";
 import type { Event, ToolCompletedData } from "@/lib/api/types";
 import type { ToolCallContent } from "@/components/chat/tool-call-utils";
 import type { PendingImage } from "@/lib/api/images";
@@ -173,6 +174,19 @@ export default function DevChatComponentsPage() {
               ],
             }}
             isExecuting
+          />
+        </Section>
+
+        <Section title="Error Handling" description="Failure treatment used by chat surfaces.">
+          <ChatErrorAlert
+            message="backend temporarily unavailable"
+            details={[
+              "event_id: evt-failed-1",
+              "event_type: turn.failed",
+              "turn_id: turn-1",
+              "error_code: dependency_unavailable",
+              "error: backend temporarily unavailable",
+            ].join("\n")}
           />
         </Section>
       </div>

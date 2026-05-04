@@ -242,6 +242,16 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
         setStreamingTurnId(null);
         break;
       }
+      if (event.type === "turn.failed") {
+        // Turn failed - clear optimistic waiting/streaming state immediately.
+        setIsWaitingForResponse(false);
+        setIsThinking(false);
+        setStreamingText(null);
+        setStreamingTurnId(null);
+        setStreamingIteration(null);
+        setLocalStatus("idle");
+        break;
+      }
     }
   }, [events]);
 
@@ -358,6 +368,7 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
           (e) =>
             e.type === "input.message" ||
             e.type === "output.message.completed" ||
+            e.type === "turn.failed" ||
             e.type === "act.started" ||
             e.type === "act.completed" ||
             e.type === "tool.started" ||

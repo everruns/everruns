@@ -13,15 +13,17 @@ import type {
   Event,
   InputMessageData,
   OutputMessageCompletedData,
+  TurnFailedData,
   ToolCallSummary,
   ToolCompletedData,
   ToolProgressData,
 } from "@/lib/api/types";
 import type { ToolOutputStreams } from "@/app/(main)/sessions/[sessionId]/session-context";
-import { getEventData, isImageFilePart } from "@/lib/api/types";
+import { getEventData, getTextFromContent, isImageFilePart } from "@/lib/api/types";
 import { MessageInfoIcon } from "@/components/chat/message-info-icon";
 import { MessageImage } from "@/components/chat/image-attachments";
 import { MessageContent } from "@/components/chat/message-content";
+import { ChatErrorAlert } from "@/components/chat/chat-error-alert";
 import { ToolActivityGroup } from "@/components/chat/tool-activity-group";
 import { SetupConnectionToolCall } from "@/components/chat/setup-connection-tool-call";
 import {
@@ -36,6 +38,12 @@ import { chatSurfaceStyles } from "@/components/chat/chat-surface";
 import { CompactionDivider } from "@/components/chat/compaction-divider";
 import type { ToolCallContent } from "@/components/chat/tool-call-utils";
 import { useLocale } from "@/providers/locale-provider";
+import {
+  getRuntimeErrorFromOutputMessage,
+  getRuntimeErrorFromTurnFailed,
+  localizeRuntimeError,
+} from "@/lib/runtime-errors";
+import type { SupportedLocale } from "@/lib/i18n";
 
 interface ChatMessageListProps {
   events: Event[] | undefined;
@@ -63,6 +71,36 @@ function getMessageImages(content: ContentPart[]): Array<{ image_id: string; fil
     image_id: part.image_id,
     filename: part.filename,
   }));
+}
+
+function formatFailureDetails({
+  event,
+  error,
+  errorCode,
+  errorFields,
+  rawMessage,
+}: {
+  event: Event;
+  error?: string;
+  errorCode?: string;
+  errorFields?: Record<string, unknown>;
+  rawMessage?: string;
+}): string | null {
+  const lines = [
+    `event_id: ${event.id}`,
+    `event_type: ${event.type}`,
+    event.context?.turn_id ? `turn_id: ${event.context.turn_id}` : null,
+    errorCode ? `error_code: ${errorCode}` : null,
+    error && error !== rawMessage ? `error: ${error}` : null,
+    rawMessage ? `message: ${rawMessage}` : null,
+    errorFields ? `error_fields: ${JSON.stringify(errorFields, null, 2)}` : null,
+  ].filter(Boolean);
+
+  return lines.length > 0 ? lines.join("\n") : null;
+}
+
+function getTurnFailedMessage(locale: SupportedLocale, data: TurnFailedData): string {
+  return localizeRuntimeError(locale, getRuntimeErrorFromTurnFailed(data), data.error);
 }
 
 function buildActGroups(chatEvents: Event[], workingLabel: string) {
@@ -175,7 +213,7 @@ export const ChatMessageList = memo(function ChatMessageList({
   getMessageText,
   getToolCalls,
 }: ChatMessageListProps) {
-  const { t } = useLocale();
+  const { locale, t } = useLocale();
   const clientRequestedToolCallIds = useMemo(() => {
     const ids = new Set<string>();
     for (const event of chatEvents) {
@@ -245,6 +283,22 @@ export const ChatMessageList = memo(function ChatMessageList({
         if (event.type === "context.compacted") {
           const compactedData = getEventData(event, "context.compacted");
           return compactedData ? <CompactionDivider key={event.id} data={compactedData} /> : null;
+        }
+
+        const turnFailedData = getEventData(event, "turn.failed");
+        if (turnFailedData) {
+          return (
+            <ChatErrorAlert
+              key={event.id}
+              message={getTurnFailedMessage(locale, turnFailedData)}
+              details={formatFailureDetails({
+                event,
+                error: turnFailedData.error,
+                errorCode: turnFailedData.error_code,
+                errorFields: turnFailedData.error_fields,
+              })}
+            />
+          );
         }
 
         if (event.type === "act.started") {
@@ -349,6 +403,22 @@ export const ChatMessageList = memo(function ChatMessageList({
         if (!data) return null;
 
         const textContent = getMessageText(data);
+        const outputError = outputData ? getRuntimeErrorFromOutputMessage(outputData) : undefined;
+        if (outputData && outputError) {
+          const rawMessage = getTextFromContent(outputData.message?.content ?? []);
+          return (
+            <ChatErrorAlert
+              key={event.id}
+              message={textContent}
+              details={formatFailureDetails({
+                event,
+                errorCode: outputError.code,
+                errorFields: outputError.fields,
+                rawMessage,
+              })}
+            />
+          );
+        }
         const toolCalls = isUser
           ? []
           : outputData
