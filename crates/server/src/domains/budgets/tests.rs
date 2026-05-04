@@ -979,7 +979,8 @@ async fn test_list_budgets_for_session_hierarchy_includes_app_and_channel_from_t
 #[tokio::test]
 async fn test_period_resets_balance_after_window_elapses() {
     let (svc, db) = make_service();
-    // 1-second sliding window — should reset on the next check.
+    // Zero-second sliding window — rollover triggers on the next check
+    // without any wall-clock sleeps. Keeps the test deterministic and fast.
     let budget = db
         .create_budget(CreateBudgetRow {
             org_id: 1,
@@ -988,7 +989,7 @@ async fn test_period_resets_balance_after_window_elapses() {
             currency: "tokens".into(),
             limit: 100.0,
             soft_limit: None,
-            period: Some(serde_json::json!({"type": "duration", "seconds": 1})),
+            period: Some(serde_json::json!({"type": "duration", "seconds": 0})),
             metadata: None,
         })
         .await
@@ -1009,13 +1010,59 @@ async fn test_period_resets_balance_after_window_elapses() {
     let before = db.get_budget(1, budget.id).await.unwrap().unwrap();
     assert_eq!(before.balance, 0.0);
 
-    tokio::time::sleep(std::time::Duration::from_millis(1_100)).await;
-    let refreshed = svc.maybe_reset_period(before).await;
+    let refreshed = svc.maybe_reset_period(before.clone()).await;
     assert_eq!(
         refreshed.balance, 100.0,
         "period rollover should reset balance to limit"
     );
     assert!(refreshed.period_started_at.is_some());
+    assert!(
+        refreshed.period_started_at.unwrap() >= before.period_started_at.unwrap(),
+        "rollover should advance period_started_at"
+    );
+}
+
+#[tokio::test]
+async fn test_period_does_not_reset_inside_window() {
+    let (svc, db) = make_service();
+    // Long window — same-tick check must NOT reset.
+    let budget = db
+        .create_budget(CreateBudgetRow {
+            org_id: 1,
+            subject_type: "session".into(),
+            subject_id: "session_period_long".into(),
+            currency: "tokens".into(),
+            limit: 100.0,
+            soft_limit: None,
+            period: Some(serde_json::json!({"type": "duration", "seconds": 3_600})),
+            metadata: None,
+        })
+        .await
+        .unwrap();
+
+    db.create_budget_ledger_entry(CreateBudgetLedgerRow {
+        budget_id: budget.id,
+        amount: 40.0,
+        meter_source: "llm_tokens".into(),
+        ref_type: None,
+        ref_id: None,
+        session_id: None,
+        description: None,
+    })
+    .await
+    .unwrap();
+    let snap = db.get_budget(1, budget.id).await.unwrap().unwrap();
+    assert_eq!(snap.balance, 60.0);
+
+    let refreshed = svc.maybe_reset_period(snap.clone()).await;
+    assert_eq!(
+        refreshed.balance, 60.0,
+        "in-window check must not reset balance"
+    );
+    assert_eq!(
+        refreshed.period_started_at, snap.period_started_at,
+        "in-window check must not advance period_started_at"
+    );
 }
 
 #[tokio::test]

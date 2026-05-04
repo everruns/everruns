@@ -205,20 +205,23 @@ impl SessionService {
         if !caller.is_internal && req.tags.iter().any(|tag| tag.starts_with("__internal:")) {
             anyhow::bail!("Tags with '__internal:' prefix are reserved");
         }
-        // THREAT[TM-AUTHZ-009]: `app:<id>` and `app_channel:<id>` tags drive
-        // budget hierarchy attribution (see specs/budgeting.md). Allowing
-        // external callers to forge these would let an org member opt their
+        // THREAT[TM-AUTHZ-009]: `app:<id>`, `app_channel:<id>` and the legacy
+        // `slack:app:<id>` tags all drive budget hierarchy attribution (see
+        // specs/budgeting.md and `extract_app_subjects` in
+        // `crates/server/src/domains/budgets/service.rs`). Allowing external
+        // callers to forge any of them would let an org member opt their
         // session into another app's budget — corrupting spend attribution and
-        // potentially exhausting that app's cap. Only the apps domain (which
-        // uses `Caller::internal`) is permitted to stamp these.
+        // potentially exhausting that app's cap. Only the apps and Slack
+        // domains (both using `Caller::internal`) are permitted to stamp them.
         if !caller.is_internal
-            && req
-                .tags
-                .iter()
-                .any(|tag| tag.starts_with("app:") || tag.starts_with("app_channel:"))
+            && req.tags.iter().any(|tag| {
+                tag.starts_with("app:")
+                    || tag.starts_with("app_channel:")
+                    || tag.starts_with("slack:app:")
+            })
         {
             anyhow::bail!(
-                "Tags with 'app:' or 'app_channel:' prefix are reserved for the apps system"
+                "Tags with 'app:', 'app_channel:', or 'slack:app:' prefix are reserved for internal subsystems"
             );
         }
 
@@ -719,15 +722,18 @@ impl SessionService {
             anyhow::bail!("Tags with '__internal:' prefix are reserved");
         }
         // THREAT[TM-AUTHZ-009]: same reservation enforced on update — see
-        // create() for the rationale.
+        // create() for the rationale. Includes the legacy `slack:app:` tag.
         if !caller.is_internal
             && req.tags.as_ref().is_some_and(|tags| {
-                tags.iter()
-                    .any(|tag| tag.starts_with("app:") || tag.starts_with("app_channel:"))
+                tags.iter().any(|tag| {
+                    tag.starts_with("app:")
+                        || tag.starts_with("app_channel:")
+                        || tag.starts_with("slack:app:")
+                })
             })
         {
             anyhow::bail!(
-                "Tags with 'app:' or 'app_channel:' prefix are reserved for the apps system"
+                "Tags with 'app:', 'app_channel:', or 'slack:app:' prefix are reserved for internal subsystems"
             );
         }
 
@@ -2153,6 +2159,7 @@ mod tests {
         for forbidden in [
             vec!["app:app_other".to_string()],
             vec!["app_channel:appchan_other".to_string()],
+            vec!["slack:app:app_legacy_other".to_string()],
         ] {
             let err = session_service
                 .update(
@@ -2162,15 +2169,14 @@ mod tests {
                         title: None,
                         agent_identity_id: UpdateField::Unchanged,
                         locale: None,
-                        tags: Some(forbidden),
+                        tags: Some(forbidden.clone()),
                     },
                 )
                 .await
                 .unwrap_err();
             assert!(
-                err.to_string()
-                    .contains("'app:' or 'app_channel:' prefix are reserved"),
-                "got: {err}"
+                err.to_string().contains("reserved for internal subsystems"),
+                "got: {err} for tags: {forbidden:?}"
             );
         }
     }
@@ -2199,23 +2205,28 @@ mod tests {
         .await
         .unwrap();
 
-        let mut req = build_create_request(harness.id, None, None);
-        req.tags = vec!["app:app_someone_else".to_string()];
+        for forbidden in [
+            "app:app_someone_else",
+            "app_channel:appchan_someone_else",
+            "slack:app:app_legacy_someone_else",
+        ] {
+            let mut req = build_create_request(harness.id, None, None);
+            req.tags = vec![forbidden.to_string()];
 
-        let err = session_service
-            .create(
-                &external_caller(DEFAULT_ORG_ID),
-                harness.id.uuid(),
-                None,
-                None,
-                req,
-            )
-            .await
-            .unwrap_err();
-        assert!(
-            err.to_string()
-                .contains("'app:' or 'app_channel:' prefix are reserved"),
-            "got: {err}"
-        );
+            let err = session_service
+                .create(
+                    &external_caller(DEFAULT_ORG_ID),
+                    harness.id.uuid(),
+                    None,
+                    None,
+                    req,
+                )
+                .await
+                .unwrap_err();
+            assert!(
+                err.to_string().contains("reserved for internal subsystems"),
+                "got: {err} for tag: {forbidden}"
+            );
+        }
     }
 }

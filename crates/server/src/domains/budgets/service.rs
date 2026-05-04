@@ -523,8 +523,21 @@ impl BudgetService {
         let Some(period_value) = budget.period.as_ref() else {
             return budget;
         };
-        let Ok(period) = serde_json::from_value::<BudgetPeriod>(period_value.clone()) else {
-            return budget;
+        let period = match serde_json::from_value::<BudgetPeriod>(period_value.clone()) {
+            Ok(period) => period,
+            Err(error) => {
+                // Malformed period payloads (e.g. corrupted by manual DB edit
+                // or a deserialization-incompatible upgrade) cause the budget
+                // to silently never roll over. Log loudly so operators can
+                // diagnose; return the stale row to keep enforcement strict.
+                warn!(
+                    budget_id = %budget.id,
+                    raw_period = %period_value,
+                    error = %error,
+                    "Failed to parse budget period; rollover skipped"
+                );
+                return budget;
+            }
         };
         let now = Utc::now();
         let started = budget.period_started_at.unwrap_or(budget.created_at);
