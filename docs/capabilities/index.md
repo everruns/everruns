@@ -74,6 +74,14 @@ Performance and cost optimization for LLM interactions.
 | [Budgeting](/capabilities/budgeting/) | `budgeting` | 1 |
 | [Self-Budget](/capabilities/self-budget/) | `self_budget` | 0 |
 
+### Safety
+
+Streaming-output guardrails and runtime safety nets.
+
+| Capability | ID | Tools |
+|---|---|---|
+| [Prompt Canary Guardrail](/capabilities/prompt-canary-guardrail/) | `prompt_canary_guardrail` | 0 |
+
 ### Demo
 
 Pre-built domain simulations for testing and demonstrations.

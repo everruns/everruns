@@ -107,6 +107,7 @@ pub mod openai_protocol;
 pub mod openresponses_protocol;
 pub mod openresponses_types;
 pub mod outline;
+pub mod output_guardrail;
 pub mod platform_definition;
 pub mod platform_store;
 pub mod resource_ownership;
