@@ -61,6 +61,10 @@ AG-UI uses an app-scoped anonymous ingress for the initial rollout:
 - Responses stream back as AG-UI SSE events translated from the durable runtime
 - Anonymous access is currently required when the channel is enabled
 - Session routing is per `threadId`, with sessions tagged by app and thread
+- Request body validation (see threat `TM-LLM-020`):
+  - `messages[*].role` must be `user` or `assistant`. `system`, `developer`, and `tool` are rejected with `400 invalid_request` and the offending role is not echoed back.
+  - `messages[*].id` must be a valid UUID (enforced by `MessageId` deserialization) and unique within the request; duplicates are rejected with `400 invalid_request`.
+  - The CopilotKit single-route runtime forwards into this same endpoint, so its anonymous consumers inherit these gates without per-deployment work.
 - `session_expiration_seconds` caps how long a `threadId` can resume the
   underlying session. After the window elapses, AG-UI requests with that
   `threadId` are rejected with `410 Gone` and the client must start a new
