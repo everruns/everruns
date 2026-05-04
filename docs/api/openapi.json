@@ -596,6 +596,58 @@
         }
       }
     },
+    "/v1/agents/{agent_id}/stats": {
+      "get": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "GET /v1/agents/{agent_id}/stats - Get aggregate usage stats for an agent",
+        "operationId": "get_agent_stats",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID (prefixed) or name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Agent aggregate stats",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceStatsResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/apps/{app_id}/webhooks/{channel_id}": {
       "post": {
         "tags": [
@@ -1949,6 +2001,68 @@
           },
           "404": {
             "description": "Source harness not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/harnesses/{harness_id}/stats": {
+      "get": {
+        "tags": [
+          "harnesses"
+        ],
+        "summary": "GET /v1/harnesses/{harness_id}/stats - Get aggregate usage stats for a harness",
+        "operationId": "get_harness_stats",
+        "parameters": [
+          {
+            "name": "harness_id",
+            "in": "path",
+            "description": "Harness ID (prefixed) or name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Harness aggregate stats",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceStatsResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Harness not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -13223,6 +13337,108 @@
             "propertyNames": {
               "type": "string"
             }
+          }
+        }
+      },
+      "ResourceStatsResponse": {
+        "type": "object",
+        "required": [
+          "session_count",
+          "active_session_count",
+          "idle_session_count",
+          "started_session_count",
+          "waiting_for_tool_results_session_count",
+          "execution_count",
+          "total_session_duration_ms",
+          "total_input_tokens",
+          "total_output_tokens",
+          "total_cache_read_tokens",
+          "total_cache_creation_tokens"
+        ],
+        "properties": {
+          "active_session_count": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "avg_session_duration_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "execution_count": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "first_session_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "idle_session_count": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "last_execution_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "last_session_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "session_count": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "started_session_count": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "total_cache_creation_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "total_cache_read_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "total_input_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "total_output_tokens": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "total_session_duration_ms": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "waiting_for_tool_results_session_count": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
           }
         }
       },

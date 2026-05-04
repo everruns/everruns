@@ -10,6 +10,7 @@ use axum::extract::Request;
 use axum::http::{StatusCode, header};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
+use chrono::{DateTime, Utc};
 use everruns_core::typed_id::SessionId;
 use everruns_durable::UpdateField;
 use serde::{
@@ -31,6 +32,51 @@ const LINK_DECORATION_MAX_RESPONSE_BYTES: u64 = 16 * 1024 * 1024;
 /// Result<Json<T>, (StatusCode, Json<ErrorResponse>)>
 /// ```
 pub type ApiResult<T> = Result<Json<T>, (StatusCode, Json<ErrorResponse>)>;
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ResourceStatsResponse {
+    pub session_count: u64,
+    pub active_session_count: u64,
+    pub idle_session_count: u64,
+    pub started_session_count: u64,
+    pub waiting_for_tool_results_session_count: u64,
+    pub execution_count: u64,
+    pub total_session_duration_ms: u64,
+    pub avg_session_duration_ms: Option<u64>,
+    pub total_input_tokens: u64,
+    pub total_output_tokens: u64,
+    pub total_cache_read_tokens: u64,
+    pub total_cache_creation_tokens: u64,
+    pub first_session_at: Option<DateTime<Utc>>,
+    pub last_session_at: Option<DateTime<Utc>>,
+    pub last_execution_at: Option<DateTime<Utc>>,
+}
+
+impl From<crate::storage::SessionAggregateStatsRow> for ResourceStatsResponse {
+    fn from(row: crate::storage::SessionAggregateStatsRow) -> Self {
+        let session_count = row.session_count.max(0) as u64;
+        Self {
+            session_count,
+            active_session_count: row.active_session_count.max(0) as u64,
+            idle_session_count: row.idle_session_count.max(0) as u64,
+            started_session_count: row.started_session_count.max(0) as u64,
+            waiting_for_tool_results_session_count: row
+                .waiting_for_tool_results_session_count
+                .max(0) as u64,
+            execution_count: row.execution_count.max(0) as u64,
+            total_session_duration_ms: row.total_session_duration_ms.max(0) as u64,
+            avg_session_duration_ms: (session_count > 0)
+                .then(|| row.total_session_duration_ms.max(0) as u64 / session_count),
+            total_input_tokens: row.total_input_tokens.max(0) as u64,
+            total_output_tokens: row.total_output_tokens.max(0) as u64,
+            total_cache_read_tokens: row.total_cache_read_tokens.max(0) as u64,
+            total_cache_creation_tokens: row.total_cache_creation_tokens.max(0) as u64,
+            first_session_at: row.first_session_at,
+            last_session_at: row.last_session_at,
+            last_execution_at: row.last_execution_at,
+        }
+    }
+}
 
 /// Implement `FromRef<$state> for AuthState` for an API module's state struct.
 ///

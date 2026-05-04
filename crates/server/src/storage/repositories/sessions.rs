@@ -250,6 +250,57 @@ impl Database {
         Ok(rows)
     }
 
+    /// Aggregate session and turn execution stats for an optional agent or harness scope.
+    pub async fn session_aggregate_stats(
+        &self,
+        org_id: i64,
+        agent_id: Option<AgentId>,
+        harness_id: Option<HarnessId>,
+    ) -> Result<SessionAggregateStatsRow> {
+        let row = sqlx::query_as::<_, SessionAggregateStatsRow>(
+            r#"
+            WITH matching_sessions AS (
+                SELECT id, status, created_at, updated_at, started_at, finished_at,
+                       total_input_tokens, total_output_tokens,
+                       total_cache_read_tokens, total_cache_creation_tokens
+                FROM sessions
+                WHERE org_id = $1
+                  AND ($2::uuid IS NULL OR agent_id = $2)
+                  AND ($3::uuid IS NULL OR harness_id = $3)
+            ),
+            turn_stats AS (
+                SELECT COUNT(*) AS execution_count, MAX(e.ts) AS last_execution_at
+                FROM events e
+                INNER JOIN matching_sessions s ON s.id = e.session_id
+                WHERE e.event_type = 'turn.started'
+            )
+            SELECT
+                COUNT(*)::bigint AS session_count,
+                COUNT(*) FILTER (WHERE status = 'active')::bigint AS active_session_count,
+                COUNT(*) FILTER (WHERE status = 'idle')::bigint AS idle_session_count,
+                COUNT(*) FILTER (WHERE status = 'started')::bigint AS started_session_count,
+                COUNT(*) FILTER (WHERE status = 'waiting_for_tool_results')::bigint AS waiting_for_tool_results_session_count,
+                COALESCE((SELECT execution_count FROM turn_stats), 0)::bigint AS execution_count,
+                COALESCE(SUM(GREATEST((EXTRACT(EPOCH FROM (COALESCE(finished_at, updated_at) - COALESCE(started_at, created_at))) * 1000)::bigint, 0)), 0)::bigint AS total_session_duration_ms,
+                COALESCE(SUM(total_input_tokens), 0)::bigint AS total_input_tokens,
+                COALESCE(SUM(total_output_tokens), 0)::bigint AS total_output_tokens,
+                COALESCE(SUM(total_cache_read_tokens), 0)::bigint AS total_cache_read_tokens,
+                COALESCE(SUM(total_cache_creation_tokens), 0)::bigint AS total_cache_creation_tokens,
+                MIN(created_at) AS first_session_at,
+                MAX(created_at) AS last_session_at,
+                (SELECT last_execution_at FROM turn_stats) AS last_execution_at
+            FROM matching_sessions
+            "#,
+        )
+        .bind(org_id)
+        .bind(agent_id.map(|id| id.uuid()))
+        .bind(harness_id.map(|id| id.uuid()))
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
     /// Find a single session matching ALL given tags within an org.
     /// Used for singleton patterns like global chat (one session per user per org).
     pub async fn find_session_by_tags(

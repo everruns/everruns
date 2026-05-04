@@ -559,6 +559,24 @@ pub struct SessionRow {
     pub blueprint_config: Option<serde_json::Value>,
 }
 
+#[derive(Debug, Clone, Default, FromRow)]
+pub struct SessionAggregateStatsRow {
+    pub session_count: i64,
+    pub active_session_count: i64,
+    pub idle_session_count: i64,
+    pub started_session_count: i64,
+    pub waiting_for_tool_results_session_count: i64,
+    pub execution_count: i64,
+    pub total_session_duration_ms: i64,
+    pub total_input_tokens: i64,
+    pub total_output_tokens: i64,
+    pub total_cache_read_tokens: i64,
+    pub total_cache_creation_tokens: i64,
+    pub first_session_at: Option<DateTime<Utc>>,
+    pub last_session_at: Option<DateTime<Utc>>,
+    pub last_execution_at: Option<DateTime<Utc>>,
+}
+
 #[derive(Debug, Clone)]
 pub struct CreateSessionRow {
     pub org_id: i64,

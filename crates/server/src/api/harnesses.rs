@@ -23,8 +23,8 @@ use everruns_core::{
 use futures::future::try_join_all;
 
 use super::common::{
-    ApiResult, ApiResultExt, ErrorResponse, ListResponse, ResourceWithCounts, UrlBuilder, WithUrls,
-    impl_auth_state,
+    ApiOptionExt, ApiResult, ApiResultExt, ErrorResponse, ListResponse, ResourceStatsResponse,
+    ResourceWithCounts, UrlBuilder, WithUrls, impl_auth_state,
 };
 use serde::Deserialize;
 use std::sync::Arc;
@@ -133,6 +133,7 @@ pub fn routes(state: AppState) -> Router {
                 .patch(update_harness)
                 .delete(delete_harness),
         )
+        .route("/v1/harnesses/{harness_id}/stats", get(get_harness_stats))
         .route("/v1/harnesses/{harness_id}/delete", post(destroy_harness))
         .route("/v1/harnesses/{harness_id}/copy", post(copy_harness))
         .with_state(state)
@@ -431,6 +432,47 @@ pub async fn get_harness(
     let harness = add_harness_counts(&state.db, org.org_id, harness).await?;
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(urls.wrap(harness)))
+}
+
+/// GET /v1/harnesses/{harness_id}/stats - Get aggregate usage stats for a harness
+#[utoipa::path(
+    get,
+    path = "/v1/harnesses/{harness_id}/stats",
+    params(
+        ("harness_id" = String, Path, description = "Harness ID (prefixed) or name")
+    ),
+    responses(
+        (status = 200, description = "Harness aggregate stats", body = ResourceStatsResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
+        (status = 404, description = "Harness not found", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    tag = "harnesses"
+)]
+pub async fn get_harness_stats(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(harness_id_or_name): Path<String>,
+) -> ApiResult<ResourceStatsResponse> {
+    let harness = crate::domains::harnesses::GetHarness {
+        id: harness_id_or_name,
+    }
+    .run(&state.ctx(&org))
+    .await?;
+    let row = state
+        .db
+        .get_harness(org.org_id, harness.id)
+        .await
+        .log_internal_error_json("get harness for stats")?
+        .filter(|row| row.status != "deleted")
+        .ok_or_not_found_json("Harness")?;
+    let stats = state
+        .db
+        .session_aggregate_stats(org.org_id, None, Some(row.id))
+        .await
+        .log_internal_error_json("get harness stats")?;
+
+    Ok(Json(stats.into()))
 }
 
 /// PATCH /v1/harnesses/{harness_id}

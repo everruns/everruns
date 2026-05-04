@@ -20,8 +20,8 @@ use everruns_core::{
 use futures::future::try_join_all;
 
 use super::common::{
-    ApiResult, ApiResultExt, ErrorResponse, PaginatedResponse, ResourceWithCounts, UrlBuilder,
-    WithUrls, impl_auth_state,
+    ApiResult, ApiResultExt, ErrorResponse, PaginatedResponse, ResourceStatsResponse,
+    ResourceWithCounts, UrlBuilder, WithUrls, impl_auth_state,
 };
 use super::validation::{
     validate_agent_name_format, validate_create_agent_input, validate_import_file_size,
@@ -263,6 +263,7 @@ pub fn routes(state: AppState) -> Router {
                 .patch(update_agent)
                 .delete(delete_agent),
         )
+        .route("/v1/agents/{agent_id}/stats", get(get_agent_stats))
         .route("/v1/agents/{agent_id}/delete", post(destroy_agent))
         .route("/v1/agents/{agent_id}/export", get(export_agent))
         .route("/v1/agents/{agent_id}/copy", post(copy_agent))
@@ -382,6 +383,43 @@ pub async fn get_agent(
     let agent = add_agent_counts(&state.db, org.org_id, agent).await?;
     let builder = UrlBuilder::from_auth_config(&state.auth.config);
     Ok(Json(builder.wrap(agent)))
+}
+
+/// GET /v1/agents/{agent_id}/stats - Get aggregate usage stats for an agent
+#[utoipa::path(
+    get,
+    path = "/v1/agents/{agent_id}/stats",
+    params(
+        ("agent_id" = String, Path, description = "Agent ID (prefixed) or name")
+    ),
+    responses(
+        (status = 200, description = "Agent aggregate stats", body = ResourceStatsResponse),
+        (status = 404, description = "Agent not found", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    tag = "agents"
+)]
+pub async fn get_agent_stats(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(agent_id_or_name): Path<String>,
+) -> ApiResult<ResourceStatsResponse> {
+    let agent = crate::domains::agents::GetAgent {
+        id: agent_id_or_name,
+    }
+    .run(&state.ctx(&org))
+    .await?;
+    let stats = state
+        .db
+        .session_aggregate_stats(
+            org.org_id,
+            Some(AgentId::from_uuid(agent.internal_id)),
+            None,
+        )
+        .await
+        .log_internal_error_json("get agent stats")?;
+
+    Ok(Json(stats.into()))
 }
 
 /// PATCH /v1/agents/{agent_id} - Update agent

@@ -1,11 +1,19 @@
 // Agent hooks (M2)
 "use client";
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { agentsCrudApi, copyAgent, exportAgent, importAgent, previewAgent } from "@/lib/api/agents";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  agentsCrudApi,
+  copyAgent,
+  exportAgent,
+  getAgentStats,
+  importAgent,
+  previewAgent,
+} from "@/lib/api/agents";
 import type { CreateAgentRequest, PreviewAgentRequest, UpdateAgentRequest } from "@/lib/api/types";
 import { queryKeys } from "@/lib/query-keys";
 import { createCrudHooks } from "./create-crud-hooks";
+import { useOrg } from "@/providers/org-provider";
 
 const agentCrudHooks = createCrudHooks<
   Awaited<ReturnType<typeof agentsCrudApi.get>>,
@@ -21,6 +29,22 @@ export const useAgent = agentCrudHooks.useDetail;
 export const useCreateAgent = agentCrudHooks.useCreate;
 export const useDeleteAgent = agentCrudHooks.useDelete;
 export const useDestroyAgent = agentCrudHooks.useDestroy;
+
+export function useAgentStats(agentId: string | undefined) {
+  const { currentOrg, isLoading: orgLoading } = useOrg();
+  const org = currentOrg?.public_id;
+
+  const query = useQuery({
+    queryKey: queryKeys.agents.stats(org, agentId),
+    queryFn: () => getAgentStats(agentId!),
+    enabled: !!org && !!agentId,
+  });
+
+  return {
+    ...query,
+    isLoading: orgLoading || query.isLoading,
+  };
+}
 
 export function useUpdateAgent() {
   const mutation = agentCrudHooks.useUpdate();

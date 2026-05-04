@@ -8,6 +8,7 @@ import type {
   CreateHarnessRequest,
   Harness,
   PreviewHarnessRequest,
+  ResourceStats,
   UpdateHarnessRequest,
 } from "./types";
 
@@ -36,6 +37,11 @@ export async function checkHarnessName(
 
 export async function copyHarness(harnessId: string): Promise<Harness> {
   const response = await api.post<Harness>(`/v1/harnesses/${harnessId}/copy`, {});
+  return response.data;
+}
+
+export async function getHarnessStats(harnessId: string): Promise<ResourceStats> {
+  const response = await api.get<ResourceStats>(`/v1/harnesses/${harnessId}/stats`);
   return response.data;
 }
 
