@@ -71,8 +71,9 @@ fn verify_pkce_s256(verifier: &str, challenge: &str) -> bool {
 ///
 /// Policy (per spec/threat-model OAuth open-redirect prevention):
 /// - Allow `https://` to any host (with absolute URL form, no fragment).
-/// - Allow `http://` only for native loopback callbacks: `127.0.0.1`, `[::1]`,
-///   and the literal `localhost` host. Any port is fine.
+/// - Allow `http://` only for native loopback callbacks: any IPv4 address in
+///   `127.0.0.0/8`, the IPv6 `[::1]` address, and the literal `localhost`
+///   host. Any port is fine.
 /// - Reject every other scheme — explicitly including `javascript:`, `data:`,
 ///   `file:`, `vbscript:`, custom app schemes, and unparseable/relative URIs.
 /// - Reject URIs with a fragment component (RFC 6749 §3.1.2).
@@ -598,12 +599,18 @@ async fn issue_authorization_code(
     );
 
     tracing::info!(user_id = %user.id, client_id = %query.client_id, redirect_uri = %query.redirect_uri, "MCP OAuth: auth code issued, redirecting");
-    Ok(format!(
-        "{}?code={}&state={}",
-        query.redirect_uri,
-        urlencoding::encode(&code),
-        urlencoding::encode(&query.state)
-    ))
+    // RFC 6749 §3.1.2 — the registered redirect URI MAY contain a query
+    // component, which must be retained when appending `code` and `state`.
+    // Use `Url::query_pairs_mut` so a redirect like `https://app/cb?next=1`
+    // becomes `https://app/cb?next=1&code=...&state=...`, not the malformed
+    // `...?next=1?code=...` that naive string concatenation would produce.
+    let mut redirect = url::Url::parse(&query.redirect_uri)
+        .map_err(|_| AuthError::unauthorized("Invalid redirect_uri"))?;
+    redirect
+        .query_pairs_mut()
+        .append_pair("code", &code)
+        .append_pair("state", &query.state);
+    Ok(redirect.into())
 }
 
 fn render_authorize_confirm_page(query: &OAuthAuthorizeQuery, csrf_token: &str) -> String {
@@ -1038,6 +1045,22 @@ mod tests {
                 "expected {uri} to be accepted",
             );
         }
+    }
+
+    #[test]
+    fn test_redirect_url_with_existing_query_preserves_pairs() {
+        // Simulate the URL builder from `issue_authorization_code` to make
+        // sure a registered redirect URI with an existing query keeps it.
+        let mut url = url::Url::parse("https://app.example.com/cb?next=1").unwrap();
+        url.query_pairs_mut()
+            .append_pair("code", "C&D")
+            .append_pair("state", "x y");
+        let s: String = url.into();
+        assert!(s.starts_with("https://app.example.com/cb?next=1&"));
+        assert!(s.contains("code=C%26D"));
+        assert!(s.contains("state=x+y"));
+        // No double `?` or naive concatenation.
+        assert_eq!(s.matches('?').count(), 1);
     }
 
     #[test]
