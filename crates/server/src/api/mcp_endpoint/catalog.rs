@@ -158,6 +158,12 @@ fn bashkit_inventory_schema(mut schema: serde_json::Value) -> serde_json::Value 
 /// whose declared type is array or object back into structured JSON. Bashkit's
 /// flag parser keeps these as raw strings; the domain dispatcher expects the
 /// typed shape.
+///
+/// Empty / whitespace-only strings are left untouched so optional fields that
+/// rely on `deserialize_opt_json_value_lenient` (e.g. `channel_config`) keep
+/// their `--flag ''` → `None` behavior. The dispatcher applies the same trim
+/// rule for non-empty strings, so we only intervene when there is JSON to
+/// parse on the bash side.
 fn coerce_json_text_params(
     schema: &serde_json::Value,
     params: &mut serde_json::Value,
@@ -184,7 +190,10 @@ fn coerce_json_text_params(
         let serde_json::Value::String(text) = raw else {
             continue;
         };
-        let parsed = serde_json::from_str::<serde_json::Value>(text)
+        if text.trim().is_empty() {
+            continue;
+        }
+        let parsed = serde_json::from_str::<serde_json::Value>(text.trim())
             .map_err(|err| format!("--{name}: invalid JSON ({err})"))?;
         params_obj.insert(name.clone(), parsed);
     }
@@ -354,6 +363,28 @@ mod tests {
         let err = coerce_json_text_params(&schema, &mut params).unwrap_err();
         assert!(err.starts_with("--capabilities:"), "got: {err}");
         assert!(err.contains("invalid JSON"));
+    }
+
+    #[test]
+    fn coerce_leaves_empty_and_whitespace_strings_untouched() {
+        // Optional non-scalar fields like `channel_config` rely on
+        // `deserialize_opt_json_value_lenient`, which maps empty/whitespace
+        // strings to `None`. Eagerly parsing those would regress the bash
+        // ergonomics (`--channel_config ''` should still mean "unset").
+        let schema = serde_json::json!({
+            "properties": {
+                "channel_config": { "type": "object", "properties": {} }
+            }
+        });
+        for blank in ["", "   ", "\t\n"] {
+            let mut params = serde_json::json!({ "channel_config": blank });
+            coerce_json_text_params(&schema, &mut params).expect("coerce");
+            assert_eq!(
+                params["channel_config"],
+                serde_json::Value::String(blank.to_string()),
+                "blank input {blank:?} should pass through untouched",
+            );
+        }
     }
 
     #[test]
