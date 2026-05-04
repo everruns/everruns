@@ -122,6 +122,14 @@ async fn run_agent(
     Json(req): Json<AgUiRunAgentInput>,
 ) -> Result<Sse<impl Stream<Item = Result<SseEvent, Infallible>>>, (StatusCode, Json<ErrorResponse>)>
 {
+    // THREAT[TM-LLM-020]: Anonymous AG-UI clients must not be able to forge
+    // privileged message roles (system/developer/tool) into the LLM context
+    // that the server builds from the request body.
+    // Mitigation: Reject any non-{user,assistant} role at the runtime trust
+    // boundary, and reject duplicate message IDs. The error is a generic
+    // `invalid_request` so we don't echo the offending role back.
+    validate_input_messages(&req.messages)?;
+
     let request_id = req_id.map(|Extension(r)| r.0);
     let app = crate::domains::apps::queries::get_by_public_id_unscoped(
         &state.db,
@@ -909,6 +917,37 @@ fn internal_error(err: anyhow::Error) -> (StatusCode, Json<ErrorResponse>) {
             error: "Internal server error".to_string(),
         }),
     )
+}
+
+/// Reject AG-UI request bodies that smuggle non-{user,assistant} message
+/// roles or reuse the same message id for multiple entries.
+///
+/// `Message` deserialises every variant the upstream protocol defines, so
+/// without this gate a public AG-UI client could populate `system`,
+/// `developer`, or `tool` messages and have them flow into the LLM context
+/// alongside the agent's real system prompt. We refuse such requests with a
+/// generic 400 `invalid_request` and never echo the offending role.
+fn validate_input_messages(
+    messages: &[AgUiMessage],
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    use std::collections::HashSet;
+    let mut seen_ids: HashSet<&AgUiMessageId> = HashSet::with_capacity(messages.len());
+    for message in messages {
+        match message {
+            AgUiMessage::User { .. } | AgUiMessage::Assistant { .. } => {}
+            AgUiMessage::System { .. }
+            | AgUiMessage::Developer { .. }
+            | AgUiMessage::Tool { .. } => {
+                tracing::warn!("AG-UI request rejected: disallowed message role");
+                return Err(bad_request("invalid_request"));
+            }
+        }
+        if !seen_ids.insert(message.id()) {
+            tracing::warn!("AG-UI request rejected: duplicate message id");
+            return Err(bad_request("invalid_request"));
+        }
+    }
+    Ok(())
 }
 
 fn bad_request(message: &str) -> (StatusCode, Json<ErrorResponse>) {

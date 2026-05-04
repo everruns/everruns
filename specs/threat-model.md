@@ -520,6 +520,7 @@ The shared validator blocks loopback, RFC1918, link-local, and cloud metadata ta
 | TM-LLM-006 | Provider MITM | High | HTTPS required for all LLM provider communication | MITIGATED |
 | TM-LLM-007 | Indirect prompt injection | High | Tool results and user messages are role-separated; no complete mitigation exists for LLM-level prompt injection | **ACCEPTED** |
 | TM-LLM-008 | Cost runaway via agent loop | Medium | Max 10 iterations per agent turn; configurable | MITIGATED |
+| TM-LLM-020 | Client-supplied privileged message roles in AG-UI input | Medium | Anonymous AG-UI/CopilotKit clients could send `role: "system"` / `developer` / `tool` messages that flow into the LLM context alongside the agent's real system prompt. Mitigated in `crates/server/src/api/ag_ui.rs::validate_input_messages` by rejecting any non-{user,assistant} role at the runtime trust boundary with a generic 400 `invalid_request`, and by rejecting duplicate message ids. | MITIGATED |
 
 ### Mitigation Details
 
