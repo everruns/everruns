@@ -209,7 +209,8 @@ impl TestServer {
             db.clone(),
             platform_definition.clone(),
         );
-        let auth_state = auth::AuthState::new(auth_config.clone(), Arc::new(auth_backend.clone()));
+        let auth_state = auth::AuthState::new(auth_config.clone(), Arc::new(auth_backend.clone()))
+            .with_db(db.clone());
 
         // Create runner with PostgreSQL backend
         let runner = match mode {
