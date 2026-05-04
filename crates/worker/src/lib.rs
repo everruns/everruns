@@ -30,8 +30,8 @@ pub mod worker_adapters;
 
 // Re-export main types
 pub use durable_runner::{
-    DirectDurableStore, DurableRunner, DurableStoreBackend, DurableTurnInput, DurableTurnOutput,
-    InMemoryDurableStore,
+    DirectDurableStore, DurableRunner, DurableStoreBackend, DurableTaskNotifier, DurableTurnInput,
+    DurableTurnOutput, InMemoryDurableStore,
 };
 pub use durable_worker::{DurableWorker, DurableWorkerConfig, ShutdownHandle};
 pub use grpc_durable_store::{

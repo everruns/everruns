@@ -19,7 +19,7 @@ use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use everruns_durable::InMemoryWorkflowEventStore;
 use std::sync::Arc;
 
-use crate::durable_runner::DurableRunner;
+use crate::durable_runner::{DurableRunner, DurableTaskNotifier};
 
 // =============================================================================
 // AgentRunner Trait
@@ -71,6 +71,11 @@ pub trait AgentRunner: Send + Sync {
 pub enum RunnerBackend {
     /// Use PostgreSQL for workflow persistence (production)
     Postgres(sqlx::PgPool),
+    /// Use PostgreSQL and publish task availability through the control-plane notifier.
+    PostgresWithNotifier {
+        pool: sqlx::PgPool,
+        task_notifier: Arc<dyn DurableTaskNotifier>,
+    },
     /// Use in-memory storage (dev mode, no database required)
     InMemory,
     /// Use shared in-memory storage (dev mode with in-process worker)
@@ -107,6 +112,16 @@ pub async fn create_runner_with_backend(backend: RunnerBackend) -> Result<Arc<dy
         RunnerBackend::Postgres(pool) => {
             tracing::info!("Creating Durable execution engine runner (PostgreSQL mode)");
             let runner = DurableRunner::new_with_pool(pool);
+            Ok(Arc::new(runner))
+        }
+        RunnerBackend::PostgresWithNotifier {
+            pool,
+            task_notifier,
+        } => {
+            tracing::info!(
+                "Creating Durable execution engine runner (PostgreSQL mode with task notifier)"
+            );
+            let runner = DurableRunner::new_with_pool_and_task_notifier(pool, task_notifier);
             Ok(Arc::new(runner))
         }
         RunnerBackend::InMemory => {
