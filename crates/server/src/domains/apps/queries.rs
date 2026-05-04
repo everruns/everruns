@@ -2,6 +2,7 @@
 //
 // No policy checks, no input validation. Pure data access + mapping.
 
+use crate::domains::common::CommandError;
 use crate::services::row_to_principal;
 use crate::storage::StorageBackend;
 use crate::storage::encryption::EncryptionService;
@@ -267,6 +268,67 @@ pub async fn load_apps_list(
         apps.push(row_to_app(db, encryption, row, org_id).await);
     }
     Ok(apps)
+}
+
+// ============================================================================
+// Reference guards
+// ============================================================================
+
+fn referenced_app_names(apps: &[AppRow], predicate: impl Fn(&AppRow) -> bool) -> Option<String> {
+    let names = apps
+        .iter()
+        .filter(|app| predicate(app))
+        .map(|app| app.name.as_str())
+        .collect::<Vec<_>>();
+    if names.is_empty() {
+        None
+    } else {
+        Some(names.join(", "))
+    }
+}
+
+pub async fn ensure_no_app_references_to_agent(
+    db: &StorageBackend,
+    org_id: i64,
+    agent_id: Uuid,
+) -> Result<(), CommandError> {
+    let apps = db.list_apps(org_id, None, false).await?;
+    if let Some(names) = referenced_app_names(&apps, |app| app.agent_id == Some(agent_id)) {
+        return Err(CommandError::conflict(format!(
+            "Cannot archive or delete agent while apps still reference it: {names}"
+        )));
+    }
+    Ok(())
+}
+
+pub async fn ensure_no_app_references_to_harness(
+    db: &StorageBackend,
+    org_id: i64,
+    harness_id: Uuid,
+) -> Result<(), CommandError> {
+    let apps = db.list_apps(org_id, None, false).await?;
+    if let Some(names) = referenced_app_names(&apps, |app| app.harness_id == harness_id) {
+        return Err(CommandError::conflict(format!(
+            "Cannot archive or delete harness while apps still reference it: {names}"
+        )));
+    }
+    Ok(())
+}
+
+pub async fn ensure_no_app_references_to_agent_identity(
+    db: &StorageBackend,
+    org_id: i64,
+    identity_id: Uuid,
+) -> Result<(), CommandError> {
+    let apps = db.list_apps(org_id, None, false).await?;
+    if let Some(names) =
+        referenced_app_names(&apps, |app| app.agent_identity_id == Some(identity_id))
+    {
+        return Err(CommandError::conflict(format!(
+            "Cannot archive or delete agent identity while apps still reference it: {names}"
+        )));
+    }
+    Ok(())
 }
 
 /// Lookup app by public_id without org scoping (for unauthenticated webhooks).

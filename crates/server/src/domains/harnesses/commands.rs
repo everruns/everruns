@@ -523,7 +523,14 @@ impl Command for DeleteHarness {
 
         q::ensure_no_child_harnesses(&ctx.db, ctx.org_id(), harness_id)
             .await
-            .map_err(classify_anyhow)?;
+            .map_err(|err| CommandError::conflict(err.to_string()))?;
+        q::ensure_not_org_default_harness(&ctx.db, ctx.org_id(), harness_id).await?;
+        crate::domains::apps::queries::ensure_no_app_references_to_harness(
+            &ctx.db,
+            ctx.org_id(),
+            harness_id.uuid(),
+        )
+        .await?;
 
         let deleted = ctx
             .db
@@ -588,7 +595,14 @@ impl Command for DestroyHarness {
 
         q::ensure_no_child_harnesses(&ctx.db, ctx.org_id(), harness_id)
             .await
-            .map_err(classify_anyhow)?;
+            .map_err(|err| CommandError::conflict(err.to_string()))?;
+        q::ensure_not_org_default_harness(&ctx.db, ctx.org_id(), harness_id).await?;
+        crate::domains::apps::queries::ensure_no_app_references_to_harness(
+            &ctx.db,
+            ctx.org_id(),
+            harness_id.uuid(),
+        )
+        .await?;
 
         let existing = ctx
             .db

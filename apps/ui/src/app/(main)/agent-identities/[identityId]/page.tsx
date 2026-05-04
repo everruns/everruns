@@ -11,6 +11,7 @@ import {
   useUpdateAgentIdentity,
 } from "@/hooks/use-agent-identities";
 import { ResourceNotFound } from "@/components/resource-not-found";
+import { EntityDeleteErrorNotice } from "@/components/entity-delete-error-notice";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -111,6 +112,8 @@ export default function AgentIdentityDetailPage({
 
   const isSaving = updateIdentity.isPending;
   const isReadOnly = isReadOnlyStatus(identity?.status);
+  const deleteError = deleteIdentity.error ?? destroyIdentity.error;
+  const deleteAction = identity?.status === "archived" ? "delete" : "archive";
 
   if (isLoading) {
     return (
@@ -272,6 +275,14 @@ export default function AgentIdentityDetailPage({
                     </Button>
                   )}
                 </div>
+                {deleteError && (
+                  <EntityDeleteErrorNotice
+                    entityKind="identity"
+                    action={deleteAction}
+                    message={deleteError.message}
+                    className="mt-4"
+                  />
+                )}
               </CardContent>
             </Card>
           </div>
@@ -337,6 +348,14 @@ export default function AgentIdentityDetailPage({
               Permanently delete the archived identity &quot;{identity.name}&quot;? Existing
               references will render as deleted tombstones.
             </DialogDescription>
+            {destroyIdentity.error && (
+              <EntityDeleteErrorNotice
+                entityKind="identity"
+                action="delete"
+                message={destroyIdentity.error.message}
+                className="mt-4"
+              />
+            )}
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>

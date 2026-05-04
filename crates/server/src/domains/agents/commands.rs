@@ -545,6 +545,13 @@ impl Command for DeleteAgent {
             .map_err(classify_anyhow)?
             .ok_or_else(|| CommandError::not_found("Agent"))?;
 
+        crate::domains::apps::queries::ensure_no_app_references_to_agent(
+            &ctx.db,
+            ctx.org_id(),
+            row.id.uuid(),
+        )
+        .await?;
+
         ctx.db
             .delete_agent(ctx.org_id(), row.id)
             .await
@@ -995,6 +1002,13 @@ impl Command for DestroyAgent {
                 "Agent must be archived before deletion",
             ));
         }
+
+        crate::domains::apps::queries::ensure_no_app_references_to_agent(
+            &ctx.db,
+            ctx.org_id(),
+            row.id.uuid(),
+        )
+        .await?;
 
         ctx.db
             .destroy_agent(ctx.org_id(), row.id)

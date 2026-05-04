@@ -21,8 +21,9 @@ use test_harness::TestServer;
 use everruns_core::llm_models::LlmProvider;
 use everruns_core::typed_id::ScheduleId;
 use everruns_core::{Agent, DEFAULT_ORG_ID, Harness, LlmModel, PrincipalId, Session, SessionFile};
+use everruns_durable::UpdateField;
 use everruns_server::storage::models::{
-    CreatePrincipalRow, CreateSessionScheduleRow, UpdateSession,
+    CreatePrincipalRow, CreateSessionScheduleRow, UpdateOrganizationSettings, UpdateSession,
 };
 use uuid::Uuid;
 
@@ -3506,6 +3507,248 @@ async fn test_verify_connection_providers_listed() {
 // ============================================
 // App Reference Validation Tests
 // ============================================
+
+#[tokio::test]
+async fn test_delete_agent_referenced_by_app_returns_conflict() {
+    let server = TestServer::in_memory().await;
+
+    let agent: Value = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "delete-app-agent",
+                "display_name": "Delete App Agent",
+                "system_prompt": "Test"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    server
+        .post(
+            "/v1/apps",
+            json!({
+                "name": "Agent Delete Blocker",
+                "harness_id": server.seed_generic_harness_id,
+                "agent_id": agent["id"]
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED);
+
+    server
+        .delete(&format!("/v1/agents/{}", agent["id"].as_str().unwrap()))
+        .await
+        .assert_status(StatusCode::CONFLICT);
+}
+
+#[tokio::test]
+async fn test_delete_harness_referenced_by_app_returns_conflict() {
+    let server = TestServer::in_memory().await;
+
+    let harness: Harness = server
+        .post(
+            "/v1/harnesses",
+            json!({
+                "name": "delete-app-harness",
+                "display_name": "Delete App Harness",
+                "system_prompt": "Test"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    server
+        .post(
+            "/v1/apps",
+            json!({
+                "name": "Harness Delete Blocker",
+                "harness_id": harness.id
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED);
+
+    server
+        .delete(&format!("/v1/harnesses/{}", harness.id))
+        .await
+        .assert_status(StatusCode::CONFLICT);
+}
+
+#[tokio::test]
+async fn test_delete_agent_identity_referenced_by_app_returns_conflict() {
+    let server = TestServer::in_memory().await;
+
+    let identity: Value = server
+        .post(
+            "/v1/agent-identities",
+            json!({"name": "Delete App Identity"}),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    server
+        .post(
+            "/v1/apps",
+            json!({
+                "name": "Identity Delete Blocker",
+                "harness_id": server.seed_generic_harness_id,
+                "agent_identity_id": identity["id"]
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED);
+
+    server
+        .delete(&format!(
+            "/v1/agent-identities/{}",
+            identity["id"].as_str().unwrap()
+        ))
+        .await
+        .assert_status(StatusCode::CONFLICT);
+}
+
+#[tokio::test]
+async fn test_delete_harness_with_child_returns_conflict() {
+    let server = TestServer::in_memory().await;
+
+    let parent: Harness = server
+        .post(
+            "/v1/harnesses",
+            json!({
+                "name": "parent-delete-blocker",
+                "display_name": "Parent Delete Blocker",
+                "system_prompt": "Parent"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    server
+        .post(
+            "/v1/harnesses",
+            json!({
+                "name": "child-delete-blocker",
+                "display_name": "Child Delete Blocker",
+                "system_prompt": "Child",
+                "parent_harness_id": parent.id
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED);
+
+    server
+        .delete(&format!("/v1/harnesses/{}", parent.id))
+        .await
+        .assert_status(StatusCode::CONFLICT);
+}
+
+#[tokio::test]
+async fn test_delete_org_default_harness_returns_conflict() {
+    let server = TestServer::in_memory().await;
+
+    let harness: Harness = server
+        .post(
+            "/v1/harnesses",
+            json!({
+                "name": "org-default-delete-blocker",
+                "display_name": "Org Default Delete Blocker",
+                "system_prompt": "Test"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    server
+        .db
+        .patch_organization_settings(
+            DEFAULT_ORG_ID,
+            UpdateOrganizationSettings {
+                default_model_id: UpdateField::Unchanged,
+                default_harness_id: UpdateField::Set(harness.id),
+                base_harness_id: UpdateField::Unchanged,
+            },
+        )
+        .await
+        .unwrap();
+
+    server
+        .delete(&format!("/v1/harnesses/{}", harness.id))
+        .await
+        .assert_status(StatusCode::CONFLICT);
+}
+
+#[tokio::test]
+async fn test_delete_entities_referenced_only_by_session_succeeds() {
+    let server = TestServer::in_memory().await;
+
+    let harness: Harness = server
+        .post(
+            "/v1/harnesses",
+            json!({
+                "name": "session-only-delete-harness",
+                "display_name": "Session Only Delete Harness",
+                "system_prompt": "Test"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let agent: Value = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "session-only-delete-agent",
+                "display_name": "Session Only Delete Agent",
+                "system_prompt": "Test"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let identity: Value = server
+        .post(
+            "/v1/agent-identities",
+            json!({"name": "Session Only Delete Identity"}),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    server
+        .post(
+            "/v1/sessions",
+            json!({
+                "harness_id": harness.id,
+                "agent_id": agent["id"],
+                "agent_identity_id": identity["id"],
+                "title": "Session-only references"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED);
+
+    server
+        .delete(&format!("/v1/agents/{}", agent["id"].as_str().unwrap()))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+    server
+        .delete(&format!("/v1/harnesses/{}", harness.id))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+    server
+        .delete(&format!(
+            "/v1/agent-identities/{}",
+            identity["id"].as_str().unwrap()
+        ))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+}
 
 #[tokio::test]
 async fn test_create_app_missing_harness_returns_not_found() {

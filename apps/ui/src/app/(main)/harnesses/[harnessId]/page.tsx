@@ -21,6 +21,7 @@ import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
 import { ProviderIcon } from "@/components/providers/provider-icon";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { HarnessPreview } from "@/components/harnesses/harness-preview";
+import { EntityDeleteErrorNotice } from "@/components/entity-delete-error-notice";
 import { ArrowLeft, Pencil, Copy, Trash2, Eye, LayoutDashboard } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
 import type { Capability, LlmModelWithProvider } from "@/lib/api/types";
@@ -60,6 +61,7 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
     allCapabilities?.find((c) => c.id === capabilityId);
 
   const harnessCapabilities = harness?.capabilities ?? [];
+  const deleteError = deleteHarness.error;
 
   const handleDelete = async () => {
     if (!confirm("Archive this harness? It will become read-only and stop being assignable.")) {
@@ -152,6 +154,14 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
           )}
         </div>
       </div>
+      {deleteError && (
+        <EntityDeleteErrorNotice
+          entityKind="harness"
+          action="archive"
+          message={deleteError.message}
+          className="mb-4"
+        />
+      )}
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="mb-6">
