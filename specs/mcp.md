@@ -164,6 +164,13 @@ Dynamic Client Registration (RFC 7591). No auth required.
 }
 ```
 
+**Redirect URI policy.** Each `redirect_uris[*]` must parse as an absolute URL with no fragment and use one of the allowed schemes:
+
+- `https://` to any host.
+- `http://` only when the host is loopback: `localhost`, an IPv4 in `127.0.0.0/8`, or `[::1]`.
+
+All other schemes — including `javascript:`, `data:`, `file:`, `vbscript:`, custom app schemes, protocol-relative `//host/...`, and unparseable/relative URIs — are rejected with `400 invalid_redirect_uri`. The same check is enforced again at `GET /oauth/authorize` and `POST /oauth/authorize` confirmation as defense in depth, so a previously registered unsafe URI cannot become an open-redirect target. See `crates/server/src/auth/mcp_oauth.rs::validate_redirect_uri` for the canonical policy.
+
 #### GET /oauth/authorize
 
 Authorization endpoint. Redirects to login when no session cookie is present.

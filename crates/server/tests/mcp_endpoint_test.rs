@@ -2273,6 +2273,38 @@ async fn test_oauth_token_invalid_content_type_falls_back_to_form() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_oauth_register_rejects_unsafe_redirect_uris() {
+    let server = TestServer::in_memory().await;
+    for uri in [
+        "javascript:alert(1)",
+        "data:text/html,<script>alert(1)</script>",
+        "file:///tmp/cb",
+        "http://example.com/cb",
+        "myapp://callback",
+        "//example.com/cb",
+        "/relative",
+        "",
+    ] {
+        let resp = server
+            .post(
+                "/oauth/register",
+                json!({
+                    "client_name": "unsafe-client",
+                    "redirect_uris": [uri],
+                }),
+            )
+            .await;
+        assert_eq!(
+            resp.status(),
+            axum::http::StatusCode::BAD_REQUEST,
+            "expected register to reject {uri}",
+        );
+        let body: Value = resp.json();
+        assert_eq!(body["error"], "invalid_redirect_uri");
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_oauth_register_and_metadata() {
     let server = TestServer::new().await;
     // Test dynamic client registration

@@ -67,6 +67,38 @@ fn verify_pkce_s256(verifier: &str, challenge: &str) -> bool {
     computed == challenge
 }
 
+/// Validate a registered redirect URI for an MCP OAuth client.
+///
+/// Policy (per spec/threat-model OAuth open-redirect prevention):
+/// - Allow `https://` to any host (with absolute URL form, no fragment).
+/// - Allow `http://` only for native loopback callbacks: any IPv4 address in
+///   `127.0.0.0/8`, the IPv6 `[::1]` address, and the literal `localhost`
+///   host. Any port is fine.
+/// - Reject every other scheme — explicitly including `javascript:`, `data:`,
+///   `file:`, `vbscript:`, custom app schemes, and unparseable/relative URIs.
+/// - Reject URIs with a fragment component (RFC 6749 §3.1.2).
+fn validate_redirect_uri(raw: &str) -> Result<(), &'static str> {
+    let parsed = url::Url::parse(raw).map_err(|_| "redirect_uri must be an absolute URL")?;
+    if parsed.fragment().is_some() {
+        return Err("redirect_uri must not contain a fragment");
+    }
+    match parsed.scheme() {
+        "https" => {
+            if parsed.host().is_none() {
+                return Err("https redirect_uri must include a host");
+            }
+            Ok(())
+        }
+        "http" => match parsed.host() {
+            Some(url::Host::Domain("localhost")) => Ok(()),
+            Some(url::Host::Ipv4(ip)) if ip.is_loopback() => Ok(()),
+            Some(url::Host::Ipv6(ip)) if ip.is_loopback() => Ok(()),
+            _ => Err("http redirect_uri is only allowed for loopback hosts"),
+        },
+        _ => Err("redirect_uri scheme is not allowed"),
+    }
+}
+
 // ============================================
 // Request/Response types
 // ============================================
@@ -310,6 +342,15 @@ async fn oauth_register(
             error_description: Some("At least one redirect_uri is required".to_string()),
         });
     }
+    for uri in &req.redirect_uris {
+        if let Err(reason) = validate_redirect_uri(uri) {
+            tracing::warn!(client_name = %req.client_name, reason, "MCP OAuth: rejected redirect_uri");
+            return Err(OAuthErrorResponse {
+                error: "invalid_redirect_uri".to_string(),
+                error_description: Some(reason.to_string()),
+            });
+        }
+    }
 
     // Generate client credentials
     let client_id = format!("mcp_client_{}", generate_random_hex());
@@ -414,6 +455,11 @@ async fn oauth_authorize(
     if !registered_uris.contains(&query.redirect_uri) {
         return Err(AuthError::unauthorized("Invalid redirect_uri"));
     }
+    // Defense-in-depth: reject unsafe schemes even if a legacy client managed to
+    // register one before scheme validation existed.
+    if validate_redirect_uri(&query.redirect_uri).is_err() {
+        return Err(AuthError::unauthorized("Invalid redirect_uri"));
+    }
 
     let csrf_token = generate_random_hex();
     let csrf_cookie = Cookie::build((OAUTH_AUTHORIZE_CSRF_COOKIE, csrf_token.clone()))
@@ -502,6 +548,9 @@ async fn validate_authorize_client(
     if !registered_uris.contains(&query.redirect_uri) {
         return Err(AuthError::unauthorized("Invalid redirect_uri"));
     }
+    if validate_redirect_uri(&query.redirect_uri).is_err() {
+        return Err(AuthError::unauthorized("Invalid redirect_uri"));
+    }
     Ok(())
 }
 
@@ -550,12 +599,18 @@ async fn issue_authorization_code(
     );
 
     tracing::info!(user_id = %user.id, client_id = %query.client_id, redirect_uri = %query.redirect_uri, "MCP OAuth: auth code issued, redirecting");
-    Ok(format!(
-        "{}?code={}&state={}",
-        query.redirect_uri,
-        urlencoding::encode(&code),
-        urlencoding::encode(&query.state)
-    ))
+    // RFC 6749 §3.1.2 — the registered redirect URI MAY contain a query
+    // component, which must be retained when appending `code` and `state`.
+    // Use `Url::query_pairs_mut` so a redirect like `https://app/cb?next=1`
+    // becomes `https://app/cb?next=1&code=...&state=...`, not the malformed
+    // `...?next=1?code=...` that naive string concatenation would produce.
+    let mut redirect = url::Url::parse(&query.redirect_uri)
+        .map_err(|_| AuthError::unauthorized("Invalid redirect_uri"))?;
+    redirect
+        .query_pairs_mut()
+        .append_pair("code", &code)
+        .append_pair("state", &query.state);
+    Ok(redirect.into())
 }
 
 fn render_authorize_confirm_page(query: &OAuthAuthorizeQuery, csrf_token: &str) -> String {
@@ -973,6 +1028,64 @@ mod tests {
 
         assert!(verify_pkce_s256(verifier, &challenge));
         assert!(!verify_pkce_s256("wrong-verifier", &challenge));
+    }
+
+    #[test]
+    fn test_validate_redirect_uri_accepts_safe_schemes() {
+        for uri in [
+            "https://example.com/cb",
+            "https://example.com:8443/cb?next=1",
+            "http://localhost/cb",
+            "http://localhost:9999/cb",
+            "http://127.0.0.1:9999/cb",
+            "http://[::1]:9999/cb",
+        ] {
+            assert!(
+                validate_redirect_uri(uri).is_ok(),
+                "expected {uri} to be accepted",
+            );
+        }
+    }
+
+    #[test]
+    fn test_redirect_url_with_existing_query_preserves_pairs() {
+        // Simulate the URL builder from `issue_authorization_code` to make
+        // sure a registered redirect URI with an existing query keeps it.
+        let mut url = url::Url::parse("https://app.example.com/cb?next=1").unwrap();
+        url.query_pairs_mut()
+            .append_pair("code", "C&D")
+            .append_pair("state", "x y");
+        let s: String = url.into();
+        assert!(s.starts_with("https://app.example.com/cb?next=1&"));
+        assert!(s.contains("code=C%26D"));
+        assert!(s.contains("state=x+y"));
+        // No double `?` or naive concatenation.
+        assert_eq!(s.matches('?').count(), 1);
+    }
+
+    #[test]
+    fn test_validate_redirect_uri_rejects_unsafe_schemes() {
+        for uri in [
+            "javascript:alert(1)",
+            "data:text/html,<script>alert(1)</script>",
+            "file:///tmp/cb",
+            "vbscript:msgbox(1)",
+            "myapp://callback",
+            "http://example.com/cb",     // non-loopback http
+            "http://10.0.0.1:9999/cb",   // non-loopback IPv4
+            "http://[2001:db8::1]/cb",   // non-loopback IPv6
+            "http://localhost.evil.com", // suffix attack
+            "//example.com/cb",          // protocol-relative
+            "/relative",
+            "",
+            "https://example.com/cb#frag", // fragment forbidden
+            "not a url",
+        ] {
+            assert!(
+                validate_redirect_uri(uri).is_err(),
+                "expected {uri} to be rejected",
+            );
+        }
     }
 
     #[test]
