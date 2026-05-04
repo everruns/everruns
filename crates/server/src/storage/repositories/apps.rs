@@ -58,6 +58,22 @@ impl Database {
         Ok(row)
     }
 
+    pub async fn get_app_by_id(&self, org_id: i64, id: Uuid) -> Result<Option<AppRow>> {
+        let row = sqlx::query_as::<_, AppRow>(
+            r#"
+            SELECT id, org_id, public_id, name, description, harness_id, agent_id, agent_identity_id, owner_principal_id, resolved_owner_user_id, channel_type, channel_config, channel_config_encrypted, status, published_at, created_at, updated_at, archived_at, deleted_at
+            FROM apps
+            WHERE org_id = $1 AND id = $2
+            "#,
+        )
+        .bind(org_id)
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
     /// Look up the owning org for an app by its public_id. See
     /// specs/multitenancy.md (Cross-Org Resource Resolution).
     pub async fn get_app_organization_id(&self, public_id: &str) -> Result<Option<i64>> {

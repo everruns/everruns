@@ -230,6 +230,37 @@ fn build_schedule_target_input(app: &App, channel: &AppChannel) -> Value {
     })
 }
 
+fn app_invocation_message_metadata(
+    app: &App,
+    channel: &AppChannel,
+    source: AppInvocationSource,
+) -> HashMap<String, Value> {
+    [
+        (
+            "source".to_string(),
+            Value::String(format!("app_{}", source.as_str())),
+        ),
+        (
+            "app_id".to_string(),
+            Value::String(app.public_id.to_string()),
+        ),
+        (
+            "_app_id".to_string(),
+            Value::String(app.public_id.to_string()),
+        ),
+        (
+            "app_channel_id".to_string(),
+            Value::String(channel.public_id.to_string()),
+        ),
+        (
+            "app_channel_type".to_string(),
+            Value::String(channel.channel_type.to_string()),
+        ),
+    ]
+    .into_iter()
+    .collect()
+}
+
 async fn set_channel_durable_schedule_id(
     ctx: &Ctx,
     channel_internal_id: Uuid,
@@ -477,7 +508,12 @@ async fn find_or_create_invocation_session(
     let shared_tags = app_session_tags(app, channel);
     if session_mode == InvocationSessionMode::SharedSession
         && let Some(existing) = db
-            .find_session_by_tags_and_owner(app.org_id, app.owner_principal_id, &shared_tags)
+            .find_app_session_by_tags_and_owner(
+                app.org_id,
+                app.internal_id,
+                app.owner_principal_id,
+                &shared_tags,
+            )
             .await
             .map_err(classify_anyhow)?
     {
@@ -496,11 +532,12 @@ async fn find_or_create_invocation_session(
     };
 
     let session = session_service
-        .create(
+        .create_from_app(
             &everruns_core::Caller::internal(app.org_id),
             app.harness_id.uuid(),
             app.agent_id.map(|agent_id| agent_id.uuid()),
             app.agent_id,
+            app.internal_id,
             CreateSessionRequest {
                 harness_id: Some(app.harness_id),
                 harness_name: None,
@@ -535,28 +572,7 @@ async fn dispatch_invocation_message(
     request_id: Option<String>,
     rendered_message: String,
 ) -> Result<(), CommandError> {
-    let metadata = Some(
-        [
-            (
-                "source".to_string(),
-                Value::String(format!("app_{}", source.as_str())),
-            ),
-            (
-                "app_id".to_string(),
-                Value::String(app.public_id.to_string()),
-            ),
-            (
-                "app_channel_id".to_string(),
-                Value::String(channel.public_id.to_string()),
-            ),
-            (
-                "app_channel_type".to_string(),
-                Value::String(channel.channel_type.to_string()),
-            ),
-        ]
-        .into_iter()
-        .collect(),
-    );
+    let metadata = Some(app_invocation_message_metadata(app, channel, source));
 
     message_service
         .create(
@@ -1842,3 +1858,62 @@ impl Command for DeleteChannel {
 }
 
 inventory::submit! { CommandDescriptor::of::<DeleteChannel>() }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use everruns_core::typed_id::{AppChannelId, HarnessId, PrincipalId};
+
+    fn test_app_and_channel() -> (App, AppChannel) {
+        let now = Utc::now();
+        let channel = AppChannel {
+            public_id: AppChannelId::from_seed(2),
+            internal_id: Uuid::nil(),
+            channel_type: ChannelType::Webhook,
+            channel_config: json!({}),
+            enabled: true,
+            created_at: now,
+            updated_at: now,
+        };
+        let app = App {
+            public_id: AppId::from_seed(1),
+            internal_id: Uuid::nil(),
+            org_id: 1,
+            name: "Test App".to_string(),
+            description: None,
+            harness_id: HarnessId::from_seed(3),
+            agent_id: None,
+            agent_identity_id: None,
+            owner_principal_id: PrincipalId::from_seed(4),
+            resolved_owner_user_id: None,
+            owner: None,
+            effective_owner: None,
+            channels: vec![channel.clone()],
+            status: AppStatus::Published,
+            published_at: None,
+            created_at: now,
+            updated_at: now,
+            archived_at: None,
+            deleted_at: None,
+        };
+
+        (app, channel)
+    }
+
+    #[test]
+    fn app_invocation_message_metadata_includes_system_app_id() {
+        let (app, channel) = test_app_and_channel();
+
+        let metadata =
+            app_invocation_message_metadata(&app, &channel, AppInvocationSource::Webhook);
+
+        assert_eq!(
+            metadata.get("_app_id"),
+            Some(&Value::String(app.public_id.to_string()))
+        );
+        assert_eq!(
+            metadata.get("app_channel_id"),
+            Some(&Value::String(channel.public_id.to_string()))
+        );
+    }
+}

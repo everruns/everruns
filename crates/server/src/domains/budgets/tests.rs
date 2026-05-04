@@ -39,6 +39,7 @@ async fn create_session_with_owner_and_tags(
 ) -> SessionRow {
     db.create_session(CreateSessionRow {
         org_id,
+        app_id: None,
         harness_id: None,
         agent_id,
         agent_identity_id: None,

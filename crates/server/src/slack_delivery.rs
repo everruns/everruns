@@ -314,8 +314,8 @@ impl SlackDeliveryDispatcher {
 
     /// Recover active Slack deliveries after server restart.
     ///
-    /// Finds sessions in 'active' status with slack:* tags, looks up the
-    /// corresponding app for bot_token, and re-registers deliveries for
+    /// Finds app-owned sessions in 'active' status for Slack apps, looks up
+    /// the corresponding app for bot_token, and re-registers deliveries for
     /// any turns that haven't completed yet.
     pub async fn recover(
         &self,
@@ -338,30 +338,25 @@ impl SlackDeliveryDispatcher {
         info!(count = sessions.len(), "Recovering active Slack sessions");
 
         for session in &sessions {
-            // Extract app_id from tags (slack:app:{app_id})
-            let app_id = match session
-                .tags
-                .iter()
-                .find_map(|t| t.strip_prefix("slack:app:"))
-            {
-                Some(id) => id.to_string(),
+            let app_internal_id = match session.app_id {
+                Some(app_id) => app_id,
                 None => continue,
             };
 
-            // Look up app scoped to the session's organization.
-            // Prevents cross-tenant token use from forged slack:app:* tags.
-            let app = match crate::domains::apps::queries::get_by_public_id(
+            // Look up the app through the server-owned session FK.
+            // This keeps recovery independent of mutable routing tags.
+            let app = match crate::domains::apps::queries::get_by_internal_id(
                 db,
                 encryption,
                 session.org_id,
-                &app_id,
+                app_internal_id,
             )
             .await
             {
                 Ok(Some(app)) => app,
                 Ok(None) => {
                     warn!(
-                        app_id = %app_id,
+                        app_id = %app_internal_id,
                         session_id = %session.id,
                         org_id = session.org_id,
                         "App not found in session org during Slack recovery"
@@ -369,7 +364,7 @@ impl SlackDeliveryDispatcher {
                     continue;
                 }
                 Err(e) => {
-                    warn!(app_id = %app_id, error = %e, "Failed to load app for Slack recovery");
+                    warn!(app_id = %app_internal_id, error = %e, "Failed to load app for Slack recovery");
                     continue;
                 }
             };
@@ -1343,14 +1338,10 @@ mod tests {
         }
     }
 
-    // Regression tests for fix(slack): scope recovery app lookup to session org (#1502).
+    // Regression tests for Slack recovery app ownership.
     //
-    // Pre-fix `SlackDeliveryDispatcher::recover` resolved `slack:app:*` tags
-    // through an unscoped app lookup, allowing a session in org B to recover
-    // using org A's Slack bot token and post messages as that app. The fix
-    // routes the lookup through `get_by_public_id(..., session.org_id, ...)`,
-    // which returns None for cross-org tags. These tests pin the cross-tenant
-    // rejection.
+    // Recovery must use the server-owned `sessions.app_id` FK. Mutable
+    // `slack:app:*` routing tags alone must not opt a session into recovery.
     mod recovery_scoping_tests {
         use super::*;
         use crate::storage::StorageBackend;
@@ -1363,7 +1354,7 @@ mod tests {
         const ORG_ATTACKER: i64 = 20;
         const LEGIT_APP_PUBLIC_ID: &str = "app_legit_test";
 
-        async fn seed_slack_app(db: &StorageBackend, org_id: i64, public_id: &str) {
+        async fn seed_slack_app(db: &StorageBackend, org_id: i64, public_id: &str) -> uuid::Uuid {
             db.create_app(
                 org_id,
                 CreateAppRow {
@@ -1386,12 +1377,14 @@ mod tests {
                 },
             )
             .await
-            .expect("seed slack app");
+            .expect("seed slack app")
+            .id
         }
 
-        async fn seed_active_session_with_slack_tag(
+        async fn seed_active_slack_delivery_session(
             db: &StorageBackend,
             org_id: i64,
+            app_id: Option<uuid::Uuid>,
             app_public_id: &str,
         ) -> everruns_core::typed_id::SessionId {
             use crate::storage::models::CreateEventRow;
@@ -1399,6 +1392,7 @@ mod tests {
             let session = db
                 .create_session(CreateSessionRow {
                     org_id,
+                    app_id,
                     harness_id: Some(HarnessId::from_uuid(uuid::Uuid::nil())),
                     agent_id: Some(AgentId::from_uuid(uuid::Uuid::nil())),
                     agent_identity_id: None,
@@ -1473,7 +1467,7 @@ mod tests {
             let db = Arc::new(StorageBackend::in_memory());
             seed_slack_app(&db, ORG_APP_OWNER, LEGIT_APP_PUBLIC_ID).await;
             // Attacker session sits in a different org but tags a real app's public id.
-            seed_active_session_with_slack_tag(&db, ORG_ATTACKER, LEGIT_APP_PUBLIC_ID).await;
+            seed_active_slack_delivery_session(&db, ORG_ATTACKER, None, LEGIT_APP_PUBLIC_ID).await;
 
             let dispatcher = build_dispatcher(db);
             dispatcher.recover(None).await;
@@ -1489,7 +1483,7 @@ mod tests {
         async fn recover_ignores_session_with_unknown_app_tag() {
             let db = Arc::new(StorageBackend::in_memory());
             // No app exists with this public id anywhere.
-            seed_active_session_with_slack_tag(&db, ORG_ATTACKER, "app_does_not_exist").await;
+            seed_active_slack_delivery_session(&db, ORG_ATTACKER, None, "app_does_not_exist").await;
 
             let dispatcher = build_dispatcher(db);
             dispatcher.recover(None).await;
@@ -1498,6 +1492,23 @@ mod tests {
                 dispatcher.active_delivery_count().await,
                 0,
                 "missing slack:app:* lookup must not leak recovery to any app"
+            );
+        }
+
+        #[tokio::test]
+        async fn recover_uses_session_app_id_instead_of_slack_app_tag() {
+            let db = Arc::new(StorageBackend::in_memory());
+            let app_id = seed_slack_app(&db, ORG_APP_OWNER, LEGIT_APP_PUBLIC_ID).await;
+            seed_active_slack_delivery_session(&db, ORG_APP_OWNER, Some(app_id), "app_forged_tag")
+                .await;
+
+            let dispatcher = build_dispatcher(db);
+            dispatcher.recover(None).await;
+
+            assert_eq!(
+                dispatcher.active_delivery_count().await,
+                1,
+                "session app_id should drive Slack recovery even if routing tags drift"
             );
         }
     }

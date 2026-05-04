@@ -52,6 +52,14 @@ impl InMemoryDatabase {
             .cloned())
     }
 
+    pub async fn get_app_by_id(&self, org_id: i64, id: Uuid) -> Result<Option<AppRow>> {
+        let apps = self.apps.read();
+        Ok(apps
+            .values()
+            .find(|a| a.org_id == org_id && a.id == id)
+            .cloned())
+    }
+
     /// Lookup app by public_id without org scoping (for unauthenticated webhooks).
     pub async fn get_app_by_public_id_unscoped(&self, public_id: &str) -> Result<Option<AppRow>> {
         let apps = self.apps.read();

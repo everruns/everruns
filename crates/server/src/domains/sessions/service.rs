@@ -109,6 +109,48 @@ impl SessionService {
         agent_public_id: Option<AgentId>,
         req: CreateSessionRequest,
     ) -> Result<Session> {
+        self.create_inner(
+            caller,
+            harness_id,
+            agent_internal_id,
+            agent_public_id,
+            None,
+            req,
+        )
+        .await
+    }
+
+    /// Create a session from an App channel. The app backreference is server-owned
+    /// and intentionally absent from public session create/update request types.
+    pub async fn create_from_app(
+        &self,
+        caller: &Caller,
+        harness_id: Uuid,
+        agent_internal_id: Option<Uuid>,
+        agent_public_id: Option<AgentId>,
+        app_internal_id: Uuid,
+        req: CreateSessionRequest,
+    ) -> Result<Session> {
+        self.create_inner(
+            caller,
+            harness_id,
+            agent_internal_id,
+            agent_public_id,
+            Some(app_internal_id),
+            req,
+        )
+        .await
+    }
+
+    async fn create_inner(
+        &self,
+        caller: &Caller,
+        harness_id: Uuid,
+        agent_internal_id: Option<Uuid>,
+        agent_public_id: Option<AgentId>,
+        app_id: Option<Uuid>,
+        req: CreateSessionRequest,
+    ) -> Result<Session> {
         let org_id = caller.org_id;
         let org_public_id = &caller.org_public_id;
         let harness_id = HarnessId::from_uuid(harness_id);
@@ -232,6 +274,7 @@ impl SessionService {
 
         let input = CreateSessionRow {
             org_id,
+            app_id,
             harness_id: Some(harness_id),
             agent_id,
             agent_identity_id,
@@ -336,6 +379,7 @@ impl SessionService {
 
         let input = CreateSessionRow {
             org_id,
+            app_id: None,
             harness_id: Some(harness_id),
             agent_id: None,
             agent_identity_id: None,
@@ -952,6 +996,7 @@ impl SessionService {
         let harness_id_typed = HarnessId::from_uuid(harness_id);
         let input = CreateSessionRow {
             org_id,
+            app_id: None,
             harness_id: Some(harness_id_typed),
             agent_id: None,
             agent_identity_id: None,
@@ -1421,6 +1466,67 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn app_backreference_is_only_set_by_app_session_create() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let session_service = SessionService::new(db.clone());
+        let caller = Caller::internal(1);
+        let ctx = test_ctx(caller.clone(), db.clone());
+
+        let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+            name: "app-backref-harness".to_string(),
+            display_name: Some("App Backref Harness".to_string()),
+            description: None,
+            system_prompt: "Harness prompt".to_string(),
+            parent_harness_id: None,
+            default_model_id: None,
+            tags: vec![],
+            capabilities: vec![],
+            initial_files: vec![],
+            mcp_servers: Default::default(),
+            network_access: None,
+        })
+        .execute(&ctx)
+        .await
+        .unwrap();
+
+        let app_internal_id = Uuid::now_v7();
+        let app_session = session_service
+            .create_from_app(
+                &caller,
+                harness.id.uuid(),
+                None,
+                None,
+                app_internal_id,
+                build_create_request(harness.id, None, None),
+            )
+            .await
+            .unwrap();
+        let stored_app_session = db
+            .get_session(1, app_session.id)
+            .await
+            .unwrap()
+            .expect("app session should be stored");
+        assert_eq!(stored_app_session.app_id, Some(app_internal_id));
+
+        let normal_session = session_service
+            .create(
+                &caller,
+                harness.id.uuid(),
+                None,
+                None,
+                build_create_request(harness.id, None, None),
+            )
+            .await
+            .unwrap();
+        let stored_normal_session = db
+            .get_session(1, normal_session.id)
+            .await
+            .unwrap()
+            .expect("normal session should be stored");
+        assert_eq!(stored_normal_session.app_id, None);
+    }
+
+    #[tokio::test]
     async fn starter_files_are_copied_into_new_sessions() {
         let db = Arc::new(StorageBackend::in_memory());
         let session_service = SessionService::new(db.clone());
@@ -1845,6 +1951,7 @@ mod tests {
         let session_row = db
             .create_session(CreateSessionRow {
                 org_id: caller.org_id,
+                app_id: None,
                 harness_id: Some(other_harness.id),
                 agent_id: Some(AgentId::from_uuid(other_agent.internal_id)),
                 agent_identity_id: None,
@@ -2023,6 +2130,7 @@ mod tests {
         let session_row = db
             .create_session(CreateSessionRow {
                 org_id: caller.org_id,
+                app_id: None,
                 harness_id: None,
                 agent_id: None,
                 agent_identity_id: None,

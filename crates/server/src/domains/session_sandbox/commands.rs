@@ -399,6 +399,7 @@ mod tests {
 
         db.create_session(CreateSessionRow {
             org_id: DEFAULT_ORG_ID,
+            app_id: None,
             harness_id: Some(harness_id),
             agent_id: None,
             agent_identity_id: None,

@@ -19,6 +19,7 @@ impl InMemoryDatabase {
         let row = SessionRow {
             id,
             org_id: input.org_id,
+            app_id: input.app_id,
             harness_id: input.harness_id,
             agent_id: input.agent_id,
             agent_identity_id: input.agent_identity_id,
@@ -248,12 +249,20 @@ impl InMemoryDatabase {
         Ok(stats)
     }
 
-    /// Find active sessions with Slack tags (for startup recovery).
+    /// Find active sessions owned by apps with Slack channel configuration.
     pub async fn find_active_slack_sessions(&self) -> Result<Vec<SessionRow>> {
         let sessions = self.sessions.read();
+        let apps = self.apps.read();
         let result: Vec<_> = sessions
             .values()
-            .filter(|s| s.status == "active" && s.tags.iter().any(|t| t.starts_with("slack:app:")))
+            .filter(|s| {
+                s.status == "active"
+                    && s.app_id
+                        .and_then(|app_id| apps.get(&app_id))
+                        .is_some_and(|app| {
+                            app.channel_type.as_deref() == Some("slack") && app.status != "deleted"
+                        })
+            })
             .cloned()
             .collect();
         Ok(result)
@@ -289,6 +298,27 @@ impl InMemoryDatabase {
         Ok(result.into_iter().next())
     }
 
+    /// Find a single app-owned session matching ALL given tags within an org.
+    pub async fn find_app_session_by_tags(
+        &self,
+        org_id: i64,
+        app_id: Uuid,
+        tags: &[String],
+    ) -> Result<Option<SessionRow>> {
+        let sessions = self.sessions.read();
+        let mut result: Vec<_> = sessions
+            .values()
+            .filter(|s| {
+                s.org_id == org_id
+                    && s.app_id == Some(app_id)
+                    && tags.iter().all(|tag| s.tags.contains(tag))
+            })
+            .cloned()
+            .collect();
+        result.sort_by_key(|session| session.created_at);
+        Ok(result.into_iter().next())
+    }
+
     /// Find a single session matching ALL given tags + owner within an org.
     pub async fn find_session_by_tags_and_owner(
         &self,
@@ -301,6 +331,29 @@ impl InMemoryDatabase {
             .values()
             .filter(|s| {
                 s.org_id == org_id
+                    && s.owner_principal_id == owner_principal_id
+                    && tags.iter().all(|tag| s.tags.contains(tag))
+            })
+            .cloned()
+            .collect();
+        result.sort_by_key(|session| session.created_at);
+        Ok(result.into_iter().next())
+    }
+
+    /// Find a single app-owned session matching ALL given tags + owner within an org.
+    pub async fn find_app_session_by_tags_and_owner(
+        &self,
+        org_id: i64,
+        app_id: Uuid,
+        owner_principal_id: PrincipalId,
+        tags: &[String],
+    ) -> Result<Option<SessionRow>> {
+        let sessions = self.sessions.read();
+        let mut result: Vec<_> = sessions
+            .values()
+            .filter(|s| {
+                s.org_id == org_id
+                    && s.app_id == Some(app_id)
                     && s.owner_principal_id == owner_principal_id
                     && tags.iter().all(|tag| s.tags.contains(tag))
             })
