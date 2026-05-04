@@ -9,6 +9,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.8.25] - 2026-05-04
+
+### Highlights
+
+- **App lifecycle deepens** - Apps gain configurable AG-UI thread expiration ([#1646](https://github.com/everruns/everruns/pull/1646)), per-app rate limits on the public AG-UI endpoint ([#1647](https://github.com/everruns/everruns/pull/1647)), app/channel-scoped budgets with periodic resets ([#1649](https://github.com/everruns/everruns/pull/1649)), session provenance tracking, and a guard that blocks deletion of app-backed entities so live channels stay consistent.
+- **Streaming output guardrails + prompt canary capability** - New core capability lets agents validate streaming output and surface prompt canaries for safer model interactions ([#1651](https://github.com/everruns/everruns/pull/1651)).
+- **Agent and harness usage stats** - UI now surfaces per-agent and per-harness usage counts so operators can see where activity actually concentrates.
+- **AG-UI public-endpoint hardening** - Public AG-UI errors are sanitized and now follow the defined public-endpoint contract ([#1645](https://github.com/everruns/everruns/pull/1645)), privileged message roles are rejected in AG-UI requests ([#1653](https://github.com/everruns/everruns/pull/1653)), and unsafe redirect URI schemes are rejected during MCP OAuth registration ([#1652](https://github.com/everruns/everruns/pull/1652)).
+- **bashkit bumped to v0.4.1 from crates.io** - Picks up the latest sandbox capabilities and hardening, and switches the dependency to crates.io ([#1650](https://github.com/everruns/everruns/pull/1650), [#1656](https://github.com/everruns/everruns/pull/1656)).
+
+### What's Changed
+
+- fix(ui): handle missing initial_files in agent and harness preview ([#1634](https://github.com/everruns/everruns/pull/1634)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): improve app 404 resource states ([#1638](https://github.com/everruns/everruns/pull/1638)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): add shared page layout shell and apply to models page ([#1635](https://github.com/everruns/everruns/pull/1635)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): simplify organisations settings by [@chaliy](https://github.com/chaliy)
+- fix(ui): smooth cross-org entity links by [@chaliy](https://github.com/chaliy)
+- fix(api): add UI links to command outputs by [@chaliy](https://github.com/chaliy)
+- fix(worker): notify initial durable tasks via active backend by [@chaliy](https://github.com/chaliy)
+- test(mcp): add adversarial org-scope coverage by [@chaliy](https://github.com/chaliy)
+- fix(deletion): block deleting app-backed entities by [@chaliy](https://github.com/chaliy)
+- feat(ui): show agent and harness usage counts by [@chaliy](https://github.com/chaliy)
+- fix(core): cap infinity context prompt window by [@chaliy](https://github.com/chaliy)
+- feat(apps): add configurable AG-UI thread expiration ([#1646](https://github.com/everruns/everruns/pull/1646)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump bashkit to v0.4.0 ([#1650](https://github.com/everruns/everruns/pull/1650)) by [@chaliy](https://github.com/chaliy)
+- fix(server): reject unsafe redirect URI schemes in MCP OAuth registration ([#1652](https://github.com/everruns/everruns/pull/1652)) by [@chaliy](https://github.com/chaliy)
+- fix(server): reject privileged message roles in AG-UI request body ([#1653](https://github.com/everruns/everruns/pull/1653)) by [@chaliy](https://github.com/chaliy)
+- fix(mcp): accept array and object flags in generated bashkit builtins ([#1654](https://github.com/everruns/everruns/pull/1654)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): show display names in selects, never internal values ([#1648](https://github.com/everruns/everruns/pull/1648)) by [@chaliy](https://github.com/chaliy)
+- fix(server): sanitize AG-UI public errors + define public-endpoint contract ([#1645](https://github.com/everruns/everruns/pull/1645)) by [@chaliy](https://github.com/chaliy)
+- feat(ag-ui): configurable per-app rate limit on public endpoint ([#1647](https://github.com/everruns/everruns/pull/1647)) by [@chaliy](https://github.com/chaliy)
+- feat(budgets): app/channel scoped budgets with periodic resets ([#1649](https://github.com/everruns/everruns/pull/1649)) by [@chaliy](https://github.com/chaliy)
+- feat(stats): add agent and harness usage stats by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump bashkit to v0.4.1 from crates.io ([#1656](https://github.com/everruns/everruns/pull/1656)) by [@chaliy](https://github.com/chaliy)
+- feat(apps): track app session provenance by [@chaliy](https://github.com/chaliy)
+- fix(ui): show chat error alerts by [@chaliy](https://github.com/chaliy)
+- feat(core): streaming output guardrails + prompt canary capability ([#1651](https://github.com/everruns/everruns/pull/1651)) by [@chaliy](https://github.com/chaliy)
+- refactor(ui): rebuild dev showcases with real components ([#1657](https://github.com/everruns/everruns/pull/1657)) by [@chaliy](https://github.com/chaliy)
+- chore(ship): validate migration ordering after rebase and pre-merge ([#1659](https://github.com/everruns/everruns/pull/1659)) by [@chaliy](https://github.com/chaliy)
+
 ## [0.8.24] - 2026-05-03
 
 ### Highlights
