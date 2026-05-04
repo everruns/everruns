@@ -31,6 +31,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { CapabilitySelector } from "@/components/agents/capability-selector";
+import { EntityDeleteErrorNotice } from "@/components/entity-delete-error-notice";
 import { HarnessSelect } from "@/components/harness/harness-select";
 import { HarnessPreview } from "@/components/harnesses/harness-preview";
 import { InitialFilesEditor } from "@/components/initial-files-editor";
@@ -192,6 +193,8 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
   const isSaving = updateHarness.isPending;
   const isReadOnly = isReadOnlyStatus(harness?.status);
   const canDangerousDelete = canPolicies("harness.dangerous");
+  const deleteError = deleteHarness.error ?? destroyHarness.error;
+  const deleteAction = harness?.status === "archived" ? "delete" : "archive";
 
   // Built-in harnesses cannot be edited — redirect to detail page
   if (harness?.is_built_in) {
@@ -441,6 +444,14 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
                         </Button>
                       )}
                     </div>
+                    {deleteError && (
+                      <EntityDeleteErrorNotice
+                        entityKind="harness"
+                        action={deleteAction}
+                        message={deleteError.message}
+                        className="mt-4"
+                      />
+                    )}
                   </CardContent>
                 </Card>
               </div>
@@ -560,6 +571,14 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
               Permanently delete the archived harness &quot;{getDisplayName(harness)}&quot;?
               Existing references will render as deleted tombstones.
             </DialogDescription>
+            {destroyHarness.error && (
+              <EntityDeleteErrorNotice
+                entityKind="harness"
+                action="delete"
+                message={destroyHarness.error.message}
+                className="mt-4"
+              />
+            )}
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>

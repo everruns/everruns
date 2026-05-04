@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/dialog";
 import { CapabilitySelector } from "@/components/agents/capability-selector";
 import { AgentPreview } from "@/components/agents/agent-preview";
+import { EntityDeleteErrorNotice } from "@/components/entity-delete-error-notice";
 import { InitialFilesEditor } from "@/components/initial-files-editor";
 import { ModelPicker } from "@/components/models/model-picker";
 import { ArrowLeft, Save, Trash2, Eye, Edit2, Check, X, Loader2 } from "lucide-react";
@@ -194,6 +195,8 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
   const isSaving = updateAgent.isPending;
   const isReadOnly = isReadOnlyStatus(agent?.status);
   const canDangerousDelete = canPolicies("agent.dangerous");
+  const deleteError = deleteAgent.error ?? destroyAgent.error;
+  const deleteAction = agent?.status === "archived" ? "delete" : "archive";
 
   if (isLoading) {
     return (
@@ -424,6 +427,14 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
                         </Button>
                       )}
                     </div>
+                    {deleteError && (
+                      <EntityDeleteErrorNotice
+                        entityKind="agent"
+                        action={deleteAction}
+                        message={deleteError.message}
+                        className="mt-4"
+                      />
+                    )}
                   </CardContent>
                 </Card>
               </div>
@@ -535,6 +546,14 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
               Permanently delete the archived agent &quot;{agentDisplayName}
               &quot;? Existing references will render as deleted tombstones.
             </DialogDescription>
+            {destroyAgent.error && (
+              <EntityDeleteErrorNotice
+                entityKind="agent"
+                action="delete"
+                message={destroyAgent.error.message}
+                className="mt-4"
+              />
+            )}
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>

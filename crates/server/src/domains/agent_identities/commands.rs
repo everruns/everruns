@@ -317,6 +317,13 @@ impl Command for DeleteAgentIdentity {
             .parse()
             .map_err(|e| CommandError::bad_request(format!("Invalid identity ID: {e}")))?;
 
+        crate::domains::apps::queries::ensure_no_app_references_to_agent_identity(
+            &ctx.db,
+            ctx.org_id(),
+            identity_id.uuid(),
+        )
+        .await?;
+
         let deleted = ctx
             .db
             .delete_agent_identity(ctx.org_id(), identity_id)
@@ -373,6 +380,13 @@ impl Command for DestroyAgentIdentity {
             .id
             .parse()
             .map_err(|e| CommandError::bad_request(format!("Invalid identity ID: {e}")))?;
+
+        crate::domains::apps::queries::ensure_no_app_references_to_agent_identity(
+            &ctx.db,
+            ctx.org_id(),
+            identity_id.uuid(),
+        )
+        .await?;
 
         let destroyed = ctx
             .db

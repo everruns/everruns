@@ -331,6 +331,29 @@ pub async fn ensure_no_child_harnesses(
     );
 }
 
+/// Ensure deleting/archiving won't break org-level default harness settings.
+pub async fn ensure_not_org_default_harness(
+    db: &StorageBackend,
+    org_id: i64,
+    harness_id: HarnessId,
+) -> Result<(), CommandError> {
+    let settings = db.get_organization_settings(org_id).await?;
+    let Some(settings) = settings else {
+        return Ok(());
+    };
+    if settings.default_harness_id == Some(harness_id) {
+        return Err(CommandError::conflict(
+            "Cannot archive or delete harness while it is the organization default harness",
+        ));
+    }
+    if settings.base_harness_id == Some(harness_id) {
+        return Err(CommandError::conflict(
+            "Cannot archive or delete harness while it is the organization base harness",
+        ));
+    }
+    Ok(())
+}
+
 async fn ensure_no_parent_cycle(
     db: &StorageBackend,
     org_id: i64,
