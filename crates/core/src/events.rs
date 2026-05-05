@@ -356,6 +356,21 @@ impl Event {
         self.event_type == INPUT_MESSAGE || self.event_type == OUTPUT_MESSAGE_COMPLETED
     }
 
+    /// Whether this event is ephemeral. Ephemeral events may be delivered to
+    /// listeners without ever being inserted into the `events` table, so any
+    /// downstream storage that holds an FK to `events.id` must treat the
+    /// reference as best-effort and skip it for ephemeral sources.
+    ///
+    /// See [`EventRequest::is_ephemeral`] for the canonical match set; this
+    /// mirror exists so listeners holding `Event` (post-construction) can ask
+    /// the same question without rebuilding a request.
+    pub fn is_ephemeral(&self) -> bool {
+        matches!(
+            self.event_type.as_str(),
+            OUTPUT_MESSAGE_DELTA | REASON_THINKING_DELTA | TOOL_OUTPUT_DELTA | LLM_GENERATION
+        )
+    }
+
     /// Check if this is an input event
     pub fn is_input_event(&self) -> bool {
         self.event_type.starts_with("input.")

@@ -289,6 +289,12 @@ impl BudgetService {
         }
 
         let total_tokens = input_tokens + output_tokens;
+        // Ephemeral events (e.g. `llm.generation`) may not be persisted to the
+        // `events` table when the ephemeral-skip delivery path is active (NATS),
+        // so storing their id in `usage_journal.event_id` would violate the FK.
+        // The public id is still preserved via `source_type`/`source_id` for
+        // traceability — `event_id` is the durable FK reference only.
+        let event_id = (!event.is_ephemeral()).then(|| event.id.uuid());
         let journal = match self
             .db
             .create_usage_journal_entry(CreateUsageJournalRow {
@@ -296,7 +302,7 @@ impl BudgetService {
                 kind: "llm_generation".to_string(),
                 source_type: Some("event".to_string()),
                 source_id: Some(event.id.to_string()),
-                event_id: Some(event.id.uuid()),
+                event_id,
                 session_id: scope.session_id,
                 turn_id: event.context.turn_id.as_ref().map(|id| id.uuid()),
                 user_id: scope.user_id,
