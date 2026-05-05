@@ -68,6 +68,16 @@ pub const TOOL_CALL_REQUESTED: &str = "tool.call_requested";
 // LLM events
 pub const LLM_GENERATION: &str = "llm.generation";
 
+/// Single source of truth for which event types are ephemeral. Both
+/// `EventRequest::is_ephemeral` and `Event::is_ephemeral` delegate here so the
+/// match set cannot drift between the input and persisted forms.
+fn is_ephemeral_event_type(event_type: &str) -> bool {
+    matches!(
+        event_type,
+        OUTPUT_MESSAGE_DELTA | REASON_THINKING_DELTA | TOOL_OUTPUT_DELTA | LLM_GENERATION
+    )
+}
+
 // Reasoning/thinking events (extended thinking from models like Claude)
 pub const REASON_THINKING_STARTED: &str = "reason.thinking.started";
 pub const REASON_THINKING_DELTA: &str = "reason.thinking.delta";
@@ -361,14 +371,10 @@ impl Event {
     /// downstream storage that holds an FK to `events.id` must treat the
     /// reference as best-effort and skip it for ephemeral sources.
     ///
-    /// See [`EventRequest::is_ephemeral`] for the canonical match set; this
-    /// mirror exists so listeners holding `Event` (post-construction) can ask
-    /// the same question without rebuilding a request.
+    /// Mirror of [`EventRequest::is_ephemeral`]; both delegate to
+    /// `is_ephemeral_event_type` so the match set stays in lockstep.
     pub fn is_ephemeral(&self) -> bool {
-        matches!(
-            self.event_type.as_str(),
-            OUTPUT_MESSAGE_DELTA | REASON_THINKING_DELTA | TOOL_OUTPUT_DELTA | LLM_GENERATION
-        )
+        is_ephemeral_event_type(&self.event_type)
     }
 
     /// Check if this is an input event
@@ -2248,10 +2254,7 @@ impl EventRequest {
     /// (e.g. `output.message.completed` has the full text), so missing a delta
     /// on reconnect is acceptable.
     pub fn is_ephemeral(&self) -> bool {
-        matches!(
-            self.event_type.as_str(),
-            OUTPUT_MESSAGE_DELTA | REASON_THINKING_DELTA | TOOL_OUTPUT_DELTA | LLM_GENERATION
-        )
+        is_ephemeral_event_type(&self.event_type)
     }
 
     /// Convert to an Event with the given id and sequence
