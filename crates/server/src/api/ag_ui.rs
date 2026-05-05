@@ -26,14 +26,9 @@ use ag_ui_core::event::{
     ThinkingTextMessageContentEvent as AgUiThinkingTextMessageContentEvent,
     ThinkingTextMessageEndEvent as AgUiThinkingTextMessageEndEvent,
     ThinkingTextMessageStartEvent as AgUiThinkingTextMessageStartEvent,
-    ToolCallArgsEvent as AgUiToolCallArgsEvent, ToolCallEndEvent as AgUiToolCallEndEvent,
-    ToolCallResultEvent as AgUiToolCallResultEvent, ToolCallStartEvent as AgUiToolCallStartEvent,
 };
 use ag_ui_core::types::{
-    ids::{
-        MessageId as AgUiMessageId, RunId as AgUiRunId, ThreadId as AgUiThreadId,
-        ToolCallId as AgUiToolCallId,
-    },
+    ids::{MessageId as AgUiMessageId, RunId as AgUiRunId, ThreadId as AgUiThreadId},
     input::RunAgentInput as AgUiRunAgentInput,
     message::{Message as AgUiMessage, Role as AgUiRole},
     tool::ToolCall as AgUiToolCall,
@@ -55,7 +50,8 @@ use everruns_core::events::{
 };
 use everruns_core::message_retriever::InputMessage as StoredInputMessage;
 use everruns_core::{
-    AgUiChannelConfig, App, AppStatus, Caller, ContentPart, ExternalActor, MessageRole,
+    AgUiChannelConfig, AgUiToolVisibility, App, AppStatus, Caller, ContentPart, ExternalActor,
+    MessageRole,
 };
 use futures::{
     StreamExt,
@@ -322,7 +318,11 @@ async fn run_agent(
         assistant_emitted_delta: false,
         thinking_started: false,
         thinking_text_started: false,
-        tool_call_ids: HashMap::new(),
+        tool_visibility: channel_config.tool_visibility,
+        generic_tool_text: channel_config.generic_tool_text.clone(),
+        active_tool_activity_count: 0,
+        public_tool_activity_started: false,
+        public_tool_activity_opened_thinking: false,
         finished: false,
     };
 
@@ -621,13 +621,7 @@ fn build_external_actor(name: Option<&String>) -> Option<ExternalActor> {
 
 fn to_ag_ui_message(message: &crate::api::messages::Message) -> AgUiMessage {
     let id = AgUiMessageId::from(message.id.uuid());
-    let content = message
-        .content
-        .iter()
-        .map(content_part_to_string)
-        .filter(|part| !part.is_empty())
-        .collect::<Vec<_>>()
-        .join("\n");
+    let content = public_content_parts_to_string(&message.content);
 
     match message.role {
         ApiMessageRole::User => AgUiMessage::User {
@@ -644,27 +638,26 @@ fn to_ag_ui_message(message: &crate::api::messages::Message) -> AgUiMessage {
     }
 }
 
-fn content_part_to_string(part: &ContentPart) -> String {
+fn public_content_parts_to_string(parts: &[ContentPart]) -> String {
+    parts
+        .iter()
+        .filter_map(public_content_part_to_string)
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn public_content_part_to_string(part: &ContentPart) -> Option<String> {
     match part {
-        ContentPart::Text(text) => text.text.clone(),
-        ContentPart::Image(image) => image.url.clone().unwrap_or_else(|| "[Image]".to_string()),
-        ContentPart::ImageFile(image) => format!(
+        ContentPart::Text(text) => Some(text.text.clone()),
+        ContentPart::Image(image) => {
+            Some(image.url.clone().unwrap_or_else(|| "[Image]".to_string()))
+        }
+        ContentPart::ImageFile(image) => Some(format!(
             "[Image file: {}]",
             image.filename.as_deref().unwrap_or("unnamed")
-        ),
-        ContentPart::ToolCall(tool_call) => format!(
-            "[Tool call: {} {}]",
-            tool_call.name,
-            serde_json::to_string(&tool_call.arguments).unwrap_or_else(|_| "{}".to_string())
-        ),
-        ContentPart::ToolResult(tool_result) => format!(
-            "[Tool result {}: {}]",
-            tool_result.tool_call_id,
-            tool_result
-                .result
-                .clone()
-                .unwrap_or_else(|| Value::String(tool_result.error.clone().unwrap_or_default()))
-        ),
+        )),
+        ContentPart::ToolCall(_) | ContentPart::ToolResult(_) => None,
     }
 }
 
@@ -697,8 +690,66 @@ struct AgUiStreamState {
     assistant_emitted_delta: bool,
     thinking_started: bool,
     thinking_text_started: bool,
-    tool_call_ids: HashMap<String, AgUiToolCallId>,
+    tool_visibility: AgUiToolVisibility,
+    generic_tool_text: String,
+    active_tool_activity_count: usize,
+    public_tool_activity_started: bool,
+    public_tool_activity_opened_thinking: bool,
     finished: bool,
+}
+
+fn push_public_tool_activity_start(state: &mut AgUiStreamState, text: String) {
+    if !state.public_tool_activity_started {
+        if !state.thinking_started {
+            state
+                .queue
+                .push_back(AgUiEvent::ThinkingStart(AgUiThinkingStartEvent {
+                    base: agui_base_event(),
+                    title: None,
+                }));
+            state.public_tool_activity_opened_thinking = true;
+        }
+        state.public_tool_activity_started = true;
+    }
+    if state.thinking_started && state.thinking_text_started {
+        state.queue.push_back(AgUiEvent::ThinkingTextMessageContent(
+            AgUiThinkingTextMessageContentEvent {
+                base: agui_base_event(),
+                delta: format!("\n{text}"),
+            },
+        ));
+        return;
+    }
+    state.queue.push_back(AgUiEvent::ThinkingTextMessageStart(
+        AgUiThinkingTextMessageStartEvent {
+            base: agui_base_event(),
+        },
+    ));
+    state.queue.push_back(AgUiEvent::ThinkingTextMessageContent(
+        AgUiThinkingTextMessageContentEvent {
+            base: agui_base_event(),
+            delta: text,
+        },
+    ));
+    state.queue.push_back(AgUiEvent::ThinkingTextMessageEnd(
+        AgUiThinkingTextMessageEndEvent {
+            base: agui_base_event(),
+        },
+    ));
+}
+
+fn push_public_tool_activity_end(state: &mut AgUiStreamState) {
+    if state.public_tool_activity_started && state.active_tool_activity_count == 0 {
+        if state.public_tool_activity_opened_thinking && !state.thinking_started {
+            state
+                .queue
+                .push_back(AgUiEvent::ThinkingEnd(AgUiThinkingEndEvent {
+                    base: agui_base_event(),
+                }));
+        }
+        state.public_tool_activity_started = false;
+        state.public_tool_activity_opened_thinking = false;
+    }
 }
 
 fn translate_event(state: &mut AgUiStreamState, event: &everruns_core::Event) {
@@ -735,7 +786,7 @@ fn translate_event(state: &mut AgUiStreamState, event: &everruns_core::Event) {
                         }));
                 }
                 if !state.assistant_emitted_delta {
-                    let text = data.message.content_to_llm_string();
+                    let text = public_content_parts_to_string(&data.message.content);
                     if !text.is_empty() {
                         state.queue.push_back(AgUiEvent::TextMessageContent(
                             AgUiTextMessageContentEvent::new(message_id.clone(), text).unwrap(),
@@ -765,12 +816,14 @@ fn translate_event(state: &mut AgUiStreamState, event: &everruns_core::Event) {
         "reason.thinking.started"
             if parse_event_data::<ReasonThinkingStartedData>(event).is_ok() =>
         {
-            state
-                .queue
-                .push_back(AgUiEvent::ThinkingStart(AgUiThinkingStartEvent {
-                    base: agui_base_event(),
-                    title: None,
-                }));
+            if !state.public_tool_activity_opened_thinking {
+                state
+                    .queue
+                    .push_back(AgUiEvent::ThinkingStart(AgUiThinkingStartEvent {
+                        base: agui_base_event(),
+                        title: None,
+                    }));
+            }
             state.thinking_started = true;
             state.thinking_text_started = false;
         }
@@ -811,65 +864,32 @@ fn translate_event(state: &mut AgUiStreamState, event: &everruns_core::Event) {
             }
             state.thinking_started = false;
             state.thinking_text_started = false;
+            state.public_tool_activity_opened_thinking = false;
         }
         "tool.started" => {
             if let Ok(data) = parse_event_data::<ToolStartedData>(event) {
-                let message_id = ensure_assistant_message_id(state, event);
-                let tool_call_id = state
-                    .tool_call_ids
-                    .entry(data.tool_call.id.clone())
-                    .or_insert_with(AgUiToolCallId::random)
-                    .clone();
-                state
-                    .queue
-                    .push_back(AgUiEvent::ToolCallStart(AgUiToolCallStartEvent {
-                        base: agui_base_event(),
-                        tool_call_id: tool_call_id.clone(),
-                        tool_call_name: data.tool_call.name,
-                        parent_message_id: Some(message_id),
-                    }));
-                state
-                    .queue
-                    .push_back(AgUiEvent::ToolCallArgs(AgUiToolCallArgsEvent {
-                        base: agui_base_event(),
-                        tool_call_id: tool_call_id.clone(),
-                        delta: serde_json::to_string(&data.tool_call.arguments)
-                            .unwrap_or_else(|_| "{}".to_string()),
-                    }));
-                state
-                    .queue
-                    .push_back(AgUiEvent::ToolCallEnd(AgUiToolCallEndEvent {
-                        base: agui_base_event(),
-                        tool_call_id,
-                    }));
+                ensure_assistant_message_id(state, event);
+                state.active_tool_activity_count += 1;
+                match state.tool_visibility {
+                    AgUiToolVisibility::None => {}
+                    AgUiToolVisibility::Generic => {
+                        push_public_tool_activity_start(state, state.generic_tool_text.clone());
+                    }
+                    AgUiToolVisibility::Narrated => {
+                        if let Some(narration) = data.narration {
+                            let narration = narration.trim();
+                            if !narration.is_empty() {
+                                push_public_tool_activity_start(state, narration.to_string());
+                            }
+                        }
+                    }
+                }
             }
         }
-        "tool.completed" => {
-            if let Ok(data) = parse_event_data::<ToolCompletedData>(event) {
-                let message_id = ensure_assistant_message_id(state, event);
-                let tool_call_id = state
-                    .tool_call_ids
-                    .remove(&data.tool_call_id)
-                    .unwrap_or_else(AgUiToolCallId::random);
-                state
-                    .queue
-                    .push_back(AgUiEvent::ToolCallResult(AgUiToolCallResultEvent {
-                        base: agui_base_event(),
-                        message_id,
-                        tool_call_id,
-                        content: data
-                            .result
-                            .map(|parts| {
-                                parts
-                                    .iter()
-                                    .map(content_part_to_string)
-                                    .collect::<Vec<_>>()
-                                    .join("\n")
-                            })
-                            .unwrap_or_else(|| data.error.unwrap_or(data.status)),
-                        role: AgUiRole::Tool,
-                    }));
-            }
+        "tool.completed" if parse_event_data::<ToolCompletedData>(event).is_ok() => {
+            ensure_assistant_message_id(state, event);
+            state.active_tool_activity_count = state.active_tool_activity_count.saturating_sub(1);
+            push_public_tool_activity_end(state);
         }
         "turn.completed" | "session.idled" if !state.finished => {
             state
@@ -1136,7 +1156,11 @@ mod tests {
             assistant_emitted_delta: false,
             thinking_started: false,
             thinking_text_started: false,
-            tool_call_ids: HashMap::new(),
+            tool_visibility: AgUiToolVisibility::Generic,
+            generic_tool_text: "Working...".to_string(),
+            active_tool_activity_count: 0,
+            public_tool_activity_started: false,
+            public_tool_activity_opened_thinking: false,
             finished: false,
         }
     }
@@ -1261,8 +1285,9 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_tool_first_run_reuses_assistant_message_id() {
+    async fn test_generic_tool_activity_hides_public_tool_details() {
         let mut state = test_stream_state().await;
+        state.generic_tool_text = "Checking now".to_string();
         let turn_id = TurnId::new();
         let input_message_id = MessageId::parse(&state.input_message_id).unwrap();
         let context = EventContext::turn(turn_id, input_message_id);
@@ -1278,7 +1303,7 @@ mod tests {
                     arguments: serde_json::json!({"q": "hello"}),
                 },
                 display_name: None,
-                narration: None,
+                narration: Some("Searching for hello".to_string()),
             },
         );
         translate_event(&mut state, &tool_started);
@@ -1300,6 +1325,28 @@ mod tests {
         );
         translate_event(&mut state, &tool_completed);
 
+        let event_types: Vec<AgUiEventType> =
+            state.queue.iter().map(AgUiEvent::event_type).collect();
+        assert_eq!(
+            event_types,
+            vec![
+                AgUiEventType::ThinkingStart,
+                AgUiEventType::ThinkingTextMessageStart,
+                AgUiEventType::ThinkingTextMessageContent,
+                AgUiEventType::ThinkingTextMessageEnd,
+                AgUiEventType::ThinkingEnd,
+            ]
+        );
+        match &state.queue[2] {
+            AgUiEvent::ThinkingTextMessageContent(event) => {
+                assert_eq!(event.delta, "Checking now");
+                assert!(!event.delta.contains("web_search"));
+                assert!(!event.delta.contains("hello"));
+                assert!(!event.delta.contains("result"));
+            }
+            _ => panic!("expected generic thinking content"),
+        }
+
         let output_completed = Event::new(
             session_id,
             context,
@@ -1308,32 +1355,196 @@ mod tests {
         translate_event(&mut state, &output_completed);
 
         let expected_message_id = AgUiMessageId::from(turn_id.uuid());
-
-        let tool_call_id = match &state.queue[0] {
-            AgUiEvent::ToolCallStart(event) => {
-                assert_eq!(event.parent_message_id, Some(expected_message_id.clone()));
-                event.tool_call_id.clone()
-            }
-            _ => panic!("expected tool start event"),
-        };
-        match &state.queue[1] {
-            AgUiEvent::ToolCallArgs(_) => {}
-            _ => panic!("expected tool args event"),
-        }
-        match &state.queue[2] {
-            AgUiEvent::ToolCallEnd(event) => assert_eq!(event.tool_call_id, tool_call_id),
-            _ => panic!("expected tool end event"),
-        }
-        match &state.queue[3] {
-            AgUiEvent::ToolCallResult(event) => {
-                assert_eq!(event.message_id, expected_message_id.clone());
-                assert_eq!(event.tool_call_id, tool_call_id);
-            }
-            _ => panic!("expected tool result event"),
-        }
-        match &state.queue[4] {
+        match &state.queue[5] {
             AgUiEvent::TextMessageStart(event) => assert_eq!(event.message_id, expected_message_id),
             _ => panic!("expected text start event"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_tool_activity_reuses_active_reason_thinking_block() {
+        let mut state = test_stream_state().await;
+        let turn_id = TurnId::new();
+        let input_message_id = MessageId::parse(&state.input_message_id).unwrap();
+        let context = EventContext::turn(turn_id, input_message_id);
+        let session_id = SessionId::from_uuid(state.session_id);
+
+        let thinking_started = Event::new(
+            session_id,
+            context.clone(),
+            ReasonThinkingStartedData {
+                turn_id,
+                model: Some("test-model".to_string()),
+            },
+        );
+        translate_event(&mut state, &thinking_started);
+
+        let thinking_delta = Event::new(
+            session_id,
+            context.clone(),
+            ReasonThinkingDeltaData {
+                turn_id,
+                delta: "Thinking".to_string(),
+                accumulated: "Thinking".to_string(),
+            },
+        );
+        translate_event(&mut state, &thinking_delta);
+
+        let tool_started = Event::new(
+            session_id,
+            context.clone(),
+            ToolStartedData {
+                tool_call: ToolCall {
+                    id: "call_1".to_string(),
+                    name: "web_search".to_string(),
+                    arguments: serde_json::json!({"q": "private query"}),
+                },
+                display_name: None,
+                narration: None,
+            },
+        );
+        translate_event(&mut state, &tool_started);
+
+        let tool_completed = Event::new(
+            session_id,
+            context.clone(),
+            ToolCompletedData {
+                tool_call_id: "call_1".to_string(),
+                tool_name: "web_search".to_string(),
+                display_name: None,
+                success: true,
+                status: "success".to_string(),
+                result: Some(vec![ContentPart::text("private result")]),
+                error: None,
+                duration_ms: Some(10),
+                narration: None,
+            },
+        );
+        translate_event(&mut state, &tool_completed);
+
+        let thinking_completed = Event::new(
+            session_id,
+            context,
+            ReasonThinkingCompletedData {
+                turn_id,
+                thinking: "Thinking".to_string(),
+            },
+        );
+        translate_event(&mut state, &thinking_completed);
+
+        let event_types: Vec<AgUiEventType> =
+            state.queue.iter().map(AgUiEvent::event_type).collect();
+        assert_eq!(
+            event_types,
+            vec![
+                AgUiEventType::ThinkingStart,
+                AgUiEventType::ThinkingTextMessageStart,
+                AgUiEventType::ThinkingTextMessageContent,
+                AgUiEventType::ThinkingTextMessageContent,
+                AgUiEventType::ThinkingTextMessageEnd,
+                AgUiEventType::ThinkingEnd,
+            ]
+        );
+        assert_eq!(
+            event_types
+                .iter()
+                .filter(|event_type| **event_type == AgUiEventType::ThinkingStart)
+                .count(),
+            1
+        );
+        assert_eq!(
+            event_types
+                .iter()
+                .filter(|event_type| **event_type == AgUiEventType::ThinkingEnd)
+                .count(),
+            1
+        );
+        match &state.queue[3] {
+            AgUiEvent::ThinkingTextMessageContent(event) => {
+                assert_eq!(event.delta, "\nWorking...");
+                assert!(!event.delta.contains("web_search"));
+                assert!(!event.delta.contains("private query"));
+                assert!(!event.delta.contains("private result"));
+            }
+            _ => panic!("expected generic tool activity content"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_none_tool_visibility_hides_public_tool_activity() {
+        let mut state = test_stream_state().await;
+        state.tool_visibility = AgUiToolVisibility::None;
+        let turn_id = TurnId::new();
+        let input_message_id = MessageId::parse(&state.input_message_id).unwrap();
+        let context = EventContext::turn(turn_id, input_message_id);
+        let session_id = SessionId::from_uuid(state.session_id);
+
+        let tool_started = Event::new(
+            session_id,
+            context.clone(),
+            ToolStartedData {
+                tool_call: ToolCall {
+                    id: "call_1".to_string(),
+                    name: "web_search".to_string(),
+                    arguments: serde_json::json!({"q": "hello"}),
+                },
+                display_name: None,
+                narration: Some("Searching for hello".to_string()),
+            },
+        );
+        translate_event(&mut state, &tool_started);
+
+        let tool_completed = Event::new(
+            session_id,
+            context,
+            ToolCompletedData {
+                tool_call_id: "call_1".to_string(),
+                tool_name: "web_search".to_string(),
+                display_name: None,
+                success: true,
+                status: "success".to_string(),
+                result: Some(vec![ContentPart::text("result")]),
+                error: None,
+                duration_ms: Some(10),
+                narration: None,
+            },
+        );
+        translate_event(&mut state, &tool_completed);
+
+        assert!(state.queue.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_narrated_tool_visibility_uses_narration_only() {
+        let mut state = test_stream_state().await;
+        state.tool_visibility = AgUiToolVisibility::Narrated;
+        let turn_id = TurnId::new();
+        let input_message_id = MessageId::parse(&state.input_message_id).unwrap();
+        let context = EventContext::turn(turn_id, input_message_id);
+        let session_id = SessionId::from_uuid(state.session_id);
+
+        let tool_started = Event::new(
+            session_id,
+            context,
+            ToolStartedData {
+                tool_call: ToolCall {
+                    id: "call_1".to_string(),
+                    name: "web_search".to_string(),
+                    arguments: serde_json::json!({"q": "private query"}),
+                },
+                display_name: Some("Web Search".to_string()),
+                narration: Some("Checking public sources".to_string()),
+            },
+        );
+        translate_event(&mut state, &tool_started);
+
+        match &state.queue[2] {
+            AgUiEvent::ThinkingTextMessageContent(event) => {
+                assert_eq!(event.delta, "Checking public sources");
+                assert!(!event.delta.contains("web_search"));
+                assert!(!event.delta.contains("private query"));
+            }
+            _ => panic!("expected narrated thinking content"),
         }
     }
 

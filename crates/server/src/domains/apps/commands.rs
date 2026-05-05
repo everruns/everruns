@@ -21,7 +21,8 @@ use chrono::{DateTime, Utc};
 use everruns_core::app::{InvocationSessionMode, ScheduleChannelConfig, WebhookChannelConfig};
 use everruns_core::typed_id::{AgentId, AppChannelId, AppId, HarnessId, SessionId};
 use everruns_core::{
-    AgUiChannelConfig, App, AppChannel, AppStatus, ChannelType, Policy, SlackChannelConfig,
+    AgUiChannelConfig, AgUiToolVisibility, App, AppChannel, AppStatus, ChannelType, Policy,
+    SlackChannelConfig,
 };
 use everruns_durable::{
     CreateScheduleRow, ScheduleTargetType, StoreError, UpdateField, UpdateSchedule,
@@ -166,6 +167,18 @@ fn validate_channel_config(
             {
                 return Err(CommandError::bad_request(
                     "AG-UI token must be non-empty when configured",
+                ));
+            }
+            if config.generic_tool_text.chars().count() > 120 {
+                return Err(CommandError::bad_request(
+                    "AG-UI generic_tool_text must be at most 120 characters",
+                ));
+            }
+            if config.tool_visibility == AgUiToolVisibility::Generic
+                && config.generic_tool_text.trim().is_empty()
+            {
+                return Err(CommandError::bad_request(
+                    "AG-UI generic_tool_text cannot be empty when tool_visibility is generic",
                 ));
             }
         }

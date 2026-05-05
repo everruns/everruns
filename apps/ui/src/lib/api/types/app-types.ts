@@ -7,6 +7,7 @@ export type ChannelType = "slack" | "ag_ui" | "schedule" | "webhook";
 export type SessionStrategy = "per_thread" | "per_channel" | "per_user";
 export type SlackReplyMode = "all_messages" | "report_progress_only";
 export type InvocationSessionMode = "shared_session" | "session_per_invocation";
+export type AgUiToolVisibility = "none" | "generic" | "narrated";
 
 export interface SlackChannelConfig {
   signing_secret: string;
@@ -21,6 +22,7 @@ export interface SlackChannelConfig {
 
 /** Default thread expiration window for AG-UI (6 hours, in seconds). */
 export const DEFAULT_AG_UI_SESSION_EXPIRATION_SECONDS = 6 * 60 * 60;
+export const DEFAULT_AG_UI_GENERIC_TOOL_TEXT = "Working...";
 
 export interface AgUiChannelConfig {
   anonymous?: boolean;
@@ -42,6 +44,13 @@ export interface AgUiChannelConfig {
    * applies). Server-side validation rejects values above 1,000,000.
    */
   rate_limit_per_minute?: number;
+  /**
+   * Public tool activity visibility. Raw tool names, args, and results are
+   * never exposed through the public AG-UI stream.
+   */
+  tool_visibility?: AgUiToolVisibility;
+  /** Text shown while tools are running when tool_visibility is "generic". */
+  generic_tool_text?: string;
 }
 
 export interface ScheduleChannelConfig {

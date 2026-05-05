@@ -71,6 +71,7 @@ import { WebhookSetupGuidance } from "@/components/apps/webhook-setup-guidance";
 import { useFeatureFlag } from "@/providers/feature-flags-provider";
 import type {
   AgUiChannelConfig,
+  AgUiToolVisibility,
   AppChannel,
   ChannelType,
   InvocationSessionMode,
@@ -80,7 +81,10 @@ import type {
   SlackReplyMode,
   WebhookChannelConfig,
 } from "@/lib/api/types";
-import { DEFAULT_AG_UI_SESSION_EXPIRATION_SECONDS } from "@/lib/api/types/app-types";
+import {
+  DEFAULT_AG_UI_GENERIC_TOOL_TEXT,
+  DEFAULT_AG_UI_SESSION_EXPIRATION_SECONDS,
+} from "@/lib/api/types/app-types";
 import { generateChannelToken } from "@/lib/channel-tokens";
 import {
   getDisplayName,
@@ -90,7 +94,13 @@ import {
   getEntityStatusBadgeVariant,
   isReadOnlyStatus,
 } from "@/lib/entity-lifecycle";
-import { getChannelTypeDisplayName, getInvocationSessionModeDisplayName } from "@/lib/app-channels";
+import {
+  getAgUiToolVisibilityDisplayName,
+  getChannelTypeDisplayName,
+  getInvocationSessionModeDisplayName,
+  getSessionStrategyDisplayName,
+  getSlackReplyModeDisplayName,
+} from "@/lib/app-channels";
 
 type ChannelConfigInput =
   | SlackChannelConfig
@@ -147,6 +157,11 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
   const [editChannelEnabled, setEditChannelEnabled] = useState(true);
   const [editAgUiRateLimitPerMinute, setEditAgUiRateLimitPerMinute] = useState<string>("");
   const [editAgUiToken, setEditAgUiToken] = useState("");
+  const [editAgUiToolVisibility, setEditAgUiToolVisibility] =
+    useState<AgUiToolVisibility>("generic");
+  const [editAgUiGenericToolText, setEditAgUiGenericToolText] = useState(
+    DEFAULT_AG_UI_GENERIC_TOOL_TEXT,
+  );
 
   const [creatingSlackApp, setCreatingSlackApp] = useState(false);
 
@@ -302,6 +317,8 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
     setEditChannelEnabled(true);
     setEditAgUiRateLimitPerMinute("");
     setEditAgUiToken("");
+    setEditAgUiToolVisibility("generic");
+    setEditAgUiGenericToolText(DEFAULT_AG_UI_GENERIC_TOOL_TEXT);
   };
 
   const buildChannelConfig = (channelType: ChannelType): ChannelConfigInput => {
@@ -316,6 +333,8 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
           anonymous: true,
           ...(editAgUiToken.trim() ? { token: editAgUiToken.trim() } : {}),
           session_expiration_seconds: Math.round(hours * 3600),
+          tool_visibility: editAgUiToolVisibility,
+          generic_tool_text: editAgUiGenericToolText.trim() || DEFAULT_AG_UI_GENERIC_TOOL_TEXT,
           ...(parsed !== undefined && Number.isFinite(parsed) && parsed > 0
             ? { rate_limit_per_minute: parsed }
             : {}),
@@ -352,6 +371,9 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
         if (!Number.isFinite(editAgUiExpirationHours) || editAgUiExpirationHours < 0) {
           return false;
         }
+        if (editAgUiToolVisibility === "generic" && editAgUiGenericToolText.trim().length > 120) {
+          return false;
+        }
         const trimmed = editAgUiRateLimitPerMinute.trim();
         if (trimmed === "") return true;
         const parsed = Number.parseInt(trimmed, 10);
@@ -385,6 +407,8 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
           : "",
       );
       setEditAgUiToken(config?.token ?? "");
+      setEditAgUiToolVisibility(config?.tool_visibility ?? "generic");
+      setEditAgUiGenericToolText(config?.generic_tool_text ?? DEFAULT_AG_UI_GENERIC_TOOL_TEXT);
     } else if (channel.channel_type === "slack") {
       const config = channel.channel_config as SlackChannelConfig;
       setEditSigningSecret(config?.signing_secret ?? "");
@@ -489,10 +513,10 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="slack">Slack</SelectItem>
-                <SelectItem value="ag_ui">AG-UI</SelectItem>
-                <SelectItem value="schedule">Schedule</SelectItem>
-                <SelectItem value="webhook">Webhook</SelectItem>
+                <SelectItem value="slack">{getChannelTypeDisplayName("slack")}</SelectItem>
+                <SelectItem value="ag_ui">{getChannelTypeDisplayName("ag_ui")}</SelectItem>
+                <SelectItem value="schedule">{getChannelTypeDisplayName("schedule")}</SelectItem>
+                <SelectItem value="webhook">{getChannelTypeDisplayName("webhook")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -578,6 +602,48 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
                 0 to rely on the global API rate limit only. Maximum 1,000,000 per minute.
               </p>
             </div>
+
+            <div>
+              <Label htmlFor={`ag_ui_tool_visibility_${formId}`}>Tool activity</Label>
+              <Select
+                value={editAgUiToolVisibility}
+                onValueChange={(value) => setEditAgUiToolVisibility(value as AgUiToolVisibility)}
+              >
+                <SelectTrigger id={`ag_ui_tool_visibility_${formId}`}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">{getAgUiToolVisibilityDisplayName("none")}</SelectItem>
+                  <SelectItem value="generic">
+                    {getAgUiToolVisibilityDisplayName("generic")}
+                  </SelectItem>
+                  <SelectItem value="narrated">
+                    {getAgUiToolVisibilityDisplayName("narrated")}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Controls public activity shown while tools run. Tool names, arguments, and results
+                are never sent to AG-UI clients.
+              </p>
+            </div>
+
+            {editAgUiToolVisibility === "generic" && (
+              <div>
+                <Label htmlFor={`ag_ui_generic_tool_text_${formId}`}>Generic activity text</Label>
+                <Input
+                  id={`ag_ui_generic_tool_text_${formId}`}
+                  value={editAgUiGenericToolText}
+                  onChange={(e) => setEditAgUiGenericToolText(e.target.value)}
+                  maxLength={120}
+                  placeholder={DEFAULT_AG_UI_GENERIC_TOOL_TEXT}
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Shown as transient public activity while the agent uses tools. Maximum 120
+                  characters.
+                </p>
+              </div>
+            )}
           </>
         )}
 
@@ -648,9 +714,15 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="per_thread">Per Thread (default)</SelectItem>
-                  <SelectItem value="per_channel">Per Channel</SelectItem>
-                  <SelectItem value="per_user">Per User</SelectItem>
+                  <SelectItem value="per_thread">
+                    {getSessionStrategyDisplayName("per_thread")}
+                  </SelectItem>
+                  <SelectItem value="per_channel">
+                    {getSessionStrategyDisplayName("per_channel")}
+                  </SelectItem>
+                  <SelectItem value="per_user">
+                    {getSessionStrategyDisplayName("per_user")}
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -665,8 +737,12 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all_messages">All Assistant Messages</SelectItem>
-                  <SelectItem value="report_progress_only">Report Progress Only</SelectItem>
+                  <SelectItem value="all_messages">
+                    {getSlackReplyModeDisplayName("all_messages")}
+                  </SelectItem>
+                  <SelectItem value="report_progress_only">
+                    {getSlackReplyModeDisplayName("report_progress_only")}
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -808,6 +884,8 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
             }
             rateLimitPerMinute={config?.rate_limit_per_minute}
             token={config?.token}
+            toolVisibility={config?.tool_visibility ?? "generic"}
+            genericToolText={config?.generic_tool_text ?? DEFAULT_AG_UI_GENERIC_TOOL_TEXT}
             onConfigure={() => startEditChannel(channel)}
           />
         </div>

@@ -52,7 +52,9 @@ Channel config is stored as JSONB and validated at the application layer per cha
   "anonymous": true,
   "token": "optional-shared-secret",
   "session_expiration_seconds": 21600,
-  "rate_limit_per_minute": 60
+  "rate_limit_per_minute": 60,
+  "tool_visibility": "generic",
+  "generic_tool_text": "Working..."
 }
 ```
 
@@ -73,6 +75,7 @@ AG-UI uses an app-scoped anonymous ingress for the initial rollout:
   `threadId` are rejected with `410 Gone` and the client must start a new
   thread. Defaults to `21600` (6 hours). Set to `0` to disable expiration.
 - `rate_limit_per_minute` is an optional per-IP, per-app cap. `0` or absent disables the per-app cap and only the global API limit applies. Values above 1,000,000 are rejected at write time. Counters are shared across instances when `VALKEY_URL` is set; otherwise enforcement is per-instance.
+- Public tool activity is controlled by `tool_visibility`: `none` suppresses tool activity entirely, `generic` emits only `generic_tool_text` as transient activity, and `narrated` emits backend-authored narration. Public AG-UI streams never expose raw tool names, arguments, results, or internal tool call IDs.
 
 `schedule` and `webhook` are app invocation channels, not interactive messaging adapters:
 

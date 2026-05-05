@@ -1,4 +1,10 @@
-import type { ChannelType, InvocationSessionMode } from "@/lib/api/types";
+import type {
+  AgUiToolVisibility,
+  ChannelType,
+  InvocationSessionMode,
+  SessionStrategy,
+  SlackReplyMode,
+} from "@/lib/api/types";
 
 export function getChannelTypeDisplayName(channelType: ChannelType): string {
   switch (channelType) {
@@ -19,5 +25,36 @@ export function getInvocationSessionModeDisplayName(mode: InvocationSessionMode)
       return "Session Per Invocation";
     case "shared_session":
       return "Shared Session";
+  }
+}
+
+export function getSessionStrategyDisplayName(strategy: SessionStrategy): string {
+  switch (strategy) {
+    case "per_thread":
+      return "Per Thread";
+    case "per_channel":
+      return "Per Channel";
+    case "per_user":
+      return "Per User";
+  }
+}
+
+export function getSlackReplyModeDisplayName(mode: SlackReplyMode): string {
+  switch (mode) {
+    case "all_messages":
+      return "All Assistant Messages";
+    case "report_progress_only":
+      return "Report Progress Only";
+  }
+}
+
+export function getAgUiToolVisibilityDisplayName(visibility: AgUiToolVisibility): string {
+  switch (visibility) {
+    case "none":
+      return "None";
+    case "generic":
+      return "Generic";
+    case "narrated":
+      return "Narrated";
   }
 }
