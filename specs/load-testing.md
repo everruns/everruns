@@ -25,6 +25,39 @@ Latency is measured as **full turn duration**: from the moment the POST `/v1/ses
 
 All benchmark runs must report turn latency. It is the primary indicator of user-perceived performance.
 
+### AG-UI Ingress Latency (sub-metric)
+
+For the public AG-UI ingress path (`POST /v1/apps/{app_id}/ag-ui`), the
+handler emits a structured log event `phase = "ag_ui.ingress_complete"` after
+finishing its synchronous work (validation, app/channel resolution, session
+resolution, history seed, event subscription, and the synchronous part of
+message creation) and just before it returns the SSE stream. The durable
+turn workflow itself is scheduled by `MessageService::create` via a detached
+`tokio::spawn`, so this event marks the end of the handler's work — not a
+guaranteed enqueue point for the workflow.
+
+Fields:
+
+| Field                  | Meaning                                                                                                         |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `app_id`               | Public app id (`app_…`)                                                                                         |
+| `session_id`           | Session id (`session_…`)                                                                                        |
+| `message_id`           | Public id of the user message just persisted                                                                    |
+| `is_new_session`       | Whether the AG-UI thread mapped to a new session vs. an existing one                                            |
+| `session_resolved_ms`  | Wall-clock ms from handler entry to the point `find_or_create_session` returns (lookup-or-create only)          |
+| `ag_ui_handler_ms`     | Wall-clock ms from handler entry through message creation; the synchronous handler portion of the request       |
+
+`ag_ui_handler_ms` is the AG-UI side of the pre-LLM latency budget. The
+durable runtime side is captured by `reason_duration_ms` on
+`reason.completed` and by the worker activity logs (`Turn workflow started`,
+`Executing input_activity`, `Executing reason_activity`, `ReasonAtom:
+starting LLM call`). Operators correlate by `session_id` to compute the full
+pre-LLM budget without grepping unstructured timestamps.
+
+Target proposal for warm AG-UI turns with no tools/capabilities:
+`ag_ui_handler_ms` p50 well under 200ms; full pre-LLM budget (handler entry
+to `ReasonAtom: starting LLM call`) p50 under 200ms. Tracking issue: EVE-415.
+
 ## Architecture
 
 Single benchmark binary at `crates/server/benches/load_test.rs`. Uses `everruns-sdk` for agent operations and raw `reqwest` for session creation (SDK lacks `harness_id`) and SSE streaming.
