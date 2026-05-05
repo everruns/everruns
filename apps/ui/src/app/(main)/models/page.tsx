@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Cpu, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,18 @@ import { useLlmModels, useLlmProviders, useDeleteLlmModel } from "@/hooks/use-ll
 import { useOrganization, useUpdateOrganization } from "@/hooks/use-organizations";
 import { updateLlmModel } from "@/lib/api/llm-providers";
 import { queryKeys } from "@/lib/query-keys";
+import type { LlmModelWithProvider } from "@/lib/api/types";
+
+// Order models by release date desc (newest first), then by created_at desc.
+// Models without a release_date in their profile fall to the bottom; this works
+// uniformly across providers because release_date comes from the shared
+// models.dev profile.
+function compareByRecency(a: LlmModelWithProvider, b: LlmModelWithProvider): number {
+  const aDate = a.profile?.release_date ?? "";
+  const bDate = b.profile?.release_date ?? "";
+  if (aDate !== bDate) return bDate.localeCompare(aDate);
+  return (b.created_at ?? "").localeCompare(a.created_at ?? "");
+}
 
 export default function ModelsPage() {
   const queryClient = useQueryClient();
@@ -33,7 +45,11 @@ export default function ModelsPage() {
   const [addModelOpen, setAddModelOpen] = useState(false);
   const [togglingModelId, setTogglingModelId] = useState<string | null>(null);
 
-  const enabledModels = models.filter((model) => model.enabled);
+  const { enabledModels, availableModels } = useMemo(() => {
+    const enabled = models.filter((m) => m.enabled).sort(compareByRecency);
+    const available = models.filter((m) => !m.enabled).sort(compareByRecency);
+    return { enabledModels: enabled, availableModels: available };
+  }, [models]);
   const selectedDefaultModelName = org?.default_model_id
     ? (enabledModels.find((model) => model.id === org.default_model_id)?.display_name ??
       "Unknown model")
@@ -106,16 +122,54 @@ export default function ModelsPage() {
               )}
             </Card>
           ) : (
-            <div className="space-y-2">
-              {models.map((model) => (
-                <ModelRow
-                  key={model.id}
-                  model={model}
-                  onDelete={handleDeleteModel}
-                  onToggleEnabled={handleToggleEnabled}
-                  isTogglingEnabled={togglingModelId === model.id}
-                />
-              ))}
+            <div className="space-y-8">
+              {enabledModels.length > 0 && (
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <h2 className="text-xl font-semibold">Enabled models</h2>
+                    <span className="text-sm text-muted-foreground">
+                      {enabledModels.length} enabled
+                    </span>
+                  </div>
+                  <div className="space-y-2">
+                    {enabledModels.map((model) => (
+                      <ModelRow
+                        key={model.id}
+                        model={model}
+                        onDelete={handleDeleteModel}
+                        onToggleEnabled={handleToggleEnabled}
+                        isTogglingEnabled={togglingModelId === model.id}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {enabledModels.length > 0 && availableModels.length > 0 && (
+                <hr className="border-border" />
+              )}
+
+              {availableModels.length > 0 && (
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <h2 className="text-xl font-semibold">Available models</h2>
+                    <span className="text-sm text-muted-foreground">
+                      Enable a model to use it with agents
+                    </span>
+                  </div>
+                  <div className="space-y-2">
+                    {availableModels.map((model) => (
+                      <ModelRow
+                        key={model.id}
+                        model={model}
+                        onDelete={handleDeleteModel}
+                        onToggleEnabled={handleToggleEnabled}
+                        isTogglingEnabled={togglingModelId === model.id}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </section>

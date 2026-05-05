@@ -30,6 +30,31 @@ function formatCost(cost: number): string {
   return `$${cost.toFixed(3)}`;
 }
 
+function formatReleaseDate(value: string): string {
+  // Profile release dates are documented as YYYY-MM-DD. `new Date(value)` would
+  // parse that form as UTC midnight, which renders as the previous calendar day
+  // for users west of UTC — parse the components as a local date instead.
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (match) {
+    const [, y, m, d] = match;
+    const local = new Date(Number(y), Number(m) - 1, Number(d));
+    if (!Number.isNaN(local.getTime())) {
+      return local.toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      });
+    }
+  }
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
 export function ModelRow({
   model,
   onDelete,
@@ -76,6 +101,14 @@ export function ModelRow({
             </div>
             <div className="text-sm text-muted-foreground">
               {model.model_id} - {model.provider_name}
+              {profile?.release_date && (
+                <>
+                  {" · "}
+                  <span title={`Released ${profile.release_date}`}>
+                    Released {formatReleaseDate(profile.release_date)}
+                  </span>
+                </>
+              )}
             </div>
           </div>
         </div>
