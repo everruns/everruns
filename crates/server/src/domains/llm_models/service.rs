@@ -304,9 +304,7 @@ impl LlmModelService {
     /// Elect a new default model from enabled models
     async fn elect_new_default(&self, org_id: i64) -> Result<()> {
         let all_models = self.db.list_all_llm_models(org_id).await?;
-        let new_default = all_models
-            .iter()
-            .find(|m| m.enabled && m.provider_api_key_set);
+        let new_default = all_models.iter().find(|m| m.enabled);
 
         let new_default_id = new_default.map(|m| m.id.uuid());
         self.db

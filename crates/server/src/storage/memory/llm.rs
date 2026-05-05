@@ -233,7 +233,6 @@ impl InMemoryDatabase {
             && let Some(provider) = providers.get(&model.provider_id)
             && provider.org_id == org_id
             && provider.status == "active"
-            && provider.api_key_set
         {
             return Ok(Some(LlmModelWithProviderRow {
                 id: model.id,
@@ -499,7 +498,6 @@ impl InMemoryDatabase {
                 && let Some(provider) = providers.get(&model.provider_id)
                 && provider.org_id == org_id
                 && provider.status == "active"
-                && provider.api_key_set
             {
                 return Ok(Some(LlmModelWithProviderRow {
                     id: model.id,

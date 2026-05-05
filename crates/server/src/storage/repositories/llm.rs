@@ -184,8 +184,10 @@ impl Database {
 
     /// Get the default LLM model with provider info.
     /// Reads from organization_settings.default_model_id.
-    /// Filters to providers that are active and have an API key set, since
-    /// only those models are usable.
+    /// Filters to providers that are administratively active. The provider's
+    /// API-key state is *not* gated here; readiness is surfaced via the
+    /// derived `healthy` field on `LlmModelWithProvider`, and downstream LLM
+    /// calls fail loudly if the key is missing.
     pub async fn get_default_llm_model(
         &self,
         org_id: i64,
@@ -197,7 +199,7 @@ impl Database {
             FROM organization_settings os
             JOIN llm_models m ON m.id = os.default_model_id AND m.org_id = os.org_id
             JOIN llm_providers p ON m.provider_id = p.id AND p.org_id = m.org_id
-            WHERE os.org_id = $1 AND p.status = 'active' AND p.api_key_set = TRUE
+            WHERE os.org_id = $1 AND p.status = 'active'
             "#,
         )
         .bind(org_id)
@@ -423,7 +425,7 @@ impl Database {
                    p.name as provider_name, p.provider_type, p.api_key_set as provider_api_key_set, p.status as provider_status
             FROM llm_models m
             JOIN llm_providers p ON m.provider_id = p.id AND p.org_id = m.org_id
-            WHERE m.model_id = $1 AND p.status = 'active' AND p.api_key_set = TRUE AND m.org_id = $2
+            WHERE m.model_id = $1 AND p.status = 'active' AND m.org_id = $2
             "#,
         )
         .bind(model_id)
