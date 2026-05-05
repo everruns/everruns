@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Brain,
   Wrench,
@@ -149,16 +150,28 @@ export function ModelRow({
               )}
             </div>
           )}
-          <Badge
-            variant="outline"
-            className={
-              model.status === "active"
-                ? "bg-green-100 text-green-800"
-                : "bg-gray-100 text-gray-800"
-            }
-          >
-            {model.status}
-          </Badge>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  role="img"
+                  tabIndex={0}
+                  aria-label={model.healthy ? "Model healthy" : "Model not ready"}
+                  className={
+                    "inline-block h-2.5 w-2.5 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 " +
+                    (model.healthy ? "bg-green-500" : "bg-gray-300")
+                  }
+                />
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>
+                  {model.healthy
+                    ? "Model is configured and ready for use"
+                    : "Provider is missing an API key or is disabled"}
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
           <Button
             variant={model.enabled ? "outline" : "default"}
             size="sm"

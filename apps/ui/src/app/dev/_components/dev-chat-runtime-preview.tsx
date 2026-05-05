@@ -30,6 +30,7 @@ export function DevChatRuntimeScene({
         ...model,
         provider_name: model.provider_id === "provider-openai" ? "OpenAI" : "OpenRouter",
         provider_type: "openai",
+        healthy: true,
         profile: {
           name: model.display_name,
           family: "kimi",

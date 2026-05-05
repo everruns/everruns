@@ -232,7 +232,6 @@ impl InMemoryDatabase {
             && model.org_id == org_id
             && let Some(provider) = providers.get(&model.provider_id)
             && provider.org_id == org_id
-            && model.status == "active"
             && provider.status == "active"
         {
             return Ok(Some(LlmModelWithProviderRow {
@@ -244,7 +243,6 @@ impl InMemoryDatabase {
                 capabilities: model.capabilities.clone(),
                 is_favorite: model.is_favorite,
                 enabled: model.enabled,
-                status: model.status.clone(),
                 source: model.source.clone(),
                 last_seen_at: model.last_seen_at,
                 provider_metadata: model.provider_metadata.clone(),
@@ -252,6 +250,8 @@ impl InMemoryDatabase {
                 updated_at: model.updated_at,
                 provider_name: provider.name.clone(),
                 provider_type: provider.provider_type.clone(),
+                provider_api_key_set: provider.api_key_set,
+                provider_status: provider.status.clone(),
             }));
         }
         Ok(None)
@@ -277,7 +277,6 @@ impl InMemoryDatabase {
             capabilities: serde_json::to_value(&input.capabilities)?,
             is_favorite: input.is_favorite,
             enabled: input.enabled,
-            status: "active".to_string(),
             source: input.source,
             last_seen_at: None,
             provider_metadata: input.provider_metadata,
@@ -328,7 +327,6 @@ impl InMemoryDatabase {
             capabilities: serde_json::to_value(&input.capabilities)?,
             is_favorite: input.is_favorite,
             enabled: input.enabled,
-            status: "active".to_string(),
             source: input.source,
             last_seen_at: None,
             provider_metadata: input.provider_metadata,
@@ -372,7 +370,6 @@ impl InMemoryDatabase {
                 capabilities: model.capabilities.clone(),
                 is_favorite: model.is_favorite,
                 enabled: model.enabled,
-                status: model.status.clone(),
                 source: model.source.clone(),
                 last_seen_at: model.last_seen_at,
                 provider_metadata: model.provider_metadata.clone(),
@@ -380,6 +377,8 @@ impl InMemoryDatabase {
                 updated_at: model.updated_at,
                 provider_name: provider.name.clone(),
                 provider_type: provider.provider_type.clone(),
+                provider_api_key_set: provider.api_key_set,
+                provider_status: provider.status.clone(),
             }));
         }
         Ok(None)
@@ -407,7 +406,7 @@ impl InMemoryDatabase {
 
         let mut result: Vec<_> = models
             .values()
-            .filter(|model| model.org_id == org_id && model.status == "active")
+            .filter(|model| model.org_id == org_id)
             .filter_map(|model| {
                 providers
                     .get(&model.provider_id)
@@ -421,7 +420,6 @@ impl InMemoryDatabase {
                         capabilities: model.capabilities.clone(),
                         is_favorite: model.is_favorite,
                         enabled: model.enabled,
-                        status: model.status.clone(),
                         source: model.source.clone(),
                         last_seen_at: model.last_seen_at,
                         provider_metadata: model.provider_metadata.clone(),
@@ -429,6 +427,8 @@ impl InMemoryDatabase {
                         updated_at: model.updated_at,
                         provider_name: provider.name.clone(),
                         provider_type: provider.provider_type.clone(),
+                        provider_api_key_set: provider.api_key_set,
+                        provider_status: provider.status.clone(),
                     })
             })
             .collect();
@@ -467,9 +467,6 @@ impl InMemoryDatabase {
         if let Some(enabled) = input.enabled {
             model.enabled = enabled;
         }
-        if let Some(status) = input.status {
-            model.status = status;
-        }
         model.updated_at = Self::now();
         Ok(Some(model.clone()))
     }
@@ -498,7 +495,6 @@ impl InMemoryDatabase {
         for model in models.values() {
             if model.model_id == model_id
                 && model.org_id == org_id
-                && model.status == "active"
                 && let Some(provider) = providers.get(&model.provider_id)
                 && provider.org_id == org_id
                 && provider.status == "active"
@@ -512,7 +508,6 @@ impl InMemoryDatabase {
                     capabilities: model.capabilities.clone(),
                     is_favorite: model.is_favorite,
                     enabled: model.enabled,
-                    status: model.status.clone(),
                     source: model.source.clone(),
                     last_seen_at: model.last_seen_at,
                     provider_metadata: model.provider_metadata.clone(),
@@ -520,6 +515,8 @@ impl InMemoryDatabase {
                     updated_at: model.updated_at,
                     provider_name: provider.name.clone(),
                     provider_type: provider.provider_type.clone(),
+                    provider_api_key_set: provider.api_key_set,
+                    provider_status: provider.status.clone(),
                 }));
             }
         }

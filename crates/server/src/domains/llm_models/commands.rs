@@ -1,7 +1,7 @@
 use super::queries as q;
 use super::{LLM_MODEL_MANAGE, LLM_MODEL_VIEW};
 use crate::domains::common::*;
-use everruns_core::{LlmModel, LlmModelSource, LlmModelStatus, LlmModelWithProvider, Policy};
+use everruns_core::{LlmModel, LlmModelSource, LlmModelWithProvider, Policy};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -194,7 +194,6 @@ pub struct UpdateModel {
     pub enabled: Option<bool>,
     #[serde(default, deserialize_with = "deserialize_opt_bool_lenient")]
     pub is_favorite: Option<bool>,
-    pub status: Option<LlmModelStatus>,
 }
 
 impl Command for UpdateModel {
@@ -226,7 +225,6 @@ impl Command for UpdateModel {
                     capabilities: self.capabilities,
                     enabled: self.enabled,
                     is_favorite: self.is_favorite,
-                    status: self.status,
                 },
             )
             .await

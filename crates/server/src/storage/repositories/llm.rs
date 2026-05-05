@@ -184,18 +184,22 @@ impl Database {
 
     /// Get the default LLM model with provider info.
     /// Reads from organization_settings.default_model_id.
+    /// Filters to providers that are administratively active. The provider's
+    /// API-key state is *not* gated here; readiness is surfaced via the
+    /// derived `healthy` field on `LlmModelWithProvider`, and downstream LLM
+    /// calls fail loudly if the key is missing.
     pub async fn get_default_llm_model(
         &self,
         org_id: i64,
     ) -> Result<Option<LlmModelWithProviderRow>> {
         let row = sqlx::query_as::<_, LlmModelWithProviderRow>(
             r#"
-            SELECT m.id, m.org_id, m.provider_id, m.model_id, m.display_name, m.capabilities, m.is_favorite, m.enabled, m.status, m.source, m.last_seen_at, m.provider_metadata, m.created_at, m.updated_at,
-                   p.name as provider_name, p.provider_type
+            SELECT m.id, m.org_id, m.provider_id, m.model_id, m.display_name, m.capabilities, m.is_favorite, m.enabled, m.source, m.last_seen_at, m.provider_metadata, m.created_at, m.updated_at,
+                   p.name as provider_name, p.provider_type, p.api_key_set as provider_api_key_set, p.status as provider_status
             FROM organization_settings os
             JOIN llm_models m ON m.id = os.default_model_id AND m.org_id = os.org_id
             JOIN llm_providers p ON m.provider_id = p.id AND p.org_id = m.org_id
-            WHERE os.org_id = $1 AND m.status = 'active' AND p.status = 'active'
+            WHERE os.org_id = $1 AND p.status = 'active'
             "#,
         )
         .bind(org_id)
@@ -220,7 +224,7 @@ impl Database {
             r#"
             INSERT INTO llm_models (org_id, provider_id, model_id, display_name, capabilities, is_favorite, enabled, source, provider_metadata)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-            RETURNING id, org_id, provider_id, model_id, display_name, capabilities, is_favorite, enabled, status, source, last_seen_at, provider_metadata, created_at, updated_at
+            RETURNING id, org_id, provider_id, model_id, display_name, capabilities, is_favorite, enabled, source, last_seen_at, provider_metadata, created_at, updated_at
             "#,
         )
         .bind(org_id)
@@ -261,7 +265,7 @@ impl Database {
                 llm_models.display_name IS DISTINCT FROM EXCLUDED.display_name
                 OR llm_models.is_favorite IS DISTINCT FROM EXCLUDED.is_favorite
                 OR llm_models.enabled IS DISTINCT FROM EXCLUDED.enabled
-            RETURNING id, org_id, provider_id, model_id, display_name, capabilities, is_favorite, enabled, status, source, last_seen_at, provider_metadata, created_at, updated_at
+            RETURNING id, org_id, provider_id, model_id, display_name, capabilities, is_favorite, enabled, source, last_seen_at, provider_metadata, created_at, updated_at
             "#,
         )
         .bind(id)
@@ -283,7 +287,7 @@ impl Database {
     pub async fn get_llm_model(&self, org_id: i64, id: Uuid) -> Result<Option<LlmModelRow>> {
         let row = sqlx::query_as::<_, LlmModelRow>(
             r#"
-            SELECT id, org_id, provider_id, model_id, display_name, capabilities, is_favorite, enabled, status, source, last_seen_at, provider_metadata, created_at, updated_at
+            SELECT id, org_id, provider_id, model_id, display_name, capabilities, is_favorite, enabled, source, last_seen_at, provider_metadata, created_at, updated_at
             FROM llm_models
             WHERE org_id = $1 AND id = $2
             "#,
@@ -303,8 +307,8 @@ impl Database {
     ) -> Result<Option<LlmModelWithProviderRow>> {
         let row = sqlx::query_as::<_, LlmModelWithProviderRow>(
             r#"
-            SELECT m.id, m.org_id, m.provider_id, m.model_id, m.display_name, m.capabilities, m.is_favorite, m.enabled, m.status, m.source, m.last_seen_at, m.provider_metadata, m.created_at, m.updated_at,
-                   p.name as provider_name, p.provider_type
+            SELECT m.id, m.org_id, m.provider_id, m.model_id, m.display_name, m.capabilities, m.is_favorite, m.enabled, m.source, m.last_seen_at, m.provider_metadata, m.created_at, m.updated_at,
+                   p.name as provider_name, p.provider_type, p.api_key_set as provider_api_key_set, p.status as provider_status
             FROM llm_models m
             JOIN llm_providers p ON m.provider_id = p.id AND p.org_id = m.org_id
             WHERE m.org_id = $1 AND m.id = $2
@@ -325,7 +329,7 @@ impl Database {
     ) -> Result<Vec<LlmModelRow>> {
         let rows = sqlx::query_as::<_, LlmModelRow>(
             r#"
-            SELECT id, org_id, provider_id, model_id, display_name, capabilities, is_favorite, enabled, status, source, last_seen_at, provider_metadata, created_at, updated_at
+            SELECT id, org_id, provider_id, model_id, display_name, capabilities, is_favorite, enabled, source, last_seen_at, provider_metadata, created_at, updated_at
             FROM llm_models
             WHERE org_id = $1 AND provider_id = $2
             ORDER BY display_name ASC
@@ -342,11 +346,11 @@ impl Database {
     pub async fn list_all_llm_models(&self, org_id: i64) -> Result<Vec<LlmModelWithProviderRow>> {
         let rows = sqlx::query_as::<_, LlmModelWithProviderRow>(
             r#"
-            SELECT m.id, m.org_id, m.provider_id, m.model_id, m.display_name, m.capabilities, m.is_favorite, m.enabled, m.status, m.source, m.last_seen_at, m.provider_metadata, m.created_at, m.updated_at,
-                   p.name as provider_name, p.provider_type
+            SELECT m.id, m.org_id, m.provider_id, m.model_id, m.display_name, m.capabilities, m.is_favorite, m.enabled, m.source, m.last_seen_at, m.provider_metadata, m.created_at, m.updated_at,
+                   p.name as provider_name, p.provider_type, p.api_key_set as provider_api_key_set, p.status as provider_status
             FROM llm_models m
             JOIN llm_providers p ON m.provider_id = p.id AND p.org_id = m.org_id
-            WHERE m.status = 'active' AND p.status = 'active' AND m.org_id = $1
+            WHERE p.status = 'active' AND m.org_id = $1
             ORDER BY m.enabled DESC, m.is_favorite DESC, p.name ASC, m.display_name ASC
             "#,
         )
@@ -377,12 +381,11 @@ impl Database {
                 capabilities = COALESCE($5, capabilities),
                 is_favorite = COALESCE($6, is_favorite),
                 enabled = COALESCE($7, enabled),
-                status = COALESCE($8, status),
-                last_seen_at = COALESCE($9, last_seen_at),
-                provider_metadata = COALESCE($10, provider_metadata),
+                last_seen_at = COALESCE($8, last_seen_at),
+                provider_metadata = COALESCE($9, provider_metadata),
                 updated_at = NOW()
             WHERE org_id = $1 AND id = $2
-            RETURNING id, org_id, provider_id, model_id, display_name, capabilities, is_favorite, enabled, status, source, last_seen_at, provider_metadata, created_at, updated_at
+            RETURNING id, org_id, provider_id, model_id, display_name, capabilities, is_favorite, enabled, source, last_seen_at, provider_metadata, created_at, updated_at
             "#,
         )
         .bind(org_id)
@@ -392,7 +395,6 @@ impl Database {
         .bind(&capabilities_json)
         .bind(input.is_favorite)
         .bind(input.enabled)
-        .bind(&input.status)
         .bind(input.last_seen_at)
         .bind(&input.provider_metadata)
         .fetch_optional(&self.pool)
@@ -419,11 +421,11 @@ impl Database {
     ) -> Result<Option<LlmModelWithProviderRow>> {
         let row = sqlx::query_as::<_, LlmModelWithProviderRow>(
             r#"
-            SELECT m.id, m.org_id, m.provider_id, m.model_id, m.display_name, m.capabilities, m.is_favorite, m.enabled, m.status, m.source, m.last_seen_at, m.provider_metadata, m.created_at, m.updated_at,
-                   p.name as provider_name, p.provider_type
+            SELECT m.id, m.org_id, m.provider_id, m.model_id, m.display_name, m.capabilities, m.is_favorite, m.enabled, m.source, m.last_seen_at, m.provider_metadata, m.created_at, m.updated_at,
+                   p.name as provider_name, p.provider_type, p.api_key_set as provider_api_key_set, p.status as provider_status
             FROM llm_models m
             JOIN llm_providers p ON m.provider_id = p.id AND p.org_id = m.org_id
-            WHERE m.model_id = $1 AND m.status = 'active' AND p.status = 'active' AND m.org_id = $2
+            WHERE m.model_id = $1 AND p.status = 'active' AND m.org_id = $2
             "#,
         )
         .bind(model_id)
