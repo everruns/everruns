@@ -155,9 +155,10 @@ export function ModelRow({
               <TooltipTrigger asChild>
                 <span
                   role="img"
+                  tabIndex={0}
                   aria-label={model.healthy ? "Model healthy" : "Model not ready"}
                   className={
-                    "inline-block h-2.5 w-2.5 rounded-full " +
+                    "inline-block h-2.5 w-2.5 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 " +
                     (model.healthy ? "bg-green-500" : "bg-gray-300")
                   }
                 />
