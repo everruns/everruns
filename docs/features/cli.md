@@ -1,6 +1,8 @@
 ---
-title: CLI
-description: Command-line interface for managing agents, creating sessions, streaming real-time events, and running interactive conversations with the Everruns platform.
+title: CLI for Agents and Sessions
+description: Use the Everruns command-line interface to create agents, manage sessions, stream real-time events, import configuration files, and automate platform workflows.
+sidebar:
+  label: CLI
 ---
 
 The `everruns` CLI provides a command-line interface for managing agents, sessions, and conversations. It's useful for scripting, automation, and quick interactions without using the web UI.

@@ -30,25 +30,12 @@ export const onRequest = defineRouteMiddleware((context) => {
   // Update both entry.data.title (affects h1) and the <title> head entry.
   if (isApiOperation) {
     const cleanTitle = route.entry.data.title.replace(methodPathPrefix, "");
-    route.entry.data.title = cleanTitle;
+    updateRouteTitle(route, cleanTitle);
+  }
 
-    // Update the <title> head entry
-    const titleEntry = route.head.find((e) => e.tag === "title");
-    if (titleEntry) {
-      titleEntry.content = titleEntry.content?.replace(methodPathPrefix, "");
-    }
-
-    // Update og:title
-    const ogTitle = route.head.find(
-      (e) =>
-        e.tag === "meta" &&
-        e.attrs &&
-        "property" in e.attrs &&
-        e.attrs.property === "og:title",
-    );
-    if (ogTitle?.attrs) {
-      ogTitle.attrs.content = cleanTitle;
-    }
+  // Give the generated API overview page a search-friendly title.
+  if (slug === "api") {
+    updateRouteTitle(route, "REST API Endpoints and Schemas");
   }
 
   // Generate meta description for pages without one.
@@ -61,7 +48,12 @@ export const onRequest = defineRouteMiddleware((context) => {
       e.attrs.name === "description",
   );
 
-  if (!hasDescription || !route.entry.data.description) {
+  if (
+    !hasDescription ||
+    !route.entry.data.description ||
+    isApiOperation ||
+    slug === "api"
+  ) {
     const description = deriveDescription(slug, route.entry.data.title);
     route.entry.data.description = description;
 
@@ -129,6 +121,31 @@ export const onRequest = defineRouteMiddleware((context) => {
   }
 });
 
+function updateRouteTitle(
+  route: NonNullable<Parameters<Parameters<typeof defineRouteMiddleware>[0]>[0]["locals"]["starlightRoute"]>,
+  title: string,
+): void {
+  route.entry.data.title = title;
+
+  // Update the <title> head entry.
+  const titleEntry = route.head.find((e) => e.tag === "title");
+  if (titleEntry) {
+    titleEntry.content = `${title} | Everruns`;
+  }
+
+  // Update og:title.
+  const ogTitle = route.head.find(
+    (e) =>
+      e.tag === "meta" &&
+      e.attrs &&
+      "property" in e.attrs &&
+      e.attrs.property === "og:title",
+  );
+  if (ogTitle?.attrs) {
+    ogTitle.attrs.content = title;
+  }
+}
+
 function deriveDescription(slug: string, title: string): string {
   // API tag group pages: derive tag name from slug (e.g. "api/operations/tags/agents" → "agents")
   if (slug.startsWith("api/operations/tags/")) {
@@ -138,12 +155,12 @@ function deriveDescription(slug: string, title: string): string {
 
   // API operation pages (title is already cleaned of method+path prefix)
   if (slug.startsWith("api/operations/")) {
-    return `${title} — Everruns REST API reference. View request parameters, response schema, and example payloads for this endpoint.`;
+    return `${title} in the Everruns REST API reference, with endpoint details, request parameters, response schemas, status codes, and example payloads for integration.`;
   }
 
   // API overview page
   if (slug === "api") {
-    return "Complete REST API reference for Everruns, including all endpoints, request and response schemas, authentication, and interactive usage examples.";
+    return "Explore the complete Everruns REST API reference, including agent, session, message, app, auth, schema, streaming, platform management, and integration examples.";
   }
 
   // API schema pages

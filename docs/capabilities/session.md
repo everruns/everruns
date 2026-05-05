@@ -1,6 +1,8 @@
 ---
-title: Session
-description: Read and update current session metadata — titles, agent information, and session-scoped context. Agents can inspect and modify their own session during execution.
+title: Session Metadata Tools for Agents
+description: Let agents inspect and update current session metadata, including session IDs, titles, agent names, and context used for logging or conversation organization.
+sidebar:
+  label: Session
 ---
 
 | | |

@@ -1,6 +1,8 @@
 ---
-title: Apps
-description: Deploy Everruns agents to external channels like Slack, WhatsApp, and custom webhooks. Configure distribution, authentication, and message routing per app.
+title: Apps for Agent Distribution Channels
+description: Deploy Everruns agents to Slack, webhooks, and other channels with app publishing, channel authentication, session routing strategies, and lifecycle controls.
+sidebar:
+  label: Apps
 ---
 
 An App binds a Harness and Agent to a distribution channel, turning your agent into a deployed service that responds to external messages. Apps provide a publish/unpublish lifecycle — only published apps accept incoming requests.
