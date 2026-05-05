@@ -19,7 +19,7 @@ import { AgentSelect } from "@/components/agent/agent-select";
 import { AgentIdentitySelect } from "@/components/agent-identity/agent-identity-select";
 import { HarnessSelect } from "@/components/harness/harness-select";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, RefreshCw } from "lucide-react";
 import type {
   ChannelType,
   InvocationSessionMode,
@@ -27,6 +27,7 @@ import type {
   SlackReplyMode,
 } from "@/lib/api/types";
 import { getChannelTypeDisplayName, getInvocationSessionModeDisplayName } from "@/lib/app-channels";
+import { generateChannelToken } from "@/lib/channel-tokens";
 
 export default function NewAppPage() {
   const router = useRouter();
@@ -50,11 +51,23 @@ export default function NewAppPage() {
     useState<InvocationSessionMode>("shared_session");
   const [channelMessage, setChannelMessage] = useState("");
   const [webhookToken, setWebhookToken] = useState("");
+  const [agUiToken, setAgUiToken] = useState("");
+
+  const handleChannelTypeChange = (value: string) => {
+    const nextChannelType = value === "__none__" ? "" : (value as ChannelType);
+    setChannelType(nextChannelType);
+    if (nextChannelType === "ag_ui" && channelType !== "ag_ui" && !agUiToken) {
+      setAgUiToken(generateChannelToken());
+    }
+  };
 
   const buildChannelConfig = () => {
     switch (channelType) {
       case "ag_ui":
-        return { anonymous: true };
+        return {
+          anonymous: true,
+          ...(agUiToken.trim() ? { token: agUiToken.trim() } : {}),
+        };
       case "slack":
         return {
           signing_secret: slackSigningSecret,
@@ -174,12 +187,7 @@ export default function NewAppPage() {
 
             <div className="space-y-2">
               <Label htmlFor="channel_type">Channel (optional)</Label>
-              <Select
-                value={channelType || "__none__"}
-                onValueChange={(value) =>
-                  setChannelType(value === "__none__" ? "" : (value as ChannelType))
-                }
-              >
+              <Select value={channelType || "__none__"} onValueChange={handleChannelTypeChange}>
                 <SelectTrigger id="channel_type">
                   <SelectValue placeholder="Choose later" />
                 </SelectTrigger>
@@ -271,6 +279,36 @@ export default function NewAppPage() {
                       </SelectContent>
                     </Select>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {channelType === "ag_ui" && (
+              <div className="space-y-4 rounded-md border p-4">
+                <div className="space-y-2">
+                  <Label htmlFor="ag_ui_token">Endpoint Token</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="ag_ui_token"
+                      value={agUiToken}
+                      onChange={(e) => setAgUiToken(e.target.value)}
+                      className="font-mono"
+                      placeholder="Generated bearer token"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={() => setAgUiToken(generateChannelToken())}
+                      aria-label="Regenerate AG-UI token"
+                    >
+                      <RefreshCw className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    AG-UI clients must send this as `Authorization: Bearer &lt;token&gt;` or
+                    `X-Everruns-AG-UI-Token`.
+                  </p>
                 </div>
               </div>
             )}

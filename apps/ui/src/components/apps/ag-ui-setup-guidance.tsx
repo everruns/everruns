@@ -9,6 +9,7 @@ interface AgUiSetupGuidanceProps {
   anonymousEnabled: boolean;
   sessionExpirationSeconds: number;
   rateLimitPerMinute?: number;
+  token?: string;
   onConfigure?: () => void;
 }
 
@@ -36,15 +37,16 @@ export function AgUiSetupGuidance({
   anonymousEnabled,
   sessionExpirationSeconds,
   rateLimitPerMinute,
+  token,
   onConfigure,
 }: AgUiSetupGuidanceProps) {
   const hasRateLimit = !!rateLimitPerMinute && rateLimitPerMinute > 0;
+  const hasToken = !!token;
+  const accessBadge = hasToken ? "Token Protected" : anonymousEnabled ? "Anonymous" : "Restricted";
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
-        <Badge variant={anonymousEnabled ? "default" : "secondary"}>
-          {anonymousEnabled ? "Anonymous" : "Restricted"}
-        </Badge>
+        <Badge variant={anonymousEnabled ? "default" : "secondary"}>{accessBadge}</Badge>
         <span className="text-sm text-muted-foreground">
           {isPublished ? "Ready for AG-UI clients" : "Publish the app to accept requests"}
         </span>
@@ -57,6 +59,18 @@ export function AgUiSetupGuidance({
           <code className="flex-1 truncate text-sm">{endpointUrl}</code>
           <CopyButton value={endpointUrl} />
         </div>
+      </div>
+
+      <div>
+        <p className="text-sm font-medium">Token</p>
+        {hasToken ? (
+          <div className="mt-2 flex items-center gap-2 bg-muted p-3">
+            <code className="flex-1 truncate text-sm">{token}</code>
+            <CopyButton value={token} />
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">No channel token required</p>
+        )}
       </div>
 
       <div>
@@ -80,6 +94,9 @@ export function AgUiSetupGuidance({
 
       <div className="space-y-1 text-sm text-muted-foreground">
         <p>Send AG-UI `RunAgentInput` JSON to this endpoint.</p>
+        {hasToken && (
+          <p>Include `Authorization: Bearer &lt;token&gt;` or `X-Everruns-AG-UI-Token`.</p>
+        )}
         <p>Responses stream back as AG-UI SSE events.</p>
       </div>
 

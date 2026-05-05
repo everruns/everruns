@@ -120,14 +120,26 @@ async fn send_ag_ui_run(
     app_id: impl std::fmt::Display,
     payload: &Value,
 ) -> test_harness::TestResponse {
+    send_ag_ui_run_with_headers(server, app_id, payload, vec![]).await
+}
+
+async fn send_ag_ui_run_with_headers(
+    server: &TestServer,
+    app_id: impl std::fmt::Display,
+    payload: &Value,
+    headers: Vec<(&str, &str)>,
+) -> test_harness::TestResponse {
+    let mut request_headers = vec![
+        ("content-type", "application/json"),
+        ("accept", "text/event-stream"),
+    ];
+    request_headers.extend(headers);
+
     server
         .request_raw(
             Method::POST,
             &format!("/v1/apps/{}/ag-ui", app_id),
-            vec![
-                ("content-type", "application/json"),
-                ("accept", "text/event-stream"),
-            ],
+            request_headers,
             serde_json::to_vec(payload).unwrap(),
         )
         .await
@@ -150,6 +162,99 @@ async fn test_ag_ui_rejects_missing_messages() {
     });
 
     send_ag_ui_run(&server, &app.public_id, &payload)
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_ag_ui_token_requires_matching_header_when_configured() {
+    let server = TestServer::in_memory().await;
+    let agent_id = create_llmsim_agent(&server).await;
+
+    let app: App = server
+        .post(
+            "/v1/apps",
+            json!({
+                "name": unique_id("Token Protected AG-UI App"),
+                "harness_id": server.seed_base_harness_id,
+                "agent_id": agent_id,
+                "channel_type": "ag_ui",
+                "channel_config": {
+                    "anonymous": true,
+                    "token": "agui-secret-token"
+                }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    server
+        .post(&format!("/v1/apps/{}/publish", app.public_id), json!({}))
+        .await
+        .assert_success();
+
+    let payload = json!({
+        "threadId": raw_uuid(),
+        "runId": raw_uuid(),
+        "state": {},
+        "messages": [],
+        "tools": [],
+        "context": [],
+        "forwardedProps": {}
+    });
+
+    send_ag_ui_run(&server, &app.public_id, &payload)
+        .await
+        .assert_status(StatusCode::UNAUTHORIZED);
+
+    send_ag_ui_run_with_headers(
+        &server,
+        &app.public_id,
+        &payload,
+        vec![("authorization", "Bearer wrong-token")],
+    )
+    .await
+    .assert_status(StatusCode::UNAUTHORIZED);
+
+    send_ag_ui_run_with_headers(
+        &server,
+        &app.public_id,
+        &payload,
+        vec![("authorization", "Bearer agui-secret-token")],
+    )
+    .await
+    .assert_status(StatusCode::BAD_REQUEST);
+
+    send_ag_ui_run_with_headers(
+        &server,
+        &app.public_id,
+        &payload,
+        vec![("x-everruns-ag-ui-token", "agui-secret-token")],
+    )
+    .await
+    .assert_status(StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_ag_ui_rejects_empty_token_config() {
+    let server = TestServer::in_memory().await;
+    let agent_id = create_llmsim_agent(&server).await;
+
+    server
+        .post(
+            "/v1/apps",
+            json!({
+                "name": unique_id("Bad Token AG-UI App"),
+                "harness_id": server.seed_base_harness_id,
+                "agent_id": agent_id,
+                "channel_type": "ag_ui",
+                "channel_config": {
+                    "anonymous": true,
+                    "token": " "
+                }
+            }),
+        )
         .await
         .assert_status(StatusCode::BAD_REQUEST);
 }

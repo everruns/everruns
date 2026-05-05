@@ -50,7 +50,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ArrowLeft, Globe, GlobeLock, Trash2, Pencil, Check, X, Rocket, Plus } from "lucide-react";
+import {
+  ArrowLeft,
+  Globe,
+  GlobeLock,
+  Trash2,
+  Pencil,
+  Check,
+  X,
+  Rocket,
+  Plus,
+  RefreshCw,
+} from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
 import { AgUiSetupGuidance } from "@/components/apps/ag-ui-setup-guidance";
 import { AppBudgetsCard } from "@/components/apps/app-budgets-card";
@@ -70,6 +81,7 @@ import type {
   WebhookChannelConfig,
 } from "@/lib/api/types";
 import { DEFAULT_AG_UI_SESSION_EXPIRATION_SECONDS } from "@/lib/api/types/app-types";
+import { generateChannelToken } from "@/lib/channel-tokens";
 import {
   getDisplayName,
   getEntityNameClassName,
@@ -133,6 +145,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
   );
   const [editChannelEnabled, setEditChannelEnabled] = useState(true);
   const [editAgUiRateLimitPerMinute, setEditAgUiRateLimitPerMinute] = useState<string>("");
+  const [editAgUiToken, setEditAgUiToken] = useState("");
 
   const [creatingSlackApp, setCreatingSlackApp] = useState(false);
 
@@ -287,6 +300,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
     setEditAgUiExpirationHours(DEFAULT_AG_UI_SESSION_EXPIRATION_SECONDS / 3600);
     setEditChannelEnabled(true);
     setEditAgUiRateLimitPerMinute("");
+    setEditAgUiToken("");
   };
 
   const buildChannelConfig = (channelType: ChannelType): ChannelConfigInput => {
@@ -299,6 +313,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
         const parsed = trimmed === "" ? undefined : Number.parseInt(trimmed, 10);
         return {
           anonymous: true,
+          ...(editAgUiToken.trim() ? { token: editAgUiToken.trim() } : {}),
           session_expiration_seconds: Math.round(hours * 3600),
           ...(parsed !== undefined && Number.isFinite(parsed) && parsed > 0
             ? { rate_limit_per_minute: parsed }
@@ -368,6 +383,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
           ? String(config.rate_limit_per_minute)
           : "",
       );
+      setEditAgUiToken(config?.token ?? "");
     } else if (channel.channel_type === "slack") {
       const config = channel.channel_config as SlackChannelConfig;
       setEditSigningSecret(config?.signing_secret ?? "");
@@ -460,7 +476,13 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
             <Label htmlFor={`channel_type_${formId}`}>Channel Type</Label>
             <Select
               value={addChannelType}
-              onValueChange={(v) => resetChannelForm(v as ChannelType)}
+              onValueChange={(v) => {
+                const nextChannelType = v as ChannelType;
+                resetChannelForm(nextChannelType);
+                if (nextChannelType === "ag_ui") {
+                  setEditAgUiToken(generateChannelToken());
+                }
+              }}
             >
               <SelectTrigger id={`channel_type_${formId}`}>
                 <SelectValue />
@@ -490,6 +512,32 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
             <div className="rounded-md border p-3 text-sm text-muted-foreground">
               AG-UI requests are accepted anonymously for now. Publish the app, then point an AG-UI
               client at the endpoint shown on this page.
+            </div>
+
+            <div>
+              <Label htmlFor={`ag_ui_token_${formId}`}>Endpoint Token</Label>
+              <div className="flex gap-2">
+                <Input
+                  id={`ag_ui_token_${formId}`}
+                  value={editAgUiToken}
+                  onChange={(e) => setEditAgUiToken(e.target.value)}
+                  className="font-mono"
+                  placeholder="Generated bearer token"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setEditAgUiToken(generateChannelToken())}
+                  aria-label="Regenerate AG-UI token"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                </Button>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                AG-UI clients must send this as `Authorization: Bearer &lt;token&gt;` or
+                `X-Everruns-AG-UI-Token`. Leave blank to allow requests without a channel token.
+              </p>
             </div>
 
             <div>
@@ -758,6 +806,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
               config?.session_expiration_seconds ?? DEFAULT_AG_UI_SESSION_EXPIRATION_SECONDS
             }
             rateLimitPerMinute={config?.rate_limit_per_minute}
+            token={config?.token}
             onConfigure={() => startEditChannel(channel)}
           />
         </div>

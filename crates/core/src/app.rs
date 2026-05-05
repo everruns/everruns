@@ -370,6 +370,10 @@ pub struct AgUiChannelConfig {
     /// Enabled by default for the initial AG-UI rollout.
     #[serde(default = "default_true")]
     pub anonymous: bool,
+    /// Optional shared bearer token for the public AG-UI endpoint.
+    /// When set, requests must include the token in a supported header.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token: Option<String>,
     /// How long (in seconds) a thread can be resumed after its session was
     /// created. Once this elapses, the same `thread_id` cannot reuse the
     /// existing session and must start a new one. `0` disables expiration.
@@ -621,18 +625,21 @@ mod tests {
             DEFAULT_SESSION_EXPIRATION_SECONDS
         );
         assert!(config.rate_limit_per_minute.is_none());
+        assert!(config.token.is_none());
     }
 
     #[test]
     fn test_ag_ui_channel_config_roundtrip() {
         let config = AgUiChannelConfig {
             anonymous: true,
+            token: Some("agui-token".to_string()),
             session_expiration_seconds: 3600,
             rate_limit_per_minute: Some(120),
         };
         let json = serde_json::to_string(&config).unwrap();
         let parsed: AgUiChannelConfig = serde_json::from_str(&json).unwrap();
         assert!(parsed.anonymous);
+        assert_eq!(parsed.token.as_deref(), Some("agui-token"));
         assert_eq!(parsed.session_expiration_seconds, 3600);
         assert_eq!(parsed.rate_limit_per_minute, Some(120));
     }
@@ -648,6 +655,7 @@ mod tests {
     fn test_ag_ui_channel_config_omits_rate_limit_when_unset() {
         let config = AgUiChannelConfig {
             anonymous: true,
+            token: None,
             session_expiration_seconds: DEFAULT_SESSION_EXPIRATION_SECONDS,
             rate_limit_per_minute: None,
         };

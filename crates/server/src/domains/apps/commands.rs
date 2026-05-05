@@ -161,6 +161,13 @@ fn validate_channel_config(
                     "AG-UI rate_limit_per_minute must be at most 1,000,000",
                 ));
             }
+            if let Some(token) = config.token
+                && token.trim().is_empty()
+            {
+                return Err(CommandError::bad_request(
+                    "AG-UI token must be non-empty when configured",
+                ));
+            }
         }
         ChannelType::Schedule => {
             let config: ScheduleChannelConfig = serde_json::from_value(channel_config.clone())

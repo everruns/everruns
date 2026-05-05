@@ -50,6 +50,7 @@ Channel config is stored as JSONB and validated at the application layer per cha
 ```json
 {
   "anonymous": true,
+  "token": "optional-shared-secret",
   "session_expiration_seconds": 21600,
   "rate_limit_per_minute": 60
 }
@@ -61,6 +62,7 @@ AG-UI uses an app-scoped anonymous ingress for the initial rollout:
 - Requests use AG-UI `RunAgentInput` JSON
 - Responses stream back as AG-UI SSE events translated from the durable runtime
 - Anonymous access is currently required when the channel is enabled
+- If `token` is set, requests must include either `Authorization: Bearer <token>` or `X-Everruns-AG-UI-Token: <token>`.
 - Session routing is per `threadId`, with sessions tagged by app and thread
 - Request body validation (see threat `TM-LLM-020`):
   - `messages[*].role` must be `user` or `assistant`. `system`, `developer`, and `tool` are rejected with `400 invalid_request` and the offending role is not echoed back.

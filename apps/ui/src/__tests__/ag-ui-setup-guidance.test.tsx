@@ -68,6 +68,7 @@ describe("formatSessionExpiration", () => {
         isPublished={true}
         anonymousEnabled={true}
         rateLimitPerMinute={120}
+        sessionExpirationSeconds={6 * 60 * 60}
       />,
     );
 
@@ -80,9 +81,26 @@ describe("formatSessionExpiration", () => {
         endpointUrl="https://example.com/api/v1/apps/app-123/ag-ui"
         isPublished={true}
         anonymousEnabled={true}
+        sessionExpirationSeconds={6 * 60 * 60}
       />,
     );
 
     expect(screen.getByText("No per-app cap (global API limit applies)")).toBeInTheDocument();
+  });
+
+  it("renders configured token guidance", () => {
+    render(
+      <AgUiSetupGuidance
+        endpointUrl="https://example.com/api/v1/apps/app-123/ag-ui"
+        isPublished={true}
+        anonymousEnabled={true}
+        sessionExpirationSeconds={6 * 60 * 60}
+        token="agui-token"
+      />,
+    );
+
+    expect(screen.getByText("agui-token")).toBeInTheDocument();
+    expect(screen.getByText("Token Protected")).toBeInTheDocument();
+    expect(screen.getByText(/Authorization: Bearer/)).toBeInTheDocument();
   });
 });
