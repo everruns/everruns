@@ -119,6 +119,7 @@ export default defineConfig({
                     { label: "Introduction", slug: "getting-started/introduction" },
                     { label: "Concepts", slug: "getting-started/concepts" },
                     { label: "Docker Compose", slug: "getting-started/docker-compose" },
+                    { label: "Use in AI Tools", slug: "getting-started/use-in-ai-tools" },
                     { label: "Architecture", slug: "getting-started/architecture" },
                   ],
                 },
