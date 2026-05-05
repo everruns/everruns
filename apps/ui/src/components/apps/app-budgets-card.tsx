@@ -35,6 +35,7 @@ import type {
   BudgetSubjectType,
   CreateBudgetRequest,
 } from "@/lib/api/types";
+import { getChannelTypeDisplayName } from "@/lib/app-channels";
 
 type SubjectChoice = { kind: "app" } | { kind: "channel"; channelId: string };
 
@@ -50,6 +51,19 @@ const PERIOD_PRESETS: { value: PeriodPreset; label: string }[] = [
   { value: "calendar_month", label: "Calendar month (UTC)" },
   { value: "custom", label: "Custom JSON…" },
 ];
+
+function getBudgetCurrencyDisplayName(currency: string): string {
+  switch (currency) {
+    case "usd":
+      return "USD";
+    case "tokens":
+      return "Tokens";
+    case "credits":
+      return "Credits";
+    default:
+      return currency.toUpperCase();
+  }
+}
 
 const PERIOD_PRESET_TO_PERIOD: Record<Exclude<PeriodPreset, "none" | "custom">, BudgetPeriod> = {
   "1h": { type: "duration", seconds: 3_600 },
@@ -277,7 +291,7 @@ function NewBudgetForm({
               <SelectItem value="app">App-wide</SelectItem>
               {channels.map((channel: AppChannel) => (
                 <SelectItem key={channel.id} value={`ch:${channel.id}`}>
-                  Channel: {channel.channel_type}
+                  Channel: {getChannelTypeDisplayName(channel.channel_type)}
                   {channels.length > 1 ? ` (${channel.id.slice(-6)})` : ""}
                 </SelectItem>
               ))}
@@ -292,9 +306,9 @@ function NewBudgetForm({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="usd">usd</SelectItem>
-              <SelectItem value="tokens">tokens</SelectItem>
-              <SelectItem value="credits">credits</SelectItem>
+              <SelectItem value="usd">{getBudgetCurrencyDisplayName("usd")}</SelectItem>
+              <SelectItem value="tokens">{getBudgetCurrencyDisplayName("tokens")}</SelectItem>
+              <SelectItem value="credits">{getBudgetCurrencyDisplayName("credits")}</SelectItem>
             </SelectContent>
           </Select>
         </div>

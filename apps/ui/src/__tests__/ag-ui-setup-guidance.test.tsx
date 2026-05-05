@@ -103,4 +103,19 @@ describe("formatSessionExpiration", () => {
     expect(screen.getByText("Token Protected")).toBeInTheDocument();
     expect(screen.getByText(/Authorization: Bearer/)).toBeInTheDocument();
   });
+
+  it("renders public tool activity visibility with generic text", () => {
+    render(
+      <AgUiSetupGuidance
+        endpointUrl="https://example.com/api/v1/apps/app-123/ag-ui"
+        isPublished={true}
+        anonymousEnabled={true}
+        toolVisibility="generic"
+        genericToolText="Working on it"
+      />,
+    );
+
+    expect(screen.getByText("Tool activity")).toBeInTheDocument();
+    expect(screen.getByText("Generic — Working on it")).toBeInTheDocument();
+  });
 });

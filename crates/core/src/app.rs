@@ -360,6 +360,23 @@ pub struct SlackChannelConfig {
 /// Default session expiration for public channel threads (6 hours).
 pub const DEFAULT_SESSION_EXPIRATION_SECONDS: u32 = 6 * 60 * 60;
 
+/// Default public AG-UI text shown while a tool call is running.
+pub const DEFAULT_AG_UI_GENERIC_TOOL_TEXT: &str = "Working...";
+
+/// Public AG-UI tool activity visibility.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum AgUiToolVisibility {
+    /// Do not expose tool activity in public AG-UI streams.
+    None,
+    /// Expose only editable generic text, without tool names, args, or output.
+    #[default]
+    Generic,
+    /// Expose backend-authored narration, without raw tool names, args, or output.
+    Narrated,
+}
+
 /// Typed AG-UI channel configuration.
 ///
 /// Parsed from the `channel_config` JSON field on App.
@@ -386,10 +403,27 @@ pub struct AgUiChannelConfig {
     /// a stricter cap on anonymous traffic for this app.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rate_limit_per_minute: Option<u32>,
+    /// Public tool activity visibility for anonymous AG-UI streams.
+    #[serde(default)]
+    pub tool_visibility: AgUiToolVisibility,
+    /// Generic public text shown when `tool_visibility` is `generic`.
+    #[serde(
+        default = "default_ag_ui_generic_tool_text",
+        skip_serializing_if = "is_default_ag_ui_generic_tool_text"
+    )]
+    pub generic_tool_text: String,
 }
 
 fn default_session_expiration_seconds() -> u32 {
     DEFAULT_SESSION_EXPIRATION_SECONDS
+}
+
+fn default_ag_ui_generic_tool_text() -> String {
+    DEFAULT_AG_UI_GENERIC_TOOL_TEXT.to_string()
+}
+
+fn is_default_ag_ui_generic_tool_text(value: &str) -> bool {
+    value == DEFAULT_AG_UI_GENERIC_TOOL_TEXT
 }
 
 /// How app-triggered invocations route into sessions.
@@ -626,6 +660,8 @@ mod tests {
         );
         assert!(config.rate_limit_per_minute.is_none());
         assert!(config.token.is_none());
+        assert_eq!(config.tool_visibility, AgUiToolVisibility::Generic);
+        assert_eq!(config.generic_tool_text, DEFAULT_AG_UI_GENERIC_TOOL_TEXT);
     }
 
     #[test]
@@ -635,6 +671,8 @@ mod tests {
             token: Some("agui-token".to_string()),
             session_expiration_seconds: 3600,
             rate_limit_per_minute: Some(120),
+            tool_visibility: AgUiToolVisibility::None,
+            generic_tool_text: "Please wait".to_string(),
         };
         let json = serde_json::to_string(&config).unwrap();
         let parsed: AgUiChannelConfig = serde_json::from_str(&json).unwrap();
@@ -642,6 +680,8 @@ mod tests {
         assert_eq!(parsed.token.as_deref(), Some("agui-token"));
         assert_eq!(parsed.session_expiration_seconds, 3600);
         assert_eq!(parsed.rate_limit_per_minute, Some(120));
+        assert_eq!(parsed.tool_visibility, AgUiToolVisibility::None);
+        assert_eq!(parsed.generic_tool_text, "Please wait");
     }
 
     #[test]
@@ -658,9 +698,12 @@ mod tests {
             token: None,
             session_expiration_seconds: DEFAULT_SESSION_EXPIRATION_SECONDS,
             rate_limit_per_minute: None,
+            tool_visibility: AgUiToolVisibility::Generic,
+            generic_tool_text: DEFAULT_AG_UI_GENERIC_TOOL_TEXT.to_string(),
         };
         let json = serde_json::to_value(&config).unwrap();
         assert!(json.get("rate_limit_per_minute").is_none());
+        assert!(json.get("generic_tool_text").is_none());
     }
 
     #[test]

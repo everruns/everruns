@@ -1,6 +1,8 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/ui/copy-button";
+import { getAgUiToolVisibilityDisplayName } from "@/lib/app-channels";
+import type { AgUiToolVisibility } from "@/lib/api/types";
 import { Globe } from "lucide-react";
 
 interface AgUiSetupGuidanceProps {
@@ -10,6 +12,8 @@ interface AgUiSetupGuidanceProps {
   sessionExpirationSeconds: number;
   rateLimitPerMinute?: number;
   token?: string;
+  toolVisibility?: AgUiToolVisibility;
+  genericToolText?: string;
   onConfigure?: () => void;
 }
 
@@ -38,6 +42,8 @@ export function AgUiSetupGuidance({
   sessionExpirationSeconds,
   rateLimitPerMinute,
   token,
+  toolVisibility = "generic",
+  genericToolText,
   onConfigure,
 }: AgUiSetupGuidanceProps) {
   const hasRateLimit = !!rateLimitPerMinute && rateLimitPerMinute > 0;
@@ -89,6 +95,14 @@ export function AgUiSetupGuidance({
           {hasRateLimit
             ? `${rateLimitPerMinute} requests per minute, per IP`
             : "No per-app cap (global API limit applies)"}
+        </p>
+      </div>
+
+      <div>
+        <p className="text-sm font-medium">Tool activity</p>
+        <p className="text-sm text-muted-foreground">
+          {getAgUiToolVisibilityDisplayName(toolVisibility)}
+          {toolVisibility === "generic" && genericToolText ? ` — ${genericToolText}` : ""}
         </p>
       </div>
 

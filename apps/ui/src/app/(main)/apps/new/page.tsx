@@ -22,12 +22,20 @@ import { HarnessSelect } from "@/components/harness/harness-select";
 import Link from "next/link";
 import { ArrowLeft, RefreshCw } from "lucide-react";
 import type {
+  AgUiToolVisibility,
   ChannelType,
   InvocationSessionMode,
   SessionStrategy,
   SlackReplyMode,
 } from "@/lib/api/types";
-import { getChannelTypeDisplayName, getInvocationSessionModeDisplayName } from "@/lib/app-channels";
+import {
+  getAgUiToolVisibilityDisplayName,
+  getChannelTypeDisplayName,
+  getInvocationSessionModeDisplayName,
+  getSessionStrategyDisplayName,
+  getSlackReplyModeDisplayName,
+} from "@/lib/app-channels";
+import { DEFAULT_AG_UI_GENERIC_TOOL_TEXT } from "@/lib/api/types/app-types";
 import { generateChannelToken } from "@/lib/channel-tokens";
 
 export default function NewAppPage() {
@@ -54,6 +62,8 @@ export default function NewAppPage() {
   const [channelMessage, setChannelMessage] = useState("");
   const [webhookToken, setWebhookToken] = useState("");
   const [agUiToken, setAgUiToken] = useState("");
+  const [agUiToolVisibility, setAgUiToolVisibility] = useState<AgUiToolVisibility>("generic");
+  const [agUiGenericToolText, setAgUiGenericToolText] = useState(DEFAULT_AG_UI_GENERIC_TOOL_TEXT);
 
   const handleChannelTypeChange = (value: string) => {
     const nextChannelType = value === "__none__" ? "" : (value as ChannelType);
@@ -69,6 +79,8 @@ export default function NewAppPage() {
         return {
           anonymous: true,
           ...(agUiToken.trim() ? { token: agUiToken.trim() } : {}),
+          tool_visibility: agUiToolVisibility,
+          generic_tool_text: agUiGenericToolText.trim() || DEFAULT_AG_UI_GENERIC_TOOL_TEXT,
         };
       case "slack":
         return {
@@ -101,7 +113,7 @@ export default function NewAppPage() {
     channelType === ""
       ? true
       : channelType === "ag_ui"
-        ? true
+        ? agUiToolVisibility !== "generic" || agUiGenericToolText.trim().length <= 120
         : channelType === "slack"
           ? !!slackSigningSecret && !!slackBotToken
           : channelType === "schedule"
@@ -195,10 +207,10 @@ export default function NewAppPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none__">Choose later</SelectItem>
-                  <SelectItem value="slack">Slack</SelectItem>
-                  <SelectItem value="ag_ui">AG-UI</SelectItem>
-                  <SelectItem value="schedule">Schedule</SelectItem>
-                  <SelectItem value="webhook">Webhook</SelectItem>
+                  <SelectItem value="slack">{getChannelTypeDisplayName("slack")}</SelectItem>
+                  <SelectItem value="ag_ui">{getChannelTypeDisplayName("ag_ui")}</SelectItem>
+                  <SelectItem value="schedule">{getChannelTypeDisplayName("schedule")}</SelectItem>
+                  <SelectItem value="webhook">{getChannelTypeDisplayName("webhook")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -260,9 +272,15 @@ export default function NewAppPage() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="per_thread">Per Thread</SelectItem>
-                        <SelectItem value="per_channel">Per Channel</SelectItem>
-                        <SelectItem value="per_user">Per User</SelectItem>
+                        <SelectItem value="per_thread">
+                          {getSessionStrategyDisplayName("per_thread")}
+                        </SelectItem>
+                        <SelectItem value="per_channel">
+                          {getSessionStrategyDisplayName("per_channel")}
+                        </SelectItem>
+                        <SelectItem value="per_user">
+                          {getSessionStrategyDisplayName("per_user")}
+                        </SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -276,8 +294,12 @@ export default function NewAppPage() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="all_messages">All Assistant Messages</SelectItem>
-                        <SelectItem value="report_progress_only">Report Progress Only</SelectItem>
+                        <SelectItem value="all_messages">
+                          {getSlackReplyModeDisplayName("all_messages")}
+                        </SelectItem>
+                        <SelectItem value="report_progress_only">
+                          {getSlackReplyModeDisplayName("report_progress_only")}
+                        </SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -312,6 +334,45 @@ export default function NewAppPage() {
                     `X-Everruns-AG-UI-Token`.
                   </p>
                 </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="ag_ui_tool_visibility">Tool Activity</Label>
+                  <Select
+                    value={agUiToolVisibility}
+                    onValueChange={(value) => setAgUiToolVisibility(value as AgUiToolVisibility)}
+                  >
+                    <SelectTrigger id="ag_ui_tool_visibility">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">
+                        {getAgUiToolVisibilityDisplayName("none")}
+                      </SelectItem>
+                      <SelectItem value="generic">
+                        {getAgUiToolVisibilityDisplayName("generic")}
+                      </SelectItem>
+                      <SelectItem value="narrated">
+                        {getAgUiToolVisibilityDisplayName("narrated")}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Tool names, arguments, and results are never sent to public AG-UI clients.
+                  </p>
+                </div>
+
+                {agUiToolVisibility === "generic" && (
+                  <div className="space-y-2">
+                    <Label htmlFor="ag_ui_generic_tool_text">Generic Activity Text</Label>
+                    <Input
+                      id="ag_ui_generic_tool_text"
+                      value={agUiGenericToolText}
+                      onChange={(e) => setAgUiGenericToolText(e.target.value)}
+                      maxLength={120}
+                      placeholder={DEFAULT_AG_UI_GENERIC_TOOL_TEXT}
+                    />
+                  </div>
+                )}
               </div>
             )}
 
