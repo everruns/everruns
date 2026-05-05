@@ -112,10 +112,11 @@ function CategoryFilter({
   if (categories.length === 0) return null;
 
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by category">
       <button
         type="button"
         onClick={() => onSelect(null)}
+        aria-pressed={selected === null}
         className={cn(
           "inline-flex items-center gap-1.5 border px-2.5 py-1 text-xs transition-colors",
           selected === null
@@ -133,6 +134,7 @@ function CategoryFilter({
           key={category}
           type="button"
           onClick={() => onSelect(category === selected ? null : category)}
+          aria-pressed={selected === category}
           className={cn(
             "inline-flex items-center gap-1.5 border px-2.5 py-1 text-xs transition-colors",
             selected === category

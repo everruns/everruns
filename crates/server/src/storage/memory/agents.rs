@@ -511,4 +511,24 @@ impl InMemoryDatabase {
         }
         Ok(counts)
     }
+
+    /// Count how many active agents reference a single capability ID, scoped to an org.
+    pub async fn count_agents_for_capability(
+        &self,
+        org_id: i64,
+        capability_id: &str,
+    ) -> Result<u64> {
+        let agents = self.agents.read();
+        let caps = self.agent_capabilities.read();
+        let count = caps
+            .iter()
+            .filter(|((agent_id, cap_id), _)| {
+                cap_id == capability_id
+                    && agents
+                        .get(agent_id)
+                        .is_some_and(|a| a.org_id == org_id && a.status == "active")
+            })
+            .count();
+        Ok(count as u64)
+    }
 }

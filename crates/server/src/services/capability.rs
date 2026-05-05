@@ -193,13 +193,13 @@ impl CapabilityService {
     pub async fn get(&self, org_id: i64, id: &CapabilityId) -> Result<Option<CapabilityInfo>> {
         let info = self.get_inner(org_id, id).await?;
         if let Some(mut info) = info {
-            let (agent_counts, harness_counts) = tokio::try_join!(
-                self.db.count_agent_capability_references(org_id),
-                self.db.count_harness_capability_references(org_id),
-            )?;
             let key = info.id.as_str();
-            info.agent_count = agent_counts.get(key).copied().unwrap_or(0);
-            info.harness_count = harness_counts.get(key).copied().unwrap_or(0);
+            let (agent_count, harness_count) = tokio::try_join!(
+                self.db.count_agents_for_capability(org_id, key),
+                self.db.count_harnesses_for_capability(org_id, key),
+            )?;
+            info.agent_count = agent_count;
+            info.harness_count = harness_count;
             return Ok(Some(info));
         }
         Ok(None)

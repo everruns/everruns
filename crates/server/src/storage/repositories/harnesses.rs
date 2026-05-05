@@ -380,4 +380,26 @@ impl Database {
             .map(|(id, c)| (id, c.max(0) as u64))
             .collect())
     }
+
+    /// Count how many active harnesses reference a single capability ID, scoped to an org.
+    pub async fn count_harnesses_for_capability(
+        &self,
+        org_id: i64,
+        capability_id: &str,
+    ) -> Result<u64> {
+        let (count,): (i64,) = sqlx::query_as(
+            r#"
+            SELECT COUNT(*)
+            FROM harness_capabilities hc
+            JOIN harnesses h ON h.id = hc.harness_id
+            WHERE h.org_id = $1 AND h.status = 'active' AND hc.capability_id = $2
+            "#,
+        )
+        .bind(org_id)
+        .bind(capability_id)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(count.max(0) as u64)
+    }
 }

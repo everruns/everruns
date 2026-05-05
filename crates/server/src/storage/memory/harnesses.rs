@@ -348,4 +348,24 @@ impl InMemoryDatabase {
         }
         Ok(counts)
     }
+
+    /// Count how many active harnesses reference a single capability ID, scoped to an org.
+    pub async fn count_harnesses_for_capability(
+        &self,
+        org_id: i64,
+        capability_id: &str,
+    ) -> Result<u64> {
+        let harnesses = self.harnesses.read();
+        let caps = self.harness_capabilities.read();
+        let count = caps
+            .iter()
+            .filter(|((harness_id, cap_id), _)| {
+                cap_id == capability_id
+                    && harnesses
+                        .get(harness_id)
+                        .is_some_and(|h| h.org_id == org_id && h.status == "active")
+            })
+            .count();
+        Ok(count as u64)
+    }
 }
