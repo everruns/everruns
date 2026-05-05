@@ -1,16 +1,23 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import { useCapabilities, usePageTitle } from "@/hooks";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import Link from "next/link";
-import { CircleOff, Clock, CheckCircle2, AlertCircle, Info } from "lucide-react";
+import { CircleOff, Search as SearchIcon, Bot, Layers, X } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
 import type { Capability, CapabilityStatus } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
 import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
 import { getCapabilityStatusBadgeVariant } from "@/lib/status-utils";
+import { formatCountLabel } from "@/lib/formatting";
+import { cn } from "@/lib/utils";
+
+const UNCATEGORIZED = "Uncategorized";
 
 function getStatusLabel(status: CapabilityStatus): string {
   switch (status) {
@@ -23,6 +30,23 @@ function getStatusLabel(status: CapabilityStatus): string {
   }
 }
 
+function CapabilityStats({ capability }: { capability: Capability }) {
+  const agents = capability.agent_count ?? 0;
+  const harnesses = capability.harness_count ?? 0;
+  return (
+    <div className="flex items-center gap-3 text-xs text-muted-foreground">
+      <span className="inline-flex items-center gap-1">
+        <Bot className="h-3.5 w-3.5" />
+        {formatCountLabel(agents, "agent")}
+      </span>
+      <span className="inline-flex items-center gap-1">
+        <Layers className="h-3.5 w-3.5" />
+        {formatCountLabel(harnesses, "harness", "harnesses")}
+      </span>
+    </div>
+  );
+}
+
 function CapabilityCard({ capability }: { capability: Capability }) {
   const IconComponent = getCapabilityIcon(capability.icon);
 
@@ -30,12 +54,12 @@ function CapabilityCard({ capability }: { capability: Capability }) {
     <Link href={`/capabilities/${capability.id}`}>
       <Card className="h-full cursor-pointer bg-background transition-colors hover:bg-card">
         <CardHeader className="flex flex-row items-start justify-between space-y-0">
-          <div className="flex items-center gap-3">
-            <div className="border bg-muted p-2">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="border bg-muted p-2 shrink-0">
               <IconComponent className="icon-sharp h-5 w-5" />
             </div>
-            <div className="flex items-center gap-2">
-              <CardTitle className="text-lg">{capability.name}</CardTitle>
+            <div className="flex items-center gap-2 min-w-0">
+              <CardTitle className="text-lg truncate">{capability.name}</CardTitle>
               <CopyButton value={capability.id} />
             </div>
           </div>
@@ -44,90 +68,84 @@ function CapabilityCard({ capability }: { capability: Capability }) {
           </Badge>
         </CardHeader>
         <CardContent>
-          <div className="text-sm text-muted-foreground mb-4 line-clamp-3">
+          <div className="text-sm text-muted-foreground mb-3 line-clamp-3">
             <InlineStreamdownMessage>{capability.description}</InlineStreamdownMessage>
           </div>
-          {capability.category && (
-            <Badge variant="outline" className="text-xs">
-              {capability.category}
-            </Badge>
-          )}
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            {capability.category ? (
+              <Badge variant="outline" className="text-xs">
+                {capability.category}
+              </Badge>
+            ) : (
+              <span />
+            )}
+            <CapabilityStats capability={capability} />
+          </div>
         </CardContent>
       </Card>
     </Link>
   );
 }
 
-function CapabilitySummary({ capabilities }: { capabilities: Capability[] }) {
-  const available = capabilities.filter((c) => c.status === "available").length;
-  const comingSoon = capabilities.filter((c) => c.status === "coming_soon").length;
-  const deprecated = capabilities.filter((c) => c.status === "deprecated").length;
+function matches(capability: Capability, query: string): boolean {
+  if (!query) return true;
+  const q = query.toLowerCase();
+  return (
+    capability.name.toLowerCase().includes(q) ||
+    capability.description.toLowerCase().includes(q) ||
+    capability.id.toLowerCase().includes(q) ||
+    (capability.category?.toLowerCase().includes(q) ?? false)
+  );
+}
 
-  const categories = [...new Set(capabilities.map((c) => c.category).filter(Boolean))];
+function CategoryFilter({
+  categories,
+  selected,
+  counts,
+  onSelect,
+}: {
+  categories: string[];
+  selected: string | null;
+  counts: Record<string, number>;
+  onSelect: (category: string | null) => void;
+}) {
+  if (categories.length === 0) return null;
 
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">Summary</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-sm">
-              <CheckCircle2 className="icon-sharp h-4 w-4 text-primary" />
-              <span>Available</span>
-            </div>
-            <span className="font-medium">{available}</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-sm">
-              <Clock className="icon-sharp h-4 w-4 text-accent-foreground" />
-              <span>Coming Soon</span>
-            </div>
-            <span className="font-medium">{comingSoon}</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-sm">
-              <AlertCircle className="icon-sharp h-4 w-4 text-muted-foreground" />
-              <span>Deprecated</span>
-            </div>
-            <span className="font-medium">{deprecated}</span>
-          </div>
-        </CardContent>
-      </Card>
-
-      {categories.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Categories</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap gap-2">
-              {categories.map((category) => (
-                <Badge key={category} variant="outline">
-                  {category}
-                </Badge>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <Info className="h-4 w-4" />
-            About Capabilities
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">
-            Capabilities add functionality to agents through tools, system prompt additions, and
-            behavior modifications. Enable capabilities on individual agents to customize their
-            behavior.
-          </p>
-        </CardContent>
-      </Card>
+    <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by category">
+      <button
+        type="button"
+        onClick={() => onSelect(null)}
+        aria-pressed={selected === null}
+        className={cn(
+          "inline-flex items-center gap-1.5 border px-2.5 py-1 text-xs transition-colors",
+          selected === null
+            ? "bg-primary text-primary-foreground border-primary"
+            : "bg-background hover:bg-muted",
+        )}
+      >
+        All
+        <span className="text-[10px] opacity-70">
+          {Object.values(counts).reduce((a, b) => a + b, 0)}
+        </span>
+      </button>
+      {categories.map((category) => (
+        <button
+          key={category}
+          type="button"
+          onClick={() => onSelect(category === selected ? null : category)}
+          aria-pressed={selected === category}
+          className={cn(
+            "inline-flex items-center gap-1.5 border px-2.5 py-1 text-xs transition-colors",
+            selected === category
+              ? "bg-primary text-primary-foreground border-primary"
+              : "bg-background hover:bg-muted",
+          )}
+        >
+          {category}
+          <span className="text-[10px] opacity-70">{counts[category] ?? 0}</span>
+        </button>
+      ))}
     </div>
   );
 }
@@ -135,6 +153,47 @@ function CapabilitySummary({ capabilities }: { capabilities: Capability[] }) {
 export default function CapabilitiesPage() {
   usePageTitle("Capabilities");
   const { data: capabilities, isLoading, error } = useCapabilities();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+
+  const { categories, categoryCounts } = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const cap of capabilities ?? []) {
+      const key = cap.category || UNCATEGORIZED;
+      counts[key] = (counts[key] ?? 0) + 1;
+    }
+    const cats = Object.keys(counts).sort((a, b) => {
+      if (a === UNCATEGORIZED) return 1;
+      if (b === UNCATEGORIZED) return -1;
+      return a.localeCompare(b);
+    });
+    return { categories: cats, categoryCounts: counts };
+  }, [capabilities]);
+
+  const filtered = useMemo(() => {
+    return (capabilities ?? []).filter((cap) => {
+      if (!matches(cap, searchQuery)) return false;
+      if (selectedCategory) {
+        const key = cap.category || UNCATEGORIZED;
+        if (key !== selectedCategory) return false;
+      }
+      return true;
+    });
+  }, [capabilities, searchQuery, selectedCategory]);
+
+  const grouped = useMemo(() => {
+    const map = new Map<string, Capability[]>();
+    for (const cap of filtered) {
+      const key = cap.category || UNCATEGORIZED;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(cap);
+    }
+    return Array.from(map.entries()).sort(([a], [b]) => {
+      if (a === UNCATEGORIZED) return 1;
+      if (b === UNCATEGORIZED) return -1;
+      return a.localeCompare(b);
+    });
+  }, [filtered]);
 
   if (error) {
     return (
@@ -147,74 +206,113 @@ export default function CapabilitiesPage() {
     );
   }
 
+  const totalCount = capabilities?.length ?? 0;
+  const filteredCount = filtered.length;
+  const isFiltering = searchQuery.length > 0 || selectedCategory !== null;
+
   return (
-    <div className="container mx-auto p-6">
-      <div className="flex items-center justify-between mb-6">
+    <div className="container mx-auto p-6 space-y-6">
+      <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Capabilities</h1>
+        <span className="text-sm text-muted-foreground">
+          {isFiltering
+            ? `${filteredCount} of ${totalCount}`
+            : formatCountLabel(totalCount, "capability", "capabilities")}
+        </span>
       </div>
 
-      <div>
-        <div className="grid gap-6 lg:grid-cols-3">
-          <div className="lg:col-span-2">
-            {isLoading ? (
-              <div className="grid gap-4 md:grid-cols-2">
-                {[...Array(4)].map((_, i) => (
-                  <Card key={i}>
-                    <CardHeader>
-                      <Skeleton className="h-6 w-3/4" />
-                    </CardHeader>
-                    <CardContent>
-                      <Skeleton className="h-4 w-full mb-2" />
-                      <Skeleton className="h-4 w-2/3" />
-                    </CardContent>
-                  </Card>
-                ))}
+      {/* Search */}
+      <div className="relative max-w-xl">
+        <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        <Input
+          placeholder="Search by name, description, ID, or category..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="pl-9 pr-9"
+        />
+        {searchQuery && (
+          <button
+            type="button"
+            onClick={() => setSearchQuery("")}
+            className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground hover:text-foreground"
+            aria-label="Clear search"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+
+      {/* Category filter */}
+      {!isLoading && (
+        <CategoryFilter
+          categories={categories}
+          selected={selectedCategory}
+          counts={categoryCounts}
+          onSelect={setSelectedCategory}
+        />
+      )}
+
+      {/* Loading skeleton */}
+      {isLoading ? (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {[...Array(6)].map((_, i) => (
+            <Card key={i}>
+              <CardHeader>
+                <Skeleton className="h-6 w-3/4" />
+              </CardHeader>
+              <CardContent>
+                <Skeleton className="h-4 w-full mb-2" />
+                <Skeleton className="h-4 w-2/3" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : totalCount === 0 ? (
+        <Card className="p-8 text-center">
+          <CircleOff className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+          <h3 className="text-lg font-medium mb-2">No capabilities available</h3>
+          <p className="text-muted-foreground">
+            Capabilities will appear here once they are configured.
+          </p>
+        </Card>
+      ) : filteredCount === 0 ? (
+        <Card className="p-8 text-center">
+          <CircleOff className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+          <h3 className="text-lg font-medium mb-2">No matches</h3>
+          <p className="text-muted-foreground mb-4">
+            No capabilities match the current search and filters.
+          </p>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setSearchQuery("");
+              setSelectedCategory(null);
+            }}
+          >
+            Clear filters
+          </Button>
+        </Card>
+      ) : (
+        <div className="space-y-8">
+          {grouped.map(([category, caps]) => (
+            <section key={category}>
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                  {category}
+                </h2>
+                <span className="text-xs text-muted-foreground">
+                  {formatCountLabel(caps.length, "capability", "capabilities")}
+                </span>
               </div>
-            ) : capabilities?.length === 0 ? (
-              <Card className="p-8 text-center">
-                <CircleOff className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                <h3 className="text-lg font-medium mb-2">No capabilities available</h3>
-                <p className="text-muted-foreground">
-                  Capabilities will appear here once they are configured.
-                </p>
-              </Card>
-            ) : (
-              <div className="grid gap-4 md:grid-cols-2">
-                {capabilities?.map((capability) => (
+              <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {caps.map((capability) => (
                   <CapabilityCard key={capability.id} capability={capability} />
                 ))}
               </div>
-            )}
-          </div>
-
-          <div className="space-y-6">
-            {isLoading ? (
-              <>
-                <Card>
-                  <CardHeader>
-                    <Skeleton className="h-5 w-24" />
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <Skeleton className="h-4 w-full" />
-                    <Skeleton className="h-4 w-full" />
-                    <Skeleton className="h-4 w-full" />
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader>
-                    <Skeleton className="h-5 w-32" />
-                  </CardHeader>
-                  <CardContent>
-                    <Skeleton className="h-16 w-full" />
-                  </CardContent>
-                </Card>
-              </>
-            ) : (
-              <CapabilitySummary capabilities={capabilities || []} />
-            )}
-          </div>
+            </section>
+          ))}
         </div>
-      </div>
+      )}
     </div>
   );
 }

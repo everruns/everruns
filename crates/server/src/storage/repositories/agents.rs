@@ -5,6 +5,7 @@ use super::Database;
 use super::build_search_sql;
 use anyhow::Result;
 use everruns_core::typed_id::AgentId;
+use std::collections::HashMap;
 use uuid::Uuid;
 
 impl Database {
@@ -512,5 +513,52 @@ impl Database {
         .await?;
 
         Ok(result.rows_affected() > 0)
+    }
+
+    /// Count how many active agents reference each capability ID, scoped to an org.
+    /// Skips agents that are archived or deleted.
+    pub async fn count_agent_capability_references(
+        &self,
+        org_id: i64,
+    ) -> Result<HashMap<String, u64>> {
+        let rows: Vec<(String, i64)> = sqlx::query_as(
+            r#"
+            SELECT ac.capability_id, COUNT(*) AS count
+            FROM agent_capabilities ac
+            JOIN agents a ON a.id = ac.agent_id
+            WHERE a.org_id = $1 AND a.status = 'active'
+            GROUP BY ac.capability_id
+            "#,
+        )
+        .bind(org_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|(id, c)| (id, c.max(0) as u64))
+            .collect())
+    }
+
+    /// Count how many active agents reference a single capability ID, scoped to an org.
+    pub async fn count_agents_for_capability(
+        &self,
+        org_id: i64,
+        capability_id: &str,
+    ) -> Result<u64> {
+        let (count,): (i64,) = sqlx::query_as(
+            r#"
+            SELECT COUNT(*)
+            FROM agent_capabilities ac
+            JOIN agents a ON a.id = ac.agent_id
+            WHERE a.org_id = $1 AND a.status = 'active' AND ac.capability_id = $2
+            "#,
+        )
+        .bind(org_id)
+        .bind(capability_id)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(count.max(0) as u64)
     }
 }

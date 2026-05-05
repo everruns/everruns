@@ -5,6 +5,7 @@ use super::InMemoryDatabase;
 use super::matches_search_tokens;
 use anyhow::Result;
 use everruns_core::AgentId;
+use std::collections::HashMap;
 use uuid::Uuid;
 
 impl InMemoryDatabase {
@@ -487,5 +488,47 @@ impl InMemoryDatabase {
             .write()
             .remove(&(agent_id, capability_id.to_string()))
             .is_some())
+    }
+
+    /// Count how many active agents reference each capability ID, scoped to an org.
+    pub async fn count_agent_capability_references(
+        &self,
+        org_id: i64,
+    ) -> Result<HashMap<String, u64>> {
+        let agents = self.agents.read();
+        let active: std::collections::HashSet<AgentId> = agents
+            .values()
+            .filter(|a| a.org_id == org_id && a.status == "active")
+            .map(|a| a.id)
+            .collect();
+
+        let caps = self.agent_capabilities.read();
+        let mut counts: HashMap<String, u64> = HashMap::new();
+        for ((agent_id, cap_id), _) in caps.iter() {
+            if active.contains(agent_id) {
+                *counts.entry(cap_id.clone()).or_insert(0) += 1;
+            }
+        }
+        Ok(counts)
+    }
+
+    /// Count how many active agents reference a single capability ID, scoped to an org.
+    pub async fn count_agents_for_capability(
+        &self,
+        org_id: i64,
+        capability_id: &str,
+    ) -> Result<u64> {
+        let agents = self.agents.read();
+        let caps = self.agent_capabilities.read();
+        let count = caps
+            .iter()
+            .filter(|((agent_id, cap_id), _)| {
+                cap_id == capability_id
+                    && agents
+                        .get(agent_id)
+                        .is_some_and(|a| a.org_id == org_id && a.status == "active")
+            })
+            .count();
+        Ok(count as u64)
     }
 }

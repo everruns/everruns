@@ -12,12 +12,13 @@ export function formatCompactNumber(value: number): string {
   return value.toString();
 }
 
-export function pluralize(count: number, singular: string): string {
-  return `${singular}${count === 1 ? "" : "s"}`;
+export function pluralize(count: number, singular: string, plural?: string): string {
+  if (count === 1) return singular;
+  return plural ?? `${singular}s`;
 }
 
-export function formatCountLabel(count: number, singular: string): string {
-  return `${count} ${pluralize(count, singular)}`;
+export function formatCountLabel(count: number, singular: string, plural?: string): string {
+  return `${count} ${pluralize(count, singular, plural)}`;
 }
 
 /**

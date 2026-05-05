@@ -27,4 +27,10 @@ export interface Capability {
   config_schema?: Record<string, unknown>;
   /** react-jsonschema-form uiSchema hints for rendering config_schema */
   config_ui_schema?: Record<string, unknown>;
+  /** Number of active agents in the org referencing this capability */
+  agent_count?: number;
+  /** Number of active harnesses in the org referencing this capability */
+  harness_count?: number;
+  /** Slug under https://dev.everruns.com/capabilities/ for the public docs page */
+  docs_slug?: string;
 }

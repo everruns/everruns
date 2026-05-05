@@ -5,6 +5,7 @@ use super::InMemoryDatabase;
 use super::matches_search_tokens;
 use anyhow::Result;
 use everruns_core::HarnessId;
+use std::collections::HashMap;
 use uuid::Uuid;
 
 impl InMemoryDatabase {
@@ -324,5 +325,47 @@ impl InMemoryDatabase {
         }
 
         Ok(result)
+    }
+
+    /// Count how many active harnesses reference each capability ID, scoped to an org.
+    pub async fn count_harness_capability_references(
+        &self,
+        org_id: i64,
+    ) -> Result<HashMap<String, u64>> {
+        let harnesses = self.harnesses.read();
+        let active: std::collections::HashSet<HarnessId> = harnesses
+            .values()
+            .filter(|h| h.org_id == org_id && h.status == "active")
+            .map(|h| h.id)
+            .collect();
+
+        let caps = self.harness_capabilities.read();
+        let mut counts: HashMap<String, u64> = HashMap::new();
+        for ((harness_id, cap_id), _) in caps.iter() {
+            if active.contains(harness_id) {
+                *counts.entry(cap_id.clone()).or_insert(0) += 1;
+            }
+        }
+        Ok(counts)
+    }
+
+    /// Count how many active harnesses reference a single capability ID, scoped to an org.
+    pub async fn count_harnesses_for_capability(
+        &self,
+        org_id: i64,
+        capability_id: &str,
+    ) -> Result<u64> {
+        let harnesses = self.harnesses.read();
+        let caps = self.harness_capabilities.read();
+        let count = caps
+            .iter()
+            .filter(|((harness_id, cap_id), _)| {
+                cap_id == capability_id
+                    && harnesses
+                        .get(harness_id)
+                        .is_some_and(|h| h.org_id == org_id && h.status == "active")
+            })
+            .count();
+        Ok(count as u64)
     }
 }

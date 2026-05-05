@@ -66,6 +66,15 @@ pub struct CapabilityInfo {
     /// TM-AGENT-005: Risk level. High-risk capabilities require admin approval.
     #[serde(skip_serializing_if = "is_low_risk", default = "default_risk_level")]
     pub risk_level: RiskLevel,
+    /// Number of active agents referencing this capability in the org.
+    #[serde(default, skip_serializing_if = "is_zero_u64")]
+    pub agent_count: u64,
+    /// Number of active harnesses referencing this capability in the org.
+    #[serde(default, skip_serializing_if = "is_zero_u64")]
+    pub harness_count: u64,
+    /// Slug under https://dev.everruns.com/capabilities/ when public docs exist.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub docs_slug: Option<String>,
 }
 
 fn is_low_risk(r: &RiskLevel) -> bool {
@@ -73,6 +82,42 @@ fn is_low_risk(r: &RiskLevel) -> bool {
 }
 fn default_risk_level() -> RiskLevel {
     RiskLevel::Low
+}
+fn is_zero_u64(v: &u64) -> bool {
+    *v == 0
+}
+
+/// Mapping from built-in capability ID to its docs slug under
+/// https://dev.everruns.com/capabilities/. Returns None for IDs that
+/// have no published documentation page.
+pub fn builtin_capability_docs_slug(id: &str) -> Option<&'static str> {
+    match id {
+        "agent_instructions" => Some("agent-instructions"),
+        "skills" => Some("agent-skills"),
+        "browserless" => Some("browserless"),
+        "budgeting" => Some("budgeting"),
+        "current_time" => Some("current-time"),
+        "daytona" => Some("daytona"),
+        "fake_aws" => Some("fake-aws"),
+        "fake_crm" => Some("fake-crm"),
+        "fake_warehouse" => Some("fake-warehouse"),
+        "session_file_system" => Some("file-system"),
+        "infinity_context" => Some("infinity-context"),
+        "openai_image_generation" => Some("openai-image-generation"),
+        "openai_tool_search" => Some("openai-tool-search"),
+        "platform_management" => Some("platform-management"),
+        "prompt_canary_guardrail" => Some("prompt-canary-guardrail"),
+        "self_budget" => Some("self-budget"),
+        "session_schedule" => Some("session-schedules"),
+        "session_storage" => Some("session-storage"),
+        "session_sandbox" => Some("session"),
+        "session_sql_database" => Some("sql-database"),
+        "subagents" => Some("sub-agents"),
+        "stateless_todo_list" => Some("task-management"),
+        "virtual_bash" => Some("virtual-bash"),
+        "web_fetch" => Some("web-fetch"),
+        _ => None,
+    }
 }
 
 impl CapabilityInfo {
@@ -112,6 +157,9 @@ impl CapabilityInfo {
             config_schema: cap.config_schema(),
             config_ui_schema: cap.config_ui_schema(),
             risk_level: cap.risk_level(),
+            agent_count: 0,
+            harness_count: 0,
+            docs_slug: builtin_capability_docs_slug(id_str).map(|s| s.to_string()),
         }
     }
 }
@@ -149,6 +197,9 @@ mod tests {
             config_schema: None,
             config_ui_schema: None,
             risk_level: RiskLevel::Low,
+            agent_count: 0,
+            harness_count: 0,
+            docs_slug: None,
         };
 
         let json = serde_json::to_string(&cap).unwrap();
@@ -183,6 +234,9 @@ mod tests {
             config_schema: None,
             config_ui_schema: None,
             risk_level: RiskLevel::Low,
+            agent_count: 0,
+            harness_count: 0,
+            docs_slug: None,
         };
 
         let json = serde_json::to_string(&cap).unwrap();
@@ -207,6 +261,9 @@ mod tests {
             config_schema: None,
             config_ui_schema: None,
             risk_level: RiskLevel::Low,
+            agent_count: 0,
+            harness_count: 0,
+            docs_slug: None,
         };
 
         let json = serde_json::to_string(&cap).unwrap();
@@ -263,6 +320,9 @@ mod tests {
             config_schema: None,
             config_ui_schema: None,
             risk_level: RiskLevel::Low,
+            agent_count: 0,
+            harness_count: 0,
+            docs_slug: None,
         };
 
         let json = serde_json::to_string(&cap).unwrap();
@@ -307,6 +367,9 @@ mod tests {
             config_schema: None,
             config_ui_schema: None,
             risk_level: RiskLevel::Low,
+            agent_count: 0,
+            harness_count: 0,
+            docs_slug: None,
         };
         let json = serde_json::to_string(&cap).unwrap();
         assert!(
@@ -361,6 +424,9 @@ mod tests {
             config_schema: None,
             config_ui_schema: None,
             risk_level: RiskLevel::Low,
+            agent_count: 0,
+            harness_count: 0,
+            docs_slug: None,
         };
 
         // Matches by name (case-insensitive)

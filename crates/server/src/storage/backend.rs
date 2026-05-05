@@ -1150,6 +1150,40 @@ impl StorageBackend {
         dispatch!(self, set_harness_capabilities, harness_id, capabilities)
     }
 
+    /// Count active agents per capability_id within an org.
+    pub async fn count_agent_capability_references(
+        &self,
+        org_id: i64,
+    ) -> Result<std::collections::HashMap<String, u64>> {
+        dispatch!(self, count_agent_capability_references, org_id)
+    }
+
+    /// Count active harnesses per capability_id within an org.
+    pub async fn count_harness_capability_references(
+        &self,
+        org_id: i64,
+    ) -> Result<std::collections::HashMap<String, u64>> {
+        dispatch!(self, count_harness_capability_references, org_id)
+    }
+
+    /// Count active agents referencing a single capability_id within an org.
+    pub async fn count_agents_for_capability(
+        &self,
+        org_id: i64,
+        capability_id: &str,
+    ) -> Result<u64> {
+        dispatch!(self, count_agents_for_capability, org_id, capability_id)
+    }
+
+    /// Count active harnesses referencing a single capability_id within an org.
+    pub async fn count_harnesses_for_capability(
+        &self,
+        org_id: i64,
+        capability_id: &str,
+    ) -> Result<u64> {
+        dispatch!(self, count_harnesses_for_capability, org_id, capability_id)
+    }
+
     // ============================================
     // Session Files
     // ============================================
