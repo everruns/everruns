@@ -44,8 +44,9 @@ Harness --has--> Capability
   Status values: `started`, `active`, `idle`, `waiting_for_tool_results`,
   `paused`. Sessions live indefinitely.
 - **Model** - an LLM model id supported by the target deployment. Resolution
-  priority: per-message controls -> session override -> agent default -> system
-  default. Use the API catalog or model list before naming a specific model.
+  priority: per-message controls -> session override -> agent default -> harness
+  default -> system default. Use the API catalog or model list before naming a
+  specific model.
 - **MCP server** - a remote server exposing tools; integrated into Everruns(Dev) as
   a virtual capability (`mcp:{uuid}`).
 - **App** - binds a Harness + Agent to a channel (Slack, web widget, etc.) for
@@ -186,14 +187,14 @@ query { "commands": "list_harnesses | jq '.[] | {id, name, display_name, descrip
 **Create an agent and run it with the default harness.**
 
 ```bash
-execute { "commands": "AID=$(create_agent --name \"researcher\" --system_prompt \"You are a careful researcher.\" | jq -r .id)\nagent_run --agent_id \"$AID\" --message \"Summarize https://docs.everruns.com/.\"" }
+execute { "commands": "AID=$(create_agent --name \"researcher\" --system_prompt \"You are a careful researcher.\" | jq -r .id)\nagent_run --agent_id \"$AID\" --message \"Summarize https://docs.everruns.com/\"" }
 ```
 
 `agent_run` uses the deployment's default harness. To pin a specific harness to
 the session, create the harness, then create the session directly:
 
 ```bash
-execute { "commands": "HID=$(create_harness --name \"research\" --system_prompt \"Research assistant.\" | jq -r .id)\nAID=$(create_agent --name \"researcher\" --system_prompt \"You are a careful researcher.\" | jq -r .id)\nSID=$(create_session --harness_id \"$HID\" --agent_id \"$AID\" | jq -r .id)\ncreate_message --session_id \"$SID\" --message '{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Summarize https://docs.everruns.com/.\"}]}'" }
+execute { "commands": "HID=$(create_harness --name \"research\" --system_prompt \"Research assistant.\" | jq -r .id)\nAID=$(create_agent --name \"researcher\" --system_prompt \"You are a careful researcher.\" | jq -r .id)\nSID=$(create_session --harness_id \"$HID\" --agent_id \"$AID\" | jq -r .id)\ncreate_message --session_id \"$SID\" --message '{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Summarize https://docs.everruns.com/\"}]}'" }
 ```
 
 **Attach a capability to an agent.**
