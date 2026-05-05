@@ -17,9 +17,11 @@ pub struct CreateModel {
     pub display_name: String,
     #[serde(default)]
     pub capabilities: Vec<String>,
-    #[serde(default)]
+    // Bashkit's MCP flag parser forwards bools as JSON strings ("true"/"false"),
+    // so the lenient deserializer is required to accept `--enabled true`.
+    #[serde(default, deserialize_with = "deserialize_bool_lenient")]
     pub enabled: bool,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_bool_lenient")]
     pub is_favorite: bool,
 }
 
@@ -97,9 +99,12 @@ inventory::submit! { CommandDescriptor::of::<ListProviderModels>() }
 #[derive(Debug, Default, Deserialize, ToSchema)]
 pub struct ListModels {
     pub source: Option<LlmModelSource>,
-    #[serde(default = "default_true")]
+    #[serde(
+        default = "default_true",
+        deserialize_with = "deserialize_bool_lenient"
+    )]
     pub include_stale: bool,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_bool_lenient")]
     pub favorites_only: bool,
 }
 
@@ -183,7 +188,11 @@ pub struct UpdateModel {
     pub model_id: Option<String>,
     pub display_name: Option<String>,
     pub capabilities: Option<Vec<String>>,
+    // Bashkit's MCP flag parser forwards bools as JSON strings ("true"/"false"),
+    // so the lenient deserializer is required to accept `--enabled true`.
+    #[serde(default, deserialize_with = "deserialize_opt_bool_lenient")]
     pub enabled: Option<bool>,
+    #[serde(default, deserialize_with = "deserialize_opt_bool_lenient")]
     pub is_favorite: Option<bool>,
     pub status: Option<LlmModelStatus>,
 }
@@ -268,3 +277,81 @@ impl Command for DeleteModel {
 }
 
 inventory::submit! { CommandDescriptor::of::<DeleteModel>() }
+
+#[cfg(test)]
+mod parse_tests {
+    //! Regression coverage for EVE-418: bashkit's MCP flag parser forwards
+    //! booleans as JSON strings (e.g. `--enabled true` becomes
+    //! `{"enabled": "true"}`). Without lenient bool coercion, deserialization
+    //! used to fail with a generic `BadRequest`/`callback failed` and leave the
+    //! record unchanged.
+
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn update_model_accepts_string_bools_for_enabled_and_is_favorite() {
+        let cmd: UpdateModel = serde_json::from_value(json!({
+            "id": "model_019df670b5af7db7a5685a4ad18a544a",
+            "enabled": "true",
+            "is_favorite": "false",
+        }))
+        .expect("string bools must be accepted via lenient coercion");
+        assert_eq!(cmd.enabled, Some(true));
+        assert_eq!(cmd.is_favorite, Some(false));
+        assert_eq!(cmd.id, "model_019df670b5af7db7a5685a4ad18a544a");
+    }
+
+    #[test]
+    fn update_model_accepts_native_bools() {
+        let cmd: UpdateModel = serde_json::from_value(json!({
+            "id": "model_x",
+            "enabled": true,
+            "is_favorite": true,
+        }))
+        .unwrap();
+        assert_eq!(cmd.enabled, Some(true));
+        assert_eq!(cmd.is_favorite, Some(true));
+    }
+
+    #[test]
+    fn update_model_keeps_missing_bool_fields_none() {
+        let cmd: UpdateModel = serde_json::from_value(json!({"id": "model_x"})).unwrap();
+        assert_eq!(cmd.enabled, None);
+        assert_eq!(cmd.is_favorite, None);
+    }
+
+    #[test]
+    fn create_model_accepts_string_bools() {
+        let cmd: CreateModel = serde_json::from_value(json!({
+            "provider_id": "provider_x",
+            "model_id": "gpt-5.5",
+            "display_name": "GPT-5.5",
+            "enabled": "true",
+            "is_favorite": "1",
+        }))
+        .unwrap();
+        assert!(cmd.enabled);
+        assert!(cmd.is_favorite);
+    }
+
+    #[test]
+    fn list_models_accepts_string_bools() {
+        let cmd: ListModels = serde_json::from_value(json!({
+            "include_stale": "false",
+            "favorites_only": "true",
+        }))
+        .unwrap();
+        assert!(!cmd.include_stale);
+        assert!(cmd.favorites_only);
+    }
+
+    #[test]
+    fn list_models_omitted_fields_keep_default_true_for_include_stale() {
+        // `include_stale` mixes a custom deserializer with `default = "default_true"`;
+        // omitting it must still resolve to `true`, not silently flip to `false`.
+        let cmd: ListModels = serde_json::from_value(json!({})).unwrap();
+        assert!(cmd.include_stale);
+        assert!(!cmd.favorites_only);
+    }
+}
