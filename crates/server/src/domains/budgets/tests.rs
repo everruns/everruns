@@ -6,7 +6,9 @@
 use crate::domains::budgets::BudgetService;
 use crate::storage::StorageBackend;
 use crate::storage::models::*;
+use everruns_core::EventListener;
 use everruns_core::budget::BudgetAction;
+use everruns_core::events::{Event, EventContext, LlmGenerationData, TokenUsage};
 use everruns_core::{AgentId, PrincipalId, org_public_id_from_internal};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -1181,4 +1183,84 @@ fn test_row_to_ledger_entry_dto() {
     assert_eq!(dto.amount, 5.5);
     assert_eq!(dto.meter_source, "llm_tokens");
     assert_eq!(dto.description, Some("test".into()));
+}
+
+// ========================================================================
+// Listener: ephemeral llm.generation event journaling (regression: EVE-416)
+// ========================================================================
+
+#[tokio::test]
+async fn test_llm_generation_listener_omits_event_id_for_ephemeral_events() {
+    // Regression for EVE-416: `llm.generation` is ephemeral and may skip the
+    // `events` table insert when NATS-backed delivery is active. The budget
+    // listener used to write `usage_journal.event_id = <ephemeral event id>`,
+    // which violated the FK on `events(id)`. The listener must now omit the
+    // FK reference for ephemeral source events while still journaling the
+    // generation. The public id is preserved via `source_type`/`source_id`.
+    let db = make_db();
+    let svc = BudgetService::new(db.clone());
+
+    let session = create_session_with_owner(&db, 1, None, None).await;
+    let session_id = session.id;
+    let session_subject_id = session_id.to_string();
+
+    let budget = db
+        .create_budget(CreateBudgetRow {
+            org_id: session.org_id,
+            subject_type: "session".into(),
+            subject_id: session_subject_id.clone(),
+            currency: "tokens".into(),
+            limit: 10_000.0,
+            soft_limit: None,
+            period: None,
+            metadata: None,
+        })
+        .await
+        .unwrap();
+
+    let data = LlmGenerationData::success(
+        vec![],
+        vec![],
+        Some("hello".into()),
+        vec![],
+        "gpt-5.4-mini".into(),
+        Some("openai".into()),
+        Some(TokenUsage::new(100, 50)),
+        Some(42),
+        Some(10),
+    );
+    let event = Event::new(session_id, EventContext::empty(), data);
+    let public_event_id = event.id.to_string();
+
+    assert!(
+        event.is_ephemeral(),
+        "llm.generation must remain ephemeral for this regression to apply"
+    );
+
+    svc.on_event(&event).await;
+
+    // The journal should be created via the ledger entry attached to the budget.
+    let ledger_entries = db
+        .list_usage_ledger_for_budget(budget.id, 10, 0)
+        .await
+        .unwrap();
+    assert_eq!(
+        ledger_entries.len(),
+        1,
+        "expected exactly one ledger entry for the llm generation"
+    );
+    let journal = db
+        .get_usage_journal(ledger_entries[0].journal_id)
+        .await
+        .unwrap()
+        .expect("journal row should exist for the ledger entry");
+
+    assert!(
+        journal.event_id.is_none(),
+        "usage_journal.event_id must be NULL for ephemeral source events to avoid FK violation, got {:?}",
+        journal.event_id
+    );
+    assert_eq!(journal.kind, "llm_generation");
+    assert_eq!(journal.source_type.as_deref(), Some("event"));
+    assert_eq!(journal.source_id.as_deref(), Some(public_event_id.as_str()));
 }
