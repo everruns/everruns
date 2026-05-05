@@ -25,6 +25,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useCreateOrganization } from "@/hooks/use-organizations";
+import { usePageTitle } from "@/hooks";
 import { useOrg } from "@/providers/org-provider";
 import type { OrgRole } from "@/lib/api/types";
 
@@ -35,6 +36,7 @@ const ROLE_LABELS: Record<OrgRole, string> = {
 };
 
 export default function OrganisationsPage() {
+  usePageTitle("Organisations", "Settings");
   const router = useRouter();
   const { currentOrg, organizations, setCurrentOrg } = useOrg();
   const createOrganization = useCreateOrganization();

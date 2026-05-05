@@ -11,6 +11,7 @@ import {
   useExportAgent,
   useCopyAgent,
   useAgentStats,
+  usePageTitle,
 } from "@/hooks";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -59,6 +60,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("overview");
   const { data: agent, isLoading: agentLoading } = useAgent(agentId);
+  usePageTitle(agent ? getDisplayName(agent) : null, "Agent");
   // Fetch only top 10 sessions for the overview
   const { data: sessionsResponse, isLoading: sessionsLoading } = useSessions(agentId, {
     limit: 10,

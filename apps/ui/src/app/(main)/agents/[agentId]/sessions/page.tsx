@@ -1,7 +1,14 @@
 "use client";
 
 import { use, useState, useMemo } from "react";
-import { useAgent, useHarnesses, useSessions, useCreateSession, useLlmModels } from "@/hooks";
+import {
+  useAgent,
+  useHarnesses,
+  useSessions,
+  useCreateSession,
+  useLlmModels,
+  usePageTitle,
+} from "@/hooks";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ResourceNotFound } from "@/components/resource-not-found";
@@ -23,6 +30,7 @@ export default function SessionsListPage({ params }: { params: Promise<{ agentId
   const offset = page * PAGE_SIZE;
 
   const { data: agent, isLoading: agentLoading } = useAgent(agentId);
+  usePageTitle("Sessions", agent ? getDisplayName(agent) : null, "Agent");
   const { data: sessionsResponse, isLoading: sessionsLoading } = useSessions(agentId, {
     offset,
     limit: PAGE_SIZE,

@@ -7,6 +7,7 @@ import {
   useImportAgentExample,
   useCapabilities,
   useImportAgent,
+  usePageTitle,
 } from "@/hooks";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -18,6 +19,7 @@ import { AgentCard, ExampleCard } from "@/components/agents";
 const PREVIEW_LIMIT = 6;
 
 export default function AgentsPage() {
+  usePageTitle("Agents");
   const router = useRouter();
   const { data: agents, isLoading, error } = useAgents({ includeArchived: false });
   const { data: allCapabilities } = useCapabilities();

@@ -22,7 +22,14 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { useWorkflows, useCancelWorkflow, useTasks, useDlq, useRequeueDlqEntry } from "@/hooks";
+import {
+  useWorkflows,
+  useCancelWorkflow,
+  useTasks,
+  useDlq,
+  useRequeueDlqEntry,
+  usePageTitle,
+} from "@/hooks";
 import type { DurableWorkflow, WorkflowStatus, DurableTask, DlqEntry } from "@/lib/api/types";
 import {
   Workflow,
@@ -272,6 +279,7 @@ function DlqRow({ entry, onRequeue }: { entry: DlqEntry; onRequeue: (id: string)
 }
 
 export default function WorkflowsPage() {
+  usePageTitle("Workflows", "Durable");
   const [activeTab, setActiveTab] = useState<TabValue>("workflows");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");

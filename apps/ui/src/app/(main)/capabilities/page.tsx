@@ -1,6 +1,6 @@
 "use client";
 
-import { useCapabilities } from "@/hooks";
+import { useCapabilities, usePageTitle } from "@/hooks";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -133,6 +133,7 @@ function CapabilitySummary({ capabilities }: { capabilities: Capability[] }) {
 }
 
 export default function CapabilitiesPage() {
+  usePageTitle("Capabilities");
   const { data: capabilities, isLoading, error } = useCapabilities();
 
   if (error) {

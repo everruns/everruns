@@ -7,6 +7,7 @@
 
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import { usePageTitle } from "@/hooks";
 
 const isDev = process.env.NODE_ENV === "development";
 
@@ -25,6 +26,7 @@ export function DevPageShell({
   children,
   widthClassName = "max-w-6xl",
 }: DevPageShellProps) {
+  usePageTitle(title, "Dev");
   if (!isDev) {
     return (
       <div className="flex min-h-screen items-center justify-center">

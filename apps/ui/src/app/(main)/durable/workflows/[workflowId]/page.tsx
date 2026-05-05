@@ -13,6 +13,7 @@ import {
   useWorkflowSSE,
   useCancelWorkflow,
   useSignalWorkflow,
+  usePageTitle,
 } from "@/hooks";
 import type { WorkflowStatus, WorkflowEvent } from "@/lib/api/types";
 import {
@@ -149,6 +150,7 @@ export default function WorkflowDetailPage({
     error: workflowError,
     refetch,
   } = useWorkflow(workflowId);
+  usePageTitle(workflow?.workflow_type ?? null, "Workflow", "Durable");
   const { data: events, isLoading: eventsLoading } = useWorkflowEvents(workflowId);
   const cancelMutation = useCancelWorkflow();
   const signalMutation = useSignalWorkflow();

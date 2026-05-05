@@ -9,6 +9,7 @@ import {
   useSessionStats,
   useLlmModels,
   useCreateSession,
+  usePageTitle,
 } from "@/hooks";
 import { useRouter } from "next/navigation";
 import { StatsCards } from "@/components/dashboard/stats-cards";
@@ -31,6 +32,7 @@ import { Plus } from "lucide-react";
 import { useOrganization } from "@/hooks/use-organizations";
 
 export default function DashboardPage() {
+  usePageTitle("Dashboard");
   const router = useRouter();
   const { data: agents = [], isLoading: agentsLoading } = useAgents();
   const { data: agentsForReferences = [] } = useAgents({ includeArchived: true });

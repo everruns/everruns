@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useApps, usePublishApp, useUnpublishApp } from "@/hooks/use-apps";
+import { usePageTitle } from "@/hooks";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -16,6 +17,7 @@ import { getEntityNameClassName, getEntityStatusBadgeVariant } from "@/lib/entit
 import { getChannelTypeDisplayName } from "@/lib/app-channels";
 
 export default function AppsPage() {
+  usePageTitle("Apps");
   const [showArchived, setShowArchived] = useState(false);
   const { data: apps, isLoading, error } = useApps({ includeArchived: showArchived });
 

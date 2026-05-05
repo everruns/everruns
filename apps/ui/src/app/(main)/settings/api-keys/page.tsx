@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { Notice, NoticeDescription, NoticeTitle } from "@/components/ui/notice";
 import { useApiKeys, useCreateApiKey, useDeleteApiKey } from "@/hooks/use-auth";
+import { usePageTitle } from "@/hooks";
 import { useAuth } from "@/providers/auth-provider";
 import { Plus, Key, Trash2, Copy, Check, Clock, ShieldAlert } from "lucide-react";
 import type { ApiKeyListItem, CreateApiKeyRequest } from "@/lib/api/types";
@@ -249,6 +250,7 @@ function ShowApiKeyDialog({
 }
 
 export default function ApiKeysPage() {
+  usePageTitle("API Keys", "Settings");
   const { requiresAuth } = useAuth();
   const { data: userApiKeys, isLoading: apiKeysLoading, error: apiKeysError } = useApiKeys();
   const deleteApiKey = useDeleteApiKey();

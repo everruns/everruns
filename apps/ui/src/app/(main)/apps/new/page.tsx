@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useCreateApp } from "@/hooks/use-apps";
+import { usePageTitle } from "@/hooks";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -30,6 +31,7 @@ import { getChannelTypeDisplayName, getInvocationSessionModeDisplayName } from "
 import { generateChannelToken } from "@/lib/channel-tokens";
 
 export default function NewAppPage() {
+  usePageTitle("New App", "Apps");
   const router = useRouter();
   const createApp = useCreateApp();
 

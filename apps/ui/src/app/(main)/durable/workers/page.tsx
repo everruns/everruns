@@ -13,7 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { useWorkers, useDrainWorker, useResumeWorker } from "@/hooks";
+import { useWorkers, useDrainWorker, useResumeWorker, usePageTitle } from "@/hooks";
 import type { DurableWorker, WorkerStatus } from "@/lib/api/types";
 import {
   Server,
@@ -169,6 +169,7 @@ function WorkerRow({
 }
 
 export default function WorkersPage() {
+  usePageTitle("Workers", "Durable");
   const { data, isLoading, error, refetch } = useWorkers();
   const drainMutation = useDrainWorker();
   const resumeMutation = useResumeWorker();

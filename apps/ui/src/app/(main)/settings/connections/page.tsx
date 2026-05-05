@@ -12,6 +12,7 @@ import {
   useConnectionProviders,
   useVerifyConnection,
 } from "@/hooks/use-user-connections";
+import { usePageTitle } from "@/hooks";
 import { getBackendUrl } from "@/lib/api/client";
 import {
   ExternalLink,
@@ -156,6 +157,7 @@ function AvailableProviderRow({
 }
 
 export default function ConnectionsPage() {
+  usePageTitle("Connections", "Settings");
   const { data: connections = [], isLoading, error } = useUserConnections();
   const { data: providers = [] } = useConnectionProviders();
   const deleteConnection = useDeleteUserConnection();

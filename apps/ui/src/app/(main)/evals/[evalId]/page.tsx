@@ -8,6 +8,7 @@ import {
   useCreateEvalCase,
   useDeleteEvalCase,
   useCreateEvalRun,
+  usePageTitle,
 } from "@/hooks";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -321,6 +322,7 @@ export default function EvalDetailPage({ params }: { params: Promise<{ evalId: s
   const [showAddCase, setShowAddCase] = useState(false);
 
   const { data: ev, isLoading: evalLoading } = useEval(evalId);
+  usePageTitle(ev?.name ?? null, "Eval");
   const { data: cases, isLoading: casesLoading } = useEvalCases(evalId);
   const { data: runs, isLoading: runsLoading } = useEvalRuns(evalId);
   const deleteCase = useDeleteEvalCase(evalId);

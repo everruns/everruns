@@ -12,7 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useCircuitBreakers } from "@/hooks";
+import { useCircuitBreakers, usePageTitle } from "@/hooks";
 import { forceOpenCircuitBreaker, forceCloseCircuitBreaker, deleteCircuitBreaker } from "@/lib/api";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
@@ -206,6 +206,7 @@ function CircuitBreakerCard({ breaker }: { breaker: CircuitBreaker }) {
 }
 
 export default function CircuitBreakersPage() {
+  usePageTitle("Circuit Breakers", "Durable");
   const { data, isLoading, error } = useCircuitBreakers();
 
   if (isLoading) {

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { HydrationBoundary, dehydrate } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/query-keys";
 import {
@@ -8,7 +9,12 @@ import {
   serverGetList,
 } from "@/lib/server-query";
 import type { Agent, Capability } from "@/lib/api/types";
+import { formatPageTitle } from "@/lib/page-title";
 import AgentsAllPageClient from "./agents-all-page-client";
+
+export const metadata: Metadata = {
+  title: formatPageTitle("All Agents"),
+};
 
 export default async function AllAgentsPage() {
   const queryClient = createServerQueryClient();

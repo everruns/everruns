@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import { useCreateAgentIdentity } from "@/hooks/use-agent-identities";
+import { usePageTitle } from "@/hooks";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -15,6 +16,7 @@ import { agentIdentityFormSchema, getFieldErrors, type FieldErrors } from "@/lib
 import { LOCALE_OPTIONS, TIMEZONE_OPTIONS } from "@/lib/locale-data";
 
 export default function NewAgentIdentityPage() {
+  usePageTitle("New Identity", "Agent Identities");
   const router = useRouter();
   const createIdentity = useCreateAgentIdentity();
   const [name, setName] = useState("");

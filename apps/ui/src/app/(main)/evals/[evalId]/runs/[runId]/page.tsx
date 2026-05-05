@@ -1,7 +1,7 @@
 "use client";
 
 import { use, useCallback } from "react";
-import { useEval, useEvalRun, useCancelEvalRun } from "@/hooks";
+import { useEval, useEvalRun, useCancelEvalRun, usePageTitle } from "@/hooks";
 import Link from "next/link";
 import { ResourceNotFound } from "@/components/resource-not-found";
 import { Button } from "@/components/ui/button";
@@ -130,6 +130,7 @@ export default function EvalRunDetailPage({
   const { evalId, runId } = use(params);
   const { data: ev } = useEval(evalId);
   const { data: run, isLoading: runLoading } = useEvalRun(evalId, runId);
+  usePageTitle("Run", ev?.name ?? null, "Eval");
   const cancelRun = useCancelEvalRun(evalId);
 
   const handleCancel = useCallback(async () => {

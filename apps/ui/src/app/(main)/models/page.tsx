@@ -20,6 +20,7 @@ import { ModelRow } from "@/components/models/model-row";
 import { ProviderIcon } from "@/components/providers/provider-icon";
 import { useLlmModels, useLlmProviders, useDeleteLlmModel } from "@/hooks/use-llm-providers";
 import { useOrganization, useUpdateOrganization } from "@/hooks/use-organizations";
+import { usePageTitle } from "@/hooks";
 import { updateLlmModel } from "@/lib/api/llm-providers";
 import { queryKeys } from "@/lib/query-keys";
 import type { LlmModelWithProvider } from "@/lib/api/types";
@@ -36,6 +37,7 @@ function compareByRecency(a: LlmModelWithProvider, b: LlmModelWithProvider): num
 }
 
 export default function ModelsPage() {
+  usePageTitle("Models");
   const queryClient = useQueryClient();
   const { data: providers = [] } = useLlmProviders();
   const { data: models = [], isLoading: modelsLoading, error: modelsError } = useLlmModels();

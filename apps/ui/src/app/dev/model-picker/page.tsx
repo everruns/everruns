@@ -9,6 +9,7 @@ import { ArrowLeft, Star } from "lucide-react";
 import { ModelPicker, FavoriteToggle } from "@/components/models/model-picker";
 import { ProviderIcon } from "@/components/providers/provider-icon";
 import { useLlmModels } from "@/hooks/use-llm-providers";
+import { usePageTitle } from "@/hooks";
 import { Skeleton } from "@/components/ui/skeleton";
 
 // Check if we're in development mode
@@ -131,6 +132,7 @@ function ModelList() {
 // ============================================
 
 export default function DevModelPickerPage() {
+  usePageTitle("Model Picker", "Dev");
   const [selectedModel1, setSelectedModel1] = useState<string>("");
   const [selectedModel2, setSelectedModel2] = useState<string>("");
 

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePageTitle } from "@/hooks";
 import {
   FlaskConical,
   MessageSquare,
@@ -69,6 +70,7 @@ const devPages = [
 ];
 
 export default function DevPage() {
+  usePageTitle("Dev");
   // Show 404-like message in production
   if (!isDev) {
     return (

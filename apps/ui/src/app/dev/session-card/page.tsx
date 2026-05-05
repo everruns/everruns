@@ -7,6 +7,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { ArrowLeft } from "lucide-react";
 import { SessionCard } from "@/components/session/session-card";
 import type { Session, LlmModelWithProvider } from "@/lib/api/types";
+import { usePageTitle } from "@/hooks";
 
 // Check if we're in development mode
 const isDev = process.env.NODE_ENV === "development";
@@ -204,6 +205,7 @@ const sampleModels = {
 // ============================================
 
 export default function DevSessionCardPage() {
+  usePageTitle("Session Card", "Dev");
   // Show 404-like message in production
   if (!isDev) {
     return (

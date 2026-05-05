@@ -9,11 +9,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { CopyButton } from "@/components/ui/copy-button";
 import { HarnessSelect } from "@/components/harness/harness-select";
 import { useOrganization, useUpdateOrganization } from "@/hooks/use-organizations";
-import { useHarnesses } from "@/hooks";
+import { useHarnesses, usePageTitle } from "@/hooks";
 import { useOrg } from "@/providers/org-provider";
 import { Building2, Save, AlertCircle } from "lucide-react";
 
 export default function OrganisationPage() {
+  usePageTitle("Organisation", "Settings");
   const { currentOrg } = useOrg();
   const { data: organization, isLoading, error } = useOrganization();
   const { data: harnesses = [] } = useHarnesses();

@@ -10,7 +10,7 @@ import {
   useUnpublishApp,
 } from "@/hooks/use-apps";
 import { usePolicies } from "@/hooks/use-policies";
-import { useAgents } from "@/hooks";
+import { useAgents, usePageTitle } from "@/hooks";
 import { useHarnesses } from "@/hooks/use-harnesses";
 import {
   getSlackManifest,
@@ -103,6 +103,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
   const router = useRouter();
   const queryClient = useQueryClient();
   const { data: app, isLoading } = useApp(appId);
+  usePageTitle(app ? getDisplayName(app) : null, "App");
   const { data: agents } = useAgents({ includeArchived: true });
   const { data: harnesses } = useHarnesses({ includeArchived: true });
   const updateApp = useUpdateApp();

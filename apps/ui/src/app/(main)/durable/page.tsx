@@ -9,6 +9,7 @@ import {
   useWorkflows,
   useSchedules,
   useDurableMetrics,
+  usePageTitle,
 } from "@/hooks";
 import { MetricsCharts } from "@/components/durable/metrics-charts";
 import {
@@ -43,6 +44,7 @@ function getHealthStatusColor(status: string) {
 }
 
 export default function DurableDashboardPage() {
+  usePageTitle("Durable");
   const { data: health, isLoading: healthLoading, error: healthError } = useDurableHealth();
   const { data: workersData, isLoading: workersLoading } = useWorkers();
   const { data: workflowsData, isLoading: workflowsLoading } = useWorkflows({ limit: 5 });

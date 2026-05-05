@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useCreateEval } from "@/hooks";
+import { useCreateEval, usePageTitle } from "@/hooks";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -19,6 +19,7 @@ import type { EvalTarget, CreateEvalRequest } from "@/lib/api/types";
 type TargetType = "session" | "app";
 
 export default function NewEvalPage() {
+  usePageTitle("New Eval", "Evals");
   const router = useRouter();
   const createEval = useCreateEval();
   const [formData, setFormData] = useState({
