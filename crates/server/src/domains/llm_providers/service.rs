@@ -14,6 +14,7 @@ use everruns_core::url_validation::validate_safe_url;
 use everruns_core::{Caller, LlmProviderStatus, LlmProviderType, Permission, Policy, Rule};
 use reqwest::Url;
 use std::sync::Arc;
+use tracing::error;
 use uuid::Uuid;
 
 use crate::api::llm_providers::{CreateLlmProviderRequest, UpdateLlmProviderRequest};
@@ -93,12 +94,39 @@ impl LlmProviderService {
     }
 
     pub async fn get(&self, caller: &Caller, id: Uuid) -> Result<Option<LlmProvider>> {
-        let row = self.db.get_llm_provider(caller.org_id, id).await?;
+        // EVE-417: log the underlying DB error with org/provider context so
+        // operators can diagnose the org-scoped read failures that surface
+        // through MCP as a structured `internal: <message>` (and previously as
+        // an opaque `callback failed`). The error still propagates unchanged.
+        let row = self
+            .db
+            .get_llm_provider(caller.org_id, id)
+            .await
+            .inspect_err(|err| {
+                error!(
+                    org_id = caller.org_id,
+                    provider_id = %id,
+                    error = %err,
+                    "Failed to read llm provider"
+                );
+            })?;
         Ok(row.as_ref().map(Self::row_to_provider))
     }
 
     pub async fn list(&self, caller: &Caller) -> Result<Vec<LlmProvider>> {
-        let rows = self.db.list_llm_providers(caller.org_id).await?;
+        // EVE-417: same diagnostic logging as `get`. List failures here are
+        // the most common path for org-scoped MCP read regressions.
+        let rows = self
+            .db
+            .list_llm_providers(caller.org_id)
+            .await
+            .inspect_err(|err| {
+                error!(
+                    org_id = caller.org_id,
+                    error = %err,
+                    "Failed to list llm providers"
+                );
+            })?;
         Ok(rows.iter().map(Self::row_to_provider).collect())
     }
 

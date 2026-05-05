@@ -15,6 +15,7 @@ use everruns_core::{
     LlmProviderType, Permission, Policy, Rule, get_model_profile,
 };
 use std::sync::Arc;
+use tracing::error;
 use uuid::Uuid;
 
 use crate::api::llm_models::{CreateLlmModelRequest, UpdateLlmModelRequest};
@@ -86,10 +87,21 @@ impl LlmModelService {
         caller: &Caller,
         id: Uuid,
     ) -> Result<Option<LlmModelWithProvider>> {
+        // EVE-417: log the underlying DB error with org/model context so
+        // operators can diagnose the org-scoped read failures that surface
+        // through MCP as `internal: <message>`. Error still propagates.
         let row = self
             .db
             .get_llm_model_with_provider(caller.org_id, id)
-            .await?;
+            .await
+            .inspect_err(|err| {
+                error!(
+                    org_id = caller.org_id,
+                    model_id = %id,
+                    error = %err,
+                    "Failed to read llm model"
+                );
+            })?;
         Ok(row.as_ref().map(Self::row_to_model_with_provider))
     }
 
@@ -101,12 +113,30 @@ impl LlmModelService {
         let rows = self
             .db
             .list_llm_models_for_provider(caller.org_id, provider_id)
-            .await?;
+            .await
+            .inspect_err(|err| {
+                error!(
+                    org_id = caller.org_id,
+                    provider_id = %provider_id,
+                    error = %err,
+                    "Failed to list llm models for provider"
+                );
+            })?;
         Ok(rows.iter().map(Self::row_to_model).collect())
     }
 
     pub async fn list_all(&self, caller: &Caller) -> Result<Vec<LlmModelWithProvider>> {
-        let rows = self.db.list_all_llm_models(caller.org_id).await?;
+        let rows = self
+            .db
+            .list_all_llm_models(caller.org_id)
+            .await
+            .inspect_err(|err| {
+                error!(
+                    org_id = caller.org_id,
+                    error = %err,
+                    "Failed to list llm models"
+                );
+            })?;
         Ok(rows.iter().map(Self::row_to_model_with_provider).collect())
     }
 
@@ -118,10 +148,31 @@ impl LlmModelService {
         include_stale: bool,
         favorites_only: bool,
     ) -> Result<Vec<LlmModelWithProvider>> {
-        let rows = self.db.list_all_llm_models(caller.org_id).await?;
+        // EVE-417: same diagnostic logging as `list_all`/`list_for_provider`.
+        let rows = self
+            .db
+            .list_all_llm_models(caller.org_id)
+            .await
+            .inspect_err(|err| {
+                error!(
+                    org_id = caller.org_id,
+                    error = %err,
+                    "Failed to list llm models for filtering"
+                );
+            })?;
 
         // Get provider last_synced_at timestamps for stale detection
-        let providers = self.db.list_llm_providers(caller.org_id).await?;
+        let providers = self
+            .db
+            .list_llm_providers(caller.org_id)
+            .await
+            .inspect_err(|err| {
+                error!(
+                    org_id = caller.org_id,
+                    error = %err,
+                    "Failed to list llm providers for stale detection"
+                );
+            })?;
         let provider_sync_times: std::collections::HashMap<
             Uuid,
             Option<chrono::DateTime<chrono::Utc>>,
