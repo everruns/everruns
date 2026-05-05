@@ -238,6 +238,10 @@ async fn run_agent(
     )
     .await
     .map_err(SessionError::into_response)?;
+    // EVE-415: snapshot before SSE guard / history seed / subscribe so the
+    // timing field measures only the session lookup-or-create work, matching
+    // the contract documented in `specs/load-testing.md`.
+    let session_resolved_ms = ingress_start.elapsed().as_millis();
 
     // THREAT[TM-DOS-010]: Anonymous AG-UI streams must still respect server-wide
     // SSE connection limits.
@@ -268,7 +272,6 @@ async fn run_agent(
         .await
         .map_err(internal_error)?;
 
-    let session_resolved_ms = ingress_start.elapsed().as_millis();
     let message = state
         .message_service
         .create(
@@ -306,12 +309,16 @@ async fn run_agent(
         .map_err(internal_error)?;
 
     // EVE-415: structured AG-UI ingress timing. `ag_ui_handler_ms` is the
-    // wall-clock cost of every server-side step before the SSE stream starts
-    // delivering events (validation, app/channel resolution, session
-    // resolution, message creation, durable turn workflow enqueue). Together
-    // with `time_to_first_token_ms` already emitted by the worker, this lets
-    // ops attribute end-to-end TTFT to ingress, durable orchestration, and
-    // provider TTFT without joining unstructured logs.
+    // wall-clock cost of every server-side step the handler performs before
+    // returning the SSE stream: validation, app/channel resolution, session
+    // resolution, history seed, event subscription, and the synchronous part
+    // of message creation. The durable turn workflow itself is scheduled by
+    // `MessageService::create` via a detached `tokio::spawn`, so this log
+    // intentionally does not claim the workflow has started — only that the
+    // handler has finished its synchronous work and is about to hand off to
+    // the SSE stream. Pair with the worker's `Turn workflow started` and
+    // `ReasonAtom: starting LLM call` log lines (correlated by `session_id`)
+    // to compute the full pre-LLM budget without joining unstructured logs.
     let ag_ui_handler_ms = ingress_start.elapsed().as_millis();
     tracing::info!(
         phase = "ag_ui.ingress_complete",
@@ -321,7 +328,7 @@ async fn run_agent(
         is_new_session = session.is_new,
         session_resolved_ms = session_resolved_ms as u64,
         ag_ui_handler_ms = ag_ui_handler_ms as u64,
-        "AG-UI ingress complete; durable turn enqueued"
+        "AG-UI ingress complete; durable turn workflow start scheduled"
     );
 
     let initial_events = vec![
