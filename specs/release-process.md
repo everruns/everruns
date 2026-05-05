@@ -22,7 +22,7 @@ Release readiness also includes the integration backstops that are intentionally
 1. CHANGELOG.md is the canonical source for release notes
 2. GitHub Release notes are extracted from the corresponding version section in CHANGELOG.md
 3. Each version section includes:
-   - **Highlights** - Key features (user-written, 5-10 items with PR links)
+   - **Highlights** - Significant user-facing features and changes (user-written, with PR links). Include only items that are genuinely noteworthy on their own. Do not pad the list to hit a target count: maintenance releases may have few highlights, or omit the section entirely. Internal refactors, CI changes, dependency bumps, spec/docs updates, and minor fixes belong in **What's Changed**, not here.
    - **What's Changed** - List of commits: `- <message> ([#PR](url))`
 
 Release notes should not normally include a dedicated "Migration Notes" section. Migration-specific engineering detail belongs in the migration files and migration spec, which remain the source of truth for upgrade and database-migration behavior. If a release has any operator-visible migration caveat, compatibility limitation, or exceptional upgrade requirement, call it out explicitly in the release PR and release notes.
