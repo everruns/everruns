@@ -9837,7 +9837,6 @@
                     "capabilities",
                     "is_favorite",
                     "enabled",
-                    "status",
                     "source",
                     "created_at",
                     "updated_at"
@@ -9877,9 +9876,6 @@
                     "source": {
                       "$ref": "#/components/schemas/LlmModelSource",
                       "description": "How the model was added to the system"
-                    },
-                    "status": {
-                      "$ref": "#/components/schemas/LlmModelStatus"
                     },
                     "updated_at": {
                       "type": "string",
@@ -9938,12 +9934,12 @@
                     "capabilities",
                     "is_favorite",
                     "enabled",
-                    "status",
                     "source",
                     "created_at",
                     "updated_at",
                     "provider_name",
-                    "provider_type"
+                    "provider_type",
+                    "healthy"
                   ],
                   "properties": {
                     "capabilities": {
@@ -9962,6 +9958,10 @@
                     "enabled": {
                       "type": "boolean",
                       "description": "Whether this model is enabled (visible in UI model pickers)"
+                    },
+                    "healthy": {
+                      "type": "boolean",
+                      "description": "Derived: model is configured and ready for use. Currently means the\njoined provider is active and has an API key set; over time this may\nalso incorporate live reachability checks. Not persisted."
                     },
                     "id": {
                       "type": "string",
@@ -9997,9 +9997,6 @@
                     "source": {
                       "$ref": "#/components/schemas/LlmModelSource",
                       "description": "How the model was added to the system"
-                    },
-                    "status": {
-                      "$ref": "#/components/schemas/LlmModelStatus"
                     },
                     "updated_at": {
                       "type": "string",
@@ -10858,7 +10855,6 @@
           "capabilities",
           "is_favorite",
           "enabled",
-          "status",
           "source",
           "created_at",
           "updated_at"
@@ -10898,9 +10894,6 @@
           "source": {
             "$ref": "#/components/schemas/LlmModelSource",
             "description": "How the model was added to the system"
-          },
-          "status": {
-            "$ref": "#/components/schemas/LlmModelStatus"
           },
           "updated_at": {
             "type": "string",
@@ -11140,14 +11133,6 @@
           "predefined"
         ]
       },
-      "LlmModelStatus": {
-        "type": "string",
-        "description": "LLM model status",
-        "enum": [
-          "active",
-          "disabled"
-        ]
-      },
       "LlmModelWithProvider": {
         "type": "object",
         "description": "LLM Model with provider info",
@@ -11159,12 +11144,12 @@
           "capabilities",
           "is_favorite",
           "enabled",
-          "status",
           "source",
           "created_at",
           "updated_at",
           "provider_name",
-          "provider_type"
+          "provider_type",
+          "healthy"
         ],
         "properties": {
           "capabilities": {
@@ -11183,6 +11168,10 @@
           "enabled": {
             "type": "boolean",
             "description": "Whether this model is enabled (visible in UI model pickers)"
+          },
+          "healthy": {
+            "type": "boolean",
+            "description": "Derived: model is configured and ready for use. Currently means the\njoined provider is active and has an API key set; over time this may\nalso incorporate live reachability checks. Not persisted."
           },
           "id": {
             "type": "string",
@@ -11218,9 +11207,6 @@
           "source": {
             "$ref": "#/components/schemas/LlmModelSource",
             "description": "How the model was added to the system"
-          },
-          "status": {
-            "$ref": "#/components/schemas/LlmModelStatus"
           },
           "updated_at": {
             "type": "string",
@@ -15723,17 +15709,6 @@
             ],
             "description": "The model identifier used by the provider's API.",
             "example": "gpt-4o-mini"
-          },
-          "status": {
-            "oneOf": [
-              {
-                "type": "null"
-              },
-              {
-                "$ref": "#/components/schemas/LlmModelStatus",
-                "description": "The status of the model. Set to \"inactive\" to disable."
-              }
-            ]
           }
         }
       },
@@ -16604,7 +16579,6 @@
               "capabilities",
               "is_favorite",
               "enabled",
-              "status",
               "source",
               "created_at",
               "updated_at"
@@ -16644,9 +16618,6 @@
               "source": {
                 "$ref": "#/components/schemas/LlmModelSource",
                 "description": "How the model was added to the system"
-              },
-              "status": {
-                "$ref": "#/components/schemas/LlmModelStatus"
               },
               "updated_at": {
                 "type": "string",
@@ -16692,12 +16663,12 @@
               "capabilities",
               "is_favorite",
               "enabled",
-              "status",
               "source",
               "created_at",
               "updated_at",
               "provider_name",
-              "provider_type"
+              "provider_type",
+              "healthy"
             ],
             "properties": {
               "capabilities": {
@@ -16716,6 +16687,10 @@
               "enabled": {
                 "type": "boolean",
                 "description": "Whether this model is enabled (visible in UI model pickers)"
+              },
+              "healthy": {
+                "type": "boolean",
+                "description": "Derived: model is configured and ready for use. Currently means the\njoined provider is active and has an API key set; over time this may\nalso incorporate live reachability checks. Not persisted."
               },
               "id": {
                 "type": "string",
@@ -16751,9 +16726,6 @@
               "source": {
                 "$ref": "#/components/schemas/LlmModelSource",
                 "description": "How the model was added to the system"
-              },
-              "status": {
-                "$ref": "#/components/schemas/LlmModelStatus"
               },
               "updated_at": {
                 "type": "string",
