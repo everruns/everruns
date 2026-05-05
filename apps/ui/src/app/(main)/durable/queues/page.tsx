@@ -22,6 +22,7 @@ import {
   useRequeueDlqEntry,
   useDeleteDlqEntry,
   usePurgeDlq,
+  usePageTitle,
 } from "@/hooks";
 import {
   AlertTriangle,
@@ -49,6 +50,7 @@ import { EnqueueDialog } from "./enqueue-dialog";
 type TabValue = "overview" | "tasks" | "dlq";
 
 export default function QueuesPage() {
+  usePageTitle("Queues", "Durable");
   const [activeTab, setActiveTab] = useState<TabValue>("overview");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");

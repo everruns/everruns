@@ -18,8 +18,10 @@ const caveat = localFont({
   variable: "--font-caveat",
 });
 
+// Default title — individual pages override via usePageTitle.
+// See specs/code-organization.md (Page Titles) for the format.
 export const metadata: Metadata = {
-  title: "Everruns - AI Agent Management",
+  title: "Everruns",
   description: "Manage and monitor your AI agents",
 };
 

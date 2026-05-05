@@ -1,5 +1,11 @@
+import type { Metadata } from "next";
 import { HydrationBoundary, dehydrate } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/query-keys";
+import { formatPageTitle } from "@/lib/page-title";
+
+export const metadata: Metadata = {
+  title: formatPageTitle("Harnesses"),
+};
 import {
   createServerQueryClient,
   getServerRequestContext,

@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { useAuthConfig, useLogin } from "@/hooks/use-auth";
+import { usePageTitle } from "@/hooks";
 import { getOAuthUrl, login } from "@/lib/api/auth";
 import { isBackendNavigationPath, sanitizeReturnTo } from "@/lib/auth-redirect";
 import { Loader2 } from "lucide-react";
@@ -31,6 +32,7 @@ const oauthProviders: Record<string, { name: string; icon: string }> = {
 };
 
 export default function LoginPage() {
+  usePageTitle("Sign in");
   const router = useRouter();
   const searchParams = useSearchParams();
   const { data: config, isLoading: configLoading } = useAuthConfig();

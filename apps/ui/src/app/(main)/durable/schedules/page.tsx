@@ -41,6 +41,7 @@ import {
   usePauseSchedule,
   useResumeSchedule,
   useTriggerSchedule,
+  usePageTitle,
 } from "@/hooks";
 import type { DurableSchedule, CreateScheduleRequest } from "@/lib/api/types";
 import {
@@ -347,6 +348,7 @@ function CreateScheduleDialog({ onClose }: { onClose: () => void }) {
 }
 
 export default function SchedulesPage() {
+  usePageTitle("Schedules", "Durable");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [createDialogOpen, setCreateDialogOpen] = useState(false);

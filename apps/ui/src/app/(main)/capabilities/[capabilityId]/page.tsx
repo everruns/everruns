@@ -1,7 +1,7 @@
 "use client";
 
 import { use } from "react";
-import { useCapability, useCapabilities } from "@/hooks";
+import { useCapability, useCapabilities, usePageTitle } from "@/hooks";
 import Link from "next/link";
 import { ResourceNotFound } from "@/components/resource-not-found";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -72,6 +72,7 @@ export default function CapabilityDetailPage({
 }) {
   const { capabilityId } = use(params);
   const { data: capability, isLoading, error } = useCapability(capabilityId);
+  usePageTitle(capability?.name ?? null, "Capability");
   const { data: allCapabilities } = useCapabilities();
 
   // Create a map of capability ID to capability for resolving dependency names

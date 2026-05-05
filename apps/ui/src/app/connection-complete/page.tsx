@@ -2,8 +2,10 @@
 
 import { Suspense, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
+import { usePageTitle } from "@/hooks";
 
 function ConnectionCompleteInner() {
+  usePageTitle("Connection complete");
   const searchParams = useSearchParams();
 
   useEffect(() => {

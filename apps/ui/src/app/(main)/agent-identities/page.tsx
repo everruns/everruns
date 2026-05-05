@@ -10,9 +10,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { CopyButton } from "@/components/ui/copy-button";
 import { useAgentIdentities } from "@/hooks/use-agent-identities";
+import { usePageTitle } from "@/hooks";
 import { getEntityNameClassName, getEntityStatusBadgeVariant } from "@/lib/entity-lifecycle";
 
 export default function AgentIdentitiesPage() {
+  usePageTitle("Agent Identities");
   const [showArchived, setShowArchived] = useState(false);
   const {
     data: identities,

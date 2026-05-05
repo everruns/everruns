@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useMemo } from "react";
-import { useAgentExamples, useImportAgentExample, useCapabilities } from "@/hooks";
+import { useAgentExamples, useImportAgentExample, useCapabilities, usePageTitle } from "@/hooks";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { QueryStateWrapper } from "@/components/query-state-wrapper";
 import { ExampleCard } from "@/components/agents";
 
 export default function AllExamplesPage() {
+  usePageTitle("Examples", "Agents");
   const router = useRouter();
   const [exampleSearch, setExampleSearch] = useState("");
   const { data: allCapabilities } = useCapabilities();

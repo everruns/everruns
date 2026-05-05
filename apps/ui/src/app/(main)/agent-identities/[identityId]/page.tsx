@@ -10,6 +10,7 @@ import {
   useDestroyAgentIdentity,
   useUpdateAgentIdentity,
 } from "@/hooks/use-agent-identities";
+import { usePageTitle } from "@/hooks";
 import { ResourceNotFound } from "@/components/resource-not-found";
 import { EntityDeleteErrorNotice } from "@/components/entity-delete-error-notice";
 import { Button } from "@/components/ui/button";
@@ -48,6 +49,7 @@ export default function AgentIdentityDetailPage({
   const { identityId } = use(params);
   const router = useRouter();
   const { data: identity, isLoading } = useAgentIdentity(identityId);
+  usePageTitle(identity?.name ?? null, "Agent Identity");
   const updateIdentity = useUpdateAgentIdentity();
   const deleteIdentity = useDeleteAgentIdentity();
   const destroyIdentity = useDestroyAgentIdentity();

@@ -2,7 +2,12 @@
 
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { useCreateHarness, useCapabilities, useHarnessNameAvailability } from "@/hooks";
+import {
+  useCreateHarness,
+  useCapabilities,
+  useHarnessNameAvailability,
+  usePageTitle,
+} from "@/hooks";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -33,6 +38,7 @@ function slugify(value: string): string {
 }
 
 export default function NewHarnessPage() {
+  usePageTitle("New Harness", "Harnesses");
   const router = useRouter();
   const createHarness = useCreateHarness();
   const { data: allCapabilities = [] } = useCapabilities();

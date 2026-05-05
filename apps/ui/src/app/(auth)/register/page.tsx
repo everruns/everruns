@@ -16,10 +16,12 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { useAuthConfig, useRegister } from "@/hooks/use-auth";
+import { usePageTitle } from "@/hooks";
 import { sanitizeReturnTo } from "@/lib/auth-redirect";
 import { Loader2 } from "lucide-react";
 
 export default function RegisterPage() {
+  usePageTitle("Sign up");
   const router = useRouter();
   const searchParams = useSearchParams();
   const { data: config, isLoading: configLoading } = useAuthConfig();

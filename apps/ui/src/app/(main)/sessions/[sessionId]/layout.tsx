@@ -10,6 +10,18 @@ import {
   type SessionNavKey,
   buildSessionNavigation,
 } from "@/components/session/session-header";
+import { usePageTitle } from "@/hooks";
+import { getDisplayName } from "@/lib/entity-lifecycle";
+
+const SESSION_TAB_LABELS: Record<SessionNavKey, string> = {
+  chat: "Chat",
+  trajectory: "Trajectory",
+  files: "Files",
+  events: "Events",
+  storage: "Storage",
+  resources: "Resources",
+  schedules: "Schedules",
+};
 
 interface SessionLayoutProps {
   children: React.ReactNode;
@@ -47,6 +59,9 @@ export function SessionLayoutContent({ children, sessionId }: SessionLayoutConte
     return "chat"; // Default to chat (includes /chat and base path)
   };
   const activeTab = getActiveTab();
+
+  const sessionLabel = session?.title || (agent ? getDisplayName(agent) : null);
+  usePageTitle(SESSION_TAB_LABELS[activeTab], sessionLabel, "Session");
 
   const basePath = `/sessions/${sessionId}`;
   const features = useMemo(() => new Set(session?.features ?? []), [session?.features]);

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEvals } from "@/hooks";
-import { useAgents } from "@/hooks";
+import { useAgents, usePageTitle } from "@/hooks";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -86,6 +86,7 @@ function EvalCard({ eval: ev, agentMap }: { eval: Eval; agentMap: Map<string, st
 }
 
 export default function EvalsPage() {
+  usePageTitle("Evals");
   const evalsEnabled = useFeatureFlag("evals");
   const { data: evals, isLoading, error } = useEvals({ includeArchived: false });
   const { data: agents } = useAgents({ includeArchived: false });

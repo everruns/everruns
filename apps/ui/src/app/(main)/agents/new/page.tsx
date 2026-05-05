@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { useCreateAgent, useCapabilities, useAgentNameAvailability } from "@/hooks";
+import { useCreateAgent, useCapabilities, useAgentNameAvailability, usePageTitle } from "@/hooks";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -27,6 +27,7 @@ function slugify(value: string): string {
 }
 
 export default function NewAgentPage() {
+  usePageTitle("New Agent", "Agents");
   const router = useRouter();
   const createAgent = useCreateAgent();
   const { data: allCapabilities = [] } = useCapabilities();

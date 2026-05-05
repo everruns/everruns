@@ -5,6 +5,7 @@
  */
 
 import { StreamingThinking } from "@/components/streaming-thinking";
+import { usePageTitle } from "@/hooks";
 
 const SAMPLE_THINKING = `Let me analyze this step by step.
 
@@ -30,6 +31,7 @@ const SAMPLE_THINKING = `Let me analyze this step by step.
 const SHORT_THINKING = "This is a simple arithmetic question. 2+2 equals 4.";
 
 export default function ThinkingComponentsPage() {
+  usePageTitle("Thinking Components", "Dev");
   return (
     <div className="container mx-auto p-8 max-w-4xl space-y-8">
       <h1 className="text-3xl font-bold mb-2">Thinking Components</h1>

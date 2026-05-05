@@ -11,6 +11,7 @@ import {
   useDestroyHarness,
   useCapabilities,
   useHarnessNameAvailability,
+  usePageTitle,
 } from "@/hooks";
 import { usePolicies } from "@/hooks/use-policies";
 import { ResourceNotFound } from "@/components/resource-not-found";
@@ -62,6 +63,7 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
   const router = useRouter();
 
   const { data: harness, isLoading: harnessLoading } = useHarness(harnessId);
+  usePageTitle("Edit", harness ? getDisplayName(harness) : null, "Harness");
   const { data: harnesses = [] } = useHarnesses();
   const updateHarness = useUpdateHarness();
   const deleteHarness = useDeleteHarness();

@@ -8,6 +8,7 @@ import {
   useDeleteLlmProvider,
   useSyncProviderModels,
 } from "@/hooks/use-llm-providers";
+import { usePageTitle } from "@/hooks";
 import { Plus, Server } from "lucide-react";
 import type { LlmProvider } from "@/lib/api/types";
 
@@ -15,6 +16,7 @@ import { ProviderCard, ProviderCardSkeleton } from "./provider-card";
 import { AddProviderDialog, SetApiKeyDialog } from "./provider-dialogs";
 
 export default function ProvidersPage() {
+  usePageTitle("LLM Providers", "Settings");
   const {
     data: providers = [],
     isLoading: providersLoading,

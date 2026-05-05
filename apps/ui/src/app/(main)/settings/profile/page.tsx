@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAuth } from "@/providers/auth-provider";
 import { useUpdateProfile } from "@/hooks/use-auth";
+import { usePageTitle } from "@/hooks";
 import { Save, User } from "lucide-react";
 
 function getInitials(name: string): string {
@@ -20,6 +21,7 @@ function getInitials(name: string): string {
 }
 
 export default function ProfilePage() {
+  usePageTitle("Profile", "Settings");
   const { user } = useAuth();
   const updateProfile = useUpdateProfile();
 

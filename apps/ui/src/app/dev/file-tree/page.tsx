@@ -10,6 +10,7 @@ import {
 } from "@/components/ai-elements/file-tree";
 import { Button } from "@/components/ui/button";
 import { FileCode, FileJson, FileText, Image, File, Trash2, Plus, FolderPlus } from "lucide-react";
+import { usePageTitle } from "@/hooks";
 
 function getFileIcon(filename: string) {
   const ext = filename.split(".").pop()?.toLowerCase();
@@ -32,6 +33,7 @@ function getFileIcon(filename: string) {
 }
 
 export default function FileTreeDevPage() {
+  usePageTitle("File Tree", "Dev");
   const [selectedPath, setSelectedPath] = useState<string | undefined>();
   const [expanded, setExpanded] = useState<Set<string>>(new Set(["/workspace", "/workspace/src"]));
 

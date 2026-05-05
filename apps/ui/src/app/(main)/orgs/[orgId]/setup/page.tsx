@@ -14,6 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { getOrganization } from "@/lib/api/organizations";
 import { listHarnesses } from "@/lib/api/harnesses";
 import { useCreateLlmProvider, useLlmProviders } from "@/hooks/use-llm-providers";
+import { usePageTitle } from "@/hooks";
 import { ProviderIcon } from "@/components/providers/provider-icon";
 import { queryKeys } from "@/lib/query-keys";
 import { useOrg } from "@/providers/org-provider";
@@ -76,6 +77,7 @@ function getProviderName(providerType: SetupProviderType): string {
 }
 
 export default function OrgSetupPage() {
+  usePageTitle("Org Setup");
   const { orgId } = useParams<{ orgId: string }>();
   const router = useRouter();
   const { currentOrg, organizations, setCurrentOrg, isSwitching } = useOrg();

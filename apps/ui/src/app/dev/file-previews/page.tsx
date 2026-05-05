@@ -13,6 +13,7 @@ import {
   canPreview,
   getPreviewType,
 } from "@/components/files/file-previews";
+import { usePageTitle } from "@/hooks";
 
 // Check if we're in development mode
 const isDev = process.env.NODE_ENV === "development";
@@ -321,6 +322,7 @@ const sampleImageBase64 =
 // ============================================
 
 export default function DevFilePreviewsPage() {
+  usePageTitle(isDev ? "File Previews" : "Page not found", isDev ? "Dev" : null);
   // Show 404-like message in production
   if (!isDev) {
     return (

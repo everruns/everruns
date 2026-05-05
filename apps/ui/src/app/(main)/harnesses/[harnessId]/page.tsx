@@ -9,6 +9,7 @@ import {
   useCopyHarness,
   useHarnesses,
   useHarnessStats,
+  usePageTitle,
 } from "@/hooks";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -41,6 +42,7 @@ export default function HarnessDetailPage({ params }: { params: Promise<{ harnes
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("overview");
   const { data: harness, isLoading: harnessLoading } = useHarness(harnessId);
+  usePageTitle(harness ? getDisplayName(harness) : null, "Harness");
   const { data: harnesses = [] } = useHarnesses();
   const { data: allCapabilities } = useCapabilities();
   const { data: llmModels } = useLlmModels();

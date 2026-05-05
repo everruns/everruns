@@ -43,6 +43,7 @@ import {
   usePauseSchedule,
   useResumeSchedule,
   useTriggerSchedule,
+  usePageTitle,
 } from "@/hooks";
 import type {
   ScheduleExecution,
@@ -306,6 +307,7 @@ export default function ScheduleDetailPage() {
     error: scheduleError,
     refetch,
   } = useSchedule(scheduleId);
+  usePageTitle(schedule?.name ?? null, "Schedule", "Durable");
   const executionsStatus = statusFilter !== "all" ? statusFilter : undefined;
   const {
     data: executionsData,

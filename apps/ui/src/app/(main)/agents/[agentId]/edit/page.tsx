@@ -10,6 +10,7 @@ import {
   useDestroyAgent,
   useCapabilities,
   useAgentNameAvailability,
+  usePageTitle,
 } from "@/hooks";
 import { usePolicies } from "@/hooks/use-policies";
 import { ResourceNotFound } from "@/components/resource-not-found";
@@ -60,6 +61,7 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
 
   // Agent data
   const { data: agent, isLoading: agentLoading } = useAgent(agentId);
+  usePageTitle("Edit", agent ? getDisplayName(agent) : null, "Agent");
   const updateAgent = useUpdateAgent();
   const deleteAgent = useDeleteAgent();
   const destroyAgent = useDestroyAgent();

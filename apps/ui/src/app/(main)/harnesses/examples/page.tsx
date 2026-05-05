@@ -1,7 +1,12 @@
 "use client";
 
 import { useState, useCallback, useMemo } from "react";
-import { useHarnessExamples, useImportHarnessExample, useCapabilities } from "@/hooks";
+import {
+  useHarnessExamples,
+  useImportHarnessExample,
+  useCapabilities,
+  usePageTitle,
+} from "@/hooks";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -11,6 +16,7 @@ import { QueryStateWrapper } from "@/components/query-state-wrapper";
 import { HarnessExampleCard } from "@/components/harnesses";
 
 export default function AllHarnessExamplesPage() {
+  usePageTitle("Examples", "Harnesses");
   const router = useRouter();
   const [exampleSearch, setExampleSearch] = useState("");
   const { data: allCapabilities } = useCapabilities();

@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { ArrowLeft } from "lucide-react";
 import { StreamdownMessage, InlineStreamdownMessage } from "@/components/chat/streamdown-message";
 import { StreamingMessage } from "@/components/streaming-message";
+import { usePageTitle } from "@/hooks";
 
 // Check if we're in development mode
 const isDev = process.env.NODE_ENV === "development";
@@ -265,6 +266,7 @@ function IncompleteMarkdownDemo() {
 // ============================================
 
 export default function DevMarkdownPage() {
+  usePageTitle(isDev ? "Markdown" : "Page not found", isDev ? "Dev" : null);
   // Show 404-like message in production
   if (!isDev) {
     return (

@@ -23,3 +23,4 @@ export * from "./use-chat-model-selection";
 export * from "./use-agent-identities";
 export * from "./use-evals";
 export * from "./use-name-availability";
+export * from "./use-page-title";

@@ -17,6 +17,7 @@ import {
 import { useAuth } from "@/providers/auth-provider";
 import { useOrg } from "@/providers/org-provider";
 import { useMembers, useUpdateMemberRole, useRemoveMember } from "@/hooks/use-members";
+import { usePageTitle } from "@/hooks";
 import { Users, Shield, ShieldCheck, Crown, UserMinus, Loader2 } from "lucide-react";
 import type { OrgMember } from "@/lib/api/members";
 import type { OrgRole } from "@/lib/api/types";
@@ -182,6 +183,7 @@ function MemberCardSkeleton() {
 }
 
 export default function MembersPage() {
+  usePageTitle("Members", "Settings");
   const { user } = useAuth();
   const { currentOrg, hasRole } = useOrg();
   const { data: members, isLoading, error } = useMembers();

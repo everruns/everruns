@@ -31,6 +31,7 @@ import {
   useDestroyMcpServer,
 } from "@/hooks/use-mcp-servers";
 import { usePolicies } from "@/hooks/use-policies";
+import { usePageTitle } from "@/hooks";
 import { Plus, Plug, Trash2, Key, Globe } from "lucide-react";
 import type { McpServer, CreateMcpServerRequest, McpServerAuthMode } from "@/lib/api/types";
 import {
@@ -441,6 +442,7 @@ function McpServerCardSkeleton() {
 }
 
 export default function McpServersPage() {
+  usePageTitle("MCP Servers");
   const [showArchived, setShowArchived] = useState(false);
   const { data: servers, isLoading, error } = useMcpServers({ includeArchived: showArchived });
   const destroyServer = useDestroyMcpServer();

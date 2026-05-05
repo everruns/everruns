@@ -4,6 +4,7 @@ import { Loader2 } from "lucide-react";
 import { ChatPanel } from "@/components/chat/chat-panel";
 import { SessionProvider } from "@/app/(main)/sessions/[sessionId]/session-context";
 import { useGlobalChat } from "@/hooks/use-global-chat";
+import { usePageTitle } from "@/hooks";
 import { useFeatureFlag } from "@/providers/feature-flags-provider";
 import { ExperimentalPageBadge } from "@/components/ui/experimental-badge";
 import { ChatErrorAlert } from "@/components/chat/chat-error-alert";
@@ -45,6 +46,7 @@ function GlobalChatEnabledContent() {
 }
 
 export default function GlobalChatPage() {
+  usePageTitle("Chat");
   const globalChatEnabled = useFeatureFlag("global_chat");
 
   if (!globalChatEnabled) {
