@@ -183,6 +183,34 @@ inventory-registered command gets the same treatment automatically; do not
 special-case individual fields. JSON parse errors surface a `--<field>:
 invalid JSON (...)` message instead of the opaque `callback failed`.
 
+### Structured dispatch errors
+
+`make_inventory_callback` formats every `CommandError` returned from a
+generated MCP builtin as `<kind>: <message>`. Bashkit prefixes the builtin
+name on its own (`update_model: …`), so the wire output an operator sees is
+
+```
+update_model: bad_request: invalid type: string "true", expected bool
+```
+
+instead of the historical opaque `update_model: callback failed`. The leading
+`<kind>` token is one of the stable lower-snake-case labels emitted by
+`command_error_kind`:
+
+| `CommandError` variant | `kind` token   |
+| ---------------------- | -------------- |
+| `BadRequest`           | `bad_request`  |
+| `Unprocessable`        | `unprocessable`|
+| `Forbidden`            | `forbidden`    |
+| `NotFound`             | `not_found`    |
+| `Conflict`             | `conflict`     |
+| `Internal`             | `internal`     |
+
+The token set is part of the public MCP contract: do not rename or drop tokens
+without a corresponding spec update, and ensure `command_error_kind` covers
+every variant when adding a new one (the unit test in `catalog.rs::tests`
+enforces this).
+
 ## Writing a Command
 
 Canonical pattern (see `domains/agents/commands.rs` for reference):

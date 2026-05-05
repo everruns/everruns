@@ -1,5 +1,6 @@
 // MCP scripting catalog — inventory is the only source of truth.
 
+use crate::domains::common::CommandError;
 use bashkit::{ScriptingToolSet, ToolArgs, ToolDef};
 use std::collections::HashMap;
 use std::future::Future;
@@ -200,6 +201,30 @@ fn coerce_json_text_params(
     Ok(())
 }
 
+/// Stable, lower_snake_case label for a `CommandError` variant. Surfaced as
+/// the leading token of the dispatch error string so MCP/bashkit consumers
+/// can tell whether a failure is a bad request, a forbidden call, a missing
+/// resource, or an internal exception without parsing free-form text.
+fn command_error_kind(err: &CommandError) -> &'static str {
+    match err {
+        CommandError::BadRequest(_) => "bad_request",
+        CommandError::Unprocessable(_) => "unprocessable",
+        CommandError::Forbidden(_) => "forbidden",
+        CommandError::NotFound(_) => "not_found",
+        CommandError::Conflict(_) => "conflict",
+        CommandError::Internal(_) => "internal",
+    }
+}
+
+/// Format a dispatch failure as `<kind>: <message>`. Bashkit prefixes the
+/// builtin name on its own (e.g. `update_model: …`), so we deliberately do
+/// not duplicate it here. The result is the structured error contract for
+/// MCP-facing builtins; see the "Structured dispatch errors" section in
+/// `specs/domains.md` for the canonical contract and the kind token table.
+fn format_dispatch_error(err: &CommandError) -> String {
+    format!("{}: {err}", command_error_kind(err))
+}
+
 fn make_inventory_callback(
     desc: &'static crate::domains::common::CommandDescriptor,
     ctx: CatalogContext,
@@ -220,7 +245,7 @@ fn make_inventory_callback(
             coerce_json_text_params(&original_schema, &mut params)?;
             let result = (desc.dispatch)(params, &domain_ctx)
                 .await
-                .map_err(|error| error.to_string())?;
+                .map_err(|error| format_dispatch_error(&error))?;
             decorate_command_output(&result, &link_builder)
         })
     }
@@ -411,5 +436,83 @@ mod tests {
             decorate_command_output("plain result", &builder).expect("decorated output"),
             "plain result"
         );
+    }
+
+    // ========================================================================
+    // EVE-419: structured dispatch error contract
+    //
+    // Bashkit prefixes the builtin name on its own ("update_model: ..."), so
+    // the dispatch layer adds the `<kind>: <message>` body. Together they
+    // produce errors like `update_model: bad_request: invalid type: string
+    // "true", expected bool` instead of the historical opaque
+    // `update_model: callback failed`.
+    // ========================================================================
+
+    #[test]
+    fn command_error_kind_covers_every_variant() {
+        use anyhow::anyhow;
+        // If a new variant is added to `CommandError`, this match must be
+        // updated — exhaustively covering each one here keeps the contract
+        // honest. The literal strings are part of the public MCP error
+        // contract and should not change without a corresponding spec update.
+        assert_eq!(
+            command_error_kind(&CommandError::BadRequest("x".into())),
+            "bad_request"
+        );
+        assert_eq!(
+            command_error_kind(&CommandError::Unprocessable("x".into())),
+            "unprocessable"
+        );
+        assert_eq!(
+            command_error_kind(&CommandError::Forbidden("x".into())),
+            "forbidden"
+        );
+        assert_eq!(
+            command_error_kind(&CommandError::NotFound("x".into())),
+            "not_found"
+        );
+        assert_eq!(
+            command_error_kind(&CommandError::Conflict("x".into())),
+            "conflict"
+        );
+        assert_eq!(
+            command_error_kind(&CommandError::Internal(anyhow!("boom"))),
+            "internal"
+        );
+    }
+
+    #[test]
+    fn format_dispatch_error_prefixes_kind_before_message() {
+        let err = CommandError::BadRequest("invalid type: string \"true\", expected bool".into());
+        assert_eq!(
+            format_dispatch_error(&err),
+            "bad_request: invalid type: string \"true\", expected bool"
+        );
+    }
+
+    #[test]
+    fn format_dispatch_error_does_not_duplicate_operation_name() {
+        // Bashkit is responsible for the `<op>:` prefix. The dispatch layer
+        // must not re-emit it, otherwise consumers see `update_model:
+        // update_model: ...`.
+        let err = CommandError::NotFound("Model not found".into());
+        let formatted = format_dispatch_error(&err);
+        assert!(formatted.starts_with("not_found:"));
+        assert!(
+            !formatted.contains("update_model"),
+            "operation name must not appear twice: {formatted}"
+        );
+    }
+
+    #[test]
+    fn format_dispatch_error_distinguishes_internal_from_authz() {
+        use anyhow::anyhow;
+        let internal = format_dispatch_error(&CommandError::Internal(anyhow!(
+            "database connection refused"
+        )));
+        let forbidden = format_dispatch_error(&CommandError::Forbidden("permission denied".into()));
+        assert!(internal.starts_with("internal:"));
+        assert!(forbidden.starts_with("forbidden:"));
+        assert_ne!(internal, forbidden);
     }
 }
