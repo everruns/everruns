@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
+import { usePageTitle } from "@/hooks";
 
 export default function GlobalError({
   error,
@@ -10,6 +11,7 @@ export default function GlobalError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  usePageTitle("Something went wrong");
   useEffect(() => {
     console.error("Unhandled error:", error);
   }, [error]);

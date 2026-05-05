@@ -266,7 +266,7 @@ function IncompleteMarkdownDemo() {
 // ============================================
 
 export default function DevMarkdownPage() {
-  usePageTitle("Markdown", "Dev");
+  usePageTitle(isDev ? "Markdown" : "Page not found", isDev ? "Dev" : null);
   // Show 404-like message in production
   if (!isDev) {
     return (

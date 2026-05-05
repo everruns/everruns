@@ -1,4 +1,10 @@
+import type { Metadata } from "next";
 import { ResourceNotFound } from "@/components/resource-not-found";
+import { formatPageTitle } from "@/lib/page-title";
+
+export const metadata: Metadata = {
+  title: formatPageTitle("Page not found"),
+};
 
 export default function NotFound() {
   return (

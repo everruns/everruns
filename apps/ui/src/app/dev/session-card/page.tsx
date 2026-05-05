@@ -205,7 +205,7 @@ const sampleModels = {
 // ============================================
 
 export default function DevSessionCardPage() {
-  usePageTitle("Session Card", "Dev");
+  usePageTitle(isDev ? "Session Card" : "Page not found", isDev ? "Dev" : null);
   // Show 404-like message in production
   if (!isDev) {
     return (

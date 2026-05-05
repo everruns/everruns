@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { usePageTitle } from "@/hooks";
 
 export default function MainError({
   error,
@@ -13,6 +14,7 @@ export default function MainError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  usePageTitle("Something went wrong");
   const router = useRouter();
 
   useEffect(() => {

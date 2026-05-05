@@ -26,7 +26,7 @@ export function DevPageShell({
   children,
   widthClassName = "max-w-6xl",
 }: DevPageShellProps) {
-  usePageTitle(title, "Dev");
+  usePageTitle(isDev ? title : "Page not found", isDev ? "Dev" : null);
   if (!isDev) {
     return (
       <div className="flex min-h-screen items-center justify-center">

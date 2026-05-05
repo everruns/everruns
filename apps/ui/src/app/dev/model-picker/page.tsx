@@ -132,7 +132,7 @@ function ModelList() {
 // ============================================
 
 export default function DevModelPickerPage() {
-  usePageTitle("Model Picker", "Dev");
+  usePageTitle(isDev ? "Model Picker" : "Page not found", isDev ? "Dev" : null);
   const [selectedModel1, setSelectedModel1] = useState<string>("");
   const [selectedModel2, setSelectedModel2] = useState<string>("");
 

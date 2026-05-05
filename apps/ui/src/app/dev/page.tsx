@@ -70,7 +70,7 @@ const devPages = [
 ];
 
 export default function DevPage() {
-  usePageTitle("Dev");
+  usePageTitle(isDev ? "Dev" : "Page not found");
   // Show 404-like message in production
   if (!isDev) {
     return (

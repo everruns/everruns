@@ -620,7 +620,11 @@ mounted.
 - Detail: `<displayName> · <Kind>`
 - Sub-tabs (sessions, settings, durable): `<Sub> · <Parent specific or kind>`
 - Auth: action verb only (`Sign in`, `Sign up`)
-- Dev / showcase: `<Component> · Dev`
+- Dev / showcase: `<Component> · Dev` (and `Page not found` when the dev guard
+  hides the route in production)
+- Error / not-found boundaries (`error.tsx`, `not-found.tsx`): set a title
+  matching the rendered fallback (e.g. `Page not found`,
+  `Something went wrong`) so tabs do not advertise a nonexistent route
 
 When adding a new route, the page title is part of the work — pages without a
 title should fail review.

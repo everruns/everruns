@@ -322,7 +322,7 @@ const sampleImageBase64 =
 // ============================================
 
 export default function DevFilePreviewsPage() {
-  usePageTitle("File Previews", "Dev");
+  usePageTitle(isDev ? "File Previews" : "Page not found", isDev ? "Dev" : null);
   // Show 404-like message in production
   if (!isDev) {
     return (
