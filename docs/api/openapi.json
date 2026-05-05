@@ -6033,6 +6033,12 @@
           "status"
         ],
         "properties": {
+          "agent_count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Number of active agents referencing this capability in the org.",
+            "minimum": 0
+          },
           "category": {
             "type": [
               "string",
@@ -6059,12 +6065,25 @@
             "type": "string",
             "description": "Description of what this capability provides"
           },
+          "docs_slug": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Slug under https://dev.everruns.com/capabilities/ when public docs exist."
+          },
           "features": {
             "type": "array",
             "items": {
               "type": "string"
             },
             "description": "UI feature strings this capability contributes to.\nMultiple capabilities can contribute the same feature."
+          },
+          "harness_count": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Number of active harnesses referencing this capability in the org.",
+            "minimum": 0
           },
           "icon": {
             "type": [
@@ -8839,6 +8858,12 @@
                 "status"
               ],
               "properties": {
+                "agent_count": {
+                  "type": "integer",
+                  "format": "int64",
+                  "description": "Number of active agents referencing this capability in the org.",
+                  "minimum": 0
+                },
                 "category": {
                   "type": [
                     "string",
@@ -8865,12 +8890,25 @@
                   "type": "string",
                   "description": "Description of what this capability provides"
                 },
+                "docs_slug": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Slug under https://dev.everruns.com/capabilities/ when public docs exist."
+                },
                 "features": {
                   "type": "array",
                   "items": {
                     "type": "string"
                   },
                   "description": "UI feature strings this capability contributes to.\nMultiple capabilities can contribute the same feature."
+                },
+                "harness_count": {
+                  "type": "integer",
+                  "format": "int64",
+                  "description": "Number of active harnesses referencing this capability in the org.",
+                  "minimum": 0
                 },
                 "icon": {
                   "type": [
@@ -12318,6 +12356,12 @@
                     "status"
                   ],
                   "properties": {
+                    "agent_count": {
+                      "type": "integer",
+                      "format": "int64",
+                      "description": "Number of active agents referencing this capability in the org.",
+                      "minimum": 0
+                    },
                     "category": {
                       "type": [
                         "string",
@@ -12344,12 +12388,25 @@
                       "type": "string",
                       "description": "Description of what this capability provides"
                     },
+                    "docs_slug": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "Slug under https://dev.everruns.com/capabilities/ when public docs exist."
+                    },
                     "features": {
                       "type": "array",
                       "items": {
                         "type": "string"
                       },
                       "description": "UI feature strings this capability contributes to.\nMultiple capabilities can contribute the same feature."
+                    },
+                    "harness_count": {
+                      "type": "integer",
+                      "format": "int64",
+                      "description": "Number of active harnesses referencing this capability in the org.",
+                      "minimum": 0
                     },
                     "icon": {
                       "type": [
@@ -16256,6 +16313,12 @@
               "status"
             ],
             "properties": {
+              "agent_count": {
+                "type": "integer",
+                "format": "int64",
+                "description": "Number of active agents referencing this capability in the org.",
+                "minimum": 0
+              },
               "category": {
                 "type": [
                   "string",
@@ -16282,12 +16345,25 @@
                 "type": "string",
                 "description": "Description of what this capability provides"
               },
+              "docs_slug": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Slug under https://dev.everruns.com/capabilities/ when public docs exist."
+              },
               "features": {
                 "type": "array",
                 "items": {
                   "type": "string"
                 },
                 "description": "UI feature strings this capability contributes to.\nMultiple capabilities can contribute the same feature."
+              },
+              "harness_count": {
+                "type": "integer",
+                "format": "int64",
+                "description": "Number of active harnesses referencing this capability in the org.",
+                "minimum": 0
               },
               "icon": {
                 "type": [
