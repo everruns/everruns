@@ -29,6 +29,7 @@ jest.mock("@/hooks", () => ({
   useEval: (...args: unknown[]) => mockUseEval(...args),
   useEvalRun: (...args: unknown[]) => mockUseEvalRun(...args),
   useCancelEvalRun: (...args: unknown[]) => mockUseCancelEvalRun(...args),
+  usePageTitle: () => undefined,
 }));
 
 const mockEval: Eval = {

@@ -80,6 +80,7 @@ jest.mock("@/hooks", () => ({
   useDestroyAgent: () => mockUseDestroyAgent(),
   useCapabilities: () => mockUseCapabilities(),
   useAgentNameAvailability: (...args: unknown[]) => mockUseAgentNameAvailability(...args),
+  usePageTitle: () => undefined,
 }));
 
 jest.mock("@/hooks/use-policies", () => ({

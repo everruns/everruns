@@ -69,6 +69,7 @@ jest.mock("@/hooks", () => ({
   useWorkers: () => mockUseWorkers(),
   useDrainWorker: () => mockUseDrainWorker(),
   useResumeWorker: () => mockUseResumeWorker(),
+  usePageTitle: () => undefined,
 }));
 
 // Mock Next.js navigation

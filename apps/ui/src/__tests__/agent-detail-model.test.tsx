@@ -168,6 +168,7 @@ jest.mock("@/hooks", () => ({
   useCopyAgent: () => mockUseCopyAgent(),
   useHarnesses: () => mockUseHarnesses(),
   useAgentStats: (...args: unknown[]) => mockUseAgentStats(...args),
+  usePageTitle: () => undefined,
 }));
 
 jest.mock("@/hooks/use-organizations", () => ({
