@@ -39,7 +39,7 @@ See `specs/release-process.md` for the full release process specification.
    - Do not pad the list to hit a target count. Maintenance releases (mostly fixes and internal work) may have one or two highlights, or none at all — in which case omit the Highlights section entirely
    - Present the commit list and your suggested highlights (or a recommendation to skip the section) to the user
    - Ask the user to confirm, adjust, or replace the highlights
-   - Note: Add markdown links for PRs `([#123](url))` and usernames `[@user](url))`
+   - Note: Add markdown links for PRs `([#123](url))` and usernames `[@user](url)`
 
 4. **After user approval**, update these files:
 
