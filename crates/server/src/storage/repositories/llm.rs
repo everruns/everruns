@@ -195,7 +195,7 @@ impl Database {
             FROM organization_settings os
             JOIN llm_models m ON m.id = os.default_model_id AND m.org_id = os.org_id
             JOIN llm_providers p ON m.provider_id = p.id AND p.org_id = m.org_id
-            WHERE os.org_id = $1 AND m.status = 'active' AND p.status = 'active'
+            WHERE os.org_id = $1 AND m.status = 'healthy' AND p.status = 'active'
             "#,
         )
         .bind(org_id)
@@ -346,7 +346,7 @@ impl Database {
                    p.name as provider_name, p.provider_type
             FROM llm_models m
             JOIN llm_providers p ON m.provider_id = p.id AND p.org_id = m.org_id
-            WHERE m.status = 'active' AND p.status = 'active' AND m.org_id = $1
+            WHERE m.status = 'healthy' AND p.status = 'active' AND m.org_id = $1
             ORDER BY m.enabled DESC, m.is_favorite DESC, p.name ASC, m.display_name ASC
             "#,
         )
@@ -423,7 +423,7 @@ impl Database {
                    p.name as provider_name, p.provider_type
             FROM llm_models m
             JOIN llm_providers p ON m.provider_id = p.id AND p.org_id = m.org_id
-            WHERE m.model_id = $1 AND m.status = 'active' AND p.status = 'active' AND m.org_id = $2
+            WHERE m.model_id = $1 AND m.status = 'healthy' AND p.status = 'active' AND m.org_id = $2
             "#,
         )
         .bind(model_id)

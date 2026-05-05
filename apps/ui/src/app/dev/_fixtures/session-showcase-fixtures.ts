@@ -34,7 +34,7 @@ const model: LlmModelWithProvider = {
   capabilities: ["chat", "tools"],
   enabled: true,
   is_favorite: true,
-  status: "active",
+  status: "healthy",
   created_at: "2026-04-22T14:00:00Z",
   updated_at: "2026-04-22T14:00:00Z",
   provider_name: "OpenRouter",

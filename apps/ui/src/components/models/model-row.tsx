@@ -4,6 +4,12 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   Brain,
   Wrench,
   Image,
@@ -149,16 +155,33 @@ export function ModelRow({
               )}
             </div>
           )}
-          <Badge
-            variant="outline"
-            className={
-              model.status === "active"
-                ? "bg-green-100 text-green-800"
-                : "bg-gray-100 text-gray-800"
-            }
-          >
-            {model.status}
-          </Badge>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  role="img"
+                  aria-label={
+                    model.status === "healthy"
+                      ? "Model healthy"
+                      : "Model disabled"
+                  }
+                  className={
+                    "inline-block h-2.5 w-2.5 rounded-full " +
+                    (model.status === "healthy"
+                      ? "bg-green-500"
+                      : "bg-gray-300")
+                  }
+                />
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>
+                  {model.status === "healthy"
+                    ? "Model is configured and ready for use"
+                    : "Model is disabled"}
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
           <Button
             variant={model.enabled ? "outline" : "default"}
             size="sm"

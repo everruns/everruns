@@ -232,7 +232,7 @@ impl InMemoryDatabase {
             && model.org_id == org_id
             && let Some(provider) = providers.get(&model.provider_id)
             && provider.org_id == org_id
-            && model.status == "active"
+            && model.status == "healthy"
             && provider.status == "active"
         {
             return Ok(Some(LlmModelWithProviderRow {
@@ -277,7 +277,7 @@ impl InMemoryDatabase {
             capabilities: serde_json::to_value(&input.capabilities)?,
             is_favorite: input.is_favorite,
             enabled: input.enabled,
-            status: "active".to_string(),
+            status: "healthy".to_string(),
             source: input.source,
             last_seen_at: None,
             provider_metadata: input.provider_metadata,
@@ -328,7 +328,7 @@ impl InMemoryDatabase {
             capabilities: serde_json::to_value(&input.capabilities)?,
             is_favorite: input.is_favorite,
             enabled: input.enabled,
-            status: "active".to_string(),
+            status: "healthy".to_string(),
             source: input.source,
             last_seen_at: None,
             provider_metadata: input.provider_metadata,
@@ -407,7 +407,7 @@ impl InMemoryDatabase {
 
         let mut result: Vec<_> = models
             .values()
-            .filter(|model| model.org_id == org_id && model.status == "active")
+            .filter(|model| model.org_id == org_id && model.status == "healthy")
             .filter_map(|model| {
                 providers
                     .get(&model.provider_id)
@@ -498,7 +498,7 @@ impl InMemoryDatabase {
         for model in models.values() {
             if model.model_id == model_id
                 && model.org_id == org_id
-                && model.status == "active"
+                && model.status == "healthy"
                 && let Some(provider) = providers.get(&model.provider_id)
                 && provider.org_id == org_id
                 && provider.status == "active"

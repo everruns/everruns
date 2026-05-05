@@ -36,7 +36,7 @@ const mockLlmModel: LlmModelWithProvider = {
   display_name: "GPT-4o",
   capabilities: ["chat"],
   enabled: false,
-  status: "active",
+  status: "healthy",
   created_at: "2025-01-01T00:00:00Z",
   updated_at: "2025-01-01T00:00:00Z",
   provider_name: "OpenAI",

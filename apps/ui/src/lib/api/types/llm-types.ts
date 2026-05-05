@@ -12,7 +12,7 @@ export type LlmProviderType =
   | "gemini";
 
 export type LlmProviderStatus = "active" | "disabled";
-export type LlmModelStatus = "active" | "disabled";
+export type LlmModelStatus = "healthy" | "disabled";
 
 export interface LlmProvider {
   id: string;

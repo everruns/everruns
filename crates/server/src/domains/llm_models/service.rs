@@ -237,7 +237,7 @@ impl LlmModelService {
             enabled: req.enabled,
             is_favorite: req.is_favorite,
             status: req.status.map(|s| match s {
-                LlmModelStatus::Active => "active".to_string(),
+                LlmModelStatus::Healthy => "healthy".to_string(),
                 LlmModelStatus::Disabled => "disabled".to_string(),
             }),
             last_seen_at: None,
@@ -310,7 +310,7 @@ impl LlmModelService {
         let all_models = self.db.list_all_llm_models(org_id).await?;
         let new_default = all_models
             .iter()
-            .find(|m| m.enabled && m.status == "active");
+            .find(|m| m.enabled && m.status == "healthy");
 
         let new_default_id = new_default.map(|m| m.id.uuid());
         self.db
@@ -341,7 +341,7 @@ impl LlmModelService {
             enabled: row.enabled,
             is_favorite: row.is_favorite,
             status: match row.status.as_str() {
-                "active" => LlmModelStatus::Active,
+                "healthy" => LlmModelStatus::Healthy,
                 _ => LlmModelStatus::Disabled,
             },
             source: row.source.parse().unwrap_or(LlmModelSource::Manual),
@@ -382,7 +382,7 @@ impl LlmModelService {
             enabled: row.enabled,
             is_favorite: row.is_favorite,
             status: match row.status.as_str() {
-                "active" => LlmModelStatus::Active,
+                "healthy" => LlmModelStatus::Healthy,
                 _ => LlmModelStatus::Disabled,
             },
             source: row.source.parse().unwrap_or(LlmModelSource::Manual),
@@ -614,7 +614,7 @@ mod tests {
             capabilities: serde_json::json!([]),
             is_favorite: false,
             enabled: true,
-            status: "active".into(),
+            status: "healthy".into(),
             source: "discovered".into(),
             last_seen_at: None,
             provider_metadata: Some(metadata),
@@ -643,7 +643,7 @@ mod tests {
             capabilities: serde_json::json!([]),
             is_favorite: false,
             enabled: true,
-            status: "active".into(),
+            status: "healthy".into(),
             source: "manual".into(),
             last_seen_at: None,
             provider_metadata: None,

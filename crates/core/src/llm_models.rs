@@ -70,12 +70,17 @@ pub enum LlmProviderStatus {
     Disabled,
 }
 
-/// LLM model status
+/// LLM model status.
+///
+/// `Healthy` (renamed from `Active`) means the model record is configured and
+/// ready to be used by agents: the row exists, has not been retired, and its
+/// provider is also healthy. This is independent of the per-row `enabled` flag,
+/// which only controls visibility in UI model pickers.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(rename_all = "snake_case")]
 pub enum LlmModelStatus {
-    Active,
+    Healthy,
     Disabled,
 }
 

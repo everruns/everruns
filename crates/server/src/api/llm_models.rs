@@ -128,7 +128,8 @@ pub struct UpdateLlmModelRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = true)]
     pub is_favorite: Option<bool>,
-    /// The status of the model. Set to "inactive" to disable.
+    /// The status of the model. Either `healthy` (configured and ready for use)
+    /// or `disabled`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<LlmModelStatus>,
 }
