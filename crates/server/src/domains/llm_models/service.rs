@@ -11,8 +11,8 @@ use crate::storage::{
 };
 use anyhow::Result;
 use everruns_core::{
-    Caller, LlmModel, LlmModelProfile, LlmModelSource, LlmModelStatus, LlmModelWithProvider,
-    LlmProviderType, Permission, Policy, Rule, get_model_profile,
+    Caller, LlmModel, LlmModelProfile, LlmModelSource, LlmModelWithProvider, LlmProviderType,
+    Permission, Policy, Rule, get_model_profile,
 };
 use std::sync::Arc;
 use tracing::error;
@@ -236,10 +236,6 @@ impl LlmModelService {
             capabilities: req.capabilities,
             enabled: req.enabled,
             is_favorite: req.is_favorite,
-            status: req.status.map(|s| match s {
-                LlmModelStatus::Healthy => "healthy".to_string(),
-                LlmModelStatus::Disabled => "disabled".to_string(),
-            }),
             last_seen_at: None,
             provider_metadata: None,
         };
@@ -310,7 +306,7 @@ impl LlmModelService {
         let all_models = self.db.list_all_llm_models(org_id).await?;
         let new_default = all_models
             .iter()
-            .find(|m| m.enabled && m.status == "healthy");
+            .find(|m| m.enabled && m.provider_api_key_set);
 
         let new_default_id = new_default.map(|m| m.id.uuid());
         self.db
@@ -340,10 +336,6 @@ impl LlmModelService {
             capabilities,
             enabled: row.enabled,
             is_favorite: row.is_favorite,
-            status: match row.status.as_str() {
-                "healthy" => LlmModelStatus::Healthy,
-                _ => LlmModelStatus::Disabled,
-            },
             source: row.source.parse().unwrap_or(LlmModelSource::Manual),
             created_at: row.created_at,
             updated_at: row.updated_at,
@@ -373,6 +365,11 @@ impl LlmModelService {
             Self::extract_discovered_profile(row)
         };
 
+        // A model is healthy when its provider is active and has an API key
+        // configured. This will likely grow to include live reachability
+        // checks; keep the derivation in one place.
+        let healthy = row.provider_status == "active" && row.provider_api_key_set;
+
         LlmModelWithProvider {
             id: row.id,
             provider_id: row.provider_id,
@@ -381,15 +378,12 @@ impl LlmModelService {
             capabilities,
             enabled: row.enabled,
             is_favorite: row.is_favorite,
-            status: match row.status.as_str() {
-                "healthy" => LlmModelStatus::Healthy,
-                _ => LlmModelStatus::Disabled,
-            },
             source: row.source.parse().unwrap_or(LlmModelSource::Manual),
             created_at: row.created_at,
             updated_at: row.updated_at,
             provider_name: row.provider_name.clone(),
             provider_type,
+            healthy,
             profile,
         }
     }
@@ -614,7 +608,6 @@ mod tests {
             capabilities: serde_json::json!([]),
             is_favorite: false,
             enabled: true,
-            status: "healthy".into(),
             source: "discovered".into(),
             last_seen_at: None,
             provider_metadata: Some(metadata),
@@ -622,6 +615,8 @@ mod tests {
             updated_at: Utc::now(),
             provider_name: "TestProvider".into(),
             provider_type: "anthropic".into(),
+            provider_api_key_set: true,
+            provider_status: "active".into(),
         };
 
         let extracted = LlmModelService::extract_discovered_profile(&row);
@@ -643,7 +638,6 @@ mod tests {
             capabilities: serde_json::json!([]),
             is_favorite: false,
             enabled: true,
-            status: "healthy".into(),
             source: "manual".into(),
             last_seen_at: None,
             provider_metadata: None,
@@ -651,6 +645,8 @@ mod tests {
             updated_at: Utc::now(),
             provider_name: "TestProvider".into(),
             provider_type: "openai".into(),
+            provider_api_key_set: true,
+            provider_status: "active".into(),
         };
 
         let extracted = LlmModelService::extract_discovered_profile(&row);

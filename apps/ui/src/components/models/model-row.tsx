@@ -160,24 +160,18 @@ export function ModelRow({
               <TooltipTrigger asChild>
                 <span
                   role="img"
-                  aria-label={
-                    model.status === "healthy"
-                      ? "Model healthy"
-                      : "Model disabled"
-                  }
+                  aria-label={model.healthy ? "Model healthy" : "Model not ready"}
                   className={
                     "inline-block h-2.5 w-2.5 rounded-full " +
-                    (model.status === "healthy"
-                      ? "bg-green-500"
-                      : "bg-gray-300")
+                    (model.healthy ? "bg-green-500" : "bg-gray-300")
                   }
                 />
               </TooltipTrigger>
               <TooltipContent>
                 <p>
-                  {model.status === "healthy"
+                  {model.healthy
                     ? "Model is configured and ready for use"
-                    : "Model is disabled"}
+                    : "Provider is missing an API key or is disabled"}
                 </p>
               </TooltipContent>
             </Tooltip>

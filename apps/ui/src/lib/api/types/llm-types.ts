@@ -12,7 +12,6 @@ export type LlmProviderType =
   | "gemini";
 
 export type LlmProviderStatus = "active" | "disabled";
-export type LlmModelStatus = "healthy" | "disabled";
 
 export interface LlmProvider {
   id: string;
@@ -33,7 +32,6 @@ export interface LlmModel {
   capabilities: string[];
   enabled: boolean;
   is_favorite: boolean;
-  status: LlmModelStatus;
   created_at: string;
   updated_at: string;
 }
@@ -41,6 +39,11 @@ export interface LlmModel {
 export interface LlmModelWithProvider extends LlmModel {
   provider_name: string;
   provider_type: LlmProviderType;
+  /**
+   * Derived: model is configured and ready for use. Currently mirrors the
+   * joined provider's `api_key_set && status === "active"`; not persisted.
+   */
+  healthy: boolean;
   /** Readonly profile with model capabilities (not persisted to database) */
   profile?: LlmModelProfile;
 }
@@ -184,7 +187,6 @@ export interface UpdateLlmModelRequest {
   capabilities?: string[];
   enabled?: boolean;
   is_favorite?: boolean;
-  status?: LlmModelStatus;
 }
 
 // Response from syncing models from a provider

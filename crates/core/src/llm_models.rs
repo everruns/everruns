@@ -70,19 +70,11 @@ pub enum LlmProviderStatus {
     Disabled,
 }
 
-/// LLM model status.
-///
-/// `Healthy` (renamed from `Active`) means the model record is configured and
-/// ready to be used by agents: the row exists, has not been retired, and its
-/// provider is also healthy. This is independent of the per-row `enabled` flag,
-/// which only controls visibility in UI model pickers.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "openapi", derive(ToSchema))]
-#[serde(rename_all = "snake_case")]
-pub enum LlmModelStatus {
-    Healthy,
-    Disabled,
-}
+// LLM model "healthy" status is not persisted on the model row. It is
+// derived at read time from the joined provider's state and exposed as a
+// boolean on `LlmModelWithProvider`. The per-row `enabled` flag is the only
+// persisted user-facing toggle, and it controls visibility in UI model
+// pickers.
 
 /// How the model was added to the system
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -157,7 +149,6 @@ pub struct LlmModel {
     /// Whether this model is enabled (visible in UI model pickers).
     /// All models are available via API regardless of this flag.
     pub enabled: bool,
-    pub status: LlmModelStatus,
     /// How the model was added to the system
     pub source: LlmModelSource,
     pub created_at: DateTime<Utc>,
@@ -178,13 +169,16 @@ pub struct LlmModelWithProvider {
     pub is_favorite: bool,
     /// Whether this model is enabled (visible in UI model pickers)
     pub enabled: bool,
-    pub status: LlmModelStatus,
     /// How the model was added to the system
     pub source: LlmModelSource,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub provider_name: String,
     pub provider_type: LlmProviderType,
+    /// Derived: model is configured and ready for use. Currently means the
+    /// joined provider is active and has an API key set; over time this may
+    /// also incorporate live reachability checks. Not persisted.
+    pub healthy: bool,
     /// Readonly profile with model capabilities (not persisted to database)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub profile: Option<LlmModelProfile>,

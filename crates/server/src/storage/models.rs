@@ -693,7 +693,6 @@ pub struct LlmModelRow {
     pub is_favorite: bool,
     /// Whether this model is enabled (visible in UI model pickers)
     pub enabled: bool,
-    pub status: String,
     /// How the model was added: manual, discovered, or predefined
     pub source: String,
     /// Last time model was seen in provider API response
@@ -716,7 +715,6 @@ pub struct LlmModelWithProviderRow {
     pub is_favorite: bool,
     /// Whether this model is enabled (visible in UI model pickers)
     pub enabled: bool,
-    pub status: String,
     /// How the model was added: manual, discovered, or predefined
     pub source: String,
     /// Last time model was seen in provider API response
@@ -727,6 +725,11 @@ pub struct LlmModelWithProviderRow {
     pub updated_at: DateTime<Utc>,
     pub provider_name: String,
     pub provider_type: String,
+    /// Joined from `llm_providers.api_key_set`. Used to derive `healthy` on
+    /// the public model shape; stays internal to the storage layer.
+    pub provider_api_key_set: bool,
+    /// Joined from `llm_providers.status`.
+    pub provider_status: String,
 }
 
 /// LLM Provider with decrypted API key (used by worker activities)
@@ -783,7 +786,6 @@ pub struct UpdateLlmModel {
     pub is_favorite: Option<bool>,
     /// Update enabled flag
     pub enabled: Option<bool>,
-    pub status: Option<String>,
     /// Update last_seen_at timestamp (for sync tracking)
     pub last_seen_at: Option<DateTime<Utc>>,
     /// Update provider metadata

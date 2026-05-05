@@ -18,7 +18,7 @@ use axum::{
     routing::{get, post},
 };
 use everruns_core::{
-    Caller, LlmModel, LlmModelSource, LlmModelStatus, LlmModelWithProvider, ResourceConfigResponse,
+    Caller, LlmModel, LlmModelSource, LlmModelWithProvider, ResourceConfigResponse,
     evaluate_policies_with,
 };
 use serde::Deserialize;
@@ -128,10 +128,6 @@ pub struct UpdateLlmModelRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = true)]
     pub is_favorite: Option<bool>,
-    /// The status of the model. Either `healthy` (configured and ready for use)
-    /// or `disabled`.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub status: Option<LlmModelStatus>,
 }
 
 /// Create a new model for a provider
@@ -279,7 +275,6 @@ pub async fn update_model(
         capabilities: req.capabilities,
         enabled: req.enabled,
         is_favorite: req.is_favorite,
-        status: req.status,
     }
     .run(&state.ctx(&org))
     .await?;

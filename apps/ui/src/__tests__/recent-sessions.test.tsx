@@ -46,7 +46,7 @@ function createLlmModel(overrides?: Partial<LlmModelWithProvider>): LlmModelWith
     display_name: "GPT-4o",
     capabilities: ["chat"],
     enabled: false,
-    status: "healthy",
+    healthy: true,
     created_at: "2025-01-01T00:00:00Z",
     updated_at: "2025-01-01T00:00:00Z",
     provider_name: "OpenAI",
