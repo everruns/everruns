@@ -573,3 +573,54 @@ For pages listing entities with filters:
 - Pagination: Shows range and total for current filter
 
 **Why:** Avoids confusion between "total" and "filtered" counts. The card header count always reflects the current view.
+
+### Page Titles
+
+Every route under `apps/ui/src/app/` MUST set a meaningful `<title>`. Browser
+tabs, history, and screen readers rely on it — a single static title across
+every page is not acceptable.
+
+**Format:** `<Specific> · <Section> · Everruns`
+
+- Separator: middle dot ` · ` (U+00B7) with single spaces.
+- App suffix: always `Everruns` at the end.
+- Order: most specific first, broadest last (browser tabs truncate from the
+  right, so the distinguishing bit must lead).
+- Two to four segments. Drop empty segments.
+
+Examples:
+
+- `Agents · Everruns` (list)
+- `New Agent · Agents · Everruns` (create)
+- `My Customer Bot · Agent · Everruns` (detail)
+- `Edit · My Customer Bot · Agent · Everruns` (edit)
+- `API Keys · Settings · Everruns` (settings sub-tab)
+- `Trajectory · Friday triage · Session · Everruns` (session sub-tab)
+- `Sign in · Everruns` (auth)
+
+**Display name vs name:** for entities with both `name` and `display_name`,
+the title MUST use `getDisplayName(entity)` from
+`apps/ui/src/lib/entity-lifecycle.ts`. The slug `name` is for URLs, never the
+title. While the entity is still loading, fall back to the kind alone
+(`Agent · Everruns`) — the title updates in place once data resolves.
+
+**Implementation:** `apps/ui/src/lib/page-title.ts` exports `formatPageTitle()`
+and `apps/ui/src/hooks/use-page-title.ts` exports `usePageTitle()`. The hook
+sets `document.title` via `useEffect` and restores the previous title on
+unmount; `null` / `undefined` segments are skipped so loading states work.
+Server pages with no client interactivity SHOULD export Next.js `metadata`
+instead. Mixing both is fine — the hook overrides static metadata once
+mounted.
+
+**Coverage by page type:**
+
+- List/index: section name (`Agents`)
+- Create: `New <Kind>`, with the section as a second segment
+- Edit: prefix `Edit · ` to the detail title
+- Detail: `<displayName> · <Kind>`
+- Sub-tabs (sessions, settings, durable): `<Sub> · <Parent specific or kind>`
+- Auth: action verb only (`Sign in`, `Sign up`)
+- Dev / showcase: `<Component> · Dev`
+
+When adding a new route, the page title is part of the work — pages without a
+title should fail review.

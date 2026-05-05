@@ -148,7 +148,6 @@ Always make sure you are working on top of latest main from remote.
 - `specs/agent-identities.md` - Agent identities (virtual principals for unattended execution)
 - `specs/agent-blueprints.md` - Pre-built agent definitions (private tools, fixed models, typed config)
 - `specs/messaging-integrations.md` - Messaging integrations (channel abstractions, parity requirements, platform adapters)
-- `specs/page-titles.md` - Web UI page title format and coverage requirement
 
 ### Test Cases
 
