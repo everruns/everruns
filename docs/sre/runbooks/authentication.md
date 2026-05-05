@@ -1,6 +1,8 @@
 ---
-title: Authentication Configuration
-description: Configure authentication for Everruns, including API key setup, OAuth integration, token validation, and multi-tenant access control for production deployments.
+title: Authentication Configuration Runbook
+description: Configure Everruns authentication modes, API keys, OAuth providers, JWT secrets, token lifetimes, sign-up controls, and production access settings for operators.
+sidebar:
+  label: Authentication
 ---
 
 ## Overview

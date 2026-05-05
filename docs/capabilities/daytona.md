@@ -1,6 +1,8 @@
 ---
-title: Daytona
-description: Run code in isolated Daytona cloud sandboxes with secure command execution, file access, and session-scoped environments for safe multi-tenant agent workloads.
+title: Daytona Sandboxes for Agent Code Execution
+description: Run agent code in isolated Daytona cloud sandboxes with command execution, file access, workspace downloads, lifecycle controls, and session-scoped environments.
+sidebar:
+  label: Daytona
 ---
 
 | | |

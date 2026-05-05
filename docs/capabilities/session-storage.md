@@ -1,6 +1,8 @@
 ---
-title: Storage
-description: Key/value storage and encrypted secret storage scoped to a session. Agents can persist state, cache results, and store sensitive data securely across turns.
+title: Session Storage for Agent State and Secrets
+description: Persist agent state with session-scoped key/value storage and encrypted secret storage for API keys, preferences, cached results, and multi-turn workflows.
+sidebar:
+  label: Storage
 ---
 
 | | |
