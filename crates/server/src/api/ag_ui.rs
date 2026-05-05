@@ -14,6 +14,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::convert::Infallible;
 use std::sync::Arc;
+use std::time::Instant;
 
 use ag_ui_core::event::{
     BaseEvent as AgUiBaseEvent, Event as AgUiEvent,
@@ -135,6 +136,14 @@ async fn run_agent(
     headers: HeaderMap,
     Json(req): Json<AgUiRunAgentInput>,
 ) -> Result<Sse<impl Stream<Item = Result<SseEvent, Infallible>>>, Response> {
+    // EVE-415: monotonic anchor for the AG-UI ingress phase. Used to attribute
+    // the gap between accepted request and `ReasonAtom: starting LLM call`
+    // (~600-700ms baseline) to the AG-UI handler vs. the durable runtime.
+    // The handler emits a single structured `ag_ui.ingress_complete` log just
+    // before returning the SSE stream so downstream profilers can isolate the
+    // ingress portion without grepping for adjacent timestamps.
+    let ingress_start = Instant::now();
+
     // THREAT[TM-LLM-020]: Anonymous AG-UI clients must not be able to forge
     // privileged message roles (system/developer/tool) into the LLM context
     // that the server builds from the request body.
@@ -259,6 +268,7 @@ async fn run_agent(
         .await
         .map_err(internal_error)?;
 
+    let session_resolved_ms = ingress_start.elapsed().as_millis();
     let message = state
         .message_service
         .create(
@@ -294,6 +304,25 @@ async fn run_agent(
         .list(session.session.id.uuid())
         .await
         .map_err(internal_error)?;
+
+    // EVE-415: structured AG-UI ingress timing. `ag_ui_handler_ms` is the
+    // wall-clock cost of every server-side step before the SSE stream starts
+    // delivering events (validation, app/channel resolution, session
+    // resolution, message creation, durable turn workflow enqueue). Together
+    // with `time_to_first_token_ms` already emitted by the worker, this lets
+    // ops attribute end-to-end TTFT to ingress, durable orchestration, and
+    // provider TTFT without joining unstructured logs.
+    let ag_ui_handler_ms = ingress_start.elapsed().as_millis();
+    tracing::info!(
+        phase = "ag_ui.ingress_complete",
+        app_id = %app.public_id,
+        session_id = %session.session.id,
+        message_id = %message.id,
+        is_new_session = session.is_new,
+        session_resolved_ms = session_resolved_ms as u64,
+        ag_ui_handler_ms = ag_ui_handler_ms as u64,
+        "AG-UI ingress complete; durable turn enqueued"
+    );
 
     let initial_events = vec![
         AgUiEvent::RunStarted(AgUiRunStartedEvent {
