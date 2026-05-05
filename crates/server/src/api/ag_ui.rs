@@ -3,9 +3,9 @@
 // Design Decision: AG-UI ingress is app-scoped (POST /v1/apps/{app_id}/ag-ui)
 // so the App controls the agent, harness, identity, and publication lifecycle.
 //
-// Design Decision: The endpoint is anonymous for the initial rollout. Requests
-// are accepted without API auth when the app is published and an enabled AG-UI
-// channel is present.
+// Design Decision: The endpoint is public and app-scoped. Requests are accepted
+// without user API auth when the app is published and an enabled AG-UI channel
+// is present, but a channel may require its own shared bearer token.
 //
 // Design Decision: The AG-UI stream is translated from Everruns session events
 // instead of bypassing the durable runtime. This keeps app-channel behavior
@@ -41,7 +41,7 @@ use ag_ui_core::types::{
 use axum::{
     Extension, Json, Router,
     extract::{ConnectInfo, Path, State},
-    http::{HeaderMap, StatusCode},
+    http::{HeaderMap, StatusCode, header::AUTHORIZATION},
     response::{
         IntoResponse, Response,
         sse::{Event as SseEvent, KeepAlive, Sse},
@@ -80,6 +80,8 @@ use crate::execution_metadata;
 use crate::middleware::RequestId;
 use crate::services::EventService;
 use crate::storage::{DbMessageRetriever, EncryptionService, StorageBackend};
+
+const AG_UI_TOKEN_HEADER: &str = "x-everruns-ag-ui-token";
 
 #[derive(Clone)]
 pub struct AgUiState {
@@ -168,6 +170,14 @@ async fn run_agent(
         .ok_or_else(|| bad_request("Invalid AG-UI channel configuration"))?;
     if !channel_config.anonymous {
         return Err(forbidden("Anonymous AG-UI access is disabled"));
+    }
+    if let Some(expected_token) = channel_config.token.as_deref()
+        && !expected_token.is_empty()
+    {
+        let provided_token = extract_ag_ui_token(&headers).ok_or_else(unauthorized)?;
+        if !constant_time_eq(provided_token.as_bytes(), expected_token.as_bytes()) {
+            return Err(unauthorized());
+        }
     }
 
     // THREAT[TM-DOS-010]: Anonymous AG-UI traffic must respect a configurable
@@ -971,6 +981,25 @@ fn internal_error(err: anyhow::Error) -> Response {
         .into_response()
 }
 
+fn extract_ag_ui_token(headers: &HeaderMap) -> Option<&str> {
+    if let Some(value) = headers.get(AG_UI_TOKEN_HEADER) {
+        return value.to_str().ok();
+    }
+
+    let auth = headers.get(AUTHORIZATION)?.to_str().ok()?;
+    auth.strip_prefix("Bearer ")
+}
+
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    a.iter()
+        .zip(b.iter())
+        .fold(0u8, |acc, (x, y)| acc | (x ^ y))
+        == 0
+}
+
 /// Reject AG-UI request bodies that smuggle non-{user,assistant} message
 /// roles or reuse the same message id for multiple entries.
 ///
@@ -1015,6 +1044,16 @@ fn forbidden(message: &str) -> Response {
         StatusCode::FORBIDDEN,
         Json(ErrorResponse {
             error: message.to_string(),
+        }),
+    )
+        .into_response()
+}
+
+fn unauthorized() -> Response {
+    (
+        StatusCode::UNAUTHORIZED,
+        Json(ErrorResponse {
+            error: "Invalid or missing AG-UI token".to_string(),
         }),
     )
         .into_response()

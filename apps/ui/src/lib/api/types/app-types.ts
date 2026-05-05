@@ -25,6 +25,11 @@ export const DEFAULT_AG_UI_SESSION_EXPIRATION_SECONDS = 6 * 60 * 60;
 export interface AgUiChannelConfig {
   anonymous?: boolean;
   /**
+   * Optional shared token for the public AG-UI endpoint. When present, clients
+   * must send it as `Authorization: Bearer <token>` or `X-Everruns-AG-UI-Token`.
+   */
+  token?: string;
+  /**
    * How long an AG-UI thread can be resumed (in seconds) after the underlying
    * session was created. After this elapses the same `thread_id` cannot reuse
    * the existing session and must start a new one. `0` disables expiration.
