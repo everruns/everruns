@@ -881,10 +881,14 @@ where
     }
 }
 
-/// Option-aware variant of [`deserialize_bool_lenient`]. Missing or `null`
-/// values stay `None`; present values pass through the lenient bool coercion.
-/// Use on `Option<bool>` fields that come in via the MCP/bashkit flag parser,
-/// which forwards bools as JSON strings (`"true"`/`"false"`).
+/// Option-aware variant of [`deserialize_bool_lenient`] for `Option<bool>`
+/// fields that come in via the MCP/bashkit flag parser, which forwards bools
+/// as JSON strings (`"true"`/`"false"`). Present values pass through the
+/// lenient bool coercion; explicit `null` becomes `None`.
+///
+/// Pair with `#[serde(default)]` at the call site so a missing field stays
+/// `None`. Without `#[serde(default)]`, serde raises `missing field` before
+/// this function runs and the lenient coercion never gets a chance.
 pub fn deserialize_opt_bool_lenient<'de, D>(d: D) -> Result<Option<bool>, D::Error>
 where
     D: serde::Deserializer<'de>,

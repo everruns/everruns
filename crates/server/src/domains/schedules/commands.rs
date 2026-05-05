@@ -81,6 +81,9 @@ inventory::submit! { CommandDescriptor::of::<CreateSchedule>() }
 
 #[derive(Debug, Default, Deserialize)]
 pub struct ListSchedules {
+    // Bashkit's MCP flag parser forwards bools as JSON strings ("true"/"false"),
+    // so the lenient deserializer is required to accept `--enabled true`.
+    #[serde(default, deserialize_with = "deserialize_opt_bool_lenient")]
     pub enabled: Option<bool>,
     pub target_type: Option<String>,
     #[serde(default, deserialize_with = "deserialize_opt_u32_lenient")]

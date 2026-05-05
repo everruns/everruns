@@ -345,4 +345,13 @@ mod parse_tests {
         assert!(!cmd.include_stale);
         assert!(cmd.favorites_only);
     }
+
+    #[test]
+    fn list_models_omitted_fields_keep_default_true_for_include_stale() {
+        // `include_stale` mixes a custom deserializer with `default = "default_true"`;
+        // omitting it must still resolve to `true`, not silently flip to `false`.
+        let cmd: ListModels = serde_json::from_value(json!({})).unwrap();
+        assert!(cmd.include_stale);
+        assert!(!cmd.favorites_only);
+    }
 }

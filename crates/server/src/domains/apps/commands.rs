@@ -1585,6 +1585,9 @@ pub struct AddScheduleChannelCmd {
     #[serde(default)]
     pub session_mode: InvocationSessionMode,
     pub message: String,
+    // Bashkit's MCP flag parser forwards bools as JSON strings ("true"/"false"),
+    // so the lenient deserializer is required to accept `--enabled true`.
+    #[serde(default, deserialize_with = "deserialize_opt_bool_lenient")]
     pub enabled: Option<bool>,
 }
 
@@ -1638,6 +1641,9 @@ pub struct AddWebhookChannelCmd {
     #[serde(default)]
     pub session_mode: InvocationSessionMode,
     pub message: String,
+    // Bashkit's MCP flag parser forwards bools as JSON strings ("true"/"false"),
+    // so the lenient deserializer is required to accept `--enabled true`.
+    #[serde(default, deserialize_with = "deserialize_opt_bool_lenient")]
     pub enabled: Option<bool>,
 }
 
