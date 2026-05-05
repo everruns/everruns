@@ -33,12 +33,13 @@ See `specs/release-process.md` for the full release process specification.
    ```
 
 3. **Analyze commits and suggest highlights**:
-   - Review the commit list and identify the 3-5 most impactful **user-facing** features and changes
+   - Review the commit list and identify only the genuinely impactful **user-facing** features and changes
    - Prioritize: new capabilities users can interact with, new integrations, significant UX improvements, security/reliability improvements that affect users
-   - Deprioritize: internal refactors, CI changes, spec/docs updates, test additions (unless they enable a user-facing feature)
-   - Present the commit list and your suggested highlights to the user
+   - Exclude: internal refactors, CI changes, dependency bumps, spec/docs updates, test additions, minor fixes (unless they directly resolve a user-visible regression)
+   - Do not pad the list to hit a target count. Maintenance releases (mostly fixes and internal work) may have one or two highlights, or none at all — in which case omit the Highlights section entirely
+   - Present the commit list and your suggested highlights (or a recommendation to skip the section) to the user
    - Ask the user to confirm, adjust, or replace the highlights
-   - Note: Add markdown links for PRs `([#123](url))` and usernames `[@user](url))`
+   - Note: Add markdown links for PRs `([#123](url))` and usernames `[@user](url)`
 
 4. **After user approval**, update these files:
 
@@ -136,7 +137,7 @@ See `specs/release-process.md` for the full release process specification.
 ## Notes
 
 - Always preserve the CHANGELOG.md header and versioning policy section
-- The Highlights section is optional but recommended for minor/major releases
+- The Highlights section is optional. Recommended for minor/major releases that ship genuinely noteworthy user-facing changes; omit entirely for maintenance releases
 - Include screenshots for UI changes (can be added as links in CHANGELOG.md)
 - Do not add a "Migration Notes" section to release entries unless it is necessary for user-facing upgrade guidance
 - The `chore(release): prepare vX.Y.Z` commit message triggers auto-tagging on merge
