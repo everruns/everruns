@@ -30,6 +30,16 @@ function formatCost(cost: number): string {
   return `$${cost.toFixed(3)}`;
 }
 
+function formatReleaseDate(value: string): string {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+
 export function ModelRow({
   model,
   onDelete,
@@ -76,6 +86,14 @@ export function ModelRow({
             </div>
             <div className="text-sm text-muted-foreground">
               {model.model_id} - {model.provider_name}
+              {profile?.release_date && (
+                <>
+                  {" · "}
+                  <span title={`Released ${profile.release_date}`}>
+                    Released {formatReleaseDate(profile.release_date)}
+                  </span>
+                </>
+              )}
             </div>
           </div>
         </div>
