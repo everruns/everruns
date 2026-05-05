@@ -881,6 +881,22 @@ where
     }
 }
 
+/// Option-aware variant of [`deserialize_bool_lenient`]. Missing or `null`
+/// values stay `None`; present values pass through the lenient bool coercion.
+/// Use on `Option<bool>` fields that come in via the MCP/bashkit flag parser,
+/// which forwards bools as JSON strings (`"true"`/`"false"`).
+pub fn deserialize_opt_bool_lenient<'de, D>(d: D) -> Result<Option<bool>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::Deserialize;
+
+    #[derive(Deserialize)]
+    struct Wrap(#[serde(deserialize_with = "deserialize_bool_lenient")] bool);
+
+    Ok(Option::<Wrap>::deserialize(d)?.map(|Wrap(b)| b))
+}
+
 #[cfg(test)]
 mod error_tests {
     use super::*;
@@ -992,6 +1008,40 @@ mod lenient_tests {
     fn bool_lenient_rejects_garbage() {
         let err =
             serde_json::from_value::<FlagInput>(json!({"include_archived": "maybe"})).unwrap_err();
+        assert!(err.to_string().contains("coerce string"), "got: {err}");
+    }
+
+    #[derive(Debug, Deserialize, PartialEq)]
+    struct OptFlagInput {
+        #[serde(default, deserialize_with = "deserialize_opt_bool_lenient")]
+        enabled: Option<bool>,
+    }
+
+    #[test]
+    fn opt_bool_lenient_accepts_variants() {
+        for (input, expected) in [
+            (json!(true), Some(true)),
+            (json!(false), Some(false)),
+            (json!("true"), Some(true)),
+            (json!("FALSE"), Some(false)),
+            (json!("1"), Some(true)),
+            (json!(0), Some(false)),
+            (json!(null), None),
+        ] {
+            let v: OptFlagInput = serde_json::from_value(json!({"enabled": input})).unwrap();
+            assert_eq!(v.enabled, expected, "input: {input}");
+        }
+    }
+
+    #[test]
+    fn opt_bool_lenient_accepts_missing() {
+        let v: OptFlagInput = serde_json::from_value(json!({})).unwrap();
+        assert_eq!(v.enabled, None);
+    }
+
+    #[test]
+    fn opt_bool_lenient_rejects_garbage() {
+        let err = serde_json::from_value::<OptFlagInput>(json!({"enabled": "maybe"})).unwrap_err();
         assert!(err.to_string().contains("coerce string"), "got: {err}");
     }
 }
