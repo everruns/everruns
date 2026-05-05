@@ -219,7 +219,8 @@ fn command_error_kind(err: &CommandError) -> &'static str {
 /// Format a dispatch failure as `<kind>: <message>`. Bashkit prefixes the
 /// builtin name on its own (e.g. `update_model: …`), so we deliberately do
 /// not duplicate it here. The result is the structured error contract for
-/// MCP-facing builtins; see `specs/mcp.md`.
+/// MCP-facing builtins; see the "Structured dispatch errors" section in
+/// `specs/domains.md` for the canonical contract and the kind token table.
 fn format_dispatch_error(err: &CommandError) -> String {
     format!("{}: {err}", command_error_kind(err))
 }
