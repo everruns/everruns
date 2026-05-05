@@ -568,7 +568,12 @@ pub struct ListAppBudgets {
     pub app_id: String,
     /// When true include budgets attached to any of the app's channels
     /// (`app_channel:<id>`) in addition to the app itself.
-    #[serde(default = "default_true")]
+    // Bashkit's MCP flag parser forwards bools as JSON strings ("true"/"false"),
+    // so the lenient deserializer is required to accept `--include_channels true`.
+    #[serde(
+        default = "default_true",
+        deserialize_with = "deserialize_bool_lenient"
+    )]
     pub include_channels: bool,
 }
 

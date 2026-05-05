@@ -781,8 +781,12 @@ pub fn pagination(offset: Option<u32>, limit: Option<u32>) -> crate::api::common
 // defaults every value to a string — so `list_capabilities --limit 5` arrives
 // at dispatch as `{"limit": "5"}`. Serde then rejects that string while
 // trying to populate `Option<u32>`, the dispatcher wraps the error as
-// `CommandError::BadRequest`, and the bashkit adapter sanitizes it into the
-// opaque "<cmd>: callback failed" the caller sees.
+// `CommandError::BadRequest`, and the bashkit adapter previously sanitized it
+// into the opaque `<cmd>: callback failed` the caller saw. Today the dispatch
+// layer formats errors as `<cmd>: <kind>: <message>` (see `format_dispatch_error`
+// in `crates/server/src/api/mcp_endpoint/catalog.rs`), so callers can tell a
+// `bad_request` from an `internal` failure — but the lenient helpers below
+// still spare us a class of `bad_request: invalid type: string …` surprises.
 //
 // The helpers below sit between the serde field and the raw JSON: they accept
 // the native typed shape (for programmatic callers) and also coerce the
