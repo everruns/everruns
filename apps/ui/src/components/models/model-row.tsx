@@ -31,6 +31,21 @@ function formatCost(cost: number): string {
 }
 
 function formatReleaseDate(value: string): string {
+  // Profile release dates are documented as YYYY-MM-DD. `new Date(value)` would
+  // parse that form as UTC midnight, which renders as the previous calendar day
+  // for users west of UTC — parse the components as a local date instead.
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (match) {
+    const [, y, m, d] = match;
+    const local = new Date(Number(y), Number(m) - 1, Number(d));
+    if (!Number.isNaN(local.getTime())) {
+      return local.toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      });
+    }
+  }
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
   return parsed.toLocaleDateString(undefined, {
