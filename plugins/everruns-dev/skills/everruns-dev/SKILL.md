@@ -43,8 +43,10 @@ Harness --has--> Capability
   + (optional) agent + session overrides, then resolved into a `RuntimeAgent`.
   Status values: `started`, `active`, `idle`, `waiting_for_tool_results`,
   `paused`. Sessions live indefinitely.
-- **Model** - an LLM like `gpt-4o` or `claude-sonnet-4`. Resolution priority:
-  per-message controls -> session override -> agent default -> system default.
+- **Model** - an LLM model id supported by the target deployment. Resolution
+  priority: per-message controls -> session override -> agent default -> harness
+  default -> system default. Use the API catalog or model list before naming a
+  specific model.
 - **MCP server** - a remote server exposing tools; integrated into Everruns(Dev) as
   a virtual capability (`mcp:{uuid}`).
 - **App** - binds a Harness + Agent to a channel (Slack, web widget, etc.) for
@@ -182,17 +184,17 @@ query { "commands": "list_agents | jq '.data[] | {id, name, default_model_id}'" 
 query { "commands": "list_harnesses | jq '.[] | {id, name, display_name, description, status, parent_harness_id}'" }
 ```
 
-**Create a harness and an agent, then run the agent.**
+**Create an agent and run it with the default harness.**
 
 ```bash
-execute { "commands": "HID=$(create_harness --name \"research\" --system_prompt \"Research assistant.\" | jq -r .id)\nAID=$(create_agent --name \"researcher\" --system_prompt \"You are a careful researcher.\" | jq -r .id)\nagent_run --agent_id \"$AID\" --message \"Summarize the latest MCP spec.\"" }
+execute { "commands": "AID=$(create_agent --name \"researcher\" --system_prompt \"You are a careful researcher.\" | jq -r .id)\nagent_run --agent_id \"$AID\" --message \"Summarize https://docs.everruns.com/\"" }
 ```
 
-`agent_run` uses the default harness. To pin `$HID` (or any specific harness)
-to the session, create the session directly:
+`agent_run` uses the deployment's default harness. To pin a specific harness to
+the session, create the harness, then create the session directly:
 
 ```bash
-execute { "commands": "SID=$(create_session --harness_id \"$HID\" --agent_id \"$AID\" | jq -r .id)\ncreate_message --session_id \"$SID\" --message '{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Summarize the latest MCP spec.\"}]}'" }
+execute { "commands": "HID=$(create_harness --name \"research\" --system_prompt \"Research assistant.\" | jq -r .id)\nAID=$(create_agent --name \"researcher\" --system_prompt \"You are a careful researcher.\" | jq -r .id)\nSID=$(create_session --harness_id \"$HID\" --agent_id \"$AID\" | jq -r .id)\ncreate_message --session_id \"$SID\" --message '{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"Summarize https://docs.everruns.com/\"}]}'" }
 ```
 
 **Attach a capability to an agent.**
@@ -214,7 +216,7 @@ query { "commands": "SID=session_abc...\nwhile true; do\n  STATUS=$(get_session 
 **Iterate over agents.**
 
 ```bash
-query { "commands": "list_agents | jq -r '.data[].id' | while read id; do\n  get_agent --id \"$id\" | jq '{id, name, harness_id}'\ndone" }
+query { "commands": "list_agents | jq -r '.data[].id' | while read id; do\n  get_agent --id \"$id\" | jq '{id, name, display_name, default_model_id}'\ndone" }
 ```
 
 **Add an MCP server (becomes a virtual capability).**
@@ -256,4 +258,4 @@ list_agents | jq '.data[] | {id, name, default_model_id}'
 - Product docs: <https://docs.everruns.com>
 - Marketing: <https://everruns.com>
 - Dev deployment: <https://dev.everruns.com>
-- MCP endpoint spec: see `specs/mcp.md` in the main repo
+- MCP endpoint: <https://dev.everruns.com/mcp>
