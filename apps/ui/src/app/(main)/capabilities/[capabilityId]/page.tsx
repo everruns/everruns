@@ -9,11 +9,24 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MarkdownDisplay } from "@/components/ui/prompt-editor";
 import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
-import { ArrowLeft, CircleOff, Wrench, FileText, Code, Link as LinkIcon } from "lucide-react";
+import {
+  ArrowLeft,
+  CircleOff,
+  Wrench,
+  FileText,
+  Code,
+  Link as LinkIcon,
+  ExternalLink,
+  Bot,
+  Layers,
+} from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
 import type { CapabilityStatus, ToolDefinition } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
 import { getCapabilityStatusBadgeVariant } from "@/lib/status-utils";
+import { formatCountLabel } from "@/lib/formatting";
+
+const DOCS_BASE_URL = "https://dev.everruns.com/capabilities";
 
 function getStatusLabel(status: CapabilityStatus): string {
   switch (status) {
@@ -119,21 +132,42 @@ export default function CapabilityDetailPage({
         Back to Capabilities
       </Link>
 
-      <div className="flex items-start justify-between mb-6">
-        <div className="flex items-center gap-4">
-          <div className="p-3 bg-muted">
+      <div className="flex items-start justify-between mb-6 gap-4 flex-wrap">
+        <div className="flex items-center gap-4 min-w-0">
+          <div className="p-3 bg-muted shrink-0">
             <IconComponent className="w-6 h-6" />
           </div>
-          <div>
-            <h1 className="text-2xl font-bold flex items-center gap-3">
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold flex items-center gap-3 flex-wrap">
               {capability.name}
               <CopyButton value={capability.id} />
               <Badge variant={getCapabilityStatusBadgeVariant(capability.status)}>
                 {getStatusLabel(capability.status)}
               </Badge>
             </h1>
+            <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
+              <span className="inline-flex items-center gap-1">
+                <Bot className="h-3.5 w-3.5" />
+                {formatCountLabel(capability.agent_count ?? 0, "agent")}
+              </span>
+              <span className="inline-flex items-center gap-1">
+                <Layers className="h-3.5 w-3.5" />
+                {formatCountLabel(capability.harness_count ?? 0, "harness", "harnesses")}
+              </span>
+            </div>
           </div>
         </div>
+        {capability.docs_slug && (
+          <a
+            href={`${DOCS_BASE_URL}/${capability.docs_slug}/`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
+          >
+            View documentation
+            <ExternalLink className="w-3.5 h-3.5" />
+          </a>
+        )}
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -248,6 +282,20 @@ export default function CapabilityDetailPage({
               <CardTitle className="text-base">Summary</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-sm">
+                  <Bot className="h-4 w-4 text-muted-foreground" />
+                  <span>Agents</span>
+                </div>
+                <span className="font-medium">{capability.agent_count ?? 0}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-sm">
+                  <Layers className="h-4 w-4 text-muted-foreground" />
+                  <span>Harnesses</span>
+                </div>
+                <span className="font-medium">{capability.harness_count ?? 0}</span>
+              </div>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-sm">
                   <FileText className="h-4 w-4 text-muted-foreground" />

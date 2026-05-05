@@ -5,6 +5,7 @@ use super::Database;
 use super::build_search_sql;
 use anyhow::Result;
 use everruns_core::typed_id::HarnessId;
+use std::collections::HashMap;
 use uuid::Uuid;
 
 impl Database {
@@ -353,5 +354,30 @@ impl Database {
         tx.commit().await?;
 
         self.get_harness_capabilities(harness_id).await
+    }
+
+    /// Count how many active harnesses reference each capability ID, scoped to an org.
+    /// Skips harnesses that are archived or deleted.
+    pub async fn count_harness_capability_references(
+        &self,
+        org_id: i64,
+    ) -> Result<HashMap<String, u64>> {
+        let rows: Vec<(String, i64)> = sqlx::query_as(
+            r#"
+            SELECT hc.capability_id, COUNT(*) AS count
+            FROM harness_capabilities hc
+            JOIN harnesses h ON h.id = hc.harness_id
+            WHERE h.org_id = $1 AND h.status = 'active'
+            GROUP BY hc.capability_id
+            "#,
+        )
+        .bind(org_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|(id, c)| (id, c.max(0) as u64))
+            .collect())
     }
 }

@@ -136,6 +136,9 @@ impl CapabilityService {
                 config_schema: None,
                 config_ui_schema: None,
                 risk_level: RiskLevel::Low,
+                agent_count: 0,
+                harness_count: 0,
+                docs_slug: None,
             });
         }
 
@@ -162,7 +165,21 @@ impl CapabilityService {
                 config_schema: None,
                 config_ui_schema: None,
                 risk_level: RiskLevel::Low,
+                agent_count: 0,
+                harness_count: 0,
+                docs_slug: None,
             });
+        }
+
+        // Populate agent/harness reference counts in one pair of grouped queries.
+        let (agent_counts, harness_counts) = tokio::try_join!(
+            self.db.count_agent_capability_references(org_id),
+            self.db.count_harness_capability_references(org_id),
+        )?;
+        for cap in capabilities.iter_mut() {
+            let id = cap.id.as_str();
+            cap.agent_count = agent_counts.get(id).copied().unwrap_or(0);
+            cap.harness_count = harness_counts.get(id).copied().unwrap_or(0);
         }
 
         Ok(capabilities)
@@ -174,6 +191,21 @@ impl CapabilityService {
     /// This ensures viewing a capability doesn't fail if the MCP server is unreachable.
     /// Use the refresh tools endpoint to explicitly update cached tools.
     pub async fn get(&self, org_id: i64, id: &CapabilityId) -> Result<Option<CapabilityInfo>> {
+        let info = self.get_inner(org_id, id).await?;
+        if let Some(mut info) = info {
+            let (agent_counts, harness_counts) = tokio::try_join!(
+                self.db.count_agent_capability_references(org_id),
+                self.db.count_harness_capability_references(org_id),
+            )?;
+            let key = info.id.as_str();
+            info.agent_count = agent_counts.get(key).copied().unwrap_or(0);
+            info.harness_count = harness_counts.get(key).copied().unwrap_or(0);
+            return Ok(Some(info));
+        }
+        Ok(None)
+    }
+
+    async fn get_inner(&self, org_id: i64, id: &CapabilityId) -> Result<Option<CapabilityInfo>> {
         // Check if it's an MCP capability
         if let Some(server_id) = id.mcp_server_id() {
             let internal_caller = Caller::internal(org_id);
@@ -214,6 +246,9 @@ impl CapabilityService {
                     config_schema: None,
                     config_ui_schema: None,
                     risk_level: RiskLevel::Low,
+                    agent_count: 0,
+                    harness_count: 0,
+                    docs_slug: None,
                 }));
             }
             return Ok(None);
@@ -239,6 +274,9 @@ impl CapabilityService {
                     config_schema: None,
                     config_ui_schema: None,
                     risk_level: RiskLevel::Low,
+                    agent_count: 0,
+                    harness_count: 0,
+                    docs_slug: None,
                 }));
             }
             return Ok(None);
