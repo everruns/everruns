@@ -27,7 +27,7 @@ Everruns(Dev) tools and guidance.
    ![Everruns Dev plugin page in Codex showing the Add to Codex button](./codex-everruns-dev-plugin.png)
 
    Codex discovers the marketplace from `.agents/plugins/marketplace.json`. That
-   marketplace points to `plugins/everruns-dev`, which contains the Codex plugin
+   marketplace points to `./plugins/everruns-dev`, which contains the Codex plugin
    manifest and MCP server configuration.
 
 4. Complete the browser OAuth flow when Codex asks you to authenticate.
