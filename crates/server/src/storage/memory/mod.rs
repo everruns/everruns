@@ -20,6 +20,7 @@ mod events;
 mod harnesses;
 mod llm;
 mod mcp_servers;
+mod memories;
 mod notifications;
 mod organizations;
 mod principals;
@@ -144,6 +145,9 @@ pub struct InMemoryDatabase {
     usage_ledger: RwLock<Vec<UsageLedgerRow>>,
     // Workspace volumes
     volumes: RwLock<HashMap<Uuid, VolumeRow>>,
+    // Memory stores and memories (org-scoped agent memory)
+    memory_stores: RwLock<HashMap<Uuid, MemoryStoreDbRow>>,
+    memories: RwLock<HashMap<Uuid, MemoryDbRow>>,
     // OAuth clients (MCP OAuth 2.1)
     oauth_clients: RwLock<HashMap<Uuid, OAuthClientRow>>,
     oauth_authorization_codes: RwLock<HashMap<Uuid, OAuthAuthorizationCodeRow>>,
@@ -216,6 +220,8 @@ impl Default for InMemoryDatabase {
             usage_journal: RwLock::new(HashMap::new()),
             usage_ledger: RwLock::new(Vec::new()),
             volumes: RwLock::new(HashMap::new()),
+            memory_stores: RwLock::new(HashMap::new()),
+            memories: RwLock::new(HashMap::new()),
             oauth_clients: RwLock::new(HashMap::new()),
             oauth_authorization_codes: RwLock::new(HashMap::new()),
             oauth_refresh_tokens: RwLock::new(HashMap::new()),

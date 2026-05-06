@@ -1,0 +1,89 @@
+use chrono::{DateTime, Utc};
+use everruns_core::typed_id::{MemoryId, MemoryStoreId};
+use serde::{Deserialize, Serialize};
+use utoipa::{IntoParams, ToSchema};
+
+pub use crate::storage::models::{MemoryDbRow, MemoryStoreDbRow};
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct MemoryStoreResponse {
+    #[schema(value_type = String, example = "mst_01933b5a000070008000000000000001")]
+    pub id: MemoryStoreId,
+    pub name: String,
+    pub is_default: bool,
+    pub active_memory_count: i64,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct CreateMemoryStoreRequest {
+    pub name: String,
+    #[serde(default)]
+    pub is_default: bool,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct MemoryResponse {
+    #[schema(value_type = String, example = "mem_01933b5a000070008000000000000001")]
+    pub id: MemoryId,
+    #[schema(value_type = String, example = "mst_01933b5a000070008000000000000001")]
+    pub store_id: MemoryStoreId,
+    pub content: String,
+    pub content_parts: serde_json::Value,
+    pub kind: String,
+    pub importance: i16,
+    pub tags: Vec<String>,
+    pub active: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ListMemoriesResponse {
+    pub data: Vec<MemoryResponse>,
+    pub total: i64,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, IntoParams, ToSchema)]
+pub struct ListMemoriesQuery {
+    #[serde(default)]
+    pub query: Option<String>,
+    #[serde(default)]
+    pub kind: Option<String>,
+    #[serde(default)]
+    pub tag: Option<Vec<String>>,
+    #[serde(default)]
+    pub include_inactive: Option<bool>,
+    #[serde(default)]
+    pub limit: Option<usize>,
+}
+
+pub fn store_response(
+    row: MemoryStoreDbRow,
+    active_memory_count: i64,
+) -> anyhow::Result<MemoryStoreResponse> {
+    Ok(MemoryStoreResponse {
+        id: row.public_id.parse()?,
+        name: row.name,
+        is_default: row.is_default,
+        active_memory_count,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+    })
+}
+
+pub fn memory_response(row: MemoryDbRow) -> anyhow::Result<MemoryResponse> {
+    Ok(MemoryResponse {
+        id: row.public_id.parse()?,
+        store_id: row.store_public_id.parse()?,
+        content: row.content,
+        content_parts: row.content_parts,
+        kind: row.kind,
+        importance: row.importance,
+        tags: row.tags,
+        active: row.active,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+    })
+}

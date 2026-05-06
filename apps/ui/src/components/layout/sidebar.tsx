@@ -21,6 +21,7 @@ import { usePathname } from "next/navigation";
 import {
   Boxes,
   BookOpen,
+  Brain,
   Calendar,
   ClipboardCheck,
   FlaskConical,
@@ -94,6 +95,7 @@ export const defaultBuildingBlocksNavigation: NavigationItem[] = [
   { name: "Agent Identities", href: "/agent-identities", icon: UserRound },
   { name: "Skills", href: "/skills", icon: BookOpen },
   { name: "Volumes", href: "/volumes", icon: HardDrive },
+  { name: "Memory", href: "/memory-stores", icon: Brain },
   { name: "Models", href: "/models", icon: Cpu },
   { name: "Capabilities", href: "/capabilities", icon: Puzzle },
   { name: "MCP Servers", href: "/mcp-servers", icon: capabilityIconMap.mcp },

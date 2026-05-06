@@ -745,6 +745,87 @@ impl StorageBackend {
     }
 
     // ============================================
+    // Memory Stores
+    // ============================================
+
+    pub async fn create_memory_store(
+        &self,
+        org_id: i64,
+        input: CreateMemoryStoreRow,
+    ) -> Result<MemoryStoreDbRow> {
+        dispatch!(self, create_memory_store, org_id, input)
+    }
+
+    pub async fn get_memory_store_by_public_id(
+        &self,
+        org_id: i64,
+        public_id: &str,
+    ) -> Result<Option<MemoryStoreDbRow>> {
+        dispatch!(self, get_memory_store_by_public_id, org_id, public_id)
+    }
+
+    pub async fn get_default_memory_store(&self, org_id: i64) -> Result<Option<MemoryStoreDbRow>> {
+        dispatch!(self, get_default_memory_store, org_id)
+    }
+
+    pub async fn list_memory_stores(&self, org_id: i64) -> Result<Vec<MemoryStoreDbRow>> {
+        dispatch!(self, list_memory_stores, org_id)
+    }
+
+    pub async fn list_memory_stores_with_counts(
+        &self,
+        org_id: i64,
+    ) -> Result<Vec<MemoryStoreWithCount>> {
+        dispatch!(self, list_memory_stores_with_counts, org_id)
+    }
+
+    pub async fn count_memory_stores(&self, org_id: i64) -> Result<i64> {
+        dispatch!(self, count_memory_stores, org_id)
+    }
+
+    pub async fn create_memory(&self, input: CreateMemoryRow) -> Result<MemoryDbRow> {
+        dispatch!(self, create_memory, input)
+    }
+
+    pub async fn create_memory_with_cap(
+        &self,
+        input: CreateMemoryRow,
+        cap_limit: i64,
+    ) -> Result<Option<MemoryDbRow>> {
+        dispatch!(self, create_memory_with_cap, input, cap_limit)
+    }
+
+    pub async fn get_memory_by_public_id(
+        &self,
+        org_id: i64,
+        public_id: &str,
+    ) -> Result<Option<MemoryDbRow>> {
+        dispatch!(self, get_memory_by_public_id, org_id, public_id)
+    }
+
+    pub async fn list_memories(
+        &self,
+        org_id: i64,
+        store_id: Option<Uuid>,
+        filter: ListMemoriesFilter,
+    ) -> Result<(Vec<MemoryDbRow>, i64)> {
+        dispatch!(self, list_memories, org_id, store_id, filter)
+    }
+
+    pub async fn count_active_memories(&self, store_id: Uuid) -> Result<i64> {
+        dispatch!(self, count_active_memories, store_id)
+    }
+
+    pub async fn deactivate_memory(
+        &self,
+        org_id: i64,
+        store_id: Uuid,
+        memory_public_id: &str,
+    ) -> Result<bool> {
+        dispatch!(self, deactivate_memory, org_id, store_id, memory_public_id)
+    }
+
+    // ============================================
     // Pinned Sessions
     // ============================================
 

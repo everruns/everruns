@@ -61,6 +61,28 @@ impl Capability for MemoryCapability {
             Box::new(ForgetTool),
         ]
     }
+
+    fn config_schema(&self) -> Option<Value> {
+        Some(json!({
+            "type": "object",
+            "properties": {
+                "store": {
+                    "type": ["string", "null"],
+                    "title": "Memory store",
+                    "description": "Memory store ID (mst_<32-hex>) to read and write. Leave empty to use the org default store, created on first use.",
+                    "pattern": "^mst_[0-9a-f]{32}$"
+                },
+                "passive_recall_count": {
+                    "type": "integer",
+                    "title": "Passive recall count",
+                    "description": "Number of memories auto-injected per turn. Set to 0 to disable passive recall.",
+                    "minimum": 0,
+                    "maximum": 50,
+                    "default": 5
+                }
+            }
+        }))
+    }
 }
 
 const MEMORY_SYSTEM_PROMPT: &str = r#"## Persistent Memory

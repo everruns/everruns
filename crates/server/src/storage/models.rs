@@ -902,6 +902,78 @@ pub struct UpdateVolume {
 }
 
 // ============================================
+// Memory Store models (org-scoped persistent memories — see specs/memory.md)
+// ============================================
+
+#[derive(Debug, Clone, FromRow, serde::Serialize)]
+pub struct MemoryStoreDbRow {
+    pub id: Uuid,
+    pub org_id: i64,
+    pub public_id: String,
+    pub name: String,
+    pub is_default: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, FromRow, serde::Serialize)]
+pub struct MemoryStoreWithCount {
+    pub id: Uuid,
+    pub org_id: i64,
+    pub public_id: String,
+    pub name: String,
+    pub is_default: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub active_count: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateMemoryStoreRow {
+    pub public_id: String,
+    pub name: String,
+    pub is_default: bool,
+}
+
+#[derive(Debug, Clone, FromRow, serde::Serialize)]
+pub struct MemoryDbRow {
+    pub id: Uuid,
+    pub public_id: String,
+    pub store_id: Uuid,
+    pub store_public_id: String,
+    pub org_id: i64,
+    pub content: String,
+    pub content_parts: serde_json::Value,
+    pub kind: String,
+    pub importance: i16,
+    pub tags: Vec<String>,
+    pub active: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateMemoryRow {
+    pub public_id: String,
+    pub store_id: Uuid,
+    pub org_id: i64,
+    pub content: String,
+    pub content_parts: serde_json::Value,
+    pub kind: String,
+    pub importance: i16,
+    pub tags: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ListMemoriesFilter {
+    pub query: Option<String>,
+    pub kind: Option<String>,
+    pub tags: Option<Vec<String>>,
+    pub include_inactive: bool,
+    pub limit: usize,
+}
+
+// ============================================
 // Session Git models (libgit2 custom ODB/refdb over PostgreSQL)
 // ============================================
 

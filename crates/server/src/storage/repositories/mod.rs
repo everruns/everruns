@@ -15,6 +15,7 @@ mod events;
 mod harnesses;
 mod llm;
 mod mcp_servers;
+mod memories;
 mod notifications;
 mod organizations;
 mod principals;

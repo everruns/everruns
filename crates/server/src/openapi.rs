@@ -138,6 +138,12 @@ use utoipa::OpenApi;
         api::volumes::get_volume,
         api::volumes::update_volume,
         api::volumes::delete_volume,
+        // Memory Stores
+        api::memory_stores::list_memory_stores,
+        api::memory_stores::create_memory_store,
+        api::memory_stores::get_memory_store,
+        api::memory_stores::list_memories,
+        api::memory_stores::forget_memory,
         // Images
         api::images::upload_image,
         api::images::list_images,
@@ -268,6 +274,11 @@ use utoipa::OpenApi;
             api::volumes::UpdateVolumeRequest,
             api::volumes::ListVolumesQuery,
             api::volumes::VolumeResponse,
+            api::memory_stores::CreateMemoryStoreRequest,
+            api::memory_stores::ListMemoriesQuery,
+            api::memory_stores::ListMemoriesResponse,
+            api::memory_stores::MemoryResponse,
+            api::memory_stores::MemoryStoreResponse,
         )
     ),
     tags(
@@ -286,6 +297,7 @@ use utoipa::OpenApi;
         (name = "durable-schedules", description = "Durable scheduled tasks management endpoints"),
         (name = "organizations", description = "Organization management endpoints"),
         (name = "volumes", description = "Workspace volume management endpoints"),
+        (name = "memory_stores", description = "Org-scoped persistent memory stores"),
         (name = "images", description = "Image upload and management endpoints"),
         (name = "session-databases", description = "Session-scoped SQL database endpoints"),
         (name = "session-storage", description = "Session key-value storage endpoints"),

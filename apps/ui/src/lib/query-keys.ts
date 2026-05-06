@@ -182,6 +182,15 @@ export const queryKeys = {
     detail: (volumeId: string) => ["volume", volumeId] as const,
   },
 
+  // Memory store queries
+  memoryStores: {
+    all: ["memory-stores"] as const,
+    list: () => ["memory-stores"] as const,
+    detail: (storeId: string) => ["memory-store", storeId] as const,
+    memories: (storeId: string, params: Record<string, unknown> = {}) =>
+      ["memory-store", storeId, "memories", params] as const,
+  },
+
   // Eval queries
   evals: {
     all: ["evals"] as const,
