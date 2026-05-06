@@ -4,7 +4,6 @@
 // Spec: specs/mcp.md (umbrella), specs/mcp-servers.md (API endpoints)
 
 use crate::auth::{AuthState, ResolvedOrg};
-use crate::domains::common::Command;
 use crate::domains::mcp_servers::types::{CreateMcpServerRequest, UpdateMcpServerRequest};
 use crate::domains::mcp_servers::{MCP_SERVER_DANGEROUS, MCP_SERVER_MANAGE, MCP_SERVER_VIEW};
 use crate::services::CapabilityService;
@@ -17,9 +16,8 @@ use axum::{
 };
 use everruns_core::{Caller, McpServer, ResourceConfigResponse, evaluate_policies_with};
 
-use super::common::{
-    ApiResult, ErrorResponse, ListResponse, UrlBuilder, WithUrls, impl_auth_state,
-};
+use super::common::{ApiResult, ErrorResponse, ListResponse, WithUrls, impl_auth_state};
+use super::dispatch::{Dispatchable, impl_dispatchable};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
@@ -80,6 +78,7 @@ impl AppState {
 }
 
 impl_auth_state!(AppState);
+impl_dispatchable!(AppState);
 
 /// Create MCP server routes
 pub fn routes(state: AppState) -> Router {
@@ -143,12 +142,10 @@ pub async fn create_mcp_server(
     State(state): State<AppState>,
     Json(req): Json<CreateMcpServerRequest>,
 ) -> Result<(StatusCode, Json<WithUrls<McpServer>>), (StatusCode, Json<ErrorResponse>)> {
-    let server = crate::domains::mcp_servers::CreateMcpServer(req)
-        .run(&state.ctx(&org))
-        .await?;
-
-    let urls = UrlBuilder::from_auth_config(&state.auth.config);
-    Ok((StatusCode::CREATED, Json(urls.wrap(server))))
+    state
+        .dispatcher(&org)
+        .run_created_with_urls(crate::domains::mcp_servers::CreateMcpServer(req))
+        .await
 }
 
 /// GET /v1/mcp-servers - List all MCP servers
@@ -167,15 +164,13 @@ pub async fn list_mcp_servers(
     State(state): State<AppState>,
     Query(query): Query<ListMcpServersQuery>,
 ) -> ApiResult<ListResponse<WithUrls<McpServer>>> {
-    let servers = crate::domains::mcp_servers::ListMcpServers {
-        search: query.search,
-        include_archived: query.include_archived.unwrap_or(false),
-    }
-    .run(&state.ctx(&org))
-    .await?;
-
-    let urls = UrlBuilder::from_auth_config(&state.auth.config);
-    Ok(Json(ListResponse::new(servers).with_urls(&urls)))
+    state
+        .dispatcher(&org)
+        .run_list_with_urls(crate::domains::mcp_servers::ListMcpServers {
+            search: query.search,
+            include_archived: query.include_archived.unwrap_or(false),
+        })
+        .await
 }
 
 /// GET /v1/mcp-servers/{server_id} - Get MCP server by ID
@@ -198,12 +193,10 @@ pub async fn get_mcp_server(
     State(state): State<AppState>,
     Path(server_id): Path<String>,
 ) -> ApiResult<WithUrls<McpServer>> {
-    let server = crate::domains::mcp_servers::GetMcpServer { id: server_id }
-        .run(&state.ctx(&org))
-        .await?;
-
-    let urls = UrlBuilder::from_auth_config(&state.auth.config);
-    Ok(Json(urls.wrap(server)))
+    state
+        .dispatcher(&org)
+        .run_with_urls(crate::domains::mcp_servers::GetMcpServer { id: server_id })
+        .await
 }
 
 /// PATCH /v1/mcp-servers/{server_id} - Update MCP server
@@ -228,12 +221,10 @@ pub async fn update_mcp_server(
     Path(server_id): Path<String>,
     Json(req): Json<UpdateMcpServerRequest>,
 ) -> ApiResult<WithUrls<McpServer>> {
-    let server = crate::domains::mcp_servers::UpdateMcpServerCmd { id: server_id, req }
-        .run(&state.ctx(&org))
-        .await?;
-
-    let urls = UrlBuilder::from_auth_config(&state.auth.config);
-    Ok(Json(urls.wrap(server)))
+    state
+        .dispatcher(&org)
+        .run_with_urls(crate::domains::mcp_servers::UpdateMcpServerCmd { id: server_id, req })
+        .await
 }
 
 /// DELETE /v1/mcp-servers/{server_id} - Delete MCP server
@@ -256,10 +247,10 @@ pub async fn delete_mcp_server(
     State(state): State<AppState>,
     Path(server_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    crate::domains::mcp_servers::DeleteMcpServer { id: server_id }
-        .run(&state.ctx(&org))
-        .await?;
-    Ok(StatusCode::NO_CONTENT)
+    state
+        .dispatcher(&org)
+        .run_no_content(crate::domains::mcp_servers::DeleteMcpServer { id: server_id })
+        .await
 }
 
 pub async fn destroy_mcp_server(
@@ -267,8 +258,8 @@ pub async fn destroy_mcp_server(
     State(state): State<AppState>,
     Path(server_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    crate::domains::mcp_servers::DestroyMcpServer { id: server_id }
-        .run(&state.ctx(&org))
-        .await?;
-    Ok(StatusCode::NO_CONTENT)
+    state
+        .dispatcher(&org)
+        .run_no_content(crate::domains::mcp_servers::DestroyMcpServer { id: server_id })
+        .await
 }

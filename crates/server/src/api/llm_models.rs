@@ -4,6 +4,7 @@
 use crate::api::common::{
     ApiResult, ErrorResponse, ListResponse, UrlBuilder, WithUrls, impl_auth_state,
 };
+use crate::api::dispatch::{Dispatchable, impl_dispatchable};
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
 use crate::domains::llm_models::{
@@ -64,6 +65,7 @@ impl AppState {
 }
 
 impl_auth_state!(AppState);
+impl_dispatchable!(AppState);
 
 /// Request to create a new LLM model for a provider
 #[derive(Debug, Deserialize, ToSchema)]
@@ -152,19 +154,17 @@ pub async fn create_model(
     Path(provider_id): Path<String>,
     Json(req): Json<CreateLlmModelRequest>,
 ) -> Result<(StatusCode, Json<WithUrls<LlmModel>>), (StatusCode, Json<ErrorResponse>)> {
-    let model = CreateModel {
-        provider_id,
-        model_id: req.model_id,
-        display_name: req.display_name,
-        capabilities: req.capabilities,
-        enabled: req.enabled,
-        is_favorite: req.is_favorite,
-    }
-    .run(&state.ctx(&org))
-    .await?;
-
-    let builder = UrlBuilder::from_auth_config(&state.auth.config);
-    Ok((StatusCode::CREATED, Json(builder.wrap(model))))
+    state
+        .dispatcher(&org)
+        .run_created_with_urls(CreateModel {
+            provider_id,
+            model_id: req.model_id,
+            display_name: req.display_name,
+            capabilities: req.capabilities,
+            enabled: req.enabled,
+            is_favorite: req.is_favorite,
+        })
+        .await
 }
 
 /// List models for a specific provider
@@ -241,10 +241,7 @@ pub async fn get_model(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> ApiResult<WithUrls<LlmModelWithProvider>> {
-    let model = GetModel { id }.run(&state.ctx(&org)).await?;
-
-    let builder = UrlBuilder::from_auth_config(&state.auth.config);
-    Ok(Json(builder.wrap(model)))
+    state.dispatcher(&org).run_with_urls(GetModel { id }).await
 }
 
 /// Update a model
@@ -268,19 +265,17 @@ pub async fn update_model(
     Path(id): Path<String>,
     Json(req): Json<UpdateLlmModelRequest>,
 ) -> ApiResult<WithUrls<LlmModel>> {
-    let model = UpdateModel {
-        id,
-        model_id: req.model_id,
-        display_name: req.display_name,
-        capabilities: req.capabilities,
-        enabled: req.enabled,
-        is_favorite: req.is_favorite,
-    }
-    .run(&state.ctx(&org))
-    .await?;
-
-    let builder = UrlBuilder::from_auth_config(&state.auth.config);
-    Ok(Json(builder.wrap(model)))
+    state
+        .dispatcher(&org)
+        .run_with_urls(UpdateModel {
+            id,
+            model_id: req.model_id,
+            display_name: req.display_name,
+            capabilities: req.capabilities,
+            enabled: req.enabled,
+            is_favorite: req.is_favorite,
+        })
+        .await
 }
 
 /// Delete a model
@@ -302,8 +297,10 @@ pub async fn delete_model(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    DeleteModel { id }.run(&state.ctx(&org)).await?;
-    Ok(StatusCode::NO_CONTENT)
+    state
+        .dispatcher(&org)
+        .run_no_content(DeleteModel { id })
+        .await
 }
 
 /// GET /v1/llm-models/config

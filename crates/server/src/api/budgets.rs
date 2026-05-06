@@ -23,6 +23,7 @@ use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
 use super::common::{ErrorResponse, UrlBuilder, WithUrls, impl_auth_state};
+use super::dispatch::{Dispatchable, impl_dispatchable};
 
 type ApiError = (StatusCode, Json<ErrorResponse>);
 
@@ -61,6 +62,7 @@ impl AppState {
 }
 
 impl_auth_state!(AppState);
+impl_dispatchable!(AppState);
 
 // ============================================================================
 // Request/Response types
@@ -145,9 +147,10 @@ async fn create_budget(
     State(state): State<AppState>,
     Json(req): Json<CreateBudgetRequest>,
 ) -> Result<(StatusCode, Json<WithUrls<Budget>>), ApiError> {
-    let row = CreateBudget(req).run(&state.ctx(&org)).await?;
-    let urls = UrlBuilder::from_auth_config(&state.auth.config);
-    Ok((StatusCode::CREATED, Json(urls.wrap(row))))
+    state
+        .dispatcher(&org)
+        .run_created_with_urls(CreateBudget(req))
+        .await
 }
 
 async fn get_budget(
@@ -155,9 +158,10 @@ async fn get_budget(
     State(state): State<AppState>,
     Path(budget_id): Path<String>,
 ) -> Result<Json<WithUrls<Budget>>, ApiError> {
-    let row = GetBudget { budget_id }.run(&state.ctx(&org)).await?;
-    let urls = UrlBuilder::from_auth_config(&state.auth.config);
-    Ok(Json(urls.wrap(row)))
+    state
+        .dispatcher(&org)
+        .run_with_urls(GetBudget { budget_id })
+        .await
 }
 
 async fn list_budgets(
@@ -181,17 +185,16 @@ async fn update_budget(
     Path(budget_id): Path<String>,
     Json(req): Json<UpdateBudgetRequest>,
 ) -> Result<Json<WithUrls<Budget>>, ApiError> {
-    let row = UpdateBudgetCmd {
-        budget_id,
-        limit: req.limit,
-        soft_limit: req.soft_limit,
-        status: req.status,
-        metadata: req.metadata,
-    }
-    .run(&state.ctx(&org))
-    .await?;
-    let urls = UrlBuilder::from_auth_config(&state.auth.config);
-    Ok(Json(urls.wrap(row)))
+    state
+        .dispatcher(&org)
+        .run_with_urls(UpdateBudgetCmd {
+            budget_id,
+            limit: req.limit,
+            soft_limit: req.soft_limit,
+            status: req.status,
+            metadata: req.metadata,
+        })
+        .await
 }
 
 async fn delete_budget(
@@ -199,8 +202,10 @@ async fn delete_budget(
     State(state): State<AppState>,
     Path(budget_id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
-    DeleteBudget { budget_id }.run(&state.ctx(&org)).await?;
-    Ok(StatusCode::NO_CONTENT)
+    state
+        .dispatcher(&org)
+        .run_no_content(DeleteBudget { budget_id })
+        .await
 }
 
 async fn top_up(
@@ -209,15 +214,14 @@ async fn top_up(
     Path(budget_id): Path<String>,
     Json(req): Json<TopUpRequest>,
 ) -> Result<Json<WithUrls<Budget>>, ApiError> {
-    let row = TopUpBudget {
-        budget_id,
-        amount: req.amount,
-        description: req.description,
-    }
-    .run(&state.ctx(&org))
-    .await?;
-    let urls = UrlBuilder::from_auth_config(&state.auth.config);
-    Ok(Json(urls.wrap(row)))
+    state
+        .dispatcher(&org)
+        .run_with_urls(TopUpBudget {
+            budget_id,
+            amount: req.amount,
+            description: req.description,
+        })
+        .await
 }
 
 async fn list_ledger(

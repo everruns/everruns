@@ -82,6 +82,8 @@ Policy enforcement is performed **once**, at `Command::run`. Every caller kind (
 - Every non-GET command must declare `policy()`; `crates/server/tests/command_policy_enforcement_test.rs` verifies this at test time by iterating `inventory::iter::<CommandDescriptor>`.
 - `Ctx::new` requires the resolver as its fifth argument, so constructing a `Ctx` without a resolver is a compile error. Tests use `Ctx::minimal_for_test` which defaults to `DefaultPermissionResolver`.
 
+`Command::run` is also the chokepoint for protocol-agnostic cross-cutting concerns (tracing span, metrics, structured failure log) — every caller that goes through `run` is instrumented. The HTTP `Dispatcher` (`crates/server/src/api/dispatch.rs`) is the matching HTTP-only chokepoint: it bundles `(Ctx, UrlBuilder)` per request and exposes `run_*` helpers (`run`, `run_with_urls`, `run_created`, `run_created_with_urls`, `run_no_content`, `run_list`, `run_list_with_urls`, `run_paginated_with_urls`) so trivial HTTP handlers collapse to `state.dispatcher(&org).run_*(cmd).await`. Future HTTP-only cross-cutting concerns (request_id propagation, content-type negotiation, response body decoration) belong here once they are generalised — today most of those concerns are still threaded through specialised handlers. See `specs/observability.md` and `specs/prometheus-metrics.md` for the metric contract.
+
 ### CommandMeta
 
 ```rust

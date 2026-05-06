@@ -3193,7 +3193,7 @@ impl WorkerService for WorkerServiceImpl {
         use crate::domains::common::Command;
         let ctx = self.domain_ctx(req.org_id);
         let harness = crate::domains::harnesses::CreateHarness(create_req)
-            .execute(&ctx)
+            .run(&ctx)
             .await
             .map_err(|e| Status::internal(format!("Failed to create harness: {}", e)))?;
 
@@ -3240,7 +3240,7 @@ impl WorkerService for WorkerServiceImpl {
             id: harness_public_id,
             req: update_req,
         }
-        .execute(&ctx)
+        .run(&ctx)
         .await
         .map_err(|e| Status::internal(format!("Failed to update harness: {}", e)))?;
 
@@ -3262,7 +3262,7 @@ impl WorkerService for WorkerServiceImpl {
         crate::domains::harnesses::DeleteHarness {
             id: harness_public_id,
         }
-        .execute(&ctx)
+        .run(&ctx)
         .await
         .map_err(|e| Status::internal(format!("Failed to delete harness: {}", e)))?;
 
@@ -3282,7 +3282,7 @@ impl WorkerService for WorkerServiceImpl {
         let harness = crate::domains::harnesses::CopyHarness {
             id: harness_public_id,
         }
-        .execute(&ctx)
+        .run(&ctx)
         .await
         .map_err(|e| Status::internal(format!("Failed to copy harness: {}", e)))?;
 
@@ -3306,7 +3306,7 @@ impl WorkerService for WorkerServiceImpl {
                 id: harness.id.to_string(),
                 req: update_req,
             }
-            .execute(&ctx)
+            .run(&ctx)
             .await
             .map_err(|e| Status::internal(format!("Failed to rename copied harness: {}", e)))
             .unwrap_or(harness)
@@ -3370,7 +3370,7 @@ impl WorkerService for WorkerServiceImpl {
         use crate::domains::common::Command;
         let ctx = self.domain_ctx(req.org_id);
         let agent = crate::domains::agents::CreateAgent(create_req)
-            .execute(&ctx)
+            .run(&ctx)
             .await
             .map_err(|e| Status::internal(format!("Failed to create agent: {}", e)))?;
 
@@ -3410,7 +3410,7 @@ impl WorkerService for WorkerServiceImpl {
             id: public_id,
             req: update_req,
         }
-        .execute(&ctx)
+        .run(&ctx)
         .await
         .map_err(|e| Status::internal(format!("Failed to update agent: {}", e)))?;
 
@@ -3430,7 +3430,7 @@ impl WorkerService for WorkerServiceImpl {
         let public_id = everruns_core::typed_id::AgentId::from_uuid(agent_id).to_string();
         let ctx = self.domain_ctx(req.org_id);
         crate::domains::agents::DeleteAgent { id: public_id }
-            .execute(&ctx)
+            .run(&ctx)
             .await
             .map_err(|e| Status::internal(format!("Failed to delete agent: {}", e)))?;
 

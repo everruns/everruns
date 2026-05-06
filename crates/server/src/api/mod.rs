@@ -16,6 +16,7 @@ pub mod budgets;
 pub mod capabilities;
 pub mod commands;
 pub mod common;
+pub mod dispatch;
 pub mod durable;
 pub mod evals;
 pub mod events;

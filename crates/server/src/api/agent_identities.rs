@@ -20,7 +20,7 @@ use everruns_core::{AgentIdentity, Caller, ResourceConfigResponse, evaluate_poli
 use std::sync::Arc;
 
 use super::common::{ErrorResponse, ListResponse, impl_auth_state};
-use crate::domains::common::Command;
+use super::dispatch::{Dispatchable, impl_dispatchable};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -55,6 +55,7 @@ impl AppState {
 }
 
 impl_auth_state!(AppState);
+impl_dispatchable!(AppState);
 
 pub fn routes(state: AppState) -> Router {
     Router::new()
@@ -98,10 +99,10 @@ pub async fn create_agent_identity(
     State(state): State<AppState>,
     Json(req): Json<CreateAgentIdentityRequest>,
 ) -> Result<(StatusCode, Json<AgentIdentity>), (StatusCode, Json<ErrorResponse>)> {
-    let identity = crate::domains::agent_identities::CreateAgentIdentity(req)
-        .run(&state.ctx(&org))
-        .await?;
-    Ok((StatusCode::CREATED, Json(identity)))
+    state
+        .dispatcher(&org)
+        .run_created(crate::domains::agent_identities::CreateAgentIdentity(req))
+        .await
 }
 
 pub async fn list_agent_identities(
@@ -109,13 +110,13 @@ pub async fn list_agent_identities(
     State(state): State<AppState>,
     Query(query): Query<ListAgentIdentitiesQuery>,
 ) -> Result<Json<ListResponse<AgentIdentity>>, (StatusCode, Json<ErrorResponse>)> {
-    let identities = crate::domains::agent_identities::ListAgentIdentities {
-        search: query.search,
-        include_archived: query.include_archived.unwrap_or(false),
-    }
-    .run(&state.ctx(&org))
-    .await?;
-    Ok(Json(ListResponse::new(identities)))
+    state
+        .dispatcher(&org)
+        .run_list(crate::domains::agent_identities::ListAgentIdentities {
+            search: query.search,
+            include_archived: query.include_archived.unwrap_or(false),
+        })
+        .await
 }
 
 pub async fn get_agent_identity(
@@ -123,10 +124,10 @@ pub async fn get_agent_identity(
     State(state): State<AppState>,
     Path(identity_id): Path<String>,
 ) -> Result<Json<AgentIdentity>, (StatusCode, Json<ErrorResponse>)> {
-    let identity = crate::domains::agent_identities::GetAgentIdentity { id: identity_id }
-        .run(&state.ctx(&org))
-        .await?;
-    Ok(Json(identity))
+    state
+        .dispatcher(&org)
+        .run(crate::domains::agent_identities::GetAgentIdentity { id: identity_id })
+        .await
 }
 
 pub async fn update_agent_identity(
@@ -135,13 +136,13 @@ pub async fn update_agent_identity(
     Path(identity_id): Path<String>,
     Json(req): Json<UpdateAgentIdentityRequest>,
 ) -> Result<Json<AgentIdentity>, (StatusCode, Json<ErrorResponse>)> {
-    let identity = crate::domains::agent_identities::UpdateAgentIdentityCmd {
-        id: identity_id,
-        req,
-    }
-    .run(&state.ctx(&org))
-    .await?;
-    Ok(Json(identity))
+    state
+        .dispatcher(&org)
+        .run(crate::domains::agent_identities::UpdateAgentIdentityCmd {
+            id: identity_id,
+            req,
+        })
+        .await
 }
 
 pub async fn delete_agent_identity(
@@ -149,10 +150,10 @@ pub async fn delete_agent_identity(
     State(state): State<AppState>,
     Path(identity_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    crate::domains::agent_identities::DeleteAgentIdentity { id: identity_id }
-        .run(&state.ctx(&org))
-        .await?;
-    Ok(StatusCode::NO_CONTENT)
+    state
+        .dispatcher(&org)
+        .run_no_content(crate::domains::agent_identities::DeleteAgentIdentity { id: identity_id })
+        .await
 }
 
 pub async fn destroy_agent_identity(
@@ -160,8 +161,8 @@ pub async fn destroy_agent_identity(
     State(state): State<AppState>,
     Path(identity_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    crate::domains::agent_identities::DestroyAgentIdentity { id: identity_id }
-        .run(&state.ctx(&org))
-        .await?;
-    Ok(StatusCode::NO_CONTENT)
+    state
+        .dispatcher(&org)
+        .run_no_content(crate::domains::agent_identities::DestroyAgentIdentity { id: identity_id })
+        .await
 }

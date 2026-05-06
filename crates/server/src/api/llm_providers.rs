@@ -27,6 +27,7 @@ use utoipa::ToSchema;
 use super::common::{
     ApiResult, ErrorResponse, ListResponse, UrlBuilder, WithUrls, impl_auth_state,
 };
+use super::dispatch::{Dispatchable, impl_dispatchable};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -70,6 +71,7 @@ impl AppState {
 }
 
 impl_auth_state!(AppState);
+impl_dispatchable!(AppState);
 
 /// Request to create a new LLM provider
 #[derive(Debug, Deserialize, ToSchema)]
@@ -147,17 +149,15 @@ pub async fn create_provider(
     State(state): State<AppState>,
     Json(req): Json<CreateLlmProviderRequest>,
 ) -> Result<(StatusCode, Json<WithUrls<LlmProvider>>), (StatusCode, Json<ErrorResponse>)> {
-    let provider = CreateProvider {
-        name: req.name,
-        provider_type: req.provider_type,
-        base_url: req.base_url,
-        api_key: req.api_key,
-    }
-    .run(&state.ctx(&org))
-    .await?;
-
-    let builder = UrlBuilder::from_auth_config(&state.auth.config);
-    Ok((StatusCode::CREATED, Json(builder.wrap(provider))))
+    state
+        .dispatcher(&org)
+        .run_created_with_urls(CreateProvider {
+            name: req.name,
+            provider_type: req.provider_type,
+            base_url: req.base_url,
+            api_key: req.api_key,
+        })
+        .await
 }
 
 /// List all LLM providers
@@ -198,10 +198,10 @@ pub async fn get_provider(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> ApiResult<WithUrls<LlmProvider>> {
-    let provider = GetProvider { id }.run(&state.ctx(&org)).await?;
-
-    let builder = UrlBuilder::from_auth_config(&state.auth.config);
-    Ok(Json(builder.wrap(provider)))
+    state
+        .dispatcher(&org)
+        .run_with_urls(GetProvider { id })
+        .await
 }
 
 /// Update an LLM provider
@@ -225,19 +225,17 @@ pub async fn update_provider(
     Path(id): Path<String>,
     Json(req): Json<UpdateLlmProviderRequest>,
 ) -> ApiResult<WithUrls<LlmProvider>> {
-    let provider = UpdateProvider {
-        id,
-        name: req.name,
-        provider_type: req.provider_type,
-        base_url: req.base_url,
-        api_key: req.api_key,
-        status: req.status,
-    }
-    .run(&state.ctx(&org))
-    .await?;
-
-    let builder = UrlBuilder::from_auth_config(&state.auth.config);
-    Ok(Json(builder.wrap(provider)))
+    state
+        .dispatcher(&org)
+        .run_with_urls(UpdateProvider {
+            id,
+            name: req.name,
+            provider_type: req.provider_type,
+            base_url: req.base_url,
+            api_key: req.api_key,
+            status: req.status,
+        })
+        .await
 }
 
 /// Delete an LLM provider
@@ -259,8 +257,10 @@ pub async fn delete_provider(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    DeleteProvider { id }.run(&state.ctx(&org)).await?;
-    Ok(StatusCode::NO_CONTENT)
+    state
+        .dispatcher(&org)
+        .run_no_content(DeleteProvider { id })
+        .await
 }
 
 /// Sync models from an LLM provider

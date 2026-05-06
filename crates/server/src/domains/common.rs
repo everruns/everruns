@@ -457,18 +457,96 @@ pub trait Command: DeserializeOwned + Send + 'static + CommandSchema {
     /// Every caller — HTTP adapters, MCP dispatch, gRPC `ExecuteCommand`,
     /// platform capability — goes through this. If you're adding a new
     /// caller and want to skip policy, stop: write a new command.
+    ///
+    /// This is also the protocol-agnostic chokepoint for cross-cutting
+    /// concerns: a tracing span per command, a counter and a duration
+    /// histogram with `name` / `category` / `status` labels, and a debug-level
+    /// log on failure. HTTP-specific concerns (request_id propagation,
+    /// content-type negotiation, response body decoration) live in the HTTP
+    /// `Dispatcher`, which sits between the route and this method.
     fn run(self, ctx: &Ctx) -> impl Future<Output = Result<Self::Output, CommandError>> + Send
     where
         Self: Sized,
     {
+        use tracing::Instrument;
+
+        let meta = Self::meta();
+        let span = tracing::info_span!(
+            "command",
+            "command.name" = meta.name,
+            "command.category" = meta.category,
+            "command.method" = meta.method,
+            "command.path" = meta.path,
+            "org.id" = ctx.caller.org_id,
+            "caller.internal" = ctx.caller.is_internal,
+        );
+
         async move {
-            if let Some(policy) = Self::policy() {
-                policy
-                    .evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)
-                    .map_err(|e| CommandError::Forbidden(e.message))?;
+            let started_at = std::time::Instant::now();
+
+            let result: Result<Self::Output, CommandError> = async {
+                if let Some(policy) = Self::policy() {
+                    policy
+                        .evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)
+                        .map_err(|e| CommandError::Forbidden(e.message))?;
+                }
+                self.execute(ctx).await
             }
-            self.execute(ctx).await
+            .await;
+
+            let elapsed_secs = started_at.elapsed().as_secs_f64();
+            let status = match &result {
+                Ok(_) => "ok",
+                Err(err) => command_error_status_label(err),
+            };
+
+            metrics::counter!(
+                crate::api::prometheus::names::COMMANDS_TOTAL,
+                "name" => meta.name,
+                "category" => meta.category,
+                "status" => status,
+            )
+            .increment(1);
+            metrics::histogram!(
+                crate::api::prometheus::names::COMMAND_DURATION,
+                "name" => meta.name,
+                "category" => meta.category,
+                "status" => status,
+            )
+            .record(elapsed_secs);
+
+            if let Err(err) = &result {
+                // 5xx (Internal) at error! so MCP/gRPC failures surface in
+                // production logs even though those protocols don't run the
+                // HTTP `From<CommandError>` converter that historically logged
+                // them. 4xx remain at debug! — they're caller-induced and
+                // would dominate log volume otherwise.
+                match err {
+                    CommandError::Internal(_) => {
+                        tracing::error!(status, error = %err, "command failed");
+                    }
+                    _ => {
+                        tracing::debug!(status, error = %err, "command failed");
+                    }
+                }
+            }
+
+            result
         }
+        .instrument(span)
+    }
+}
+
+/// Stable, low-cardinality status label for the `everruns_commands_total`
+/// counter and `everruns_command_duration_seconds` histogram.
+fn command_error_status_label(err: &CommandError) -> &'static str {
+    match err {
+        CommandError::BadRequest(_) => "bad_request",
+        CommandError::Unprocessable(_) => "unprocessable",
+        CommandError::Forbidden(_) => "forbidden",
+        CommandError::NotFound(_) => "not_found",
+        CommandError::Conflict(_) => "conflict",
+        CommandError::Internal(_) => "internal",
     }
 }
 
@@ -915,6 +993,38 @@ mod error_tests {
     fn classify_anyhow_maps_bad_request_error() {
         let err = classify_anyhow(crate::errors::BadRequestError::new("bad input").into());
         assert!(matches!(err, CommandError::BadRequest(msg) if msg == "bad input"));
+    }
+
+    // Cardinality contract for the `status` label on `everruns_commands_total`
+    // / `everruns_command_duration_seconds`. These strings are an external
+    // surface — Prometheus dashboards and alerts grep on them — so they must
+    // stay stable. Adding a CommandError variant requires a label here.
+    #[test]
+    fn command_error_status_label_covers_every_variant() {
+        assert_eq!(
+            command_error_status_label(&CommandError::BadRequest("x".into())),
+            "bad_request"
+        );
+        assert_eq!(
+            command_error_status_label(&CommandError::Unprocessable("x".into())),
+            "unprocessable"
+        );
+        assert_eq!(
+            command_error_status_label(&CommandError::Forbidden("x".into())),
+            "forbidden"
+        );
+        assert_eq!(
+            command_error_status_label(&CommandError::NotFound("x".into())),
+            "not_found"
+        );
+        assert_eq!(
+            command_error_status_label(&CommandError::Conflict("x".into())),
+            "conflict"
+        );
+        assert_eq!(
+            command_error_status_label(&CommandError::Internal(anyhow::anyhow!("x"))),
+            "internal"
+        );
     }
 
     #[test]

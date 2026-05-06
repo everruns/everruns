@@ -23,6 +23,7 @@ use super::common::{
     ApiResult, ApiResultExt, ErrorResponse, PaginatedResponse, ResourceStatsResponse,
     ResourceWithCounts, UrlBuilder, WithUrls, impl_auth_state,
 };
+use super::dispatch::{Dispatchable, impl_dispatchable};
 use super::validation::{
     validate_agent_name_format, validate_create_agent_input, validate_import_file_size,
 };
@@ -156,6 +157,7 @@ impl AppState {
 }
 
 impl_auth_state!(AppState);
+impl_dispatchable!(AppState);
 
 async fn add_agent_counts(
     db: &StorageBackend,
@@ -313,11 +315,10 @@ pub async fn create_agent(
     State(state): State<AppState>,
     Json(req): Json<CreateAgentRequest>,
 ) -> Result<(StatusCode, Json<WithUrls<Agent>>), (StatusCode, Json<ErrorResponse>)> {
-    let agent = crate::domains::agents::CreateAgent(req)
-        .run(&state.ctx(&org))
-        .await?;
-    let builder = UrlBuilder::from_auth_config(&state.auth.config);
-    Ok((StatusCode::CREATED, Json(builder.wrap(agent))))
+    state
+        .dispatcher(&org)
+        .run_created_with_urls(crate::domains::agents::CreateAgent(req))
+        .await
 }
 
 /// GET /v1/agents - List all active agents
@@ -444,11 +445,10 @@ pub async fn update_agent(
     Path(agent_id): Path<String>,
     Json(req): Json<UpdateAgentRequest>,
 ) -> ApiResult<WithUrls<Agent>> {
-    let agent = crate::domains::agents::UpdateAgentCmd { id: agent_id, req }
-        .run(&state.ctx(&org))
-        .await?;
-    let builder = UrlBuilder::from_auth_config(&state.auth.config);
-    Ok(Json(builder.wrap(agent)))
+    state
+        .dispatcher(&org)
+        .run_with_urls(crate::domains::agents::UpdateAgentCmd { id: agent_id, req })
+        .await
 }
 
 /// DELETE /v1/agents/{agent_id} - Archive agent
@@ -471,10 +471,10 @@ pub async fn delete_agent(
     State(state): State<AppState>,
     Path(agent_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    crate::domains::agents::DeleteAgent { id: agent_id }
-        .run(&state.ctx(&org))
-        .await?;
-    Ok(StatusCode::NO_CONTENT)
+    state
+        .dispatcher(&org)
+        .run_no_content(crate::domains::agents::DeleteAgent { id: agent_id })
+        .await
 }
 
 pub async fn destroy_agent(
@@ -482,10 +482,10 @@ pub async fn destroy_agent(
     State(state): State<AppState>,
     Path(agent_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    crate::domains::agents::DestroyAgent { id: agent_id }
-        .run(&state.ctx(&org))
-        .await?;
-    Ok(StatusCode::NO_CONTENT)
+    state
+        .dispatcher(&org)
+        .run_no_content(crate::domains::agents::DestroyAgent { id: agent_id })
+        .await
 }
 
 /// POST /v1/agents/{agent_id}/copy - Copy an agent
@@ -511,11 +511,10 @@ pub async fn copy_agent(
     State(state): State<AppState>,
     Path(agent_id): Path<String>,
 ) -> Result<(StatusCode, Json<WithUrls<Agent>>), (StatusCode, Json<ErrorResponse>)> {
-    let agent = crate::domains::agents::CopyAgent { id: agent_id }
-        .run(&state.ctx(&org))
-        .await?;
-    let builder = UrlBuilder::from_auth_config(&state.auth.config);
-    Ok((StatusCode::CREATED, Json(builder.wrap(agent))))
+    state
+        .dispatcher(&org)
+        .run_created_with_urls(crate::domains::agents::CopyAgent { id: agent_id })
+        .await
 }
 
 /// PUT /v1/agents/{agent_id} - Create or update agent (upsert)

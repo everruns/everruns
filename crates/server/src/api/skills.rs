@@ -7,8 +7,8 @@
 use crate::api::common::{
     ApiResult, ErrorResponse, ListResponse, UrlBuilder, WithUrls, impl_auth_state,
 };
+use crate::api::dispatch::{Dispatchable, impl_dispatchable};
 use crate::auth::{AuthState, ResolvedOrg};
-use crate::domains::common::Command;
 use crate::domains::skills::types::{CreateSkillRequest, UpdateSkillRequest};
 use crate::domains::skills::{SKILL_DANGEROUS, SKILL_MANAGE, SKILL_VIEW};
 use crate::services::CapabilityService;
@@ -92,6 +92,7 @@ impl AppState {
 }
 
 impl_auth_state!(AppState);
+impl_dispatchable!(AppState);
 
 // ============================================
 // Helpers
@@ -162,12 +163,10 @@ pub async fn create_skill(
     State(state): State<AppState>,
     Json(req): Json<CreateSkillRequest>,
 ) -> Result<(StatusCode, Json<WithUrls<Skill>>), (StatusCode, Json<ErrorResponse>)> {
-    let skill = crate::domains::skills::CreateSkill(req)
-        .run(&state.ctx(&org))
-        .await?;
-
-    let urls = UrlBuilder::from_auth_config(&state.auth.config);
-    Ok((StatusCode::CREATED, Json(urls.wrap(skill))))
+    state
+        .dispatcher(&org)
+        .run_created_with_urls(crate::domains::skills::CreateSkill(req))
+        .await
 }
 
 /// POST /v1/skills/upload - Create skill from ZIP archive
@@ -257,15 +256,13 @@ pub async fn list_skills(
     State(state): State<AppState>,
     Query(query): Query<ListSkillsQuery>,
 ) -> ApiResult<ListResponse<WithUrls<Skill>>> {
-    let skills = crate::domains::skills::ListSkills {
-        search: query.search,
-        include_archived: query.include_archived.unwrap_or(false),
-    }
-    .run(&state.ctx(&org))
-    .await?;
-
-    let urls = UrlBuilder::from_auth_config(&state.auth.config);
-    Ok(Json(ListResponse::new(skills).with_urls(&urls)))
+    state
+        .dispatcher(&org)
+        .run_list_with_urls(crate::domains::skills::ListSkills {
+            search: query.search,
+            include_archived: query.include_archived.unwrap_or(false),
+        })
+        .await
 }
 
 /// GET /v1/skills/{skill_id} - Get skill by ID
@@ -286,12 +283,10 @@ pub async fn get_skill(
     State(state): State<AppState>,
     Path(skill_id): Path<String>,
 ) -> ApiResult<WithUrls<Skill>> {
-    let skill = crate::domains::skills::GetSkill { id: skill_id }
-        .run(&state.ctx(&org))
-        .await?;
-
-    let urls = UrlBuilder::from_auth_config(&state.auth.config);
-    Ok(Json(urls.wrap(skill)))
+    state
+        .dispatcher(&org)
+        .run_with_urls(crate::domains::skills::GetSkill { id: skill_id })
+        .await
 }
 
 /// GET /v1/skills/{skill_id}/content - Get full skill content
@@ -312,11 +307,10 @@ pub async fn get_skill_content(
     State(state): State<AppState>,
     Path(skill_id): Path<String>,
 ) -> ApiResult<SkillContent> {
-    let content = crate::domains::skills::GetSkillContent { id: skill_id }
-        .run(&state.ctx(&org))
-        .await?;
-
-    Ok(Json(content))
+    state
+        .dispatcher(&org)
+        .run(crate::domains::skills::GetSkillContent { id: skill_id })
+        .await
 }
 
 /// PATCH /v1/skills/{skill_id} - Update skill
@@ -338,12 +332,10 @@ pub async fn update_skill(
     Path(skill_id): Path<String>,
     Json(req): Json<UpdateSkillRequest>,
 ) -> ApiResult<WithUrls<Skill>> {
-    let skill = crate::domains::skills::UpdateSkillCmd { id: skill_id, req }
-        .run(&state.ctx(&org))
-        .await?;
-
-    let urls = UrlBuilder::from_auth_config(&state.auth.config);
-    Ok(Json(urls.wrap(skill)))
+    state
+        .dispatcher(&org)
+        .run_with_urls(crate::domains::skills::UpdateSkillCmd { id: skill_id, req })
+        .await
 }
 
 /// DELETE /v1/skills/{skill_id} - Delete skill
@@ -364,10 +356,10 @@ pub async fn delete_skill(
     State(state): State<AppState>,
     Path(skill_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    crate::domains::skills::DeleteSkill { id: skill_id }
-        .run(&state.ctx(&org))
-        .await?;
-    Ok(StatusCode::NO_CONTENT)
+    state
+        .dispatcher(&org)
+        .run_no_content(crate::domains::skills::DeleteSkill { id: skill_id })
+        .await
 }
 
 pub async fn destroy_skill(
@@ -375,10 +367,10 @@ pub async fn destroy_skill(
     State(state): State<AppState>,
     Path(skill_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    crate::domains::skills::DestroySkill { id: skill_id }
-        .run(&state.ctx(&org))
-        .await?;
-    Ok(StatusCode::NO_CONTENT)
+    state
+        .dispatcher(&org)
+        .run_no_content(crate::domains::skills::DestroySkill { id: skill_id })
+        .await
 }
 
 /// POST /v1/skills/validate - Validate SKILL.md content
