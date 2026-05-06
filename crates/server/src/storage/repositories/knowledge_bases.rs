@@ -196,7 +196,11 @@ impl Database {
         search: Option<&str>,
         kind: Option<&str>,
     ) -> Result<Vec<KnowledgeEntryRow>> {
-        let (search_sql, patterns) = build_search_sql(search, "LOWER(title || ' ' || body)", 3);
+        // Patterns follow $1 (kb_id) and the optional $2 (kind), so the
+        // first pattern parameter is $2 without kind and $3 with kind.
+        let start_param = if kind.is_some() { 3 } else { 2 };
+        let (search_sql, patterns) =
+            build_search_sql(search, "LOWER(title || ' ' || body)", start_param);
         let kind_sql = if kind.is_some() { " AND kind = $2" } else { "" };
         let sql = format!(
             "SELECT {ENTRY_COLUMNS} FROM knowledge_entries \

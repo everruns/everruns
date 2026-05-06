@@ -1735,6 +1735,7 @@ mod tests {
             "a2ui",
             "sample_data",
             "data_knowledge",
+            "knowledge_base",
             "tool_output_persistence",
             "fake_warehouse",
             "fake_aws",

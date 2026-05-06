@@ -301,6 +301,12 @@ impl Command for UpdateKnowledgeBaseCmd {
             .await
             .map_err(classify_anyhow)?
             .ok_or_else(|| CommandError::not_found("KnowledgeBase"))?;
+        // Archived KBs are read-only per specs/models.md lifecycle contract.
+        if existing.status != "active" {
+            return Err(CommandError::bad_request(
+                "Knowledge base is archived; restore it before updating",
+            ));
+        }
         let name = self
             .request
             .name
@@ -380,7 +386,14 @@ inventory::submit! { CommandDescriptor::of::<DeleteKnowledgeBase>() }
 // Knowledge Entry CRUD (scoped to a KB)
 // ============================================
 
-async fn resolve_kb_internal_id(ctx: &Ctx, kb_id: &str) -> Result<uuid::Uuid, CommandError> {
+/// Resolve a KB's internal UUID. If `require_active` is true, archived KBs
+/// reject the call so write paths honor the lifecycle contract from
+/// `specs/models.md` (archived = read-only).
+async fn resolve_kb_internal_id(
+    ctx: &Ctx,
+    kb_id: &str,
+    require_active: bool,
+) -> Result<uuid::Uuid, CommandError> {
     let id = parse_kb_id(kb_id)?;
     let kb = ctx
         .db
@@ -388,6 +401,11 @@ async fn resolve_kb_internal_id(ctx: &Ctx, kb_id: &str) -> Result<uuid::Uuid, Co
         .await
         .map_err(classify_anyhow)?
         .ok_or_else(|| CommandError::not_found("KnowledgeBase"))?;
+    if require_active && kb.status != "active" {
+        return Err(CommandError::bad_request(
+            "Knowledge base is archived; restore it before modifying entries",
+        ));
+    }
     Ok(kb.id)
 }
 
@@ -432,7 +450,7 @@ impl Command for ListKnowledgeEntries {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<KnowledgeEntryResponse>, CommandError> {
-        let kb_internal_id = resolve_kb_internal_id(ctx, &self.kb_id).await?;
+        let kb_internal_id = resolve_kb_internal_id(ctx, &self.kb_id, false).await?;
         let kind = validate_kind(self.kind.as_deref())?;
         let rows = ctx
             .db
@@ -492,7 +510,7 @@ impl Command for CreateKnowledgeEntry {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<KnowledgeEntryResponse, CommandError> {
-        let kb_internal_id = resolve_kb_internal_id(ctx, &self.kb_id).await?;
+        let kb_internal_id = resolve_kb_internal_id(ctx, &self.kb_id, true).await?;
         let title = validate_title(&self.title)?;
         let body = validate_body(&self.body)?;
         let kind = validate_kind(self.kind.as_deref())?.unwrap_or_else(|| "note".to_string());
@@ -543,7 +561,7 @@ impl Command for GetKnowledgeEntry {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<KnowledgeEntryResponse, CommandError> {
-        let kb_internal_id = resolve_kb_internal_id(ctx, &self.kb_id).await?;
+        let kb_internal_id = resolve_kb_internal_id(ctx, &self.kb_id, false).await?;
         let entry_id = parse_entry_id(&self.entry_id)?;
         let row = ctx
             .db
@@ -587,7 +605,7 @@ impl Command for UpdateKnowledgeEntryCmd {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<KnowledgeEntryResponse, CommandError> {
-        let kb_internal_id = resolve_kb_internal_id(ctx, &self.kb_id).await?;
+        let kb_internal_id = resolve_kb_internal_id(ctx, &self.kb_id, true).await?;
         let entry_id = parse_entry_id(&self.entry_id)?;
         let existing = ctx
             .db
@@ -654,7 +672,7 @@ impl Command for DeleteKnowledgeEntry {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<(), CommandError> {
-        let kb_internal_id = resolve_kb_internal_id(ctx, &self.kb_id).await?;
+        let kb_internal_id = resolve_kb_internal_id(ctx, &self.kb_id, true).await?;
         let entry_id = parse_entry_id(&self.entry_id)?;
         let existing = ctx
             .db
@@ -884,5 +902,96 @@ mod tests {
         .await
         .expect_err("duplicate name should fail");
         assert!(matches!(err, CommandError::Conflict(_)));
+    }
+
+    #[tokio::test]
+    async fn archived_kb_rejects_mutations_but_allows_reads() {
+        let ctx = ctx_for_org(DEFAULT_ORG_ID);
+        let kb = CreateKnowledgeBase {
+            name: "Archive Me".into(),
+            description: None,
+        }
+        .run(&ctx)
+        .await
+        .expect("create kb");
+
+        // Seed an entry while still active.
+        let entry = CreateKnowledgeEntry {
+            kb_id: kb.id.to_string(),
+            title: "Seed".into(),
+            body: "body".into(),
+            kind: None,
+            tags: None,
+        }
+        .run(&ctx)
+        .await
+        .expect("create entry");
+
+        DeleteKnowledgeBase {
+            kb_id: kb.id.to_string(),
+        }
+        .run(&ctx)
+        .await
+        .expect("archive kb");
+
+        // Reads keep working against archived KBs.
+        let list = ListKnowledgeEntries {
+            kb_id: kb.id.to_string(),
+            search: None,
+            kind: None,
+        }
+        .run(&ctx)
+        .await
+        .expect("list entries on archived kb");
+        assert_eq!(list.len(), 1);
+
+        // Writes are rejected.
+        let err = CreateKnowledgeEntry {
+            kb_id: kb.id.to_string(),
+            title: "Nope".into(),
+            body: "body".into(),
+            kind: None,
+            tags: None,
+        }
+        .run(&ctx)
+        .await
+        .expect_err("create on archived kb should fail");
+        assert!(matches!(err, CommandError::BadRequest(_)));
+
+        let err = UpdateKnowledgeEntryCmd {
+            kb_id: kb.id.to_string(),
+            entry_id: entry.id.to_string(),
+            request: UpdateKnowledgeEntryRequest {
+                title: Some("Nope".into()),
+                body: None,
+                kind: None,
+                tags: None,
+            },
+        }
+        .run(&ctx)
+        .await
+        .expect_err("update on archived kb should fail");
+        assert!(matches!(err, CommandError::BadRequest(_)));
+
+        let err = DeleteKnowledgeEntry {
+            kb_id: kb.id.to_string(),
+            entry_id: entry.id.to_string(),
+        }
+        .run(&ctx)
+        .await
+        .expect_err("delete on archived kb should fail");
+        assert!(matches!(err, CommandError::BadRequest(_)));
+
+        let err = UpdateKnowledgeBaseCmd {
+            kb_id: kb.id.to_string(),
+            request: UpdateKnowledgeBaseRequest {
+                name: Some("Renamed".into()),
+                description: UpdateField::Unchanged,
+            },
+        }
+        .run(&ctx)
+        .await
+        .expect_err("update on archived kb should fail");
+        assert!(matches!(err, CommandError::BadRequest(_)));
     }
 }

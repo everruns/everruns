@@ -136,9 +136,15 @@ backs keyword search; a per-KB index on `(kb_id, kind)` backs kind filters.
 
 ### Validation Rules
 
-* Each `bases[i]` must reference an `active` KB in the current org.
-  Cross-org references are rejected without leaking existence.
+The foundation PR enforces structural shape only:
+
+* Each `bases[i]` must match the `kb_<32-hex>` ID format.
+* `bases[]` rejects duplicates.
 * `kinds[i]` must be one of the allowed kind values.
+
+Domain-level cross-validation (cross-org references, archived/deleted KBs)
+runs at tool dispatch time in the follow-up PR that ships
+`search_knowledge`. Errors must not leak existence of other-org KBs.
 
 ## Agent-facing Tool: `search_knowledge`
 

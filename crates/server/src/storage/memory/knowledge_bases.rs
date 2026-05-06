@@ -131,8 +131,18 @@ impl InMemoryDatabase {
             kb.status = status.clone();
             match status.as_str() {
                 "active" => kb.archived_at = None,
-                "archived" => kb.archived_at = Some(Self::now()),
-                "deleted" => kb.deleted_at = Some(Self::now()),
+                // Match Postgres `COALESCE(archived_at, NOW())` — preserve the
+                // first archive timestamp on repeated archives.
+                "archived" => {
+                    if kb.archived_at.is_none() {
+                        kb.archived_at = Some(Self::now());
+                    }
+                }
+                "deleted" => {
+                    if kb.deleted_at.is_none() {
+                        kb.deleted_at = Some(Self::now());
+                    }
+                }
                 _ => {}
             }
         }
@@ -149,7 +159,11 @@ impl InMemoryDatabase {
             return Ok(false);
         }
         kb.status = "archived".to_string();
-        kb.archived_at = Some(Self::now());
+        // Postgres uses COALESCE(archived_at, NOW()); preserve any prior value
+        // even though active rows always have archived_at == None today.
+        if kb.archived_at.is_none() {
+            kb.archived_at = Some(Self::now());
+        }
         kb.updated_at = Self::now();
         Ok(true)
     }
@@ -236,8 +250,20 @@ impl InMemoryDatabase {
             .filter(|e| matches_search_tokens(Some(query), &[&e.title, &e.body]))
             .cloned()
             .collect();
-        result.sort_by_key(|e| std::cmp::Reverse(e.updated_at));
-        result.truncate(limit);
+        // Postgres orders by ts_rank against (title, body); approximate that
+        // here by ranking on title hits first (titles weigh more in tsvector
+        // search), then by recency for stable tie-breaks.
+        let q_lower = query.to_lowercase();
+        result.sort_by_key(|e| {
+            let title_hit = e.title.to_lowercase().contains(&q_lower);
+            (
+                std::cmp::Reverse(title_hit),
+                std::cmp::Reverse(e.updated_at),
+            )
+        });
+        // Mirror the Postgres clamp (1..=100) so identical inputs yield
+        // identical row counts across backends.
+        result.truncate(limit.clamp(1, 100));
         Ok(result)
     }
 
