@@ -4,6 +4,10 @@
 
 Extensible budgeting system for controlling resource consumption across sessions, agents, users, and organizations. Supports multiple currencies (USD cost, token counts, custom credits), pluggable metering, pluggable policy rules, and soft enforcement (pause/warn before hard-stop).
 
+Budget enforcement remains owned by this domain. Analytical budget reports are
+derived asynchronously from `usage_ledger` and related budget metadata; see
+[specs/reporting.md](reporting.md).
+
 Key use cases:
 - **Volunteer budget**: User sets a $10 budget when creating a session. Session stops at $10.
 - **Admin budget**: Admin sets a $50/month budget on a user. All sessions for that user stop when the user hits $50.

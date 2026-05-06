@@ -59,6 +59,10 @@ Events are classified as **ephemeral** or **durable**:
 
 `EventService.emit()` routes automatically based on `EventRequest::is_ephemeral()`. Ephemeral events (~80% of volume) never hit PostgreSQL, reducing write pressure significantly. SSE reconnection replays durable events from PG; missed deltas are acceptable since the completed event has the full content.
 
+Durable events and usage rows can also feed asynchronous analytical projections
+for built-in reporting. Reporting is not part of the hot event delivery path;
+see [specs/reporting.md](reporting.md).
+
 ### Listener Transport Boundary
 
 Push-style PostgreSQL listeners are intentionally separated from the ordinary sqlx query pool.
