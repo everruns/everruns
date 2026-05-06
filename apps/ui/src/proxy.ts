@@ -43,5 +43,6 @@ export const config = {
     "/sessions/:path*",
     "/settings/:path*",
     "/skills/:path*",
+    "/volumes/:path*",
   ],
 };

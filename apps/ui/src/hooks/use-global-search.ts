@@ -38,6 +38,7 @@ import {
   MessageCircle,
   FlaskConical,
   Cpu,
+  HardDrive,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useAgents } from "@/hooks/use-agents";
@@ -123,6 +124,12 @@ const NAVIGATION_PAGES: NavigationPage[] = [
     href: "/skills",
     icon: BookOpen,
     keywords: ["ability", "tool"],
+  },
+  {
+    title: "Volumes",
+    href: "/volumes",
+    icon: HardDrive,
+    keywords: ["workspace", "files", "storage"],
   },
   {
     title: "Models",
@@ -216,6 +223,7 @@ const ID_PREFIX_MAP: Record<
   mcp_: { category: "mcp_server", label: "MCP Server", path: "/mcp-servers" },
   eval_: { category: "eval", label: "Eval", path: "/evals" },
   app_: { category: "app", label: "App", path: "/apps" },
+  vol_: { category: "id", label: "Volume", path: "/volumes" },
   identity_: {
     category: "agent_identity",
     label: "Agent Identity",

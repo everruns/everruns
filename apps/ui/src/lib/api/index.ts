@@ -12,3 +12,4 @@ export * from "./organizations";
 export * from "./auth";
 export * from "./durable";
 export * from "./agent-identities";
+export * from "./volumes";

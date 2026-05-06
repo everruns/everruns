@@ -65,6 +65,7 @@ describe("auth proxy", () => {
       "/sessions/:path*",
       "/settings/:path*",
       "/skills/:path*",
+      "/volumes/:path*",
     ]);
   });
 });
