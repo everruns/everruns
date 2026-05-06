@@ -3,7 +3,7 @@
 import type { PrincipalSummary } from "./common-types";
 
 export type AppStatus = "draft" | "published" | "archived" | "deleted";
-export type ChannelType = "slack" | "ag_ui" | "schedule" | "webhook";
+export type ChannelType = "slack" | "ag_ui" | "schedule" | "webhook" | "a2a";
 export type SessionStrategy = "per_thread" | "per_channel" | "per_user";
 export type SlackReplyMode = "all_messages" | "report_progress_only";
 export type InvocationSessionMode = "shared_session" | "session_per_invocation";
@@ -66,6 +66,23 @@ export interface WebhookChannelConfig {
   message: string;
 }
 
+/**
+ * A2A (Agent2Agent) channel configuration.
+ *
+ * The plaintext API key is **never** returned by the API after creation /
+ * regeneration — only the SHA-256 hash and a non-secret display prefix are
+ * persisted and surfaced. Use `addA2aChannel` / `regenerateA2aChannelKey` to
+ * obtain the plaintext (which is shown exactly once).
+ */
+export interface A2aChannelConfig {
+  api_key_hash: string;
+  api_key_prefix: string;
+  session_mode?: InvocationSessionMode;
+  message: string;
+  agent_card_name?: string;
+  agent_card_description?: string;
+}
+
 export interface AppChannel {
   id: string;
   channel_type: ChannelType;
@@ -74,6 +91,7 @@ export interface AppChannel {
     | AgUiChannelConfig
     | ScheduleChannelConfig
     | WebhookChannelConfig
+    | A2aChannelConfig
     | Record<string, unknown>;
   enabled: boolean;
   created_at: string;
@@ -112,6 +130,7 @@ export interface CreateAppRequest {
     | AgUiChannelConfig
     | ScheduleChannelConfig
     | WebhookChannelConfig
+    | A2aChannelConfig
     | Record<string, unknown>;
 }
 
@@ -131,6 +150,7 @@ export interface AddChannelRequest {
     | AgUiChannelConfig
     | ScheduleChannelConfig
     | WebhookChannelConfig
+    | A2aChannelConfig
     | Record<string, unknown>;
   enabled?: boolean;
 }
@@ -142,6 +162,7 @@ export interface UpdateChannelRequest {
     | AgUiChannelConfig
     | ScheduleChannelConfig
     | WebhookChannelConfig
+    | A2aChannelConfig
     | Record<string, unknown>;
   enabled?: boolean;
 }

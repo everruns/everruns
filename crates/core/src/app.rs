@@ -67,6 +67,8 @@ pub enum ChannelType {
     AgUi,
     Schedule,
     Webhook,
+    /// Agent2Agent (A2A) protocol channel — JSON-RPC + API key.
+    A2a,
 }
 
 impl std::fmt::Display for ChannelType {
@@ -76,6 +78,7 @@ impl std::fmt::Display for ChannelType {
             ChannelType::AgUi => write!(f, "ag_ui"),
             ChannelType::Schedule => write!(f, "schedule"),
             ChannelType::Webhook => write!(f, "webhook"),
+            ChannelType::A2a => write!(f, "a2a"),
         }
     }
 }
@@ -87,6 +90,7 @@ impl ChannelType {
             "ag_ui" => Some(ChannelType::AgUi),
             "schedule" => Some(ChannelType::Schedule),
             "webhook" => Some(ChannelType::Webhook),
+            "a2a" => Some(ChannelType::A2a),
             _ => None,
         }
     }
@@ -221,6 +225,15 @@ impl AppChannel {
         }
         serde_json::from_value(self.channel_config.clone()).ok()
     }
+
+    /// Parse channel_config as A2aChannelConfig. Returns None if not an A2A
+    /// channel or if the config is invalid.
+    pub fn a2a_config(&self) -> Option<A2aChannelConfig> {
+        if self.channel_type != ChannelType::A2a {
+            return None;
+        }
+        serde_json::from_value(self.channel_config.clone()).ok()
+    }
 }
 
 impl App {
@@ -250,6 +263,13 @@ impl App {
         self.channels
             .iter()
             .find(|ch| ch.channel_type == ChannelType::Webhook && ch.enabled)
+    }
+
+    /// Find the first enabled A2A channel on this app.
+    pub fn a2a_channel(&self) -> Option<&AppChannel> {
+        self.channels
+            .iter()
+            .find(|ch| ch.channel_type == ChannelType::A2a && ch.enabled)
     }
 
     /// Find a channel by its public ID.
@@ -477,6 +497,35 @@ fn default_timezone() -> String {
     "UTC".to_string()
 }
 
+/// Typed A2A (Agent2Agent) channel configuration.
+///
+/// The plaintext API key is **never** stored. Only the SHA-256 hex hash and a
+/// non-secret display prefix are persisted. The plaintext is returned exactly
+/// once at create / regenerate time.
+///
+/// `message` is the template body. `{{path.to.value}}` placeholders expand
+/// against the incoming A2A request payload and metadata (see
+/// `specs/a2a-channel.md`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct A2aChannelConfig {
+    /// SHA-256 hex digest of the API key.
+    pub api_key_hash: String,
+    /// Public, non-secret display prefix (e.g. `evra2a_abc1...`).
+    pub api_key_prefix: String,
+    /// Whether invocations reuse a stable session or create a new one.
+    #[serde(default)]
+    pub session_mode: InvocationSessionMode,
+    /// Message template rendered into the session per invocation.
+    pub message: String,
+    /// Optional human-readable agent name surfaced in the Agent Card.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_card_name: Option<String>,
+    /// Optional description surfaced in the Agent Card.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_card_description: Option<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -513,6 +562,7 @@ mod tests {
         assert_eq!(ChannelType::AgUi.to_string(), "ag_ui");
         assert_eq!(ChannelType::Schedule.to_string(), "schedule");
         assert_eq!(ChannelType::Webhook.to_string(), "webhook");
+        assert_eq!(ChannelType::A2a.to_string(), "a2a");
     }
 
     #[test]
@@ -527,6 +577,7 @@ mod tests {
             ChannelType::from_str_opt("webhook"),
             Some(ChannelType::Webhook)
         );
+        assert_eq!(ChannelType::from_str_opt("a2a"), Some(ChannelType::A2a));
         assert_eq!(ChannelType::from_str_opt("unknown"), None);
         assert_eq!(ChannelType::from_str_opt(""), None);
     }
@@ -863,6 +914,80 @@ mod tests {
         );
         let app = test_app(vec![ch]);
         assert!(app.webhook_channel().is_some());
+    }
+
+    #[test]
+    fn test_a2a_channel_config_defaults() {
+        let config: A2aChannelConfig = serde_json::from_str(
+            r#"{"api_key_hash":"abc","api_key_prefix":"evra2a_abc1...","message":"{{a2a.text}}"}"#,
+        )
+        .unwrap();
+        assert_eq!(config.session_mode, InvocationSessionMode::SharedSession);
+        assert!(config.agent_card_name.is_none());
+        assert!(config.agent_card_description.is_none());
+    }
+
+    #[test]
+    fn test_a2a_channel_config_roundtrip() {
+        let config = A2aChannelConfig {
+            api_key_hash: "deadbeef".into(),
+            api_key_prefix: "evra2a_dead...".into(),
+            session_mode: InvocationSessionMode::SessionPerInvocation,
+            message: "{{a2a.text}}".into(),
+            agent_card_name: Some("Inbox triage".into()),
+            agent_card_description: Some("Triages github events".into()),
+        };
+        let json = serde_json::to_string(&config).unwrap();
+        let parsed: A2aChannelConfig = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.api_key_hash, "deadbeef");
+        assert_eq!(
+            parsed.session_mode,
+            InvocationSessionMode::SessionPerInvocation
+        );
+        assert_eq!(parsed.agent_card_name.as_deref(), Some("Inbox triage"));
+    }
+
+    #[test]
+    fn test_a2a_channel_config_omits_optional_fields() {
+        let config = A2aChannelConfig {
+            api_key_hash: "h".into(),
+            api_key_prefix: "evra2a_h...".into(),
+            session_mode: InvocationSessionMode::SharedSession,
+            message: "m".into(),
+            agent_card_name: None,
+            agent_card_description: None,
+        };
+        let json = serde_json::to_value(&config).unwrap();
+        assert!(json.get("agent_card_name").is_none());
+        assert!(json.get("agent_card_description").is_none());
+    }
+
+    #[test]
+    fn test_app_channel_a2a_config_valid() {
+        let ch = test_channel(
+            ChannelType::A2a,
+            serde_json::json!({
+                "api_key_hash": "h",
+                "api_key_prefix": "evra2a_h...",
+                "message": "{{a2a.text}}"
+            }),
+        );
+        let config = ch.a2a_config().unwrap();
+        assert_eq!(config.api_key_prefix, "evra2a_h...");
+    }
+
+    #[test]
+    fn test_app_a2a_channel_lookup() {
+        let ch = test_channel(
+            ChannelType::A2a,
+            serde_json::json!({
+                "api_key_hash": "h",
+                "api_key_prefix": "evra2a_h...",
+                "message": "{{a2a.text}}"
+            }),
+        );
+        let app = test_app(vec![ch]);
+        assert!(app.a2a_channel().is_some());
     }
 
     #[test]

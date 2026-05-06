@@ -21,8 +21,8 @@ use chrono::{DateTime, Utc};
 use everruns_core::app::{InvocationSessionMode, ScheduleChannelConfig, WebhookChannelConfig};
 use everruns_core::typed_id::{AgentId, AppChannelId, AppId, HarnessId, SessionId};
 use everruns_core::{
-    AgUiChannelConfig, AgUiToolVisibility, App, AppChannel, AppStatus, ChannelType, Policy,
-    SlackChannelConfig,
+    A2aChannelConfig, AgUiChannelConfig, AgUiToolVisibility, App, AppChannel, AppStatus,
+    ChannelType, Policy, SlackChannelConfig,
 };
 use everruns_durable::{
     CreateScheduleRow, ScheduleTargetType, StoreError, UpdateField, UpdateSchedule,
@@ -99,6 +99,7 @@ static TEMPLATE_EXPR_RE: LazyLock<Regex> = LazyLock::new(|| {
 pub enum AppInvocationSource {
     Schedule,
     Webhook,
+    A2a,
 }
 
 impl AppInvocationSource {
@@ -106,6 +107,7 @@ impl AppInvocationSource {
         match self {
             Self::Schedule => "schedule",
             Self::Webhook => "webhook",
+            Self::A2a => "a2a",
         }
     }
 }
@@ -123,6 +125,20 @@ pub struct WebhookInvocationRequest {
     pub body: String,
     pub json_payload: Option<Value>,
     pub headers: HashMap<String, String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct A2aInvocationRequest {
+    pub app_id: String,
+    pub channel_id: String,
+    /// Verbatim A2A `params` object from the JSON-RPC envelope.
+    pub params: Value,
+    /// Concatenated text parts from `params.message.parts` (newline-joined).
+    pub text: String,
+    pub message_id: Option<String>,
+    pub task_id: String,
+    pub context_id: Option<String>,
+    pub role: Option<String>,
 }
 
 fn durable_store(ctx: &Ctx) -> Result<&Arc<dyn WorkflowEventStore + Send + Sync>, CommandError> {
@@ -212,6 +228,27 @@ fn validate_channel_config(
             if config.message.trim().is_empty() {
                 return Err(CommandError::bad_request(
                     "Webhook channel config requires a non-empty message",
+                ));
+            }
+        }
+        ChannelType::A2a => {
+            let config: A2aChannelConfig =
+                serde_json::from_value(channel_config.clone()).map_err(|e| {
+                    CommandError::bad_request(format!("Invalid A2A channel config: {e}"))
+                })?;
+            if config.api_key_hash.trim().is_empty() {
+                return Err(CommandError::bad_request(
+                    "A2A channel config requires a non-empty api_key_hash",
+                ));
+            }
+            if config.api_key_prefix.trim().is_empty() {
+                return Err(CommandError::bad_request(
+                    "A2A channel config requires a non-empty api_key_prefix",
+                ));
+            }
+            if config.message.trim().is_empty() {
+                return Err(CommandError::bad_request(
+                    "A2A channel config requires a non-empty message",
                 ));
             }
         }
@@ -675,6 +712,12 @@ async fn invoke_app_channel_inner(
                 .ok_or_else(|| CommandError::bad_request("Invalid webhook channel configuration"))?
                 .message
         }
+        AppInvocationSource::A2a => {
+            channel
+                .a2a_config()
+                .ok_or_else(|| CommandError::bad_request("Invalid A2A channel configuration"))?
+                .message
+        }
     };
     let rendered_message = render_message_template(&message_template, &template_context);
     if rendered_message.trim().is_empty() {
@@ -761,6 +804,70 @@ pub async fn invoke_scheduled_app_channel(
             source: AppInvocationSource::Schedule,
             template_context,
             request_id: None,
+        },
+    )
+    .await
+}
+
+pub async fn invoke_a2a_app_channel(
+    db: &Arc<crate::storage::StorageBackend>,
+    encryption: Option<&Arc<crate::storage::encryption::EncryptionService>>,
+    session_service: &SessionService,
+    message_service: &MessageService,
+    req: A2aInvocationRequest,
+    request_id: Option<String>,
+) -> Result<AppInvocationResult, CommandError> {
+    let app = q::get_by_public_id_unscoped(db, encryption, &req.app_id)
+        .await
+        .map_err(classify_anyhow)?
+        .ok_or_else(|| CommandError::not_found("App"))?;
+    let channel_public_id: AppChannelId = req
+        .channel_id
+        .parse()
+        .map_err(|e| CommandError::bad_request(format!("Invalid channel ID: {e}")))?;
+    let channel = app
+        .channel_by_id(&channel_public_id)
+        .cloned()
+        .ok_or_else(|| CommandError::not_found("Channel"))?;
+    let config = channel
+        .a2a_config()
+        .ok_or_else(|| CommandError::bad_request("Invalid A2A channel configuration"))?;
+    let template_context = json!({
+        "app": {
+            "id": app.public_id.to_string(),
+            "name": app.name.clone(),
+        },
+        "channel": {
+            "id": channel.public_id.to_string(),
+            "type": channel.channel_type.to_string(),
+        },
+        "invocation": {
+            "source": "a2a",
+            "triggered_at": Utc::now().to_rfc3339(),
+        },
+        "payload": req.params.clone(),
+        "a2a": {
+            "text": req.text,
+            "message_id": req.message_id,
+            "task_id": req.task_id,
+            "context_id": req.context_id,
+            "role": req.role,
+        },
+    });
+
+    invoke_app_channel_inner(
+        InvocationServices {
+            db,
+            session_service,
+            message_service,
+        },
+        InvocationRequest {
+            app,
+            channel,
+            session_mode: config.session_mode,
+            source: AppInvocationSource::A2a,
+            template_context,
+            request_id,
         },
     )
     .await
@@ -1698,6 +1805,217 @@ impl Command for AddWebhookChannelCmd {
 inventory::submit! { CommandDescriptor::of::<AddWebhookChannelCmd>() }
 
 // ============================================================================
+// AddA2aChannel
+// ============================================================================
+
+/// Generate a fresh A2A API key, return (plaintext, sha256_hash, display_prefix).
+///
+/// Plaintext format: `evra2a_<64 hex chars>` — 32 random bytes (256-bit
+/// entropy). The hash is SHA-256 hex, matching `auth/api_key.rs`. The prefix
+/// is the first 8 hex chars after `evra2a_`, suffixed with `...`, for
+/// non-secret UI display.
+pub fn generate_a2a_api_key() -> (String, String, String) {
+    use rand::RngCore;
+
+    let mut bytes = [0u8; 32];
+    rand::rng().fill_bytes(&mut bytes);
+    let hex = hex::encode(bytes);
+    let plaintext = format!("evra2a_{hex}");
+    let hash = hash_a2a_api_key(&plaintext);
+    let prefix = format!("evra2a_{}...", &hex[..8]);
+    (plaintext, hash, prefix)
+}
+
+/// Hash a plaintext A2A API key using SHA-256, returning hex.
+pub fn hash_a2a_api_key(plaintext: &str) -> String {
+    use sha2::{Digest, Sha256};
+    hex::encode(Sha256::digest(plaintext.as_bytes()))
+}
+
+/// Output of [`AddA2aChannelCmd`] — includes the plaintext API key (returned
+/// **once**, never persisted) plus the resulting [`AppChannel`].
+#[derive(Debug, serde::Serialize, ToSchema)]
+pub struct AddA2aChannelOutput {
+    /// Plaintext API key. Persist this — it cannot be recovered later.
+    pub api_key: String,
+    /// The created A2A channel.
+    pub channel: AppChannel,
+}
+
+/// Add an A2A invocation channel to an app. Generates the API key server-side
+/// and returns the plaintext exactly once.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct AddA2aChannelCmd {
+    pub app_id: String,
+    #[serde(default)]
+    pub session_mode: InvocationSessionMode,
+    pub message: String,
+    pub agent_card_name: Option<String>,
+    pub agent_card_description: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_opt_bool_lenient")]
+    pub enabled: Option<bool>,
+}
+
+impl Command for AddA2aChannelCmd {
+    type Output = AddA2aChannelOutput;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "add_a2a_app_channel",
+            category: "apps",
+            description: "Add an A2A (Agent2Agent) invocation channel to an app. Returns the plaintext API key exactly once.",
+            method: "POST",
+            path: "/v1/apps/{id}/a2a-channels",
+        }
+    }
+
+    fn policy() -> Option<&'static Policy> {
+        Some(&APP_MANAGE)
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<AddA2aChannelOutput, CommandError> {
+        let (plaintext, hash, prefix) = generate_a2a_api_key();
+        let mut config = json!({
+            "api_key_hash": hash,
+            "api_key_prefix": prefix,
+            "session_mode": self.session_mode,
+            "message": self.message,
+        });
+        if let Some(name) = self.agent_card_name {
+            config["agent_card_name"] = Value::String(name);
+        }
+        if let Some(desc) = self.agent_card_description {
+            config["agent_card_description"] = Value::String(desc);
+        }
+        let channel = AddChannel {
+            app_id: self.app_id,
+            req: AddChannelRequest {
+                channel_type: ChannelType::A2a,
+                channel_config: Some(config),
+                enabled: self.enabled,
+            },
+        }
+        .execute(ctx)
+        .await?;
+        Ok(AddA2aChannelOutput {
+            api_key: plaintext,
+            channel,
+        })
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<AddA2aChannelCmd>() }
+
+// ============================================================================
+// RegenerateA2aApiKey
+// ============================================================================
+
+/// Regenerate the API key for an A2A channel. Returns the new plaintext key
+/// exactly once and invalidates the previous key.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct RegenerateA2aApiKeyCmd {
+    pub app_id: String,
+    pub channel_id: String,
+}
+
+#[derive(Debug, serde::Serialize, ToSchema)]
+pub struct RegenerateA2aApiKeyOutput {
+    pub api_key: String,
+    pub channel: AppChannel,
+}
+
+impl Command for RegenerateA2aApiKeyCmd {
+    type Output = RegenerateA2aApiKeyOutput;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "regenerate_a2a_app_channel_key",
+            category: "apps",
+            description: "Regenerate the A2A channel API key. Returns the new plaintext exactly once and invalidates the previous key.",
+            method: "POST",
+            path: "/v1/apps/{id}/a2a-channels/{channel_id}/regenerate-key",
+        }
+    }
+
+    fn policy() -> Option<&'static Policy> {
+        Some(&APP_MANAGE)
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<RegenerateA2aApiKeyOutput, CommandError> {
+        let app_id: AppId = self
+            .app_id
+            .parse()
+            .map_err(|e| CommandError::bad_request(format!("Invalid app ID: {e}")))?;
+        let app = ctx
+            .db
+            .get_app_by_public_id(ctx.org_id(), &app_id.to_string())
+            .await
+            .map_err(classify_anyhow)?
+            .ok_or_else(|| CommandError::not_found("App"))?;
+        if !matches!(app.status.as_str(), "draft" | "published") {
+            return Err(CommandError::bad_request(
+                "Archived or deleted apps cannot be edited",
+            ));
+        }
+
+        let channel_row = ctx
+            .db
+            .get_app_channel_by_public_id(&self.channel_id)
+            .await
+            .map_err(classify_anyhow)?
+            .ok_or_else(|| CommandError::not_found("Channel"))?;
+        if channel_row.app_id != app.id {
+            return Err(CommandError::bad_request(
+                "Channel does not belong to this app",
+            ));
+        }
+        if channel_row.channel_type != ChannelType::A2a.to_string() {
+            return Err(CommandError::bad_request("Channel is not an A2A channel"));
+        }
+
+        let encryption = ctx.encryption.as_ref();
+        let mut existing_config: Value = q::decrypt_channel_config(
+            encryption,
+            channel_row.channel_config_encrypted.as_deref(),
+            &channel_row.channel_config,
+        );
+        let (plaintext, hash, prefix) = generate_a2a_api_key();
+        if let Some(map) = existing_config.as_object_mut() {
+            map.insert("api_key_hash".to_string(), Value::String(hash));
+            map.insert("api_key_prefix".to_string(), Value::String(prefix));
+        } else {
+            return Err(CommandError::bad_request(
+                "Existing A2A channel configuration is not a JSON object",
+            ));
+        }
+        validate_channel_config(ChannelType::A2a, &existing_config)?;
+
+        let (stored, encrypted) =
+            q::prepare_channel_config(encryption, &existing_config).map_err(classify_anyhow)?;
+        let row = ctx
+            .db
+            .update_app_channel(
+                channel_row.id,
+                UpdateAppChannel {
+                    channel_config: Some(stored),
+                    channel_config_encrypted: encrypted,
+                    ..Default::default()
+                },
+            )
+            .await
+            .map_err(classify_anyhow)?
+            .ok_or_else(|| CommandError::not_found("Channel"))?;
+
+        Ok(RegenerateA2aApiKeyOutput {
+            api_key: plaintext,
+            channel: q::channel_row_to_channel(encryption, row),
+        })
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<RegenerateA2aApiKeyCmd>() }
+
+// ============================================================================
 // UpdateChannel
 // ============================================================================
 
@@ -1767,26 +2085,47 @@ impl Command for UpdateChannelCmd {
             .channel_type
             .clone()
             .unwrap_or(current_channel_type);
-        let final_channel_config = self.req.channel_config.clone().unwrap_or_else(|| {
-            q::decrypt_channel_config(
-                encryption,
-                channel_row.channel_config_encrypted.as_deref(),
-                &channel_row.channel_config,
+        let existing_decrypted = q::decrypt_channel_config(
+            encryption,
+            channel_row.channel_config_encrypted.as_deref(),
+            &channel_row.channel_config,
+        );
+        let mut final_channel_config = self
+            .req
+            .channel_config
+            .clone()
+            .unwrap_or_else(|| existing_decrypted.clone());
+        // A2A: server preserves the secret key material across PATCH. Clients
+        // updating non-secret fields (message, session_mode, agent card)
+        // should not need to round-trip the api_key_hash and api_key_prefix —
+        // and must not be able to overwrite them with bogus values. Use the
+        // dedicated regenerate-key endpoint to rotate the key.
+        if final_channel_type == ChannelType::A2a
+            && let (Some(out), Some(existing)) = (
+                final_channel_config.as_object_mut(),
+                existing_decrypted.as_object(),
             )
-        });
+        {
+            for key in ["api_key_hash", "api_key_prefix"] {
+                if let Some(existing_value) = existing.get(key) {
+                    out.insert(key.to_string(), existing_value.clone());
+                }
+            }
+        }
         if final_channel_type == ChannelType::Schedule {
             let _ = durable_store(ctx)?;
         }
         validate_channel_config(final_channel_type, &final_channel_config)?;
 
-        let (channel_config, channel_config_encrypted) =
-            if let Some(config) = self.req.channel_config {
-                let (stored, encrypted) =
-                    q::prepare_channel_config(encryption, &config).map_err(classify_anyhow)?;
-                (Some(stored), encrypted)
-            } else {
-                (None, None)
-            };
+        let (channel_config, channel_config_encrypted) = if self.req.channel_config.is_some() {
+            // Persist the merged config (so A2A preserves the existing
+            // api_key_hash / prefix when the client omits them).
+            let (stored, encrypted) = q::prepare_channel_config(encryption, &final_channel_config)
+                .map_err(classify_anyhow)?;
+            (Some(stored), encrypted)
+        } else {
+            (None, None)
+        };
 
         let input = UpdateAppChannel {
             channel_type: self.req.channel_type.map(|ct| ct.to_string()),

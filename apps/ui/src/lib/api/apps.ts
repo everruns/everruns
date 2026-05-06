@@ -8,9 +8,27 @@ import type {
   App,
   AppChannel,
   CreateAppRequest,
+  InvocationSessionMode,
   UpdateAppRequest,
   UpdateChannelRequest,
 } from "./types";
+
+export interface AddA2aChannelRequest {
+  session_mode?: InvocationSessionMode;
+  message: string;
+  agent_card_name?: string;
+  agent_card_description?: string;
+  enabled?: boolean;
+}
+
+export interface A2aChannelKeyResponse {
+  /**
+   * Plaintext A2A API key. Returned exactly once — the server only stores a
+   * SHA-256 hash. Display it to the operator and tell them to save it.
+   */
+  api_key: string;
+  channel: AppChannel;
+}
 
 export const appsCrudApi = createCrudApi<App, CreateAppRequest, UpdateAppRequest>("/v1/apps");
 
@@ -49,6 +67,33 @@ export async function updateChannel(
 
 export async function deleteChannel(appId: string, channelId: string): Promise<void> {
   await api.delete(`/v1/apps/${appId}/channels/${channelId}`);
+}
+
+/**
+ * Create an A2A (Agent2Agent) channel. The server generates a fresh API key
+ * and returns the plaintext exactly once — persist it immediately.
+ */
+export async function addA2aChannel(
+  appId: string,
+  req: AddA2aChannelRequest,
+): Promise<A2aChannelKeyResponse> {
+  const response = await api.post<A2aChannelKeyResponse>(`/v1/apps/${appId}/a2a-channels`, req);
+  return response.data;
+}
+
+/**
+ * Regenerate an A2A channel API key. Returns the new plaintext exactly once;
+ * the previous key stops working as soon as this call returns.
+ */
+export async function regenerateA2aChannelKey(
+  appId: string,
+  channelId: string,
+): Promise<A2aChannelKeyResponse> {
+  const response = await api.post<A2aChannelKeyResponse>(
+    `/v1/apps/${appId}/a2a-channels/${channelId}/regenerate-key`,
+    {},
+  );
+  return response.data;
 }
 
 /** Get the Slack App manifest for an app. Returns manifest YAML and create URL. */

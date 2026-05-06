@@ -29,6 +29,7 @@ Format: `TM-<CATEGORY>-<NNN>`
 | TM-CLIENT | Client-Side Tools | Tool ID spoofing, timeout abuse |
 | TM-MCP | MCP Server | First-party `/mcp` endpoint, MCP OAuth, external MCP clients, MCP server tool discovery/execution |
 | TM-SLACK | Slack Integration | Webhook forgery, signing secret leak, bot loops |
+| TM-A2A | A2A Channel | API key forgery, replay, method abuse, card disclosure |
 
 ### Managing Threat IDs
 
@@ -1020,6 +1021,50 @@ Session A cannot access Session B's container:
 5. Egress filtering: block private IPs + cloud metadata from sandbox bridges
 6. Runtime isolation: configurable (sysbox adds user-ns + procfs virtualization)
 
+## 21. A2A Channel (TM-A2A)
+
+App-scoped Agent2Agent (A2A) protocol ingress. JSON-RPC 2.0 endpoint authenticated by a per-channel API key. Mitigations live in `crates/server/src/api/app_a2a.rs` and `crates/server/src/domains/apps/commands.rs`. See `specs/a2a-channel.md`.
+
+| ID | Threat | Severity | Mitigation | Status |
+|----|--------|----------|------------|--------|
+| TM-A2A-001 | API key brute force | Medium | Keys are 32 random bytes (256-bit entropy) prefixed `evra2a_`; stored only as SHA-256 hex; plaintext returned exactly once at create / regenerate; the published Agent Card never includes the key or hash | MITIGATED |
+| TM-A2A-002 | Timing oracle on key compare | Medium | Constant-time byte comparison of the SHA-256 hash digests in `app_a2a::constant_time_eq` before any session creation | MITIGATED |
+| TM-A2A-003 | Plaintext key persistence / log leak | High | Plaintext is never persisted: only hash + non-secret prefix go into `channel_config`. `Authorization` headers are not surfaced into template context (A2A invocations only template `payload`, `a2a.*`, and app metadata — request headers are not exposed) | MITIGATED |
+| TM-A2A-004 | Anonymous ingress to draft / disabled channels | High | Published-app + enabled-channel checks run before key validation; the Agent Card endpoint mirrors the same gate and 404s otherwise | MITIGATED |
+| TM-A2A-005 | A2A method abuse beyond `message/send` | Medium | Method allowlist of one (`message/send`); all other methods return JSON-RPC `-32601 Method not found` without touching the session pipeline | MITIGATED |
+| TM-A2A-006 | Empty / non-text part injection | Low | The endpoint requires at least one non-empty `text` part; otherwise returns `-32602 Invalid params`. This prevents triggering an empty / whitespace-only user message into the session | MITIGATED |
+| TM-A2A-007 | Cross-org session reuse via tag spoofing | High | Inherits the webhook channel mitigation: shared sessions are matched by both org + owner principal + tag set, so a user cannot pre-seed an `app:`/`app_channel:` tagged session and have an A2A invocation reuse it | MITIGATED |
+| TM-A2A-008 | API key rotation does not invalidate old keys | Medium | `regenerate_a2a_app_channel_key` overwrites both `api_key_hash` and `api_key_prefix` in the same row, so the previous key fails constant-time comparison on the next request | MITIGATED |
+| TM-A2A-009 | Agent Card discloses sensitive metadata | Low | Card shape is fixed (`name`, `description`, `url`, capabilities, security schemes, public skill); never echoes the API key, hash, prefix, internal channel UUID, or owner principal | MITIGATED |
+| TM-A2A-010 | Replay of captured request | Medium | First-class replay protection is not implemented; the API key is bearer-style and stable until rotation. Mitigated in depth by HTTPS in production (TM-AUTH-005) and rotation; explicit nonce / timestamp signing is **OPEN** | **OPEN** |
+
+### Mitigation Details
+
+**TM-A2A-001 — API Key Generation:**
+```rust
+// crates/server/src/domains/apps/commands.rs (actual implementation)
+pub fn generate_a2a_api_key() -> (String, String, String) {
+    let mut bytes = [0u8; 32];
+    rand::rng().fill_bytes(&mut bytes);
+    let hex = hex::encode(bytes);
+    let plaintext = format!("evra2a_{hex}");
+    let hash = hash_a2a_api_key(&plaintext);
+    let prefix = format!("evra2a_{}...", &hex[..8]);
+    (plaintext, hash, prefix)
+}
+
+pub fn hash_a2a_api_key(plaintext: &str) -> String {
+    hex::encode(sha2::Sha256::digest(plaintext.as_bytes()))
+}
+```
+The plaintext is returned in the `add_a2a_app_channel` and `regenerate_a2a_app_channel_key` command responses and never read back from storage — `channel_config` only holds the SHA-256 hash and the display prefix. Agent Card responses derive from the same row but explicitly select non-secret fields.
+
+**TM-A2A-005 — Method Gate:**
+The handler dispatches strictly on `method == "message/send"`. Any other JSON-RPC method short-circuits with a structured `-32601` response *before* any session work. This keeps the surface narrow until streaming and task lifecycle features are implemented.
+
+**TM-A2A-007 — Tag-spoof Hardening:**
+A2A reuses `find_app_session_by_tags_and_owner` (already mitigates the webhook variant TM-AUTHZ-006). Sessions matched for `shared_session` mode require the requesting app's `org_id` *and* `owner_principal_id` to line up, so a user-created session sharing the same surface tags is rejected.
+
 ## Vulnerability Summary
 
 ### Open Threats (Require Action)
@@ -1112,6 +1157,9 @@ Session A cannot access Session B's container:
 | Slack webhook forgery | TM-SLACK-001 | HMAC-SHA256 signing secret verification, 5-min replay window |
 | Slack bot loop | TM-SLACK-002 | Skip events with `bot_id` or `subtype` to prevent infinite loops |
 | Slack signing secret exposure | TM-SLACK-003 | Stored in `channel_config` (org-scoped access), not logged |
+| A2A API key forgery | TM-A2A-001, TM-A2A-002 | SHA-256 hashed at rest, constant-time compare, 128-bit entropy |
+| A2A method abuse | TM-A2A-005 | Allowlist of one (`message/send`); other methods rejected before session creation |
+| A2A Agent Card disclosure | TM-A2A-009 | Card never echoes API key / hash / internal IDs; only published while app is live and channel enabled |
 
 ## References
 

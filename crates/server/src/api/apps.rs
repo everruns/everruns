@@ -6,7 +6,10 @@ use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::apps::types::{
     AddChannelRequest, CreateAppRequest, ListAppsQuery, UpdateAppRequest, UpdateChannelRequest,
 };
-use crate::domains::apps::{APP_DANGEROUS, APP_MANAGE, APP_VIEW};
+use crate::domains::apps::{
+    APP_DANGEROUS, APP_MANAGE, APP_VIEW, AddA2aChannelCmd, AddA2aChannelOutput,
+    RegenerateA2aApiKeyCmd, RegenerateA2aApiKeyOutput,
+};
 use crate::services::CapabilityService;
 use crate::storage::{EncryptionService, StorageBackend};
 use axum::{
@@ -85,6 +88,14 @@ pub fn routes(state: AppState) -> Router {
         .route(
             "/v1/apps/{app_id}/channels/{channel_id}",
             axum::routing::patch(update_channel).delete(delete_channel),
+        )
+        // A2A channel sub-routes (channel-specific because the API key is
+        // generated server-side and returned exactly once). Uses a dedicated
+        // path prefix to avoid colliding with `/channels/{channel_id}`.
+        .route("/v1/apps/{app_id}/a2a-channels", post(add_a2a_channel))
+        .route(
+            "/v1/apps/{app_id}/a2a-channels/{channel_id}/regenerate-key",
+            post(regenerate_a2a_key),
         )
         .with_state(state)
 }
@@ -338,4 +349,47 @@ pub async fn delete_channel(
         .run(&state.ctx(&org))
         .await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Debug, serde::Deserialize, utoipa::ToSchema)]
+pub struct AddA2aChannelHttpRequest {
+    #[serde(default)]
+    pub session_mode: everruns_core::app::InvocationSessionMode,
+    pub message: String,
+    pub agent_card_name: Option<String>,
+    pub agent_card_description: Option<String>,
+    pub enabled: Option<bool>,
+}
+
+/// POST /v1/apps/{app_id}/a2a-channels - Add an A2A channel (returns plaintext key once).
+pub async fn add_a2a_channel(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(app_id): Path<String>,
+    Json(req): Json<AddA2aChannelHttpRequest>,
+) -> Result<(StatusCode, Json<AddA2aChannelOutput>), (StatusCode, Json<ErrorResponse>)> {
+    let output = AddA2aChannelCmd {
+        app_id,
+        session_mode: req.session_mode,
+        message: req.message,
+        agent_card_name: req.agent_card_name,
+        agent_card_description: req.agent_card_description,
+        enabled: req.enabled,
+    }
+    .run(&state.ctx(&org))
+    .await?;
+    Ok((StatusCode::CREATED, Json(output)))
+}
+
+/// POST /v1/apps/{app_id}/channels/{channel_id}/regenerate-key
+/// Regenerate an A2A channel API key. Returns the new plaintext key once.
+pub async fn regenerate_a2a_key(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path((app_id, channel_id)): Path<(String, String)>,
+) -> Result<Json<RegenerateA2aApiKeyOutput>, (StatusCode, Json<ErrorResponse>)> {
+    let output = RegenerateA2aApiKeyCmd { app_id, channel_id }
+        .run(&state.ctx(&org))
+        .await?;
+    Ok(Json(output))
 }

@@ -448,6 +448,13 @@ impl TestServer {
             feature_flags.notifications,
             event_delivery.clone(),
         );
+        let app_a2a_state = api::app_a2a::AppA2aState::new(
+            db.clone(),
+            encryption.clone(),
+            runner.clone(),
+            feature_flags.notifications,
+            event_delivery.clone(),
+        );
         let ag_ui_state = api::ag_ui::AgUiState::new(
             db.clone(),
             encryption.clone(),
@@ -506,6 +513,7 @@ impl TestServer {
             .merge(api::ag_ui::routes(ag_ui_state))
             .merge(api::slack_events::routes(slack_state))
             .merge(api::app_webhooks::routes(app_webhooks_state))
+            .merge(api::app_a2a::routes(app_a2a_state))
             .merge(auth::routes(auth_backend.clone()))
             .merge(auth::cli_auth::cli_auth_routes(
                 auth::cli_auth::CliAuthState {

@@ -648,6 +648,122 @@
         }
       }
     },
+    "/v1/apps/{app_id}/a2a/{channel_id}": {
+      "post": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "POST /v1/apps/{app_id}/a2a/{channel_id}",
+        "operationId": "invoke_a2a",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "description": "App ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "channel_id",
+            "in": "path",
+            "description": "A2A channel ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {}
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "JSON-RPC 2.0 response (success or A2A error envelope)"
+          },
+          "401": {
+            "description": "Missing or invalid API key",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "App is not published or channel disabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "App or channel not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/apps/{app_id}/a2a/{channel_id}/.well-known/agent-card.json": {
+      "get": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "GET /v1/apps/{app_id}/a2a/{channel_id}/.well-known/agent-card.json",
+        "operationId": "agent_card",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "description": "App ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "channel_id",
+            "in": "path",
+            "description": "A2A channel ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Agent Card JSON"
+          },
+          "404": {
+            "description": "App or channel not found / unpublished / disabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/apps/{app_id}/webhooks/{channel_id}": {
       "post": {
         "tags": [
