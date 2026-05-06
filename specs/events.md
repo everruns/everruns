@@ -4,6 +4,10 @@
 
 Events are the core communication protocol in Everruns. They provide observability into session execution, enable SSE streaming, and serve as the source of truth for conversation data. All events follow a standard schema and are persisted to the events table.
 
+Events may also be projected into reporting facts for analytical queries. That
+projection is asynchronous and backend-neutral; see
+[specs/reporting.md](reporting.md).
+
 ## Contract & Compatibility
 
 Events are a **public API contract**. Consumers can rely on the guarantees defined here when building integrations. The server is responsible for ensuring only well-defined events reach consumers.

@@ -4,6 +4,10 @@
 
 Usage tracking captures token consumption from LLM calls across the platform. This enables cost monitoring, usage analytics, and billing insights. The system tracks input tokens, output tokens, and provider-specific cache tokens.
 
+For dynamic analytical reporting across agents, users, harnesses, sessions, and
+models, usage rows feed the asynchronous reporting projection model described in
+[specs/reporting.md](reporting.md).
+
 ## Requirements
 
 ### Token Types

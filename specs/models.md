@@ -192,6 +192,10 @@ Modular functionality that can be enabled on Agents. See `crates/core/src/capabi
 
 See `specs/capabilities.md` for the full capabilities specification.
 
+Capability configuration and runtime attribution feed reporting facts with
+separate usage meanings (`configured`, `resolved`, `exposed`, `invoked`,
+`effect_ran`). See [specs/reporting.md](reporting.md).
+
 ### LLM Provider
 
 Configuration for LLM API providers. See `crates/core/src/llm_models.rs` for full type definitions.
