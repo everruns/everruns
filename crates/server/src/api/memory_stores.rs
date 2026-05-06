@@ -5,10 +5,11 @@ use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
 pub use crate::domains::memory_stores::types::{
     CreateMemoryStoreRequest, ListMemoriesQuery, ListMemoriesResponse, MemoryResponse,
-    MemoryStoreResponse,
+    MemoryStoreResponse, UpdateMemoryStoreRequest,
 };
 use crate::domains::memory_stores::{
     CreateMemoryStore, ForgetMemoryCmd, GetMemoryStore, ListMemoriesCmd, ListMemoryStores,
+    UpdateMemoryStore,
 };
 use crate::storage::StorageBackend;
 use axum::{
@@ -51,7 +52,10 @@ pub fn routes(state: AppState) -> Router {
             "/v1/memory-stores",
             post(create_memory_store).get(list_memory_stores),
         )
-        .route("/v1/memory-stores/{store_id}", get(get_memory_store))
+        .route(
+            "/v1/memory-stores/{store_id}",
+            get(get_memory_store).patch(update_memory_store),
+        )
         .route("/v1/memory-stores/{store_id}/memories", get(list_memories))
         .route(
             "/v1/memory-stores/{store_id}/memories/{memory_id}",
@@ -114,6 +118,32 @@ pub async fn get_memory_store(
 ) -> ApiResult<MemoryStoreResponse> {
     Ok(Json(
         GetMemoryStore { store_id }.run(&state.ctx(&org)).await?,
+    ))
+}
+
+#[utoipa::path(
+    patch,
+    path = "/v1/memory-stores/{store_id}",
+    params(("store_id" = String, Path, description = "Memory store ID")),
+    request_body = UpdateMemoryStoreRequest,
+    responses(
+        (status = 200, description = "Memory store updated", body = MemoryStoreResponse),
+        (status = 400, description = "Invalid input", body = ErrorResponse),
+        (status = 404, description = "Not found", body = ErrorResponse),
+        (status = 409, description = "Duplicate name", body = ErrorResponse)
+    ),
+    tag = "memory_stores"
+)]
+pub async fn update_memory_store(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(store_id): Path<String>,
+    Json(req): Json<UpdateMemoryStoreRequest>,
+) -> ApiResult<MemoryStoreResponse> {
+    Ok(Json(
+        UpdateMemoryStore::from_request(store_id, req)
+            .run(&state.ctx(&org))
+            .await?,
     ))
 }
 

@@ -33,6 +33,11 @@ export interface CreateMemoryStoreRequest {
   is_default?: boolean;
 }
 
+export interface UpdateMemoryStoreRequest {
+  name?: string;
+  is_default?: boolean;
+}
+
 export interface ListMemoriesParams {
   query?: string;
   kind?: string;

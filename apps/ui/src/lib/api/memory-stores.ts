@@ -7,6 +7,7 @@ import type {
   ListMemoriesResponse,
   ListResponse,
   MemoryStore,
+  UpdateMemoryStoreRequest,
 } from "./types";
 
 export async function listMemoryStores(): Promise<MemoryStore[]> {
@@ -21,6 +22,14 @@ export async function getMemoryStore(storeId: string): Promise<MemoryStore> {
 
 export async function createMemoryStore(request: CreateMemoryStoreRequest): Promise<MemoryStore> {
   const response = await api.post<MemoryStore>("/v1/memory-stores", request);
+  return response.data;
+}
+
+export async function updateMemoryStore(
+  storeId: string,
+  request: UpdateMemoryStoreRequest,
+): Promise<MemoryStore> {
+  const response = await api.patch<MemoryStore>(`/v1/memory-stores/${storeId}`, request);
   return response.data;
 }
 

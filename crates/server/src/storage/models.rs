@@ -1059,6 +1059,12 @@ pub struct CreateMemoryStoreRow {
     pub is_default: bool,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct UpdateMemoryStoreRow {
+    pub name: Option<String>,
+    pub is_default: Option<bool>,
+}
+
 #[derive(Debug, Clone, FromRow, serde::Serialize)]
 pub struct MemoryDbRow {
     pub id: Uuid,

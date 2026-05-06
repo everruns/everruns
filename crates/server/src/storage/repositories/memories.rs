@@ -114,6 +114,76 @@ impl Database {
         Ok(rows)
     }
 
+    /// Atomically rename a memory store and/or change its default flag.
+    ///
+    /// When `is_default = Some(true)` is requested the previous default in the
+    /// same org is demoted in the same transaction so the unique partial index
+    /// `idx_memory_stores_org_default` stays satisfied. The case-insensitive
+    /// unique index `idx_memory_stores_org_lower_name` enforces name uniqueness;
+    /// a duplicate is surfaced as an `anyhow` error containing the Postgres
+    /// "duplicate key" message and is mapped to `Conflict` upstream.
+    pub async fn update_memory_store(
+        &self,
+        org_id: i64,
+        public_id: &str,
+        input: UpdateMemoryStoreRow,
+    ) -> Result<Option<MemoryStoreDbRow>> {
+        let mut tx = self.pool.begin().await?;
+
+        let existing: Option<MemoryStoreDbRow> = sqlx::query_as(
+            r#"
+            SELECT id, org_id, public_id, name, is_default, created_at, updated_at
+            FROM memory_stores
+            WHERE org_id = $1 AND public_id = $2
+            FOR UPDATE
+            "#,
+        )
+        .bind(org_id)
+        .bind(public_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+
+        let Some(existing) = existing else {
+            tx.rollback().await?;
+            return Ok(None);
+        };
+
+        // Promote: demote any other default in this org first.
+        if matches!(input.is_default, Some(true)) && !existing.is_default {
+            sqlx::query(
+                r#"
+                UPDATE memory_stores
+                SET is_default = FALSE, updated_at = NOW()
+                WHERE org_id = $1 AND id <> $2 AND is_default
+                "#,
+            )
+            .bind(org_id)
+            .bind(existing.id)
+            .execute(&mut *tx)
+            .await?;
+        }
+
+        let row: MemoryStoreDbRow = sqlx::query_as(
+            r#"
+            UPDATE memory_stores
+            SET name = COALESCE($3, name),
+                is_default = COALESCE($4, is_default),
+                updated_at = NOW()
+            WHERE org_id = $1 AND id = $2
+            RETURNING id, org_id, public_id, name, is_default, created_at, updated_at
+            "#,
+        )
+        .bind(org_id)
+        .bind(existing.id)
+        .bind(input.name.as_deref())
+        .bind(input.is_default)
+        .fetch_one(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+        Ok(Some(row))
+    }
+
     pub async fn count_memory_stores(&self, org_id: i64) -> Result<i64> {
         let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM memory_stores WHERE org_id = $1")
             .bind(org_id)

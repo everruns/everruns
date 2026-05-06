@@ -823,6 +823,15 @@ impl StorageBackend {
         dispatch!(self, count_memory_stores, org_id)
     }
 
+    pub async fn update_memory_store(
+        &self,
+        org_id: i64,
+        public_id: &str,
+        input: UpdateMemoryStoreRow,
+    ) -> Result<Option<MemoryStoreDbRow>> {
+        dispatch!(self, update_memory_store, org_id, public_id, input)
+    }
+
     pub async fn create_memory(&self, input: CreateMemoryRow) -> Result<MemoryDbRow> {
         dispatch!(self, create_memory, input)
     }
