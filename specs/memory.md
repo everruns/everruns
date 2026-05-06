@@ -140,8 +140,36 @@ Enforcement: checked on write (`remember` tool + REST API). Returns clear
 
 ## Storage
 
-In-memory implementation for dev mode (`InMemoryMemoryStore`).
-PostgreSQL implementation for production (future migration `012_memory.sql`).
+In-memory implementation for dev mode (`InMemoryMemoryStore`) — used by
+embedded runtimes and tests; see `crates/core/src/memory.rs`.
+
+PostgreSQL implementation for production (`crates/server/migrations/032_memory_stores.sql`):
+
+- `memory_stores` — org-scoped containers with one default store per org.
+- `memories` — soft-delete via `active = FALSE`; carries `org_id` for fast
+  org-scoped queries and isolation checks.
+
+The server bridges the trait via `DbMemoryStore`
+(`crates/server/src/storage/memory_store_backend.rs`), which is an org-scoped
+adapter wired into `DirectWorkerAdapters::memory_store(org_id)` so the
+`remember`/`recall`/`forget` tools persist through the configured backend.
+
+## REST API
+
+Org-scoped CRUD lives at `/v1/memory-stores`:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/v1/memory-stores` | List org memory stores |
+| `POST` | `/v1/memory-stores` | Create a new store |
+| `GET` | `/v1/memory-stores/{store_id}` | Get a store with active memory count |
+| `GET` | `/v1/memory-stores/{store_id}/memories` | Search memories (`query`, `kind`, `tag[]`, `include_inactive`, `limit`) |
+| `DELETE` | `/v1/memory-stores/{store_id}/memories/{memory_id}` | Forget (soft-delete) a memory |
+
+All routes resolve org from the authenticated request; cross-org access
+returns `404` rather than disclosing existence. Full handlers in
+`crates/server/src/api/memory_stores.rs` and the Command implementations in
+`crates/server/src/domains/memory_stores/commands.rs`.
 
 ## System Prompt
 

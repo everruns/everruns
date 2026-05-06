@@ -18,6 +18,7 @@ pub mod images;
 pub mod llm_models;
 pub mod llm_providers;
 pub mod mcp_servers;
+pub mod memory_stores;
 pub mod messages;
 pub mod notifications;
 pub mod org_resolver;

@@ -218,7 +218,7 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
         None
     }
 
-    fn memory_store(&self) -> Option<Arc<dyn everruns_core::MemoryStoreBackend>> {
+    fn memory_store(&self, _org_id: i64) -> Option<Arc<dyn everruns_core::MemoryStoreBackend>> {
         None
     }
 
@@ -769,7 +769,7 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
     if let Some(provider_credential_store) = adapter.provider_credential_store(org_id) {
         atom = atom.with_provider_credential_store(provider_credential_store);
     }
-    if let Some(memory_store) = adapter.memory_store() {
+    if let Some(memory_store) = adapter.memory_store(org_id) {
         atom = atom.with_memory_store(memory_store);
     }
     if let Some(connection_resolver) = adapter.connection_resolver() {

@@ -183,7 +183,7 @@ impl RuntimeHostAdapter for MockHostAdapter {
         self.file_store.clone()
     }
 
-    fn memory_store(&self) -> Option<Arc<dyn MemoryStoreBackend>> {
+    fn memory_store(&self, _org_id: i64) -> Option<Arc<dyn MemoryStoreBackend>> {
         self.memory_store.clone()
     }
 }

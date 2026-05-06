@@ -20,3 +20,4 @@ export * from "./command-types";
 export * from "./eval-types";
 export * from "./budget-types";
 export * from "./volume-types";
+export * from "./memory-store-types";

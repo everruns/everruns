@@ -169,6 +169,10 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         Some(self.adapters.schedule_store(org_id))
     }
 
+    fn memory_store(&self, org_id: i64) -> Option<Arc<dyn everruns_core::MemoryStoreBackend>> {
+        self.adapters.memory_store(org_id)
+    }
+
     fn platform_store(
         &self,
         org_id: i64,
