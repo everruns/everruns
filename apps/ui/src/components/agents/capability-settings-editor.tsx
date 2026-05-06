@@ -15,6 +15,11 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import type { Capability } from "@/lib/api/types";
+import { WorkspaceVolumesConfigEditor } from "./workspace-volumes-config-editor";
+
+// Capability IDs with purpose-built editors. Mirrors the constants exported
+// from crates/core/src/capabilities/*.
+const WORKSPACE_VOLUMES_CAPABILITY_ID = "workspace_volumes";
 
 interface CapabilitySettingsEditorProps {
   /** Full capability metadata, including optional config schema */
@@ -33,6 +38,9 @@ export function CapabilitySettingsEditor({
   onChange,
   disabled,
 }: CapabilitySettingsEditorProps) {
+  if (capability.id === WORKSPACE_VOLUMES_CAPABILITY_ID) {
+    return <WorkspaceVolumesConfigEditor config={config} onChange={onChange} disabled={disabled} />;
+  }
   return (
     <SchemaCapabilityEditor
       capability={capability}
