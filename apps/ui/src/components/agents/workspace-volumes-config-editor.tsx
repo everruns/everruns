@@ -39,8 +39,13 @@ const PATH_PREFIX = "/workspace";
 // Validate the structural shape of a mount path. Mirrors
 // validate_mount_config_shape in crates/core/src/volume.rs so that errors
 // surface client-side with the same semantics as the server.
+//
+// Returns null for empty paths so freshly-added rows render without an
+// immediate error; the empty path is still rejected at save time because the
+// row is filtered from the overlap check and the server validates the final
+// config.
 export function validateMountPath(path: string): string | null {
-  if (!path) return "Path is required";
+  if (!path) return null;
   if (path !== PATH_PREFIX && !path.startsWith(`${PATH_PREFIX}/`)) {
     return `Path must be ${PATH_PREFIX} or start with ${PATH_PREFIX}/`;
   }
@@ -55,12 +60,19 @@ export function validateMountPath(path: string): string | null {
   return null;
 }
 
-// Returns true if `a` and `b` overlap: equal, or one is a path prefix of the other.
-// Mirrors mount_paths_overlap in crates/core/src/volume.rs.
+// Returns true if `a` and `b` overlap: equal, or one is a path prefix of the
+// other on a `/`-segment boundary. Mirrors mount_paths_overlap in
+// crates/core/src/volume.rs but compares path segments so the result is
+// independent of multi-byte character widths in non-ASCII paths.
 export function pathsOverlap(a: string, b: string): boolean {
   if (a === b) return true;
-  const [shorter, longer] = a.length < b.length ? [a, b] : [b, a];
-  return longer.startsWith(shorter) && longer.charAt(shorter.length) === "/";
+  const segA = a.split("/");
+  const segB = b.split("/");
+  const [shorter, longer] = segA.length < segB.length ? [segA, segB] : [segB, segA];
+  for (let i = 0; i < shorter.length; i++) {
+    if (shorter[i] !== longer[i]) return false;
+  }
+  return true;
 }
 
 interface MountValidation {
@@ -82,7 +94,8 @@ function validateMounts(mounts: VolumeMountEntry[]): MountValidation[] {
     return validation;
   });
 
-  // Detect duplicate / overlapping paths between rows.
+  // Detect duplicate / overlapping paths between rows. Mark both rows so the
+  // user sees the conflict on either side regardless of row order.
   for (let i = 0; i < mounts.length; i++) {
     const a = mounts[i];
     if (!a.path || validations[i].pathError) continue;
@@ -91,8 +104,11 @@ function validateMounts(mounts: VolumeMountEntry[]): MountValidation[] {
       if (!b.path || validations[j].pathError) continue;
       if (pathsOverlap(a.path, b.path)) {
         const message =
-          a.path === b.path ? `Duplicate mount path '${a.path}'` : `Overlaps with '${a.path}'`;
-        validations[j].overlapError = message;
+          a.path === b.path
+            ? `Duplicate mount path '${a.path}'`
+            : `Path '${a.path}' overlaps with '${b.path}'`;
+        if (!validations[i].overlapError) validations[i].overlapError = message;
+        if (!validations[j].overlapError) validations[j].overlapError = message;
       }
     }
   }
@@ -161,7 +177,9 @@ export function WorkspaceVolumesConfigEditor({
   };
 
   const addRow = () => {
-    updateMounts([...mounts, { volume: "", path: "/workspace/", mode: "readonly" }]);
+    // Default to an empty path so the row does not start in an error state
+    // (a placeholder shows "/workspace/research" as a hint instead).
+    updateMounts([...mounts, { volume: "", path: "", mode: "readonly" }]);
   };
 
   return (
@@ -185,9 +203,13 @@ export function WorkspaceVolumesConfigEditor({
         <div className="space-y-2">
           {mounts.map((mount, index) => {
             const validation = validations[index];
-            // If the configured volume is no longer in the active list, surface a
-            // hint so the user can correct or replace it.
+            // If the configured volume is no longer in the active list, surface
+            // a hint so the user can correct or replace it. Suppress while the
+            // volume list is still loading or errored — `activeVolumes` is
+            // empty in those states and would falsely flag valid IDs.
             const isUnknownVolume =
+              !isLoading &&
+              !error &&
               mount.volume.length > 0 &&
               VOLUME_ID_PATTERN.test(mount.volume) &&
               !activeVolumes.some((v) => v.id === mount.volume);

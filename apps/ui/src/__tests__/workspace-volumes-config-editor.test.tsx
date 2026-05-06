@@ -39,11 +39,16 @@ describe("validateMountPath", () => {
     expect(validateMountPath("/workspacefoo")).not.toBeNull();
   });
 
-  it("rejects empty, traversal, and trailing slash", () => {
-    expect(validateMountPath("")).not.toBeNull();
+  it("rejects traversal, empty segments, and trailing slash", () => {
     expect(validateMountPath("/workspace/..")).not.toBeNull();
     expect(validateMountPath("/workspace//x")).not.toBeNull();
     expect(validateMountPath("/workspace/")).not.toBeNull();
+  });
+
+  it("treats empty paths as soft (no error message yet)", () => {
+    // Empty paths return null so freshly-added rows do not start in an error
+    // state; the server still rejects empty paths on save.
+    expect(validateMountPath("")).toBeNull();
   });
 });
 
@@ -62,6 +67,13 @@ describe("pathsOverlap", () => {
 
   it("does not flag disjoint paths", () => {
     expect(pathsOverlap("/workspace/a", "/workspace/b")).toBe(false);
+  });
+
+  it("compares by path segments (handles non-ASCII without divergence)", () => {
+    // Multi-byte segments must not be falsely flagged as overlapping when the
+    // longer path begins with a different segment that shares a UTF-8 prefix.
+    expect(pathsOverlap("/workspace/é", "/workspace/échec")).toBe(false);
+    expect(pathsOverlap("/workspace/é", "/workspace/é/sub")).toBe(true);
   });
 });
 
@@ -85,13 +97,13 @@ describe("WorkspaceVolumesConfigEditor", () => {
     expect(screen.getAllByTestId("volume-mount-row")).toHaveLength(1);
   });
 
-  it("calls onChange when adding a mount row", () => {
+  it("calls onChange when adding a mount row with empty defaults", () => {
     const onChange = jest.fn();
     render(<WorkspaceVolumesConfigEditor config={{}} onChange={onChange} />);
     fireEvent.click(screen.getByRole("button", { name: /add mount/i }));
     expect(onChange).toHaveBeenCalledWith(
       expect.objectContaining({
-        mounts: [expect.objectContaining({ path: "/workspace/", mode: "readonly" })],
+        mounts: [{ volume: "", path: "", mode: "readonly" }],
       }),
     );
   });
@@ -108,7 +120,7 @@ describe("WorkspaceVolumesConfigEditor", () => {
     expect(screen.getByText(/must be \/workspace/i)).toBeInTheDocument();
   });
 
-  it("shows error for duplicate / overlapping mounts", () => {
+  it("shows overlap error on both rows", () => {
     render(
       <WorkspaceVolumesConfigEditor
         config={{
@@ -120,7 +132,20 @@ describe("WorkspaceVolumesConfigEditor", () => {
         onChange={jest.fn()}
       />,
     );
-    expect(screen.getByText(/overlaps with/i)).toBeInTheDocument();
+    // Both the shorter and longer paths should be flagged so the conflict is
+    // visible regardless of row order.
+    expect(screen.getAllByText(/overlaps with/i)).toHaveLength(2);
+  });
+
+  it("does not flag unknown volumes while the volume list is loading", () => {
+    useVolumes.mockReturnValue({ data: undefined, isLoading: true, error: null });
+    render(
+      <WorkspaceVolumesConfigEditor
+        config={{ mounts: [{ volume: VOLUME_A, path: "/workspace/x" }] }}
+        onChange={jest.fn()}
+      />,
+    );
+    expect(screen.queryByText(/unavailable or archived/i)).not.toBeInTheDocument();
   });
 
   it("flags volume IDs that are not in the active list", () => {
