@@ -27,6 +27,7 @@
     "typescript": "^5.9.3"
   },
   "overrides": {
-    "lodash": "4.17.23"
+    "lodash": "4.17.23",
+    "yaml": "2.8.4"
   }
 }

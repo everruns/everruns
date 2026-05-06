@@ -67,5 +67,10 @@
     "tailwindcss": "^4.2.0",
     "ts-jest": "^29.4.6",
     "typescript": "5.9.3"
+  },
+  "overrides": {
+    "postcss": "8.5.14",
+    "prismjs": "1.30.0",
+    "uuid": "11.1.1"
   }
 }
