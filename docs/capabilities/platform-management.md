@@ -10,7 +10,7 @@ description: Programmatic management of harnesses, agents, and sessions from wit
 | **Features** | None |
 | **Dependencies** | `session_file_system` |
 
-Tools to manage Everruns entities programmatically. Read, create, update, and delete harnesses, agents, and sessions — and interact with sessions by sending messages.
+Tools to manage Everruns entities programmatically. Read, create, update, and delete harnesses, agents, and sessions; inspect session context usage; and interact with sessions by sending messages.
 
 ## Platform Documentation
 
@@ -127,6 +127,14 @@ Wait for session to finish processing and return the response.
 |---|---|---|---|
 | `session_id` | string | yes | Target session ID |
 | `timeout_secs` | integer | no | Timeout (default: 120). Set to 0 to check status without waiting. |
+
+### `session_context_report`
+
+Read the latest estimated context-token breakdown for a session. Returns total estimated input tokens, optional context-window size, cumulative usage, grouped sections, and per-capability contributions where available.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `session_id` | string | yes | Session ID to inspect |
 
 ## Use Cases
 

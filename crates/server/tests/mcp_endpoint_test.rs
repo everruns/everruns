@@ -1236,6 +1236,39 @@ async fn test_mcp_execute_list_harnesses() {
     assert!(names.contains(&"generic"), "Should have Generic harness");
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_execute_get_session_context_report() {
+    let server = TestServer::in_memory().await;
+    let session: Value = server
+        .post(
+            "/v1/sessions",
+            json!({
+                "harness_id": server.seed_base_harness_id,
+                "title": "MCP Context Report"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let session_id = session["id"].as_str().expect("session id").to_string();
+
+    let resp = mcp_tool_call(
+        &server,
+        "execute",
+        json!({ "commands": format!("get_session_context_report {session_id}") }),
+    )
+    .await;
+    assert!(
+        !tool_is_error(&resp),
+        "execute get_session_context_report failed: {}",
+        tool_text(&resp)
+    );
+
+    let result = tool_json(&resp);
+    assert_eq!(result["session_id"], session_id);
+    assert_eq!(result["estimated_input_tokens"], 0);
+}
+
 #[tokio::test]
 async fn test_mcp_execute_session_files_reads_virtual_mounts() {
     let server = TestServer::in_memory().await;

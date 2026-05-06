@@ -741,7 +741,7 @@ See `crates/core/src/capabilities/sample_data.rs` for a concrete example of `mou
 - **System Prompt**: Describes available management tools, common workflows, and platform docs availability
 - **Mounts**: `/docs` — Everruns platform documentation (virtual, readonly). The stored/normalized mount path is `/docs`; agents/tools access it as `/workspace/docs`. Embedded at compile time via `include_dir!` from the repo `docs/` directory. Only markdown files (`.md`, `.mdx`) are included in the virtual tree.
 - **Lifecycle Parity**: Must enforce the same archive/delete, assignment, and read-only rules as the public API and UI. Agents using these tools may not bypass lifecycle restrictions.
-- **Tools**: Read/write split — read tools (`read_capabilities`, `read_harnesses`, `read_agents`, `read_sessions`, `session_read_messages`, `session_read_response`) return single item by ID or filtered list; write tools (`manage_harnesses`, `manage_agents`, `manage_sessions`, `session_send_message`) perform mutations. See `crates/core/src/capabilities/platform_management.rs` for full tool parameter definitions.
+- **Tools**: Read/write split — read tools (`read_capabilities`, `read_harnesses`, `read_agents`, `read_sessions`, `session_context_report`, `session_read_messages`, `session_read_response`) return single item by ID, filtered lists, or latest session context usage; write tools (`manage_harnesses`, `manage_agents`, `manage_sessions`, `session_send_message`) perform mutations. See `crates/core/src/capabilities/platform_management.rs` for full tool parameter definitions.
 
 Lifecycle rules for platform management:
 - `delete` archives.

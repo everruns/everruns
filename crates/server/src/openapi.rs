@@ -9,11 +9,11 @@ use crate::api::{ListResponse, PaginatedResponse};
 use crate::domains;
 use everruns_core::llm_models::LlmProvider;
 use everruns_core::{
-    Agent, AgentStatus, CapabilityInfo, Event, EventContext, EventData, FileInfo, FileStat,
-    GrepMatch, GrepResult, LeasedResource, LlmModel, LlmModelWithProvider, LlmProviderStatus,
-    LlmProviderType, McpServer, McpServerStatus, McpServerTransportType, Session, SessionFile,
-    SessionStatus, Skill, SkillContent, SkillFileEntry, SkillSourceType, SkillStatus,
-    SkillValidationResult, ToolCall,
+    Agent, AgentStatus, CapabilityInfo, ContextReportContribution, ContextReportSection, Event,
+    EventContext, EventData, FileInfo, FileStat, GrepMatch, GrepResult, LeasedResource, LlmModel,
+    LlmModelWithProvider, LlmProviderStatus, LlmProviderType, McpServer, McpServerStatus,
+    McpServerTransportType, Session, SessionContextReport, SessionFile, SessionStatus, Skill,
+    SkillContent, SkillFileEntry, SkillSourceType, SkillStatus, SkillValidationResult, ToolCall,
     events::{
         ActCompletedData, ActStartedData, InputMessageData, LlmGenerationData,
         LlmGenerationMetadata, LlmGenerationOutput, ModelMetadata, OutputMessageCompletedData,
@@ -42,6 +42,7 @@ use utoipa::OpenApi;
         api::sessions::create_session,
         api::sessions::list_sessions,
         api::sessions::get_session,
+        api::sessions::get_session_context_report,
         api::sessions::update_session,
         api::sessions::delete_session,
         api::sessions::get_or_create_chat_session,
@@ -189,6 +190,7 @@ use utoipa::OpenApi;
             // Event data types
             InputMessageData, OutputMessageStartedData, OutputMessageDeltaData, OutputMessageCompletedData,
             ModelMetadata, TokenUsage,
+            SessionContextReport, ContextReportSection, ContextReportContribution,
             TurnStartedData, TurnCompletedData, TurnFailedData,
             ReasonStartedData, ReasonCompletedData,
             ActStartedData, ActCompletedData, ToolCallSummary,

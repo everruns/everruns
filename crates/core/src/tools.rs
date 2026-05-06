@@ -2047,6 +2047,20 @@ mod tests {
         async fn get_session_by_id(&self, _id: SessionId) -> crate::Result<Option<crate::Session>> {
             Ok(None)
         }
+        async fn get_session_context_report(
+            &self,
+            id: SessionId,
+        ) -> crate::Result<crate::SessionContextReport> {
+            Ok(crate::SessionContextReport {
+                session_id: id.to_string(),
+                model: "llmsim".to_string(),
+                context_window_tokens: None,
+                estimated_input_tokens: 0,
+                sections: vec![],
+                contributions: vec![],
+                cumulative_usage: None,
+            })
+        }
         async fn set_subagent_metadata(
             &self,
             _session_id: SessionId,

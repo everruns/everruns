@@ -6,8 +6,8 @@ use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
 use crate::domains::sessions::{
     CancelSession, CreateSession, DeleteSession, GetOrCreateChatSession, GetSession,
-    GetSessionStats, ListSessions, PinSession, SESSION_MANAGE, SESSION_VIEW, SessionService,
-    UnpinSession, UpdateSessionCmd,
+    GetSessionContextReport, GetSessionStats, ListSessions, PinSession, SESSION_MANAGE,
+    SESSION_VIEW, SessionService, UnpinSession, UpdateSessionCmd,
 };
 use crate::services::EventService;
 use crate::storage::StorageBackend;
@@ -21,7 +21,7 @@ use everruns_core::capability_types::AgentCapabilityConfig;
 use everruns_core::typed_id::{AgentId, AgentIdentityId, HarnessId, ModelId};
 use everruns_core::{
     BuiltInHarnessRole, Caller, PlatformDefinition, ResourceConfigResponse, ScopedMcpServers,
-    Session, ToolDefinition, evaluate_policies_with,
+    Session, SessionContextReport, ToolDefinition, evaluate_policies_with,
 };
 use everruns_worker::AgentRunner;
 
@@ -359,6 +359,10 @@ pub fn routes(state: AppState) -> Router {
                 .patch(update_session)
                 .delete(delete_session),
         )
+        .route(
+            "/v1/sessions/{session_id}/context-report",
+            get(get_session_context_report),
+        )
         // Pin/unpin
         .route(
             "/v1/sessions/{session_id}/pin",
@@ -508,6 +512,33 @@ pub async fn get_session(
     let session = GetSession { session_id }.run(&state.ctx(&org)).await?;
 
     Ok(Json(urls.wrap(session)))
+}
+
+/// GET /v1/sessions/{session_id}/context-report - Latest context breakdown
+#[utoipa::path(
+    get,
+    path = "/v1/sessions/{session_id}/context-report",
+    params(
+        ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)")
+    ),
+    responses(
+        (status = 200, description = "Session context report", body = SessionContextReport),
+        (status = 400, description = "Invalid session ID"),
+        (status = 404, description = "Session not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "sessions"
+)]
+pub async fn get_session_context_report(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(session_id): Path<String>,
+) -> ApiResult<SessionContextReport> {
+    Ok(Json(
+        GetSessionContextReport { session_id }
+            .run(&state.ctx(&org))
+            .await?,
+    ))
 }
 
 /// PATCH /v1/sessions/{session_id} - Update session

@@ -1001,6 +1001,8 @@ impl Default for CapabilityRegistryBuilder {
 pub struct CollectedCapabilities {
     /// System prompt additions (in order)
     pub system_prompt_parts: Vec<String>,
+    /// Source attribution for each system prompt addition.
+    pub system_prompt_attributions: Vec<SystemPromptAttribution>,
     /// Tool implementations for the registry
     pub tools: Vec<Box<dyn Tool>>,
     /// Tool definitions for config
@@ -1026,6 +1028,12 @@ pub struct CollectedCapabilities {
     // configs + registry, because they need the assembled system prompt at
     // arming time (which only exists once the runtime agent is built). Storing
     // them here would duplicate that work for callers that don't run a stream.
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SystemPromptAttribution {
+    pub capability_id: String,
+    pub content: String,
 }
 
 impl CollectedCapabilities {
@@ -1463,6 +1471,7 @@ pub async fn collect_capabilities_with_configs(
     ctx: &SystemPromptContext,
 ) -> CollectedCapabilities {
     let mut system_prompt_parts: Vec<String> = Vec::new();
+    let mut system_prompt_attributions: Vec<SystemPromptAttribution> = Vec::new();
     let mut tools: Vec<Box<dyn Tool>> = Vec::new();
     let mut tool_definitions: Vec<ToolDefinition> = Vec::new();
     let mut mounts: Vec<MountPoint> = Vec::new();
@@ -1488,6 +1497,10 @@ pub async fn collect_capabilities_with_configs(
                 .system_prompt_contribution_with_config(ctx, &cap_config.config)
                 .await
             {
+                system_prompt_attributions.push(SystemPromptAttribution {
+                    capability_id: cap_id.to_string(),
+                    content: contribution.clone(),
+                });
                 system_prompt_parts.push(contribution);
             }
 
@@ -1574,6 +1587,7 @@ pub async fn collect_capabilities_with_configs(
 
     CollectedCapabilities {
         system_prompt_parts,
+        system_prompt_attributions,
         tools,
         tool_definitions,
         mounts,

@@ -5,6 +5,7 @@
 // Decision: Tool results include UI links via base_url()
 // Decision: PlatformMessage is a simplified view (role + text + timestamp)
 
+use crate::SessionContextReport;
 use crate::agent::Agent;
 use crate::app::{App, AppChannel, ChannelType};
 use crate::capability_dto::CapabilityInfo;
@@ -213,6 +214,9 @@ pub trait PlatformStore: Send + Sync {
 
     /// Get a session by ID.
     async fn get_session_by_id(&self, id: SessionId) -> Result<Option<Session>>;
+
+    /// Get the latest estimated context breakdown for a session.
+    async fn get_session_context_report(&self, id: SessionId) -> Result<SessionContextReport>;
 
     /// Delete (archive) a session.
     async fn delete_session(&self, id: SessionId) -> Result<()>;
@@ -666,6 +670,22 @@ pub mod tests {
         }
         async fn get_session_by_id(&self, _id: SessionId) -> Result<Option<Session>> {
             Ok(Some(self.session.clone()))
+        }
+        async fn get_session_context_report(&self, id: SessionId) -> Result<SessionContextReport> {
+            Ok(SessionContextReport {
+                session_id: id.to_string(),
+                model: "llmsim".to_string(),
+                context_window_tokens: Some(128_000),
+                estimated_input_tokens: 42,
+                sections: vec![crate::ContextReportSection {
+                    key: "conversation".to_string(),
+                    label: "Conversation".to_string(),
+                    tokens: 42,
+                    items: 1,
+                }],
+                contributions: vec![],
+                cumulative_usage: None,
+            })
         }
         async fn set_subagent_metadata(
             &self,

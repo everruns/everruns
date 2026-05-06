@@ -7,6 +7,7 @@ import type {
   SessionStats,
   CreateSessionRequest,
   UpdateSessionRequest,
+  SessionContextReport,
   PaginatedResponse,
   PaginationParams,
 } from "./types";
@@ -59,6 +60,11 @@ export async function getSessionStats(): Promise<SessionStats> {
 
 export async function getSession(sessionId: string): Promise<Session> {
   const response = await api.get<Session>(`/v1/sessions/${sessionId}`);
+  return response.data;
+}
+
+export async function getSessionContextReport(sessionId: string): Promise<SessionContextReport> {
+  const response = await api.get<SessionContextReport>(`/v1/sessions/${sessionId}/context-report`);
   return response.data;
 }
 

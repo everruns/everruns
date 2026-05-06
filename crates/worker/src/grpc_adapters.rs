@@ -3053,6 +3053,17 @@ impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
         .await
     }
 
+    async fn get_session_context_report(
+        &self,
+        id: SessionId,
+    ) -> Result<everruns_core::SessionContextReport> {
+        self.execute_platform_command(
+            "get_session_context_report",
+            serde_json::json!({ "session_id": id.to_string() }),
+        )
+        .await
+    }
+
     async fn set_subagent_metadata(
         &self,
         _session_id: SessionId,

@@ -121,6 +121,30 @@ export interface TokenUsage {
   cache_creation_tokens?: number;
 }
 
+export interface ContextReportSection {
+  key: string;
+  label: string;
+  tokens: number;
+  items: number;
+}
+
+export interface ContextReportContribution {
+  section_key: string;
+  source_id: string;
+  label: string;
+  tokens: number;
+}
+
+export interface SessionContextReport {
+  session_id: string;
+  model: string;
+  context_window_tokens?: number;
+  estimated_input_tokens: number;
+  sections: ContextReportSection[];
+  contributions: ContextReportContribution[];
+  cumulative_usage?: TokenUsage;
+}
+
 // ============================================
 // List response wrappers
 // ============================================

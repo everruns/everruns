@@ -2509,6 +2509,17 @@ impl everruns_core::platform_store::PlatformStore for DirectPlatformStore {
         .await
     }
 
+    async fn get_session_context_report(
+        &self,
+        id: SessionId,
+    ) -> everruns_core::error::Result<everruns_core::SessionContextReport> {
+        self.execute_domain_command(
+            "get_session_context_report",
+            serde_json::json!({ "session_id": id.to_string() }),
+        )
+        .await
+    }
+
     async fn set_subagent_metadata(
         &self,
         session_id: SessionId,

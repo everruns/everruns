@@ -20,7 +20,10 @@ use test_harness::TestServer;
 
 use everruns_core::llm_models::LlmProvider;
 use everruns_core::typed_id::ScheduleId;
-use everruns_core::{Agent, DEFAULT_ORG_ID, Harness, LlmModel, PrincipalId, Session, SessionFile};
+use everruns_core::{
+    Agent, DEFAULT_ORG_ID, Harness, LlmModel, PrincipalId, Session, SessionContextReport,
+    SessionFile,
+};
 use everruns_durable::UpdateField;
 use everruns_server::storage::models::{
     CreatePrincipalRow, CreateSessionScheduleRow, UpdateOrganizationSettings, UpdateSession,
@@ -656,6 +659,33 @@ async fn test_get_session() {
         .json();
 
     assert_eq!(fetched_session.id, session.id);
+}
+
+#[tokio::test]
+async fn test_get_session_context_report_without_generation() {
+    let server = TestServer::in_memory().await;
+
+    let session: Session = server
+        .post(
+            "/v1/sessions",
+            json!({
+                "harness_id": server.seed_base_harness_id,
+                "title": "Context Report Test"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let report: SessionContextReport = server
+        .get(&format!("/v1/sessions/{}/context-report", session.id))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+
+    assert_eq!(report.session_id, session.id.to_string());
+    assert_eq!(report.estimated_input_tokens, 0);
+    assert!(report.sections.is_empty());
 }
 
 #[tokio::test]

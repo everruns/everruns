@@ -4,10 +4,16 @@ use super::types::{
     SessionStatsResponse, UpdateSessionRequest,
 };
 use crate::domains::common::*;
-use everruns_core::events::{EventContext, EventRequest, InputMessageData, TurnCancelledData};
+use everruns_core::events::{
+    EventContext, EventData, EventRequest, InputMessageData, LLM_GENERATION, TurnCancelledData,
+    deserialize_event_data,
+};
+use everruns_core::llm_model_profiles::get_model_profile;
+use everruns_core::llm_models::LlmProviderType;
 use everruns_core::typed_id::{AgentId, MessageId, TurnId};
-use everruns_core::{ANONYMOUS_USER_ID, Message, Session};
+use everruns_core::{ANONYMOUS_USER_ID, Message, Session, SessionContextReport};
 use serde::Deserialize;
+use std::str::FromStr;
 use utoipa::ToSchema;
 
 fn validation_error(
@@ -257,6 +263,105 @@ impl Command for GetSession {
 }
 
 inventory::submit! { CommandDescriptor::of::<GetSession>() }
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct GetSessionContextReport {
+    pub session_id: String,
+}
+
+impl Command for GetSessionContextReport {
+    type Output = SessionContextReport;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "get_session_context_report",
+            category: "sessions",
+            description: "Get the latest estimated context token breakdown for a session, grouped by system prompt, tools, rules, skills, MCP, subagents, and conversation.",
+            method: "GET",
+            path: "/v1/sessions/{session_id}/context-report",
+        }
+    }
+
+    fn positional_arg() -> Option<&'static str> {
+        Some("session_id")
+    }
+
+    fn policy() -> Option<&'static everruns_core::Policy> {
+        Some(&super::SESSION_VIEW)
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<SessionContextReport, CommandError> {
+        let session_id = q::parse_session_id(&self.session_id)?;
+        let session = q::get_session(ctx, session_id, ctx.caller.user_id).await?;
+        let rows = ctx
+            .db
+            .list_events(
+                session_id,
+                None,
+                None,
+                &[LLM_GENERATION.to_string()],
+                &[],
+                None,
+                Some(1),
+            )
+            .await
+            .map_err(classify_anyhow)?;
+
+        let Some(row) = rows.into_iter().next() else {
+            return Ok(SessionContextReport {
+                session_id: session.id.to_string(),
+                model: "unknown".to_string(),
+                context_window_tokens: None,
+                estimated_input_tokens: 0,
+                sections: vec![],
+                contributions: vec![],
+                cumulative_usage: session.usage,
+            });
+        };
+
+        let EventData::LlmGeneration(data) = deserialize_event_data(&row.event_type, row.data)
+        else {
+            return Err(CommandError::Internal(anyhow::anyhow!(
+                "latest llm.generation event could not be decoded"
+            )));
+        };
+        let context_window_tokens = data
+            .metadata
+            .provider
+            .as_deref()
+            .and_then(parse_provider_type)
+            .and_then(|provider_type| get_model_profile(&provider_type, &data.metadata.model))
+            .and_then(|profile| profile.limits)
+            .and_then(|limits| u32::try_from(limits.context).ok());
+
+        Ok(everruns_core::build_session_context_report_from_generation(
+            session.id.to_string(),
+            &data,
+            context_window_tokens,
+            session.usage,
+        ))
+    }
+}
+
+fn parse_provider_type(provider: &str) -> Option<LlmProviderType> {
+    LlmProviderType::from_str(&provider.to_ascii_lowercase()).ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_provider_type_accepts_mixed_case_known_values() {
+        assert_eq!(parse_provider_type("OpenAI"), Some(LlmProviderType::Openai));
+        assert_eq!(
+            parse_provider_type("AZURE_OPENAI"),
+            Some(LlmProviderType::AzureOpenai)
+        );
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<GetSessionContextReport>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateSessionCmd {
