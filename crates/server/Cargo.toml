@@ -66,7 +66,7 @@ urlencoding = "2"
 git2.workspace = true
 mime_guess = "2"
 
-bashkit = { version = "0.4.1", features = ["scripted_tool", "jq"] }
+bashkit = { version = "0.5.0", features = ["scripted_tool", "jq"] }
 
 everruns-config = { path = "../config" }
 everruns-core = { path = "../core", features = ["openapi", "sqlx", "tree-sitter-outlines"] }
