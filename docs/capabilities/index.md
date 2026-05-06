@@ -59,7 +59,7 @@ Agent self-management, dynamic instructions, and skill discovery.
 
 | Capability | ID | Tools |
 |---|---|---|
-| [Platform Management](/capabilities/platform-management/) | `platform_management` | 5 |
+| [Platform Management](/capabilities/platform-management/) | `platform_management` | 14 |
 | [AGENTS.md](/capabilities/agent-instructions/) | `agent_instructions` | 0 |
 | [Agent Skills](/capabilities/agent-skills/) | `skills` | 2 |
 

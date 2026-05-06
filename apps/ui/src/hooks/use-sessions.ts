@@ -7,6 +7,7 @@ import {
   createSession,
   deleteSession,
   getSession,
+  getSessionContextReport,
   getSessionStats,
   listSessions,
   updateSession,
@@ -95,6 +96,22 @@ export function useSession(
   return {
     ...query,
     isLoading: orgLoading || query.isLoading || fallback.isCheckingOtherOrgs,
+  };
+}
+
+export function useSessionContextReport(sessionId: string | undefined) {
+  const { currentOrg, isLoading: orgLoading } = useOrg();
+  const org = currentOrg?.public_id;
+
+  const query = useQuery({
+    queryKey: queryKeys.sessions.contextReport(org, sessionId),
+    queryFn: () => getSessionContextReport(sessionId!),
+    enabled: !!org && !!sessionId,
+  });
+
+  return {
+    ...query,
+    isLoading: orgLoading || query.isLoading,
   };
 }
 

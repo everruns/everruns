@@ -4306,6 +4306,47 @@
         }
       }
     },
+    "/v1/sessions/{session_id}/context-report": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "GET /v1/sessions/{session_id}/context-report - Latest context breakdown",
+        "operationId": "get_session_context_report",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "description": "Session ID (prefixed, e.g., session_...)",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Session context report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionContextReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid session ID"
+          },
+          "404": {
+            "description": "Session not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
     "/v1/sessions/{session_id}/databases": {
       "get": {
         "tags": [
@@ -7507,6 +7548,58 @@
           "strategy": {
             "type": "string",
             "description": "Strategy requested (may differ from strategy_used in the completed event)."
+          }
+        }
+      },
+      "ContextReportContribution": {
+        "type": "object",
+        "required": [
+          "section_key",
+          "source_id",
+          "label",
+          "tokens"
+        ],
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "section_key": {
+            "type": "string"
+          },
+          "source_id": {
+            "type": "string"
+          },
+          "tokens": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "ContextReportSection": {
+        "type": "object",
+        "required": [
+          "key",
+          "label",
+          "tokens",
+          "items"
+        ],
+        "properties": {
+          "items": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "key": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "tokens": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
           }
         }
       },
@@ -15803,6 +15896,59 @@
             "type": "string",
             "description": "Turn ID that activated the session",
             "example": "turn_01933b5a00007000800000000000001"
+          }
+        }
+      },
+      "SessionContextReport": {
+        "type": "object",
+        "required": [
+          "session_id",
+          "model",
+          "estimated_input_tokens",
+          "sections",
+          "contributions"
+        ],
+        "properties": {
+          "context_window_tokens": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "contributions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContextReportContribution"
+            }
+          },
+          "cumulative_usage": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TokenUsage"
+              }
+            ]
+          },
+          "estimated_input_tokens": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "model": {
+            "type": "string"
+          },
+          "sections": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContextReportSection"
+            }
+          },
+          "session_id": {
+            "type": "string"
           }
         }
       },

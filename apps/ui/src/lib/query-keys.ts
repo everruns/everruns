@@ -47,6 +47,8 @@ export const queryKeys = {
       ["sessions", org, agentId ?? "all", offset ?? 0, limit ?? 20] as const,
     byAgent: (agentId: string) => ["sessions", "agent", agentId] as const,
     detail: (org?: string, sessionId?: string) => ["session", org, sessionId] as const,
+    contextReport: (org?: string, sessionId?: string) =>
+      ["session", org, sessionId, "context-report"] as const,
     stats: (org?: string) => ["sessions", "stats", org] as const,
   },
 

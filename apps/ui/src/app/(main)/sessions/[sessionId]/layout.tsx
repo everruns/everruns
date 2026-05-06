@@ -21,6 +21,7 @@ const SESSION_TAB_LABELS: Record<SessionNavKey, string> = {
   storage: "Storage",
   resources: "Resources",
   schedules: "Schedules",
+  context: "Context",
 };
 
 interface SessionLayoutProps {
@@ -56,6 +57,7 @@ export function SessionLayoutContent({ children, sessionId }: SessionLayoutConte
     if (pathname.endsWith("/storage")) return "storage";
     if (pathname.endsWith("/resources")) return "resources";
     if (pathname.endsWith("/schedules")) return "schedules";
+    if (pathname.endsWith("/context")) return "context";
     return "chat"; // Default to chat (includes /chat and base path)
   };
   const activeTab = getActiveTab();

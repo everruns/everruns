@@ -50,6 +50,7 @@ import {
   Folder,
   GitBranch,
   Activity,
+  ChartNoAxesColumn,
   MessageSquare,
   Pencil,
   Sparkles,
@@ -64,6 +65,7 @@ export type SessionNavKey =
   | "storage"
   | "resources"
   | "schedules"
+  | "context"
   | "events"
   | "trajectory";
 
@@ -276,6 +278,12 @@ export function buildSessionNavigation({
           },
         ]
       : []),
+    {
+      key: "context",
+      label: "Context",
+      href: `${basePath}/context`,
+      icon: ChartNoAxesColumn,
+    },
     {
       key: "events",
       label: "Events",

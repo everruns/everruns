@@ -95,6 +95,7 @@ pub mod atoms;
 pub mod capabilities;
 pub mod command;
 pub mod config_layer;
+pub mod context_report;
 pub mod dependency_blocker;
 pub mod error;
 pub mod llm_driver_helpers;
@@ -302,6 +303,10 @@ pub use app::{
     SessionStrategy, SlackChannelConfig, SlackReplyMode,
 };
 pub use capability_dto::{AgentCapability, CapabilityInfo};
+pub use context_report::{
+    ContextReportContribution, ContextReportSection, SessionContextReport,
+    build_session_context_report, build_session_context_report_from_generation,
+};
 pub use events::{
     ACT_COMPLETED, ACT_STARTED, ActCompletedData, ActStartedData, CONTEXT_COMPACTED,
     CONTEXT_COMPACTING, CompactionReason, CompactionStepData, ContextCompactedData,

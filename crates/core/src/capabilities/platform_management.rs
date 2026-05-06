@@ -140,6 +140,7 @@ consult these docs before answering.
             Box::new(ManageAppsTool),
             Box::new(ManageAppChannelsTool),
             Box::new(ReadSessionsTool),
+            Box::new(SessionContextReportTool),
             Box::new(ManageSessionsTool),
             Box::new(SessionSendMessageTool),
             Box::new(SessionReadMessagesTool),
@@ -1737,6 +1738,83 @@ impl Tool for ReadSessionsTool {
 }
 
 // =============================================================================
+// Tool: session_context_report
+// =============================================================================
+
+pub struct SessionContextReportTool;
+
+#[async_trait]
+impl Tool for SessionContextReportTool {
+    fn name(&self) -> &str {
+        "session_context_report"
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some("Session Context Report")
+    }
+
+    fn description(&self) -> &str {
+        "Read the latest estimated context token breakdown for a session."
+    }
+
+    fn parameters_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "session_id": {
+                    "type": "string",
+                    "description": "Session ID to inspect"
+                }
+            },
+            "required": ["session_id"],
+            "additionalProperties": false
+        })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default()
+            .with_readonly(true)
+            .with_idempotent(true)
+    }
+
+    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
+        ToolExecutionResult::tool_error(
+            "session_context_report requires context. This tool must be executed with session context.",
+        )
+    }
+
+    async fn execute_with_context(
+        &self,
+        arguments: Value,
+        context: &ToolContext,
+    ) -> ToolExecutionResult {
+        let store = match get_platform_store(context) {
+            Ok(s) => s,
+            Err(e) => return e,
+        };
+        let id_str = match require_str(&arguments, "session_id") {
+            Ok(value) => value,
+            Err(e) => return e,
+        };
+        let id = match id_str.parse::<crate::typed_id::SessionId>() {
+            Ok(id) => id,
+            Err(_) => {
+                return ToolExecutionResult::tool_error(format!("Invalid session_id: {id_str}"));
+            }
+        };
+
+        match store.get_session_context_report(id).await {
+            Ok(report) => ToolExecutionResult::success(json!(report)),
+            Err(e) => ToolExecutionResult::tool_error(format!("Failed to get context report: {e}")),
+        }
+    }
+
+    fn requires_context(&self) -> bool {
+        true
+    }
+}
+
+// =============================================================================
 // Tool: manage_sessions (mutations: create, delete)
 // =============================================================================
 
@@ -2359,10 +2437,10 @@ mod tests {
     }
 
     #[test]
-    fn capability_provides_thirteen_tools() {
+    fn capability_provides_fourteen_tools() {
         let cap = PlatformManagementCapability;
         let tools = cap.tools();
-        assert_eq!(tools.len(), 13);
+        assert_eq!(tools.len(), 14);
         let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
         assert!(names.contains(&"read_capabilities"));
         assert!(names.contains(&"read_harnesses"));
@@ -2373,6 +2451,7 @@ mod tests {
         assert!(names.contains(&"manage_apps"));
         assert!(names.contains(&"manage_app_channels"));
         assert!(names.contains(&"read_sessions"));
+        assert!(names.contains(&"session_context_report"));
         assert!(names.contains(&"manage_sessions"));
         assert!(names.contains(&"session_send_message"));
         assert!(names.contains(&"session_read_messages"));
@@ -2953,6 +3032,23 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn session_context_report_returns_report() {
+        let ctx = mock_context();
+        let tool = SessionContextReportTool;
+        let session_id = SessionId::new().to_string();
+        let result = tool
+            .execute_with_context(json!({"session_id": session_id}), &ctx)
+            .await;
+        match result {
+            ToolExecutionResult::Success(value) => {
+                assert_eq!(value["estimated_input_tokens"], 42);
+                assert_eq!(value["sections"][0]["key"], "conversation");
+            }
+            other => panic!("expected success, got: {other:?}"),
+        }
+    }
+
     // =========================================================================
     // ManageSessionsTool tests
     // =========================================================================
@@ -3183,6 +3279,7 @@ mod tests {
         assert!(ManageAppsTool.requires_context());
         assert!(ManageAppChannelsTool.requires_context());
         assert!(ReadSessionsTool.requires_context());
+        assert!(SessionContextReportTool.requires_context());
         assert!(ManageSessionsTool.requires_context());
         assert!(SessionSendMessageTool.requires_context());
         assert!(SessionReadMessagesTool.requires_context());
@@ -3202,6 +3299,7 @@ mod tests {
             "manage_apps",
             "manage_app_channels",
             "read_sessions",
+            "session_context_report",
             "manage_sessions",
             "session_send_message",
             "session_read_messages",
@@ -3229,6 +3327,11 @@ mod tests {
                         .await
                 }
                 "read_sessions" => ReadSessionsTool.execute(json!({})).await,
+                "session_context_report" => {
+                    SessionContextReportTool
+                        .execute(json!({"session_id": "x"}))
+                        .await
+                }
                 "manage_sessions" => {
                     ManageSessionsTool
                         .execute(json!({"operation": "create"}))
