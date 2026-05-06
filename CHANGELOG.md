@@ -9,6 +9,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.8.26] - 2026-05-06
+
+### Highlights
+
+- **Workspace volumes** - Sessions can now declare reusable workspace volumes through new CRUD APIs, a dedicated UI for managing them, and a capability mount picker that lets agents bind volumes via `workspace_volumes` ([#1682](https://github.com/everruns/everruns/pull/1682)).
+- **AG-UI public surface hardening** - Public AG-UI now supports per-channel tokens for scoped access, redacts public tool activity to keep internal details private, and emits structured ingress timing so operators can attribute pre-LLM latency ([#1672](https://github.com/everruns/everruns/pull/1672)).
+- **Capabilities catalog rebuild** - The capabilities page now ships search, categories, usage stats, and direct documentation links so operators can discover and adopt capabilities faster ([#1668](https://github.com/everruns/everruns/pull/1668)).
+- **MCP robustness** - MCP dispatch now emits structured errors with broader bool coercion ([#1670](https://github.com/everruns/everruns/pull/1670)) and walks `allOf`/`$ref` to coerce JSON aggregate flags for flatten commands ([#1678](https://github.com/everruns/everruns/pull/1678)), tightening the contract for generated bashkit builtins.
+- **UI polish** - Per-page document titles ([#1665](https://github.com/everruns/everruns/pull/1665)), models grouped by enabled state with recency sorting and release dates ([#1664](https://github.com/everruns/everruns/pull/1664)), markdown link icons, and improved SEO titles & descriptions across the app.
+
+### What's Changed
+
+- chore(release): tighten highlights guidance for maintenance releases ([#1661](https://github.com/everruns/everruns/pull/1661)) by [@chaliy](https://github.com/chaliy)
+- feat(ag-ui): add channel token support by [@chaliy](https://github.com/chaliy)
+- feat(ui): group models by enabled, sort by recency, surface release date ([#1664](https://github.com/everruns/everruns/pull/1664)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): set per-page document titles ([#1665](https://github.com/everruns/everruns/pull/1665)) by [@chaliy](https://github.com/chaliy)
+- fix(billing): omit event_id FK for ephemeral llm.generation events ([#1666](https://github.com/everruns/everruns/pull/1666)) by [@chaliy](https://github.com/chaliy)
+- docs(plugin): clarify everruns-dev skill by [@chaliy](https://github.com/chaliy)
+- fix(llm-models): accept lenient bool coercion for MCP update_model ([#1667](https://github.com/everruns/everruns/pull/1667)) by [@chaliy](https://github.com/chaliy)
+- feat(mcp): structured dispatch errors and broader bool coercion sweep ([#1670](https://github.com/everruns/everruns/pull/1670)) by [@chaliy](https://github.com/chaliy)
+- feat(ag-ui): redact public tool activity by [@chaliy](https://github.com/chaliy)
+- feat(capabilities): rebuild page with search, categories, stats, docs links ([#1668](https://github.com/everruns/everruns/pull/1668)) by [@chaliy](https://github.com/chaliy)
+- chore(llm): log read failures with org/resource context ([#1671](https://github.com/everruns/everruns/pull/1671)) by [@chaliy](https://github.com/chaliy)
+- feat(ag-ui): emit structured ingress timing for pre-LLM latency budget ([#1672](https://github.com/everruns/everruns/pull/1672)) by [@chaliy](https://github.com/chaliy)
+- docs(getting-started): add Codex plugin setup guide by [@chaliy](https://github.com/chaliy)
+- docs(seo): improve page titles and descriptions by [@chaliy](https://github.com/chaliy)
+- refactor(llm-models): derive `healthy` from provider, drop status ([#1674](https://github.com/everruns/everruns/pull/1674)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): add markdown link icons by [@chaliy](https://github.com/chaliy)
+- feat(volumes): add workspace volume CRUD APIs by [@chaliy](https://github.com/chaliy)
+- refactor(api): introduce Dispatcher chokepoint and instrument Command::run ([#1679](https://github.com/everruns/everruns/pull/1679)) by [@chaliy](https://github.com/chaliy)
+- feat(volumes): add workspace volumes UI by [@chaliy](https://github.com/chaliy)
+- fix(mcp): walk allOf/$ref to coerce JSON aggregate flags for flatten cmds ([#1678](https://github.com/everruns/everruns/pull/1678)) by [@chaliy](https://github.com/chaliy)
+- fix(deps): clear dependency security alerts by [@chaliy](https://github.com/chaliy)
+- feat(capabilities): add volume mount picker for workspace_volumes ([#1682](https://github.com/everruns/everruns/pull/1682)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump oxfmt + document cargo-outdated gap ([#1683](https://github.com/everruns/everruns/pull/1683)) by [@chaliy](https://github.com/chaliy)
+
 ## [0.8.25] - 2026-05-04
 
 ### Highlights
