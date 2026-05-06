@@ -297,7 +297,7 @@ async fn test_mcp_tools_list() {
     let tools = resp["result"]["tools"]
         .as_array()
         .expect("Expected tools array");
-    assert_eq!(tools.len(), 9, "Expected 9 MCP tools");
+    assert_eq!(tools.len(), 10, "Expected 10 MCP tools");
 
     let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
     assert!(names.contains(&"me"), "Missing me");
@@ -321,6 +321,8 @@ async fn test_mcp_tools_list() {
     assert!(names.contains(&"discover"), "Missing discover");
     assert!(names.contains(&"query"), "Missing query");
     assert!(names.contains(&"execute"), "Missing execute");
+    // Card tools (specs/mcp-cards.md) only exposed under 2025-06-18.
+    assert!(names.contains(&"agent_get_card"), "Missing agent_get_card");
 
     // Verify each tool has inputSchema
     for tool in tools {
@@ -404,6 +406,18 @@ async fn test_mcp_tools_list_fallback_omits_2025_06_fields() {
     assert!(agent_run.as_object().unwrap().get("title").is_none());
     assert!(agent_run.as_object().unwrap().get("outputSchema").is_none());
     assert_eq!(agent_run["annotations"]["openWorldHint"], true);
+
+    // Card tools require 2025-06-18 features and must not be advertised
+    // under the fallback protocol. See specs/mcp-cards.md.
+    let card_names: Vec<&str> = tools
+        .iter()
+        .filter_map(|t| t["name"].as_str())
+        .filter(|n| n.ends_with("_get_card"))
+        .collect();
+    assert!(
+        card_names.is_empty(),
+        "card tools must not appear under {MCP_PROTOCOL_VERSION_FALLBACK}, got {card_names:?}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

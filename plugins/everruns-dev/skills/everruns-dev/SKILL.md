@@ -121,6 +121,7 @@ Examples:
 | `agent_run` | Create a session and send the first message in one go. Returns `session_id`, `message_id`. |
 | `session_send_message` | Follow-up user message in an existing session. |
 | `session_get_status` | Poll session status + latest agent message + recent events. Supports `since_event_id` for incremental polling and `event_types` to filter. |
+| `agent_get_card` | Render an MCP-Apps card for an agent: a sandboxed `text/html` resource at `ui://everruns/agent/{agent_id}/card` plus a one-line summary. Use in MCP-UI-aware hosts (Claude Desktop, mcp-ui clients, the Everruns chat UI) to surface a stats card alongside text. Falls back gracefully — hosts that ignore embedded resources still get the summary line. Read-only; safe to call in `query`-style flows. Only available under MCP `2025-06-18`; older clients should fall back to `get_agent`. |
 | `discover` | Search the API catalog. Returns operation name, category, description, parameters. |
 | `query` | Run a bash script where only read-only Everruns(Dev) API operations are builtins. `jq` is available. Prefer this for inspection, search, preview, export, grep, and status checks. |
 | `execute` | Run a bash script where every Everruns(Dev) API operation is a builtin. `jq` is available. Use this when the workflow needs side effects. |
@@ -239,6 +240,29 @@ list_agents | jq '.data[] | {id, name, default_model_id}'
   paging.
 - Every org-scoped operation accepts `--organization_id org_{32-hex}` to target
   a non-default org in multi-org accounts.
+
+## Entity cards (MCP Apps)
+
+Everruns(Dev) exposes a small family of *entity cards* — sandboxed HTML
+resources hosts can render alongside text output. See
+[`specs/mcp-cards.md`](https://github.com/everruns/everruns/blob/main/specs/mcp-cards.md)
+for the standard.
+
+- Tool: `agent_get_card { "agent_id": "<agent-id-or-name>" }`.
+- Result: an MCP `resource` content item at
+  `ui://everruns/agent/{agent_id}/card` (MIME `text/html`) plus a one-line
+  text summary.
+- The HTML is a self-contained sandboxed document with strict CSP. Hosts
+  that don't understand embedded UI resources still see the summary line.
+- Currently read-only; future iterations will add buttons (run, archive)
+  that route through `tools/call` with host confirmation.
+
+When a user asks for an "agent card", "agent overview", or wants stats
+visible alongside a reply, prefer `agent_get_card` over `get_agent` if the
+host is MCP-UI-aware. Otherwise call `get_agent` and render the JSON.
+
+Card tools require MCP protocol `2025-06-18`. Older clients won't see them
+in `tools/list` and should use `get_agent`.
 
 ## When things go wrong
 

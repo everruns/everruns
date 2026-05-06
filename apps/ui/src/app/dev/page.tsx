@@ -12,6 +12,7 @@ import {
   Gauge,
   FileCode,
   Sparkles,
+  IdCard,
 } from "lucide-react";
 
 // Check if we're in development mode
@@ -66,6 +67,12 @@ const devPages = [
     description: "Code, CSV, JSON, markdown, and image preview components with Shiki highlighting",
     href: "/dev/file-previews",
     icon: FileCode,
+  },
+  {
+    title: "MCP Cards",
+    description: "Sandboxed iframe renderer for ui:// MCP-Apps resources (specs/mcp-cards.md)",
+    href: "/dev/mcp-cards",
+    icon: IdCard,
   },
 ];
 

@@ -84,6 +84,7 @@ Always make sure you are working on top of latest main from remote.
 - `specs/capabilities.md` - Agent capabilities system
 - `specs/agent-instructions.md` - AGENTS.md support (dynamic project instructions)
 - `specs/mcp.md` - MCP server endpoint, OAuth 2.1 authentication, protocol, security
+- `specs/mcp-cards.md` - MCP Apps entity cards: `ui://everruns/...` HTML resources, sandboxing, `postMessage` action protocol
 - `specs/mcp-servers.md` - MCP client: remote server registration, CRUD API, tool naming, execution
 - `specs/llm-drivers.md` - LLM driver trait, provider implementations
 - `specs/durable-execution-engine.md` - PostgreSQL-backed durable workflow engine

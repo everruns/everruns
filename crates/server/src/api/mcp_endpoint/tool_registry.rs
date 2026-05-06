@@ -44,7 +44,7 @@ pub fn tool_definitions(
     protocol_version: &str,
     org_id_description: &str,
 ) -> Vec<McpEndpointToolDefinition> {
-    vec![
+    let mut tools = vec![
         me_tool(protocol_version),
         list_organizations_tool(protocol_version),
         switch_organization_tool(protocol_version, org_id_description),
@@ -54,7 +54,14 @@ pub fn tool_definitions(
         discover_tool(protocol_version, org_id_description),
         query_tool(protocol_version, org_id_description),
         execute_tool(protocol_version, org_id_description),
-    ]
+    ];
+    // Entity cards (specs/mcp-cards.md) require `text/html` embedded
+    // resources and tool annotations introduced in MCP 2025-06-18. Older
+    // clients negotiate the fallback protocol and don't see card tools.
+    if protocol_version == MCP_PROTOCOL_VERSION_LATEST {
+        tools.push(agent_get_card_tool(protocol_version, org_id_description));
+    }
+    tools
 }
 
 pub fn tool_definition(
@@ -493,6 +500,44 @@ fn execute_tool(protocol_version: &str, org_id_description: &str) -> McpEndpoint
             open_world_hint: Some(true),
         }),
         65_000,
+    )
+}
+
+fn agent_get_card_tool(
+    protocol_version: &str,
+    org_id_description: &str,
+) -> McpEndpointToolDefinition {
+    tool(
+        protocol_version,
+        "agent_get_card",
+        "Get Agent Card",
+        "Render an MCP-Apps card for a single agent: a sandboxed text/html resource with name, status, description, tags, token usage, and session count. Returns an embedded resource at ui://everruns/agent/{agent_id}/card plus a short text summary. The HTML is host-rendered in a sandboxed iframe; future iterations will add interactive buttons (run, archive) routed back through tools/call. See specs/mcp-cards.md for the standard.",
+        object_schema(
+            vec![
+                (
+                    "agent_id",
+                    json!({
+                        "type": "string",
+                        "description": "Agent ID (format: agent_{32-hex}) or unique agent name within the organization.",
+                        "minLength": 1
+                    }),
+                ),
+                (
+                    "organization_id",
+                    json!({
+                        "type": "string",
+                        "description": org_id_description,
+                        "pattern": "^org_[0-9a-f]{32}$"
+                    }),
+                ),
+            ],
+            vec!["agent_id"],
+        ),
+        // No JSON outputSchema — card tools return a content array
+        // (embedded resource + summary text), not structured JSON.
+        None,
+        Some(read_only_annotations()),
+        10_000,
     )
 }
 

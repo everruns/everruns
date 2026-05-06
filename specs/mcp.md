@@ -35,6 +35,17 @@ Everruns supports MCP protocol versions `2025-06-18` and `2025-03-26`.
 | `resources/list` | Discover static Everruns resources |
 | `resources/read` | Read a static Everruns resource by URI |
 
+### Entity Cards
+
+Under negotiated protocol `2025-06-18`, Everruns exposes per-entity card
+tools (`agent_get_card`, future `session_get_card`, …) that return an MCP
+`resource` content block of MIME type `text/html` at the `ui://` scheme
+along with a one-line text summary. MCP-Apps-aware hosts render the HTML
+in a sandboxed iframe; hosts that ignore embedded resources still see the
+summary. See [`specs/mcp-cards.md`](mcp-cards.md) for the standard,
+including the URI scheme, sandboxing requirements, and the planned
+`postMessage` action protocol that backs future mutation buttons.
+
 ### Tool Metadata
 
 `tools/list` returns only standard MCP tool fields.
