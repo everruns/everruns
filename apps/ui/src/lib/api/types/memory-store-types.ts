@@ -11,11 +11,15 @@ export interface MemoryStore {
   updated_at: string;
 }
 
+export type MemoryContentPart =
+  | { type: "text"; text: string }
+  | { type: "image"; base64: string; media_type: string };
+
 export interface Memory {
   id: string;
   store_id: string;
   content: string;
-  content_parts: unknown;
+  content_parts: MemoryContentPart[];
   kind: string;
   importance: number;
   tags: string[];

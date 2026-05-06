@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Brain, Plus, Search, Star, Trash2 } from "lucide-react";
 import { QueryStateWrapper } from "@/components/query-state-wrapper";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +17,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -30,7 +38,12 @@ import {
   useMemoryStores,
   usePageTitle,
 } from "@/hooks";
-import type { CreateMemoryStoreRequest, MemoryStore } from "@/lib/api/types";
+import type {
+  CreateMemoryStoreRequest,
+  Memory,
+  MemoryContentPart,
+  MemoryStore,
+} from "@/lib/api/types";
 import { formatRelativeTime } from "@/lib/formatting";
 
 const KIND_OPTIONS = [
@@ -48,10 +61,12 @@ export default function MemoryStoresPage() {
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [kind, setKind] = useState<string>("all");
+  const [detailMemoryId, setDetailMemoryId] = useState<string | null>(null);
 
   const { data: stores, isLoading, error } = useMemoryStores();
   const activeStoreId =
     selectedStoreId ?? stores?.find((s) => s.is_default)?.id ?? stores?.[0]?.id ?? null;
+  const activeStore = stores?.find((s) => s.id === activeStoreId) ?? null;
 
   const createStore = useCreateMemoryStore();
   const forgetMemory = useForgetMemory(activeStoreId ?? undefined);
@@ -61,6 +76,12 @@ export default function MemoryStoresPage() {
     kind: kind === "all" ? undefined : kind,
     limit: 200,
   });
+
+  // Close the detail drawer when the memory list it was selected from changes,
+  // so a previously-selected memory can't render against the wrong store/forget mutation.
+  useEffect(() => {
+    setDetailMemoryId(null);
+  }, [activeStoreId, search, kind]);
 
   return (
     <div className="container mx-auto p-6">
@@ -141,6 +162,7 @@ export default function MemoryStoresPage() {
                           memory={memory}
                           onForget={() => forgetMemory.mutate(memory.id)}
                           forgetting={forgetMemory.isPending}
+                          onSelect={() => setDetailMemoryId(memory.id)}
                         />
                       ))}
                     </div>
@@ -161,6 +183,25 @@ export default function MemoryStoresPage() {
           setSelectedStoreId(created.id);
           setCreateOpen(false);
         }}
+      />
+
+      <MemoryDetailDrawer
+        memory={
+          detailMemoryId
+            ? (memoriesQuery.data?.data.find((m) => m.id === detailMemoryId) ?? null)
+            : null
+        }
+        store={activeStore}
+        open={detailMemoryId !== null}
+        onOpenChange={(open) => {
+          if (!open) setDetailMemoryId(null);
+        }}
+        onForget={(id) => {
+          forgetMemory.mutate(id, {
+            onSuccess: () => setDetailMemoryId(null),
+          });
+        }}
+        forgetting={forgetMemory.isPending}
       />
     </div>
   );
@@ -213,21 +254,26 @@ function MemoryCard({
   memory,
   onForget,
   forgetting,
+  onSelect,
 }: {
-  memory: {
-    id: string;
-    content: string;
-    kind: string;
-    importance: number;
-    tags: string[];
-    active: boolean;
-    created_at: string;
-  };
+  memory: Memory;
   onForget: () => void;
   forgetting: boolean;
+  onSelect: () => void;
 }) {
   return (
-    <Card>
+    <Card
+      role="button"
+      tabIndex={0}
+      onClick={onSelect}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onSelect();
+        }
+      }}
+      className="cursor-pointer transition hover:border-primary"
+    >
       <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
         <div className="flex flex-wrap items-center gap-2">
           <Badge variant="outline">{memory.kind}</Badge>
@@ -242,7 +288,15 @@ function MemoryCard({
         <Button
           variant="outline"
           size="sm"
-          onClick={onForget}
+          onClick={(e) => {
+            e.stopPropagation();
+            onForget();
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.stopPropagation();
+            }
+          }}
           disabled={!memory.active || forgetting}
           aria-label="Forget memory"
         >
@@ -252,13 +306,153 @@ function MemoryCard({
       </CardHeader>
       <CardContent className="space-y-2">
         <p className="text-sm">{memory.content}</p>
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <div
+          role="presentation"
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+          className="flex items-center gap-1.5 text-xs text-muted-foreground"
+        >
           <span className="truncate font-mono">{memory.id}</span>
           <CopyButton value={memory.id} />
           <span className="ml-auto">{formatRelativeTime(memory.created_at)}</span>
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function MemoryDetailDrawer({
+  memory,
+  store,
+  open,
+  onOpenChange,
+  onForget,
+  forgetting,
+}: {
+  memory: Memory | null;
+  store: MemoryStore | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onForget: (memoryId: string) => void;
+  forgetting: boolean;
+}) {
+  return (
+    <Drawer open={open} onOpenChange={onOpenChange}>
+      <DrawerContent>
+        {memory ? (
+          <>
+            <DrawerHeader>
+              <DrawerTitle>Memory detail</DrawerTitle>
+              <DrawerDescription>Full content, metadata, and attached parts.</DrawerDescription>
+            </DrawerHeader>
+            <div className="flex flex-1 flex-col gap-4 overflow-y-auto">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline">{memory.kind}</Badge>
+                <Badge variant="secondary">importance {memory.importance}</Badge>
+                {!memory.active && <Badge variant="destructive">forgotten</Badge>}
+                {memory.tags.map((tag) => (
+                  <Badge key={tag} variant="outline" className="text-xs">
+                    {tag}
+                  </Badge>
+                ))}
+              </div>
+
+              <section className="space-y-1">
+                <h4 className="text-xs font-medium uppercase text-muted-foreground">Content</h4>
+                <p className="whitespace-pre-wrap text-sm">{memory.content}</p>
+              </section>
+
+              {Array.isArray(memory.content_parts) && memory.content_parts.length > 0 && (
+                <section className="space-y-2">
+                  <h4 className="text-xs font-medium uppercase text-muted-foreground">
+                    Content parts
+                  </h4>
+                  <div className="space-y-2">
+                    {memory.content_parts.map((part, index) => (
+                      <MemoryContentPartView key={`${memory.id}-part-${index}`} part={part} />
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              <section className="space-y-1">
+                <h4 className="text-xs font-medium uppercase text-muted-foreground">Memory ID</h4>
+                <div className="flex items-center gap-1.5 text-xs">
+                  <span className="truncate font-mono">{memory.id}</span>
+                  <CopyButton value={memory.id} />
+                </div>
+              </section>
+
+              {store && (
+                <section className="space-y-1">
+                  <h4 className="text-xs font-medium uppercase text-muted-foreground">Store</h4>
+                  <div className="flex items-center gap-2 text-sm">
+                    <span>{store.name}</span>
+                    {store.is_default && (
+                      <Badge variant="secondary">
+                        <Star className="h-3 w-3" /> Default
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <span className="truncate font-mono">{store.id}</span>
+                    <CopyButton value={store.id} />
+                  </div>
+                </section>
+              )}
+
+              <section className="grid grid-cols-2 gap-4 text-xs text-muted-foreground">
+                <div>
+                  <h4 className="text-xs font-medium uppercase">Created</h4>
+                  <p>{formatRelativeTime(memory.created_at)}</p>
+                </div>
+                <div>
+                  <h4 className="text-xs font-medium uppercase">Updated</h4>
+                  <p>{formatRelativeTime(memory.updated_at)}</p>
+                </div>
+              </section>
+            </div>
+            <DrawerFooter>
+              <Button
+                variant="outline"
+                onClick={() => onForget(memory.id)}
+                disabled={!memory.active || forgetting}
+              >
+                <Trash2 className="h-4 w-4" />
+                Forget memory
+              </Button>
+            </DrawerFooter>
+          </>
+        ) : null}
+      </DrawerContent>
+    </Drawer>
+  );
+}
+
+function MemoryContentPartView({ part }: { part: MemoryContentPart }) {
+  if (part.type === "text") {
+    return (
+      <div className="rounded-md border bg-muted/30 p-3 text-sm whitespace-pre-wrap">
+        {part.text}
+      </div>
+    );
+  }
+  if (part.type === "image") {
+    const src = `data:${part.media_type};base64,${part.base64}`;
+    return (
+      <div className="rounded-md border bg-muted/30 p-2">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={src}
+          alt={`Memory attachment (${part.media_type})`}
+          className="max-h-80 max-w-full rounded object-contain"
+        />
+        <p className="mt-1 text-xs text-muted-foreground">{part.media_type}</p>
+      </div>
+    );
+  }
+  return (
+    <pre className="rounded-md border bg-muted/30 p-2 text-xs">{JSON.stringify(part, null, 2)}</pre>
   );
 }
 
