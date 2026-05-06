@@ -361,7 +361,7 @@ pub struct AddA2aChannelHttpRequest {
     pub enabled: Option<bool>,
 }
 
-/// POST /v1/apps/{app_id}/channels/a2a - Add an A2A channel (returns plaintext key once).
+/// POST /v1/apps/{app_id}/a2a-channels - Add an A2A channel (returns plaintext key once).
 pub async fn add_a2a_channel(
     org: ResolvedOrg,
     State(state): State<AppState>,

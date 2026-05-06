@@ -423,32 +423,16 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
           message: editChannelMessage,
         };
       case "a2a":
-        // Editing only updates the non-secret fields. The api_key_hash and
-        // api_key_prefix are server-managed (rotate via the dedicated button).
-        // The hash is required by the channel_config schema, so we round-trip
-        // it from whatever the server last returned.
+        // Edits only touch non-secret fields. The server preserves the
+        // existing `api_key_hash` and `api_key_prefix` across PATCH, so the
+        // client must NOT send them. Use the dedicated rotate-key button to
+        // issue a new key.
         return {
-          api_key_hash:
-            (editingChannelId
-              ? ((
-                  app?.channels?.find((c) => c.id === editingChannelId)?.channel_config as
-                    | A2aChannelConfig
-                    | undefined
-                )?.api_key_hash ?? "")
-              : "") || "pending",
-          api_key_prefix:
-            (editingChannelId
-              ? ((
-                  app?.channels?.find((c) => c.id === editingChannelId)?.channel_config as
-                    | A2aChannelConfig
-                    | undefined
-                )?.api_key_prefix ?? "")
-              : "") || "pending",
           session_mode: editInvocationSessionMode,
           message: editChannelMessage,
           agent_card_name: editA2aAgentCardName.trim() || undefined,
           agent_card_description: editA2aAgentCardDescription.trim() || undefined,
-        };
+        } as unknown as A2aChannelConfig;
       case "slack":
         return {
           signing_secret: editSigningSecret,

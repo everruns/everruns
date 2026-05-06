@@ -66,8 +66,9 @@ Storage uses the existing `app_channels` row schema. The migration extends the
 
 API key generation:
 
-- Format: `evra2a_<64 hex chars>` (128-bit entropy, prefix-scoped so secret
-  scanners can target A2A keys distinctly from platform `evr_` API keys).
+- Format: `evra2a_<64 hex chars>` — 32 random bytes (256-bit entropy),
+  prefix-scoped so secret scanners can target A2A keys distinctly from
+  platform `evr_` API keys.
 - Hash: `SHA-256` of the full key, hex-encoded. Matches `auth/api_key.rs`.
 - Display prefix: first 8 hex chars after `evra2a_`, suffixed with `...`.
 - Plaintext returned **only once**: in the `AddA2aChannel` / regenerate
@@ -118,16 +119,19 @@ The task `id` is a fresh UUID per invocation; `contextId` is the Everruns
 `SessionId` (so subsequent A2A calls referencing the same `contextId` can be
 correlated for debugging — Everruns does not require it).
 
-Error responses follow JSON-RPC 2.0 with A2A-defined codes:
+Error mapping. Transport-level failures use plain HTTP errors; protocol-level
+failures use JSON-RPC error envelopes returned with HTTP 200 so A2A clients
+that key off the JSON-RPC `id` and `error.code` see a structured response:
 
 | HTTP | JSON-RPC code | Reason                                |
 |------|---------------|---------------------------------------|
-| 401  | `-32001`      | Missing or invalid API key            |
-| 403  | `-32002`      | App not published or channel disabled |
-| 404  | `-32601`      | App or channel not found              |
-| 400  | `-32600`      | Invalid Request (malformed envelope)  |
-| 400  | `-32601`      | Method not found (only `message/send`)|
-| 400  | `-32602`      | Invalid params (no text parts, etc.)  |
+| 401  | —             | Missing or invalid API key            |
+| 403  | —             | App not published or channel disabled |
+| 404  | —             | App or channel not found              |
+| 400  | —             | Invalid path-level input (e.g. malformed channel ID) |
+| 400  | `-32600`      | Invalid Request (malformed envelope, returned with HTTP 400) |
+| 200  | `-32601`      | Method not found (only `message/send` is supported) |
+| 200  | `-32602`      | Invalid params (e.g. no non-empty text parts) |
 
 ### Agent Card
 

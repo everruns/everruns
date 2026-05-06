@@ -169,11 +169,7 @@ pub async fn invoke_a2a(
         .ok_or_else(not_found)?;
 
     if app.status != everruns_core::AppStatus::Published {
-        return Err(forbidden_with_rpc(
-            rpc_id.clone(),
-            -32002,
-            "App is not published",
-        ));
+        return Err(forbidden("App is not published"));
     }
 
     let channel_id_typed = channel_id
@@ -187,11 +183,7 @@ pub async fn invoke_a2a(
     // disabled app channels, and every request must present the per-channel
     // API key before session creation.
     if !channel.enabled {
-        return Err(forbidden_with_rpc(
-            rpc_id.clone(),
-            -32002,
-            "A2A channel is disabled",
-        ));
+        return Err(forbidden("A2A channel is disabled"));
     }
 
     let config = channel
@@ -444,14 +436,6 @@ fn forbidden(message: impl Into<String>) -> (StatusCode, Json<ErrorResponse>) {
             error: message.into(),
         }),
     )
-}
-
-fn forbidden_with_rpc(
-    _id: Value,
-    _code: i32,
-    message: impl Into<String>,
-) -> (StatusCode, Json<ErrorResponse>) {
-    forbidden(message)
 }
 
 fn unauthorized() -> (StatusCode, Json<ErrorResponse>) {

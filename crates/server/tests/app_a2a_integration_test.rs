@@ -383,6 +383,55 @@ async fn a2a_agent_card_published_only_when_live() {
 }
 
 #[tokio::test]
+async fn a2a_patch_preserves_api_key_when_omitted() {
+    // PATCH on an A2A channel must preserve the server-managed api_key_hash
+    // and api_key_prefix even when the client only sends the user-editable
+    // fields (message, session_mode, agent card metadata). Otherwise an edit
+    // would silently break authentication for previously issued keys.
+    let server = TestServer::in_memory().await;
+    let (app, api_key) = create_app_with_a2a(&server, "a2a-preserve", "{{a2a.text}}").await;
+    let app_id = app["id"].as_str().unwrap();
+    let channel_id = app["channels"][0]["id"].as_str().unwrap();
+    publish_app(&server, app_id).await;
+
+    server
+        .patch(
+            &format!("/v1/apps/{app_id}/channels/{channel_id}"),
+            json!({
+                "channel_config": {
+                    "session_mode": "session_per_invocation",
+                    "message": "edited {{a2a.text}}",
+                    "agent_card_name": "Edited",
+                }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::OK);
+
+    // The originally issued API key still works after the edit.
+    server
+        .request_raw(
+            Method::POST,
+            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            vec![
+                ("content-type", "application/json"),
+                ("authorization", &format!("Bearer {api_key}")),
+            ],
+            serde_json::to_vec(&json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "message/send",
+                "params": {
+                    "message": { "role": "user", "parts": [{ "kind": "text", "text": "post-edit" }] }
+                }
+            }))
+            .unwrap(),
+        )
+        .await
+        .assert_status(StatusCode::OK);
+}
+
+#[tokio::test]
 async fn a2a_regenerate_key_invalidates_previous_key() {
     let server = TestServer::in_memory().await;
     let (app, original_key) = create_app_with_a2a(&server, "a2a-rotate", "{{a2a.text}}").await;

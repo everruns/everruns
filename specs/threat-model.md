@@ -1027,7 +1027,7 @@ App-scoped Agent2Agent (A2A) protocol ingress. JSON-RPC 2.0 endpoint authenticat
 
 | ID | Threat | Severity | Mitigation | Status |
 |----|--------|----------|------------|--------|
-| TM-A2A-001 | API key brute force | Medium | Keys are 128-bit (32 random bytes) prefixed `evra2a_`; stored only as SHA-256 hex; plaintext returned exactly once at create / regenerate; the published Agent Card never includes the key or hash | MITIGATED |
+| TM-A2A-001 | API key brute force | Medium | Keys are 32 random bytes (256-bit entropy) prefixed `evra2a_`; stored only as SHA-256 hex; plaintext returned exactly once at create / regenerate; the published Agent Card never includes the key or hash | MITIGATED |
 | TM-A2A-002 | Timing oracle on key compare | Medium | Constant-time byte comparison of the SHA-256 hash digests in `app_a2a::constant_time_eq` before any session creation | MITIGATED |
 | TM-A2A-003 | Plaintext key persistence / log leak | High | Plaintext is never persisted: only hash + non-secret prefix go into `channel_config`. `Authorization` headers are not surfaced into template context (A2A invocations only template `payload`, `a2a.*`, and app metadata — request headers are not exposed) | MITIGATED |
 | TM-A2A-004 | Anonymous ingress to draft / disabled channels | High | Published-app + enabled-channel checks run before key validation; the Agent Card endpoint mirrors the same gate and 404s otherwise | MITIGATED |
@@ -1042,14 +1042,19 @@ App-scoped Agent2Agent (A2A) protocol ingress. JSON-RPC 2.0 endpoint authenticat
 
 **TM-A2A-001 — API Key Generation:**
 ```rust
-// crates/server/src/domains/apps/commands.rs
+// crates/server/src/domains/apps/commands.rs (actual implementation)
 pub fn generate_a2a_api_key() -> (String, String, String) {
     let mut bytes = [0u8; 32];
     rand::rng().fill_bytes(&mut bytes);
+    let hex = hex::encode(bytes);
     let plaintext = format!("evra2a_{hex}");
-    let hash = sha2::Sha256::digest(plaintext.as_bytes());
+    let hash = hash_a2a_api_key(&plaintext);
     let prefix = format!("evra2a_{}...", &hex[..8]);
-    (plaintext, hex(hash), prefix)
+    (plaintext, hash, prefix)
+}
+
+pub fn hash_a2a_api_key(plaintext: &str) -> String {
+    hex::encode(sha2::Sha256::digest(plaintext.as_bytes()))
 }
 ```
 The plaintext is returned in the `add_a2a_app_channel` and `regenerate_a2a_app_channel_key` command responses and never read back from storage — `channel_config` only holds the SHA-256 hash and the display prefix. Agent Card responses derive from the same row but explicitly select non-secret fields.

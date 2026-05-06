@@ -1810,28 +1810,18 @@ inventory::submit! { CommandDescriptor::of::<AddWebhookChannelCmd>() }
 
 /// Generate a fresh A2A API key, return (plaintext, sha256_hash, display_prefix).
 ///
-/// Plaintext format: `evra2a_<64 hex chars>` (128-bit entropy). The hash is
-/// hex SHA-256, matching `auth/api_key.rs`. The prefix is the first 8 hex
-/// characters after the `evra2a_` prefix, suffixed with `...`, for non-secret
-/// UI display.
+/// Plaintext format: `evra2a_<64 hex chars>` — 32 random bytes (256-bit
+/// entropy). The hash is SHA-256 hex, matching `auth/api_key.rs`. The prefix
+/// is the first 8 hex chars after `evra2a_`, suffixed with `...`, for
+/// non-secret UI display.
 pub fn generate_a2a_api_key() -> (String, String, String) {
     use rand::RngCore;
-    use sha2::{Digest, Sha256};
 
     let mut bytes = [0u8; 32];
     rand::rng().fill_bytes(&mut bytes);
-    let hex = bytes.iter().fold(String::with_capacity(64), |mut acc, b| {
-        acc.push_str(&format!("{b:02x}"));
-        acc
-    });
+    let hex = hex::encode(bytes);
     let plaintext = format!("evra2a_{hex}");
-    let hash_bytes = Sha256::digest(plaintext.as_bytes());
-    let hash = hash_bytes
-        .iter()
-        .fold(String::with_capacity(64), |mut acc, b| {
-            acc.push_str(&format!("{b:02x}"));
-            acc
-        });
+    let hash = hash_a2a_api_key(&plaintext);
     let prefix = format!("evra2a_{}...", &hex[..8]);
     (plaintext, hash, prefix)
 }
@@ -1839,13 +1829,7 @@ pub fn generate_a2a_api_key() -> (String, String, String) {
 /// Hash a plaintext A2A API key using SHA-256, returning hex.
 pub fn hash_a2a_api_key(plaintext: &str) -> String {
     use sha2::{Digest, Sha256};
-    let hash_bytes = Sha256::digest(plaintext.as_bytes());
-    hash_bytes
-        .iter()
-        .fold(String::with_capacity(64), |mut acc, b| {
-            acc.push_str(&format!("{b:02x}"));
-            acc
-        })
+    hex::encode(Sha256::digest(plaintext.as_bytes()))
 }
 
 /// Output of [`AddA2aChannelCmd`] — includes the plaintext API key (returned
@@ -1881,7 +1865,7 @@ impl Command for AddA2aChannelCmd {
             category: "apps",
             description: "Add an A2A (Agent2Agent) invocation channel to an app. Returns the plaintext API key exactly once.",
             method: "POST",
-            path: "/v1/apps/{id}/channels",
+            path: "/v1/apps/{id}/a2a-channels",
         }
     }
 
@@ -1949,7 +1933,7 @@ impl Command for RegenerateA2aApiKeyCmd {
             category: "apps",
             description: "Regenerate the A2A channel API key. Returns the new plaintext exactly once and invalidates the previous key.",
             method: "POST",
-            path: "/v1/apps/{id}/channels/{channel_id}/regenerate-key",
+            path: "/v1/apps/{id}/a2a-channels/{channel_id}/regenerate-key",
         }
     }
 
@@ -2101,26 +2085,47 @@ impl Command for UpdateChannelCmd {
             .channel_type
             .clone()
             .unwrap_or(current_channel_type);
-        let final_channel_config = self.req.channel_config.clone().unwrap_or_else(|| {
-            q::decrypt_channel_config(
-                encryption,
-                channel_row.channel_config_encrypted.as_deref(),
-                &channel_row.channel_config,
+        let existing_decrypted = q::decrypt_channel_config(
+            encryption,
+            channel_row.channel_config_encrypted.as_deref(),
+            &channel_row.channel_config,
+        );
+        let mut final_channel_config = self
+            .req
+            .channel_config
+            .clone()
+            .unwrap_or_else(|| existing_decrypted.clone());
+        // A2A: server preserves the secret key material across PATCH. Clients
+        // updating non-secret fields (message, session_mode, agent card)
+        // should not need to round-trip the api_key_hash and api_key_prefix —
+        // and must not be able to overwrite them with bogus values. Use the
+        // dedicated regenerate-key endpoint to rotate the key.
+        if final_channel_type == ChannelType::A2a
+            && let (Some(out), Some(existing)) = (
+                final_channel_config.as_object_mut(),
+                existing_decrypted.as_object(),
             )
-        });
+        {
+            for key in ["api_key_hash", "api_key_prefix"] {
+                if let Some(existing_value) = existing.get(key) {
+                    out.insert(key.to_string(), existing_value.clone());
+                }
+            }
+        }
         if final_channel_type == ChannelType::Schedule {
             let _ = durable_store(ctx)?;
         }
         validate_channel_config(final_channel_type, &final_channel_config)?;
 
-        let (channel_config, channel_config_encrypted) =
-            if let Some(config) = self.req.channel_config {
-                let (stored, encrypted) =
-                    q::prepare_channel_config(encryption, &config).map_err(classify_anyhow)?;
-                (Some(stored), encrypted)
-            } else {
-                (None, None)
-            };
+        let (channel_config, channel_config_encrypted) = if self.req.channel_config.is_some() {
+            // Persist the merged config (so A2A preserves the existing
+            // api_key_hash / prefix when the client omits them).
+            let (stored, encrypted) = q::prepare_channel_config(encryption, &final_channel_config)
+                .map_err(classify_anyhow)?;
+            (Some(stored), encrypted)
+        } else {
+            (None, None)
+        };
 
         let input = UpdateAppChannel {
             channel_type: self.req.channel_type.map(|ct| ct.to_string()),
