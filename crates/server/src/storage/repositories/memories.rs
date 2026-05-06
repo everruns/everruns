@@ -2,7 +2,7 @@
 // See specs/memory.md.
 
 use super::super::models::*;
-use super::{Database, escape_like};
+use super::{Database, build_search_sql};
 use anyhow::Result;
 use uuid::Uuid;
 
@@ -85,6 +85,35 @@ impl Database {
         Ok(rows)
     }
 
+    /// List memory stores joined with their active-memory counts. Single
+    /// roundtrip — preferred over list + per-store count_active_memories.
+    pub async fn list_memory_stores_with_counts(
+        &self,
+        org_id: i64,
+    ) -> Result<Vec<MemoryStoreWithCount>> {
+        let rows = sqlx::query_as::<_, MemoryStoreWithCount>(
+            r#"
+            SELECT s.id, s.org_id, s.public_id, s.name, s.is_default,
+                   s.created_at, s.updated_at,
+                   COALESCE(c.active_count, 0) AS active_count
+            FROM memory_stores s
+            LEFT JOIN (
+                SELECT store_id, COUNT(*) AS active_count
+                FROM memories
+                WHERE active = TRUE
+                GROUP BY store_id
+            ) c ON c.store_id = s.id
+            WHERE s.org_id = $1
+            ORDER BY s.is_default DESC, s.created_at ASC
+            "#,
+        )
+        .bind(org_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows)
+    }
+
     pub async fn count_memory_stores(&self, org_id: i64) -> Result<i64> {
         let row: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM memory_stores WHERE org_id = $1")
             .bind(org_id)
@@ -96,6 +125,75 @@ impl Database {
     // ============================================
     // Memories
     // ============================================
+
+    /// Insert a memory with an atomic per-store capacity check.
+    ///
+    /// `SELECT … FOR UPDATE` on the store row serialises concurrent creates
+    /// targeting the same store so the count and the insert observe a
+    /// consistent snapshot; without this two callers can both pass a 9999 →
+    /// 10000 transition and exceed `MAX_MEMORIES_PER_STORE`.
+    ///
+    /// Returns `Ok(None)` when the store is at or above `cap_limit`; the
+    /// caller maps that to a tool-error message that is safe to surface to
+    /// agents and other org members.
+    pub async fn create_memory_with_cap(
+        &self,
+        input: CreateMemoryRow,
+        cap_limit: i64,
+    ) -> Result<Option<MemoryDbRow>> {
+        let mut tx = self.pool.begin().await?;
+
+        // Serialise creates for this store. The lock is released when `tx`
+        // commits or rolls back, and the row's payload doesn't matter here.
+        let _store_lock: (uuid::Uuid,) =
+            sqlx::query_as("SELECT id FROM memory_stores WHERE id = $1 AND org_id = $2 FOR UPDATE")
+                .bind(input.store_id)
+                .bind(input.org_id)
+                .fetch_one(&mut *tx)
+                .await?;
+
+        let count: (i64,) =
+            sqlx::query_as("SELECT COUNT(*) FROM memories WHERE store_id = $1 AND active = TRUE")
+                .bind(input.store_id)
+                .fetch_one(&mut *tx)
+                .await?;
+
+        if count.0 >= cap_limit {
+            tx.rollback().await?;
+            return Ok(None);
+        }
+
+        let row = sqlx::query_as::<_, MemoryDbRow>(
+            r#"
+            WITH inserted AS (
+                INSERT INTO memories (
+                    public_id, store_id, org_id, content, content_parts,
+                    kind, importance, tags, active
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, TRUE)
+                RETURNING *
+            )
+            SELECT i.id, i.public_id, i.store_id, s.public_id AS store_public_id,
+                   i.org_id, i.content, i.content_parts, i.kind, i.importance,
+                   i.tags, i.active, i.created_at, i.updated_at
+            FROM inserted i
+            JOIN memory_stores s ON s.id = i.store_id
+            "#,
+        )
+        .bind(&input.public_id)
+        .bind(input.store_id)
+        .bind(input.org_id)
+        .bind(&input.content)
+        .bind(&input.content_parts)
+        .bind(&input.kind)
+        .bind(input.importance)
+        .bind(&input.tags)
+        .fetch_one(&mut *tx)
+        .await?;
+
+        tx.commit().await?;
+        Ok(Some(row))
+    }
 
     pub async fn create_memory(&self, input: CreateMemoryRow) -> Result<MemoryDbRow> {
         let row = sqlx::query_as::<_, MemoryDbRow>(
@@ -192,10 +290,14 @@ impl Database {
             sql.push_str(&format!(" AND m.tags @> ${idx}"));
             idx += 1;
         }
-        if filter.query.as_ref().is_some_and(|q| !q.trim().is_empty()) {
-            sql.push_str(&format!(" AND LOWER(m.content) LIKE ${idx} ESCAPE '\\'"));
-            idx += 1;
-        }
+        // Multi-token AND search using the shared escape/cap helper. Each
+        // whitespace-separated token must match `LOWER(content)` with `%`/`_`
+        // wildcards escaped (TM-API-014). Tokens beyond MAX_SEARCH_TOKENS are
+        // ignored to bound query cost.
+        let (search_sql, search_patterns) =
+            build_search_sql(filter.query.as_deref(), "LOWER(m.content)", idx);
+        sql.push_str(&search_sql);
+        idx += search_patterns.len();
         sql.push_str(&format!(
             " ORDER BY m.importance DESC, m.created_at DESC LIMIT ${idx}"
         ));
@@ -212,10 +314,8 @@ impl Database {
         {
             q = q.bind(tags);
         }
-        if let Some(ref query) = filter.query
-            && !query.trim().is_empty()
-        {
-            q = q.bind(format!("%{}%", escape_like(&query.trim().to_lowercase())));
+        for pattern in &search_patterns {
+            q = q.bind(pattern);
         }
         q = q.bind(limit);
 

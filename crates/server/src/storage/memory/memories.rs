@@ -80,6 +80,34 @@ impl InMemoryDatabase {
         Ok(rows)
     }
 
+    pub async fn list_memory_stores_with_counts(
+        &self,
+        org_id: i64,
+    ) -> Result<Vec<MemoryStoreWithCount>> {
+        let stores = self.list_memory_stores(org_id).await?;
+        let memories = self.memories.read();
+        let result = stores
+            .into_iter()
+            .map(|s| {
+                let active_count = memories
+                    .values()
+                    .filter(|m| m.store_id == s.id && m.active)
+                    .count() as i64;
+                MemoryStoreWithCount {
+                    id: s.id,
+                    org_id: s.org_id,
+                    public_id: s.public_id,
+                    name: s.name,
+                    is_default: s.is_default,
+                    created_at: s.created_at,
+                    updated_at: s.updated_at,
+                    active_count,
+                }
+            })
+            .collect();
+        Ok(result)
+    }
+
     pub async fn count_memory_stores(&self, org_id: i64) -> Result<i64> {
         Ok(self
             .memory_stores
@@ -92,6 +120,53 @@ impl InMemoryDatabase {
     // ============================================
     // Memories
     // ============================================
+
+    /// Atomic capacity-checked create. The in-memory backend already serialises
+    /// creates through the `memories` `RwLock`, so a plain count + insert under
+    /// a single write lock is enough.
+    pub async fn create_memory_with_cap(
+        &self,
+        input: CreateMemoryRow,
+        cap_limit: i64,
+    ) -> Result<Option<MemoryDbRow>> {
+        let stores = self.memory_stores.read();
+        let Some(store) = stores
+            .values()
+            .find(|s| s.id == input.store_id && s.org_id == input.org_id)
+            .cloned()
+        else {
+            bail!("memory store not found in this org");
+        };
+        drop(stores);
+
+        let now = Self::now();
+        let id = Uuid::now_v7();
+        let mut memories = self.memories.write();
+        let active = memories
+            .values()
+            .filter(|m| m.store_id == input.store_id && m.active)
+            .count() as i64;
+        if active >= cap_limit {
+            return Ok(None);
+        }
+        let row = MemoryDbRow {
+            id,
+            public_id: input.public_id,
+            store_id: input.store_id,
+            store_public_id: store.public_id,
+            org_id: input.org_id,
+            content: input.content,
+            content_parts: input.content_parts,
+            kind: input.kind,
+            importance: input.importance.clamp(1, 10),
+            tags: input.tags,
+            active: true,
+            created_at: now,
+            updated_at: now,
+        };
+        memories.insert(id, row.clone());
+        Ok(Some(row))
+    }
 
     pub async fn create_memory(&self, input: CreateMemoryRow) -> Result<MemoryDbRow> {
         // Verify store exists in this org.
@@ -146,11 +221,23 @@ impl InMemoryDatabase {
         filter: ListMemoriesFilter,
     ) -> Result<(Vec<MemoryDbRow>, i64)> {
         let memories = self.memories.read();
-        let q_lower = filter
+        // Multi-token AND search: each whitespace-separated token must appear
+        // somewhere in `content` (lowercased). Tokens are capped to match the
+        // SQL repo's MAX_SEARCH_TOKENS so behavior stays consistent across
+        // backends.
+        let tokens: Vec<String> = filter
             .query
             .as_ref()
-            .map(|q| q.trim().to_lowercase())
-            .filter(|q| !q.is_empty());
+            .filter(|q| !q.trim().is_empty())
+            .map(|q| {
+                q.trim()
+                    .to_lowercase()
+                    .split_whitespace()
+                    .take(super::MAX_SEARCH_TOKENS)
+                    .map(|t| t.to_string())
+                    .collect()
+            })
+            .unwrap_or_default();
 
         let mut matches: Vec<MemoryDbRow> = memories
             .values()
@@ -165,9 +252,11 @@ impl InMemoryDatabase {
                     .is_none_or(|tags| tags.iter().all(|t| m.tags.contains(t)))
             })
             .filter(|m| {
-                q_lower
-                    .as_ref()
-                    .is_none_or(|q| m.content.to_lowercase().contains(q))
+                if tokens.is_empty() {
+                    return true;
+                }
+                let content_lower = m.content.to_lowercase();
+                tokens.iter().all(|t| content_lower.contains(t))
             })
             .cloned()
             .collect();

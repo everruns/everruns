@@ -103,20 +103,46 @@ impl MemoryStoreBackend for DbMemoryStore {
             return store_row_to_entity(existing);
         }
 
+        // Pick a name that won't collide with an existing user-created store
+        // named "default" (store names are unique per org). The first attempt
+        // uses the friendly "default"; on conflict we fall back to a name
+        // suffixed with a short hex slice of the new store ID.
         let public_id = MemoryStoreId::new().to_string();
-        let row = self
+        let primary_input = CreateMemoryStoreRow {
+            public_id: public_id.clone(),
+            name: "default".to_string(),
+            is_default: true,
+        };
+        match self
             .db
-            .create_memory_store(
-                self.org_id,
-                CreateMemoryStoreRow {
-                    public_id,
-                    name: "default".to_string(),
-                    is_default: true,
-                },
-            )
+            .create_memory_store(self.org_id, primary_input)
             .await
-            .map_err(store_err)?;
-        store_row_to_entity(row)
+        {
+            Ok(row) => store_row_to_entity(row),
+            Err(_) => {
+                // Likely a uniqueness conflict on the "default" name. Retry
+                // with a unique name derived from the store's public_id so
+                // initialisation cannot get stuck on a user-created collision.
+                let suffix = public_id
+                    .strip_prefix("mst_")
+                    .map(|s| &s[..8.min(s.len())])
+                    .unwrap_or("0")
+                    .to_string();
+                let row = self
+                    .db
+                    .create_memory_store(
+                        self.org_id,
+                        CreateMemoryStoreRow {
+                            public_id,
+                            name: format!("default-{suffix}"),
+                            is_default: true,
+                        },
+                    )
+                    .await
+                    .map_err(store_err)?;
+                store_row_to_entity(row)
+            }
+        }
     }
 
     async fn get_store(&self, store_id: MemoryStoreId) -> Result<Option<MemoryStoreEntity>> {
@@ -147,34 +173,31 @@ impl MemoryStoreBackend for DbMemoryStore {
             .map_err(store_err)?
             .ok_or_else(|| AgentLoopError::tool("memory store not found"))?;
 
-        let count = self
-            .db
-            .count_active_memories(store.id)
-            .await
-            .map_err(store_err)?;
-        if count as usize >= everruns_core::memory_store::MemoryLimits::MAX_MEMORIES_PER_STORE {
-            return Err(AgentLoopError::tool(format!(
-                "memory store full ({} active memories)",
-                count
-            )));
-        }
-
         let parts_json = serde_json::to_value(&content_parts).map_err(store_err)?;
         let public_id = MemoryId::new().to_string();
+        let cap = everruns_core::memory_store::MemoryLimits::MAX_MEMORIES_PER_STORE as i64;
+        // Atomic check+insert: serialises against concurrent creates targeting
+        // the same store so the per-store cap cannot be exceeded under load.
         let row = self
             .db
-            .create_memory(CreateMemoryRow {
-                public_id,
-                store_id: store.id,
-                org_id: self.org_id,
-                content,
-                content_parts: parts_json,
-                kind: kind.to_string(),
-                importance: importance.clamp(1, 10) as i16,
-                tags,
-            })
+            .create_memory_with_cap(
+                CreateMemoryRow {
+                    public_id,
+                    store_id: store.id,
+                    org_id: self.org_id,
+                    content,
+                    content_parts: parts_json,
+                    kind: kind.to_string(),
+                    importance: importance.clamp(1, 10) as i16,
+                    tags,
+                },
+                cap,
+            )
             .await
-            .map_err(store_err)?;
+            .map_err(store_err)?
+            .ok_or_else(|| {
+                AgentLoopError::tool(format!("memory store full ({cap} active memories)"))
+            })?;
         row_to_memory(row)
     }
 

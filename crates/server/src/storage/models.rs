@@ -916,6 +916,18 @@ pub struct MemoryStoreDbRow {
     pub updated_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, FromRow, serde::Serialize)]
+pub struct MemoryStoreWithCount {
+    pub id: Uuid,
+    pub org_id: i64,
+    pub public_id: String,
+    pub name: String,
+    pub is_default: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub active_count: i64,
+}
+
 #[derive(Debug, Clone)]
 pub struct CreateMemoryStoreRow {
     pub public_id: String,

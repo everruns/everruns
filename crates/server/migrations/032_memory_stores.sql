@@ -24,6 +24,8 @@ CREATE UNIQUE INDEX idx_memory_stores_org_public_id ON memory_stores(org_id, pub
 CREATE UNIQUE INDEX idx_memory_stores_org_lower_name ON memory_stores(org_id, LOWER(name));
 -- Only one default store per org.
 CREATE UNIQUE INDEX idx_memory_stores_org_default ON memory_stores(org_id) WHERE is_default;
+-- Supports the composite FK on memories(store_id, org_id) below.
+CREATE UNIQUE INDEX idx_memory_stores_id_org ON memory_stores(id, org_id);
 
 CREATE TRIGGER update_memory_stores_updated_at BEFORE UPDATE ON memory_stores
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -33,7 +35,7 @@ COMMENT ON TABLE memory_stores IS 'Org-scoped containers for agent memories. See
 CREATE TABLE memories (
     id UUID PRIMARY KEY DEFAULT uuidv7(),
     public_id TEXT NOT NULL,
-    store_id UUID NOT NULL REFERENCES memory_stores(id) ON DELETE CASCADE,
+    store_id UUID NOT NULL,
     -- org_id duplicated from store for fast org-scoped queries and isolation checks.
     org_id BIGINT NOT NULL REFERENCES organizations(org_id),
     content TEXT NOT NULL,
@@ -51,7 +53,16 @@ CREATE TABLE memories (
 
     CONSTRAINT memories_public_id_format
         CHECK (public_id ~ '^mem_[0-9a-f]{32}$'),
-    CONSTRAINT memories_content_length CHECK (char_length(content) <= 2000)
+    CONSTRAINT memories_content_length CHECK (char_length(content) <= 2000),
+
+    -- Composite FK pins (store_id, org_id) to a real memory_stores(id, org_id)
+    -- pair so a memory cannot be inserted with an org_id that disagrees with
+    -- its store's org. Defense-in-depth on top of the application-level org
+    -- check in DbMemoryStore.
+    CONSTRAINT memories_store_org_match
+        FOREIGN KEY (store_id, org_id)
+        REFERENCES memory_stores(id, org_id)
+        ON DELETE CASCADE
 );
 
 CREATE INDEX idx_memories_store_active ON memories(store_id) WHERE active;

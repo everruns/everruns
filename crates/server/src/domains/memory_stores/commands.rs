@@ -65,20 +65,25 @@ impl Command for ListMemoryStores {
     async fn execute(self, ctx: &Ctx) -> Result<Vec<MemoryStoreResponse>, CommandError> {
         let rows = ctx
             .db
-            .list_memory_stores(ctx.org_id())
+            .list_memory_stores_with_counts(ctx.org_id())
             .await
             .map_err(classify_anyhow)?;
 
-        let mut out = Vec::with_capacity(rows.len());
-        for row in rows {
-            let count = ctx
-                .db
-                .count_active_memories(row.id)
-                .await
-                .map_err(classify_anyhow)?;
-            out.push(store_response(row, count).map_err(classify_anyhow)?);
-        }
-        Ok(out)
+        rows.into_iter()
+            .map(|row| {
+                let count = row.active_count;
+                let store_row = crate::storage::models::MemoryStoreDbRow {
+                    id: row.id,
+                    org_id: row.org_id,
+                    public_id: row.public_id,
+                    name: row.name,
+                    is_default: row.is_default,
+                    created_at: row.created_at,
+                    updated_at: row.updated_at,
+                };
+                store_response(store_row, count).map_err(classify_anyhow)
+            })
+            .collect()
     }
 }
 

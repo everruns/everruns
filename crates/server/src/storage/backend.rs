@@ -772,12 +772,27 @@ impl StorageBackend {
         dispatch!(self, list_memory_stores, org_id)
     }
 
+    pub async fn list_memory_stores_with_counts(
+        &self,
+        org_id: i64,
+    ) -> Result<Vec<MemoryStoreWithCount>> {
+        dispatch!(self, list_memory_stores_with_counts, org_id)
+    }
+
     pub async fn count_memory_stores(&self, org_id: i64) -> Result<i64> {
         dispatch!(self, count_memory_stores, org_id)
     }
 
     pub async fn create_memory(&self, input: CreateMemoryRow) -> Result<MemoryDbRow> {
         dispatch!(self, create_memory, input)
+    }
+
+    pub async fn create_memory_with_cap(
+        &self,
+        input: CreateMemoryRow,
+        cap_limit: i64,
+    ) -> Result<Option<MemoryDbRow>> {
+        dispatch!(self, create_memory_with_cap, input, cap_limit)
     }
 
     pub async fn get_memory_by_public_id(
