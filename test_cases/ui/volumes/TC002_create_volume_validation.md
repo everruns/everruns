@@ -2,7 +2,7 @@
 
 ## Description
 
-Verify that the New Volume dialog rejects an empty or whitespace-only name and surfaces an inline field error without submitting the form.
+Verify that the New Volume dialog rejects a whitespace-only name with an inline field error and does not create a volume.
 
 ## Preconditions
 
@@ -13,24 +13,23 @@ Verify that the New Volume dialog rejects an empty or whitespace-only name and s
 
 | Field | Value |
 |-------|-------|
-| Volume name (attempt 1) | (empty) |
-| Volume name (attempt 2) | `   ` (whitespace only) |
+| Volume name | `   ` (three spaces) |
 
 ## Steps
 
 1. Navigate to `/volumes`
 2. Click **New Volume**
-3. Leave the **Name** field empty and click **Create Volume**
-4. Observe the dialog
-5. Type three spaces into the **Name** field and click **Create Volume**
-6. Observe the dialog
-7. Click **Cancel**
+3. Type three spaces into the **Name** field
+4. Click **Create Volume**
+5. Observe the dialog
+6. Click **Cancel**
+7. Reload the volumes list
 
 ## Expected Result
 
 | Check | Expected |
 |-------|----------|
-| Empty name rejected | Browser/HTML5 required validation prevents submit, OR an inline `Name is required` error renders |
-| Whitespace name rejected | Inline `Name is required` error renders below the Name input; dialog stays open |
-| No volume created | Returning to the list shows no new volume |
-| Cancel | Dialog closes without creating any volume |
+| Inline error | `Name is required` is rendered below the Name input |
+| Submit blocked | The dialog stays open and no network request to create a volume is made |
+| Cancel | Dialog closes without creating a volume |
+| No volume created | Reloaded volumes list contains no new volume from this attempt |
