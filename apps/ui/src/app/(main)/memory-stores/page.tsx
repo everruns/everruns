@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Brain, Plus, Search, Star, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Brain, Plus, Search, Star, Trash2, X } from "lucide-react";
 import { QueryStateWrapper } from "@/components/query-state-wrapper";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -61,6 +61,7 @@ export default function MemoryStoresPage() {
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [kind, setKind] = useState<string>("all");
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [detailMemoryId, setDetailMemoryId] = useState<string | null>(null);
 
   const { data: stores, isLoading, error } = useMemoryStores();
@@ -74,14 +75,37 @@ export default function MemoryStoresPage() {
   const memoriesQuery = useMemories(activeStoreId ?? undefined, {
     query: search,
     kind: kind === "all" ? undefined : kind,
+    tag: selectedTags.length > 0 ? selectedTags : undefined,
     limit: 200,
   });
+
+  // Tag chip set: union of tags present in the current results and tags
+  // already selected, so a chip you picked doesn't disappear when the
+  // narrowed result no longer contains it (you can still deselect it).
+  const availableTags = useMemo(() => {
+    const set = new Set<string>(selectedTags);
+    for (const m of memoriesQuery.data?.data ?? []) {
+      for (const t of m.tags) set.add(t);
+    }
+    return Array.from(set).sort();
+  }, [memoriesQuery.data?.data, selectedTags]);
+
+  const toggleTag = (tag: string) => {
+    setSelectedTags((prev) =>
+      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag].sort(),
+    );
+  };
 
   // Close the detail drawer when the memory list it was selected from changes,
   // so a previously-selected memory can't render against the wrong store/forget mutation.
   useEffect(() => {
     setDetailMemoryId(null);
-  }, [activeStoreId, search, kind]);
+  }, [activeStoreId, search, kind, selectedTags]);
+
+  // Reset tag selection on store switch — tags are scoped to a store.
+  useEffect(() => {
+    setSelectedTags([]);
+  }, [activeStoreId]);
 
   return (
     <div className="container mx-auto p-6">
@@ -141,6 +165,15 @@ export default function MemoryStoresPage() {
                 </Select>
               </div>
 
+              {availableTags.length > 0 && (
+                <TagFilter
+                  tags={availableTags}
+                  selected={selectedTags}
+                  onToggle={toggleTag}
+                  onClear={() => setSelectedTags([])}
+                />
+              )}
+
               <QueryStateWrapper
                 isLoading={memoriesQuery.isLoading}
                 error={memoriesQuery.error}
@@ -163,6 +196,8 @@ export default function MemoryStoresPage() {
                           onForget={() => forgetMemory.mutate(memory.id)}
                           forgetting={forgetMemory.isPending}
                           onSelect={() => setDetailMemoryId(memory.id)}
+                          selectedTags={selectedTags}
+                          onToggleTag={toggleTag}
                         />
                       ))}
                     </div>
@@ -255,11 +290,15 @@ function MemoryCard({
   onForget,
   forgetting,
   onSelect,
+  selectedTags,
+  onToggleTag,
 }: {
   memory: Memory;
   onForget: () => void;
   forgetting: boolean;
   onSelect: () => void;
+  selectedTags: string[];
+  onToggleTag: (tag: string) => void;
 }) {
   return (
     <Card
@@ -279,11 +318,34 @@ function MemoryCard({
           <Badge variant="outline">{memory.kind}</Badge>
           <Badge variant="secondary">importance {memory.importance}</Badge>
           {!memory.active && <Badge variant="destructive">forgotten</Badge>}
-          {memory.tags.map((tag) => (
-            <Badge key={tag} variant="outline" className="text-xs">
-              {tag}
-            </Badge>
-          ))}
+          {memory.tags.map((tag) => {
+            const active = selectedTags.includes(tag);
+            return (
+              <button
+                key={tag}
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleTag(tag);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.stopPropagation();
+                  }
+                }}
+                aria-pressed={active}
+                aria-label={`${active ? "Remove" : "Add"} tag filter ${tag}`}
+                className="cursor-pointer"
+              >
+                <Badge
+                  variant={active ? "default" : "outline"}
+                  className="text-xs hover:border-primary"
+                >
+                  {tag}
+                </Badge>
+              </button>
+            );
+          })}
         </div>
         <Button
           variant="outline"
@@ -453,6 +515,56 @@ function MemoryContentPartView({ part }: { part: MemoryContentPart }) {
   }
   return (
     <pre className="rounded-md border bg-muted/30 p-2 text-xs">{JSON.stringify(part, null, 2)}</pre>
+  );
+}
+
+function TagFilter({
+  tags,
+  selected,
+  onToggle,
+  onClear,
+}: {
+  tags: string[];
+  selected: string[];
+  onToggle: (tag: string) => void;
+  onClear: () => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span className="text-xs font-medium text-muted-foreground">Tags:</span>
+      {tags.map((tag) => {
+        const active = selected.includes(tag);
+        return (
+          <button
+            key={tag}
+            type="button"
+            onClick={() => onToggle(tag)}
+            aria-pressed={active}
+            aria-label={`${active ? "Remove" : "Add"} tag filter ${tag}`}
+            className="cursor-pointer"
+          >
+            <Badge
+              variant={active ? "default" : "outline"}
+              className="text-xs hover:border-primary"
+            >
+              {tag}
+            </Badge>
+          </button>
+        );
+      })}
+      {selected.length > 0 && (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onClear}
+          aria-label="Clear tag filters"
+          className="h-6 gap-1 px-2 text-xs"
+        >
+          <X className="h-3 w-3" />
+          Clear
+        </Button>
+      )}
+    </div>
   );
 }
 
