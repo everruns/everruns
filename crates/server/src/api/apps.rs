@@ -21,6 +21,7 @@ use everruns_durable::WorkflowEventStore;
 use super::common::{
     ApiResult, ErrorResponse, ListResponse, UrlBuilder, WithUrls, impl_auth_state,
 };
+use super::dispatch::{Dispatchable, impl_dispatchable};
 use crate::domains::common::Command;
 use std::sync::Arc;
 
@@ -65,6 +66,7 @@ impl AppState {
 }
 
 impl_auth_state!(AppState);
+impl_dispatchable!(AppState);
 
 /// Create app routes
 pub fn routes(state: AppState) -> Router {
@@ -126,12 +128,10 @@ pub async fn create_app(
     State(state): State<AppState>,
     Json(req): Json<CreateAppRequest>,
 ) -> Result<(StatusCode, Json<WithUrls<App>>), (StatusCode, Json<ErrorResponse>)> {
-    let app = crate::domains::apps::CreateApp(req)
-        .run(&state.ctx(&org))
-        .await?;
-
-    let builder = UrlBuilder::from_auth_config(&state.auth.config);
-    Ok((StatusCode::CREATED, Json(builder.wrap(app))))
+    state
+        .dispatcher(&org)
+        .run_created_with_urls(crate::domains::apps::CreateApp(req))
+        .await
 }
 
 /// GET /v1/apps - List all non-archived apps
@@ -179,12 +179,10 @@ pub async fn get_app(
     State(state): State<AppState>,
     Path(app_id): Path<String>,
 ) -> ApiResult<WithUrls<App>> {
-    let app = crate::domains::apps::GetApp { id: app_id }
-        .run(&state.ctx(&org))
-        .await?;
-
-    let builder = UrlBuilder::from_auth_config(&state.auth.config);
-    Ok(Json(builder.wrap(app)))
+    state
+        .dispatcher(&org)
+        .run_with_urls(crate::domains::apps::GetApp { id: app_id })
+        .await
 }
 
 /// PATCH /v1/apps/{app_id} - Update app
@@ -207,12 +205,10 @@ pub async fn update_app(
     Path(app_id): Path<String>,
     Json(req): Json<UpdateAppRequest>,
 ) -> ApiResult<WithUrls<App>> {
-    let app = crate::domains::apps::UpdateAppCmd { id: app_id, req }
-        .run(&state.ctx(&org))
-        .await?;
-
-    let builder = UrlBuilder::from_auth_config(&state.auth.config);
-    Ok(Json(builder.wrap(app)))
+    state
+        .dispatcher(&org)
+        .run_with_urls(crate::domains::apps::UpdateAppCmd { id: app_id, req })
+        .await
 }
 
 /// DELETE /v1/apps/{app_id} - Archive app
@@ -233,10 +229,10 @@ pub async fn delete_app(
     State(state): State<AppState>,
     Path(app_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    crate::domains::apps::DeleteApp { id: app_id }
-        .run(&state.ctx(&org))
-        .await?;
-    Ok(StatusCode::NO_CONTENT)
+    state
+        .dispatcher(&org)
+        .run_no_content(crate::domains::apps::DeleteApp { id: app_id })
+        .await
 }
 
 pub async fn destroy_app(
@@ -244,10 +240,10 @@ pub async fn destroy_app(
     State(state): State<AppState>,
     Path(app_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    crate::domains::apps::DestroyApp { id: app_id }
-        .run(&state.ctx(&org))
-        .await?;
-    Ok(StatusCode::NO_CONTENT)
+    state
+        .dispatcher(&org)
+        .run_no_content(crate::domains::apps::DestroyApp { id: app_id })
+        .await
 }
 
 /// POST /v1/apps/{app_id}/publish - Publish app (start accepting requests)
@@ -268,12 +264,10 @@ pub async fn publish_app(
     State(state): State<AppState>,
     Path(app_id): Path<String>,
 ) -> ApiResult<WithUrls<App>> {
-    let app = crate::domains::apps::PublishApp { id: app_id }
-        .run(&state.ctx(&org))
-        .await?;
-
-    let builder = UrlBuilder::from_auth_config(&state.auth.config);
-    Ok(Json(builder.wrap(app)))
+    state
+        .dispatcher(&org)
+        .run_with_urls(crate::domains::apps::PublishApp { id: app_id })
+        .await
 }
 
 /// POST /v1/apps/{app_id}/unpublish - Unpublish app (stop accepting requests)
@@ -294,12 +288,10 @@ pub async fn unpublish_app(
     State(state): State<AppState>,
     Path(app_id): Path<String>,
 ) -> ApiResult<WithUrls<App>> {
-    let app = crate::domains::apps::UnpublishApp { id: app_id }
-        .run(&state.ctx(&org))
-        .await?;
-
-    let builder = UrlBuilder::from_auth_config(&state.auth.config);
-    Ok(Json(builder.wrap(app)))
+    state
+        .dispatcher(&org)
+        .run_with_urls(crate::domains::apps::UnpublishApp { id: app_id })
+        .await
 }
 
 // ============================================

@@ -40,6 +40,16 @@ impl Dispatcher {
         Ok(Json(self.url_builder.wrap(out)))
     }
 
+    /// Run `cmd`, serialize output as JSON, return HTTP 201. Use for POST
+    /// handlers whose output type does not need URL decoration.
+    pub async fn run_created<C: Command>(
+        &self,
+        cmd: C,
+    ) -> Result<(StatusCode, Json<C::Output>), (StatusCode, Json<ErrorResponse>)> {
+        let out = cmd.run(&self.ctx).await?;
+        Ok((StatusCode::CREATED, Json(out)))
+    }
+
     /// Run `cmd`, wrap with URLs, return as HTTP 201.
     pub async fn run_created_with_urls<C>(
         &self,

@@ -26,6 +26,7 @@ use super::common::{
     ApiOptionExt, ApiResult, ApiResultExt, ErrorResponse, ListResponse, ResourceStatsResponse,
     ResourceWithCounts, UrlBuilder, WithUrls, impl_auth_state,
 };
+use super::dispatch::{Dispatchable, impl_dispatchable};
 use serde::Deserialize;
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
@@ -81,6 +82,7 @@ impl AppState {
 }
 
 impl_auth_state!(AppState);
+impl_dispatchable!(AppState);
 
 async fn add_harness_counts(
     db: &StorageBackend,
@@ -364,11 +366,10 @@ pub async fn create_harness(
     State(state): State<AppState>,
     Json(req): Json<CreateHarnessRequest>,
 ) -> Result<(StatusCode, Json<WithUrls<Harness>>), (StatusCode, Json<ErrorResponse>)> {
-    let harness = crate::domains::harnesses::CreateHarness(req)
-        .run(&state.ctx(&org))
-        .await?;
-    let urls = UrlBuilder::from_auth_config(&state.auth.config);
-    Ok((StatusCode::CREATED, Json(urls.wrap(harness))))
+    state
+        .dispatcher(&org)
+        .run_created_with_urls(crate::domains::harnesses::CreateHarness(req))
+        .await
 }
 
 /// GET /v1/harnesses
@@ -498,14 +499,13 @@ pub async fn update_harness(
     Path(harness_id): Path<String>,
     Json(req): Json<UpdateHarnessRequest>,
 ) -> ApiResult<WithUrls<Harness>> {
-    let harness = crate::domains::harnesses::UpdateHarnessCmd {
-        id: harness_id,
-        req,
-    }
-    .run(&state.ctx(&org))
-    .await?;
-    let urls = UrlBuilder::from_auth_config(&state.auth.config);
-    Ok(Json(urls.wrap(harness)))
+    state
+        .dispatcher(&org)
+        .run_with_urls(crate::domains::harnesses::UpdateHarnessCmd {
+            id: harness_id,
+            req,
+        })
+        .await
 }
 
 /// DELETE /v1/harnesses/{harness_id}
@@ -529,10 +529,10 @@ pub async fn delete_harness(
     State(state): State<AppState>,
     Path(harness_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    crate::domains::harnesses::DeleteHarness { id: harness_id }
-        .run(&state.ctx(&org))
-        .await?;
-    Ok(StatusCode::NO_CONTENT)
+    state
+        .dispatcher(&org)
+        .run_no_content(crate::domains::harnesses::DeleteHarness { id: harness_id })
+        .await
 }
 
 pub async fn destroy_harness(
@@ -540,10 +540,10 @@ pub async fn destroy_harness(
     State(state): State<AppState>,
     Path(harness_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    crate::domains::harnesses::DestroyHarness { id: harness_id }
-        .run(&state.ctx(&org))
-        .await?;
-    Ok(StatusCode::NO_CONTENT)
+    state
+        .dispatcher(&org)
+        .run_no_content(crate::domains::harnesses::DestroyHarness { id: harness_id })
+        .await
 }
 
 /// POST /v1/harnesses/{harness_id}/copy - Copy a harness
@@ -570,11 +570,10 @@ pub async fn copy_harness(
     State(state): State<AppState>,
     Path(harness_id): Path<String>,
 ) -> Result<(StatusCode, Json<WithUrls<Harness>>), (StatusCode, Json<ErrorResponse>)> {
-    let harness = crate::domains::harnesses::CopyHarness { id: harness_id }
-        .run(&state.ctx(&org))
-        .await?;
-    let urls = UrlBuilder::from_auth_config(&state.auth.config);
-    Ok((StatusCode::CREATED, Json(urls.wrap(harness))))
+    state
+        .dispatcher(&org)
+        .run_created_with_urls(crate::domains::harnesses::CopyHarness { id: harness_id })
+        .await
 }
 
 /// POST /v1/harnesses/preview
