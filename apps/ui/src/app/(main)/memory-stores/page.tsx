@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Brain, Plus, Search, Star, Trash2 } from "lucide-react";
 import { QueryStateWrapper } from "@/components/query-state-wrapper";
 import { Badge } from "@/components/ui/badge";
@@ -76,6 +76,12 @@ export default function MemoryStoresPage() {
     kind: kind === "all" ? undefined : kind,
     limit: 200,
   });
+
+  // Close the detail drawer when the memory list it was selected from changes,
+  // so a previously-selected memory can't render against the wrong store/forget mutation.
+  useEffect(() => {
+    setDetailMemoryId(null);
+  }, [activeStoreId, search, kind]);
 
   return (
     <div className="container mx-auto p-6">
@@ -286,6 +292,11 @@ function MemoryCard({
             e.stopPropagation();
             onForget();
           }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.stopPropagation();
+            }
+          }}
           disabled={!memory.active || forgetting}
           aria-label="Forget memory"
         >
@@ -431,7 +442,11 @@ function MemoryContentPartView({ part }: { part: MemoryContentPart }) {
     return (
       <div className="rounded-md border bg-muted/30 p-2">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={src} alt="" className="max-h-80 max-w-full rounded object-contain" />
+        <img
+          src={src}
+          alt={`Memory attachment (${part.media_type})`}
+          className="max-h-80 max-w-full rounded object-contain"
+        />
         <p className="mt-1 text-xs text-muted-foreground">{part.media_type}</p>
       </div>
     );
