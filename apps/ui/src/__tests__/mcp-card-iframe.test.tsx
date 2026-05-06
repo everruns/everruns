@@ -51,6 +51,46 @@ describe("McpCardIframe", () => {
     expect(onAction).not.toHaveBeenCalled();
   });
 
+  it("rejects per-type payload shapes that don't match the CardMessage variant", () => {
+    const onAction = jest.fn();
+    const { container } = render(
+      <McpCardIframe uri={URI} html={SAMPLE_HTML} onAction={onAction} />,
+    );
+    const iframe = container.querySelector("iframe")!;
+    const source = iframe.contentWindow as Window;
+
+    const bad = [
+      // Arrays must be rejected even though typeof is "object".
+      [1, 2, 3],
+      // tool: missing toolName
+      { type: "tool", payload: { params: {} } },
+      // tool: toolName is empty string
+      { type: "tool", payload: { toolName: "" } },
+      // tool: params is not an object
+      { type: "tool", payload: { toolName: "x", params: "not-an-object" } },
+      // prompt: missing prompt
+      { type: "prompt", payload: {} },
+      // intent: missing intent
+      { type: "intent", payload: { params: {} } },
+      // intent: params is array
+      { type: "intent", payload: { intent: "open_agent", params: [1] } },
+      // link: missing url
+      { type: "link", payload: {} },
+      // notify: missing message
+      { type: "notify", payload: {} },
+      // payload itself is an array
+      { type: "notify", payload: [] },
+    ];
+
+    act(() => {
+      for (const data of bad) {
+        window.dispatchEvent(new MessageEvent("message", { data, source }));
+      }
+    });
+
+    expect(onAction).not.toHaveBeenCalled();
+  });
+
   it("forwards a well-formed message from the iframe to onAction", () => {
     const onAction = jest.fn();
     const { container } = render(

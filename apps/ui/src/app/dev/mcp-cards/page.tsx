@@ -15,7 +15,7 @@ const isDev = process.env.NODE_ENV === "development";
 
 const SAMPLE_AGENT_HTML = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; connect-src 'none'; frame-ancestors *">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; connect-src 'none'">
 <meta name="viewport" content="width=360">
 <title>Everruns: Customer Support</title>
 <style>

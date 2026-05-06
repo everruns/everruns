@@ -89,22 +89,28 @@ pub fn escape_html(input: &str) -> String {
 }
 
 /// Render the card to a self-contained HTML document. Returns `None` if
-/// the rendered size exceeds `MAX_CARD_BYTES` — callers should fall back
-/// to a JSON-only response in that case.
+/// the rendered size exceeds `MAX_CARD_BYTES`. Callers (currently
+/// `card_tool_content` → `tool_agent_get_card`) surface this as a tool
+/// error (`isError: true`) rather than truncating the document or
+/// silently degrading to a text-only result; see `specs/mcp-cards.md`.
 pub fn render_html(card: &EntityCard) -> Option<String> {
     let mut html = String::with_capacity(2048);
 
     // Inline CSP plus the required document chrome. The CSP blocks every
-    // network fetch (`default-src 'none'`), forbids framing back into us
-    // (`frame-ancestors 'self'` for hosts that respect it), and only
-    // allows inline style + (future) inline script.
+    // network fetch (`default-src 'none'` + `connect-src 'none'`) and
+    // permits only inline style and (future phase-2) inline script for
+    // action wiring. Several CSP directives — notably `frame-ancestors`
+    // — are not enforceable when the policy is delivered via
+    // `<meta http-equiv>`, so clickjacking and origin isolation are
+    // handled by the host's iframe `sandbox` attribute (see
+    // `specs/mcp-cards.md`), not by CSP.
     html.push_str("<!doctype html>\n");
     html.push_str("<html lang=\"en\"><head><meta charset=\"utf-8\">\n");
     html.push_str(
         "<meta http-equiv=\"Content-Security-Policy\" \
          content=\"default-src 'none'; style-src 'unsafe-inline'; \
          script-src 'unsafe-inline'; img-src data:; \
-         connect-src 'none'; frame-ancestors *\">",
+         connect-src 'none'\">",
     );
     html.push_str("<meta name=\"viewport\" content=\"width=360\">\n");
     let _ = writeln!(

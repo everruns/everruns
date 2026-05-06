@@ -182,11 +182,18 @@ Hosts that render `ui://everruns/...` resources MUST:
    crucially **without** `allow-same-origin`, `allow-top-navigation`,
    `allow-forms`, or `allow-popups`.
 2. Set `referrerpolicy="no-referrer"` on the iframe.
-3. Enforce a strict Content-Security-Policy header on the iframe content
+3. Honour the strict Content-Security-Policy embedded in the document
    (the Everruns MCP endpoint emits one inline in `<meta http-equiv>`):
-   `default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:`.
-4. Never use `srcdoc` or `src` to fetch the HTML over HTTP — the iframe is
-   populated from the resource `text` field directly.
+   `default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; connect-src 'none'`.
+   Note the policy is delivered as a `<meta>` tag inside `srcdoc`
+   content, not an HTTP response header — `frame-ancestors` and a few
+   other directives are not enforceable in this delivery mode, so iframe
+   sandboxing is the primary clickjacking and same-origin defense.
+4. Never fetch the HTML over HTTP via the iframe `src` attribute —
+   populate the iframe from the resource `text` field directly via
+   `srcdoc`. (`srcdoc` keeps the document inline so no network request
+   is made and the document inherits the iframe's opaque sandboxed
+   origin.)
 5. Validate inbound `postMessage` events against the iframe's
    `MessageEvent.source` and ignore messages from any other window.
 6. Apply the existing user-permission model to any `tool` action requested
@@ -202,20 +209,23 @@ under `apps/ui/src/app/dev/mcp-cards/`.
 
 Implementation lives in `crates/server/src/api/mcp_endpoint/cards.rs`:
 
-- `EntityCard` builder (entity kind, public ID, header, description,
-  stats, link list, optional actions).
-- `render_html(card: &EntityCard) -> String` — emits the sandboxed
-  document with the CSP meta tag.
-- `card_uri(entity: EntityKind, public_id: &str) -> String`.
-- `card_resource_content(card: &EntityCard) -> Value` — produces the
-  `tools/call` content array (resource + summary text).
+- `EntityCard` struct (entity kind, public ID, title, optional subtitle
+  and description, status, tags, stats, footer lines).
+- `render_html(card: &EntityCard) -> Option<String>` — emits the
+  sandboxed document with the CSP meta tag. Returns `None` when the
+  rendered output exceeds `MAX_CARD_BYTES`; callers surface this as a
+  tool error rather than truncating.
+- `card_uri(kind: EntityKind, public_id: &str) -> String`.
+- `card_tool_content(card: &EntityCard, summary: &str) -> Result<Value, String>`
+  — produces the `tools/call` content array (resource + summary text).
 - HTML escape helper (`escape_html`) used by every interpolation point.
 - `MAX_CARD_BYTES = 64 * 1024` enforced before returning.
 
 Each entity adds a small adapter that maps the domain `Command` output into
-an `EntityCard`. The first adapter is `agent_card_from_agent`, which uses
-the existing `GetAgent` command plus a new aggregate read for session count.
-See `crates/server/src/storage/backend.rs::count_sessions_for_agent` for the
+an `EntityCard`. The first adapter is `agent_card(agent: &Agent, stats: AgentCardStats) -> EntityCard`,
+which uses the existing `GetAgent` command plus a new aggregate read for
+session count. See
+`crates/server/src/storage/backend.rs::count_sessions_for_agent` for the
 session counter.
 
 ## Stats Surface

@@ -50,22 +50,46 @@ export interface McpCardIframeProps {
 /** Maximum messages per second per iframe before drops kick in. */
 const MESSAGE_RATE_LIMIT = 10;
 
-const KNOWN_TYPES: ReadonlySet<CardMessage["type"]> = new Set([
-  "tool",
-  "prompt",
-  "intent",
-  "link",
-  "notify",
-]);
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
+}
+
+// Per-type structural validation. Hosts that consume `onAction` rely on
+// the typed `CardMessage` shape — so a guard that merely checks
+// `{ type, payload }` exist would let malformed messages slip through
+// while TypeScript treats them as well-formed. Each branch validates
+// the required fields named by the corresponding `CardMessage` variant.
 function isCardMessage(value: unknown): value is CardMessage {
-  if (typeof value !== "object" || value === null) return false;
-  const v = value as { type?: unknown; payload?: unknown };
-  if (typeof v.type !== "string" || !KNOWN_TYPES.has(v.type as CardMessage["type"])) {
-    return false;
+  if (!isPlainObject(value)) return false;
+  if (typeof value.type !== "string") return false;
+  if (!isPlainObject(value.payload)) return false;
+  const payload = value.payload;
+
+  switch (value.type) {
+    case "tool":
+      // params is optional but, when present, must be a plain object.
+      return (
+        isNonEmptyString(payload.toolName) &&
+        (payload.params === undefined || isPlainObject(payload.params))
+      );
+    case "prompt":
+      return isNonEmptyString(payload.prompt);
+    case "intent":
+      return (
+        isNonEmptyString(payload.intent) &&
+        (payload.params === undefined || isPlainObject(payload.params))
+      );
+    case "link":
+      return isNonEmptyString(payload.url);
+    case "notify":
+      return isNonEmptyString(payload.message);
+    default:
+      return false;
   }
-  if (typeof v.payload !== "object" || v.payload === null) return false;
-  return true;
 }
 
 export function McpCardIframe({
