@@ -8,11 +8,7 @@ import {
   listMemories,
   listMemoryStores,
 } from "@/lib/api/memory-stores";
-import type {
-  CreateMemoryStoreRequest,
-  ListMemoriesParams,
-  MemoryStore,
-} from "@/lib/api/types";
+import type { CreateMemoryStoreRequest, ListMemoriesParams, MemoryStore } from "@/lib/api/types";
 import { queryKeys } from "@/lib/query-keys";
 import { useOrgScopedQuery } from "./create-crud-hooks";
 

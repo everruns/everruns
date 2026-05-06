@@ -71,9 +71,7 @@ export function MemoryCapabilityConfigEditor({
             Selected store is no longer available in this organization.
           </p>
         )}
-        {error && (
-          <p className="text-xs text-destructive">Failed to load memory stores.</p>
-        )}
+        {error && <p className="text-xs text-destructive">Failed to load memory stores.</p>}
         <p className="text-xs text-muted-foreground">
           When unset, the agent uses the org&apos;s default store, created on first use.
         </p>

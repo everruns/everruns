@@ -137,9 +137,7 @@ export default function MemoryStoresPage() {
                       <MemoryCard
                         key={memory.id}
                         memory={memory}
-                        onForget={() =>
-                          forgetMemory.mutate(memory.id)
-                        }
+                        onForget={() => forgetMemory.mutate(memory.id)}
                         forgetting={forgetMemory.isPending}
                       />
                     ))}
@@ -202,8 +200,7 @@ function StoreCard({
         </div>
       </CardHeader>
       <CardContent className="text-xs text-muted-foreground">
-        {store.active_memory_count} active{" "}
-        {store.active_memory_count === 1 ? "memory" : "memories"}
+        {store.active_memory_count} active {store.active_memory_count === 1 ? "memory" : "memories"}
       </CardContent>
     </Card>
   );
@@ -214,7 +211,15 @@ function MemoryCard({
   onForget,
   forgetting,
 }: {
-  memory: { id: string; content: string; kind: string; importance: number; tags: string[]; active: boolean; created_at: string };
+  memory: {
+    id: string;
+    content: string;
+    kind: string;
+    importance: number;
+    tags: string[];
+    active: boolean;
+    created_at: string;
+  };
   onForget: () => void;
   forgetting: boolean;
 }) {
@@ -274,8 +279,8 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
 function MemoriesEmptyState() {
   return (
     <div className="flex flex-col items-center justify-center py-10 text-center text-sm text-muted-foreground">
-      No memories yet. Agents using the <code className="font-mono">memory</code> capability
-      will populate this store as they learn.
+      No memories yet. Agents using the <code className="font-mono">memory</code> capability will
+      populate this store as they learn.
     </div>
   );
 }
@@ -300,8 +305,8 @@ function CreateStoreDialog({
         <DialogHeader>
           <DialogTitle>New memory store</DialogTitle>
           <DialogDescription>
-            Create a named container for agent memories. Use distinct stores to scope memory by
-            team or project.
+            Create a named container for agent memories. Use distinct stores to scope memory by team
+            or project.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">

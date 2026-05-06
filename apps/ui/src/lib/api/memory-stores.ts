@@ -19,9 +19,7 @@ export async function getMemoryStore(storeId: string): Promise<MemoryStore> {
   return response.data;
 }
 
-export async function createMemoryStore(
-  request: CreateMemoryStoreRequest,
-): Promise<MemoryStore> {
+export async function createMemoryStore(request: CreateMemoryStoreRequest): Promise<MemoryStore> {
   const response = await api.post<MemoryStore>("/v1/memory-stores", request);
   return response.data;
 }
