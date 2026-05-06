@@ -86,6 +86,7 @@ All metrics are prefixed `everruns_`. For the complete metric list, see the `Pro
    `llm.generation` and `tool.completed` events, recording per-instance counters
    and duration histograms.
 5. **Render:** `GET /metrics` calls `PrometheusHandle::render()`.
+6. **Command instrumentation:** `Command::run` (in `crates/server/src/domains/common.rs`) records a per-call counter `everruns_commands_total` and duration histogram `everruns_command_duration_seconds` with labels `{name, category, status}`. `status` is one of `ok | bad_request | unprocessable | forbidden | not_found | conflict | internal`. Every command from every protocol (HTTP, MCP `execute`, gRPC `ExecuteCommand`, platform composition) is instrumented automatically because all callers go through `run`.
 
 ## Non-Goals
 
