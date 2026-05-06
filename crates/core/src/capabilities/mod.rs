@@ -92,6 +92,7 @@ mod fake_warehouse;
 mod file_system;
 mod human_intent;
 mod infinity_context;
+mod knowledge_base;
 mod loop_detection;
 pub mod mcp;
 mod noop;
@@ -171,6 +172,10 @@ pub use file_system::{
 pub use human_intent::{HUMAN_INTENT_CAPABILITY_ID, HumanIntentCapability};
 pub use infinity_context::{
     INFINITY_CONTEXT_CAPABILITY_ID, InfinityContextCapability, QueryHistoryTool,
+};
+pub use knowledge_base::{
+    KNOWLEDGE_BASE_CAPABILITY_ID, KnowledgeBaseCapability, KnowledgeBaseConfig,
+    validate_knowledge_base_config,
 };
 pub use loop_detection::LoopDetectionCapability;
 pub use mcp::{
@@ -814,6 +819,9 @@ impl CapabilityRegistry {
 
         // Data knowledge scaffold (all environments)
         registry.register(DataKnowledgeCapability);
+
+        // Knowledge bases (curated org knowledge — see specs/knowledge-bases.md)
+        registry.register(KnowledgeBaseCapability);
 
         // Fake demo capabilities (all environments)
         registry.register(FakeWarehouseCapability);

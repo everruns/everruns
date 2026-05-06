@@ -116,6 +116,7 @@ Always make sure you are working on top of latest main from remote.
 - `specs/threat-model.md` - Security threat model with stable IDs and mitigations
 - `specs/bashkit-requirements.md` - Bash sandbox capabilities and requirements
 - `specs/maintenance.md` - Goal-oriented maintenance and release-readiness guidance
+- `specs/knowledge-bases.md` - Knowledge Bases (curated org knowledge: KBs + entries, agent-facing `search_knowledge`)
 - `specs/memory.md` - Persistent cross-session memory (multi-store, capacity limits, multicontent recall)
 - `specs/shipping.md` - Goal-oriented shipping and merge-readiness guidance
 - `specs/xml-prompt-formatting.md` - XML tags for system prompt structure

@@ -26,6 +26,7 @@ pub mod harnesses;
 pub mod http_signing_keys;
 pub mod images;
 pub mod internal_images;
+pub mod knowledge_bases;
 pub mod llm_models;
 pub mod llm_providers;
 pub mod mcp_endpoint;

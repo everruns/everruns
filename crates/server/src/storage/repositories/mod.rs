@@ -13,6 +13,7 @@ pub use budgets::BudgetSubjectLookup;
 mod evals;
 mod events;
 mod harnesses;
+mod knowledge_bases;
 mod llm;
 mod mcp_servers;
 mod memories;

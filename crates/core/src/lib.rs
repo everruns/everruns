@@ -360,9 +360,9 @@ pub use skill::{
 };
 pub use typed_id::{
     AgentId, AgentIdentityId, AppChannelId, AppId, EvalCaseId, EvalId, EvalResultId, EvalRunId,
-    EventId, ExecId, HarnessId, IdMarker, IdParseError, ImageId, LeasedResourceId, McpServerId,
-    MemoryId, MemoryStoreId, MessageId, ModelId, NotificationId, OrgId, PrincipalId, ProviderId,
-    ScheduleId, SessionId, SkillId, TurnId, TypedId,
+    EventId, ExecId, HarnessId, IdMarker, IdParseError, ImageId, KnowledgeBaseId, KnowledgeEntryId,
+    LeasedResourceId, McpServerId, MemoryId, MemoryStoreId, MessageId, ModelId, NotificationId,
+    OrgId, PrincipalId, ProviderId, ScheduleId, SessionId, SkillId, TurnId, TypedId,
 };
 
 // Audit logging re-exports
