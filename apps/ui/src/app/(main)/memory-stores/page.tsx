@@ -123,26 +123,29 @@ export default function MemoryStoresPage() {
               <QueryStateWrapper
                 isLoading={memoriesQuery.isLoading}
                 error={memoriesQuery.error}
-                data={memoriesQuery.data}
+                data={memoriesQuery.data?.data}
                 errorMessagePrefix="Failed to load memories"
                 skeletonCount={4}
                 emptyState={<MemoriesEmptyState />}
               >
-                {(response) => (
-                  <div className="space-y-3">
-                    <p className="text-xs text-muted-foreground">
-                      {response.total} {response.total === 1 ? "memory" : "memories"}
-                    </p>
-                    {response.data.map((memory) => (
-                      <MemoryCard
-                        key={memory.id}
-                        memory={memory}
-                        onForget={() => forgetMemory.mutate(memory.id)}
-                        forgetting={forgetMemory.isPending}
-                      />
-                    ))}
-                  </div>
-                )}
+                {(items) => {
+                  const total = memoriesQuery.data?.total ?? items.length;
+                  return (
+                    <div className="space-y-3">
+                      <p className="text-xs text-muted-foreground">
+                        {total} {total === 1 ? "memory" : "memories"}
+                      </p>
+                      {items.map((memory) => (
+                        <MemoryCard
+                          key={memory.id}
+                          memory={memory}
+                          onForget={() => forgetMemory.mutate(memory.id)}
+                          forgetting={forgetMemory.isPending}
+                        />
+                      ))}
+                    </div>
+                  );
+                }}
               </QueryStateWrapper>
             </section>
           </div>
