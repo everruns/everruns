@@ -946,6 +946,7 @@ impl ServerAppBuilder {
             auth_state.clone(),
             platform_definition.built_in_harnesses().to_vec(),
         );
+        let volumes_state = api::volumes::AppState::new(db.clone(), auth_state.clone());
         let audit_logs_state = api::audit_logs::AppState::new(
             db.clone(),
             capability_service.clone(),
@@ -1070,6 +1071,7 @@ impl ServerAppBuilder {
             })
             .merge(api::skills::routes(skills_state))
             .merge(api::organizations::routes(organizations_state))
+            .merge(api::volumes::routes(volumes_state))
             .merge(api::user_connections::routes(user_connections_state))
             .merge(api::session_schedules::routes(session_schedules_state))
             .merge(api::audit_logs::routes(audit_logs_state))

@@ -36,3 +36,4 @@ pub mod skills;
 pub mod system;
 pub mod tool_results;
 pub mod users;
+pub mod volumes;

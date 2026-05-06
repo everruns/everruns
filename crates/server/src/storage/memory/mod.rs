@@ -32,6 +32,7 @@ mod sessions;
 mod skills;
 mod user_connections;
 mod users;
+mod volumes;
 
 #[cfg(test)]
 mod tests;
@@ -141,6 +142,8 @@ pub struct InMemoryDatabase {
     budgets: RwLock<HashMap<Uuid, BudgetRow>>,
     usage_journal: RwLock<HashMap<Uuid, UsageJournalRow>>,
     usage_ledger: RwLock<Vec<UsageLedgerRow>>,
+    // Workspace volumes
+    volumes: RwLock<HashMap<Uuid, VolumeRow>>,
     // OAuth clients (MCP OAuth 2.1)
     oauth_clients: RwLock<HashMap<Uuid, OAuthClientRow>>,
     oauth_authorization_codes: RwLock<HashMap<Uuid, OAuthAuthorizationCodeRow>>,
@@ -212,6 +215,7 @@ impl Default for InMemoryDatabase {
             budgets: RwLock::new(HashMap::new()),
             usage_journal: RwLock::new(HashMap::new()),
             usage_ledger: RwLock::new(Vec::new()),
+            volumes: RwLock::new(HashMap::new()),
             oauth_clients: RwLock::new(HashMap::new()),
             oauth_authorization_codes: RwLock::new(HashMap::new()),
             oauth_refresh_tokens: RwLock::new(HashMap::new()),
