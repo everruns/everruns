@@ -26,9 +26,9 @@ Verify that memory stores and memories are strictly scoped to the active organiz
 4. Switch the active organization to **Org B**
 5. Navigate to **Memory**
 6. Capture the list of stores shown
-7. While in Org B, hit `GET /v1/memory-stores/<mst_A>` (Org A's store ID) using the user's session, with `X-Org-Id: <org-b-public-id>`
-8. While in Org B, hit `GET /v1/memory-stores/<mst_A>/memories` with the same headers
-9. While in Org B, hit `DELETE /v1/memory-stores/<mst_A>/memories/<mem_id_from_A>`
+7. While in Org B, hit `GET /v1/memory-stores/mst_<A>` (Org A's store ID) using the user's session, with `X-Org-Id: <org-b-public-id>`
+8. While in Org B, hit `GET /v1/memory-stores/mst_<A>/memories` with the same headers
+9. While in Org B, hit `DELETE /v1/memory-stores/mst_<A>/memories/<mem_id_from_A>`
 
 ## Expected Result
 
@@ -37,4 +37,4 @@ Verify that memory stores and memories are strictly scoped to the active organiz
 - Step 7: Returns `404 Not Found` with a generic not-found error body — never `403 Forbidden` and never any field that confirms the store exists in another org
 - Step 8: Returns `404 Not Found` with the same non-disclosing shape
 - Step 9: Returns `404 Not Found`. The memory remains active when re-checked from Org A (active count unchanged)
-- The capability-config store picker, when shown for an agent in Org B, never lists Org A's stores even if the agent JSON is hand-edited to reference `mst_<A>`; instead the picker displays "Selected store is no longer available in this organization."
+- The capability-config store picker, when shown for an agent in Org B, never lists Org A's stores even if the agent JSON is hand-edited to reference `mst_<A>` (the Org A store ID); instead the picker displays "Selected store is no longer available in this organization."

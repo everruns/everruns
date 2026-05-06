@@ -38,5 +38,5 @@ Verify that the memory list supports text search across memory content and filte
 - Step 2: All seeded memories are listed; the counter shows "N memories"
 - Step 4: Only memories whose content contains "espresso" are listed; the counter updates; non-matching memories are hidden
 - Step 6/7: Only memories with `kind = preference` are listed; each card shows a `preference` outline badge
-- Step 9: The list is empty; the empty-state placeholder ("No memories yet…") is shown; the counter is `0 memories`
+- Step 9: The list is empty; the memories empty-state placeholder ("No memories yet. Agents using the memory capability will populate this store as they learn.") is shown; the counter is `0 memories`
 - Search and filter persist across each other while both are set (intersection of both filters)

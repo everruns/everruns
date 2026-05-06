@@ -26,4 +26,4 @@ Verify that visiting the Memory page in an org with zero memory stores shows the
 ## Expected Result
 
 - Step 2: A centered empty state is shown with the brain icon, the heading "No memory stores", explanatory text mentioning that the default store is created on first agent use, and a **New Store** call-to-action button. The two-column layout (sidebar + memories pane) is **not** rendered.
-- Step 5: After creation, the page transitions to the two-column layout. The `first-store` card is visible in the sidebar and selected. The right pane shows the "No memories yet…" memories empty state.
+- Step 5: After creation, the page transitions to the two-column layout. The `first-store` card is visible in the sidebar and selected. The right pane shows the memories empty state: "No memories yet. Agents using the memory capability will populate this store as they learn."

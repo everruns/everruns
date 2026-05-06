@@ -25,7 +25,7 @@
 ## Detailed Notes
 
 ### TC001 — PASS
-Empty-state CTA opens the dialog, name `team-knowledge` accepted, **Create** transitions back to the populated layout. Card shows `mst_019dfeb5d6f976d3ba1463b4fdd290e2`, `0 active memories`, no Default badge. Right pane shows the "No memories yet…" empty state. Screenshot: `/tmp/memory_after_create.png`.
+Empty-state CTA opens the dialog, name `team-knowledge` accepted, **Create** transitions back to the populated layout. Card shows `mst_019dfeb5d6f976d3ba1463b4fdd290e2`, `0 active memories`, no Default badge. Right pane shows the memories empty state: "No memories yet. Agents using the memory capability will populate this store as they learn." Screenshot: `/tmp/memory_after_create.png`.
 
 ### TC002 — PASS
 Created `org-default` with the Default checkbox ticked. Card now shows the **Default** star badge; `team-knowledge` no longer has one. Both stores listed in the sidebar. Screenshot: `/tmp/memory_default_created.png`.

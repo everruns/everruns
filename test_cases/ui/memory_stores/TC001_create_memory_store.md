@@ -33,4 +33,4 @@ Verify that a new org-scoped memory store can be created from the Memory page an
 - The card shows the store ID in the format `mst_<32-hex>` with a copy button
 - The card shows `0 active memories`
 - No `Default` badge is shown on the card (because the box was unchecked)
-- The right pane shows the memories empty state: "No memories yet…"
+- The right pane shows the memories empty state: "No memories yet. Agents using the memory capability will populate this store as they learn."
