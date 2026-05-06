@@ -685,7 +685,10 @@ mod tests {
     fn test_safe_local_path_normal() {
         let dir = tempfile::tempdir().unwrap();
         let result = safe_local_path(dir.path(), "src/main.rs").unwrap();
-        assert_eq!(result, dir.path().join("src/main.rs"));
+        assert_eq!(
+            result,
+            dir.path().canonicalize().unwrap().join("src/main.rs")
+        );
     }
 
     #[test]

@@ -256,6 +256,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
     typeof window !== "undefined"
       ? `${window.location.origin}/api/v1/apps/${appId}/ag-ui`
       : `/api/v1/apps/${appId}/ag-ui`;
+  const agUiImageUploadUrl = `${agUiEndpointUrl}/images`;
 
   const isLocalhost =
     typeof window !== "undefined" &&
@@ -877,6 +878,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
         <div key={channel.id} className="space-y-4">
           <AgUiSetupGuidance
             endpointUrl={agUiEndpointUrl}
+            imageUploadUrl={agUiImageUploadUrl}
             isPublished={isPublished}
             anonymousEnabled={config?.anonymous ?? true}
             sessionExpirationSeconds={

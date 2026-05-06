@@ -36,7 +36,7 @@ use ag_ui_core::types::{
 };
 use axum::{
     Extension, Json, Router,
-    extract::{ConnectInfo, Path, State},
+    extract::{ConnectInfo, DefaultBodyLimit, Path, State},
     http::{HeaderMap, StatusCode, header::AUTHORIZATION},
     response::{
         IntoResponse, Response,
@@ -44,6 +44,7 @@ use axum::{
     },
     routing::post,
 };
+use axum_extra::extract::Multipart;
 use everruns_core::events::{
     OutputMessageCompletedData, OutputMessageDeltaData, ReasonThinkingCompletedData,
     ReasonThinkingDeltaData, ReasonThinkingStartedData, ToolCompletedData, ToolStartedData,
@@ -52,7 +53,7 @@ use everruns_core::events::{
 use everruns_core::message_retriever::InputMessage as StoredInputMessage;
 use everruns_core::{
     AgUiChannelConfig, AgUiToolVisibility, App, AppStatus, Caller, ContentPart, ExternalActor,
-    MessageRole,
+    MessageRole, typed_id::ImageId,
 };
 use futures::{
     StreamExt,
@@ -64,6 +65,9 @@ use uuid::Uuid;
 
 use crate::api::ag_ui_rate_limit::AgUiRateLimiter;
 use crate::api::common::ErrorResponse;
+use crate::api::images::{
+    ImageUploadResponse, MAX_IMAGE_SIZE, generate_thumbnail, is_valid_content_type,
+};
 use crate::api::messages::{
     CreateMessageRequest, InputContentPart, InputMessage, MessageRole as ApiMessageRole,
 };
@@ -76,9 +80,12 @@ use crate::domains::sessions::SessionService;
 use crate::execution_metadata;
 use crate::middleware::RequestId;
 use crate::services::EventService;
-use crate::storage::{DbMessageRetriever, EncryptionService, StorageBackend};
+use crate::storage::{
+    DbMessageRetriever, EncryptionService, StorageBackend, models::CreateImageRow,
+};
 
 const AG_UI_TOKEN_HEADER: &str = "x-everruns-ag-ui-token";
+const MAX_AG_UI_IMAGES_PER_RUN: usize = 10;
 
 #[derive(Clone)]
 pub struct AgUiState {
@@ -121,7 +128,162 @@ impl AgUiState {
 pub fn routes(state: AgUiState) -> Router {
     Router::new()
         .route("/v1/apps/{app_id}/ag-ui", post(run_agent))
+        .route(
+            "/v1/apps/{app_id}/ag-ui/images",
+            post(upload_image).layer(DefaultBodyLimit::max(MAX_IMAGE_SIZE + 1024 * 1024)),
+        )
         .with_state(state)
+}
+
+struct AuthorizedAgUiRequest {
+    app: App,
+    channel_config: AgUiChannelConfig,
+}
+
+async fn authorize_ag_ui_request(
+    state: &AgUiState,
+    app_id: &str,
+    headers: &HeaderMap,
+    peer_addr: Option<std::net::SocketAddr>,
+) -> Result<AuthorizedAgUiRequest, Response> {
+    let app = crate::domains::apps::queries::get_by_public_id_unscoped(
+        &state.db,
+        state.encryption.as_ref(),
+        app_id,
+    )
+    .await
+    .map_err(internal_error)?
+    .ok_or_else(not_found)?;
+
+    // THREAT[TM-AUTHZ-005]: Anonymous AG-UI requests must not reach draft or
+    // private app configurations.
+    // Mitigation: Require a published app, an enabled AG-UI channel, and
+    // `anonymous=true` before accepting unauthenticated traffic.
+    if app.status != AppStatus::Published {
+        return Err(forbidden("App is not published"));
+    }
+
+    let channel = app
+        .ag_ui_channel()
+        .ok_or_else(|| bad_request("App does not have an enabled AG-UI channel"))?;
+    let channel_config = channel
+        .ag_ui_config()
+        .ok_or_else(|| bad_request("Invalid AG-UI channel configuration"))?;
+    if !channel_config.anonymous {
+        return Err(forbidden("Anonymous AG-UI access is disabled"));
+    }
+    if let Some(expected_token) = channel_config.token.as_deref()
+        && !expected_token.is_empty()
+    {
+        let provided_token = extract_ag_ui_token(headers).ok_or_else(unauthorized)?;
+        if !constant_time_eq(provided_token.as_bytes(), expected_token.as_bytes()) {
+            return Err(unauthorized());
+        }
+    }
+
+    // THREAT[TM-DOS-010]: Anonymous AG-UI traffic must respect a configurable
+    // per-app, per-IP cap in addition to the global API limit. App owners
+    // tune `rate_limit_per_minute` based on expected client traffic.
+    if let Some(limit) = channel_config.rate_limit_per_minute
+        && limit > 0
+    {
+        let client_ip = extract_client_ip_from_parts(peer_addr, headers);
+        if state
+            .rate_limiter
+            .check(&app.public_id.to_string(), client_ip, limit)
+            .await
+            .is_err()
+        {
+            return Err(too_many_requests("AG-UI rate limit exceeded for this app"));
+        }
+    }
+
+    Ok(AuthorizedAgUiRequest {
+        app,
+        channel_config,
+    })
+}
+
+async fn upload_image(
+    State(state): State<AgUiState>,
+    Path(app_id): Path<String>,
+    connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
+    headers: HeaderMap,
+    mut multipart: Multipart,
+) -> Result<(StatusCode, Json<ImageUploadResponse>), Response> {
+    let peer_addr = connect_info.map(|Extension(ConnectInfo(addr))| addr);
+    let AuthorizedAgUiRequest { app, .. } =
+        authorize_ag_ui_request(&state, &app_id, &headers, peer_addr).await?;
+
+    // THREAT[TM-DOS-010]: Public AG-UI image uploads are anonymous ingress.
+    // Mitigation: reuse the per-app public AG-UI gate/rate limit above, cap the
+    // multipart body at the router, and validate MIME type plus byte length
+    // before writing image bytes to storage.
+    let mut file_data: Option<(String, String, Vec<u8>)> = None;
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|_| bad_request("invalid_request"))?
+    {
+        if field.name().unwrap_or("") != "file" {
+            continue;
+        }
+
+        let filename = field.file_name().unwrap_or("upload").to_string();
+        let content_type = field
+            .content_type()
+            .unwrap_or("application/octet-stream")
+            .to_string();
+        if !is_valid_content_type(&content_type) {
+            return Err(bad_request("invalid_request"));
+        }
+
+        let data = field
+            .bytes()
+            .await
+            .map_err(|_| bad_request("invalid_request"))?;
+        if data.len() > MAX_IMAGE_SIZE {
+            return Err(bad_request("invalid_request"));
+        }
+
+        file_data = Some((filename, content_type, data.to_vec()));
+        break;
+    }
+
+    let (filename, content_type, data) =
+        file_data.ok_or_else(|| bad_request("No 'file' field in request"))?;
+    let (thumbnail_data, thumbnail_content_type) = generate_thumbnail(&data, &content_type)
+        .map(|(data, content_type)| (Some(data), Some(content_type)))
+        .unwrap_or((None, None));
+    let size_bytes = data.len() as i64;
+    let row = state
+        .db
+        .create_image(
+            app.org_id,
+            CreateImageRow {
+                org_id: app.org_id,
+                filename,
+                content_type,
+                size_bytes,
+                data,
+                thumbnail_data,
+                thumbnail_content_type,
+                metadata: ag_ui_image_metadata(&app),
+            },
+        )
+        .await
+        .map_err(internal_error)?;
+
+    Ok((
+        StatusCode::CREATED,
+        Json(ImageUploadResponse {
+            id: row.id,
+            filename: row.filename,
+            content_type: row.content_type,
+            size_bytes: row.size_bytes,
+            created_at: row.created_at,
+        }),
+    ))
 }
 
 async fn run_agent(
@@ -150,57 +312,10 @@ async fn run_agent(
 
     let request_id = req_id.map(|Extension(r)| r.0);
     let peer_addr = connect_info.map(|Extension(ConnectInfo(addr))| addr);
-    let app = crate::domains::apps::queries::get_by_public_id_unscoped(
-        &state.db,
-        state.encryption.as_ref(),
-        &app_id,
-    )
-    .await
-    .map_err(internal_error)?
-    .ok_or_else(not_found)?;
-
-    // THREAT[TM-AUTHZ-005]: Anonymous AG-UI requests must not reach draft or
-    // private app configurations.
-    // Mitigation: Require a published app, an enabled AG-UI channel, and
-    // `anonymous=true` before accepting unauthenticated traffic.
-    if app.status != AppStatus::Published {
-        return Err(forbidden("App is not published"));
-    }
-
-    let channel = app
-        .ag_ui_channel()
-        .ok_or_else(|| bad_request("App does not have an enabled AG-UI channel"))?;
-    let channel_config = channel
-        .ag_ui_config()
-        .ok_or_else(|| bad_request("Invalid AG-UI channel configuration"))?;
-    if !channel_config.anonymous {
-        return Err(forbidden("Anonymous AG-UI access is disabled"));
-    }
-    if let Some(expected_token) = channel_config.token.as_deref()
-        && !expected_token.is_empty()
-    {
-        let provided_token = extract_ag_ui_token(&headers).ok_or_else(unauthorized)?;
-        if !constant_time_eq(provided_token.as_bytes(), expected_token.as_bytes()) {
-            return Err(unauthorized());
-        }
-    }
-
-    // THREAT[TM-DOS-010]: Anonymous AG-UI traffic must respect a configurable
-    // per-app, per-IP cap in addition to the global API limit. App owners
-    // tune `rate_limit_per_minute` based on expected client traffic.
-    if let Some(limit) = channel_config.rate_limit_per_minute
-        && limit > 0
-    {
-        let client_ip = extract_client_ip_from_parts(peer_addr, &headers);
-        if state
-            .rate_limiter
-            .check(&app.public_id.to_string(), client_ip, limit)
-            .await
-            .is_err()
-        {
-            return Err(too_many_requests("AG-UI rate limit exceeded for this app"));
-        }
-    }
+    let AuthorizedAgUiRequest {
+        app,
+        channel_config,
+    } = authorize_ag_ui_request(&state, &app_id, &headers, peer_addr).await?;
 
     let trigger_message = req
         .messages
@@ -268,6 +383,12 @@ async fn run_agent(
         .await
         .map_err(internal_error)?;
 
+    let trigger_image_parts = ag_ui_image_content_parts(&state, &app, &req.forwarded_props)
+        .await
+        .map_err(|err| *err)?;
+    let mut trigger_parts = vec![InputContentPart::text(trigger_content)];
+    trigger_parts.extend(trigger_image_parts);
+
     let message = state
         .message_service
         .create(
@@ -287,7 +408,7 @@ async fn run_agent(
             CreateMessageRequest {
                 message: InputMessage {
                     role: ApiMessageRole::User,
-                    content: vec![InputContentPart::text(trigger_content)],
+                    content: trigger_parts,
                 },
                 controls: None,
                 metadata: Some(ag_ui_message_metadata(&app, thread_tag, run_tag)),
@@ -431,6 +552,82 @@ fn ag_ui_message_metadata(
     ]
     .into_iter()
     .collect()
+}
+
+fn ag_ui_image_metadata(app: &App) -> Value {
+    serde_json::json!({
+        "_app_id": app.public_id.to_string(),
+        "source": "ag_ui",
+    })
+}
+
+fn is_ag_ui_app_image(metadata: &Value, app_public_id: &str) -> bool {
+    metadata
+        .get("_app_id")
+        .and_then(Value::as_str)
+        .is_some_and(|id| id == app_public_id)
+        && metadata.get("source").and_then(Value::as_str) == Some("ag_ui")
+}
+
+async fn ag_ui_image_content_parts(
+    state: &AgUiState,
+    app: &App,
+    forwarded_props: &Value,
+) -> Result<Vec<InputContentPart>, Box<Response>> {
+    let image_ids = forwarded_ag_ui_image_ids(forwarded_props)?;
+    if image_ids.is_empty() {
+        return Ok(vec![]);
+    }
+
+    // THREAT[TM-TENANT-009]: Public clients must not attach arbitrary org
+    // images to an app run. Mitigation: resolve by org and require AG-UI image
+    // metadata for the same public app before constructing ImageFile parts.
+    let app_public_id = app.public_id.to_string();
+    let mut parts = Vec::with_capacity(image_ids.len());
+    for image_id in image_ids {
+        let row = state
+            .db
+            .get_image(app.org_id, image_id.uuid())
+            .await
+            .map_err(|err| Box::new(internal_error(err)))?
+            .ok_or_else(|| Box::new(bad_request("invalid_request")))?;
+        if !is_ag_ui_app_image(&row.metadata, &app_public_id) {
+            return Err(Box::new(bad_request("invalid_request")));
+        }
+        parts.push(InputContentPart::ImageFile(
+            everruns_core::ImageFileContentPart::with_filename(row.id, row.filename),
+        ));
+    }
+    Ok(parts)
+}
+
+fn forwarded_ag_ui_image_ids(forwarded_props: &Value) -> Result<Vec<ImageId>, Box<Response>> {
+    let Some(raw_images) = forwarded_props
+        .get("imageIds")
+        .or_else(|| forwarded_props.get("image_ids"))
+        .or_else(|| forwarded_props.get("agUiImageIds"))
+        .or_else(|| forwarded_props.get("ag_ui_image_ids"))
+    else {
+        return Ok(vec![]);
+    };
+
+    let images = raw_images
+        .as_array()
+        .ok_or_else(|| Box::new(bad_request("invalid_request")))?;
+    if images.len() > MAX_AG_UI_IMAGES_PER_RUN {
+        return Err(Box::new(bad_request("invalid_request")));
+    }
+
+    images
+        .iter()
+        .map(|value| {
+            let id = value
+                .as_str()
+                .ok_or_else(|| Box::new(bad_request("invalid_request")))?;
+            id.parse::<ImageId>()
+                .map_err(|_| Box::new(bad_request("invalid_request")))
+        })
+        .collect()
 }
 
 struct SessionResolution {
@@ -1241,6 +1438,33 @@ mod tests {
             metadata.get("ag_ui_thread_id"),
             Some(&Value::String("thread-1".to_string()))
         );
+    }
+
+    #[test]
+    fn ag_ui_image_metadata_scopes_upload_to_app() {
+        let app = test_app();
+        let metadata = ag_ui_image_metadata(&app);
+        let app_public_id = app.public_id.to_string();
+
+        assert!(is_ag_ui_app_image(&metadata, &app_public_id));
+        assert!(!is_ag_ui_app_image(
+            &serde_json::json!({"source": "ag_ui"}),
+            &app_public_id
+        ));
+    }
+
+    #[test]
+    fn forwarded_ag_ui_image_ids_parse_camel_case_ids() {
+        let image_id = ImageId::from_seed(42);
+        let props = serde_json::json!({ "imageIds": [image_id.to_string()] });
+
+        assert_eq!(forwarded_ag_ui_image_ids(&props).unwrap(), vec![image_id]);
+    }
+
+    #[test]
+    fn forwarded_ag_ui_image_ids_reject_bad_shape() {
+        assert!(forwarded_ag_ui_image_ids(&serde_json::json!({ "imageIds": "img_bad" })).is_err());
+        assert!(forwarded_ag_ui_image_ids(&serde_json::json!({ "imageIds": [42] })).is_err());
     }
 
     #[tokio::test]

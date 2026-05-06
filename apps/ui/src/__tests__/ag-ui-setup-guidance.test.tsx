@@ -6,6 +6,7 @@ describe("AgUiSetupGuidance", () => {
     render(
       <AgUiSetupGuidance
         endpointUrl="https://example.com/api/v1/apps/app-123/ag-ui"
+        imageUploadUrl="https://example.com/api/v1/apps/app-123/ag-ui/images"
         isPublished={true}
         anonymousEnabled={true}
         sessionExpirationSeconds={6 * 60 * 60}
@@ -15,6 +16,10 @@ describe("AgUiSetupGuidance", () => {
     expect(screen.getByText("Anonymous")).toBeInTheDocument();
     expect(screen.getByText("Ready for AG-UI clients")).toBeInTheDocument();
     expect(screen.getByText("https://example.com/api/v1/apps/app-123/ag-ui")).toBeInTheDocument();
+    expect(
+      screen.getByText("https://example.com/api/v1/apps/app-123/ag-ui/images"),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/forwardedProps.imageIds/)).toBeInTheDocument();
     expect(screen.getByText("Responses stream back as AG-UI SSE events.")).toBeInTheDocument();
     expect(screen.getByText("Thread expiration")).toBeInTheDocument();
     expect(
