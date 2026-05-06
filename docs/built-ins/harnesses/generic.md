@@ -3,7 +3,7 @@ title: Generic Harness
 description: The recommended default harness bundling core capabilities for general-purpose agent sessions.
 ---
 
-The **Generic** harness is the recommended default for most use cases. It bundles 14 core capabilities that cover file operations, command execution, web access, memory, budgeting, and context management.
+The **Generic** harness is the recommended default for most use cases. It configures 16 capabilities: 14 user-facing defaults plus cross-cutting helpers for tool narration and side questions. Together they cover file operations, command execution, web access, memory, budgeting, context management, and durable tool output.
 
 ## When to Use
 

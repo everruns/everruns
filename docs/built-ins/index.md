@@ -12,8 +12,8 @@ A harness defines the base environment for sessions — system prompt, default m
 | Harness | Description | Capabilities |
 |---------|-------------|-------------|
 | [Base](/built-ins/harnesses/base/) | Empty harness, full control | None |
-| [Generic](/built-ins/harnesses/generic/) | Recommended default with core tools | 12 bundled |
-| [Data Analyst](/built-ins/harnesses/data-analyst/) | SQL databases, charts, persistent memory | Generic + 5 data capabilities |
+| [Generic](/built-ins/harnesses/generic/) | Recommended default with core tools | 16 configured, including 14 user-facing defaults |
+| [Data Analyst](/built-ins/harnesses/data-analyst/) | SQL databases, charts, persistent memory | Generic + 5 data capabilities; available as a built-in example |
 | [Platform Chat](/built-ins/harnesses/platform-chat/) | Extends Generic for global chat | Generic + Platform Management |
 
 See the [Harnesses feature guide](/features/harnesses/) for harness selection, API management, and the prompt stack model.
