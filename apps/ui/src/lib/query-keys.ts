@@ -174,6 +174,14 @@ export const queryKeys = {
     detail: (appId: string) => ["app", appId] as const,
   },
 
+  // Workspace Volume queries
+  volumes: {
+    all: ["volumes"] as const,
+    list: (includeArchived = false, search = "") =>
+      ["volumes", { includeArchived, search }] as const,
+    detail: (volumeId: string) => ["volume", volumeId] as const,
+  },
+
   // Eval queries
   evals: {
     all: ["evals"] as const,

@@ -164,6 +164,7 @@ describe("Sidebar", () => {
     expect(screen.getByText("Dashboard")).toBeInTheDocument();
     expect(screen.getByText("Harnesses")).toBeInTheDocument();
     expect(screen.getByText("Agents")).toBeInTheDocument();
+    expect(screen.getByText("Volumes")).toBeInTheDocument();
     expect(screen.getByText("Models")).toBeInTheDocument();
     expect(screen.getByText("Capabilities")).toBeInTheDocument();
     expect(screen.getByText("Settings")).toBeInTheDocument();
@@ -175,6 +176,7 @@ describe("Sidebar", () => {
     const dashboardLink = screen.getByRole("link", { name: "Dashboard" });
     const harnessesLink = screen.getByRole("link", { name: "Harnesses" });
     const agentsLink = screen.getByRole("link", { name: "Agents" });
+    const volumesLink = screen.getByRole("link", { name: "Volumes" });
     const modelsLink = screen.getByRole("link", { name: "Models" });
     const capabilitiesLink = screen.getByRole("link", { name: "Capabilities" });
     const settingsLink = screen.getByRole("link", { name: "Settings" });
@@ -182,6 +184,7 @@ describe("Sidebar", () => {
     expect(dashboardLink).toHaveAttribute("href", "/dashboard");
     expect(harnessesLink).toHaveAttribute("href", "/harnesses");
     expect(agentsLink).toHaveAttribute("href", "/agents");
+    expect(volumesLink).toHaveAttribute("href", "/volumes");
     expect(modelsLink).toHaveAttribute("href", "/models");
     expect(capabilitiesLink).toHaveAttribute("href", "/capabilities");
     expect(settingsLink).toHaveAttribute("href", "/settings");
@@ -234,7 +237,7 @@ describe("Sidebar", () => {
     expect(dashboardLink).toHaveClass("text-[13px]");
   });
 
-  it("has exactly 7 core navigation items", () => {
+  it("has exactly 8 core navigation items", () => {
     render(<Sidebar />);
 
     // Get nav links (excluding logo link)
@@ -249,6 +252,7 @@ describe("Sidebar", () => {
       "Dashboard",
       "Harnesses",
       "Agents",
+      "Volumes",
       "Models",
       "Capabilities",
       "Settings",
@@ -256,7 +260,7 @@ describe("Sidebar", () => {
     const foundNavLinks = navLinks.filter((link) =>
       navItems.some((item) => link.textContent?.includes(item)),
     );
-    expect(foundNavLinks).toHaveLength(7);
+    expect(foundNavLinks).toHaveLength(8);
   });
 
   it("renders section labels for Building Blocks and Durable Execution", () => {
