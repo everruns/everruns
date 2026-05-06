@@ -516,7 +516,19 @@ pub trait Command: DeserializeOwned + Send + 'static + CommandSchema {
             .record(elapsed_secs);
 
             if let Err(err) = &result {
-                tracing::debug!(status, error = %err, "command failed");
+                // 5xx (Internal) at error! so MCP/gRPC failures surface in
+                // production logs even though those protocols don't run the
+                // HTTP `From<CommandError>` converter that historically logged
+                // them. 4xx remain at debug! — they're caller-induced and
+                // would dominate log volume otherwise.
+                match err {
+                    CommandError::Internal(_) => {
+                        tracing::error!(status, error = %err, "command failed");
+                    }
+                    _ => {
+                        tracing::debug!(status, error = %err, "command failed");
+                    }
+                }
             }
 
             result

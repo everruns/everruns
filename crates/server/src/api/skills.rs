@@ -9,7 +9,6 @@ use crate::api::common::{
 };
 use crate::api::dispatch::{Dispatchable, impl_dispatchable};
 use crate::auth::{AuthState, ResolvedOrg};
-use crate::domains::common::Command;
 use crate::domains::skills::types::{CreateSkillRequest, UpdateSkillRequest};
 use crate::domains::skills::{SKILL_DANGEROUS, SKILL_MANAGE, SKILL_VIEW};
 use crate::services::CapabilityService;
@@ -257,15 +256,13 @@ pub async fn list_skills(
     State(state): State<AppState>,
     Query(query): Query<ListSkillsQuery>,
 ) -> ApiResult<ListResponse<WithUrls<Skill>>> {
-    let skills = crate::domains::skills::ListSkills {
-        search: query.search,
-        include_archived: query.include_archived.unwrap_or(false),
-    }
-    .run(&state.ctx(&org))
-    .await?;
-
-    let urls = UrlBuilder::from_auth_config(&state.auth.config);
-    Ok(Json(ListResponse::new(skills).with_urls(&urls)))
+    state
+        .dispatcher(&org)
+        .run_list_with_urls(crate::domains::skills::ListSkills {
+            search: query.search,
+            include_archived: query.include_archived.unwrap_or(false),
+        })
+        .await
 }
 
 /// GET /v1/skills/{skill_id} - Get skill by ID

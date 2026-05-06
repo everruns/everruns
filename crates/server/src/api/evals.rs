@@ -278,13 +278,13 @@ async fn list_evals(
     State(state): State<AppState>,
     Query(query): Query<ListEvalsQuery>,
 ) -> ApiResult<ListResponse<Eval>> {
-    let evals = ListEvals {
-        search: query.search,
-        include_archived: query.include_archived.unwrap_or(false),
-    }
-    .run(&state.ctx(&org))
-    .await?;
-    Ok(Json(ListResponse::new(evals)))
+    state
+        .dispatcher(&org)
+        .run_list(ListEvals {
+            search: query.search,
+            include_archived: query.include_archived.unwrap_or(false),
+        })
+        .await
 }
 
 async fn get_eval(
@@ -339,8 +339,10 @@ async fn list_cases(
     State(state): State<AppState>,
     Path(eval_id): Path<String>,
 ) -> ApiResult<ListResponse<EvalCase>> {
-    let cases = ListEvalCases { eval_id }.run(&state.ctx(&org)).await?;
-    Ok(Json(ListResponse::new(cases)))
+    state
+        .dispatcher(&org)
+        .run_list(ListEvalCases { eval_id })
+        .await
 }
 
 async fn get_case(
@@ -402,8 +404,10 @@ async fn list_runs(
     State(state): State<AppState>,
     Path(eval_id): Path<String>,
 ) -> ApiResult<ListResponse<EvalRun>> {
-    let runs = ListEvalRuns { eval_id }.run(&state.ctx(&org)).await?;
-    Ok(Json(ListResponse::new(runs)))
+    state
+        .dispatcher(&org)
+        .run_list(ListEvalRuns { eval_id })
+        .await
 }
 
 async fn get_run(

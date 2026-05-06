@@ -17,7 +17,7 @@ use axum::{
 use everruns_core::{Caller, CapabilityInfo};
 use serde::Deserialize;
 
-use super::common::{ApiResult, PaginatedResponse, WithUrls, impl_auth_state};
+use super::common::{ApiResult, ErrorResponse, PaginatedResponse, WithUrls, impl_auth_state};
 use super::dispatch::{Dispatchable, impl_dispatchable};
 use std::sync::Arc;
 
@@ -77,6 +77,8 @@ pub struct ListCapabilitiesQuery {
     ),
     responses(
         (status = 200, description = "Paginated list of capabilities", body = PaginatedResponse<WithUrls<CapabilityInfo>>),
+        (status = 400, description = "Invalid query parameters", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse),
     ),
     tag = "capabilities"
 )]
@@ -104,7 +106,8 @@ pub async fn list_capabilities(
     ),
     responses(
         (status = 200, description = "Capability found", body = WithUrls<CapabilityInfo>),
-        (status = 404, description = "Capability not found"),
+        (status = 404, description = "Capability not found", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse),
     ),
     tag = "capabilities"
 )]

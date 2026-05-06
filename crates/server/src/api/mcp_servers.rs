@@ -4,7 +4,6 @@
 // Spec: specs/mcp.md (umbrella), specs/mcp-servers.md (API endpoints)
 
 use crate::auth::{AuthState, ResolvedOrg};
-use crate::domains::common::Command;
 use crate::domains::mcp_servers::types::{CreateMcpServerRequest, UpdateMcpServerRequest};
 use crate::domains::mcp_servers::{MCP_SERVER_DANGEROUS, MCP_SERVER_MANAGE, MCP_SERVER_VIEW};
 use crate::services::CapabilityService;
@@ -17,9 +16,7 @@ use axum::{
 };
 use everruns_core::{Caller, McpServer, ResourceConfigResponse, evaluate_policies_with};
 
-use super::common::{
-    ApiResult, ErrorResponse, ListResponse, UrlBuilder, WithUrls, impl_auth_state,
-};
+use super::common::{ApiResult, ErrorResponse, ListResponse, WithUrls, impl_auth_state};
 use super::dispatch::{Dispatchable, impl_dispatchable};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -167,15 +164,13 @@ pub async fn list_mcp_servers(
     State(state): State<AppState>,
     Query(query): Query<ListMcpServersQuery>,
 ) -> ApiResult<ListResponse<WithUrls<McpServer>>> {
-    let servers = crate::domains::mcp_servers::ListMcpServers {
-        search: query.search,
-        include_archived: query.include_archived.unwrap_or(false),
-    }
-    .run(&state.ctx(&org))
-    .await?;
-
-    let urls = UrlBuilder::from_auth_config(&state.auth.config);
-    Ok(Json(ListResponse::new(servers).with_urls(&urls)))
+    state
+        .dispatcher(&org)
+        .run_list_with_urls(crate::domains::mcp_servers::ListMcpServers {
+            search: query.search,
+            include_archived: query.include_archived.unwrap_or(false),
+        })
+        .await
 }
 
 /// GET /v1/mcp-servers/{server_id} - Get MCP server by ID
