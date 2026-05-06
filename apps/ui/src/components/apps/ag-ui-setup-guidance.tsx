@@ -7,6 +7,7 @@ import { Globe } from "lucide-react";
 
 interface AgUiSetupGuidanceProps {
   endpointUrl: string;
+  imageUploadUrl?: string;
   isPublished: boolean;
   anonymousEnabled: boolean;
   sessionExpirationSeconds: number;
@@ -37,6 +38,7 @@ export function formatSessionExpiration(seconds: number): string {
 
 export function AgUiSetupGuidance({
   endpointUrl,
+  imageUploadUrl,
   isPublished,
   anonymousEnabled,
   sessionExpirationSeconds,
@@ -66,6 +68,17 @@ export function AgUiSetupGuidance({
           <CopyButton value={endpointUrl} />
         </div>
       </div>
+
+      {imageUploadUrl && (
+        <div>
+          <p className="text-sm font-medium">Image upload</p>
+          <div className="mt-2 flex items-center gap-2 bg-muted p-3">
+            <Globe className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <code className="flex-1 truncate text-sm">{imageUploadUrl}</code>
+            <CopyButton value={imageUploadUrl} />
+          </div>
+        </div>
+      )}
 
       <div>
         <p className="text-sm font-medium">Token</p>
@@ -108,6 +121,11 @@ export function AgUiSetupGuidance({
 
       <div className="space-y-1 text-sm text-muted-foreground">
         <p>Send AG-UI `RunAgentInput` JSON to this endpoint.</p>
+        {imageUploadUrl && (
+          <p>
+            Upload images as multipart `file`, then pass returned IDs in `forwardedProps.imageIds`.
+          </p>
+        )}
         {hasToken && (
           <p>Include `Authorization: Bearer &lt;token&gt;` or `X-Everruns-AG-UI-Token`.</p>
         )}

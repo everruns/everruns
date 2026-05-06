@@ -63,6 +63,11 @@ AG-UI uses an app-scoped anonymous ingress for the initial rollout:
 - Endpoint: `POST /v1/apps/{app_id}/ag-ui`
 - Requests use AG-UI `RunAgentInput` JSON
 - Responses stream back as AG-UI SSE events translated from the durable runtime
+- Images may be uploaded through `POST /v1/apps/{app_id}/ag-ui/images`
+  as multipart form field `file`. The route uses the same published-app,
+  anonymous, token, and rate-limit gates as the stream endpoint. The returned
+  image IDs may be passed on a run in `forwardedProps.imageIds`; the handler
+  attaches only images uploaded through the same app's public AG-UI route.
 - Anonymous access is currently required when the channel is enabled
 - If `token` is set, requests must include either `Authorization: Bearer <token>` or `X-Everruns-AG-UI-Token: <token>`.
 - Session routing is per `threadId`, with sessions tagged by app and thread

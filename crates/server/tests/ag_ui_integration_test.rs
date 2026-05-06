@@ -145,6 +145,38 @@ async fn send_ag_ui_run_with_headers(
         .await
 }
 
+async fn upload_ag_ui_image(
+    server: &TestServer,
+    app_id: impl std::fmt::Display,
+    headers: Vec<(&str, &str)>,
+) -> test_harness::TestResponse {
+    let boundary = "agui-test-boundary";
+    let body = format!(
+        concat!(
+            "--{boundary}\r\n",
+            "Content-Disposition: form-data; name=\"file\"; filename=\"photo.png\"\r\n",
+            "Content-Type: image/png\r\n\r\n",
+            "fake-png-bytes\r\n",
+            "--{boundary}--\r\n",
+        ),
+        boundary = boundary
+    );
+    let mut request_headers = vec![(
+        "content-type",
+        "multipart/form-data; boundary=agui-test-boundary",
+    )];
+    request_headers.extend(headers);
+
+    server
+        .request_raw(
+            Method::POST,
+            &format!("/v1/apps/{}/ag-ui/images", app_id),
+            request_headers,
+            body.into_bytes(),
+        )
+        .await
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_ag_ui_rejects_missing_messages() {
     let server = TestServer::in_memory().await;
@@ -255,6 +287,89 @@ async fn test_ag_ui_rejects_empty_token_config() {
                 }
             }),
         )
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_ag_ui_public_image_upload_requires_published_app() {
+    let server = TestServer::in_memory().await;
+    let agent_id = create_llmsim_agent(&server).await;
+
+    let app: App = server
+        .post(
+            "/v1/apps",
+            json!({
+                "name": unique_id("Draft Image Upload AG-UI App"),
+                "harness_id": server.seed_base_harness_id,
+                "agent_id": agent_id,
+                "channel_type": "ag_ui",
+                "channel_config": { "anonymous": true }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    upload_ag_ui_image(&server, &app.public_id, vec![])
+        .await
+        .assert_status(StatusCode::FORBIDDEN);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_ag_ui_public_image_upload_returns_image_id() {
+    let server = TestServer::in_memory().await;
+    let app = create_published_ag_ui_app(&server).await;
+
+    let body: Value = upload_ag_ui_image(&server, &app.public_id, vec![])
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    assert!(body["id"].as_str().unwrap().starts_with("img_"));
+    assert_eq!(body["filename"], "photo.png");
+    assert_eq!(body["content_type"], "image/png");
+
+    let image_id = body["id"]
+        .as_str()
+        .unwrap()
+        .parse::<everruns_core::typed_id::ImageId>()
+        .unwrap();
+    let image = server
+        .db
+        .get_image(everruns_core::DEFAULT_ORG_ID, image_id.uuid())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(image.metadata["_app_id"], app.public_id.to_string());
+    assert_eq!(image.metadata["source"], "ag_ui");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_ag_ui_run_rejects_image_uploaded_for_other_app() {
+    let server = TestServer::in_memory().await;
+    let first_app = create_published_ag_ui_app(&server).await;
+    let second_app = create_published_ag_ui_app(&server).await;
+    let upload: Value = upload_ag_ui_image(&server, &first_app.public_id, vec![])
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let payload = json!({
+        "threadId": raw_uuid(),
+        "runId": raw_uuid(),
+        "state": {},
+        "messages": [
+            { "id": raw_uuid(), "role": "user", "content": "Describe this image" }
+        ],
+        "tools": [],
+        "context": [],
+        "forwardedProps": {
+            "imageIds": [upload["id"].as_str().unwrap()]
+        }
+    });
+
+    send_ag_ui_run(&server, &second_app.public_id, &payload)
         .await
         .assert_status(StatusCode::BAD_REQUEST);
 }

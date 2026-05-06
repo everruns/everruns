@@ -36,7 +36,8 @@ pub(crate) const MAX_IMAGE_SIZE: usize = 100 * 1024 * 1024;
 const THUMBNAIL_MAX_DIM: u32 = 200;
 
 /// Allowed MIME types
-const ALLOWED_CONTENT_TYPES: &[&str] = &["image/png", "image/jpeg", "image/gif", "image/webp"];
+pub(crate) const ALLOWED_CONTENT_TYPES: &[&str] =
+    &["image/png", "image/jpeg", "image/gif", "image/webp"];
 
 // ============================================
 // API Types
@@ -124,7 +125,7 @@ pub fn routes(state: AppState) -> Router {
 // ============================================
 
 /// Validate content type is allowed
-fn is_valid_content_type(content_type: &str) -> bool {
+pub(crate) fn is_valid_content_type(content_type: &str) -> bool {
     ALLOWED_CONTENT_TYPES.contains(&content_type)
 }
 
