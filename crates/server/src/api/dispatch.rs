@@ -13,9 +13,12 @@ use axum::Json;
 use axum::http::StatusCode;
 use serde::Serialize;
 
-use super::common::{ApiResult, ErrorResponse, ResourceUrlable, UrlBuilder, WithUrls};
+use super::common::{
+    ApiResult, ErrorResponse, ListResponse, PaginatedResponse, ResourceUrlable, UrlBuilder,
+    WithUrls,
+};
 use crate::auth::ResolvedOrg;
-use crate::domains::common::{Command, Ctx};
+use crate::domains::common::{Command, Ctx, Paginated};
 
 /// Per-request bundle of the pieces a handler needs to dispatch a Command and
 /// shape the HTTP response.
@@ -70,6 +73,44 @@ impl Dispatcher {
     ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
         cmd.run(&self.ctx).await?;
         Ok(StatusCode::NO_CONTENT)
+    }
+
+    /// Run `cmd` whose output is `Vec<T>` and wrap as `ListResponse<T>`.
+    pub async fn run_list<C, T>(&self, cmd: C) -> ApiResult<ListResponse<T>>
+    where
+        C: Command<Output = Vec<T>>,
+        T: Serialize,
+    {
+        let items = cmd.run(&self.ctx).await?;
+        Ok(Json(ListResponse::new(items)))
+    }
+
+    /// Run `cmd` whose output is `Vec<T>` and wrap as
+    /// `ListResponse<WithUrls<T>>` with every element URL-decorated.
+    pub async fn run_list_with_urls<C, T>(&self, cmd: C) -> ApiResult<ListResponse<WithUrls<T>>>
+    where
+        C: Command<Output = Vec<T>>,
+        T: ResourceUrlable + Serialize,
+    {
+        let items = cmd.run(&self.ctx).await?;
+        Ok(Json(ListResponse::new(items).with_urls(&self.url_builder)))
+    }
+
+    /// Run `cmd` whose output is `Paginated<T>` and re-shape to
+    /// `PaginatedResponse<WithUrls<T>>` with every element URL-decorated.
+    pub async fn run_paginated_with_urls<C, T>(
+        &self,
+        cmd: C,
+    ) -> ApiResult<PaginatedResponse<WithUrls<T>>>
+    where
+        C: Command<Output = Paginated<T>>,
+        T: ResourceUrlable + Serialize,
+    {
+        let result = cmd.run(&self.ctx).await?;
+        Ok(Json(
+            PaginatedResponse::new(result.data, result.total, result.offset, result.limit)
+                .with_urls(&self.url_builder),
+        ))
     }
 }
 

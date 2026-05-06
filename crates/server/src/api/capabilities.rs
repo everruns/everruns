@@ -10,16 +10,15 @@
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::storage::StorageBackend;
 use axum::{
-    Json, Router,
+    Router,
     extract::{Path, Query, State},
-    http::StatusCode,
     routing::get,
 };
 use everruns_core::{Caller, CapabilityInfo};
 use serde::Deserialize;
 
-use super::common::{PaginatedResponse, UrlBuilder, WithUrls, impl_auth_state};
-use crate::domains::common::Command;
+use super::common::{ApiResult, PaginatedResponse, WithUrls, impl_auth_state};
+use super::dispatch::{Dispatchable, impl_dispatchable};
 use std::sync::Arc;
 
 use crate::services::CapabilityService;
@@ -50,6 +49,7 @@ impl AppState {
 }
 
 impl_auth_state!(AppState);
+impl_dispatchable!(AppState);
 
 /// Create capability routes
 pub fn routes(state: AppState) -> Router {
@@ -84,21 +84,15 @@ pub async fn list_capabilities(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Query(query): Query<ListCapabilitiesQuery>,
-) -> Result<Json<PaginatedResponse<WithUrls<CapabilityInfo>>>, StatusCode> {
-    let result = crate::domains::capabilities::ListCapabilities {
-        search: query.search,
-        offset: query.offset,
-        limit: query.limit,
-    }
-    .run(&state.ctx(&org))
-    .await
-    .map_err(|e| e.status())?;
-
-    let builder = UrlBuilder::from_auth_config(&state.auth.config);
-    Ok(Json(
-        PaginatedResponse::new(result.data, result.total, result.offset, result.limit)
-            .with_urls(&builder),
-    ))
+) -> ApiResult<PaginatedResponse<WithUrls<CapabilityInfo>>> {
+    state
+        .dispatcher(&org)
+        .run_paginated_with_urls(crate::domains::capabilities::ListCapabilities {
+            search: query.search,
+            offset: query.offset,
+            limit: query.limit,
+        })
+        .await
 }
 
 /// GET /v1/capabilities/{capability_id} - Get a specific capability
@@ -118,12 +112,9 @@ pub async fn get_capability(
     org: ResolvedOrg,
     State(state): State<AppState>,
     Path(capability_id): Path<String>,
-) -> Result<Json<WithUrls<CapabilityInfo>>, StatusCode> {
-    let capability = crate::domains::capabilities::GetCapability { id: capability_id }
-        .run(&state.ctx(&org))
+) -> ApiResult<WithUrls<CapabilityInfo>> {
+    state
+        .dispatcher(&org)
+        .run_with_urls(crate::domains::capabilities::GetCapability { id: capability_id })
         .await
-        .map_err(|e| e.status())?;
-
-    let builder = UrlBuilder::from_auth_config(&state.auth.config);
-    Ok(Json(builder.wrap(capability)))
 }
