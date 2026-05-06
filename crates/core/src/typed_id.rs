@@ -490,6 +490,20 @@ impl IdMarker for VolumeIdMarker {
     const PREFIX: &'static str = "vol";
 }
 
+/// Marker for Knowledge Base IDs (curated org knowledge — see `specs/knowledge-bases.md`)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct KnowledgeBaseIdMarker;
+impl IdMarker for KnowledgeBaseIdMarker {
+    const PREFIX: &'static str = "kb";
+}
+
+/// Marker for Knowledge Entry IDs (entries inside a Knowledge Base)
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct KnowledgeEntryIdMarker;
+impl IdMarker for KnowledgeEntryIdMarker {
+    const PREFIX: &'static str = "kbe";
+}
+
 /// Marker for Model Router IDs (semantic LLM selection — see `specs/model-router.md`)
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ModelRouterIdMarker;
@@ -557,6 +571,10 @@ pub type BudgetId = TypedId<BudgetIdMarker>;
 pub type LedgerEntryId = TypedId<LedgerEntryIdMarker>;
 /// Volume ID (workspace volumes — see `specs/volumes.md`)
 pub type VolumeId = TypedId<VolumeIdMarker>;
+/// Knowledge Base ID (curated org knowledge — see `specs/knowledge-bases.md`)
+pub type KnowledgeBaseId = TypedId<KnowledgeBaseIdMarker>;
+/// Knowledge Entry ID (entry inside a Knowledge Base)
+pub type KnowledgeEntryId = TypedId<KnowledgeEntryIdMarker>;
 /// Model Router ID (semantic LLM selection — see `specs/model-router.md`)
 pub type ModelRouterId = TypedId<ModelRouterIdMarker>;
 

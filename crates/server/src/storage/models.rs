@@ -974,6 +974,72 @@ pub struct ListMemoriesFilter {
 }
 
 // ============================================
+// Knowledge Base models (curated org knowledge — see specs/knowledge-bases.md)
+// ============================================
+
+#[derive(Debug, Clone, FromRow, serde::Serialize)]
+pub struct KnowledgeBaseRow {
+    pub id: Uuid,
+    pub org_id: i64,
+    pub public_id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub owner_principal_id: Option<String>,
+    pub resolved_owner_user_id: Option<Uuid>,
+    pub status: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub archived_at: Option<DateTime<Utc>>,
+    pub deleted_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateKnowledgeBaseRow {
+    pub public_id: String,
+    pub name: String,
+    pub description: Option<String>,
+    pub owner_principal_id: Option<String>,
+    pub resolved_owner_user_id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct UpdateKnowledgeBase {
+    pub name: Option<String>,
+    pub description: Option<Option<String>>,
+    pub status: Option<String>,
+}
+
+#[derive(Debug, Clone, FromRow, serde::Serialize)]
+pub struct KnowledgeEntryRow {
+    pub id: Uuid,
+    pub kb_id: Uuid,
+    pub public_id: String,
+    pub title: String,
+    pub body: String,
+    pub kind: String,
+    pub tags: Vec<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateKnowledgeEntryRow {
+    pub public_id: String,
+    pub title: String,
+    pub body: String,
+    pub kind: String,
+    pub tags: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct UpdateKnowledgeEntry {
+    pub title: Option<String>,
+    pub body: Option<String>,
+    pub kind: Option<String>,
+    pub tags: Option<Vec<String>>,
+}
+
+// ============================================
 // Session Git models (libgit2 custom ODB/refdb over PostgreSQL)
 // ============================================
 

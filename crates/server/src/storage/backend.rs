@@ -8,8 +8,8 @@ use anyhow::Result;
 use chrono::{DateTime, Utc};
 use everruns_core::message_filter::MessageQuery;
 use everruns_core::typed_id::{
-    AgentId, AgentIdentityId, EventId, HarnessId, LeasedResourceId, MessageId, NotificationId,
-    PrincipalId, ScheduleId, SessionId, VolumeId,
+    AgentId, AgentIdentityId, EventId, HarnessId, KnowledgeBaseId, KnowledgeEntryId,
+    LeasedResourceId, MessageId, NotificationId, PrincipalId, ScheduleId, SessionId, VolumeId,
 };
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -823,6 +823,123 @@ impl StorageBackend {
         memory_public_id: &str,
     ) -> Result<bool> {
         dispatch!(self, deactivate_memory, org_id, store_id, memory_public_id)
+    }
+
+    // ============================================
+    // Knowledge Bases
+    // ============================================
+
+    pub async fn create_knowledge_base(
+        &self,
+        org_id: i64,
+        input: CreateKnowledgeBaseRow,
+    ) -> Result<KnowledgeBaseRow> {
+        dispatch!(self, create_knowledge_base, org_id, input)
+    }
+
+    pub async fn get_knowledge_base(
+        &self,
+        org_id: i64,
+        kb_id: KnowledgeBaseId,
+    ) -> Result<Option<KnowledgeBaseRow>> {
+        dispatch!(
+            self,
+            get_knowledge_base_by_public_id,
+            org_id,
+            &kb_id.to_string()
+        )
+    }
+
+    pub async fn get_knowledge_base_by_id(
+        &self,
+        org_id: i64,
+        id: Uuid,
+    ) -> Result<Option<KnowledgeBaseRow>> {
+        dispatch!(self, get_knowledge_base_by_id, org_id, id)
+    }
+
+    pub async fn list_knowledge_bases(
+        &self,
+        org_id: i64,
+        search: Option<&str>,
+        include_archived: bool,
+    ) -> Result<Vec<KnowledgeBaseRow>> {
+        dispatch!(self, list_knowledge_bases, org_id, search, include_archived)
+    }
+
+    pub async fn update_knowledge_base(
+        &self,
+        org_id: i64,
+        id: Uuid,
+        input: UpdateKnowledgeBase,
+    ) -> Result<Option<KnowledgeBaseRow>> {
+        dispatch!(self, update_knowledge_base, org_id, id, input)
+    }
+
+    pub async fn archive_knowledge_base(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        dispatch!(self, archive_knowledge_base, org_id, id)
+    }
+
+    pub async fn create_knowledge_entry(
+        &self,
+        kb_id: Uuid,
+        input: CreateKnowledgeEntryRow,
+    ) -> Result<KnowledgeEntryRow> {
+        dispatch!(self, create_knowledge_entry, kb_id, input)
+    }
+
+    pub async fn get_knowledge_entry(
+        &self,
+        kb_id: Uuid,
+        entry_id: KnowledgeEntryId,
+    ) -> Result<Option<KnowledgeEntryRow>> {
+        dispatch!(
+            self,
+            get_knowledge_entry_by_public_id,
+            kb_id,
+            &entry_id.to_string()
+        )
+    }
+
+    pub async fn list_knowledge_entries(
+        &self,
+        kb_id: Uuid,
+        search: Option<&str>,
+        kind: Option<&str>,
+    ) -> Result<Vec<KnowledgeEntryRow>> {
+        dispatch!(self, list_knowledge_entries, kb_id, search, kind)
+    }
+
+    pub async fn search_knowledge_entries(
+        &self,
+        kb_ids: &[Uuid],
+        query: &str,
+        kind: Option<&str>,
+        tags: &[String],
+        limit: usize,
+    ) -> Result<Vec<KnowledgeEntryRow>> {
+        dispatch!(
+            self,
+            search_knowledge_entries,
+            kb_ids,
+            query,
+            kind,
+            tags,
+            limit
+        )
+    }
+
+    pub async fn update_knowledge_entry(
+        &self,
+        kb_id: Uuid,
+        id: Uuid,
+        input: UpdateKnowledgeEntry,
+    ) -> Result<Option<KnowledgeEntryRow>> {
+        dispatch!(self, update_knowledge_entry, kb_id, id, input)
+    }
+
+    pub async fn delete_knowledge_entry(&self, kb_id: Uuid, id: Uuid) -> Result<bool> {
+        dispatch!(self, delete_knowledge_entry, kb_id, id)
     }
 
     // ============================================

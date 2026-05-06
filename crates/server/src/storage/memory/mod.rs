@@ -18,6 +18,7 @@ mod budgets;
 mod evals;
 mod events;
 mod harnesses;
+mod knowledge_bases;
 mod llm;
 mod mcp_servers;
 mod memories;
@@ -148,6 +149,9 @@ pub struct InMemoryDatabase {
     // Memory stores and memories (org-scoped agent memory)
     memory_stores: RwLock<HashMap<Uuid, MemoryStoreDbRow>>,
     memories: RwLock<HashMap<Uuid, MemoryDbRow>>,
+    // Knowledge bases (curated org knowledge)
+    knowledge_bases: RwLock<HashMap<Uuid, KnowledgeBaseRow>>,
+    knowledge_entries: RwLock<HashMap<Uuid, KnowledgeEntryRow>>,
     // OAuth clients (MCP OAuth 2.1)
     oauth_clients: RwLock<HashMap<Uuid, OAuthClientRow>>,
     oauth_authorization_codes: RwLock<HashMap<Uuid, OAuthAuthorizationCodeRow>>,
@@ -222,6 +226,8 @@ impl Default for InMemoryDatabase {
             volumes: RwLock::new(HashMap::new()),
             memory_stores: RwLock::new(HashMap::new()),
             memories: RwLock::new(HashMap::new()),
+            knowledge_bases: RwLock::new(HashMap::new()),
+            knowledge_entries: RwLock::new(HashMap::new()),
             oauth_clients: RwLock::new(HashMap::new()),
             oauth_authorization_codes: RwLock::new(HashMap::new()),
             oauth_refresh_tokens: RwLock::new(HashMap::new()),
