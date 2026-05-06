@@ -867,6 +867,13 @@ impl ServerAppBuilder {
             notifications_enabled,
             event_delivery.clone(),
         );
+        let app_a2a_state = api::app_a2a::AppA2aState::new(
+            db.clone(),
+            encryption.clone(),
+            runner.clone(),
+            notifications_enabled,
+            event_delivery.clone(),
+        );
         let ag_ui_rate_limiter = match valkey_for_agui.clone() {
             Some(client) => api::ag_ui_rate_limit::AgUiRateLimiter::with_valkey(client),
             None => api::ag_ui_rate_limit::AgUiRateLimiter::in_memory(),
@@ -1083,6 +1090,7 @@ impl ServerAppBuilder {
             .merge(api::commands::routes(commands_state))
             .merge(api::slack_events::routes(slack_state))
             .merge(api::app_webhooks::routes(app_webhooks_state))
+            .merge(api::app_a2a::routes(app_a2a_state))
             .merge(api::ag_ui::routes(ag_ui_state))
             .merge(api::feature_flags::routes(feature_flags_state))
             .merge(api::budgets::routes(api::budgets::AppState::new(

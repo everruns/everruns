@@ -52,6 +52,8 @@ use utoipa::OpenApi;
         api::messages::list_messages,
         api::messages::export_session_jsonl,
         api::app_webhooks::invoke_webhook,
+        api::app_a2a::invoke_a2a,
+        api::app_a2a::agent_card,
         api::events::stream_sse,
         api::events::list_events,
         api::llm_providers::create_provider,

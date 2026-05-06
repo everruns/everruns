@@ -17,6 +17,8 @@ import {
   updateChannel as apiUpdateChannel,
   addChannel as apiAddChannel,
   deleteChannel as apiDeleteChannel,
+  addA2aChannel as apiAddA2aChannel,
+  regenerateA2aChannelKey as apiRegenerateA2aChannelKey,
 } from "@/lib/api/apps";
 import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -63,6 +65,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
+import { A2aSetupGuidance } from "@/components/apps/a2a-setup-guidance";
 import { AgUiSetupGuidance } from "@/components/apps/ag-ui-setup-guidance";
 import { AppBudgetsCard } from "@/components/apps/app-budgets-card";
 import { ScheduleSetupGuidance } from "@/components/apps/schedule-setup-guidance";
@@ -70,6 +73,7 @@ import { SlackSetupGuidance } from "@/components/apps/slack-setup-guidance";
 import { WebhookSetupGuidance } from "@/components/apps/webhook-setup-guidance";
 import { useFeatureFlag } from "@/providers/feature-flags-provider";
 import type {
+  A2aChannelConfig,
   AgUiChannelConfig,
   AgUiToolVisibility,
   AppChannel,
@@ -106,7 +110,8 @@ type ChannelConfigInput =
   | SlackChannelConfig
   | AgUiChannelConfig
   | ScheduleChannelConfig
-  | WebhookChannelConfig;
+  | WebhookChannelConfig
+  | A2aChannelConfig;
 
 export default function AppDetailPage({ params }: { params: Promise<{ appId: string }> }) {
   const { appId } = use(params);
@@ -162,6 +167,17 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
   const [editAgUiGenericToolText, setEditAgUiGenericToolText] = useState(
     DEFAULT_AG_UI_GENERIC_TOOL_TEXT,
   );
+  const [editA2aAgentCardName, setEditA2aAgentCardName] = useState("");
+  const [editA2aAgentCardDescription, setEditA2aAgentCardDescription] = useState("");
+
+  // A2A: plaintext API key shown exactly once (after create or rotate). Cleared
+  // when the operator dismisses the dialog.
+  const [a2aRevealedKey, setA2aRevealedKey] = useState<{
+    channelId: string;
+    apiKey: string;
+    title: string;
+  } | null>(null);
+  const [rotatingA2aChannelId, setRotatingA2aChannelId] = useState<string | null>(null);
 
   const [creatingSlackApp, setCreatingSlackApp] = useState(false);
 
@@ -207,6 +223,52 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
     },
   });
 
+  const addA2aMutation = useMutation({
+    mutationFn: async (input: {
+      sessionMode: InvocationSessionMode;
+      message: string;
+      agentCardName?: string;
+      agentCardDescription?: string;
+      enabled: boolean;
+    }) => {
+      return apiAddA2aChannel(appId, {
+        session_mode: input.sessionMode,
+        message: input.message,
+        agent_card_name: input.agentCardName,
+        agent_card_description: input.agentCardDescription,
+        enabled: input.enabled,
+      });
+    },
+    onSuccess: (response) => {
+      invalidateApp();
+      setShowAddChannel(false);
+      setA2aRevealedKey({
+        channelId: response.channel.id,
+        apiKey: response.api_key,
+        title: "A2A API key created",
+      });
+    },
+  });
+
+  const rotateA2aMutation = useMutation({
+    mutationFn: async (channelId: string) => {
+      setRotatingA2aChannelId(channelId);
+      try {
+        return await apiRegenerateA2aChannelKey(appId, channelId);
+      } finally {
+        setRotatingA2aChannelId(null);
+      }
+    },
+    onSuccess: (response) => {
+      invalidateApp();
+      setA2aRevealedKey({
+        channelId: response.channel.id,
+        apiKey: response.api_key,
+        title: "A2A API key rotated",
+      });
+    },
+  });
+
   const deleteChannelMutation = useMutation({
     mutationFn: async (channelId: string) => {
       return apiDeleteChannel(appId, channelId);
@@ -244,6 +306,10 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
         case "webhook": {
           const config = channel.channel_config as WebhookChannelConfig;
           return !!config?.token && !!config?.message;
+        }
+        case "a2a": {
+          const config = channel.channel_config as A2aChannelConfig;
+          return !!config?.api_key_hash && !!config?.message;
         }
       }
     }) ?? false;
@@ -320,6 +386,8 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
     setEditAgUiToken("");
     setEditAgUiToolVisibility("generic");
     setEditAgUiGenericToolText(DEFAULT_AG_UI_GENERIC_TOOL_TEXT);
+    setEditA2aAgentCardName("");
+    setEditA2aAgentCardDescription("");
   };
 
   const buildChannelConfig = (channelType: ChannelType): ChannelConfigInput => {
@@ -353,6 +421,33 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
           token: editWebhookToken,
           session_mode: editInvocationSessionMode,
           message: editChannelMessage,
+        };
+      case "a2a":
+        // Editing only updates the non-secret fields. The api_key_hash and
+        // api_key_prefix are server-managed (rotate via the dedicated button).
+        // The hash is required by the channel_config schema, so we round-trip
+        // it from whatever the server last returned.
+        return {
+          api_key_hash:
+            (editingChannelId
+              ? ((
+                  app?.channels?.find((c) => c.id === editingChannelId)?.channel_config as
+                    | A2aChannelConfig
+                    | undefined
+                )?.api_key_hash ?? "")
+              : "") || "pending",
+          api_key_prefix:
+            (editingChannelId
+              ? ((
+                  app?.channels?.find((c) => c.id === editingChannelId)?.channel_config as
+                    | A2aChannelConfig
+                    | undefined
+                )?.api_key_prefix ?? "")
+              : "") || "pending",
+          session_mode: editInvocationSessionMode,
+          message: editChannelMessage,
+          agent_card_name: editA2aAgentCardName.trim() || undefined,
+          agent_card_description: editA2aAgentCardDescription.trim() || undefined,
         };
       case "slack":
         return {
@@ -389,6 +484,8 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
         return !!editScheduleCronExpression && !!editChannelMessage;
       case "webhook":
         return !!editWebhookToken && !!editChannelMessage;
+      case "a2a":
+        return !!editChannelMessage;
       case "slack":
         return !!editSigningSecret && !!editBotToken;
     }
@@ -429,6 +526,12 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
       setEditWebhookToken(config?.token ?? "");
       setEditInvocationSessionMode(config?.session_mode ?? "shared_session");
       setEditChannelMessage(config?.message ?? "");
+    } else if (channel.channel_type === "a2a") {
+      const config = channel.channel_config as A2aChannelConfig;
+      setEditInvocationSessionMode(config?.session_mode ?? "shared_session");
+      setEditChannelMessage(config?.message ?? "");
+      setEditA2aAgentCardName(config?.agent_card_name ?? "");
+      setEditA2aAgentCardDescription(config?.agent_card_description ?? "");
     }
     setEditingChannelId(channel.id);
   };
@@ -449,6 +552,16 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
   };
 
   const saveNewChannel = async () => {
+    if (addChannelType === "a2a") {
+      await addA2aMutation.mutateAsync({
+        sessionMode: editInvocationSessionMode,
+        message: editChannelMessage,
+        agentCardName: editA2aAgentCardName.trim() || undefined,
+        agentCardDescription: editA2aAgentCardDescription.trim() || undefined,
+        enabled: editChannelEnabled,
+      });
+      return;
+    }
     await addChannelMutation.mutateAsync({
       channelType: addChannelType,
       config: buildChannelConfig(addChannelType),
@@ -518,6 +631,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
                 <SelectItem value="ag_ui">{getChannelTypeDisplayName("ag_ui")}</SelectItem>
                 <SelectItem value="schedule">{getChannelTypeDisplayName("schedule")}</SelectItem>
                 <SelectItem value="webhook">{getChannelTypeDisplayName("webhook")}</SelectItem>
+                <SelectItem value="a2a">{getChannelTypeDisplayName("a2a")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -846,6 +960,68 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
           </>
         )}
 
+        {formChannelType === "a2a" && (
+          <>
+            <div className="rounded-md border p-3 text-sm text-muted-foreground">
+              The A2A channel exposes this app over the Agent2Agent JSON-RPC protocol. The API key
+              is generated on save and shown once — store it before closing the dialog. Rotate it
+              later from the channel card if it leaks.
+            </div>
+            <div>
+              <Label htmlFor={`a2a_session_mode_${formId}`}>Invocation Session Mode</Label>
+              <Select
+                value={editInvocationSessionMode}
+                onValueChange={(v) => setEditInvocationSessionMode(v as InvocationSessionMode)}
+              >
+                <SelectTrigger id={`a2a_session_mode_${formId}`}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="shared_session">
+                    {getInvocationSessionModeDisplayName("shared_session")}
+                  </SelectItem>
+                  <SelectItem value="session_per_invocation">
+                    {getInvocationSessionModeDisplayName("session_per_invocation")}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor={`a2a_message_${formId}`}>Invocation Message</Label>
+              <Textarea
+                id={`a2a_message_${formId}`}
+                value={editChannelMessage}
+                onChange={(e) => setEditChannelMessage(e.target.value)}
+                placeholder="A2A request: {{a2a.text}}"
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Templates can reference <code>{"{{a2a.text}}"}</code>, <code>{"{{payload}}"}</code>,
+                and app metadata.
+              </p>
+            </div>
+            <div>
+              <Label htmlFor={`a2a_card_name_${formId}`}>Agent Card name (optional)</Label>
+              <Input
+                id={`a2a_card_name_${formId}`}
+                value={editA2aAgentCardName}
+                onChange={(e) => setEditA2aAgentCardName(e.target.value)}
+                placeholder={app?.name ?? ""}
+              />
+            </div>
+            <div>
+              <Label htmlFor={`a2a_card_description_${formId}`}>
+                Agent Card description (optional)
+              </Label>
+              <Textarea
+                id={`a2a_card_description_${formId}`}
+                value={editA2aAgentCardDescription}
+                onChange={(e) => setEditA2aAgentCardDescription(e.target.value)}
+                placeholder="What other agents should know about this app."
+              />
+            </div>
+          </>
+        )}
+
         <div className="flex gap-2 pt-2">
           <Button
             size="sm"
@@ -926,6 +1102,31 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
             tokenConfigured={!!config?.token}
             isPublished={isPublished}
             onConfigure={() => startEditChannel(channel)}
+          />
+        </div>
+      );
+    }
+
+    if (channel.channel_type === "a2a") {
+      const config = channel.channel_config as A2aChannelConfig;
+      const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
+      const endpointUrl = `${baseUrl}/api/v1/apps/${appId}/a2a/${channel.id}`;
+      const agentCardUrl = `${baseUrl}/api/v1/apps/${appId}/a2a/${channel.id}/.well-known/agent-card.json`;
+
+      return (
+        <div key={channel.id} className="space-y-4">
+          <A2aSetupGuidance
+            endpointUrl={endpointUrl}
+            agentCardUrl={agentCardUrl}
+            apiKeyPrefix={config?.api_key_prefix ?? ""}
+            sessionMode={config?.session_mode ?? "shared_session"}
+            message={config?.message ?? ""}
+            agentCardName={config?.agent_card_name}
+            agentCardDescription={config?.agent_card_description}
+            isPublished={isPublished}
+            onConfigure={() => startEditChannel(channel)}
+            onRotateKey={isReadOnly ? undefined : () => rotateA2aMutation.mutate(channel.id)}
+            isRotating={rotateA2aMutation.isPending && rotatingA2aChannelId === channel.id}
           />
         </div>
       );
@@ -1343,6 +1544,33 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
           </Card>
         </div>
       </div>
+
+      {/* A2A revealed-key dialog: shown exactly once per create/rotate */}
+      <Dialog
+        open={!!a2aRevealedKey}
+        onOpenChange={(open) => {
+          if (!open) setA2aRevealedKey(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{a2aRevealedKey?.title ?? "A2A API key"}</DialogTitle>
+            <DialogDescription>
+              Copy this API key now. It will not be shown again — only the SHA-256 hash is stored.
+              If you lose it, rotate the key from the channel card.
+            </DialogDescription>
+          </DialogHeader>
+          {a2aRevealedKey && (
+            <div className="flex items-center gap-2 bg-muted p-3">
+              <code className="flex-1 break-all font-mono text-xs">{a2aRevealedKey.apiKey}</code>
+              <CopyButton value={a2aRevealedKey.apiKey} />
+            </div>
+          )}
+          <DialogFooter>
+            <Button onClick={() => setA2aRevealedKey(null)}>I&apos;ve saved it</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete confirmation dialog */}
       <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>

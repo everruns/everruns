@@ -16,6 +16,8 @@ export function getChannelTypeDisplayName(channelType: ChannelType): string {
       return "Slack";
     case "webhook":
       return "Webhook";
+    case "a2a":
+      return "A2A (Agent2Agent)";
   }
 }
 
