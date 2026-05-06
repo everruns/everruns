@@ -103,6 +103,10 @@ everruns-openui = { path = "../openui" }
 # A2UI component catalog and prompt generator
 everruns-a2ui = { path = "../a2ui" }
 
+# A2A outbound agent delegation
+a2a.workspace = true
+a2a-client.workspace = true
+
 # Compile-time directory embedding for virtual mounts (platform docs)
 include_dir = "0.7"
 
@@ -124,6 +128,8 @@ everruns-anthropic = { path = "../anthropic" }
 everruns-gemini = { path = "../gemini" }
 # Snapshot testing for contract tests
 insta = { version = "1.40", features = ["json", "redactions"] }
+a2a-server.workspace = true
+axum.workspace = true
 
 [[example]]
 name = "turn_based_execution"
