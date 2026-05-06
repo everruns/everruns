@@ -14,8 +14,9 @@ import { code as baseCodePlugin } from "@streamdown/code";
 import remarkGfm from "remark-gfm";
 import remarkGithubAlerts from "remark-github-blockquote-alert";
 import { cn } from "@/lib/utils";
-import { useState, useEffect, type ComponentType, type AnchorHTMLAttributes } from "react";
+import { useState, useEffect } from "react";
 import type { DiagramPlugin } from "@streamdown/mermaid";
+import { MarkdownLink } from "@/components/markdown/markdown-link";
 import "./streamdown-message.css";
 
 // Lazy-load the mermaid plugin to avoid pulling the full mermaid dependency
@@ -55,17 +56,7 @@ const code = {
     lang === "openui" ? false : baseCodePlugin.supportsLanguage(lang),
 };
 
-/** Opens all markdown links in a new tab with noopener noreferrer. */
-const ExternalLink: ComponentType<AnchorHTMLAttributes<HTMLAnchorElement>> = ({
-  children,
-  ...props
-}) => (
-  <a {...props} target="_blank" rel="noopener noreferrer">
-    {children}
-  </a>
-);
-
-const markdownComponents = { a: ExternalLink };
+const markdownComponents = { a: MarkdownLink };
 
 // Streamdown styles loaded from streamdown-message.css
 
