@@ -140,11 +140,19 @@ pub mod names {
     pub const HTTP_REQUESTS_TOTAL: &str = "everruns_http_requests_total";
     pub const LLM_REQUESTS_TOTAL: &str = "everruns_llm_requests_total";
     pub const TOOL_EXECUTIONS_TOTAL: &str = "everruns_tool_executions_total";
+    /// Counter for every domain Command invocation across HTTP, MCP and
+    /// gRPC ExecuteCommand. Labels: name, category, status (ok |
+    /// bad_request | unprocessable | forbidden | not_found | conflict |
+    /// internal).
+    pub const COMMANDS_TOTAL: &str = "everruns_commands_total";
 
     // === Histograms (from local observations — per-instance) ===
     pub const HTTP_REQUEST_DURATION: &str = "everruns_http_request_duration_seconds";
     pub const LLM_REQUEST_DURATION: &str = "everruns_llm_request_duration_seconds";
     pub const TOOL_EXECUTION_DURATION: &str = "everruns_tool_execution_duration_seconds";
+    /// Wall-clock duration of every domain Command invocation. Same labels
+    /// as `COMMANDS_TOTAL`.
+    pub const COMMAND_DURATION: &str = "everruns_command_duration_seconds";
 }
 
 // ============================================================================
