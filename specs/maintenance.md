@@ -67,6 +67,9 @@ Before a release, maintenance should cover:
 - Linear issues already marked `In Progress` whose `updatedAt` is older than 1 day, signaling execution drift; use that `updatedAt` threshold as the default review threshold unless the task sets a stricter bar
 - GitHub Security tab: security overview, Dependabot alerts, and open secret scanning alerts
 - dependency versions across all packages (Cargo workspace crates, npm packages, CLI) checked for outdated major versions and deprecated crates
+  - `cargo outdated --root-deps-only --workspace` currently fails with a `libsqlite3-sys` `links` conflict because its temporary solve combines the workspace `sqlx 0.8` pin with the latest `rusqlite`. The real lockfile builds, so treat that failure as a tooling artifact and inspect `Cargo.toml` plus `cargo tree -i sqlx` / `cargo tree -i rusqlite` instead until `sqlx` and `rusqlite` are upgraded together
+  - major npm upgrades (TypeScript, lucide-react, marked, openui packages) ship as separate PRs per framework family so each can be validated by the matching UI or docs build
+  - bump npm packages that have transitive runtime dependencies (e.g. `@ag-ui/core`) together with the packages that pin them (e.g. `@openuidev/*`), otherwise npm installs duplicate copies in the lockfile
 - the Codex and Claude Code plugin surfaces reviewed against recent upstream plugin-platform changes: inspect the latest relevant platform references, then compare them to `.agents/plugins/marketplace.json`, `.claude-plugin/marketplace.json`, `plugins/everruns-dev/.codex-plugin/plugin.json`, `plugins/everruns-dev/.claude-plugin/plugin.json`, and shipped plugin behavior; run `scripts/test-everruns-dev-plugin.sh` or equivalent metadata validation to prove registration and version parity before claiming release readiness
 
 A full-repo sweep is not mandatory if the evidence is already strong. The bar is confidence, not checklist completion theater.
