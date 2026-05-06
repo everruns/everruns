@@ -9,7 +9,7 @@ use chrono::{DateTime, Utc};
 use everruns_core::message_filter::MessageQuery;
 use everruns_core::typed_id::{
     AgentId, AgentIdentityId, EventId, HarnessId, LeasedResourceId, MessageId, NotificationId,
-    PrincipalId, ScheduleId, SessionId,
+    PrincipalId, ScheduleId, SessionId, VolumeId,
 };
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -699,6 +699,49 @@ impl StorageBackend {
 
     pub async fn delete_session(&self, org_id: i64, id: SessionId) -> Result<bool> {
         dispatch!(self, delete_session, org_id, id)
+    }
+
+    // ============================================
+    // Workspace Volumes
+    // ============================================
+
+    pub async fn create_volume(&self, org_id: i64, input: CreateVolumeRow) -> Result<VolumeRow> {
+        dispatch!(self, create_volume, org_id, input)
+    }
+
+    pub async fn get_volume(&self, org_id: i64, volume_id: VolumeId) -> Result<Option<VolumeRow>> {
+        dispatch!(
+            self,
+            get_volume_by_public_id,
+            org_id,
+            &volume_id.to_string()
+        )
+    }
+
+    pub async fn get_volume_by_id(&self, org_id: i64, id: Uuid) -> Result<Option<VolumeRow>> {
+        dispatch!(self, get_volume_by_id, org_id, id)
+    }
+
+    pub async fn list_volumes(
+        &self,
+        org_id: i64,
+        search: Option<&str>,
+        include_archived: bool,
+    ) -> Result<Vec<VolumeRow>> {
+        dispatch!(self, list_volumes, org_id, search, include_archived)
+    }
+
+    pub async fn update_volume(
+        &self,
+        org_id: i64,
+        id: Uuid,
+        input: UpdateVolume,
+    ) -> Result<Option<VolumeRow>> {
+        dispatch!(self, update_volume, org_id, id, input)
+    }
+
+    pub async fn archive_volume(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        dispatch!(self, archive_volume, org_id, id)
     }
 
     // ============================================

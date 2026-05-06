@@ -51,6 +51,7 @@ pub mod tool_results;
 pub mod user_connections;
 pub mod users;
 pub mod validation;
+pub mod volumes;
 
 // Re-export common types
 pub use common::{ErrorResponse, ListResponse, PaginatedResponse};

@@ -132,6 +132,12 @@ use utoipa::OpenApi;
         api::organizations::list_organizations,
         api::organizations::get_organization,
         api::organizations::update_organization,
+        // Workspace Volumes
+        api::volumes::create_volume,
+        api::volumes::list_volumes,
+        api::volumes::get_volume,
+        api::volumes::update_volume,
+        api::volumes::delete_volume,
         // Images
         api::images::upload_image,
         api::images::list_images,
@@ -258,6 +264,10 @@ use utoipa::OpenApi;
             domains::skills::types::UpdateSkillRequest,
             api::skills::ValidateSkillRequest,
             ListResponse<Skill>,
+            api::volumes::CreateVolumeRequest,
+            api::volumes::UpdateVolumeRequest,
+            api::volumes::ListVolumesQuery,
+            api::volumes::VolumeResponse,
         )
     ),
     tags(
@@ -275,6 +285,7 @@ use utoipa::OpenApi;
         (name = "mcp-servers", description = "MCP Server management endpoints"),
         (name = "durable-schedules", description = "Durable scheduled tasks management endpoints"),
         (name = "organizations", description = "Organization management endpoints"),
+        (name = "volumes", description = "Workspace volume management endpoints"),
         (name = "images", description = "Image upload and management endpoints"),
         (name = "session-databases", description = "Session-scoped SQL database endpoints"),
         (name = "session-storage", description = "Session key-value storage endpoints"),

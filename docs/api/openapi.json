@@ -5598,6 +5598,240 @@
           }
         }
       }
+    },
+    "/v1/volumes": {
+      "get": {
+        "tags": [
+          "volumes"
+        ],
+        "operationId": "list_volumes",
+        "parameters": [
+          {
+            "name": "search",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "include_archived",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List volumes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_VolumeResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "volumes"
+        ],
+        "operationId": "create_volume",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateVolumeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Volume created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VolumeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Duplicate volume name",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/volumes/{volume_id}": {
+      "get": {
+        "tags": [
+          "volumes"
+        ],
+        "operationId": "get_volume",
+        "parameters": [
+          {
+            "name": "volume_id",
+            "in": "path",
+            "description": "Volume ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Volume found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VolumeResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Volume not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "volumes"
+        ],
+        "operationId": "delete_volume",
+        "parameters": [
+          {
+            "name": "volume_id",
+            "in": "path",
+            "description": "Volume ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Volume archived"
+          },
+          "404": {
+            "description": "Volume not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "volumes"
+        ],
+        "operationId": "update_volume",
+        "parameters": [
+          {
+            "name": "volume_id",
+            "in": "path",
+            "description": "Volume ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateVolumeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Volume updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VolumeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Volume not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Duplicate volume name",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -7261,6 +7495,23 @@
             "type": "string",
             "description": "Full SKILL.md content (YAML frontmatter + markdown body)",
             "example": "---\nname: pdf-processing\ndescription: Extract text from PDFs.\n---\n\n# PDF Processing\n\nUse pdfplumber..."
+          }
+        }
+      },
+      "CreateVolumeRequest": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
           }
         }
       },
@@ -9815,6 +10066,69 @@
           }
         }
       },
+      "ListResponse_VolumeResponse": {
+        "type": "object",
+        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "name",
+                "status",
+                "created_at",
+                "updated_at"
+              ],
+              "properties": {
+                "archived_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time"
+                },
+                "created_at": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "deleted_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time"
+                },
+                "description": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "id": {
+                  "type": "string",
+                  "example": "vol_01933b5a000070008000000000000001"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "updated_at": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              }
+            },
+            "description": "Array of items returned by the list operation."
+          }
+        }
+      },
       "ListResponse_WithUrls_LlmModel": {
         "type": "object",
         "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
@@ -10637,6 +10951,23 @@
               "null"
             ],
             "description": "Search query to filter by name or email"
+          }
+        }
+      },
+      "ListVolumesQuery": {
+        "type": "object",
+        "properties": {
+          "include_archived": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "search": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -16032,6 +16363,23 @@
           }
         }
       },
+      "UpdateVolumeRequest": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "User": {
         "type": "object",
         "description": "User response for listing",
@@ -16086,6 +16434,56 @@
           "skill_md": {
             "type": "string",
             "description": "SKILL.md content to validate"
+          }
+        }
+      },
+      "VolumeResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "archived_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "deleted_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "example": "vol_01933b5a000070008000000000000001"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },
@@ -17834,6 +18232,10 @@
     {
       "name": "organizations",
       "description": "Organization management endpoints"
+    },
+    {
+      "name": "volumes",
+      "description": "Workspace volume management endpoints"
     },
     {
       "name": "images",
