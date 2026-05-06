@@ -31,6 +31,7 @@ jest.mock("remark-gfm", () => jest.fn());
 jest.mock("remark-github-blockquote-alert", () => jest.fn());
 
 import { StreamdownMessage, InlineStreamdownMessage } from "@/components/chat/streamdown-message";
+import { getMarkdownLinkKind } from "@/components/markdown/markdown-link";
 
 describe("StreamdownMessage", () => {
   beforeEach(() => {
@@ -45,7 +46,7 @@ describe("StreamdownMessage", () => {
     expect(components.a).toBeDefined();
   });
 
-  it("ExternalLink component renders links with target=_blank", () => {
+  it("MarkdownLink component renders links with target=_blank", () => {
     render(<StreamdownMessage>test</StreamdownMessage>);
 
     const components = capturedStreamdownProps.components as Record<
@@ -64,9 +65,10 @@ describe("StreamdownMessage", () => {
     expect(link).toHaveAttribute("rel", "noopener noreferrer");
     expect(link).toHaveAttribute("href", "https://example.com");
     expect(link).toHaveTextContent("Click me");
+    expect(link.querySelector("svg")).not.toBeNull();
   });
 
-  it("ExternalLink preserves additional attributes", () => {
+  it("MarkdownLink preserves additional attributes", () => {
     render(<StreamdownMessage>test</StreamdownMessage>);
 
     const components = capturedStreamdownProps.components as Record<
@@ -82,9 +84,24 @@ describe("StreamdownMessage", () => {
     );
     const link = container.querySelector("a")!;
 
-    expect(link).toHaveAttribute("class", "custom-link");
+    expect(link).toHaveClass("custom-link");
     expect(link).toHaveAttribute("title", "Example");
     expect(link).toHaveAttribute("target", "_blank");
+  });
+
+  it("MarkdownLink renders Everruns logo for internal links", () => {
+    render(<StreamdownMessage>test</StreamdownMessage>);
+
+    const components = capturedStreamdownProps.components as Record<
+      string,
+      React.ComponentType<React.AnchorHTMLAttributes<HTMLAnchorElement>>
+    >;
+    const AnchorComponent = components.a;
+
+    const { container } = render(<AnchorComponent href="/sessions/123">Session</AnchorComponent>);
+    const logo = container.querySelector(".markdown-link-everruns-icon");
+
+    expect(logo).toHaveAttribute("aria-hidden", "true");
   });
 
   it("renders with default variant (bg-muted p-4)", () => {
@@ -180,10 +197,26 @@ describe("InlineStreamdownMessage", () => {
     expect(wrapper?.className).toContain("text-muted-foreground");
   });
 
-  it("inherits ExternalLink component for links", () => {
+  it("inherits MarkdownLink component for links", () => {
     render(<InlineStreamdownMessage>Content</InlineStreamdownMessage>);
 
     const components = capturedStreamdownProps.components as Record<string, unknown>;
     expect(components.a).toBeDefined();
+  });
+});
+
+describe("getMarkdownLinkKind", () => {
+  it.each([
+    ["https://github.com/everruns/everruns/pull/44", "github"],
+    ["https://twitter.com/everruns_ai", "twitter"],
+    ["https://x.com/everruns_ai", "twitter"],
+    ["https://docs.everruns.com/api", "everruns"],
+    ["/sessions/session_123", "everruns"],
+    ["docs/setup.md", "everruns"],
+    ["https://example.com/docs", "web"],
+    ["#local-section", null],
+    ["mailto:hello@everruns.com", null],
+  ] as const)("classifies %s as %s", (href, expected) => {
+    expect(getMarkdownLinkKind(href)).toBe(expected);
   });
 });

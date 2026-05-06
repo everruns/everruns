@@ -40,6 +40,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { AlertCircle } from "lucide-react";
+import { MarkdownLink } from "@/components/markdown/markdown-link";
 import "./file-previews.css";
 
 // File extension categorization
@@ -76,6 +77,7 @@ const CODE_EXTENSIONS = new Set([
 ]);
 
 const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "ico"]);
+const markdownComponents = { a: MarkdownLink };
 
 // Map file extensions to Shiki language identifiers
 const EXTENSION_TO_LANG: Record<string, string> = {
@@ -359,7 +361,9 @@ export function MarkdownPreview({ content }: { content: string }) {
     <ScrollArea className="h-full">
       <div className="file-preview-streamdown text-sm p-4">
         {entries.length > 0 && <FrontmatterBlock entries={entries} />}
-        <Streamdown plugins={{ code }}>{body}</Streamdown>
+        <Streamdown plugins={{ code }} components={markdownComponents}>
+          {body}
+        </Streamdown>
       </div>
     </ScrollArea>
   );

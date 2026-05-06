@@ -1,10 +1,13 @@
 import { render, screen } from "@testing-library/react";
 
+let capturedStreamdownProps: Record<string, unknown> = {};
+
 // Mock streamdown to avoid ESM issues in Jest
 jest.mock("streamdown", () => ({
-  Streamdown: ({ children }: { children: string }) => (
-    <pre data-testid="streamdown-mock">{children}</pre>
-  ),
+  Streamdown: (props: Record<string, unknown>) => {
+    capturedStreamdownProps = props;
+    return <pre data-testid="streamdown-mock">{props.children as string}</pre>;
+  },
 }));
 
 jest.mock("@streamdown/code", () => ({
@@ -428,9 +431,20 @@ describe("parseFrontmatter", () => {
 // ============================================
 
 describe("MarkdownPreview", () => {
+  beforeEach(() => {
+    capturedStreamdownProps = {};
+  });
+
   it("renders markdown content without frontmatter", () => {
     render(<MarkdownPreview content="# Hello World" />);
     expect(screen.getByTestId("streamdown-mock")).toHaveTextContent("# Hello World");
+  });
+
+  it("passes the icon link renderer to readme markdown links", () => {
+    render(<MarkdownPreview content="[PR](https://github.com/everruns/everruns/pull/44)" />);
+
+    const components = capturedStreamdownProps.components as Record<string, unknown>;
+    expect(components.a).toBeDefined();
   });
 
   it("strips frontmatter and renders body", () => {
