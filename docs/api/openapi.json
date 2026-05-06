@@ -4517,7 +4517,7 @@
             }
           },
           "409": {
-            "description": "Duplicate name",
+            "description": "Conflict (duplicate name or concurrent default reassignment)",
             "content": {
               "application/json": {
                 "schema": {

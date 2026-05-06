@@ -797,13 +797,17 @@ function EditStoreDialog({
   const [isDefault, setIsDefault] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Initialize form state only when the dialog opens onto a different store
+  // (or onto a store at all). Re-running on every store-object identity change
+  // would clobber in-progress edits whenever the underlying query refetches.
   useEffect(() => {
     if (store) {
       setName(store.name);
       setIsDefault(store.is_default);
       setError(null);
     }
-  }, [store?.id, store?.name, store?.is_default, store]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store?.id]);
 
   if (!store) return null;
 

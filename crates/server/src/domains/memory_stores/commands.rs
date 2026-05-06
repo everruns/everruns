@@ -218,9 +218,8 @@ impl Command for UpdateMemoryStore {
             None => None,
         };
 
-        // Look up the existing store first so we can reject a no-op demotion
-        // of the only default store and avoid issuing UPDATE SQL when nothing
-        // would actually change. This also returns 404 before any write.
+        // Look up the existing store first so we can reject a demotion of the
+        // only default store with a clear error and return 404 before any write.
         let existing = ctx
             .db
             .get_memory_store_by_public_id(ctx.org_id(), &id.to_string())

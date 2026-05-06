@@ -130,7 +130,7 @@ pub async fn get_memory_store(
         (status = 200, description = "Memory store updated", body = MemoryStoreResponse),
         (status = 400, description = "Invalid input", body = ErrorResponse),
         (status = 404, description = "Not found", body = ErrorResponse),
-        (status = 409, description = "Duplicate name", body = ErrorResponse)
+        (status = 409, description = "Conflict (duplicate name or concurrent default reassignment)", body = ErrorResponse)
     ),
     tag = "memory_stores"
 )]
