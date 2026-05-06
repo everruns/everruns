@@ -129,19 +129,15 @@ impl InMemoryDatabase {
         }
         if let Some(status) = input.status {
             kb.status = status.clone();
+            // Match Postgres `COALESCE(archived_at, NOW())` semantics:
+            // preserve the first archive/delete timestamp on repeats.
             match status.as_str() {
                 "active" => kb.archived_at = None,
-                // Match Postgres `COALESCE(archived_at, NOW())` — preserve the
-                // first archive timestamp on repeated archives.
-                "archived" => {
-                    if kb.archived_at.is_none() {
-                        kb.archived_at = Some(Self::now());
-                    }
+                "archived" if kb.archived_at.is_none() => {
+                    kb.archived_at = Some(Self::now());
                 }
-                "deleted" => {
-                    if kb.deleted_at.is_none() {
-                        kb.deleted_at = Some(Self::now());
-                    }
+                "deleted" if kb.deleted_at.is_none() => {
+                    kb.deleted_at = Some(Self::now());
                 }
                 _ => {}
             }

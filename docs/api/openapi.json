@@ -3545,6 +3545,258 @@
         }
       }
     },
+    "/v1/memory-stores": {
+      "get": {
+        "tags": [
+          "memory_stores"
+        ],
+        "operationId": "list_memory_stores",
+        "responses": {
+          "200": {
+            "description": "List org memory stores",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_MemoryStoreResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "memory_stores"
+        ],
+        "operationId": "create_memory_store",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateMemoryStoreRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Memory store created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryStoreResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Duplicate name or default conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/memory-stores/{store_id}": {
+      "get": {
+        "tags": [
+          "memory_stores"
+        ],
+        "operationId": "get_memory_store",
+        "parameters": [
+          {
+            "name": "store_id",
+            "in": "path",
+            "description": "Memory store ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Memory store",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryStoreResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/memory-stores/{store_id}/memories": {
+      "get": {
+        "tags": [
+          "memory_stores"
+        ],
+        "operationId": "list_memories",
+        "parameters": [
+          {
+            "name": "store_id",
+            "in": "path",
+            "description": "Memory store ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "tag",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "name": "include_inactive",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Memories",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListMemoriesResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Store not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/memory-stores/{store_id}/memories/{memory_id}": {
+      "delete": {
+        "tags": [
+          "memory_stores"
+        ],
+        "operationId": "forget_memory",
+        "parameters": [
+          {
+            "name": "store_id",
+            "in": "path",
+            "description": "Memory store ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "memory_id",
+            "in": "path",
+            "description": "Memory ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Memory deactivated"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/orgs": {
       "get": {
         "tags": [
@@ -7819,6 +8071,20 @@
           }
         }
       },
+      "CreateMemoryStoreRequest": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "is_default": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
       "CreateMessageRequest": {
         "type": "object",
         "description": "Request to create a message",
@@ -9665,6 +9931,64 @@
           }
         }
       },
+      "ListMemoriesQuery": {
+        "type": "object",
+        "properties": {
+          "include_inactive": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "kind": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "query": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tag": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ListMemoriesResponse": {
+        "type": "object",
+        "required": [
+          "data",
+          "total"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MemoryResponse"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "ListResponse_Agent": {
         "type": "object",
         "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
@@ -10560,6 +10884,54 @@
                   "type": "string",
                   "description": "URL of the MCP server endpoint.",
                   "example": "https://mcp.atlassian.com/v1/mcp"
+                }
+              }
+            },
+            "description": "Array of items returned by the list operation."
+          }
+        }
+      },
+      "ListResponse_MemoryStoreResponse": {
+        "type": "object",
+        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "name",
+                "is_default",
+                "active_memory_count",
+                "created_at",
+                "updated_at"
+              ],
+              "properties": {
+                "active_memory_count": {
+                  "type": "integer",
+                  "format": "int64"
+                },
+                "created_at": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "id": {
+                  "type": "string",
+                  "example": "mst_01933b5a000070008000000000000001"
+                },
+                "is_default": {
+                  "type": "boolean"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "updated_at": {
+                  "type": "string",
+                  "format": "date-time"
                 }
               }
             },
@@ -12808,6 +13180,94 @@
               "boolean",
               "null"
             ]
+          }
+        }
+      },
+      "MemoryResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "store_id",
+          "content",
+          "content_parts",
+          "kind",
+          "importance",
+          "tags",
+          "active",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "active": {
+            "type": "boolean"
+          },
+          "content": {
+            "type": "string"
+          },
+          "content_parts": {},
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "example": "mem_01933b5a000070008000000000000001"
+          },
+          "importance": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "store_id": {
+            "type": "string",
+            "example": "mst_01933b5a000070008000000000000001"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "MemoryStoreResponse": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "is_default",
+          "active_memory_count",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "active_memory_count": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string",
+            "example": "mst_01933b5a000070008000000000000001"
+          },
+          "is_default": {
+            "type": "boolean"
+          },
+          "name": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },
@@ -19136,6 +19596,10 @@
     {
       "name": "volumes",
       "description": "Workspace volume management endpoints"
+    },
+    {
+      "name": "memory_stores",
+      "description": "Org-scoped persistent memory stores"
     },
     {
       "name": "knowledge_bases",
