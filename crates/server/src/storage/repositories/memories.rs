@@ -2,7 +2,7 @@
 // See specs/memory.md.
 
 use super::super::models::*;
-use super::Database;
+use super::{Database, escape_like};
 use anyhow::Result;
 use uuid::Uuid;
 
@@ -193,7 +193,7 @@ impl Database {
             idx += 1;
         }
         if filter.query.as_ref().is_some_and(|q| !q.trim().is_empty()) {
-            sql.push_str(&format!(" AND LOWER(m.content) LIKE ${idx}"));
+            sql.push_str(&format!(" AND LOWER(m.content) LIKE ${idx} ESCAPE '\\'"));
             idx += 1;
         }
         sql.push_str(&format!(
@@ -215,7 +215,7 @@ impl Database {
         if let Some(ref query) = filter.query
             && !query.trim().is_empty()
         {
-            q = q.bind(format!("%{}%", query.trim().to_lowercase()));
+            q = q.bind(format!("%{}%", escape_like(&query.trim().to_lowercase())));
         }
         q = q.bind(limit);
 
