@@ -5555,7 +5555,7 @@
                   "type": "null"
                 },
                 {
-                  "$ref": "#/components/schemas/TypedId"
+                  "$ref": "#/components/schemas/eventId"
                 }
               ]
             }

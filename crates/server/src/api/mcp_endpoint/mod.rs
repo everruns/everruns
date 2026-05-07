@@ -9,12 +9,12 @@
 //   → discover: reads inventory descriptors and returns schema-bearing JSON
 //   → query: runs bash scripts with the read-only subset of API ops
 //   → execute: runs bash scripts with the full API surface, including writes
-// - Tier 0 tools: me, list_organizations, switch_organization
+// - Tier 0 tools: me, list_organizations
 //   → Identity & org context tools for multi-org OAuth flows
-//   → MCP clients can't set cookies, so org selection is via explicit tool calls
+//   → MCP clients can't set cookies, so org selection is via organization_id arguments
 // - Auth: same as rest of API (API key or session cookie via ResolvedOrg)
 // - No MCP session state — stateless request/response per JSON-RPC call
-// - Multi-org: all tools accept optional `organization_id` to override the default org
+// - Multi-org: org-scoped tools accept optional `organization_id` to override the default org
 
 mod cards;
 mod tool_registry;
@@ -127,7 +127,7 @@ const MCP_PROTOCOL_VERSION_LATEST: &str = "2025-06-18";
 const SUPPORTED_PROTOCOL_VERSIONS: &[&str] =
     &[MCP_PROTOCOL_VERSION_LATEST, MCP_PROTOCOL_VERSION_FALLBACK];
 
-const ORG_ID_DESCRIPTION: &str = "Optional organization ID (format: org_{32-hex}). Overrides the default organization for this call. Use list_organizations to see available orgs.";
+const ORG_ID_DESCRIPTION: &str = "Optional organization ID (format: org_{32-hex}). MCP has no current-organization switch; pass this on each org-scoped call to override the default organization. Use list_organizations to see available orgs.";
 
 #[derive(Debug, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -703,9 +703,6 @@ async fn handle_tools_call(
                 // Tier 0: identity & org context
                 "me" => tool_me(auth_user, org, state).await,
                 "list_organizations" => tool_list_organizations(auth_user, state).await,
-                "switch_organization" => {
-                    tool_switch_organization(&arguments, auth_user, org, state).await
-                }
                 // Tier 1: agent conversation (org-scoped — accept organization_id override)
                 "agent_run" => {
                     match resolve_org_override(&arguments, auth_user, org, state).await {
@@ -922,39 +919,6 @@ async fn tool_list_organizations(auth_user: &AuthUser, state: &AppState) -> Resu
     Ok(serde_json::to_string_pretty(&json!({
         "organizations": orgs,
         "count": orgs.len(),
-    }))
-    .unwrap())
-}
-
-// ============================================================================
-// Tier 0: switch_organization
-// ============================================================================
-
-/// Switch the active organization for subsequent MCP tool calls.
-///
-/// Since MCP is stateless (no session/cookie), this tool validates the org
-/// and returns instructions. The MCP client should pass the org ID to
-/// subsequent calls via `organization_id`, or the platform can set the
-/// `everruns_org` cookie on the response if the transport supports it.
-async fn tool_switch_organization(
-    args: &Value,
-    auth_user: &AuthUser,
-    _current_org: &ResolvedOrg,
-    state: &AppState,
-) -> Result<String, String> {
-    let org_public_id = args
-        .get("organization_id")
-        .and_then(|v| v.as_str())
-        .ok_or("Missing required parameter: organization_id")?;
-
-    let resolved = resolve_org_by_id(org_public_id, auth_user, state).await?;
-
-    Ok(serde_json::to_string_pretty(&json!({
-        "switched": true,
-        "organization_id": resolved.public_id,
-        "name": resolved.name,
-        "role": resolved.role.to_string(),
-        "hint": "Pass this organization_id on subsequent tool calls to operate in this org's context."
     }))
     .unwrap())
 }
