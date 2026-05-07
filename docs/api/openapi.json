@@ -685,7 +685,7 @@
         },
         "responses": {
           "200": {
-            "description": "JSON-RPC 2.0 response (single JSON for message/send, text/event-stream for message/stream)"
+            "description": "JSON-RPC 2.0 response. For message/send and tasks/* the body is a single JSON envelope; for message/stream the body is text/event-stream of JSON-RPC envelopes. tasks/get and tasks/cancel surface -32001 Task not found for unknown task ids."
           },
           "401": {
             "description": "Missing or invalid API key",
@@ -709,6 +709,16 @@
           },
           "404": {
             "description": "App or channel not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "SSE connection limit reached for the org/session",
             "content": {
               "application/json": {
                 "schema": {
