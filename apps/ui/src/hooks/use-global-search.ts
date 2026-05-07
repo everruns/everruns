@@ -3,16 +3,17 @@
  *
  * Sources:
  * 1. Static navigation pages (always available, no fetch)
- * 2. Agents (client-side filter over cached list)
- * 3. Sessions (client-side filter over first page)
- * 4. Harnesses (client-side filter over cached list)
- * 5. Skills (client-side filter over cached list)
- * 6. MCP Servers (client-side filter over cached list)
- * 7. Capabilities (client-side filter over cached list)
- * 8. ID-based lookup (detects prefixed IDs and provides direct navigation)
- * 9. Evals (client-side filter over cached list)
- * 10. Apps (client-side filter over cached list)
- * 11. Agent Identities (client-side filter over cached list)
+ * 2. Organizations (client-side filter over authenticated user's memberships)
+ * 3. Agents (client-side filter over cached list)
+ * 4. Sessions (client-side filter over first page)
+ * 5. Harnesses (client-side filter over cached list)
+ * 6. Skills (client-side filter over cached list)
+ * 7. MCP Servers (client-side filter over cached list)
+ * 8. Capabilities (client-side filter over cached list)
+ * 9. ID-based lookup (detects prefixed IDs and provides direct navigation)
+ * 10. Evals (client-side filter over cached list)
+ * 11. Apps (client-side filter over cached list)
+ * 12. Agent Identities (client-side filter over cached list)
  *
  * All entity searches are client-side over already-fetched React Query data.
  * Backend search endpoints are available for server-side filtering when needed.
