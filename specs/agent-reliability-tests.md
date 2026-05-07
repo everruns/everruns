@@ -51,7 +51,10 @@ stabilized.
 
 **What happens in production:** gRPC connection drops. Worker detects stream disconnect, falls back to polling, attempts reconnection with exponential backoff (1s→60s). Tasks in flight continue executing locally but can't report completion. If heartbeat times out, tasks are reclaimed. When network recovers, worker reconnects and late completions get `TaskNotOwned` (idempotent).
 
-**Test approach:** Use failpoints in the persistence layer to simulate gRPC failures (since gRPC ultimately calls store operations). Test sequences: claim succeeds → complete fails → retry complete → verify idempotent; claim fails → retry → succeeds.
+**Test approach:** Two complementary layers.
+
+1. **Store-layer failpoints** (existing): use `fail-rs` failpoints in the persistence layer to simulate gRPC-induced store failures. Test sequences: claim succeeds → complete fails → retry complete → verify idempotent; claim fails → retry → succeeds.
+2. **Transport-layer simulation** (in progress): use [`turmoil`](https://github.com/tokio-rs/turmoil) to drop, partition, and reorder packets between worker and control plane with a simulated clock. Scaffold lives at `crates/worker/tests/network_reliability_test.rs`. Currently exercises a TCP heartbeat loop; the next step is wiring the real tonic `WorkerService` through a turmoil connector so the actual `GrpcDurableStore` client retry/backoff paths are covered. This adds determinism that fail-rs cannot provide for transport faults (RST mid-stream, latency spikes, message reorder).
 
 **Variants:**
 - Transient failure (1 failure then success)

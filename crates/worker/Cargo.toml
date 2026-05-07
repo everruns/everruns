@@ -50,3 +50,11 @@ url = "2.5"
 # gRPC dependencies
 tonic.workspace = true
 prost-types.workspace = true
+
+[dev-dependencies]
+# Deterministic network simulator. Used by tests/network_reliability_test.rs to
+# exercise worker↔control-plane transport faults (partitions, latency, reorder)
+# with a simulated clock. See specs/agent-reliability-tests.md scenario 3.
+turmoil.workspace = true
+tokio = { workspace = true }
+bytes = "1"
