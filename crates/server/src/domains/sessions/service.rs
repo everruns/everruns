@@ -1190,8 +1190,15 @@ impl SessionService {
             else {
                 continue;
             };
+            // Fail closed: a broken declarative definition must NOT silently skip
+            // dependency expansion, since this gates admin-only high-risk session
+            // capability assignment.
             let definition: DeclarativeCapabilityDefinition =
-                serde_json::from_value(row.definition).unwrap_or_default();
+                serde_json::from_value(row.definition).map_err(|error| {
+                    anyhow::anyhow!(
+                        "declarative capability {cap_ref} has malformed definition: {error}"
+                    )
+                })?;
             for dep in definition.dependencies {
                 if !capability_ids.contains(&dep) {
                     capability_ids.push(dep);

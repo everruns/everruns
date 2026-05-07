@@ -377,8 +377,15 @@ impl CapabilityService {
             else {
                 continue;
             };
+            // Fail closed: a broken declarative definition must NOT silently skip
+            // dependency expansion, since this function gates admin-only high-risk
+            // capability assignment. Propagate the parse error to the caller.
             let definition: DeclarativeCapabilityDefinition =
-                serde_json::from_value(row.definition).unwrap_or_default();
+                serde_json::from_value(row.definition).map_err(|error| {
+                    anyhow::anyhow!(
+                        "declarative capability {cap_ref} has malformed definition: {error}"
+                    )
+                })?;
             refs.extend(definition.dependencies);
         }
 
