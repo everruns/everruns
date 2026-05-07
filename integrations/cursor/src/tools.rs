@@ -28,11 +28,6 @@ async fn get_api_key(context: &ToolContext) -> Result<String, ToolExecutionResul
         }
     }
 
-    if let Ok(key) = std::env::var(CURSOR_API_KEY_SECRET)
-        && !key.trim().is_empty()
-    {
-        return Ok(key);
-    }
 
     if let Some(storage) = context.storage_store.as_ref() {
         match storage

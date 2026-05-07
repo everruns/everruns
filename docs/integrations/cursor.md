@@ -31,8 +31,6 @@ Use a Cloud Agents API key. A general Cursor dashboard API key may not be enough
 3. Click **Connect**
 4. Paste the Cloud Agents API key
 
-Operators can also provide `CURSOR_API_KEY` through Doppler for managed deployments and live tests.
-
 ### 3. Use in Sessions
 
 Agents with the Cursor capability can use these tools:
