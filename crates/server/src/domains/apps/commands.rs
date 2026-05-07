@@ -190,11 +190,16 @@ fn validate_channel_config(
                     "AG-UI generic_tool_text must be at most 120 characters",
                 ));
             }
-            if config.tool_visibility == AgUiToolVisibility::Generic
-                && config.generic_tool_text.trim().is_empty()
+            // Narrated also emits the configured generic_tool_text on public streams (the
+            // raw narration is intentionally not forwarded), so non-empty text is required
+            // for both Generic and Narrated.
+            if matches!(
+                config.tool_visibility,
+                AgUiToolVisibility::Generic | AgUiToolVisibility::Narrated
+            ) && config.generic_tool_text.trim().is_empty()
             {
                 return Err(CommandError::bad_request(
-                    "AG-UI generic_tool_text cannot be empty when tool_visibility is generic",
+                    "AG-UI generic_tool_text cannot be empty when tool_visibility is generic or narrated",
                 ));
             }
         }
