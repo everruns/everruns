@@ -1,10 +1,60 @@
 ---
 title: Use in AI Tools
-description: Set up Everruns in AI tools, starting with Codex.
+description: Set up Everruns in AI tools through the Everruns(Dev) plugin.
 ---
 
-Use Everruns from the AI tools where you already work. This page starts with
-Codex support through the Everruns(Dev) plugin.
+Use Everruns from the AI tools where you already work. The Everruns(Dev) plugin
+ships in this repository with both Claude Code and Codex support.
+
+## Claude Code
+
+The Claude Code plugin connects Claude Code to `https://dev.everruns.com/mcp`
+and adds Everruns(Dev) tools, slash commands, and a skill with platform
+guidance.
+
+### Install the Plugin
+
+1. Add the Everruns marketplace and install the plugin from inside Claude Code:
+
+   ```text
+   /plugin marketplace add everruns/everruns
+   /plugin install everruns-dev@everruns-dev
+   ```
+
+   Claude Code reads `.claude-plugin/marketplace.json` from the repository to
+   discover available plugins. The install syntax is
+   `<plugin-name>@<marketplace-name>`.
+
+2. Verify the install by running:
+
+   ```text
+   /everruns-dev:whoami
+   ```
+
+   On first run the plugin opens an OAuth flow in your browser to authenticate
+   against the Everruns(Dev) platform over MCP.
+
+If `/plugin` is not recognized, update Claude Code to a version that supports
+the plugin marketplace and try again.
+
+### Use Everruns
+
+Ask Claude Code for an Everruns task in natural language, for example:
+
+```text
+Create an Everruns(Dev) agent that summarizes https://news.ycombinator.com/ and run it once.
+```
+
+The plugin also exposes slash commands such as `/everruns-dev:agent-run`,
+`/everruns-dev:session-send`, and `/everruns-dev:discover` for common
+workflows.
+
+### Alternative Install
+
+To install from a local clone or point at a self-hosted Everruns deployment,
+see [`plugins/everruns-dev/README.md`](https://github.com/everruns/everruns/blob/main/plugins/everruns-dev/README.md).
+To target another Everruns deployment, update the `url` in
+`plugins/everruns-dev/.mcp.json` to that deployment's `/mcp` endpoint.
 
 ## Codex
 
