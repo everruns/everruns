@@ -977,6 +977,20 @@ struct AgUiStreamState {
     finished: bool,
 }
 
+impl AgUiStreamState {
+    /// Returns the channel-configured generic tool text, trimmed and with a fallback to the
+    /// platform default if the value is empty or whitespace. Used for both `Generic` and
+    /// `Narrated` visibility so the public stream always opens with non-empty safe text.
+    fn safe_public_tool_text(&self) -> String {
+        let trimmed = self.generic_tool_text.trim();
+        if trimmed.is_empty() {
+            everruns_core::app::DEFAULT_AG_UI_GENERIC_TOOL_TEXT.to_string()
+        } else {
+            trimmed.to_string()
+        }
+    }
+}
+
 fn push_public_tool_activity_start(state: &mut AgUiStreamState, text: String) {
     if !state.public_tool_activity_started {
         if !state.thinking_started {
@@ -1148,23 +1162,19 @@ fn translate_event(state: &mut AgUiStreamState, event: &everruns_core::Event) {
             state.thinking_text_started = false;
             state.public_tool_activity_opened_thinking = false;
         }
-        "tool.started" => {
-            if let Ok(data) = parse_event_data::<ToolStartedData>(event) {
-                ensure_assistant_message_id(state, event);
-                state.active_tool_activity_count += 1;
-                match state.tool_visibility {
-                    AgUiToolVisibility::None => {}
-                    AgUiToolVisibility::Generic => {
-                        push_public_tool_activity_start(state, state.generic_tool_text.clone());
-                    }
-                    AgUiToolVisibility::Narrated => {
-                        if let Some(narration) = data.narration {
-                            let narration = narration.trim();
-                            if !narration.is_empty() {
-                                push_public_tool_activity_start(state, narration.to_string());
-                            }
-                        }
-                    }
+        "tool.started" if parse_event_data::<ToolStartedData>(event).is_ok() => {
+            ensure_assistant_message_id(state, event);
+            state.active_tool_activity_count += 1;
+            match state.tool_visibility {
+                AgUiToolVisibility::None => {}
+                // Both Generic and Narrated emit the safe channel-configured generic text.
+                // Narrated must not forward backend/model-authored narration because narration
+                // may derive from raw tool-call arguments. `safe_public_tool_text` falls back
+                // to the platform default if the configured text is empty/whitespace so we
+                // never push an empty delta on the public stream.
+                AgUiToolVisibility::Generic | AgUiToolVisibility::Narrated => {
+                    let text = state.safe_public_tool_text();
+                    push_public_tool_activity_start(state, text);
                 }
             }
         }
@@ -2023,7 +2033,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_narrated_tool_visibility_uses_narration_only() {
+    async fn test_narrated_tool_visibility_falls_back_to_generic_text() {
         let mut state = test_stream_state().await;
         state.tool_visibility = AgUiToolVisibility::Narrated;
         let turn_id = TurnId::new();
@@ -2048,11 +2058,55 @@ mod tests {
 
         match &state.queue[2] {
             AgUiEvent::ThinkingTextMessageContent(event) => {
-                assert_eq!(event.delta, "Checking public sources");
+                assert_eq!(event.delta, "Working...");
                 assert!(!event.delta.contains("web_search"));
                 assert!(!event.delta.contains("private query"));
             }
             _ => panic!("expected narrated thinking content"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_public_tool_text_falls_back_when_configured_value_is_empty() {
+        // Existing channels may have stored an empty/whitespace generic_tool_text from
+        // before validation tightened. The public stream must never emit an empty delta.
+        for visibility in [AgUiToolVisibility::Generic, AgUiToolVisibility::Narrated] {
+            for configured in ["", "   ", "\n\t"] {
+                let mut state = test_stream_state().await;
+                state.tool_visibility = visibility;
+                state.generic_tool_text = configured.to_string();
+                let turn_id = TurnId::new();
+                let input_message_id = MessageId::parse(&state.input_message_id).unwrap();
+                let context = EventContext::turn(turn_id, input_message_id);
+                let session_id = SessionId::from_uuid(state.session_id);
+
+                let tool_started = Event::new(
+                    session_id,
+                    context,
+                    ToolStartedData {
+                        tool_call: ToolCall {
+                            id: "call_1".to_string(),
+                            name: "web_search".to_string(),
+                            arguments: serde_json::json!({"q": "x"}),
+                        },
+                        display_name: None,
+                        narration: Some("backend narration".to_string()),
+                    },
+                );
+                translate_event(&mut state, &tool_started);
+
+                match &state.queue[2] {
+                    AgUiEvent::ThinkingTextMessageContent(event) => {
+                        assert_eq!(
+                            event.delta, "Working...",
+                            "visibility={visibility:?} configured={configured:?}"
+                        );
+                    }
+                    _ => panic!(
+                        "expected non-empty thinking content for visibility {visibility:?} configured {configured:?}"
+                    ),
+                }
+            }
         }
     }
 
