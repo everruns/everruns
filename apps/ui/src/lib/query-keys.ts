@@ -107,6 +107,12 @@ export const queryKeys = {
     available: () => ["capabilities", "available"] as const,
   },
 
+  declarativeCapabilities: {
+    all: ["declarative-capabilities"] as const,
+    list: () => ["declarative-capabilities"] as const,
+    detail: (capabilityId: string) => ["declarative-capability", capabilityId] as const,
+  },
+
   // Durable queries
   durable: {
     workers: {

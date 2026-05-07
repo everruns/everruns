@@ -1753,6 +1753,79 @@ impl StorageBackend {
     }
 
     // ============================================
+    // Declarative Capabilities
+    // ============================================
+
+    pub async fn create_declarative_capability(
+        &self,
+        org_id: i64,
+        input: CreateDeclarativeCapabilityRow,
+    ) -> Result<DeclarativeCapabilityRow> {
+        dispatch!(self, create_declarative_capability, org_id, input)
+    }
+
+    pub async fn get_declarative_capability(
+        &self,
+        org_id: i64,
+        id: Uuid,
+    ) -> Result<Option<DeclarativeCapabilityRow>> {
+        dispatch!(self, get_declarative_capability, org_id, id)
+    }
+
+    pub async fn get_declarative_capability_by_name(
+        &self,
+        org_id: i64,
+        name: &str,
+    ) -> Result<Option<DeclarativeCapabilityRow>> {
+        dispatch!(self, get_declarative_capability_by_name, org_id, name)
+    }
+
+    pub async fn get_declarative_capability_by_public_id(
+        &self,
+        org_id: i64,
+        public_id: &str,
+    ) -> Result<Option<DeclarativeCapabilityRow>> {
+        dispatch!(
+            self,
+            get_declarative_capability_by_public_id,
+            org_id,
+            public_id
+        )
+    }
+
+    pub async fn list_declarative_capabilities(
+        &self,
+        org_id: i64,
+        search: Option<&str>,
+        include_archived: bool,
+    ) -> Result<Vec<DeclarativeCapabilityRow>> {
+        dispatch!(
+            self,
+            list_declarative_capabilities,
+            org_id,
+            search,
+            include_archived
+        )
+    }
+
+    pub async fn update_declarative_capability(
+        &self,
+        org_id: i64,
+        id: Uuid,
+        input: UpdateDeclarativeCapability,
+    ) -> Result<Option<DeclarativeCapabilityRow>> {
+        dispatch!(self, update_declarative_capability, org_id, id, input)
+    }
+
+    pub async fn delete_declarative_capability(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        dispatch!(self, delete_declarative_capability, org_id, id)
+    }
+
+    pub async fn destroy_declarative_capability(&self, org_id: i64, id: Uuid) -> Result<bool> {
+        dispatch!(self, destroy_declarative_capability, org_id, id)
+    }
+
+    // ============================================
     // Skill Files
     // ============================================
 

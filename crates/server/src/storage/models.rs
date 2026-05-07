@@ -1413,6 +1413,44 @@ pub struct UpdateSkill {
     pub source_type: Option<String>,
 }
 
+// ============================================
+// Declarative capability models
+// ============================================
+
+#[derive(Debug, Clone, FromRow)]
+pub struct DeclarativeCapabilityRow {
+    pub id: Uuid,
+    pub org_id: i64,
+    pub public_id: String,
+    pub name: String,
+    pub display_name: Option<String>,
+    pub description: String,
+    pub status: String,
+    pub definition: sqlx::types::JsonValue,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub archived_at: Option<DateTime<Utc>>,
+    pub deleted_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateDeclarativeCapabilityRow {
+    pub public_id: String,
+    pub name: String,
+    pub display_name: Option<String>,
+    pub description: String,
+    pub definition: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct UpdateDeclarativeCapability {
+    pub name: Option<String>,
+    pub display_name: Option<String>,
+    pub description: Option<String>,
+    pub status: Option<String>,
+    pub definition: Option<serde_json::Value>,
+}
+
 /// Skill file row from database (extracted archive files)
 #[derive(Debug, Clone, FromRow)]
 pub struct SkillFileRow {

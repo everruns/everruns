@@ -1,16 +1,31 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useCapabilities, usePageTitle } from "@/hooks";
+import { useMemo, useState, type FormEvent } from "react";
+import {
+  useCapabilities,
+  useCreateDeclarativeCapability,
+  useDeclarativeCapabilities,
+  useDeleteDeclarativeCapability,
+  usePageTitle,
+} from "@/hooks";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import Link from "next/link";
-import { CircleOff, Search as SearchIcon, Bot, Layers, X } from "lucide-react";
+import { CircleOff, Search as SearchIcon, Bot, Layers, X, Plus } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
-import type { Capability, CapabilityStatus } from "@/lib/api/types";
+import type { Capability, CapabilityStatus, DeclarativeCapability } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
 import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
 import { getCapabilityStatusBadgeVariant } from "@/lib/status-utils";
@@ -28,6 +43,152 @@ function getStatusLabel(status: CapabilityStatus): string {
     case "deprecated":
       return "Deprecated";
   }
+}
+
+function DeclarativeCapabilityDialog() {
+  const createCapability = useCreateDeclarativeCapability();
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState("");
+  const [displayName, setDisplayName] = useState("");
+  const [description, setDescription] = useState("");
+  const [systemPrompt, setSystemPrompt] = useState("");
+  const [mcpServers, setMcpServers] = useState("{}");
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (event: FormEvent) => {
+    event.preventDefault();
+    setError(null);
+
+    let parsedMcpServers: Record<string, unknown> | undefined;
+    try {
+      parsedMcpServers = mcpServers.trim() ? JSON.parse(mcpServers) : undefined;
+    } catch {
+      setError("MCP servers must be valid JSON.");
+      return;
+    }
+
+    await createCapability.mutateAsync({
+      definition: {
+        name,
+        display_name: displayName.trim() || undefined,
+        description,
+        category: "Declarative",
+        icon: "puzzle",
+        system_prompt: systemPrompt.trim() || undefined,
+        mcp_servers:
+          parsedMcpServers && Object.keys(parsedMcpServers).length > 0
+            ? parsedMcpServers
+            : undefined,
+        dependencies: ["session_file_system", "skills"],
+        risk_level: "low",
+      },
+    });
+
+    setOpen(false);
+    setName("");
+    setDisplayName("");
+    setDescription("");
+    setSystemPrompt("");
+    setMcpServers("{}");
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button type="button" size="sm">
+          <Plus className="mr-1.5 h-4 w-4" />
+          New Declarative
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>New Declarative Capability</DialogTitle>
+        </DialogHeader>
+        <form className="space-y-4" onSubmit={handleSubmit}>
+          <div className="grid gap-2">
+            <Label htmlFor="declarative-name">Unique name</Label>
+            <Input
+              id="declarative-name"
+              placeholder="research_pack"
+              value={name}
+              onChange={(event) => setName(event.target.value.toLowerCase())}
+              required
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="declarative-display-name">Display name</Label>
+            <Input
+              id="declarative-display-name"
+              placeholder="Research Pack"
+              value={displayName}
+              onChange={(event) => setDisplayName(event.target.value)}
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="declarative-description">Description</Label>
+            <Input
+              id="declarative-description"
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              required
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="declarative-prompt">System Prompt</Label>
+            <Textarea
+              id="declarative-prompt"
+              value={systemPrompt}
+              onChange={(event) => setSystemPrompt(event.target.value)}
+              rows={6}
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="declarative-mcp">MCP Servers JSON</Label>
+            <Textarea
+              id="declarative-mcp"
+              value={mcpServers}
+              onChange={(event) => setMcpServers(event.target.value)}
+              rows={5}
+              className="font-mono text-xs"
+            />
+          </div>
+          {error && <p className="text-sm text-destructive">{error}</p>}
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={createCapability.isPending || !name || !description}>
+              {createCapability.isPending ? "Creating..." : "Create"}
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function DeclarativeCapabilityRow({ capability }: { capability: DeclarativeCapability }) {
+  const deleteCapability = useDeleteDeclarativeCapability();
+  return (
+    <div className="flex items-center justify-between gap-3 border p-3">
+      <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          <p className="font-medium truncate">{capability.display_name ?? capability.name}</p>
+          <CopyButton value={capability.capability_id} />
+        </div>
+        <p className="text-sm text-muted-foreground line-clamp-1">{capability.description}</p>
+      </div>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={() => deleteCapability.mutate(capability.id)}
+        disabled={deleteCapability.isPending}
+      >
+        Archive
+      </Button>
+    </div>
+  );
 }
 
 function CapabilityStats({ capability }: { capability: Capability }) {
@@ -98,6 +259,18 @@ function matches(capability: Capability, query: string): boolean {
   );
 }
 
+function matchesDeclarative(capability: DeclarativeCapability, query: string): boolean {
+  if (!query) return true;
+  const q = query.toLowerCase();
+  return (
+    capability.name.toLowerCase().includes(q) ||
+    (capability.display_name?.toLowerCase().includes(q) ?? false) ||
+    capability.description.toLowerCase().includes(q) ||
+    capability.id.toLowerCase().includes(q) ||
+    capability.capability_id.toLowerCase().includes(q)
+  );
+}
+
 function CategoryFilter({
   categories,
   selected,
@@ -153,6 +326,7 @@ function CategoryFilter({
 export default function CapabilitiesPage() {
   usePageTitle("Capabilities");
   const { data: capabilities, isLoading, error } = useCapabilities();
+  const { data: declarativeCapabilities } = useDeclarativeCapabilities();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
 
@@ -180,6 +354,14 @@ export default function CapabilitiesPage() {
       return true;
     });
   }, [capabilities, searchQuery, selectedCategory]);
+
+  const filteredDeclarative = useMemo(
+    () =>
+      (declarativeCapabilities ?? []).filter((capability) =>
+        matchesDeclarative(capability, searchQuery),
+      ),
+    [declarativeCapabilities, searchQuery],
+  );
 
   const grouped = useMemo(() => {
     const map = new Map<string, Capability[]>();
@@ -213,13 +395,29 @@ export default function CapabilitiesPage() {
   return (
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Capabilities</h1>
-        <span className="text-sm text-muted-foreground">
-          {isFiltering
-            ? `${filteredCount} of ${totalCount}`
-            : formatCountLabel(totalCount, "capability", "capabilities")}
-        </span>
+        <div>
+          <h1 className="text-2xl font-bold">Capabilities</h1>
+          <span className="text-sm text-muted-foreground">
+            {isFiltering
+              ? `${filteredCount} of ${totalCount}`
+              : formatCountLabel(totalCount, "capability", "capabilities")}
+          </span>
+        </div>
+        <DeclarativeCapabilityDialog />
       </div>
+
+      {filteredDeclarative.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Declarative Capabilities</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {filteredDeclarative.map((capability) => (
+              <DeclarativeCapabilityRow key={capability.id} capability={capability} />
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Search */}
       <div className="relative max-w-xl">

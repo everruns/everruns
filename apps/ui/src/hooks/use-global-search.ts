@@ -46,7 +46,7 @@ import { useSessions } from "@/hooks/use-sessions";
 import { useHarnesses } from "@/hooks/use-harnesses";
 import { useSkills } from "@/hooks/use-skills";
 import { useMcpServers } from "@/hooks/use-mcp-servers";
-import { useCapabilities } from "@/hooks/use-capabilities";
+import { useCapabilities, useDeclarativeCapabilities } from "@/hooks/use-capabilities";
 import { useEvals } from "@/hooks/use-evals";
 import { useApps } from "@/hooks/use-apps";
 import { useAgentIdentities } from "@/hooks/use-agent-identities";
@@ -221,6 +221,7 @@ const ID_PREFIX_MAP: Record<
   harness_: { category: "harness", label: "Harness", path: "/harnesses" },
   skill_: { category: "skill", label: "Skill", path: "/skills" },
   mcp_: { category: "mcp_server", label: "MCP Server", path: "/mcp-servers" },
+  cap_: { category: "capability", label: "Declarative Capability", path: "/capabilities" },
   eval_: { category: "eval", label: "Eval", path: "/evals" },
   app_: { category: "app", label: "App", path: "/apps" },
   vol_: { category: "id", label: "Volume", path: "/volumes" },
@@ -254,6 +255,7 @@ export function useGlobalSearch(query: string) {
   const { data: skillsData } = useSkills();
   const { data: mcpServersData } = useMcpServers();
   const { data: capabilitiesData } = useCapabilities();
+  const { data: declarativeCapabilitiesData } = useDeclarativeCapabilities();
   const { data: evalsData } = useEvals();
   const { data: appsData } = useApps();
   const { data: agentIdentitiesData } = useAgentIdentities();
@@ -264,6 +266,7 @@ export function useGlobalSearch(query: string) {
   const skills = skillsData ?? EMPTY_ARRAY;
   const mcpServers = mcpServersData ?? EMPTY_ARRAY;
   const capabilities = capabilitiesData ?? EMPTY_ARRAY;
+  const declarativeCapabilities = declarativeCapabilitiesData ?? EMPTY_ARRAY;
   const evals = evalsData ?? EMPTY_ARRAY;
   const apps = appsData ?? EMPTY_ARRAY;
   const agentIdentities = agentIdentitiesData ?? EMPTY_ARRAY;
@@ -307,6 +310,9 @@ export function useGlobalSearch(query: string) {
           resolvedName = skills.find((s) => s.id === idValue)?.name;
         } else if (prefix === "mcp_") {
           resolvedName = mcpServers.find((m) => m.id === idValue)?.name;
+        } else if (prefix === "cap_") {
+          const c = declarativeCapabilities.find((c) => c.id === idValue);
+          resolvedName = c?.display_name ?? c?.name;
         } else if (prefix === "eval_") {
           resolvedName = evals.find((e) => e.id === idValue)?.name;
         } else if (prefix === "app_") {
@@ -321,7 +327,7 @@ export function useGlobalSearch(query: string) {
           icon: Boxes,
           title: resolvedName ? `${meta.label}: ${resolvedName}` : `Go to ${meta.label}`,
           subtitle: idValue,
-          href: `${meta.path}/${idValue}`,
+          href: prefix === "cap_" ? meta.path : `${meta.path}/${idValue}`,
         });
       }
     }
@@ -467,6 +473,33 @@ export function useGlobalSearch(query: string) {
       }
     }
 
+    // 8b. Declarative capability resources by public ID/display name
+    for (const capability of declarativeCapabilities) {
+      if (capabilityCount >= MAX_PER_CATEGORY) break;
+      if (
+        matchesTokens(
+          tokens,
+          capability.name,
+          capability.display_name,
+          capability.description,
+          capability.id,
+          capability.capability_id,
+          "declarative capability",
+        )
+      ) {
+        const title = capability.display_name ?? capability.name;
+        results.push({
+          id: `declarative-capability:${capability.id}`,
+          category: "capability",
+          icon: Puzzle,
+          title,
+          subtitle: `Capabilities > ${capability.capability_id}`,
+          href: "/capabilities",
+        });
+        capabilityCount++;
+      }
+    }
+
     // 9. Evals
     let evalCount = 0;
     for (const ev of evals) {
@@ -529,6 +562,7 @@ export function useGlobalSearch(query: string) {
     skills,
     mcpServers,
     capabilities,
+    declarativeCapabilities,
     evals,
     apps,
     agentIdentities,

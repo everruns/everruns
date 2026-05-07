@@ -6,6 +6,67 @@ Capabilities are modular functionality units that extend Agent behavior. A Capab
 
 ## Requirements
 
+### Persisted Declarative Capabilities
+
+Declarative capabilities are organization-scoped, database-backed capability
+definitions with a stable capability reference shape `declarative:{name}`.
+The persisted resource follows the standard dual-ID pattern: an internal UUID
+primary key for storage and foreign keys, and a public API ID
+`cap_<32-hex>` exposed as `id` in API responses and URLs. They cover capability
+contributions that are safe to describe as data rather than custom code:
+
+- System prompt additions
+- Scoped remote MCP server configuration
+- Text file mounts in the session filesystem
+- Skill packages mounted under `/.agents/skills/{name}` and discovered by the
+  built-in `skills` capability
+- UI feature strings and dependency declarations
+
+They do not define arbitrary server-side tools. Tool execution still comes from
+built-in capabilities, MCP servers, uploaded skills, or client-side tools.
+Before runtime assembly, the control plane hydrates the persisted definition
+into the selected capability config. This lets dev mode and full worker mode
+execute the same declarative capability without workers reading the database.
+
+CRUD API:
+
+- `GET /v1/capabilities` lists built-in, MCP, skill, and active declarative
+  capability refs in one registry response.
+- `POST /v1/capabilities` creates a persisted declarative capability.
+- `GET /v1/capabilities/declarative` lists persisted declarative capability
+  resources, including archived records when requested.
+- `GET /v1/capabilities/declarative/{public_id}`
+- `PATCH /v1/capabilities/declarative/{public_id}`
+- `DELETE /v1/capabilities/declarative/{public_id}`
+- `POST /v1/capabilities/declarative/{public_id}/delete`
+
+The capability reference used on agents, harnesses, sessions, search results,
+and MCP/catalog surfaces is `declarative:<unique_name>`. Names are unique per
+organization, lowercase, bounded to fit existing capability reference columns,
+and validated before persistence.
+
+Agent and harness write APIs also accept the plain unique name as a convenience:
+`{ "ref": "research_pack" }` is normalized to `{ "ref": "declarative:research_pack" }`
+before validation and persistence when no built-in capability with that ID
+exists. Built-in IDs keep priority to avoid ambiguous references.
+
+Declarative capability resources store both:
+
+- `name`: unique addressable name, used in `declarative:<name>`.
+- `display_name`: optional user-facing label. When present, registry/search/UI
+  use it as the title while retaining the unique name for references.
+
+Security constraints:
+
+- Records are org-scoped and policy-gated like other agent building blocks.
+- Definitions are bounded by server-side size/count limits.
+- File mounts are text-only and reject traversal paths.
+- Skill names and bundled file paths are validated before persistence.
+- MCP server URLs use the same SSRF-safe scoped-MCP validation as harness,
+  agent, and session `mcpServers`.
+- Declarative dependencies cannot point to other declarative capabilities,
+  avoiding persisted dependency cycles across org data.
+
 ### Concept
 
 A Capability is an abstraction that defines added functionality for an Agent:
@@ -101,8 +162,9 @@ Capability IDs are string-based for extensibility. New capabilities can be added
 |------|--------|---------|
 | Built-in | `snake_case` identifier | `current_time`, `web_fetch` |
 | MCP | `mcp:{server_uuid}` | `mcp:01933b5a-0000-7000-8000-000000000501` |
+| Declarative | `declarative:{name}` | `declarative:research_pack` |
 
-**Built-in IDs** use `snake_case` naming and are validated against the `CapabilityRegistry`. **MCP IDs** use the `mcp:` prefix followed by the MCP server's UUID. See `specs/mcp-servers.md` for details.
+**Built-in IDs** use `snake_case` naming and are validated against the `CapabilityRegistry`. **MCP IDs** use the `mcp:` prefix followed by the MCP server's UUID. **Declarative IDs** use the `declarative:` prefix followed by the persisted definition's unique name. See `specs/mcp-servers.md` for MCP details.
 
 For the full list of built-in capability IDs, see `crates/core/src/capabilities/mod.rs` (registry initialization).
 

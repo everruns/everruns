@@ -355,7 +355,14 @@ These values are durable user defaults. They do not override explicit per-messag
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/v1/capabilities` | List available capabilities |
+| POST | `/v1/capabilities` | Create a persisted declarative capability |
 | GET | `/v1/capabilities/{capability_id}` | Get capability details |
+| GET | `/v1/capabilities/declarative/config` | Declarative capability policy results for UI gating |
+| GET | `/v1/capabilities/declarative` | List persisted declarative capability resources |
+| GET | `/v1/capabilities/declarative/{public_id}` | Get a persisted declarative capability resource |
+| PATCH | `/v1/capabilities/declarative/{public_id}` | Update a persisted declarative capability resource |
+| DELETE | `/v1/capabilities/declarative/{public_id}` | Archive a persisted declarative capability resource |
+| POST | `/v1/capabilities/declarative/{public_id}/delete` | Permanently delete an archived declarative capability resource |
 
 Capabilities are modular functionality units that can be enabled on agents. They provide:
 - **Tool groups**: Sets of related tools (e.g., `session_file_system` provides read/write/grep tools)

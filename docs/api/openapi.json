@@ -926,6 +926,287 @@
             }
           }
         }
+      },
+      "post": {
+        "tags": [
+          "capabilities"
+        ],
+        "summary": "POST /v1/capabilities - Create a persisted declarative capability.",
+        "operationId": "create_declarative_capability",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDeclarativeCapabilityRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Declarative capability created. Response id uses cap_<32-hex>; capability_id uses declarative:<unique_name>.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithUrls_DeclarativeCapability"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid declarative capability definition, name, limits, file mount, skill, or MCP server configuration.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A declarative capability with the same unique name already exists.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/capabilities/declarative": {
+      "get": {
+        "tags": [
+          "capabilities"
+        ],
+        "summary": "GET /v1/capabilities/declarative - List persisted declarative resources.",
+        "operationId": "list_declarative_capabilities",
+        "parameters": [
+          {
+            "name": "search",
+            "in": "query",
+            "description": "Search by unique name, display name, or description",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "include_archived",
+            "in": "query",
+            "description": "Include archived declarative capabilities",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Persisted declarative capability resources",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_WithUrls_DeclarativeCapability"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/capabilities/declarative/config": {
+      "get": {
+        "tags": [
+          "capabilities"
+        ],
+        "summary": "GET /v1/capabilities/declarative/config",
+        "operationId": "declarative_capabilities_config",
+        "responses": {
+          "200": {
+            "description": "Resource config for declarative capabilities",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResourceConfigResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/capabilities/declarative/{capability_id}": {
+      "get": {
+        "tags": [
+          "capabilities"
+        ],
+        "summary": "GET /v1/capabilities/declarative/{capability_id} - Get a declarative resource.",
+        "operationId": "get_declarative_capability",
+        "parameters": [
+          {
+            "name": "capability_id",
+            "in": "path",
+            "description": "Public declarative capability resource ID, e.g. cap_01933b5a000070008000000000000001",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Declarative capability resource",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithUrls_DeclarativeCapability"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Declarative capability not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "capabilities"
+        ],
+        "summary": "DELETE /v1/capabilities/declarative/{capability_id} - Archive a declarative resource.",
+        "operationId": "delete_declarative_capability",
+        "parameters": [
+          {
+            "name": "capability_id",
+            "in": "path",
+            "description": "Public declarative capability resource ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Declarative capability archived"
+          },
+          "404": {
+            "description": "Declarative capability not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "capabilities"
+        ],
+        "summary": "PATCH /v1/capabilities/declarative/{capability_id} - Update a declarative resource.",
+        "operationId": "update_declarative_capability",
+        "parameters": [
+          {
+            "name": "capability_id",
+            "in": "path",
+            "description": "Public declarative capability resource ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDeclarativeCapabilityRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Declarative capability updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithUrls_DeclarativeCapability"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid update payload or declarative capability definition",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A declarative capability with the same unique name already exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/capabilities/declarative/{capability_id}/delete": {
+      "post": {
+        "tags": [
+          "capabilities"
+        ],
+        "summary": "POST /v1/capabilities/declarative/{capability_id}/delete - Permanently delete archived resource.",
+        "operationId": "destroy_declarative_capability",
+        "parameters": [
+          {
+            "name": "capability_id",
+            "in": "path",
+            "description": "Public declarative capability resource ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Archived declarative capability permanently deleted"
+          },
+          "404": {
+            "description": "Declarative capability not found or not archived",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/v1/capabilities/{capability_id}": {
@@ -7958,6 +8239,18 @@
           }
         }
       },
+      "CreateDeclarativeCapabilityRequest": {
+        "type": "object",
+        "required": [
+          "definition"
+        ],
+        "properties": {
+          "definition": {
+            "type": "object",
+            "description": "Definition for the new declarative capability. `name` must be unique per org and becomes the canonical `declarative:<name>` capability ref."
+          }
+        }
+      },
       "CreateFileRequest": {
         "type": "object",
         "description": "Request to create a file",
@@ -8616,6 +8909,80 @@
           },
           "updated_at": {
             "type": "string"
+          }
+        }
+      },
+      "DeclarativeCapability": {
+        "type": "object",
+        "required": [
+          "id",
+          "capability_id",
+          "name",
+          "description",
+          "status",
+          "definition",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "archived_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "capability_id": {
+            "type": "string",
+            "description": "Runtime capability reference. Agents and harnesses may use this or the plain unique name.",
+            "example": "declarative:research_pack"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "definition": {
+            "type": "object",
+            "description": "Declarative capability payload: system prompt, skills, starter files, MCP servers, and metadata."
+          },
+          "deleted_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "description": {
+            "type": "string",
+            "description": "Short summary shown in pickers, search results, and API listings.",
+            "example": "Adds research instructions, starter files, and MCP tools."
+          },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-facing label shown in the UI. Defaults to `name` when omitted.",
+            "example": "Research Pack"
+          },
+          "id": {
+            "type": "string",
+            "description": "Public resource ID for this persisted declarative capability.",
+            "example": "cap_01933b5a000070008000000000000001"
+          },
+          "name": {
+            "type": "string",
+            "description": "Stable unique name used in capability refs. Lowercase letters, numbers, and underscores.",
+            "example": "research_pack"
+          },
+          "status": {
+            "type": "string",
+            "description": "Lifecycle state for the resource: active, disabled, archived, or deleted.",
+            "example": "active"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },
@@ -11556,6 +11923,120 @@
                   "format": "date-time"
                 }
               }
+            },
+            "description": "Array of items returned by the list operation."
+          }
+        }
+      },
+      "ListResponse_WithUrls_DeclarativeCapability": {
+        "type": "object",
+        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "allOf": [
+                {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "capability_id",
+                    "name",
+                    "description",
+                    "status",
+                    "definition",
+                    "created_at",
+                    "updated_at"
+                  ],
+                  "properties": {
+                    "archived_at": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "date-time"
+                    },
+                    "capability_id": {
+                      "type": "string",
+                      "description": "Runtime capability reference. Agents and harnesses may use this or the plain unique name.",
+                      "example": "declarative:research_pack"
+                    },
+                    "created_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "definition": {
+                      "type": "object",
+                      "description": "Declarative capability payload: system prompt, skills, starter files, MCP servers, and metadata."
+                    },
+                    "deleted_at": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "format": "date-time"
+                    },
+                    "description": {
+                      "type": "string",
+                      "description": "Short summary shown in pickers, search results, and API listings.",
+                      "example": "Adds research instructions, starter files, and MCP tools."
+                    },
+                    "display_name": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "Human-facing label shown in the UI. Defaults to `name` when omitted.",
+                      "example": "Research Pack"
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Public resource ID for this persisted declarative capability.",
+                      "example": "cap_01933b5a000070008000000000000001"
+                    },
+                    "name": {
+                      "type": "string",
+                      "description": "Stable unique name used in capability refs. Lowercase letters, numbers, and underscores.",
+                      "example": "research_pack"
+                    },
+                    "status": {
+                      "type": "string",
+                      "description": "Lifecycle state for the resource: active, disabled, archived, or deleted.",
+                      "example": "active"
+                    },
+                    "updated_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "self_url",
+                    "view_url",
+                    "ui_link"
+                  ],
+                  "properties": {
+                    "self_url": {
+                      "type": "string",
+                      "description": "Full API endpoint URL for this resource."
+                    },
+                    "ui_link": {
+                      "type": "string",
+                      "description": "Alias for `view_url`, used by command and MCP outputs."
+                    },
+                    "view_url": {
+                      "type": "string",
+                      "description": "Full UI URL for viewing this resource."
+                    }
+                  }
+                }
+              ],
+              "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer)."
             },
             "description": "Array of items returned by the list operation."
           }
@@ -17433,6 +17914,23 @@
           }
         }
       },
+      "UpdateDeclarativeCapabilityRequest": {
+        "type": "object",
+        "properties": {
+          "definition": {
+            "type": "object",
+            "description": "Replacement declarative definition. Changing `name` updates the canonical capability ref after uniqueness validation."
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional lifecycle state update. Use `disabled` to hide from runtime selection without archiving.",
+            "example": "disabled"
+          }
+        }
+      },
       "UpdateFileRequest": {
         "type": "object",
         "description": "Request to update a file",
@@ -18404,6 +18902,107 @@
                   "type": "object"
                 },
                 "description": "Tool definitions provided by this capability"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "self_url",
+              "view_url",
+              "ui_link"
+            ],
+            "properties": {
+              "self_url": {
+                "type": "string",
+                "description": "Full API endpoint URL for this resource."
+              },
+              "ui_link": {
+                "type": "string",
+                "description": "Alias for `view_url`, used by command and MCP outputs."
+              },
+              "view_url": {
+                "type": "string",
+                "description": "Full UI URL for viewing this resource."
+              }
+            }
+          }
+        ],
+        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer)."
+      },
+      "WithUrls_DeclarativeCapability": {
+        "allOf": [
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "capability_id",
+              "name",
+              "description",
+              "status",
+              "definition",
+              "created_at",
+              "updated_at"
+            ],
+            "properties": {
+              "archived_at": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              },
+              "capability_id": {
+                "type": "string",
+                "description": "Runtime capability reference. Agents and harnesses may use this or the plain unique name.",
+                "example": "declarative:research_pack"
+              },
+              "created_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "definition": {
+                "type": "object",
+                "description": "Declarative capability payload: system prompt, skills, starter files, MCP servers, and metadata."
+              },
+              "deleted_at": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              },
+              "description": {
+                "type": "string",
+                "description": "Short summary shown in pickers, search results, and API listings.",
+                "example": "Adds research instructions, starter files, and MCP tools."
+              },
+              "display_name": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Human-facing label shown in the UI. Defaults to `name` when omitted.",
+                "example": "Research Pack"
+              },
+              "id": {
+                "type": "string",
+                "description": "Public resource ID for this persisted declarative capability.",
+                "example": "cap_01933b5a000070008000000000000001"
+              },
+              "name": {
+                "type": "string",
+                "description": "Stable unique name used in capability refs. Lowercase letters, numbers, and underscores.",
+                "example": "research_pack"
+              },
+              "status": {
+                "type": "string",
+                "description": "Lifecycle state for the resource: active, disabled, archived, or deleted.",
+                "example": "active"
+              },
+              "updated_at": {
+                "type": "string",
+                "format": "date-time"
               }
             }
           },

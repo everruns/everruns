@@ -20,12 +20,12 @@ use everruns_durable::UpdateField;
 use everruns_server::api::common::Pagination;
 use everruns_server::org_init;
 use everruns_server::storage::{
-    CreateAgentCapabilityRow, CreateAgentRow, CreateAppRow, CreateEventRow, CreateHarnessRow,
-    CreateImageRow, CreateLlmModelRow, CreateLlmProviderRow, CreateMcpServerRow,
-    CreateOrganizationRow, CreatePrincipalRow, CreateSessionFileRow, CreateSessionRow,
-    CreateUserConnectionRow, CreateUserRow, Database, StorageBackend, UpdateAgent, UpdateLlmModel,
-    UpdateLlmProvider, UpdateOrganization, UpdateOrganizationSettings, UpdateSession,
-    UpdateSessionFile,
+    CreateAgentCapabilityRow, CreateAgentRow, CreateAppRow, CreateDeclarativeCapabilityRow,
+    CreateEventRow, CreateHarnessRow, CreateImageRow, CreateLlmModelRow, CreateLlmProviderRow,
+    CreateMcpServerRow, CreateOrganizationRow, CreatePrincipalRow, CreateSessionFileRow,
+    CreateSessionRow, CreateUserConnectionRow, CreateUserRow, Database, StorageBackend,
+    UpdateAgent, UpdateDeclarativeCapability, UpdateLlmModel, UpdateLlmProvider,
+    UpdateOrganization, UpdateOrganizationSettings, UpdateSession, UpdateSessionFile,
 };
 use test_harness::get_database_url;
 
@@ -252,6 +252,114 @@ async fn test_agent_upsert_initial_files() {
         .expect("Failed to get agent")
         .expect("Agent not found");
     assert_eq!(fetched.initial_files[0]["content"], "new");
+}
+
+#[tokio::test]
+async fn test_declarative_capability_crud_and_search_postgres() {
+    let backend = create_test_backend().await;
+    let unique = Uuid::now_v7().to_string();
+    let name = format!("repo_cap_{}", &unique[..8]);
+
+    let capability = backend
+        .create_declarative_capability(
+            TEST_ORG_ID,
+            CreateDeclarativeCapabilityRow {
+                public_id: everruns_core::DeclarativeCapabilityId::new().to_string(),
+                name: name.clone(),
+                display_name: Some("Repository Capability".to_string()),
+                description: "Searchable declarative capability".to_string(),
+                definition: json!({
+                    "name": name,
+                    "display_name": "Repository Capability",
+                    "description": "Searchable declarative capability",
+                    "system_prompt": "Use the repository workflow.",
+                    "skills": [],
+                    "files": [],
+                    "mcp_servers": {}
+                }),
+            },
+        )
+        .await
+        .expect("create declarative capability");
+
+    assert!(capability.public_id.starts_with("cap_"));
+    assert_eq!(
+        capability.display_name.as_deref(),
+        Some("Repository Capability")
+    );
+
+    let by_name = backend
+        .get_declarative_capability_by_name(TEST_ORG_ID, &capability.name)
+        .await
+        .expect("get by name")
+        .expect("capability by name");
+    assert_eq!(by_name.id, capability.id);
+
+    let by_public_id = backend
+        .get_declarative_capability_by_public_id(TEST_ORG_ID, &capability.public_id)
+        .await
+        .expect("get by public id")
+        .expect("capability by public id");
+    assert_eq!(by_public_id.id, capability.id);
+
+    let by_display_name = backend
+        .list_declarative_capabilities(TEST_ORG_ID, Some("repository"), false)
+        .await
+        .expect("search by display name");
+    assert!(by_display_name.iter().any(|row| row.id == capability.id));
+
+    let updated = backend
+        .update_declarative_capability(
+            TEST_ORG_ID,
+            capability.id,
+            UpdateDeclarativeCapability {
+                display_name: Some("Repository Capability Updated".to_string()),
+                description: Some("Updated searchable declarative capability".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("update declarative capability")
+        .expect("updated capability");
+    assert_eq!(
+        updated.display_name.as_deref(),
+        Some("Repository Capability Updated")
+    );
+
+    let cleared_display_name = backend
+        .update_declarative_capability(
+            TEST_ORG_ID,
+            capability.id,
+            UpdateDeclarativeCapability {
+                display_name: None,
+                definition: Some(json!({
+                    "name": capability.name,
+                    "description": "Updated searchable declarative capability",
+                    "system_prompt": "Use the repository workflow.",
+                    "skills": [],
+                    "files": [],
+                    "mcp_servers": {}
+                })),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("clear declarative capability display name")
+        .expect("updated capability");
+    assert_eq!(cleared_display_name.display_name, None);
+
+    assert!(
+        backend
+            .delete_declarative_capability(TEST_ORG_ID, capability.id)
+            .await
+            .expect("archive declarative capability")
+    );
+    let archived = backend
+        .get_declarative_capability(TEST_ORG_ID, capability.id)
+        .await
+        .expect("get archived capability")
+        .expect("archived capability");
+    assert_eq!(archived.status, "archived");
 }
 
 #[tokio::test]

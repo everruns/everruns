@@ -459,6 +459,10 @@ impl WorkerAdapters for DirectWorkerAdapters {
                     .get_agent_capabilities(r.id.uuid())
                     .await
                     .unwrap_or_default();
+                let capabilities = self
+                    .hydrate_capability_rows(org_id, capabilities)
+                    .await
+                    .unwrap_or_default();
                 Ok(Some(Self::row_to_agent(r, capabilities)))
             }
             None => Ok(None),
@@ -480,9 +484,21 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 store_error("Failed to get session")
             })?;
 
-        Ok(row.map(|r| {
+        let Some(r) = row else {
+            return Ok(None);
+        };
+        let capabilities = serde_json::from_value(r.capabilities).unwrap_or_default();
+        let capabilities =
+            crate::domains::capabilities::queries::hydrate_declarative_capability_configs(
+                &self.db,
+                org_id,
+                capabilities,
+            )
+            .await
+            .unwrap_or_default();
+
+        Ok(Some({
             // Parse capabilities from JSON
-            let capabilities = serde_json::from_value(r.capabilities).unwrap_or_default();
             Session {
                 id: r.id,
                 organization_id: everruns_core::org_public_id_from_internal(org_id),
@@ -1230,7 +1246,11 @@ impl WorkerAdapters for DirectWorkerAdapters {
                     .await
                     .unwrap_or_default();
 
-                let agent = Self::row_to_agent(row, capability_rows);
+                let hydrated_capabilities = self
+                    .hydrate_capability_rows(org_id, capability_rows)
+                    .await
+                    .unwrap_or_default();
+                let agent = Self::row_to_agent(row, hydrated_capabilities);
 
                 (Some(agent), mcp_tools)
             } else {
@@ -1554,6 +1574,14 @@ impl DirectWorkerAdapters {
                 .into_iter()
                 .map(|cap| AgentCapabilityConfig::with_config(cap.capability_id, cap.config))
                 .collect();
+            let capabilities =
+                crate::domains::capabilities::queries::hydrate_declarative_capability_configs(
+                    &self.db,
+                    org_id,
+                    capabilities,
+                )
+                .await
+                .unwrap_or_default();
 
             cursor = row.parent_harness_id;
             chain.push(Harness {
@@ -1600,7 +1628,7 @@ impl DirectWorkerAdapters {
     /// Used by both `get_agent` (standalone) and `load_turn_context`
     /// (where capabilities are loaded once and shared across consumers).
     /// Convert an AgentRow + capability rows into an Agent domain object.
-    fn row_to_agent(r: AgentRow, capability_rows: Vec<AgentCapabilityRow>) -> Agent {
+    fn row_to_agent(r: AgentRow, capabilities: Vec<AgentCapabilityConfig>) -> Agent {
         Agent {
             public_id: r
                 .public_id
@@ -1613,10 +1641,7 @@ impl DirectWorkerAdapters {
             system_prompt: r.system_prompt,
             default_model_id: r.default_model_id,
             tags: r.tags,
-            capabilities: capability_rows
-                .into_iter()
-                .map(|c| AgentCapabilityConfig::with_config(c.capability_id, c.config))
-                .collect(),
+            capabilities,
             initial_files: serde_json::from_value(r.initial_files).unwrap_or_default(),
             mcp_servers: serde_json::from_value(r.mcp_servers).unwrap_or_default(),
             network_access: r
@@ -1636,6 +1661,24 @@ impl DirectWorkerAdapters {
             deleted_at: r.deleted_at,
             usage: None,
         }
+    }
+
+    async fn hydrate_capability_rows(
+        &self,
+        org_id: i64,
+        capability_rows: Vec<AgentCapabilityRow>,
+    ) -> Result<Vec<AgentCapabilityConfig>> {
+        let capabilities = capability_rows
+            .into_iter()
+            .map(|c| AgentCapabilityConfig::with_config(c.capability_id, c.config))
+            .collect();
+        crate::domains::capabilities::queries::hydrate_declarative_capability_configs(
+            &self.db,
+            org_id,
+            capabilities,
+        )
+        .await
+        .map_err(|error| store_error(format!("Failed to hydrate capabilities: {error}")))
     }
 
     /// Build MCP tool definitions from pre-loaded capability rows.

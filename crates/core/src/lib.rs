@@ -254,26 +254,31 @@ pub use capabilities::SystemPromptContext;
 pub use capabilities::{
     AddTool, AgentBlueprint, AgentCapabilityConfig, AppliedCapabilities, BlueprintModel,
     Capability, CapabilityId, CapabilityRegistry, CapabilityRegistryBuilder, CapabilityStatus,
-    CollectedCapabilities, CurrentTimeCapability, DeleteFileTool, DependencyError, DivideTool,
-    FileSystemCapability, GetCurrentTimeTool, GetForecastTool, GetSessionInfoTool, GetWeatherTool,
-    GrepFilesTool, HUMAN_INTENT_CAPABILITY_ID, HumanIntentCapability,
-    INFINITY_CONTEXT_CAPABILITY_ID, InfinityContextCapability, IntegrationPlugin,
-    ListDirectoryTool, MAX_RESOLVED_CAPABILITIES, MCP_CAPABILITY_PREFIX, McpCapability,
-    MountAccess, MountDirectoryBuilder, MountEntry, MountPoint, MountSource, MultiplyTool,
-    NoopCapability, OPENAI_TOOL_SEARCH_CAPABILITY_ID, OpenAiToolSearchCapability,
+    CollectedCapabilities, CurrentTimeCapability, DECLARATIVE_CAPABILITY_PREFIX, DeleteFileTool,
+    DependencyError, DivideTool, FileSystemCapability, GetCurrentTimeTool, GetForecastTool,
+    GetSessionInfoTool, GetWeatherTool, GrepFilesTool, HUMAN_INTENT_CAPABILITY_ID,
+    HumanIntentCapability, INFINITY_CONTEXT_CAPABILITY_ID, InfinityContextCapability,
+    IntegrationPlugin, ListDirectoryTool, MAX_RESOLVED_CAPABILITIES, MCP_CAPABILITY_PREFIX,
+    McpCapability, MountAccess, MountDirectoryBuilder, MountEntry, MountPoint, MountSource,
+    MultiplyTool, NoopCapability, OPENAI_TOOL_SEARCH_CAPABILITY_ID, OpenAiToolSearchCapability,
     PlatformManagementCapability, QueryHistoryTool, ReadFileTool, ResearchCapability,
     ResolvedCapabilities, RiskLevel, SampleDataCapability, SessionCapability,
     SessionSandboxCapability, SessionSqlDatabaseCapability, SqlExecuteTool, SqlQueryTool,
     SqlSchemaTool, StatFileTool, StatelessTodoListCapability, SubtractTool, TestMathCapability,
     TestWeatherCapability, ToolCallHook, ToolDefinitionHook, WriteFileTool, WriteSessionTitleTool,
     WriteTodosTool, apply_capabilities, collect_capabilities, collect_capabilities_with_configs,
-    compute_features, get_dependencies, is_mcp_capability, mcp_capability_id,
-    parse_mcp_capability_id, resolve_dependencies,
+    compute_features, declarative_capability_id, declarative_capability_info, get_dependencies,
+    hydrate_declarative_capability_config, is_declarative_capability, is_mcp_capability,
+    mcp_capability_id, parse_declarative_capability_id, parse_mcp_capability_id,
+    resolve_dependencies, validate_declarative_capability_definition,
 };
 pub use capabilities::{
     AttachSkillCapability, SKILL_CAPABILITY_PREFIX, SKILLS_CAPABILITY_ID, SKILLS_DISCOVERY_PATH,
     SkillInstructions, SkillMeta, SkillSource, SkillsCapability, discover_skills_from_entries,
     is_skill_capability, parse_skill_capability_id, skill_capability_id,
+};
+pub use capabilities::{
+    DeclarativeCapabilityDefinition, DeclarativeCapabilityFile, DeclarativeCapabilitySkill,
 };
 
 // Atoms re-exports (stateless atomic operations)
@@ -364,10 +369,11 @@ pub use skill::{
     SkillValidationResult, parse_skill_md, validate_skill_md, validate_skill_name,
 };
 pub use typed_id::{
-    AgentId, AgentIdentityId, AppChannelId, AppId, EvalCaseId, EvalId, EvalResultId, EvalRunId,
-    EventId, ExecId, HarnessId, IdMarker, IdParseError, ImageId, KnowledgeBaseId, KnowledgeEntryId,
-    LeasedResourceId, McpServerId, MemoryId, MemoryStoreId, MessageId, ModelId, NotificationId,
-    OrgId, PrincipalId, ProviderId, ScheduleId, SessionId, SkillId, TurnId, TypedId,
+    AgentId, AgentIdentityId, AppChannelId, AppId, DeclarativeCapabilityId, EvalCaseId, EvalId,
+    EvalResultId, EvalRunId, EventId, ExecId, HarnessId, IdMarker, IdParseError, ImageId,
+    KnowledgeBaseId, KnowledgeEntryId, LeasedResourceId, McpServerId, MemoryId, MemoryStoreId,
+    MessageId, ModelId, NotificationId, OrgId, PrincipalId, ProviderId, ScheduleId, SessionId,
+    SkillId, TurnId, TypedId,
 };
 
 // Audit logging re-exports

@@ -178,6 +178,25 @@ List all available capabilities:
 curl -X GET http://localhost:9300/api/v1/capabilities
 ```
 
+Create a declarative capability:
+
+```bash
+curl -X POST http://localhost:9300/api/v1/capabilities \
+  -H "Content-Type: application/json" \
+  -d '{
+    "definition": {
+      "name": "research_pack",
+      "display_name": "Research Pack",
+      "description": "Default research behavior and resources.",
+      "system_prompt": "Prefer primary sources and cite them clearly."
+    }
+  }'
+```
+
+Use it from agents or harnesses with `declarative:research_pack`, or with the
+plain `research_pack` name on write APIs; the server stores the canonical
+`declarative:research_pack` reference.
+
 ## Capability Application Flow
 
 When a session runs, capabilities are applied as follows:
