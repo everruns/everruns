@@ -323,10 +323,11 @@ impl SessionService {
                 tag.starts_with("app:")
                     || tag.starts_with("app_channel:")
                     || tag.starts_with("slack:app:")
+                    || tag.starts_with("ag_ui:app:")
             })
         {
             return Err(BadRequestError::new(
-                "Tags with 'app:', 'app_channel:', or 'slack:app:' prefix are reserved for internal subsystems",
+                "Tags with 'app:', 'app_channel:', 'slack:app:', or 'ag_ui:app:' prefix are reserved for internal subsystems",
             )
             .into());
         }
@@ -862,11 +863,12 @@ impl SessionService {
                     tag.starts_with("app:")
                         || tag.starts_with("app_channel:")
                         || tag.starts_with("slack:app:")
+                        || tag.starts_with("ag_ui:app:")
                 })
             })
         {
             return Err(BadRequestError::new(
-                "Tags with 'app:', 'app_channel:', or 'slack:app:' prefix are reserved for internal subsystems",
+                "Tags with 'app:', 'app_channel:', 'slack:app:', or 'ag_ui:app:' prefix are reserved for internal subsystems",
             )
             .into());
         }
@@ -2526,6 +2528,7 @@ mod tests {
             vec!["app:app_other".to_string()],
             vec!["app_channel:appchan_other".to_string()],
             vec!["slack:app:app_legacy_other".to_string()],
+            vec!["ag_ui:app:app_ag_ui_other".to_string()],
         ] {
             let err = session_service
                 .update(
@@ -2575,6 +2578,7 @@ mod tests {
             "app:app_someone_else",
             "app_channel:appchan_someone_else",
             "slack:app:app_legacy_someone_else",
+            "ag_ui:app:app_ag_ui_someone_else",
         ] {
             let mut req = build_create_request(harness.id, None, None);
             req.tags = vec![forbidden.to_string()];
