@@ -16,6 +16,13 @@ describe("McpCardIframe", () => {
     expect(iframe.title).toContain(URI);
   });
 
+  it("allows hosts to override the default entity-card max width", () => {
+    const { container } = render(<McpCardIframe uri={URI} html={SAMPLE_HTML} maxWidth="100%" />);
+    const iframe = container.querySelector("iframe")!;
+
+    expect(iframe.style.maxWidth).toBe("100%");
+  });
+
   it("ignores postMessage events whose source is not the iframe contentWindow", () => {
     const onAction = jest.fn();
     render(<McpCardIframe uri={URI} html={SAMPLE_HTML} onAction={onAction} />);
