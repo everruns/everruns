@@ -687,6 +687,22 @@ async fn invoke_app_channel_inner(
     services: InvocationServices<'_>,
     request: InvocationRequest,
 ) -> Result<AppInvocationResult, CommandError> {
+    invoke_app_channel_inner_with_hook(services, request, |_session_id| async { Ok(()) }).await
+}
+
+/// Variant of [`invoke_app_channel_inner`] that runs a caller-supplied async
+/// hook between session resolution and message dispatch. The hook gives
+/// streaming callers a deterministic point to start an event subscription so
+/// they cannot miss workflow events that the dispatched turn emits.
+async fn invoke_app_channel_inner_with_hook<F, Fut>(
+    services: InvocationServices<'_>,
+    request: InvocationRequest,
+    after_session_resolved: F,
+) -> Result<AppInvocationResult, CommandError>
+where
+    F: FnOnce(SessionId) -> Fut,
+    Fut: std::future::Future<Output = Result<(), CommandError>>,
+{
     let InvocationRequest {
         app,
         channel,
@@ -740,6 +756,11 @@ async fn invoke_app_channel_inner(
         source,
     )
     .await?;
+
+    // Subscribe-before-dispatch hook: streaming callers register here so the
+    // workflow events emitted by `dispatch_invocation_message` cannot race
+    // ahead of the SSE subscription.
+    after_session_resolved(session_id).await?;
 
     dispatch_invocation_message(
         services.message_service,
@@ -822,6 +843,36 @@ pub async fn invoke_a2a_app_channel(
     req: A2aInvocationRequest,
     request_id: Option<String>,
 ) -> Result<AppInvocationResult, CommandError> {
+    invoke_a2a_app_channel_with_hook(
+        db,
+        encryption,
+        session_service,
+        message_service,
+        req,
+        request_id,
+        |_session_id| async { Ok(()) },
+    )
+    .await
+}
+
+/// Variant of [`invoke_a2a_app_channel`] that runs a caller-supplied async
+/// hook between session resolution and message dispatch. Streaming callers
+/// use the hook to subscribe to session events at the safe point — before
+/// the durable workflow that the dispatched message triggers can emit any
+/// translatable events.
+pub async fn invoke_a2a_app_channel_with_hook<F, Fut>(
+    db: &Arc<crate::storage::StorageBackend>,
+    encryption: Option<&Arc<crate::storage::encryption::EncryptionService>>,
+    session_service: &SessionService,
+    message_service: &MessageService,
+    req: A2aInvocationRequest,
+    request_id: Option<String>,
+    after_session_resolved: F,
+) -> Result<AppInvocationResult, CommandError>
+where
+    F: FnOnce(SessionId) -> Fut,
+    Fut: std::future::Future<Output = Result<(), CommandError>>,
+{
     let app = q::get_by_public_id_unscoped(db, encryption, &req.app_id)
         .await
         .map_err(classify_anyhow)?
@@ -860,7 +911,7 @@ pub async fn invoke_a2a_app_channel(
         },
     });
 
-    invoke_app_channel_inner(
+    invoke_app_channel_inner_with_hook(
         InvocationServices {
             db,
             session_service,
@@ -874,6 +925,7 @@ pub async fn invoke_a2a_app_channel(
             template_context,
             request_id,
         },
+        after_session_resolved,
     )
     .await
 }

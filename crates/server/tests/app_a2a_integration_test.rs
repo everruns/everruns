@@ -327,6 +327,57 @@ async fn a2a_rejects_unsupported_methods_and_empty_text() {
     assert_eq!(response["error"]["code"], -32602);
 }
 
+/// `message/stream` is dispatched to the streaming branch (it must NOT return
+/// `-32601 Method not found`). A full happy-path SSE assertion (content-type,
+/// initial `working` frame, terminal `status-update final=true`) is covered
+/// by the unit tests on `translate_session_event` and `jsonrpc_sse_frame` in
+/// `crates/server/src/api/app_a2a.rs`; that path requires an LLM provider to
+/// emit a terminal turn event, which the in-memory test harness does not
+/// configure. This integration test verifies the dispatch behavior at the
+/// HTTP layer without consuming the long-lived stream body.
+#[tokio::test]
+async fn a2a_message_stream_dispatches_to_streaming_branch() {
+    let server = TestServer::in_memory().await;
+    let (app, api_key) = create_app_with_a2a(&server, "a2a-stream", "{{a2a.text}}").await;
+    let app_id = app["id"].as_str().unwrap();
+    let channel_id = app["channels"][0]["id"].as_str().unwrap();
+    publish_app(&server, app_id).await;
+
+    // Empty parts must reach `parse_message_params` inside the streaming
+    // branch and surface as `-32602 Invalid params`. If the method gate
+    // rejected `message/stream` outright we would see `-32601` instead.
+    let body = serde_json::to_vec(&json!({
+        "jsonrpc": "2.0",
+        "id": "stream-empty",
+        "method": "message/stream",
+        "params": {
+            "message": { "role": "user", "parts": [] }
+        }
+    }))
+    .unwrap();
+    let response: Value = server
+        .request_raw(
+            Method::POST,
+            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            vec![
+                ("content-type", "application/json"),
+                ("authorization", &format!("Bearer {api_key}")),
+            ],
+            body,
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(response["error"]["code"], -32602);
+    assert!(
+        response["error"]["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("non-empty text part"),
+        "expected -32602 to come from parse_message_params: {response:?}",
+    );
+}
+
 #[tokio::test]
 async fn a2a_agent_card_published_only_when_live() {
     let server = TestServer::in_memory().await;

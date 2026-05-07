@@ -29,8 +29,10 @@ use serde_json::{Value, json};
 use uuid::Uuid;
 
 use crate::api::common::ErrorResponse;
+use crate::api::sse::SseConnectionTracker;
 use crate::domains::apps::{
-    A2aInvocationRequest, hash_a2a_api_key, invoke_a2a_app_channel, queries as app_queries,
+    A2aInvocationRequest, hash_a2a_api_key, invoke_a2a_app_channel,
+    invoke_a2a_app_channel_with_hook, queries as app_queries,
 };
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
@@ -54,6 +56,7 @@ pub struct AppA2aState {
     pub session_service: Arc<SessionService>,
     pub message_service: Arc<MessageService>,
     pub event_delivery: EventDelivery,
+    pub sse_tracker: Arc<SseConnectionTracker>,
 }
 
 impl AppA2aState {
@@ -63,6 +66,7 @@ impl AppA2aState {
         runner: Arc<dyn everruns_worker::AgentRunner>,
         notifications_enabled: bool,
         event_delivery: EventDelivery,
+        sse_tracker: Arc<SseConnectionTracker>,
     ) -> Self {
         Self {
             session_service: Arc::new(SessionService::new(db.clone())),
@@ -75,6 +79,7 @@ impl AppA2aState {
             db,
             encryption,
             event_delivery,
+            sse_tracker,
         }
     }
 }
@@ -206,6 +211,7 @@ pub async fn invoke_a2a(
 /// check that both `message/send` and `message/stream` need to perform up
 /// front before any session work.
 struct AuthorizedA2a {
+    org_id: i64,
     // Kept for future use (per-channel rate limits, telemetry).
     _channel_id: everruns_core::typed_id::AppChannelId,
 }
@@ -253,6 +259,7 @@ async fn authenticate_request(
     }
 
     Ok(AuthorizedA2a {
+        org_id: app.org_id,
         _channel_id: channel_id_typed,
     })
 }
@@ -357,16 +364,18 @@ async fn handle_message_send(
     (StatusCode::OK, rpc_success(rpc_id, task)).into_response()
 }
 
-// THREAT[TM-A2A-009]: Streaming widens the per-channel ingress surface from
+// THREAT[TM-A2A-011]: Streaming widens the per-channel ingress surface from
 // a single JSON-RPC response to a long-lived SSE connection that mirrors
 // session events. The same auth + method gate runs before the stream opens
 // (no events leak before authn). Per-event mapping only translates a small
 // allowlist of session events into A2A frames; raw event bodies are not
 // echoed back. The stream is bounded by the durable turn lifecycle: we close
-// after the first turn-completed/turn-failed event for the session.
+// after the first turn-completed/turn-failed event for the session. The
+// shared `SseConnectionTracker` enforces global/per-org/per-session limits
+// so a single API key cannot open unbounded concurrent streams.
 async fn handle_message_stream(
     state: &AppA2aState,
-    _auth: AuthorizedA2a,
+    auth: AuthorizedA2a,
     parsed: JsonRpcRequest,
     rpc_id: Value,
     app_id: String,
@@ -383,11 +392,17 @@ async fn handle_message_stream(
     let task_id = Uuid::now_v7().to_string();
     let request_id = req_id.map(|axum::Extension(id)| id.0);
 
-    // Subscribe BEFORE creating the message so we don't miss the first events
-    // emitted by the durable runtime. The subscription is per-session, so we
-    // first need to know the session id; for shared sessions the call below
-    // resolves it deterministically from the channel routing tags.
-    let result = match invoke_a2a_app_channel(
+    // Subscribe to session events at the safe point — between session
+    // resolution and message dispatch. The hook below runs *before* the
+    // durable workflow that the dispatched message will trigger, so it
+    // cannot miss `output.message.completed` / `turn.*` frames.
+    let event_delivery = state.event_delivery.clone();
+    let subscription_slot: std::sync::Arc<
+        tokio::sync::Mutex<Option<crate::event_delivery::EventSubscription>>,
+    > = std::sync::Arc::new(tokio::sync::Mutex::new(None));
+    let subscription_slot_hook = subscription_slot.clone();
+
+    let result = match invoke_a2a_app_channel_with_hook(
         &state.db,
         state.encryption.as_ref(),
         &state.session_service,
@@ -403,6 +418,18 @@ async fn handle_message_stream(
             role: parsed_msg.role,
         },
         request_id,
+        move |session_id| {
+            let event_delivery = event_delivery.clone();
+            let slot = subscription_slot_hook.clone();
+            async move {
+                let sub = event_delivery
+                    .subscribe(session_id.uuid())
+                    .await
+                    .map_err(crate::domains::common::CommandError::Internal)?;
+                *slot.lock().await = Some(sub);
+                Ok(())
+            }
+        },
     )
     .await
     {
@@ -411,14 +438,30 @@ async fn handle_message_stream(
     };
 
     let session_id_uuid = result.session_id.uuid();
-    let session_id_string = result.session_id.to_string();
-    let context_id = session_id_string.clone();
+    let context_id = result.session_id.to_string();
 
-    let subscription = match state.event_delivery.subscribe(session_id_uuid).await {
-        Ok(sub) => sub,
-        Err(err) => {
-            tracing::error!(error = %err, "Failed to subscribe to session events for A2A stream");
-            return internal_error(err).into_response();
+    let subscription = match subscription_slot.lock().await.take() {
+        Some(sub) => sub,
+        None => {
+            tracing::error!("A2A streaming hook ran but did not register a subscription");
+            return internal_error(anyhow::anyhow!("subscription registration failed"))
+                .into_response();
+        }
+    };
+
+    // Bound the SSE connection against global / per-org / per-session limits
+    // so a single API key cannot create unbounded concurrent streams. The
+    // guard is held for the lifetime of the stream below.
+    let sse_guard = match state.sse_tracker.try_acquire(auth.org_id, session_id_uuid) {
+        Ok(guard) => guard,
+        Err(rejection) => {
+            return (
+                StatusCode::TOO_MANY_REQUESTS,
+                Json(ErrorResponse {
+                    error: rejection.to_string(),
+                }),
+            )
+                .into_response();
         }
     };
 
@@ -492,7 +535,14 @@ async fn handle_message_stream(
         }
     });
 
-    Sse::new(initial.chain(body_stream))
+    // Hold `sse_guard` for the lifetime of the stream so the slot in
+    // SseConnectionTracker is released only when the client disconnects.
+    let stream_with_guard = initial.chain(body_stream).map(move |event| {
+        let _guard = &sse_guard;
+        event
+    });
+
+    Sse::new(stream_with_guard)
         .keep_alive(
             KeepAlive::new()
                 .interval(std::time::Duration::from_secs(15))

@@ -873,6 +873,7 @@ impl ServerAppBuilder {
             runner.clone(),
             notifications_enabled,
             event_delivery.clone(),
+            sse_tracker.clone(),
         );
         let ag_ui_rate_limiter = match valkey_for_agui.clone() {
             Some(client) => api::ag_ui_rate_limit::AgUiRateLimiter::with_valkey(client),
