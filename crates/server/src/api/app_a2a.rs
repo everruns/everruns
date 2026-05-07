@@ -5,9 +5,12 @@
 // multiple agent-to-agent endpoints with independent keys, agent cards, and
 // session routing.
 //
-// Supported methods: `message/send` (single JSON-RPC response) and
-// `message/stream` (SSE stream of JSON-RPC frames). Other methods return
-// JSON-RPC `-32601 Method not found`. See `specs/a2a-channel.md`.
+// Supported methods: `message/send` (single JSON-RPC response),
+// `message/stream` (SSE stream of JSON-RPC frames), `tasks/get` (poll task
+// state), and `tasks/cancel` (terminate the in-flight task). Task identity
+// is the underlying SessionId; state is derived from session turn lifecycle
+// events. Other methods return JSON-RPC `-32601 Method not found`.
+// See `specs/a2a-channel.md`.
 
 use std::convert::Infallible;
 use std::sync::Arc;
@@ -43,11 +46,13 @@ use crate::storage::{EncryptionService, StorageBackend};
 const A2A_PROTOCOL_VERSION: &str = "0.3.0";
 const A2A_AGENT_VERSION: &str = "0.1";
 
-// THREAT[TM-A2A-005]: Method gating — only `message/send` and `message/stream`
-// are supported. Allowing arbitrary A2A methods would expose code paths we
+// THREAT[TM-A2A-005]: Method gating — only the listed methods reach the
+// session pipeline. Allowing arbitrary A2A methods would expose code paths we
 // have not audited for prompt injection or task-state forgery.
 const METHOD_MESSAGE_SEND: &str = "message/send";
 const METHOD_MESSAGE_STREAM: &str = "message/stream";
+const METHOD_TASKS_GET: &str = "tasks/get";
+const METHOD_TASKS_CANCEL: &str = "tasks/cancel";
 
 #[derive(Clone)]
 pub struct AppA2aState {
@@ -151,10 +156,11 @@ fn rpc_error(id: Value, code: i32, message: impl Into<String>) -> Json<JsonRpcRe
     ),
     request_body(content = serde_json::Value, content_type = "application/json"),
     responses(
-        (status = 200, description = "JSON-RPC 2.0 response (single JSON for message/send, text/event-stream for message/stream)"),
+        (status = 200, description = "JSON-RPC 2.0 response. For message/send and tasks/* the body is a single JSON envelope; for message/stream the body is text/event-stream of JSON-RPC envelopes. tasks/get and tasks/cancel surface -32001 Task not found for unknown task ids."),
         (status = 401, description = "Missing or invalid API key", body = ErrorResponse),
         (status = 403, description = "App is not published or channel disabled", body = ErrorResponse),
         (status = 404, description = "App or channel not found", body = ErrorResponse),
+        (status = 429, description = "SSE connection limit reached for the org/session", body = ErrorResponse),
     ),
     tag = "apps"
 )]
@@ -193,13 +199,15 @@ pub async fn invoke_a2a(
         METHOD_MESSAGE_STREAM => {
             handle_message_stream(&state, auth, parsed, rpc_id, app_id, channel_id, req_id).await
         }
+        METHOD_TASKS_GET => handle_tasks_get(&state, auth, parsed, rpc_id).await,
+        METHOD_TASKS_CANCEL => handle_tasks_cancel(&state, auth, parsed, rpc_id).await,
         other => (
             StatusCode::OK,
             rpc_error(
                 rpc_id,
                 -32601,
                 format!(
-                    "Method not found: {other} (only message/send and message/stream are supported)",
+                    "Method not found: {other} (supported: message/send, message/stream, tasks/get, tasks/cancel)",
                 ),
             ),
         )
@@ -209,11 +217,13 @@ pub async fn invoke_a2a(
 
 /// Authenticated request context — the app and channel resolution + API key
 /// check that both `message/send` and `message/stream` need to perform up
-/// front before any session work.
+/// front before any session work. Carries the public ids that downstream
+/// handlers use to bind a per-call session lookup back to the
+/// authenticated channel (TM-A2A-012).
 struct AuthorizedA2a {
     org_id: i64,
-    // Kept for future use (per-channel rate limits, telemetry).
-    _channel_id: everruns_core::typed_id::AppChannelId,
+    app_public_id: String,
+    channel_public_id: everruns_core::typed_id::AppChannelId,
 }
 
 async fn authenticate_request(
@@ -260,8 +270,23 @@ async fn authenticate_request(
 
     Ok(AuthorizedA2a {
         org_id: app.org_id,
-        _channel_id: channel_id_typed,
+        app_public_id: app.public_id.to_string(),
+        channel_public_id: channel_id_typed,
     })
+}
+
+/// Verify that a session looked up by an A2A task id belongs to the same
+/// app + channel that the API key authenticates against. Without this check
+/// an API key for one A2A channel could read or cancel sessions created by
+/// any other channel in the same org once the session id leaks.
+/// THREAT[TM-A2A-012].
+fn session_belongs_to_a2a_channel(
+    session: &crate::storage::SessionRow,
+    auth: &AuthorizedA2a,
+) -> bool {
+    let app_tag = format!("app:{}", auth.app_public_id);
+    let channel_tag = format!("app_channel:{}", auth.channel_public_id);
+    session.tags.iter().any(|t| t == &app_tag) && session.tags.iter().any(|t| t == &channel_tag)
 }
 
 /// Pull the joined text from `params.message.parts`, plus the `role`,
@@ -329,6 +354,11 @@ async fn handle_message_send(
         }
     };
 
+    // task_id is generated up front; the durable workflow that this dispatch
+    // schedules is async, so the initial response is always non-terminal
+    // (`submitted`). Subsequent `tasks/get` polls derive the current state
+    // from the session's turn lifecycle events, where the task corresponds
+    // to the most recent turn for the underlying session.
     let task_id = Uuid::now_v7().to_string();
     let request_id = req_id.map(|axum::Extension(id)| id.0);
 
@@ -355,13 +385,228 @@ async fn handle_message_send(
         Err(err) => return command_error_response(err).into_response(),
     };
 
-    let task = json!({
-        "id": task_id,
-        "contextId": result.session_id.to_string(),
-        "status": { "state": "completed" },
-        "kind": "task",
-    });
+    let task = build_task_json(result.session_id, "submitted", None);
     (StatusCode::OK, rpc_success(rpc_id, task)).into_response()
+}
+
+/// Map a `tasks/get` / `tasks/cancel` JSON-RPC params object to an Everruns
+/// session id. Per A2A 0.3, the task lookup `params` carry an `id` field
+/// that the client stored from a prior `message/send` / `message/stream`
+/// response. We use the underlying session id as the task id, so the lookup
+/// is just a session existence check followed by event-derived state
+/// computation.
+fn task_id_from_params(params: &Value) -> Result<everruns_core::typed_id::SessionId, &'static str> {
+    let raw = params
+        .get("id")
+        .and_then(Value::as_str)
+        .ok_or("Invalid params: missing required `id`")?;
+    raw.parse::<everruns_core::typed_id::SessionId>()
+        .map_err(|_| "Invalid params: `id` is not a known task id")
+}
+
+/// THREAT[TM-A2A-012]: `tasks/get` exposes session state to the API-key
+/// holder. The lookup is restricted to the same org the API key
+/// authenticates against, so a key from one channel cannot read tasks from
+/// a session created by a different org. State derivation only consults
+/// session lifecycle events; it never echoes prompts, tool args, or LLM
+/// outputs back to the caller.
+async fn handle_tasks_get(
+    state: &AppA2aState,
+    auth: AuthorizedA2a,
+    parsed: JsonRpcRequest,
+    rpc_id: Value,
+) -> Response {
+    let session_id = match task_id_from_params(&parsed.params) {
+        Ok(id) => id,
+        Err(msg) => return (StatusCode::OK, rpc_error(rpc_id, -32602, msg)).into_response(),
+    };
+
+    let session = match state.db.get_session(auth.org_id, session_id).await {
+        Ok(Some(s)) => s,
+        Ok(None) => {
+            return (StatusCode::OK, rpc_error(rpc_id, -32001, "Task not found")).into_response();
+        }
+        Err(err) => return internal_error(err).into_response(),
+    };
+
+    // THREAT[TM-A2A-012]: org-level scoping is not enough — the API key is
+    // bound to a specific app/channel, and a session belongs to exactly one
+    // channel via its routing tags. Reject with -32001 (rather than leaking
+    // existence) when the session was created by a different channel.
+    if !session_belongs_to_a2a_channel(&session, &auth) {
+        return (StatusCode::OK, rpc_error(rpc_id, -32001, "Task not found")).into_response();
+    }
+
+    let state_label = match derive_task_state_from_events(&state.db, session_id).await {
+        Ok(label) => label,
+        Err(err) => return internal_error(err).into_response(),
+    };
+
+    let task = build_task_json(session.id, state_label, None);
+    (StatusCode::OK, rpc_success(rpc_id, task)).into_response()
+}
+
+/// THREAT[TM-A2A-012]: `tasks/cancel` performs a destructive action on a
+/// session — it must respect the same channel binding as `tasks/get`.
+async fn handle_tasks_cancel(
+    state: &AppA2aState,
+    auth: AuthorizedA2a,
+    parsed: JsonRpcRequest,
+    rpc_id: Value,
+) -> Response {
+    let session_id = match task_id_from_params(&parsed.params) {
+        Ok(id) => id,
+        Err(msg) => return (StatusCode::OK, rpc_error(rpc_id, -32602, msg)).into_response(),
+    };
+
+    let session = match state.db.get_session(auth.org_id, session_id).await {
+        Ok(Some(s)) => s,
+        Ok(None) => {
+            return (StatusCode::OK, rpc_error(rpc_id, -32001, "Task not found")).into_response();
+        }
+        Err(err) => return internal_error(err).into_response(),
+    };
+
+    // THREAT[TM-A2A-012]: same channel-binding check as tasks/get.
+    if !session_belongs_to_a2a_channel(&session, &auth) {
+        return (StatusCode::OK, rpc_error(rpc_id, -32001, "Task not found")).into_response();
+    }
+
+    // Determine current task state. If terminal already, return idempotently
+    // without re-cancelling — A2A spec requires `tasks/cancel` on a finished
+    // task to return the task in its terminal state, not error.
+    let current = match derive_task_state_from_events(&state.db, session_id).await {
+        Ok(label) => label,
+        Err(err) => return internal_error(err).into_response(),
+    };
+
+    if matches!(current, "completed" | "canceled" | "failed") {
+        let task = build_task_json(session.id, current, None);
+        return (StatusCode::OK, rpc_success(rpc_id, task)).into_response();
+    }
+
+    if let Err(err) = cancel_a2a_session_turn(state, session_id).await {
+        return internal_error(err).into_response();
+    }
+
+    let task = build_task_json(session.id, "canceled", None);
+    (StatusCode::OK, rpc_success(rpc_id, task)).into_response()
+}
+
+fn build_task_json(
+    session_id: everruns_core::typed_id::SessionId,
+    state_label: &str,
+    error_message: Option<&str>,
+) -> Value {
+    let session_id_str = session_id.to_string();
+    let mut status = json!({ "state": state_label });
+    if let (Some(msg), Some(obj)) = (error_message, status.as_object_mut()) {
+        obj.insert(
+            "message".to_string(),
+            json!({
+                "role": "agent",
+                "parts": [{ "kind": "text", "text": msg }],
+            }),
+        );
+    }
+    json!({
+        "id": session_id_str,
+        "contextId": session_id_str,
+        "status": status,
+        "kind": "task",
+    })
+}
+
+/// Walk the session event tail and derive the current task state from the
+/// most recent turn lifecycle event.
+async fn derive_task_state_from_events(
+    db: &Arc<StorageBackend>,
+    session_id: everruns_core::typed_id::SessionId,
+) -> anyhow::Result<&'static str> {
+    use everruns_core::events::{TURN_CANCELLED, TURN_COMPLETED, TURN_FAILED, TURN_STARTED};
+    let filter_types = vec![
+        TURN_STARTED.to_string(),
+        TURN_COMPLETED.to_string(),
+        TURN_FAILED.to_string(),
+        TURN_CANCELLED.to_string(),
+    ];
+    // List events in default (ascending) order; we only need the most recent
+    // turn event so a small page is enough. Cap at 64 — turn events are
+    // sparse and the most recent one wins.
+    let events = db
+        .list_events(session_id, None, None, &filter_types, &[], None, Some(64))
+        .await?;
+
+    let mut latest: Option<&str> = None;
+    for evt in &events {
+        latest = Some(evt.event_type.as_str());
+    }
+
+    let label = match latest {
+        Some(t) if t == TURN_COMPLETED => "completed",
+        Some(t) if t == TURN_FAILED => "failed",
+        Some(t) if t == TURN_CANCELLED => "canceled",
+        Some(t) if t == TURN_STARTED => "working",
+        _ => "submitted",
+    };
+    Ok(label)
+}
+
+async fn cancel_a2a_session_turn(
+    state: &AppA2aState,
+    session_id: everruns_core::typed_id::SessionId,
+) -> anyhow::Result<()> {
+    use everruns_core::events::{EventContext, EventRequest, InputMessageData, TurnCancelledData};
+    use everruns_core::message::Message;
+    use everruns_core::typed_id::{MessageId, TurnId};
+
+    // Best-effort cancel of the active workflow run. Errors are logged but
+    // not surfaced — the turn-cancelled event is what tasks/get keys off.
+    if let Err(err) = state.message_service.runner().cancel_run(session_id).await {
+        tracing::warn!(session_id = %session_id, error = %err, "A2A tasks/cancel: cancel_run failed");
+    }
+
+    // Re-check terminality before emitting a synthetic turn.cancelled event.
+    // Between the pre-check in `handle_tasks_cancel` and this point the
+    // workflow may have landed a real turn.completed/turn.failed event; if
+    // we always emitted turn.cancelled here, derived state would race-flip
+    // a completed task to canceled. Skip emission when the task has already
+    // reached a terminal state.
+    let already_terminal = matches!(
+        derive_task_state_from_events(&state.db, session_id).await?,
+        "completed" | "failed" | "canceled"
+    );
+    if already_terminal {
+        return Ok(());
+    }
+
+    let turn_id = TurnId::from_uuid(session_id.uuid());
+    let input_message_id = MessageId::new();
+    let event_service = state.message_service.event_service();
+
+    let cancelled_event = EventRequest::new(
+        session_id,
+        EventContext::turn(turn_id, input_message_id),
+        TurnCancelledData {
+            turn_id,
+            reason: Some("A2A tasks/cancel".to_string()),
+            usage: None,
+        },
+    );
+    if let Err(err) = event_service.emit(cancelled_event).await {
+        tracing::warn!(session_id = %session_id, error = %err, "A2A tasks/cancel: emit turn.cancelled failed");
+    }
+
+    let user_message_event = EventRequest::new(
+        session_id,
+        EventContext::turn(turn_id, input_message_id),
+        InputMessageData::new(Message::user("A2A client requested cancellation.")),
+    );
+    if let Err(err) = event_service.emit(user_message_event).await {
+        tracing::warn!(session_id = %session_id, error = %err, "A2A tasks/cancel: emit user message failed");
+    }
+
+    Ok(())
 }
 
 // THREAT[TM-A2A-011]: Streaming widens the per-channel ingress surface from

@@ -74,7 +74,7 @@ async fn list_user_message_texts(server: &TestServer, session_id: &str) -> Vec<S
 }
 
 #[tokio::test]
-async fn a2a_message_send_creates_session_and_returns_completed_task() {
+async fn a2a_message_send_creates_session_and_returns_submitted_task() {
     let server = TestServer::in_memory().await;
     let (app, api_key) = create_app_with_a2a(&server, "a2a-shared", "from a2a: {{a2a.text}}").await;
     let app_id = app["id"].as_str().unwrap();
@@ -111,9 +111,14 @@ async fn a2a_message_send_creates_session_and_returns_completed_task() {
 
     assert_eq!(response["jsonrpc"], "2.0");
     assert_eq!(response["id"], "req-1");
-    assert_eq!(response["result"]["status"]["state"], "completed");
+    // Tasks are async; the dispatch returns immediately with state=submitted
+    // and task_id == contextId == session_id. Subsequent `tasks/get` calls
+    // observe transitions to working/completed/failed/canceled as the
+    // durable runtime emits turn lifecycle events.
+    assert_eq!(response["result"]["status"]["state"], "submitted");
     assert_eq!(response["result"]["kind"], "task");
     let session_id = response["result"]["contextId"].as_str().unwrap();
+    assert_eq!(response["result"]["id"].as_str().unwrap(), session_id);
     let texts = list_user_message_texts(&server, session_id).await;
     assert!(texts.iter().any(|t| t == "from a2a: hello"));
 
@@ -278,11 +283,11 @@ async fn a2a_rejects_unsupported_methods_and_empty_text() {
     let channel_id = app["channels"][0]["id"].as_str().unwrap();
     publish_app(&server, app_id).await;
 
-    // tasks/cancel is not supported (sentinel for unhandled method).
+    // tasks/resubscribe is not supported (sentinel for unhandled method).
     let body = serde_json::to_vec(&json!({
         "jsonrpc": "2.0",
         "id": "x",
-        "method": "tasks/cancel",
+        "method": "tasks/resubscribe",
         "params": { "id": "task-1" }
     }))
     .unwrap();
@@ -376,6 +381,337 @@ async fn a2a_message_stream_dispatches_to_streaming_branch() {
             .contains("non-empty text part"),
         "expected -32602 to come from parse_message_params: {response:?}",
     );
+}
+
+/// `tasks/get` returns the task derived from the underlying session lifecycle.
+/// Right after `message/send` the task is non-terminal; an unknown task id
+/// returns the documented `-32001 Task not found` JSON-RPC error envelope.
+#[tokio::test]
+async fn a2a_tasks_get_returns_non_terminal_for_freshly_dispatched_task() {
+    let server = TestServer::in_memory().await;
+    let (app, api_key) = create_app_with_a2a(&server, "a2a-tasks-get", "{{a2a.text}}").await;
+    let app_id = app["id"].as_str().unwrap();
+    let channel_id = app["channels"][0]["id"].as_str().unwrap();
+    publish_app(&server, app_id).await;
+
+    let send_body = serde_json::to_vec(&json!({
+        "jsonrpc": "2.0",
+        "id": "send-1",
+        "method": "message/send",
+        "params": {
+            "message": {
+                "role": "user",
+                "parts": [{ "kind": "text", "text": "hello" }]
+            }
+        }
+    }))
+    .unwrap();
+    let send_response: Value = server
+        .request_raw(
+            Method::POST,
+            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            vec![
+                ("content-type", "application/json"),
+                ("authorization", &format!("Bearer {api_key}")),
+            ],
+            send_body,
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    let task_id = send_response["result"]["id"].as_str().unwrap().to_string();
+
+    // tasks/get on the freshly dispatched task — turn lifecycle hasn't moved
+    // yet in the in-memory test harness, so state is `submitted` (or
+    // `working` if the runtime has emitted turn.started by now). Either is
+    // a valid non-terminal state.
+    let get_body = serde_json::to_vec(&json!({
+        "jsonrpc": "2.0",
+        "id": "get-1",
+        "method": "tasks/get",
+        "params": { "id": task_id }
+    }))
+    .unwrap();
+    let get_response: Value = server
+        .request_raw(
+            Method::POST,
+            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            vec![
+                ("content-type", "application/json"),
+                ("authorization", &format!("Bearer {api_key}")),
+            ],
+            get_body,
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(get_response["result"]["id"], task_id);
+    assert_eq!(get_response["result"]["contextId"], task_id);
+    let state = get_response["result"]["status"]["state"]
+        .as_str()
+        .unwrap_or("");
+    assert!(
+        state == "submitted" || state == "working",
+        "expected non-terminal state, got {state:?}",
+    );
+    assert_eq!(get_response["result"]["kind"], "task");
+
+    // Unknown task id (well-formed but not associated with any session)
+    // surfaces -32001 rather than leaking session existence.
+    let unknown_body = serde_json::to_vec(&json!({
+        "jsonrpc": "2.0",
+        "id": "get-unknown",
+        "method": "tasks/get",
+        "params": { "id": "session_01999999999979998888aaaaaaaaaaaa" }
+    }))
+    .unwrap();
+    let unknown_response: Value = server
+        .request_raw(
+            Method::POST,
+            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            vec![
+                ("content-type", "application/json"),
+                ("authorization", &format!("Bearer {api_key}")),
+            ],
+            unknown_body,
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(unknown_response["error"]["code"], -32001);
+
+    // Malformed task id surfaces -32602 Invalid params.
+    let malformed_body = serde_json::to_vec(&json!({
+        "jsonrpc": "2.0",
+        "id": "get-bad",
+        "method": "tasks/get",
+        "params": { "id": "not-a-uuid" }
+    }))
+    .unwrap();
+    let malformed_response: Value = server
+        .request_raw(
+            Method::POST,
+            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            vec![
+                ("content-type", "application/json"),
+                ("authorization", &format!("Bearer {api_key}")),
+            ],
+            malformed_body,
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(malformed_response["error"]["code"], -32602);
+}
+
+/// `tasks/cancel` returns the task with state=canceled and is idempotent — a
+/// second cancel returns the already-canceled task without a new state
+/// transition.
+#[tokio::test]
+async fn a2a_tasks_cancel_terminates_task_idempotently() {
+    let server = TestServer::in_memory().await;
+    let (app, api_key) = create_app_with_a2a(&server, "a2a-tasks-cancel", "{{a2a.text}}").await;
+    let app_id = app["id"].as_str().unwrap();
+    let channel_id = app["channels"][0]["id"].as_str().unwrap();
+    publish_app(&server, app_id).await;
+
+    let send_body = serde_json::to_vec(&json!({
+        "jsonrpc": "2.0",
+        "id": "send-1",
+        "method": "message/send",
+        "params": {
+            "message": {
+                "role": "user",
+                "parts": [{ "kind": "text", "text": "hi" }]
+            }
+        }
+    }))
+    .unwrap();
+    let send_response: Value = server
+        .request_raw(
+            Method::POST,
+            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            vec![
+                ("content-type", "application/json"),
+                ("authorization", &format!("Bearer {api_key}")),
+            ],
+            send_body,
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    let task_id = send_response["result"]["id"].as_str().unwrap().to_string();
+
+    let cancel_body = |id: &str| {
+        serde_json::to_vec(&json!({
+            "jsonrpc": "2.0",
+            "id": "cancel",
+            "method": "tasks/cancel",
+            "params": { "id": id }
+        }))
+        .unwrap()
+    };
+
+    let first: Value = server
+        .request_raw(
+            Method::POST,
+            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            vec![
+                ("content-type", "application/json"),
+                ("authorization", &format!("Bearer {api_key}")),
+            ],
+            cancel_body(&task_id),
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(first["result"]["status"]["state"], "canceled");
+    assert_eq!(first["result"]["id"], task_id);
+
+    // Idempotence: a second cancel sees a terminal state and returns the
+    // same task shape without re-cancelling. tasks/get also reports
+    // canceled.
+    let second: Value = server
+        .request_raw(
+            Method::POST,
+            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            vec![
+                ("content-type", "application/json"),
+                ("authorization", &format!("Bearer {api_key}")),
+            ],
+            cancel_body(&task_id),
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(second["result"]["status"]["state"], "canceled");
+
+    let get_body = serde_json::to_vec(&json!({
+        "jsonrpc": "2.0",
+        "id": "get-after-cancel",
+        "method": "tasks/get",
+        "params": { "id": task_id }
+    }))
+    .unwrap();
+    let get_response: Value = server
+        .request_raw(
+            Method::POST,
+            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            vec![
+                ("content-type", "application/json"),
+                ("authorization", &format!("Bearer {api_key}")),
+            ],
+            get_body,
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(get_response["result"]["status"]["state"], "canceled");
+}
+
+/// Channel binding (TM-A2A-012): a task created on one A2A channel must not
+/// be readable or cancellable by an API key authenticated against a
+/// different channel — even when both channels live in the same org. The
+/// out-of-channel lookup must surface `-32001 Task not found` rather than
+/// leaking session existence.
+#[tokio::test]
+async fn a2a_tasks_get_rejects_cross_channel_lookup() {
+    let server = TestServer::in_memory().await;
+    let (app_a, key_a) = create_app_with_a2a(&server, "a2a-cross-a", "{{a2a.text}}").await;
+    let (app_b, key_b) = create_app_with_a2a(&server, "a2a-cross-b", "{{a2a.text}}").await;
+    let a_id = app_a["id"].as_str().unwrap();
+    let a_channel = app_a["channels"][0]["id"].as_str().unwrap();
+    let b_id = app_b["id"].as_str().unwrap();
+    let b_channel = app_b["channels"][0]["id"].as_str().unwrap();
+    publish_app(&server, a_id).await;
+    publish_app(&server, b_id).await;
+
+    // Submit a task on channel A.
+    let send_body = serde_json::to_vec(&json!({
+        "jsonrpc": "2.0",
+        "id": "send-a",
+        "method": "message/send",
+        "params": {
+            "message": { "role": "user", "parts": [{ "kind": "text", "text": "hi" }] }
+        }
+    }))
+    .unwrap();
+    let send_response: Value = server
+        .request_raw(
+            Method::POST,
+            &format!("/v1/apps/{a_id}/a2a/{a_channel}"),
+            vec![
+                ("content-type", "application/json"),
+                ("authorization", &format!("Bearer {key_a}")),
+            ],
+            send_body,
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    let task_id = send_response["result"]["id"].as_str().unwrap().to_string();
+
+    // Channel A's own key reads the task fine.
+    let get_body = serde_json::to_vec(&json!({
+        "jsonrpc": "2.0",
+        "id": "get-a",
+        "method": "tasks/get",
+        "params": { "id": task_id }
+    }))
+    .unwrap();
+    let own: Value = server
+        .request_raw(
+            Method::POST,
+            &format!("/v1/apps/{a_id}/a2a/{a_channel}"),
+            vec![
+                ("content-type", "application/json"),
+                ("authorization", &format!("Bearer {key_a}")),
+            ],
+            get_body.clone(),
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(own["result"]["id"], task_id);
+
+    // Channel B's key on its own endpoint must not see channel A's task.
+    let cross: Value = server
+        .request_raw(
+            Method::POST,
+            &format!("/v1/apps/{b_id}/a2a/{b_channel}"),
+            vec![
+                ("content-type", "application/json"),
+                ("authorization", &format!("Bearer {key_b}")),
+            ],
+            get_body,
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(cross["error"]["code"], -32001);
+
+    // tasks/cancel must also refuse the cross-channel attempt.
+    let cancel_body = serde_json::to_vec(&json!({
+        "jsonrpc": "2.0",
+        "id": "cancel-cross",
+        "method": "tasks/cancel",
+        "params": { "id": task_id }
+    }))
+    .unwrap();
+    let cross_cancel: Value = server
+        .request_raw(
+            Method::POST,
+            &format!("/v1/apps/{b_id}/a2a/{b_channel}"),
+            vec![
+                ("content-type", "application/json"),
+                ("authorization", &format!("Bearer {key_b}")),
+            ],
+            cancel_body,
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(cross_cancel["error"]["code"], -32001);
 }
 
 #[tokio::test]
