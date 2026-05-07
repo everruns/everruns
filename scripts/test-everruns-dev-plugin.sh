@@ -88,5 +88,21 @@ if not claude_marketplace.get("description"):
         "marketplace renders correctly in Claude Code's plugin browser."
     )
 
+skill = (plugin_dir / "skills" / "everruns-dev" / "SKILL.md").read_text()
+if "switch_organization" in skill:
+    raise SystemExit(
+        "Everruns Dev skill must not mention switch_organization; MCP org "
+        "selection is per-call via organization_id."
+    )
+
+required_multi_org_phrases = [
+    "MCP has no current-org switch",
+    '"organization_id": "org_01933b5a00007000800000000000004"',
+    "Do not pass `--organization_id` to builtins",
+]
+missing = [phrase for phrase in required_multi_org_phrases if phrase not in skill]
+if missing:
+    raise SystemExit(f"Everruns Dev skill is missing multi-org guidance: {missing}")
+
 print("everruns-dev plugin metadata checks passed")
 PY

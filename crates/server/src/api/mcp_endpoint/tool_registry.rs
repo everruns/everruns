@@ -47,7 +47,6 @@ pub fn tool_definitions(
     let mut tools = vec![
         me_tool(protocol_version),
         list_organizations_tool(protocol_version),
-        switch_organization_tool(protocol_version, org_id_description),
         agent_run_tool(protocol_version, org_id_description),
         session_send_message_tool(protocol_version, org_id_description),
         session_get_status_tool(protocol_version, org_id_description),
@@ -79,7 +78,7 @@ fn me_tool(protocol_version: &str) -> McpEndpointToolDefinition {
         protocol_version,
         "me",
         "Current User",
-        "Get the current authenticated user's profile and active organization context. Returns user ID, email, name, and the organization currently used for all operations.",
+        "Get the current authenticated user's profile and default organization context. MCP calls are stateless; to work in another organization, call list_organizations and pass that org's id as organization_id on each org-scoped tool call.",
         object_schema(vec![], vec![]),
         Some(me_output_schema()),
         Some(read_only_annotations()),
@@ -92,7 +91,7 @@ fn list_organizations_tool(protocol_version: &str) -> McpEndpointToolDefinition 
         protocol_version,
         "list_organizations",
         "List Organizations",
-        "List all organizations the authenticated user belongs to, with their role in each. Use this to discover available orgs before switching with switch_organization or passing organization_id to other tools.",
+        "List all organizations the authenticated user belongs to, with their role in each. MCP has no current-organization switch; use this to find an org id, then pass it as organization_id on each org-scoped tool call. When organization_id is omitted, tools use the default organization from me.",
         object_schema(vec![], vec![]),
         Some(json!({
             "type": "object",
@@ -114,43 +113,6 @@ fn list_organizations_tool(protocol_version: &str) -> McpEndpointToolDefinition 
                 "count": { "type": "integer" }
             },
             "required": ["organizations", "count"]
-        })),
-        Some(read_only_annotations()),
-        5_000,
-    )
-}
-
-fn switch_organization_tool(
-    protocol_version: &str,
-    org_id_description: &str,
-) -> McpEndpointToolDefinition {
-    tool(
-        protocol_version,
-        "switch_organization",
-        "Switch Organization",
-        "Validate and select an organization. Returns the validated organization details. Pass the returned organization_id to subsequent tool calls to operate in that org's context. You can also pass organization_id directly to individual tools without calling this first.",
-        object_schema(
-            vec![(
-                "organization_id",
-                json!({
-                    "type": "string",
-                    "description": org_id_description,
-                    "pattern": "^org_[0-9a-f]{32}$"
-                }),
-            )],
-            vec!["organization_id"],
-        ),
-        Some(json!({
-            "type": "object",
-            "additionalProperties": false,
-            "properties": {
-                "switched": { "type": "boolean" },
-                "organization_id": { "type": "string" },
-                "name": { "type": "string" },
-                "role": { "type": "string" },
-                "hint": { "type": "string" }
-            },
-            "required": ["switched", "organization_id", "name", "role", "hint"]
         })),
         Some(read_only_annotations()),
         5_000,

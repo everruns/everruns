@@ -116,8 +116,8 @@ Examples:
 
 | Tool | When to use |
 |---|---|
-| `me` | Current user + active org. Cheap sanity check. |
-| `list_organizations`, `switch_organization` | Multi-org accounts. `switch_organization` is advisory - the MCP transport is stateless; pass `organization_id` per call to stick with a non-default org. |
+| `me` | Current user + default org. Cheap sanity check. |
+| `list_organizations` | Multi-org accounts. MCP has no current-org switch; use this to find an org id, then pass `organization_id` on every org-scoped MCP tool call that should target that org. |
 | `agent_run` | Create a session and send the first message in one go. Returns `session_id`, `message_id`. |
 | `session_send_message` | Follow-up user message in an existing session. |
 | `session_get_status` | Poll session status + latest agent message + recent events. Supports `since_event_id` for incremental polling and `event_types` to filter. |
@@ -128,6 +128,36 @@ Examples:
 
 Default to `query` for reads. Switch to `execute` only when the workflow needs
 to create, update, delete, or trigger actions.
+
+## Multi-org semantics
+
+The MCP transport is stateless. There is no org-switching tool and no server-side
+current org for MCP clients. If `organization_id` is omitted, Everruns(Dev) uses
+the default org reported by `me`.
+
+For non-default orgs:
+
+1. Call `list_organizations`.
+2. Pick the target `org_{32-hex}` id.
+3. Include `"organization_id": "org_..."` on each org-scoped MCP tool call:
+   `agent_run`, `session_send_message`, `session_get_status`, `agent_get_card`,
+   `discover`, `query`, or `execute`.
+
+For `query` and `execute`, put `organization_id` on the MCP tool call, not inside
+the bash script:
+
+```text
+query {
+  "organization_id": "org_01933b5a00007000800000000000004",
+  "commands": "list_agents | jq -r '.data[] | [.id, .name] | @tsv'"
+}
+
+agent_run {
+  "organization_id": "org_01933b5a00007000800000000000004",
+  "agent_id": "support-triage",
+  "message": "Summarize the latest failed sessions."
+}
+```
 
 ## Using `discover`, `query`, and `execute`
 
@@ -238,8 +268,9 @@ list_agents | jq '.data[] | {id, name, default_model_id}'
   workflows, split them into multiple calls.
 - `list_*` operations default to `--limit 20` (max 100) with `--offset` for
   paging.
-- Every org-scoped operation accepts `--organization_id org_{32-hex}` to target
-  a non-default org in multi-org accounts.
+- Org context for `query` and `execute` is selected by the top-level
+  `organization_id` MCP argument. Do not pass `--organization_id` to builtins
+  inside the script.
 
 ## Entity cards (MCP Apps)
 
@@ -249,6 +280,7 @@ resources hosts can render alongside text output. See
 for the standard.
 
 - Tool: `agent_get_card { "agent_id": "<agent-id-or-name>" }`.
+  Add `"organization_id": "org_..."` when targeting a non-default org.
 - Result: an MCP `resource` content item at
   `ui://everruns/agent/{agent_id}/card` (MIME `text/html`) plus a one-line
   text summary.
@@ -274,8 +306,8 @@ in `tools/list` and should use `get_agent`.
   the builtin exists under the expected name.
 - **Operation unclear** - `<cmd> --help` inside `query` or `execute` prints usage;
   `discover { "query": "<cmd>" }` shows parameter types.
-- **Wrong org** - `me` reports the active org; pass `--organization_id`
-  explicitly on each call to override.
+- **Wrong org** - `me` reports the default org. Call `list_organizations`, then
+  pass top-level `organization_id` explicitly on each org-scoped MCP call.
 
 ## Docs
 

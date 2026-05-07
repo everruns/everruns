@@ -297,7 +297,7 @@ async fn test_mcp_tools_list() {
     let tools = resp["result"]["tools"]
         .as_array()
         .expect("Expected tools array");
-    assert_eq!(tools.len(), 10, "Expected 10 MCP tools");
+    assert_eq!(tools.len(), 9, "Expected 9 MCP tools");
 
     let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
     assert!(names.contains(&"me"), "Missing me");
@@ -306,8 +306,18 @@ async fn test_mcp_tools_list() {
         "Missing list_organizations"
     );
     assert!(
-        names.contains(&"switch_organization"),
-        "Missing switch_organization"
+        !names.contains(&"switch_organization"),
+        "switch_organization should not be exposed"
+    );
+    let list_organizations = tools
+        .iter()
+        .find(|tool| tool["name"] == "list_organizations")
+        .unwrap();
+    assert!(
+        list_organizations["description"]
+            .as_str()
+            .unwrap()
+            .contains("MCP has no current-organization switch")
     );
     assert!(names.contains(&"agent_run"), "Missing agent_run");
     assert!(
@@ -357,6 +367,12 @@ async fn test_mcp_tools_list() {
     assert_eq!(
         discover["inputSchema"]["properties"]["organization_id"]["pattern"],
         "^org_[0-9a-f]{32}$"
+    );
+    assert!(
+        discover["inputSchema"]["properties"]["organization_id"]["description"]
+            .as_str()
+            .unwrap()
+            .contains("pass this on each org-scoped call")
     );
     assert_eq!(discover["outputSchema"]["type"], "object");
     assert!(discover.as_object().unwrap().get("_meta").is_none());
