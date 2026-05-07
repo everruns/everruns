@@ -648,30 +648,51 @@ async fn wake_parent(context: &ToolContext, record: &AgentRunRecord) -> Result<(
         .await
 }
 
-fn enforce_network_access(
+/// Pre-discovery ACL gate: must run BEFORE `resolve_card` so that AgentCard
+/// discovery itself (which performs an outbound HTTP fetch against `base_url`)
+/// cannot be used to probe disallowed/internal hosts. Only checks `base_url`
+/// when it will actually be used for discovery — when an inline `agent_card`
+/// is supplied, `resolve_card` never touches `base_url`, so a stale or unused
+/// configured URL must not cause spurious failures.
+fn enforce_network_access_pre_resolve(
     agent: &ExternalA2aAgentConfig,
+    context: &ToolContext,
+) -> std::result::Result<(), String> {
+    let Some(acl) = context.network_access.as_ref() else {
+        return Ok(());
+    };
+    if agent.agent_card.is_some() {
+        return Ok(());
+    }
+    if let Some(base_url) = &agent.base_url
+        && !acl.is_url_allowed(base_url)
+    {
+        return Err(format!(
+            "A2A base URL blocked by network access policy: {base_url}"
+        ));
+    }
+    Ok(())
+}
+
+/// Post-discovery ACL gate: every interface URL surfaced by the resolved
+/// AgentCard must also be permitted by the runtime ACL before the A2A client
+/// is built. This catches the case where an attacker can influence the card
+/// (signed/unsigned) to point interface URLs at internal hosts.
+fn enforce_network_access_post_resolve(
     card: &AgentCard,
     context: &ToolContext,
 ) -> std::result::Result<(), String> {
-    if let Some(ref acl) = context.network_access {
-        if let Some(base_url) = &agent.base_url
-            && !acl.is_url_allowed(base_url)
-        {
+    let Some(acl) = context.network_access.as_ref() else {
+        return Ok(());
+    };
+    for iface in &card.supported_interfaces {
+        if !acl.is_url_allowed(&iface.url) {
             return Err(format!(
-                "A2A base URL blocked by network access policy: {base_url}"
+                "A2A interface URL blocked by network access policy: {}",
+                iface.url
             ));
         }
-
-        for iface in &card.supported_interfaces {
-            if !acl.is_url_allowed(&iface.url) {
-                return Err(format!(
-                    "A2A interface URL blocked by network access policy: {}",
-                    iface.url
-                ));
-            }
-        }
     }
-
     Ok(())
 }
 
@@ -679,8 +700,9 @@ async fn build_client(
     agent: &ExternalA2aAgentConfig,
     context: &ToolContext,
 ) -> std::result::Result<a2a_client::A2AClient<Box<dyn a2a_client::Transport>>, String> {
+    enforce_network_access_pre_resolve(agent, context)?;
     let card = agent.resolve_card().await?;
-    enforce_network_access(agent, &card, context)?;
+    enforce_network_access_post_resolve(&card, context)?;
     let mut builder = A2AClientFactory::builder();
     if let Some(binding) = &agent.preferred_binding {
         builder = builder.preferred_bindings(vec![binding.clone()]);
@@ -1826,7 +1848,7 @@ mod tests {
         let ctx = ToolContext::new(SessionId::new()).with_network_access(Some(
             NetworkAccessList::allow_only(vec!["allowed.example.com".to_string()]),
         ));
-        let err = enforce_network_access(&agent, &card, &ctx).unwrap_err();
+        let err = enforce_network_access_pre_resolve(&agent, &ctx).unwrap_err();
         assert!(
             err.contains("blocked.example.com"),
             "unexpected error: {err}"
@@ -1835,7 +1857,8 @@ mod tests {
         let ctx = ToolContext::new(SessionId::new()).with_network_access(Some(
             NetworkAccessList::allow_only(vec!["blocked.example.com".to_string()]),
         ));
-        enforce_network_access(&agent, &card, &ctx).unwrap();
+        enforce_network_access_pre_resolve(&agent, &ctx).unwrap();
+        enforce_network_access_post_resolve(&card, &ctx).unwrap();
     }
 
     #[test]
@@ -1843,17 +1866,6 @@ mod tests {
         use crate::SessionId;
         use crate::network_access::NetworkAccessList;
 
-        let agent = ExternalA2aAgentConfig {
-            id: "a".to_string(),
-            name: "a".to_string(),
-            description: None,
-            base_url: None,
-            agent_card: None,
-            headers: BTreeMap::new(),
-            preferred_binding: None,
-            poll_interval_ms: None,
-            allow_local_urls: false,
-        };
         let card = AgentCard {
             name: "a".to_string(),
             description: "a".to_string(),
@@ -1881,8 +1893,57 @@ mod tests {
         let ctx = ToolContext::new(SessionId::new()).with_network_access(Some(
             NetworkAccessList::allow_only(vec!["allowed.example.com".to_string()]),
         ));
-        let err = enforce_network_access(&agent, &card, &ctx).unwrap_err();
+        let err = enforce_network_access_post_resolve(&card, &ctx).unwrap_err();
         assert!(err.contains("probe.internal"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn enforce_network_access_pre_resolve_skips_when_inline_card_present() {
+        use crate::SessionId;
+        use crate::network_access::NetworkAccessList;
+
+        // base_url not on the allowlist, but agent_card is supplied inline so
+        // resolve_card never performs discovery against base_url. The pre-resolve
+        // gate must skip the base_url check to avoid spurious failures.
+        let inline_card = AgentCard {
+            name: "a".to_string(),
+            description: "a".to_string(),
+            version: "1".to_string(),
+            supported_interfaces: vec![AgentInterface::new(
+                "https://allowed.example.com/api".to_string(),
+                "JSONRPC",
+            )],
+            capabilities: AgentCapabilities {
+                streaming: None,
+                push_notifications: None,
+                extensions: None,
+                extended_agent_card: None,
+            },
+            default_input_modes: vec![],
+            default_output_modes: vec![],
+            skills: vec![],
+            provider: None,
+            documentation_url: None,
+            icon_url: None,
+            security_schemes: None,
+            security_requirements: None,
+            signatures: None,
+        };
+        let agent = ExternalA2aAgentConfig {
+            id: "a".to_string(),
+            name: "a".to_string(),
+            description: None,
+            base_url: Some("https://stale.unused.example.com".to_string()),
+            agent_card: Some(inline_card),
+            headers: BTreeMap::new(),
+            preferred_binding: None,
+            poll_interval_ms: None,
+            allow_local_urls: false,
+        };
+        let ctx = ToolContext::new(SessionId::new()).with_network_access(Some(
+            NetworkAccessList::allow_only(vec!["allowed.example.com".to_string()]),
+        ));
+        enforce_network_access_pre_resolve(&agent, &ctx).unwrap();
     }
 
     #[test]
