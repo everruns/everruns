@@ -1158,12 +1158,9 @@ fn translate_event(state: &mut AgUiStreamState, event: &everruns_core::Event) {
                         push_public_tool_activity_start(state, state.generic_tool_text.clone());
                     }
                     AgUiToolVisibility::Narrated => {
-                        if let Some(narration) = data.narration {
-                            let narration = narration.trim();
-                            if !narration.is_empty() {
-                                push_public_tool_activity_start(state, narration.to_string());
-                            }
-                        }
+                        // Public streams must not emit backend/model-authored narration because
+                        // narration may derive from raw tool-call arguments.
+                        push_public_tool_activity_start(state, state.generic_tool_text.clone());
                     }
                 }
             }
@@ -2023,7 +2020,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_narrated_tool_visibility_uses_narration_only() {
+    async fn test_narrated_tool_visibility_falls_back_to_generic_text() {
         let mut state = test_stream_state().await;
         state.tool_visibility = AgUiToolVisibility::Narrated;
         let turn_id = TurnId::new();
@@ -2048,7 +2045,7 @@ mod tests {
 
         match &state.queue[2] {
             AgUiEvent::ThinkingTextMessageContent(event) => {
-                assert_eq!(event.delta, "Checking public sources");
+                assert_eq!(event.delta, "Working...");
                 assert!(!event.delta.contains("web_search"));
                 assert!(!event.delta.contains("private query"));
             }
