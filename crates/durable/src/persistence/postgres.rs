@@ -5,6 +5,7 @@
 //! - Efficient task claiming with SKIP LOCKED
 //! - Event sourcing for workflow replay
 
+use std::collections::BTreeMap;
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -88,6 +89,124 @@ impl PostgresWorkflowEventStore {
     /// Get a reference to the connection pool
     pub fn pool(&self) -> &PgPool {
         &self.pool
+    }
+
+    /// Create a workflow, write its initial events, and enqueue the first task in
+    /// one transaction. This is the hot path for a new session turn.
+    pub async fn start_workflow_with_task(
+        &self,
+        workflow_id: Uuid,
+        workflow_type: &str,
+        input: serde_json::Value,
+        task: TaskDefinition,
+    ) -> Result<Uuid, StoreError> {
+        let task_id = Uuid::now_v7();
+        let workflow_input = sanitize_json_null_bytes(input.clone());
+        let task_input = sanitize_json_null_bytes(task.input.clone());
+        let options_json = serde_json::to_value(&task.options)
+            .map(sanitize_json_null_bytes)
+            .map_err(|e| StoreError::Serialization(e.to_string()))?;
+
+        let workflow_started = WorkflowEvent::WorkflowStarted {
+            input: workflow_input.clone(),
+        };
+        let activity_scheduled = WorkflowEvent::ActivityScheduled {
+            activity_id: task.activity_id.clone(),
+            activity_type: task.activity_type.clone(),
+            input: task_input.clone(),
+            options: task.options.clone(),
+        };
+        let workflow_started_data = serde_json::to_value(&workflow_started)
+            .map(sanitize_json_null_bytes)
+            .map_err(|e| StoreError::Serialization(e.to_string()))?;
+        let activity_scheduled_data = serde_json::to_value(&activity_scheduled)
+            .map(sanitize_json_null_bytes)
+            .map_err(|e| StoreError::Serialization(e.to_string()))?;
+
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| StoreError::Database(e.to_string()))?;
+
+        sqlx::query(
+            r#"
+            INSERT INTO durable_workflow_instances (
+                id, workflow_type, status, input, started_at
+            )
+            VALUES ($1, $2, 'running', $3, NOW())
+            "#,
+        )
+        .bind(workflow_id)
+        .bind(workflow_type)
+        .bind(&workflow_input)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| {
+            error!("Failed to create started workflow: {}", e);
+            StoreError::Database(e.to_string())
+        })?;
+
+        sqlx::query(
+            r#"
+            INSERT INTO durable_workflow_events (
+                workflow_id, sequence_num, event_type, event_data
+            )
+            VALUES
+                ($1, 0, 'workflow_started', $2),
+                ($1, 1, 'activity_scheduled', $3)
+            "#,
+        )
+        .bind(workflow_id)
+        .bind(&workflow_started_data)
+        .bind(&activity_scheduled_data)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| {
+            error!("Failed to write initial workflow events: {}", e);
+            StoreError::Database(e.to_string())
+        })?;
+
+        sqlx::query(
+            r#"
+            INSERT INTO durable_task_queue (
+                id, workflow_id, activity_id, activity_type, input, options,
+                max_attempts, priority,
+                schedule_to_start_timeout_ms, start_to_close_timeout_ms, heartbeat_timeout_ms
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            "#,
+        )
+        .bind(task_id)
+        .bind(workflow_id)
+        .bind(&task.activity_id)
+        .bind(&task.activity_type)
+        .bind(&task_input)
+        .bind(&options_json)
+        .bind(task.options.retry_policy.max_attempts as i32)
+        .bind(task.options.priority)
+        .bind(task.options.schedule_to_start_timeout.as_millis() as i64)
+        .bind(task.options.start_to_close_timeout.as_millis() as i64)
+        .bind(task.options.heartbeat_timeout.map(|d| d.as_millis() as i64))
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| {
+            error!("Failed to enqueue initial workflow task: {}", e);
+            StoreError::Database(e.to_string())
+        })?;
+
+        tx.commit().await.map_err(|e| {
+            error!("Failed to commit initial workflow start: {}", e);
+            StoreError::Database(e.to_string())
+        })?;
+
+        debug!(
+            %workflow_id,
+            %task_id,
+            activity_type = %task.activity_type,
+            "started workflow and enqueued initial task"
+        );
+        Ok(task_id)
     }
 }
 
@@ -674,17 +793,30 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
             return Ok(vec![]);
         }
 
-        // Use SKIP LOCKED for efficient concurrent claiming
-        // This query:
+        // Use SKIP LOCKED for efficient concurrent claiming.
+        // This transaction:
         // 1. Verifies worker is not draining (early exit if draining)
         // 2. Finds pending tasks matching activity types
         // 3. Orders by priority (desc) then visibility time
         // 4. Limits to max_tasks
         // 5. Uses SKIP LOCKED to avoid contention
-        // 6. Updates status and claiming info in one atomic operation
+        // 6. Updates status and claiming info
+        // 7. Appends ActivityStarted events for workflow tasks before returning
+        //    the claim, avoiding a separate pre-execution write in the worker.
+        //
+        // The ActivityStarted sequence read is deliberately a separate statement
+        // after locking each workflow row. Under READ COMMITTED, a single-statement
+        // CTE keeps its original snapshot even after waiting on row locks, which
+        // can duplicate sequence numbers during concurrent claims for one workflow.
         // NOTE: The `attempt < max_attempts` check is critical for preventing infinite
         // retries when workers panic. Without fail_task being called, the task becomes
         // stale, gets reclaimed, but must not be claimed if attempts are exhausted.
+        let mut tx = self
+            .pool
+            .begin()
+            .await
+            .map_err(|e| StoreError::Database(e.to_string()))?;
+
         let rows = sqlx::query(
             r#"
             WITH worker_check AS (
@@ -701,26 +833,131 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
                 ORDER BY tq.priority DESC, tq.visible_at
                 LIMIT $2
                 FOR UPDATE SKIP LOCKED
+            ),
+            updated AS (
+                UPDATE durable_task_queue t
+                SET status = 'claimed',
+                    claimed_by = $3,
+                    claimed_at = NOW(),
+                    heartbeat_at = NOW(),
+                    attempt = attempt + 1
+                FROM claimable c
+                WHERE t.id = c.id
+                RETURNING t.id, t.workflow_id, t.activity_id, t.activity_type,
+                          t.input, t.options, t.attempt, t.max_attempts
             )
-            UPDATE durable_task_queue t
-            SET status = 'claimed',
-                claimed_by = $3,
-                claimed_at = NOW(),
-                heartbeat_at = NOW(),
-                attempt = attempt + 1
-            FROM claimable c
-            WHERE t.id = c.id
-            RETURNING t.id, t.workflow_id, t.activity_id, t.activity_type,
-                      t.input, t.options, t.attempt, t.max_attempts
+            SELECT id, workflow_id, activity_id, activity_type,
+                   input, options, attempt, max_attempts
+            FROM updated
             "#,
         )
         .bind(activity_types)
         .bind(max_tasks as i32)
         .bind(worker_id)
-        .fetch_all(&self.pool)
+        .fetch_all(&mut *tx)
         .await
         .map_err(|e| {
             error!("Failed to claim tasks: {}", e);
+            StoreError::Database(e.to_string())
+        })?;
+
+        let mut claimed = Vec::with_capacity(rows.len());
+        let mut started_by_workflow: BTreeMap<Uuid, Vec<(Uuid, String, i32)>> = BTreeMap::new();
+        for row in rows {
+            let options_json: serde_json::Value = row.get("options");
+            let options: ActivityOptions = serde_json::from_value(options_json)
+                .map_err(|e| StoreError::Serialization(e.to_string()))?;
+            let task_id: Uuid = row.get("id");
+            let workflow_id = row.get::<Option<Uuid>, _>("workflow_id");
+            let activity_id: String = row.get("activity_id");
+            let attempt = row.get::<i32, _>("attempt");
+
+            claimed.push(ClaimedTask {
+                id: task_id,
+                workflow_id,
+                activity_id: activity_id.clone(),
+                activity_type: row.get("activity_type"),
+                input: row.get("input"),
+                options,
+                attempt: attempt as u32,
+                max_attempts: row.get::<i32, _>("max_attempts") as u32,
+            });
+
+            if let Some(workflow_id) = workflow_id {
+                started_by_workflow.entry(workflow_id).or_default().push((
+                    task_id,
+                    activity_id,
+                    attempt,
+                ));
+            }
+        }
+
+        for (workflow_id, mut events) in started_by_workflow {
+            events.sort_by_key(|(task_id, _, _)| *task_id);
+
+            sqlx::query(
+                r#"
+                SELECT id FROM durable_workflow_instances
+                WHERE id = $1
+                FOR UPDATE
+                "#,
+            )
+            .bind(workflow_id)
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(|e| {
+                error!("Failed to lock workflow for activity start event: {}", e);
+                StoreError::Database(e.to_string())
+            })?;
+
+            let mut next_sequence = sqlx::query_scalar::<_, i32>(
+                r#"
+                SELECT COALESCE(MAX(sequence_num) + 1, 0)::INTEGER
+                FROM durable_workflow_events
+                WHERE workflow_id = $1
+                "#,
+            )
+            .bind(workflow_id)
+            .fetch_one(&mut *tx)
+            .await
+            .map_err(|e| {
+                error!("Failed to get workflow event sequence: {}", e);
+                StoreError::Database(e.to_string())
+            })?;
+
+            for (_, activity_id, attempt) in events {
+                let event_data = serde_json::to_value(WorkflowEvent::ActivityStarted {
+                    activity_id: activity_id.clone(),
+                    attempt: attempt as u32,
+                    worker_id: worker_id.to_string(),
+                })
+                .map(sanitize_json_null_bytes)
+                .map_err(|e| StoreError::Serialization(e.to_string()))?;
+
+                sqlx::query(
+                    r#"
+                    INSERT INTO durable_workflow_events (
+                        workflow_id, sequence_num, event_type, event_data
+                    )
+                    VALUES ($1, $2, 'activity_started', $3)
+                    "#,
+                )
+                .bind(workflow_id)
+                .bind(next_sequence)
+                .bind(&event_data)
+                .execute(&mut *tx)
+                .await
+                .map_err(|e| {
+                    error!("Failed to write activity start event: {}", e);
+                    StoreError::Database(e.to_string())
+                })?;
+
+                next_sequence += 1;
+            }
+        }
+
+        tx.commit().await.map_err(|e| {
+            error!("Failed to commit task claim: {}", e);
             StoreError::Database(e.to_string())
         })?;
 
@@ -728,24 +965,6 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
         fail_point!("postgres_claim_task_after_query", |_| {
             Err(StoreError::Database("injected: after claim query".into()))
         });
-
-        let mut claimed = Vec::with_capacity(rows.len());
-        for row in rows {
-            let options_json: serde_json::Value = row.get("options");
-            let options: ActivityOptions = serde_json::from_value(options_json)
-                .map_err(|e| StoreError::Serialization(e.to_string()))?;
-
-            claimed.push(ClaimedTask {
-                id: row.get("id"),
-                workflow_id: row.get::<Option<Uuid>, _>("workflow_id"),
-                activity_id: row.get("activity_id"),
-                activity_type: row.get("activity_type"),
-                input: row.get("input"),
-                options,
-                attempt: row.get::<i32, _>("attempt") as u32,
-                max_attempts: row.get::<i32, _>("max_attempts") as u32,
-            });
-        }
 
         if !claimed.is_empty() {
             debug!(worker_id, count = claimed.len(), "claimed tasks");

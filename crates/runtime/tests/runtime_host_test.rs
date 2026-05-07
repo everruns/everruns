@@ -508,8 +508,15 @@ async fn input_activity_emits_lifecycle_events_and_marks_session_active() {
         .into_iter()
         .map(|event| event.data.event_type().to_string())
         .collect();
-    assert!(event_types.contains(&"session.activated".to_string()));
-    assert!(event_types.contains(&"turn.started".to_string()));
+    let turn_started_pos = event_types
+        .iter()
+        .position(|event_type| event_type == "turn.started")
+        .expect("turn.started event");
+    let session_activated_pos = event_types
+        .iter()
+        .position(|event_type| event_type == "session.activated")
+        .expect("session.activated event");
+    assert!(session_activated_pos < turn_started_pos);
 }
 
 #[tokio::test]

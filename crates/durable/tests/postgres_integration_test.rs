@@ -388,6 +388,17 @@ async fn test_task_enqueue_and_claim() {
     assert_eq!(claimed[0].activity_type, "send_email");
     assert_eq!(claimed[0].attempt, 1);
 
+    let events = store.load_events(workflow_id).await.unwrap();
+    assert_eq!(events.len(), 1);
+    assert!(matches!(
+        &events[0].1,
+        WorkflowEvent::ActivityStarted {
+            activity_id,
+            attempt: 1,
+            worker_id,
+        } if activity_id == "step-1" && worker_id == "worker-1"
+    ));
+
     // Second claim should get nothing (task already claimed)
     let claimed2 = store
         .claim_task("worker-2", &["send_email".to_string()], 10)
@@ -398,6 +409,52 @@ async fn test_task_enqueue_and_claim() {
     cleanup_workflow(&store, workflow_id).await;
     cleanup_worker(&store, "worker-1").await;
     cleanup_worker(&store, "worker-2").await;
+}
+
+#[tokio::test]
+async fn test_start_workflow_with_task_writes_initial_state_in_one_step() {
+    let store = create_test_store().await;
+    let workflow_id = Uuid::now_v7();
+
+    let task_id = store
+        .start_workflow_with_task(
+            workflow_id,
+            "turn_workflow",
+            json!({"session_id": "session_123"}),
+            TaskDefinition {
+                workflow_id: Some(workflow_id),
+                activity_id: "input-1".to_string(),
+                activity_type: "process_input".to_string(),
+                input: json!({"session_id": "session_123"}),
+                options: ActivityOptions::default(),
+            },
+        )
+        .await
+        .unwrap();
+
+    let workflow = store.get_workflow_info(workflow_id).await.unwrap();
+    assert_eq!(workflow.status, WorkflowStatus::Running);
+
+    let events = store.load_events(workflow_id).await.unwrap();
+    assert_eq!(events.len(), 2);
+    assert!(matches!(
+        &events[0].1,
+        WorkflowEvent::WorkflowStarted { .. }
+    ));
+    assert!(matches!(
+        &events[1].1,
+        WorkflowEvent::ActivityScheduled {
+            activity_id,
+            activity_type,
+            ..
+        } if activity_id == "input-1" && activity_type == "process_input"
+    ));
+
+    let task = store.get_task(task_id).await.unwrap();
+    assert_eq!(task.status, TaskStatus::Pending);
+    assert_eq!(task.activity_type, "process_input");
+
+    cleanup_workflow(&store, workflow_id).await;
 }
 
 #[tokio::test]

@@ -61,6 +61,15 @@ pub trait DurableStoreBackend: Send + Sync {
         input: serde_json::Value,
     ) -> Result<Uuid>;
 
+    async fn start_workflow_with_task(
+        &mut self,
+        workflow_id: Uuid,
+        workflow_type: &str,
+        input: serde_json::Value,
+        activity_id: String,
+        activity_type: String,
+    ) -> Result<Uuid>;
+
     async fn count_active_workflows(&mut self) -> Result<usize>;
 
     async fn cancel_pending_tasks(&mut self, workflow_id: Uuid) -> Result<u64>;
@@ -166,6 +175,55 @@ impl DurableStoreBackend for GrpcDurableStore {
         GrpcDurableStore::enqueue_task(self, workflow_id, activity_id, activity_type, input).await
     }
 
+    async fn start_workflow_with_task(
+        &mut self,
+        workflow_id: Uuid,
+        workflow_type: &str,
+        input: serde_json::Value,
+        activity_id: String,
+        activity_type: String,
+    ) -> Result<Uuid> {
+        GrpcDurableStore::create_workflow(self, workflow_id, workflow_type, input.clone()).await?;
+        let _ = self
+            .append_events(
+                workflow_id,
+                0,
+                vec![WorkflowEvent::WorkflowStarted {
+                    input: input.clone(),
+                }],
+            )
+            .await?;
+        let task_id = GrpcDurableStore::enqueue_task(
+            self,
+            workflow_id,
+            activity_id.clone(),
+            activity_type.clone(),
+            input.clone(),
+        )
+        .await?;
+        GrpcDurableStore::update_workflow_status(
+            self,
+            workflow_id,
+            runtime_to_grpc_status(WorkflowStatus::Running),
+            None,
+            None,
+        )
+        .await?;
+        let _ = self
+            .append_events(
+                workflow_id,
+                1,
+                vec![WorkflowEvent::ActivityScheduled {
+                    activity_id,
+                    activity_type,
+                    input,
+                    options: everruns_durable::ActivityOptions::default(),
+                }],
+            )
+            .await?;
+        Ok(task_id)
+    }
+
     async fn count_active_workflows(&mut self) -> Result<usize> {
         GrpcDurableStore::count_active_workflows(self).await
     }
@@ -255,6 +313,31 @@ impl DurableStoreBackend for DirectDurableStore {
                 input,
                 options: Default::default(),
             })
+            .await
+            .map_err(Into::into)
+    }
+
+    async fn start_workflow_with_task(
+        &mut self,
+        workflow_id: Uuid,
+        workflow_type: &str,
+        input: serde_json::Value,
+        activity_id: String,
+        activity_type: String,
+    ) -> Result<Uuid> {
+        self.store
+            .start_workflow_with_task(
+                workflow_id,
+                workflow_type,
+                input.clone(),
+                everruns_durable::TaskDefinition {
+                    workflow_id: Some(workflow_id),
+                    activity_id,
+                    activity_type,
+                    input,
+                    options: Default::default(),
+                },
+            )
             .await
             .map_err(Into::into)
     }
@@ -369,6 +452,56 @@ impl DurableStoreBackend for InMemoryDurableStore {
             })
             .await
             .map_err(Into::into)
+    }
+
+    async fn start_workflow_with_task(
+        &mut self,
+        workflow_id: Uuid,
+        workflow_type: &str,
+        input: serde_json::Value,
+        activity_id: String,
+        activity_type: String,
+    ) -> Result<Uuid> {
+        self.store
+            .create_workflow(workflow_id, workflow_type, input.clone(), None)
+            .await?;
+        let _ = self
+            .store
+            .append_events(
+                workflow_id,
+                0,
+                vec![WorkflowEvent::WorkflowStarted {
+                    input: input.clone(),
+                }],
+            )
+            .await?;
+        let task_id = self
+            .store
+            .enqueue_task(everruns_durable::TaskDefinition {
+                workflow_id: Some(workflow_id),
+                activity_id: activity_id.clone(),
+                activity_type: activity_type.clone(),
+                input: input.clone(),
+                options: Default::default(),
+            })
+            .await?;
+        self.store
+            .update_workflow_status(workflow_id, WorkflowStatus::Running, None, None)
+            .await?;
+        let _ = self
+            .store
+            .append_events(
+                workflow_id,
+                1,
+                vec![WorkflowEvent::ActivityScheduled {
+                    activity_id,
+                    activity_type,
+                    input,
+                    options: everruns_durable::ActivityOptions::default(),
+                }],
+            )
+            .await?;
+        Ok(task_id)
     }
 
     async fn count_active_workflows(&mut self) -> Result<usize> {
@@ -579,57 +712,17 @@ impl AgentRunner for DurableRunner {
                         return Err(anyhow::anyhow!("Failed to check workflow status: {error}"));
                     }
 
-                    store
-                        .create_workflow(workflow_id, "turn_workflow", input_json.clone())
-                        .await
-                        .map_err(|e| anyhow::anyhow!("Failed to create workflow: {e}"))?;
-
                     let activity_id = format!("input_{}", Uuid::now_v7());
-                    let sequence = store
-                        .append_events(
-                            workflow_id,
-                            0,
-                            vec![WorkflowEvent::WorkflowStarted {
-                                input: input_json.clone(),
-                            }],
-                        )
-                        .await
-                        .map_err(|e| {
-                            anyhow::anyhow!("Failed to append WorkflowStarted event: {e}")
-                        })?;
-
                     store
-                        .enqueue_task(
+                        .start_workflow_with_task(
                             workflow_id,
+                            "turn_workflow",
+                            input_json,
                             activity_id.clone(),
                             "process_input".to_string(),
-                            input_json.clone(),
                         )
                         .await
-                        .map_err(|e| anyhow::anyhow!("Failed to enqueue task: {e}"))?;
-
-                    store
-                        .update_workflow_status(workflow_id, WorkflowStatus::Running, None, None)
-                        .await
-                        .map_err(|e| {
-                            anyhow::anyhow!("Failed to set new workflow to Running: {e}")
-                        })?;
-
-                    let _ = store
-                        .append_events(
-                            workflow_id,
-                            sequence,
-                            vec![WorkflowEvent::ActivityScheduled {
-                                activity_id,
-                                activity_type: "process_input".to_string(),
-                                input: input_json,
-                                options: everruns_durable::ActivityOptions::default(),
-                            }],
-                        )
-                        .await
-                        .map_err(|e| {
-                            anyhow::anyhow!("Failed to append ActivityScheduled event: {e}")
-                        })?;
+                        .map_err(|e| anyhow::anyhow!("Failed to start workflow: {e}"))?;
 
                     Some("process_input")
                 }
