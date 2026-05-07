@@ -648,10 +648,35 @@ async fn wake_parent(context: &ToolContext, record: &AgentRunRecord) -> Result<(
         .await
 }
 
+fn enforce_network_access(agent: &ExternalA2aAgentConfig, card: &AgentCard, context: &ToolContext) -> std::result::Result<(), String> {
+    if let Some(ref acl) = context.network_access {
+        if let Some(base_url) = &agent.base_url
+            && !acl.is_url_allowed(base_url)
+        {
+            return Err(format!(
+                "A2A base URL blocked by network access policy: {base_url}"
+            ));
+        }
+
+        for iface in &card.supported_interfaces {
+            if !acl.is_url_allowed(&iface.url) {
+                return Err(format!(
+                    "A2A interface URL blocked by network access policy: {}",
+                    iface.url
+                ));
+            }
+        }
+    }
+
+    Ok(())
+}
+
 async fn build_client(
     agent: &ExternalA2aAgentConfig,
+    context: &ToolContext,
 ) -> std::result::Result<a2a_client::A2AClient<Box<dyn a2a_client::Transport>>, String> {
     let card = agent.resolve_card().await?;
+    enforce_network_access(agent, &card, context)?;
     let mut builder = A2AClientFactory::builder();
     if let Some(binding) = &agent.preferred_binding {
         builder = builder.preferred_bindings(vec![binding.clone()]);
@@ -704,7 +729,7 @@ async fn submit_run(
     remote_task_id: Option<String>,
     remote_context_id: Option<String>,
 ) -> std::result::Result<(), String> {
-    let client = build_client(agent).await?;
+    let client = build_client(agent, context).await?;
     let response = client
         .send_message(&send_request(text, remote_task_id, remote_context_id, true))
         .await
@@ -737,7 +762,7 @@ async fn wait_for_run(
     let Some(remote_task_id) = record.remote_task_id.clone() else {
         return Ok(record);
     };
-    let client = build_client(agent).await?;
+    let client = build_client(agent, context).await?;
     let deadline = Instant::now() + Duration::from_secs(timeout_secs);
     let poll_interval = Duration::from_millis(
         agent
@@ -1320,7 +1345,7 @@ impl Tool for CancelAgentTool {
                 record.external_agent_id
             ));
         };
-        match build_client(&agent).await {
+        match build_client(&agent, context).await {
             Ok(client) => match client
                 .cancel_task(&CancelTaskRequest {
                     id: remote_task_id,
