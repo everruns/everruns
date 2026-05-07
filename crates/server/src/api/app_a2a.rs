@@ -224,6 +224,7 @@ struct AuthorizedA2a {
     org_id: i64,
     app_public_id: String,
     channel_public_id: everruns_core::typed_id::AppChannelId,
+    session_mode: everruns_core::InvocationSessionMode,
 }
 
 async fn authenticate_request(
@@ -272,6 +273,7 @@ async fn authenticate_request(
         org_id: app.org_id,
         app_public_id: app.public_id.to_string(),
         channel_public_id: channel_id_typed,
+        session_mode: config.session_mode,
     })
 }
 
@@ -627,6 +629,18 @@ async fn handle_message_stream(
     channel_id: String,
     req_id: Option<axum::Extension<RequestId>>,
 ) -> Response {
+    if auth.session_mode != everruns_core::InvocationSessionMode::SessionPerInvocation {
+        return (
+            StatusCode::OK,
+            rpc_error(
+                rpc_id,
+                -32600,
+                "message/stream requires session_mode=session_per_invocation",
+            ),
+        )
+            .into_response();
+    }
+
     let parsed_msg = match parse_message_params(&parsed.params) {
         Ok(parsed) => parsed,
         Err(msg) => {
