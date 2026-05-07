@@ -378,6 +378,13 @@ impl IdMarker for SkillIdMarker {
     const PREFIX: &'static str = "skill";
 }
 
+/// Marker for Declarative Capability IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct DeclarativeCapabilityIdMarker;
+impl IdMarker for DeclarativeCapabilityIdMarker {
+    const PREFIX: &'static str = "cap";
+}
+
 /// Marker for Turn IDs (used in workflow execution)
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct TurnIdMarker;
@@ -541,6 +548,8 @@ pub type ImageId = TypedId<ImageIdMarker>;
 pub type McpServerId = TypedId<McpServerIdMarker>;
 /// Skill ID
 pub type SkillId = TypedId<SkillIdMarker>;
+/// Declarative Capability ID
+pub type DeclarativeCapabilityId = TypedId<DeclarativeCapabilityIdMarker>;
 /// Turn ID
 pub type TurnId = TypedId<TurnIdMarker>;
 /// Execution ID

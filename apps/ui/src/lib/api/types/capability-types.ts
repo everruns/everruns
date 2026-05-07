@@ -34,3 +34,61 @@ export interface Capability {
   /** Slug under https://dev.everruns.com/capabilities/ for the public docs page */
   docs_slug?: string;
 }
+
+export interface DeclarativeCapabilityFile {
+  path: string;
+  content: string;
+  access?: "readonly" | "readwrite";
+}
+
+export interface DeclarativeCapabilitySkillFile {
+  path: string;
+  content: string;
+}
+
+export interface DeclarativeCapabilitySkill {
+  name: string;
+  description: string;
+  instructions: string;
+  files?: DeclarativeCapabilitySkillFile[];
+  user_invocable?: boolean;
+  disable_model_invocation?: boolean;
+}
+
+export interface DeclarativeCapabilityDefinition {
+  name: string;
+  display_name?: string | null;
+  description: string;
+  icon?: string;
+  category?: string;
+  system_prompt?: string;
+  mcp_servers?: Record<string, unknown>;
+  skills?: DeclarativeCapabilitySkill[];
+  files?: DeclarativeCapabilityFile[];
+  dependencies?: CapabilityId[];
+  features?: string[];
+  risk_level?: "low" | "medium" | "high";
+}
+
+export interface DeclarativeCapability {
+  id: string;
+  capability_id: CapabilityId;
+  name: string;
+  display_name?: string | null;
+  description: string;
+  status: "active" | "disabled" | "archived" | "deleted";
+  definition: DeclarativeCapabilityDefinition;
+  created_at: string;
+  updated_at: string;
+  archived_at?: string | null;
+  deleted_at?: string | null;
+}
+
+export interface CreateDeclarativeCapabilityRequest {
+  definition: DeclarativeCapabilityDefinition;
+}
+
+export interface UpdateDeclarativeCapabilityRequest {
+  definition?: DeclarativeCapabilityDefinition;
+  status?: "active" | "disabled" | "archived";
+}

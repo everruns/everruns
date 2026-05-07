@@ -46,6 +46,62 @@ async fn test_create_and_get_agent() {
 }
 
 #[tokio::test]
+async fn test_declarative_capability_storage_searches_name_and_display_name() {
+    let db = InMemoryDatabase::new();
+    let row = db
+        .create_declarative_capability(
+            DEFAULT_ORG_ID,
+            CreateDeclarativeCapabilityRow {
+                public_id: everruns_core::DeclarativeCapabilityId::new().to_string(),
+                name: "research_pack".to_string(),
+                display_name: Some("Research Pack".to_string()),
+                description: "Curated research defaults".to_string(),
+                definition: serde_json::json!({
+                    "name": "research_pack",
+                    "display_name": "Research Pack",
+                    "description": "Curated research defaults"
+                }),
+            },
+        )
+        .await
+        .unwrap();
+
+    assert!(row.public_id.starts_with("cap_"));
+    assert_eq!(row.display_name.as_deref(), Some("Research Pack"));
+
+    let by_public_id = db
+        .get_declarative_capability_by_public_id(DEFAULT_ORG_ID, &row.public_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(by_public_id.name, "research_pack");
+
+    let by_display_name = db
+        .list_declarative_capabilities(DEFAULT_ORG_ID, Some("research"), false)
+        .await
+        .unwrap();
+    assert_eq!(by_display_name.len(), 1);
+
+    let updated = db
+        .update_declarative_capability(
+            DEFAULT_ORG_ID,
+            row.id,
+            UpdateDeclarativeCapability {
+                display_name: None,
+                definition: Some(serde_json::json!({
+                    "name": "research_pack",
+                    "description": "Curated research defaults"
+                })),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(updated.display_name, None);
+}
+
+#[tokio::test]
 async fn test_create_and_list_sessions() {
     let db = InMemoryDatabase::new();
 

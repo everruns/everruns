@@ -10,6 +10,7 @@ mod audit_logs;
 mod auth;
 mod budgets;
 pub use budgets::BudgetSubjectLookup;
+mod declarative_capabilities;
 mod evals;
 mod events;
 mod harnesses;

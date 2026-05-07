@@ -95,6 +95,15 @@ fn check_high_risk_caps(ctx: &Ctx, caps: &[AgentCapabilityConfig]) -> Result<(),
     Ok(())
 }
 
+async fn normalize_capability_refs(
+    ctx: &Ctx,
+    caps: Vec<AgentCapabilityConfig>,
+) -> Result<Vec<AgentCapabilityConfig>, CommandError> {
+    crate::domains::capabilities::validation::normalize_capability_refs(&ctx.db, ctx.org_id(), caps)
+        .await
+        .map_err(classify_anyhow)
+}
+
 // ============================================================================
 // Shared persistence helpers
 // ============================================================================
@@ -150,10 +159,14 @@ impl Command for CreateAgent {
 
         // Business rules
         q::ensure_name_available(&ctx.db, ctx.org_id(), &req.name, None).await?;
-        let caps = q::ensure_file_system_capability(
-            req.capabilities.clone(),
-            !req.initial_files.is_empty(),
-        );
+        let caps = normalize_capability_refs(
+            ctx,
+            q::ensure_file_system_capability(
+                req.capabilities.clone(),
+                !req.initial_files.is_empty(),
+            ),
+        )
+        .await?;
         crate::domains::capabilities::validation::validate_capability_refs(
             &ctx.db,
             ctx.org_id(),
@@ -423,12 +436,15 @@ impl Command for UpdateAgentCmd {
             .unwrap_or(!existing_initial_files.is_empty());
 
         let capabilities_override = match req.capabilities.clone() {
-            Some(caps) => Some(q::ensure_file_system_capability(
-                caps,
-                final_has_initial_files,
-            )),
+            Some(caps) => Some(
+                normalize_capability_refs(
+                    ctx,
+                    q::ensure_file_system_capability(caps, final_has_initial_files),
+                )
+                .await?,
+            ),
             None if final_has_initial_files => Some(q::ensure_file_system_capability(
-                q::get_capabilities(&ctx.db, internal_id.uuid())
+                q::get_capabilities(&ctx.db, ctx.org_id(), internal_id.uuid())
                     .await
                     .map_err(classify_anyhow)?,
                 true,
@@ -490,7 +506,7 @@ impl Command for UpdateAgentCmd {
             persist_capabilities(&ctx.db, internal_id.uuid(), &caps).await?;
             caps
         } else {
-            q::get_capabilities(&ctx.db, internal_id.uuid())
+            q::get_capabilities(&ctx.db, ctx.org_id(), internal_id.uuid())
                 .await
                 .map_err(classify_anyhow)?
         };
@@ -612,10 +628,14 @@ impl Command for UpsertAgent {
         validate_create_limits(&req)?;
         check_high_risk_caps(ctx, &req.capabilities)?;
 
-        let caps = q::ensure_file_system_capability(
-            req.capabilities.clone(),
-            !req.initial_files.is_empty(),
-        );
+        let caps = normalize_capability_refs(
+            ctx,
+            q::ensure_file_system_capability(
+                req.capabilities.clone(),
+                !req.initial_files.is_empty(),
+            ),
+        )
+        .await?;
         crate::domains::capabilities::validation::validate_capability_refs(
             &ctx.db,
             ctx.org_id(),
@@ -659,7 +679,7 @@ impl Command for UpsertAgent {
         } else if was_created {
             vec![]
         } else {
-            q::get_capabilities(&ctx.db, agent_uuid)
+            q::get_capabilities(&ctx.db, ctx.org_id(), agent_uuid)
                 .await
                 .map_err(classify_anyhow)?
         };

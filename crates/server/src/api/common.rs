@@ -936,6 +936,18 @@ impl ResourceUrlable for everruns_core::CapabilityInfo {
     }
 }
 
+impl ResourceUrlable for crate::domains::capabilities::types::DeclarativeCapability {
+    fn api_path() -> &'static str {
+        "v1/capabilities/declarative"
+    }
+    fn ui_path() -> &'static str {
+        "capabilities"
+    }
+    fn resource_id(&self) -> String {
+        self.public_id.to_string()
+    }
+}
+
 /// Verify that a session belongs to the caller's organization.
 ///
 /// Returns Ok(()) if the session exists under org_id, or a 404 (StatusCode only)

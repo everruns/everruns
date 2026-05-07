@@ -11,8 +11,9 @@ use crate::errors::{BadRequestError, ResourceNotFoundError};
 use crate::storage::StorageBackend;
 use anyhow::Result;
 use everruns_core::capabilities::{
-    AgentCapabilityConfig, CapabilityRegistry, is_mcp_capability, is_skill_capability,
-    parse_mcp_capability_id, parse_skill_capability_id,
+    AgentCapabilityConfig, CapabilityRegistry, declarative_capability_id,
+    is_declarative_capability, is_mcp_capability, is_skill_capability,
+    parse_declarative_capability_id, parse_mcp_capability_id, parse_skill_capability_id,
 };
 
 /// Validate that all capability references in `capabilities` resolve.
@@ -45,6 +46,17 @@ pub async fn validate_capability_refs(
             db.get_skill(org_id, uuid)
                 .await?
                 .ok_or_else(|| ResourceNotFoundError::new("Skill"))?;
+        } else if is_declarative_capability(cap_id) {
+            let name = parse_declarative_capability_id(cap_id).ok_or_else(|| {
+                anyhow::anyhow!("Invalid declarative capability reference: {cap_id}")
+            })?;
+            let row = db
+                .get_declarative_capability_by_name(org_id, name)
+                .await?
+                .ok_or_else(|| ResourceNotFoundError::new("Declarative capability"))?;
+            if !matches!(row.status.as_str(), "active" | "disabled") {
+                return Err(ResourceNotFoundError::new("Declarative capability").into());
+            }
         } else {
             // Built-in capability — check registry
             let reg = registry.get_or_insert_with(CapabilityRegistry::with_builtins);
@@ -60,10 +72,55 @@ pub async fn validate_capability_refs(
     Ok(())
 }
 
+/// Normalize user-entered capability refs before persistence.
+///
+/// Built-ins, MCP, skill, and already-prefixed declarative refs are left as-is.
+/// If a plain ref is not a built-in but matches an active/disabled declarative
+/// capability name in the caller's org, it is stored canonically as
+/// `declarative:<name>`.
+pub async fn normalize_capability_refs(
+    db: &StorageBackend,
+    org_id: i64,
+    capabilities: Vec<AgentCapabilityConfig>,
+) -> Result<Vec<AgentCapabilityConfig>> {
+    let registry = CapabilityRegistry::with_builtins();
+    let mut normalized = Vec::with_capacity(capabilities.len());
+
+    for cap in capabilities {
+        let cap_id = cap.capability_id();
+        if is_mcp_capability(cap_id)
+            || is_skill_capability(cap_id)
+            || is_declarative_capability(cap_id)
+            || registry.get(cap_id).is_some()
+        {
+            normalized.push(cap);
+            continue;
+        }
+
+        if let Some(row) = db
+            .get_declarative_capability_by_name(org_id, cap_id)
+            .await?
+            && matches!(row.status.as_str(), "active" | "disabled")
+        {
+            normalized.push(AgentCapabilityConfig::with_config(
+                declarative_capability_id(&row.name),
+                cap.config,
+            ));
+            continue;
+        }
+
+        normalized.push(cap);
+    }
+
+    Ok(normalized)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::models::{CreateMcpServerRow, CreateSkillRow};
+    use crate::storage::models::{
+        CreateDeclarativeCapabilityRow, CreateMcpServerRow, CreateSkillRow,
+    };
     use everruns_core::DEFAULT_ORG_ID;
     use std::sync::Arc;
     use uuid::Uuid;
@@ -73,6 +130,40 @@ mod tests {
         let db = Arc::new(StorageBackend::in_memory());
         let caps = vec![AgentCapabilityConfig::new("current_time")];
 
+        validate_capability_refs(&db, DEFAULT_ORG_ID, &caps)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn plain_declarative_name_normalizes_to_canonical_ref() {
+        let db = Arc::new(StorageBackend::in_memory());
+        db.create_declarative_capability(
+            DEFAULT_ORG_ID,
+            CreateDeclarativeCapabilityRow {
+                public_id: everruns_core::DeclarativeCapabilityId::new().to_string(),
+                name: "research_pack".to_string(),
+                display_name: Some("Research Pack".to_string()),
+                description: "Research defaults".to_string(),
+                definition: serde_json::json!({
+                    "name": "research_pack",
+                    "display_name": "Research Pack",
+                    "description": "Research defaults"
+                }),
+            },
+        )
+        .await
+        .unwrap();
+
+        let caps = normalize_capability_refs(
+            &db,
+            DEFAULT_ORG_ID,
+            vec![AgentCapabilityConfig::new("research_pack")],
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(caps[0].capability_id(), "declarative:research_pack");
         validate_capability_refs(&db, DEFAULT_ORG_ID, &caps)
             .await
             .unwrap();

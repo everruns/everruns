@@ -120,6 +120,40 @@ curl -X POST http://localhost:9300/api/v1/agents \
 curl http://localhost:9300/api/v1/capabilities
 ```
 
+### Create a declarative capability
+
+Declarative capabilities are persisted capability definitions made from data:
+system prompt text, scoped MCP servers, text file mounts, and skill packages.
+They use a public resource ID like `cap_...` and a stable capability reference
+like `declarative:research_pack`.
+
+```bash
+curl -X POST http://localhost:9300/api/v1/capabilities \
+  -H "Content-Type: application/json" \
+  -d '{
+    "definition": {
+      "name": "research_pack",
+      "display_name": "Research Pack",
+      "description": "Default research behavior and resources.",
+      "system_prompt": "Prefer primary sources and cite them clearly.",
+      "risk_level": "low"
+    }
+  }'
+```
+
+Agents and harnesses can use the canonical reference:
+
+```json
+{ "ref": "declarative:research_pack" }
+```
+
+For convenience, agent and harness write APIs also accept the plain unique name
+when it matches a declarative capability:
+
+```json
+{ "ref": "research_pack" }
+```
+
 ## Key Concepts
 
 ### Dependencies

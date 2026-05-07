@@ -6,7 +6,9 @@ use crate::domains::common::CommandError;
 use crate::max_iterations;
 use crate::storage::StorageBackend;
 use everruns_core::typed_id::AgentId;
-use everruns_core::{Agent, AgentCapabilityConfig, AgentStatus, InitialFile, TokenUsage};
+use everruns_core::{
+    Agent, AgentCapabilityConfig, AgentStatus, InitialFile, TokenUsage, is_declarative_capability,
+};
 use uuid::Uuid;
 
 use super::types::AgentRow;
@@ -73,13 +75,20 @@ pub fn row_to_agent(row: AgentRow, capabilities: Vec<AgentCapabilityConfig>) -> 
 
 pub async fn get_capabilities(
     db: &StorageBackend,
+    org_id: i64,
     agent_uuid: Uuid,
 ) -> anyhow::Result<Vec<AgentCapabilityConfig>> {
     let rows = db.get_agent_capabilities(agent_uuid).await?;
-    Ok(rows
+    let capabilities = rows
         .into_iter()
         .map(|row| AgentCapabilityConfig::with_config(row.capability_id, row.config))
-        .collect())
+        .collect();
+    crate::domains::capabilities::queries::hydrate_declarative_capability_configs(
+        db,
+        org_id,
+        capabilities,
+    )
+    .await
 }
 
 /// Resolve agent by public ID or name. Single lookup path for both
@@ -97,7 +106,7 @@ pub async fn resolve(
     };
     match row {
         Some(row) if row.status != "deleted" => {
-            let caps = get_capabilities(db, row.id.uuid()).await?;
+            let caps = get_capabilities(db, row.org_id, row.id.uuid()).await?;
             Ok(Some(row_to_agent(row, caps)))
         }
         _ => Ok(None),
@@ -113,7 +122,7 @@ pub async fn get_by_public_id(
     let row = db.get_agent_by_public_id(org_id, public_id).await?;
     match row {
         Some(row) if row.status != "deleted" => {
-            let caps = get_capabilities(db, row.id.uuid()).await?;
+            let caps = get_capabilities(db, row.org_id, row.id.uuid()).await?;
             Ok(Some(row_to_agent(row, caps)))
         }
         _ => Ok(None),
@@ -129,7 +138,7 @@ pub async fn get_by_name(
     let row = db.get_agent_by_name(org_id, name).await?;
     match row {
         Some(row) if row.status != "deleted" => {
-            let caps = get_capabilities(db, row.id.uuid()).await?;
+            let caps = get_capabilities(db, row.org_id, row.id.uuid()).await?;
             Ok(Some(row_to_agent(row, caps)))
         }
         _ => Ok(None),
@@ -209,7 +218,14 @@ pub fn ensure_file_system_capability(
 pub fn cap_tuples(caps: &[AgentCapabilityConfig]) -> Vec<(String, i32, serde_json::Value)> {
     caps.iter()
         .enumerate()
-        .map(|(i, c)| (c.capability_ref.to_string(), i as i32, c.config.clone()))
+        .map(|(i, c)| {
+            let config = if is_declarative_capability(c.capability_id()) {
+                serde_json::json!({})
+            } else {
+                c.config.clone()
+            };
+            (c.capability_ref.to_string(), i as i32, config)
+        })
         .collect()
 }
 
@@ -220,7 +236,7 @@ pub async fn load_agents_list(
 ) -> anyhow::Result<Vec<Agent>> {
     let mut agents = Vec::with_capacity(rows.len());
     for row in rows {
-        let caps = get_capabilities(db, row.id.uuid()).await?;
+        let caps = get_capabilities(db, row.org_id, row.id.uuid()).await?;
         agents.push(row_to_agent(row, caps));
     }
     Ok(agents)

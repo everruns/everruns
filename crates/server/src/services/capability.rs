@@ -23,8 +23,9 @@ use crate::storage::{EncryptionService, StorageBackend};
 use anyhow::Result;
 use everruns_core::capabilities::{Capability, CapabilityRegistry};
 use everruns_core::{
-    Caller, CapabilityId, CapabilityInfo, CapabilityStatus, McpCapability, RiskLevel, Skill,
-    mcp_capability_id, skill_capability_id,
+    Caller, CapabilityId, CapabilityInfo, CapabilityStatus, DeclarativeCapabilityDefinition,
+    McpCapability, RiskLevel, Skill, declarative_capability_info, is_declarative_capability,
+    mcp_capability_id, parse_declarative_capability_id, skill_capability_id,
 };
 use moka::future::Cache;
 use std::sync::Arc;
@@ -171,6 +172,26 @@ impl CapabilityService {
             });
         }
 
+        let declarative_rows = self
+            .db
+            .list_declarative_capabilities(org_id, None, false)
+            .await?;
+        for row in declarative_rows {
+            if row.status != "active" {
+                continue;
+            }
+            let mut definition: DeclarativeCapabilityDefinition =
+                serde_json::from_value(row.definition.clone()).unwrap_or_default();
+            definition.name = row.name.clone();
+            definition.display_name = row.display_name.clone();
+            definition.description = row.description.clone();
+            definition.status = CapabilityStatus::Available;
+            let mut info = declarative_capability_info(&row.name, definition);
+            info.agent_count = 0;
+            info.harness_count = 0;
+            capabilities.push(info);
+        }
+
         // Populate agent/harness reference counts in one pair of grouped queries.
         let (agent_counts, harness_counts) = tokio::try_join!(
             self.db.count_agent_capability_references(org_id),
@@ -278,6 +299,33 @@ impl CapabilityService {
                     harness_count: 0,
                     docs_slug: None,
                 }));
+            }
+            return Ok(None);
+        }
+
+        if is_declarative_capability(id.as_str()) {
+            let Some(name) = parse_declarative_capability_id(id.as_str()) else {
+                return Ok(None);
+            };
+            if let Some(row) = self
+                .db
+                .get_declarative_capability_by_name(org_id, name)
+                .await?
+            {
+                if row.status == "deleted" {
+                    return Ok(None);
+                }
+                let mut definition: DeclarativeCapabilityDefinition =
+                    serde_json::from_value(row.definition.clone()).unwrap_or_default();
+                definition.name = row.name;
+                definition.display_name = row.display_name;
+                definition.description = row.description;
+                definition.status = if row.status == "active" {
+                    CapabilityStatus::Available
+                } else {
+                    CapabilityStatus::Deprecated
+                };
+                return Ok(Some(declarative_capability_info(name, definition)));
             }
             return Ok(None);
         }

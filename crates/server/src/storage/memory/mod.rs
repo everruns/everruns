@@ -15,6 +15,7 @@ mod apps;
 mod audit_logs;
 mod auth;
 mod budgets;
+mod declarative_capabilities;
 mod evals;
 mod events;
 mod harnesses;
@@ -104,6 +105,7 @@ pub struct InMemoryDatabase {
     images: RwLock<HashMap<ImageId, ImageRow>>,
     skills: RwLock<HashMap<SkillId, SkillRow>>,
     skill_files: RwLock<Vec<SkillFileRow>>,
+    declarative_capabilities: RwLock<HashMap<Uuid, DeclarativeCapabilityRow>>,
     // Event sequence counter per session
     event_sequences: RwLock<HashMap<SessionId, i32>>,
     // Session storage
@@ -199,6 +201,7 @@ impl Default for InMemoryDatabase {
             images: RwLock::new(HashMap::new()),
             skills: RwLock::new(HashMap::new()),
             skill_files: RwLock::new(Vec::new()),
+            declarative_capabilities: RwLock::new(HashMap::new()),
             event_sequences: RwLock::new(HashMap::new()),
             session_key_values: RwLock::new(HashMap::new()),
             session_secrets: RwLock::new(HashMap::new()),

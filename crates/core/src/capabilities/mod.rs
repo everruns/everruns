@@ -86,6 +86,7 @@ mod budgeting;
 pub mod compaction;
 mod current_time;
 mod data_knowledge;
+mod declarative;
 mod fake_aws;
 mod fake_crm;
 mod fake_financial;
@@ -148,6 +149,12 @@ pub use compaction::{
 };
 pub use current_time::{CurrentTimeCapability, GetCurrentTimeTool};
 pub use data_knowledge::DataKnowledgeCapability;
+pub use declarative::{
+    DECLARATIVE_CAPABILITY_PREFIX, DeclarativeCapabilityDefinition, DeclarativeCapabilityFile,
+    DeclarativeCapabilitySkill, declarative_capability_id, declarative_capability_info,
+    hydrate_declarative_capability_config, is_declarative_capability,
+    parse_declarative_capability_id, validate_declarative_capability_definition,
+};
 pub use fake_aws::{
     AwsCreateEc2InstanceTool, AwsCreateIamUserTool, AwsCreateRdsDatabaseTool,
     AwsCreateS3BucketTool, AwsGetCloudWatchMetricsTool, AwsListEc2InstancesTool,
@@ -1148,6 +1155,19 @@ pub fn collect_capability_mcp_servers(
 
     for cap_config in capability_configs {
         let cap_id = cap_config.capability_ref.as_str();
+        if is_declarative_capability(cap_id) {
+            if let Ok(definition) =
+                serde_json::from_value::<DeclarativeCapabilityDefinition>(cap_config.config.clone())
+            {
+                if definition.status != CapabilityStatus::Available {
+                    continue;
+                }
+                if let Some(contributed) = definition.mcp_servers {
+                    servers = merge_scoped_mcp_servers(&servers, &contributed);
+                }
+            }
+            continue;
+        }
         if let Some(capability) = registry.get(cap_id) {
             if capability.status() != CapabilityStatus::Available {
                 continue;
@@ -1295,10 +1315,16 @@ pub fn resolve_capability_configs(
     selected_configs: &[AgentCapabilityConfig],
     registry: &CapabilityRegistry,
 ) -> Result<Vec<AgentCapabilityConfig>, DependencyError> {
-    let selected_ids: Vec<String> = selected_configs
-        .iter()
-        .map(|config| config.capability_id().to_string())
-        .collect();
+    let mut selected_ids: Vec<String> = Vec::new();
+    for config in selected_configs {
+        if is_declarative_capability(config.capability_id())
+            && let Ok(definition) =
+                serde_json::from_value::<DeclarativeCapabilityDefinition>(config.config.clone())
+        {
+            selected_ids.extend(definition.dependencies);
+        }
+        selected_ids.push(config.capability_id().to_string());
+    }
     let resolved = resolve_dependencies(&selected_ids, registry)?;
 
     let explicit_configs: std::collections::HashMap<String, serde_json::Value> = selected_configs
@@ -1346,7 +1372,13 @@ fn resolve_single_capability(
     let capability = match registry.get(cap_id) {
         Some(cap) => cap,
         None => {
-            // Unknown capability - skip silently (will be caught later)
+            if is_declarative_capability(cap_id) && !resolved_set.contains(cap_id) {
+                resolved.push(cap_id.to_string());
+                resolved_set.insert(cap_id.to_string());
+                if !user_selected.contains(cap_id) {
+                    added_as_dependencies.push(cap_id.to_string());
+                }
+            }
             return Ok(());
         }
     };
@@ -1492,6 +1524,45 @@ pub async fn collect_capabilities_with_configs(
 
     for cap_config in capability_configs {
         let cap_id = cap_config.capability_ref.as_str();
+        if is_declarative_capability(cap_id) {
+            match serde_json::from_value::<DeclarativeCapabilityDefinition>(
+                cap_config.config.clone(),
+            ) {
+                Ok(definition) => {
+                    if definition.status != CapabilityStatus::Available {
+                        continue;
+                    }
+
+                    if let Some(prompt) = definition.system_prompt.as_deref() {
+                        let contribution =
+                            format!("<capability id=\"{}\">\n{}\n</capability>", cap_id, prompt);
+                        system_prompt_attributions.push(SystemPromptAttribution {
+                            capability_id: cap_id.to_string(),
+                            content: contribution.clone(),
+                        });
+                        system_prompt_parts.push(contribution);
+                    }
+
+                    mounts.extend(definition.mounts(cap_id));
+                    if let Some(ref servers) = definition.mcp_servers {
+                        mcp_servers = merge_scoped_mcp_servers(&mcp_servers, servers);
+                    }
+                    for skill in definition.skill_contributions() {
+                        mounts.push(skill.to_mount(cap_id));
+                    }
+
+                    applied_ids.push(cap_id.to_string());
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        capability_id = %cap_id,
+                        error = %error,
+                        "Skipping invalid declarative capability config"
+                    );
+                }
+            }
+            continue;
+        }
         if let Some(capability) = registry.get(cap_id) {
             // Only collect from available capabilities
             if capability.status() != CapabilityStatus::Available {

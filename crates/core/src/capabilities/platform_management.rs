@@ -9,7 +9,7 @@
 //           as a virtual readonly filesystem at /docs. This gives the platform chat agent
 //           access to Everruns documentation without DB writes per session.
 
-use super::{Capability, CapabilityStatus, MountPoint};
+use super::{Capability, CapabilityStatus, MountPoint, is_declarative_capability};
 use crate::app::{App, AppChannel, ChannelType};
 use crate::capability_types::{MountAccess, MountSource, VirtualFileTree};
 use crate::tool_types::ToolHints;
@@ -2368,6 +2368,8 @@ impl Tool for ReadCapabilitiesTool {
                             item["type"] = json!("mcp_server");
                         } else if c.is_skill {
                             item["type"] = json!("skill");
+                        } else if is_declarative_capability(c.id.as_str()) {
+                            item["type"] = json!("declarative");
                         } else {
                             item["type"] = json!("builtin");
                         }

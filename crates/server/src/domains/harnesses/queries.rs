@@ -5,7 +5,8 @@
 use crate::domains::common::CommandError;
 use crate::storage::StorageBackend;
 use everruns_core::{
-    AgentCapabilityConfig, Harness, HarnessId, HarnessStatus, InitialFile, merge_harness,
+    AgentCapabilityConfig, Harness, HarnessId, HarnessStatus, InitialFile,
+    is_declarative_capability, merge_harness,
 };
 use std::collections::HashSet;
 use uuid::Uuid;
@@ -48,13 +49,20 @@ pub fn row_to_harness(row: HarnessRow, capabilities: Vec<AgentCapabilityConfig>)
 
 pub async fn get_capabilities(
     db: &StorageBackend,
+    org_id: i64,
     harness_id: Uuid,
 ) -> anyhow::Result<Vec<AgentCapabilityConfig>> {
     let rows = db.get_harness_capabilities(harness_id).await?;
-    Ok(rows
+    let capabilities = rows
         .into_iter()
         .map(|row| AgentCapabilityConfig::with_config(row.capability_id, row.config))
-        .collect())
+        .collect();
+    crate::domains::capabilities::queries::hydrate_declarative_capability_configs(
+        db,
+        org_id,
+        capabilities,
+    )
+    .await
 }
 
 /// Resolve harness by public ID or name. Single lookup path for both
@@ -71,7 +79,7 @@ pub async fn resolve(
     };
     match row {
         Some(row) if row.status != "deleted" => {
-            let caps = get_capabilities(db, row.id.uuid()).await?;
+            let caps = get_capabilities(db, row.org_id, row.id.uuid()).await?;
             Ok(Some(row_to_harness(row, caps)))
         }
         _ => Ok(None),
@@ -87,7 +95,7 @@ pub async fn get_by_id(
     let row = db.get_harness(org_id, id).await?;
     match row {
         Some(row) if row.status != "deleted" => {
-            let caps = get_capabilities(db, row.id.uuid()).await?;
+            let caps = get_capabilities(db, row.org_id, row.id.uuid()).await?;
             Ok(Some(row_to_harness(row, caps)))
         }
         _ => Ok(None),
@@ -103,7 +111,7 @@ pub async fn get_by_name(
     let row = db.get_harness_by_name(org_id, name).await?;
     match row {
         Some(row) if row.status != "deleted" => {
-            let caps = get_capabilities(db, row.id.uuid()).await?;
+            let caps = get_capabilities(db, row.org_id, row.id.uuid()).await?;
             Ok(Some(row_to_harness(row, caps)))
         }
         _ => Ok(None),
@@ -183,7 +191,14 @@ pub fn ensure_file_system_capability(
 pub fn cap_tuples(caps: &[AgentCapabilityConfig]) -> Vec<(String, i32, serde_json::Value)> {
     caps.iter()
         .enumerate()
-        .map(|(i, c)| (c.capability_ref.to_string(), i as i32, c.config.clone()))
+        .map(|(i, c)| {
+            let config = if is_declarative_capability(c.capability_id()) {
+                serde_json::json!({})
+            } else {
+                c.config.clone()
+            };
+            (c.capability_ref.to_string(), i as i32, config)
+        })
         .collect()
 }
 
@@ -194,7 +209,7 @@ pub async fn load_harnesses_list(
 ) -> anyhow::Result<Vec<Harness>> {
     let mut harnesses = Vec::with_capacity(rows.len());
     for row in rows {
-        let caps = get_capabilities(db, row.id.uuid()).await?;
+        let caps = get_capabilities(db, row.org_id, row.id.uuid()).await?;
         harnesses.push(row_to_harness(row, caps));
     }
     Ok(harnesses)
@@ -209,7 +224,7 @@ pub async fn load_raw_harness(
     let Some(row) = db.get_harness(org_id, harness_id).await? else {
         return Ok(None);
     };
-    let capabilities = get_capabilities(db, harness_id.uuid()).await?;
+    let capabilities = get_capabilities(db, row.org_id, harness_id.uuid()).await?;
     Ok(Some(row_to_harness(row, capabilities)))
 }
 
