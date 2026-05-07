@@ -50,6 +50,7 @@ use everruns_core::events::{
     ReasonThinkingDeltaData, ReasonThinkingStartedData, ToolCompletedData, ToolStartedData,
     TurnFailedData,
 };
+use everruns_core::message::ExecutionPhase;
 use everruns_core::message_retriever::InputMessage as StoredInputMessage;
 use everruns_core::{
     AgUiChannelConfig, AgUiToolVisibility, App, AppStatus, Caller, ContentPart, ExternalActor,
@@ -896,6 +897,23 @@ fn public_content_part_to_string(part: &ContentPart) -> Option<String> {
     }
 }
 
+fn is_terminal_public_output_message(
+    message: &everruns_core::Message,
+    assistant_emitted_delta: bool,
+) -> bool {
+    if matches!(message.phase, Some(ExecutionPhase::Commentary)) {
+        return false;
+    }
+    if message
+        .content
+        .iter()
+        .any(|part| matches!(part, ContentPart::ToolCall(_) | ContentPart::ToolResult(_)))
+    {
+        return false;
+    }
+    assistant_emitted_delta || !public_content_parts_to_string(&message.content).is_empty()
+}
+
 fn ensure_assistant_message_id(
     state: &mut AgUiStreamState,
     event: &everruns_core::Event,
@@ -911,6 +929,25 @@ fn ensure_assistant_message_id(
                 .unwrap_or_else(AgUiMessageId::random)
         })
         .clone()
+}
+
+fn close_assistant_text_without_finishing(state: &mut AgUiStreamState) {
+    // Commentary text can stream before tools. Close that AG-UI text message so
+    // the later final-answer completion can emit its own public content without
+    // ending the run early.
+    if state.assistant_content_started
+        && let Some(message_id) = state.assistant_message_id.clone()
+    {
+        state
+            .queue
+            .push_back(AgUiEvent::TextMessageEnd(AgUiTextMessageEndEvent {
+                base: agui_base_event(),
+                message_id,
+            }));
+    }
+    state.assistant_message_id = None;
+    state.assistant_content_started = false;
+    state.assistant_emitted_delta = false;
 }
 
 struct AgUiStreamState {
@@ -1010,6 +1047,12 @@ fn translate_event(state: &mut AgUiStreamState, event: &everruns_core::Event) {
         }
         "output.message.completed" => {
             if let Ok(data) = parse_event_data::<OutputMessageCompletedData>(event) {
+                let public_text = public_content_parts_to_string(&data.message.content);
+                if !is_terminal_public_output_message(&data.message, state.assistant_emitted_delta)
+                {
+                    close_assistant_text_without_finishing(state);
+                    return;
+                }
                 let message_id = ensure_assistant_message_id(state, event);
                 if !state.assistant_content_started {
                     state
@@ -1020,13 +1063,10 @@ fn translate_event(state: &mut AgUiStreamState, event: &everruns_core::Event) {
                             role: AgUiRole::Assistant,
                         }));
                 }
-                if !state.assistant_emitted_delta {
-                    let text = public_content_parts_to_string(&data.message.content);
-                    if !text.is_empty() {
-                        state.queue.push_back(AgUiEvent::TextMessageContent(
-                            AgUiTextMessageContentEvent::new(message_id.clone(), text).unwrap(),
-                        ));
-                    }
+                if !state.assistant_emitted_delta && !public_text.is_empty() {
+                    state.queue.push_back(AgUiEvent::TextMessageContent(
+                        AgUiTextMessageContentEvent::new(message_id.clone(), public_text).unwrap(),
+                    ));
                 }
                 state
                     .queue
@@ -1341,6 +1381,7 @@ mod tests {
     use ag_ui_core::event::EventType as AgUiEventType;
     use chrono::Duration as ChronoDuration;
     use everruns_core::events::TurnFailedData;
+    use everruns_core::message::ExecutionPhase;
     use everruns_core::user_facing_error_codes;
     use everruns_core::{
         Event, EventContext, Message, MessageId, OutputMessageCompletedData,
@@ -1542,6 +1583,202 @@ mod tests {
         match content_events[0] {
             AgUiEvent::TextMessageContent(event) => assert_eq!(event.delta, "Hello"),
             _ => unreachable!(),
+        }
+        assert!(state.finished);
+    }
+
+    #[tokio::test]
+    async fn test_commentary_delta_tool_completion_does_not_hide_final_answer() {
+        let mut state = test_stream_state().await;
+        let turn_id = TurnId::new();
+        let input_message_id = MessageId::parse(&state.input_message_id).unwrap();
+        let context = EventContext::turn(turn_id, input_message_id);
+        let session_id = SessionId::from_uuid(state.session_id);
+
+        let delta_event = Event::new(
+            session_id,
+            context.clone(),
+            OutputMessageDeltaData {
+                turn_id,
+                delta: "Let me check that.".to_string(),
+                accumulated: "Let me check that.".to_string(),
+            },
+        );
+        translate_event(&mut state, &delta_event);
+
+        let commentary_completed = Event::new(
+            session_id,
+            context.clone(),
+            OutputMessageCompletedData::new(
+                Message::assistant_with_tools(
+                    "",
+                    vec![ToolCall {
+                        id: "call_lookup".to_string(),
+                        name: "lookup".to_string(),
+                        arguments: serde_json::json!({"query": "base harness"}),
+                    }],
+                )
+                .with_phase(ExecutionPhase::Commentary),
+            ),
+        );
+        translate_event(&mut state, &commentary_completed);
+
+        let event_types: Vec<AgUiEventType> =
+            state.queue.iter().map(AgUiEvent::event_type).collect();
+        assert_eq!(
+            event_types,
+            vec![
+                AgUiEventType::TextMessageStart,
+                AgUiEventType::TextMessageContent,
+                AgUiEventType::TextMessageEnd,
+            ]
+        );
+        assert!(!state.finished);
+
+        let final_completed = Event::new(
+            session_id,
+            context,
+            OutputMessageCompletedData::new(
+                Message::assistant("The Base harness is the default execution wrapper.")
+                    .with_phase(ExecutionPhase::FinalAnswer),
+            ),
+        );
+        translate_event(&mut state, &final_completed);
+
+        let event_types: Vec<AgUiEventType> =
+            state.queue.iter().map(AgUiEvent::event_type).collect();
+        assert_eq!(
+            event_types,
+            vec![
+                AgUiEventType::TextMessageStart,
+                AgUiEventType::TextMessageContent,
+                AgUiEventType::TextMessageEnd,
+                AgUiEventType::TextMessageStart,
+                AgUiEventType::TextMessageContent,
+                AgUiEventType::TextMessageEnd,
+                AgUiEventType::RunFinished,
+            ]
+        );
+        let content_events: Vec<&AgUiTextMessageContentEvent> = state
+            .queue
+            .iter()
+            .filter_map(|event| match event {
+                AgUiEvent::TextMessageContent(event) => Some(event),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(content_events.len(), 2);
+        assert_eq!(content_events[0].delta, "Let me check that.");
+        assert_eq!(
+            content_events[1].delta,
+            "The Base harness is the default execution wrapper."
+        );
+        assert!(state.finished);
+    }
+
+    #[tokio::test]
+    async fn test_tool_call_completion_does_not_finish_before_final_answer() {
+        let mut state = test_stream_state().await;
+        let turn_id = TurnId::new();
+        let input_message_id = MessageId::parse(&state.input_message_id).unwrap();
+        let context = EventContext::turn(turn_id, input_message_id);
+        let session_id = SessionId::from_uuid(state.session_id);
+
+        let commentary_completed = Event::new(
+            session_id,
+            context.clone(),
+            OutputMessageCompletedData::new(
+                Message::assistant_with_tools(
+                    "",
+                    vec![ToolCall {
+                        id: "call_list_skills".to_string(),
+                        name: "list_skills".to_string(),
+                        arguments: serde_json::json!({"registry": "internal"}),
+                    }],
+                )
+                .with_phase(ExecutionPhase::Commentary),
+            ),
+        );
+        translate_event(&mut state, &commentary_completed);
+        assert!(state.queue.is_empty());
+        assert!(!state.finished);
+
+        let tool_started = Event::new(
+            session_id,
+            context.clone(),
+            ToolStartedData {
+                tool_call: ToolCall {
+                    id: "call_list_skills".to_string(),
+                    name: "list_skills".to_string(),
+                    arguments: serde_json::json!({"registry": "internal"}),
+                },
+                display_name: None,
+                narration: Some("Listing internal skills".to_string()),
+            },
+        );
+        translate_event(&mut state, &tool_started);
+
+        let tool_completed = Event::new(
+            session_id,
+            context.clone(),
+            ToolCompletedData {
+                tool_call_id: "call_list_skills".to_string(),
+                tool_name: "list_skills".to_string(),
+                display_name: None,
+                success: true,
+                status: "success".to_string(),
+                result: Some(vec![ContentPart::text("skill_123")]),
+                error: None,
+                duration_ms: Some(10),
+                narration: None,
+            },
+        );
+        translate_event(&mut state, &tool_completed);
+        assert!(!state.finished);
+
+        let final_completed = Event::new(
+            session_id,
+            context,
+            OutputMessageCompletedData::new(
+                Message::assistant("The Base harness is the default execution wrapper.")
+                    .with_phase(ExecutionPhase::FinalAnswer),
+            ),
+        );
+        translate_event(&mut state, &final_completed);
+
+        let event_types: Vec<AgUiEventType> =
+            state.queue.iter().map(AgUiEvent::event_type).collect();
+        assert_eq!(
+            event_types,
+            vec![
+                AgUiEventType::ThinkingStart,
+                AgUiEventType::ThinkingTextMessageStart,
+                AgUiEventType::ThinkingTextMessageContent,
+                AgUiEventType::ThinkingTextMessageEnd,
+                AgUiEventType::ThinkingEnd,
+                AgUiEventType::TextMessageStart,
+                AgUiEventType::TextMessageContent,
+                AgUiEventType::TextMessageEnd,
+                AgUiEventType::RunFinished,
+            ]
+        );
+        match &state.queue[2] {
+            AgUiEvent::ThinkingTextMessageContent(event) => {
+                assert_eq!(event.delta, "Working...");
+                assert!(!event.delta.contains("list_skills"));
+                assert!(!event.delta.contains("internal"));
+                assert!(!event.delta.contains("skill_123"));
+            }
+            _ => panic!("expected generic thinking content"),
+        }
+        match &state.queue[6] {
+            AgUiEvent::TextMessageContent(event) => {
+                assert_eq!(
+                    event.delta,
+                    "The Base harness is the default execution wrapper."
+                );
+            }
+            _ => panic!("expected final answer text content"),
         }
         assert!(state.finished);
     }
