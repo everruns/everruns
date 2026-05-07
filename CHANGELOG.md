@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Highlights
 
-- **Flagged agent versioning** - Agent definitions can now be versioned behind a feature flag, letting operators iterate on agent configurations safely while keeping a stable production version.
+- **Agent versioning** - Agent definitions can now be versioned, letting operators iterate on agent configurations safely while keeping a stable production version.
 - **A2A inbound and outbound parity** - Inbound A2A channels now support `message/stream` SSE ([#1716](https://github.com/everruns/everruns/pull/1716)) and `tasks/get`/`tasks/cancel` with derived state ([#1720](https://github.com/everruns/everruns/pull/1720)); outbound A2A delegation is now governed by the network access policy ([#1711](https://github.com/everruns/everruns/pull/1711)).
 - **Declarative capabilities** - Capabilities can now be defined declaratively, with a runtime gate that blocks high-risk declarative dependencies ([#1710](https://github.com/everruns/everruns/pull/1710)).
 - **Cursor cloud agents integration** - New first-class integration for running Everruns agents from Cursor's cloud agents surface.
