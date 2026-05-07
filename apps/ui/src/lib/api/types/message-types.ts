@@ -27,6 +27,19 @@ export type ContentPart =
   | { type: "image"; url?: string; base64?: string; media_type?: string }
   | { type: "image_file"; image_id: string; filename?: string }
   | {
+      type: "resource";
+      uri?: string;
+      mimeType?: string;
+      mime_type?: string;
+      text?: string;
+      resource?: {
+        uri?: string;
+        mimeType?: string;
+        mime_type?: string;
+        text?: string;
+      };
+    }
+  | {
       type: "tool_call";
       id: string;
       name: string;
@@ -66,6 +79,12 @@ export function isImageFilePart(
   part: ContentPart,
 ): part is { type: "image_file"; image_id: string; filename?: string } {
   return part.type === "image_file";
+}
+
+export function isResourcePart(
+  part: ContentPart,
+): part is Extract<ContentPart, { type: "resource" }> {
+  return part.type === "resource";
 }
 
 // Reasoning configuration for model controls

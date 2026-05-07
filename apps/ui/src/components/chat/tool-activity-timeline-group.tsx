@@ -4,8 +4,9 @@ import { useMemo, useState } from "react";
 import { AlertCircle, Check, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import type { ToolCompletedData } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
+import { McpAppResourceList } from "./mcp-app-resource-list";
 import { formatResultDetails, getResultPreview } from "./tool-activity-utils";
-import { getFullText } from "./tool-call-utils";
+import { extractMcpAppResources, getFullText } from "./tool-call-utils";
 import { useLocale } from "@/providers/locale-provider";
 
 export interface TimelineToolRow {
@@ -39,6 +40,7 @@ function TimelineRow({ row }: { row: TimelineToolRow }) {
         getFullText(row.result.result),
       )
     : "";
+  const mcpAppResources = extractMcpAppResources(row.result?.result);
   const preview = resultPreview(row.result);
   const hasDetails = fullText.length > 0;
 
@@ -65,6 +67,8 @@ function TimelineRow({ row }: { row: TimelineToolRow }) {
           {row.result?.error && (
             <div className="mt-0.5 text-xs text-red-600 dark:text-red-400">{row.result.error}</div>
           )}
+
+          <McpAppResourceList resources={mcpAppResources} />
 
           {hasDetails && (
             <button

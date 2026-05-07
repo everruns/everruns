@@ -4,10 +4,16 @@ import { useState } from "react";
 import { Check, Loader2, ChevronDown, ChevronRight } from "lucide-react";
 import type { ToolCompletedData } from "@/lib/api/types";
 import { useLocale } from "@/providers/locale-provider";
+import { McpAppResourceList } from "./mcp-app-resource-list";
 import { TodoListRenderer, isWriteTodosTool } from "./todo-list-renderer";
 import { BashToolCallCard, isBashTool } from "./bash-tool-call-card";
 import { ReadFileToolCallCard, isReadFileTool } from "./read-file-tool-call-card";
-import { formatArguments, getFullText, type ToolCallContent } from "./tool-call-utils";
+import {
+  extractMcpAppResources,
+  formatArguments,
+  getFullText,
+  type ToolCallContent,
+} from "./tool-call-utils";
 import { ClientToolCallCard } from "./client-tool-call-card";
 import { WriteFileToolCallCard, isWriteLikeTool } from "./write-file-tool-call-card";
 
@@ -80,6 +86,7 @@ export function ToolCallCardFromEvent({
 
   const fullText = toolResult?.result ? getFullText(toolResult.result) : "";
   const hasOutput = fullText.length > 0;
+  const mcpAppResources = extractMcpAppResources(toolResult?.result);
 
   return (
     <div className="text-xs text-muted-foreground/70">
@@ -98,6 +105,8 @@ export function ToolCallCardFromEvent({
           {t("error_prefix", { value: toolResult?.error ?? "" })}
         </div>
       )}
+
+      <McpAppResourceList resources={mcpAppResources} className="ml-4 mt-2 space-y-2" />
 
       {/* Expanded output */}
       {isExpanded && hasOutput && (

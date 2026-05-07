@@ -96,6 +96,57 @@ describe("ToolActivityGroup", () => {
     expect(screen.queryByText(/"stdout":/)).not.toBeInTheDocument();
   });
 
+  it("renders MCP App resources in generic tool activity rows", () => {
+    const html = "<!doctype html><html><body>Agent card</body></html>";
+    const toolCalls: ToolCallContent[] = [
+      {
+        id: "tool-mcp-card",
+        name: "mcp_everruns__agent_get_card",
+        arguments: { agent_id: "agent_01" },
+      },
+    ];
+
+    const toolResultsMap = new Map<string, ToolCompletedData>([
+      [
+        "tool-mcp-card",
+        {
+          tool_call_id: "tool-mcp-card",
+          tool_name: "mcp_everruns__agent_get_card",
+          success: true,
+          status: "success",
+          result: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                content: [
+                  {
+                    type: "resource",
+                    uri: "ui://everruns/agent/agent_01/card",
+                    mime_type: "text/html",
+                    text: html,
+                  },
+                  { type: "text", text: "Agent: customer-support" },
+                ],
+              }),
+            },
+          ],
+        },
+      ],
+    ]);
+
+    const { container } = render(
+      <ToolActivityGroup toolCalls={toolCalls} toolResultsMap={toolResultsMap} />,
+    );
+    const iframe = container.querySelector("iframe")!;
+
+    expect(iframe).toBeInTheDocument();
+    expect(iframe.getAttribute("sandbox")).toBe("allow-scripts");
+    expect(iframe.getAttribute("srcdoc")).toBe(html);
+    expect(iframe.getAttribute("data-mcp-card-uri")).toBe("ui://everruns/agent/agent_01/card");
+    expect(iframe.style.maxWidth).toBe("100%");
+    expect(screen.getByText("Agent: customer-support")).toBeInTheDocument();
+  });
+
   it("renders bash calls as standalone rows without grouped chrome", () => {
     const toolCalls: ToolCallContent[] = [
       {

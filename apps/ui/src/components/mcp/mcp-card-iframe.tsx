@@ -42,6 +42,8 @@ export interface McpCardIframeProps {
   onAction?: (msg: CardMessage) => void;
   /** Initial iframe height in px. Cards are designed for ~360px wide. */
   height?: number;
+  /** Maximum rendered width. Entity-card previews default to 400px. */
+  maxWidth?: number | string;
   className?: string;
   /** Optional title for the iframe (a11y). */
   title?: string;
@@ -97,6 +99,7 @@ export function McpCardIframe({
   html,
   onAction,
   height = 280,
+  maxWidth = 400,
   className,
   title,
 }: McpCardIframeProps) {
@@ -106,6 +109,7 @@ export function McpCardIframe({
   // Hash the URI for stable iframe identity (helps React reconcile when
   // many cards live on one page).
   const iframeName = useMemo(() => `mcp-card-${hashCode(uri)}`, [uri]);
+  const iframeTitle = title ?? `MCP card (${uri})`;
 
   useEffect(() => {
     if (!onAction) return;
@@ -136,7 +140,7 @@ export function McpCardIframe({
     <iframe
       ref={iframeRef}
       name={iframeName}
-      title={title ?? `MCP card (${uri})`}
+      title={iframeTitle}
       data-mcp-card-uri={uri}
       // sandbox lacks allow-same-origin on purpose — keeps the iframe in
       // an opaque origin so it cannot read parent state, cookies, or
@@ -146,7 +150,7 @@ export function McpCardIframe({
       srcDoc={html}
       style={{
         width: "100%",
-        maxWidth: 400,
+        maxWidth,
         height,
         border: "none",
         background: "transparent",

@@ -202,8 +202,12 @@ Hosts that render `ui://everruns/...` resources MUST:
    second; drop on exceed).
 
 The Everruns chat UI implements these requirements in
-`apps/ui/src/components/mcp/mcp-card-iframe.tsx`. A standalone showcase lives
-under `apps/ui/src/app/dev/mcp-cards/`.
+`apps/ui/src/components/mcp/mcp-card-iframe.tsx`. Chat transcript tool
+activity surfaces render any successful `ui://` + `text/html` MCP resource
+inside this iframe, including resources wrapped in the remote-MCP executor's
+`{"content":[...]}` JSON text envelope. The text content from that envelope is
+used as the normal details/fallback output. A standalone showcase lives under
+`apps/ui/src/app/dev/mcp-cards/`.
 
 ## Server Module
 

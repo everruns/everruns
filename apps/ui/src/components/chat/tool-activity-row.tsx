@@ -9,13 +9,14 @@ import { useState } from "react";
 import { AlertCircle, CalendarClock, Check, Loader2, MonitorSmartphone } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ToolCompletedData } from "@/lib/api/types";
+import { McpAppResourceList } from "./mcp-app-resource-list";
 import type { ToolCallContent } from "./tool-call-utils";
 import {
   formatResultDetails,
   getToolActivitySummaryChip,
   getToolLabel,
 } from "./tool-activity-utils";
-import { getFullText } from "./tool-call-utils";
+import { extractMcpAppResources, getFullText } from "./tool-call-utils";
 import { useLocale } from "@/providers/locale-provider";
 
 export function ToolActivityRow({
@@ -35,6 +36,7 @@ export function ToolActivityRow({
   const { t } = useLocale();
   const [isExpanded, setIsExpanded] = useState(false);
   const fullText = getFullText(toolResult?.result);
+  const mcpAppResources = extractMcpAppResources(toolResult?.result);
   const detailsId = `tool-activity-details-${toolCall.id}`;
   const hasOutput = fullText.length > 0;
   const hasToolError = Boolean(toolResult?.error);
@@ -103,6 +105,8 @@ export function ToolActivityRow({
           {hasToolError && (
             <div className="mt-1 text-xs text-red-600 dark:text-red-400">{toolResult?.error}</div>
           )}
+
+          <McpAppResourceList resources={mcpAppResources} />
 
           <div
             id={detailsId}

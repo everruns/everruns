@@ -25,6 +25,14 @@ export interface ToolResultContent {
   error?: string;
 }
 
+export interface McpAppResource {
+  uri: string;
+  mimeType: string;
+  html: string;
+}
+
+const MCP_CONTENT_WRAPPER_PARSE_LIMIT = 512 * 1024;
+
 /**
  * Extract tool call content from ContentPart array
  */
@@ -101,10 +109,13 @@ export function getResultPreview(
  */
 export function getFullText(result: ContentPart[] | undefined): string {
   if (!result || result.length === 0) return "";
-  return result
-    .filter((part): part is { type: "text"; text: string } => part.type === "text")
-    .map((part) => part.text)
-    .join("\n");
+  const text = result.flatMap((part) => {
+    if (part.type !== "text") return [];
+    const embedded = parseMcpContentWrapper(part.text);
+    if (!embedded) return [part.text];
+    return embedded.flatMap((embeddedPart) => textFromMcpContentPart(embeddedPart) ?? []);
+  });
+  return text.join("\n");
 }
 
 /**
@@ -112,4 +123,79 @@ export function getFullText(result: ContentPart[] | undefined): string {
  */
 export function formatResult(result: unknown): string {
   return typeof result === "string" ? result : JSON.stringify(result, null, 2);
+}
+
+export function extractMcpAppResources(result: ContentPart[] | undefined): McpAppResource[] {
+  if (!result || result.length === 0) return [];
+
+  return result.flatMap((part) => {
+    if (part.type === "text") {
+      return parseMcpContentWrapper(part.text)?.flatMap(normalizeMcpAppResource) ?? [];
+    }
+    return normalizeMcpAppResource(part);
+  });
+}
+
+function parseMcpContentWrapper(text: string): unknown[] | null {
+  if (text.length > MCP_CONTENT_WRAPPER_PARSE_LIMIT) return null;
+  const trimmed = text.trimStart();
+  if (!trimmed.startsWith("{") || !trimmed.includes('"content"')) return null;
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return null;
+  }
+
+  if (!isPlainObject(parsed) || !Array.isArray(parsed.content)) return null;
+  if (!parsed.content.some(isMcpContentPartLike)) return null;
+  return parsed.content;
+}
+
+function isMcpContentPartLike(value: unknown): boolean {
+  return isPlainObject(value) && (value.type === "text" || value.type === "resource");
+}
+
+function textFromMcpContentPart(value: unknown): string | null {
+  if (!isPlainObject(value) || value.type !== "text") return null;
+  return typeof value.text === "string" ? value.text : null;
+}
+
+function normalizeMcpAppResource(value: unknown): McpAppResource[] {
+  if (!isPlainObject(value) || value.type !== "resource") return [];
+
+  const nested = isPlainObject(value.resource) ? value.resource : value;
+  const uri =
+    typeof nested.uri === "string"
+      ? nested.uri
+      : typeof value.uri === "string"
+        ? value.uri
+        : undefined;
+  const mimeType =
+    typeof nested.mimeType === "string"
+      ? nested.mimeType
+      : typeof nested.mime_type === "string"
+        ? nested.mime_type
+        : typeof value.mimeType === "string"
+          ? value.mimeType
+          : typeof value.mime_type === "string"
+            ? value.mime_type
+            : undefined;
+  const html =
+    typeof nested.text === "string"
+      ? nested.text
+      : typeof value.text === "string"
+        ? value.text
+        : undefined;
+
+  if (!uri?.startsWith("ui://")) return [];
+  if (mimeType?.toLowerCase() !== "text/html") return [];
+  if (!html) return [];
+
+  return [{ uri, mimeType, html }];
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
