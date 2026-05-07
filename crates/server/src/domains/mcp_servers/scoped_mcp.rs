@@ -31,9 +31,22 @@ pub fn merge_effective_scoped_mcp_servers(
         layers.push(&agent.mcp_servers);
     }
     layers.push(&session.mcp_servers);
-    merge_scoped_mcp_server_layers(layers)
+
+    let merged = merge_scoped_mcp_server_layers(layers);
+    strip_untrusted_oauth_from_scoped_mcp_servers(&merged)
 }
 
+fn strip_untrusted_oauth_from_scoped_mcp_servers(servers: &ScopedMcpServers) -> ScopedMcpServers {
+    servers
+        .iter()
+        .map(|(name, server)| {
+            let mut server = server.clone();
+            server.auth_mode = McpServerAuthMode::None;
+            server.oauth_provider_id = None;
+            (name.clone(), server)
+        })
+        .collect()
+}
 pub fn merge_effective_scoped_mcp_servers_with_capabilities(
     harness: &Harness,
     agent: Option<&Agent>,
@@ -275,6 +288,16 @@ mod tests {
             tool_discovery: true,
         }
     }
+    fn oauth_scoped_server(url: &str, provider: &str) -> ScopedMcpServer {
+        ScopedMcpServer {
+            transport_type: everruns_core::McpServerTransportType::Http,
+            url: url.to_string(),
+            headers: Default::default(),
+            auth_mode: McpServerAuthMode::OAuth,
+            oauth_provider_id: Some(provider.to_string()),
+            tool_discovery: true,
+        }
+    }
 
     #[test]
     fn detects_authorization_header_case_insensitively() {
@@ -380,6 +403,24 @@ mod tests {
             blueprint_id: None,
             blueprint_config: None,
         }
+    }
+
+    #[test]
+    fn merge_effective_scoped_mcp_servers_strips_explicit_oauth_fields() {
+        let mut harness = test_harness();
+        harness.mcp_servers.insert(
+            "docs".to_string(),
+            oauth_scoped_server("https://harness.example.com/mcp", "github"),
+        );
+
+        let agent = test_agent();
+        let session = test_session(harness.id, agent.public_id);
+
+        let merged = merge_effective_scoped_mcp_servers(&harness, Some(&agent), &session);
+        let docs = merged.get("docs").expect("server exists");
+
+        assert_eq!(docs.auth_mode, McpServerAuthMode::None);
+        assert!(docs.oauth_provider_id.is_none());
     }
 
     #[test]
