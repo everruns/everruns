@@ -175,6 +175,10 @@ jest.mock("@/hooks/use-organizations", () => ({
   useOrganization: () => mockUseOrganization(),
 }));
 
+jest.mock("@/providers/feature-flags-provider", () => ({
+  useFeatureFlag: () => false,
+}));
+
 // Helper to render with Suspense for React.use()
 async function renderWithSuspense(params: { agentId: string }) {
   const paramsPromise = Promise.resolve(params);

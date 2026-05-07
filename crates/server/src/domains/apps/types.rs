@@ -5,8 +5,8 @@
 
 use crate::api::common::deserialize_nullable_update_field;
 use crate::domains::common::deserialize_opt_json_value_lenient;
-use everruns_core::typed_id::{AgentId, AgentIdentityId, HarnessId};
-use everruns_core::{AppStatus, ChannelType};
+use everruns_core::typed_id::{AgentId, AgentIdentityId, AgentVersionId, HarnessId};
+use everruns_core::{AgentVersionPolicy, AppStatus, ChannelType};
 use everruns_durable::UpdateField;
 use serde::Deserialize;
 use utoipa::{IntoParams, ToSchema};
@@ -32,6 +32,11 @@ pub struct CreateAppRequest {
     #[serde(default)]
     #[schema(value_type = Option<String>, example = "agent_01933b5a00007000800000000000001")]
     pub agent_id: Option<AgentId>,
+    #[serde(default)]
+    pub agent_version_policy: AgentVersionPolicy,
+    #[serde(default)]
+    #[schema(value_type = Option<String>, example = "agentver_01933b5a00007000800000000000001")]
+    pub agent_version_id: Option<AgentVersionId>,
     /// Optional resident agent identity for unattended/channel execution.
     #[serde(default)]
     #[schema(value_type = Option<String>, example = "identity_01933b5a00007000800000000000001")]
@@ -61,6 +66,11 @@ pub struct UpdateAppRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>)]
     pub agent_id: Option<AgentId>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_version_policy: Option<AgentVersionPolicy>,
+    #[serde(default, deserialize_with = "deserialize_nullable_update_field")]
+    #[schema(value_type = Option<String>, nullable = true)]
+    pub agent_version_id: UpdateField<AgentVersionId>,
     /// Optional resident agent identity for unattended/channel execution.
     #[serde(default, deserialize_with = "deserialize_nullable_update_field")]
     #[schema(value_type = Option<String>, nullable = true)]

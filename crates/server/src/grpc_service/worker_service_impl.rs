@@ -114,7 +114,7 @@ impl WorkerService for WorkerServiceImpl {
             .ok_or_else(|| Status::not_found("Session not found"))?;
 
         // Get agent with capabilities via domain query (optional)
-        let agent = if let Some(agent_id) = session.agent_id {
+        let mut agent = if let Some(agent_id) = session.agent_id {
             crate::domains::agents::queries::get_by_public_id(
                 &self.db,
                 req.org_id,
@@ -128,6 +128,19 @@ impl WorkerService for WorkerServiceImpl {
         } else {
             None
         };
+        if let (Some(agent), Some(version_id)) = (agent.as_mut(), session.agent_version_id)
+            && let Some(version_row) = self
+                .db
+                .get_agent_version(req.org_id, version_id)
+                .await
+                .map_err(|e| {
+                    tracing::error!("Failed to get agent version: {}", e);
+                    Status::internal("Failed to get agent version")
+                })?
+        {
+            let version = crate::domains::agents::queries::row_to_agent_version(version_row);
+            *agent = crate::domains::agents::queries::version_to_agent(agent, &version);
+        }
 
         // Load effective harness, including inherited parent config.
         let harness = crate::domains::harnesses::queries::resolve_effective(

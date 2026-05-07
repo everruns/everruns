@@ -25,10 +25,18 @@ use crate::storage::{
     models::{CreateEventRow, EventsSummary as EventsSummaryRow, ListEventsParams},
 };
 use anyhow::{Result, bail};
-use everruns_core::typed_id::{EventId, SessionId};
-use everruns_core::{Event, EventListener, EventRequest};
-use std::sync::Arc;
+use everruns_core::typed_id::{AgentId, AgentVersionId, EventId, SessionId};
+use everruns_core::{Event, EventListener, EventRequest, FeatureFlags};
+use std::{collections::HashMap, sync::Arc};
+use tokio::sync::RwLock;
 use uuid::Uuid;
+
+#[derive(Clone)]
+struct AgentVersionEventMetadata {
+    agent_id: Option<AgentId>,
+    agent_version_id: Option<AgentVersionId>,
+    agent_config_hash: Option<String>,
+}
 
 #[derive(Clone)]
 pub struct EventService {
@@ -37,6 +45,7 @@ pub struct EventService {
     event_delivery: EventDelivery,
     /// Registered event listeners for observability
     listeners: Arc<Vec<Arc<dyn EventListener>>>,
+    agent_version_metadata_cache: Arc<RwLock<HashMap<SessionId, AgentVersionEventMetadata>>>,
 }
 
 impl EventService {
@@ -45,6 +54,7 @@ impl EventService {
             db,
             event_delivery,
             listeners: Arc::new(Vec::new()),
+            agent_version_metadata_cache: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -58,6 +68,7 @@ impl EventService {
             db,
             event_delivery,
             listeners: Arc::new(listeners),
+            agent_version_metadata_cache: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -136,7 +147,8 @@ impl EventService {
     ///
     /// # Errors
     /// Returns an error if event_type doesn't match the data type.
-    pub async fn emit(&self, request: EventRequest) -> Result<Event> {
+    pub async fn emit(&self, mut request: EventRequest) -> Result<Event> {
+        self.attach_agent_version_metadata(&mut request).await;
         Self::validate_event_type_consistency(&request)?;
 
         // Only skip PG for ephemeral events when the delivery backend supports it
@@ -147,6 +159,61 @@ impl EventService {
         }
 
         self.emit_durable(request).await
+    }
+
+    async fn attach_agent_version_metadata(&self, request: &mut EventRequest) {
+        if !FeatureFlags::current().agent_versions {
+            return;
+        };
+
+        let session_metadata = if let Some(cached) = self
+            .agent_version_metadata_cache
+            .read()
+            .await
+            .get(&request.session_id)
+            .cloned()
+        {
+            cached
+        } else {
+            let Ok(Some(session)) = self.db.get_session_unscoped(request.session_id).await else {
+                return;
+            };
+            let metadata = AgentVersionEventMetadata {
+                agent_id: session.agent_id,
+                agent_version_id: session.agent_version_id,
+                agent_config_hash: session.agent_config_hash,
+            };
+            self.agent_version_metadata_cache
+                .write()
+                .await
+                .insert(request.session_id, metadata.clone());
+            metadata
+        };
+        if session_metadata.agent_id.is_none() && session_metadata.agent_version_id.is_none() {
+            return;
+        }
+
+        let mut metadata = request
+            .metadata
+            .take()
+            .and_then(|v| v.as_object().cloned())
+            .unwrap_or_default();
+        if let Some(agent_id) = session_metadata.agent_id {
+            metadata
+                .entry("agent_id".to_string())
+                .or_insert_with(|| serde_json::Value::String(agent_id.to_string()));
+        }
+        if let Some(version_id) = session_metadata.agent_version_id {
+            metadata
+                .entry("agent_version_id".to_string())
+                .or_insert_with(|| serde_json::Value::String(version_id.to_string()));
+        }
+        if let Some(hash) = session_metadata.agent_config_hash {
+            metadata
+                .entry("agent_config_hash".to_string())
+                .or_insert_with(|| serde_json::Value::String(hash));
+        }
+        request.metadata = Some(serde_json::Value::Object(metadata));
     }
 
     /// Emit an ephemeral event (skip PG, deliver via EventDelivery only).

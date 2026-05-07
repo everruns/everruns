@@ -23,6 +23,10 @@ export interface Agent {
   description: string | null;
   system_prompt: string;
   default_model_id: string | null;
+  default_version_id?: string | null;
+  forked_from_agent_id?: string | null;
+  forked_from_version_id?: string | null;
+  root_agent_id?: string | null;
   tags: string[];
   /** Capabilities with per-agent configuration */
   capabilities: AgentCapabilityConfig[];
@@ -43,6 +47,61 @@ export interface Agent {
   session_count?: number;
   /** Number of non-deleted apps using this agent. Present on list/detail API responses. */
   app_count?: number;
+}
+
+export type AgentVersionChangeKind =
+  | "manual"
+  | "patch"
+  | "minor"
+  | "major"
+  | "import"
+  | "rollback"
+  | "fork";
+
+export interface AgentVersion {
+  id: string;
+  agent_id: string;
+  version_number: number;
+  semver_major: number;
+  semver_minor: number;
+  semver_patch: number;
+  version: string;
+  parent_version_id: string | null;
+  source_version_id: string | null;
+  created_by_principal_id: string | null;
+  change_kind: AgentVersionChangeKind;
+  summary: string | null;
+  config_hash: string;
+  authored_config: Record<string, unknown>;
+  resolved_config: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface CreateAgentVersionRequest {
+  summary?: string;
+  change_kind?: AgentVersionChangeKind;
+}
+
+export interface SetDefaultAgentVersionRequest {
+  version_id: string;
+}
+
+export interface RollbackAgentVersionRequest {
+  save_version: boolean;
+  summary?: string;
+}
+
+export interface ForkAgentVersionRequest {
+  name: string;
+  display_name?: string;
+  description?: string;
+}
+
+export interface AgentVersionDiffResponse {
+  from_version_id: string;
+  to_version_id: string;
+  authored_diff: Record<string, { from: unknown; to: unknown }>;
+  resolved_diff: Record<string, { from: unknown; to: unknown }>;
 }
 
 export interface CreateAgentRequest {

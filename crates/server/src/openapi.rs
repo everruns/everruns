@@ -134,6 +134,12 @@ use utoipa::OpenApi;
         api::agents::preview_agent,
         api::agents::upsert_agent,
         api::agents::copy_agent,
+        api::agents::list_agent_versions,
+        api::agents::create_agent_version,
+        api::agents::set_default_agent_version,
+        api::agents::rollback_agent_version,
+        api::agents::fork_agent_version,
+        api::agents::diff_agent_versions,
         // LLM Providers - additional
         api::llm_providers::sync_models,
         // Users - additional
@@ -207,7 +213,7 @@ use utoipa::OpenApi;
     ),
     components(
         schemas(
-            Agent, AgentStatus,
+            Agent, AgentStatus, everruns_core::AgentVersion, everruns_core::AgentVersionChangeKind,
             Session, SessionStatus, Event, EventContext, EventData,
             everruns_core::typed_id::EventId,
             // Event data types
@@ -222,6 +228,11 @@ use utoipa::OpenApi;
             SessionStartedData,
             // Agent/Session types
             domains::agents::types::CreateAgentRequest, domains::agents::types::UpdateAgentRequest,
+            domains::agents::types::CreateAgentVersionRequest,
+            domains::agents::types::SetDefaultAgentVersionRequest,
+            domains::agents::types::RollbackAgentVersionRequest,
+            domains::agents::types::ForkAgentVersionRequest,
+            domains::agents::types::AgentVersionDiffResponse,
             api::sessions::CreateSessionRequest, api::sessions::UpdateSessionRequest,
             api::sessions::CancelTurnResponse, api::sessions::CancelStatus,
             api::common::ResourceStatsResponse,

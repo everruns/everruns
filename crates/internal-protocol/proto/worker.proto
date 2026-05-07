@@ -408,6 +408,8 @@ message Session {
     optional Uuid owner_principal_id = 16;
     // Resolved user owner, when the principal ultimately maps to a user
     optional Uuid resolved_owner_user_id = 17;
+    // Captured immutable agent version for runtime provenance
+    optional Uuid agent_version_id = 18;
 }
 
 message GetSessionRequest {

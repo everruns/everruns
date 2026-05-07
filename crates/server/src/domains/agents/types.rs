@@ -3,7 +3,7 @@
 // Storage row types are re-exported from `storage::models` so domain code
 // has a single import path.
 
-use everruns_core::typed_id::{AgentId, ModelId};
+use everruns_core::typed_id::{AgentId, AgentVersionId, ModelId};
 use everruns_core::{
     AgentCapabilityConfig, AgentStatus, InitialFile, ScopedMcpServers, ToolDefinition,
 };
@@ -131,6 +131,44 @@ pub struct UpdateAgentRequest {
     /// Maximum number of LLM iterations per turn for this agent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_iterations: Option<usize>,
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct CreateAgentVersionRequest {
+    #[serde(default)]
+    pub summary: Option<String>,
+    #[serde(default)]
+    pub change_kind: Option<everruns_core::AgentVersionChangeKind>,
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct RollbackAgentVersionRequest {
+    #[serde(default)]
+    pub save_version: bool,
+    #[serde(default)]
+    pub summary: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct SetDefaultAgentVersionRequest {
+    pub version_id: AgentVersionId,
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct ForkAgentVersionRequest {
+    pub name: String,
+    #[serde(default)]
+    pub display_name: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, ToSchema)]
+pub struct AgentVersionDiffResponse {
+    pub from_version_id: AgentVersionId,
+    pub to_version_id: AgentVersionId,
+    pub authored_diff: serde_json::Value,
+    pub resolved_diff: serde_json::Value,
 }
 
 /// Request to preview the final agent shape with capabilities applied

@@ -21,9 +21,10 @@ use crate::storage::{
 use anyhow::Result;
 use everruns_core::session_sandbox::SESSION_SANDBOX_CAPABILITY_ID;
 use everruns_core::{
-    AgentCapabilityConfig, AgentId, Caller, CapabilityRegistry, DeclarativeCapabilityDefinition,
-    HarnessId, InitialFile, ModelId, MountPoint, OrgRole, Permission, Policy, PrincipalId, Rule,
-    Session, SessionId, SessionStatus, SubagentStatus, TokenUsage,
+    AgentCapabilityConfig, AgentId, AgentVersionPolicy, Caller, CapabilityRegistry,
+    DeclarativeCapabilityDefinition, FeatureFlags, HarnessId, InitialFile, ModelId, MountPoint,
+    OrgRole, Permission, Policy, PrincipalId, Rule, Session, SessionId, SessionStatus,
+    SubagentStatus, TokenUsage,
     capabilities::{RiskLevel, SystemPromptContext, collect_capabilities, compute_features},
     is_declarative_capability, merge_capabilities, merge_initial_files,
     normalize_initial_file_path, parse_declarative_capability_id,
@@ -204,6 +205,48 @@ impl SessionService {
             .as_ref()
             .map(|agent| serde_json::from_value(agent.mcp_servers.clone()).unwrap_or_default());
 
+        let resolved_agent_version = if FeatureFlags::current().agent_versions {
+            if let Some(agent_id) = agent_id {
+                let app_row = match app_id {
+                    Some(app_internal_id) => self.db.get_app_by_id(org_id, app_internal_id).await?,
+                    None => None,
+                };
+                match app_row
+                    .as_ref()
+                    .map(|app| AgentVersionPolicy::from(app.agent_version_policy.as_str()))
+                    .unwrap_or_default()
+                {
+                    AgentVersionPolicy::Pinned => {
+                        if let Some(version_id) = app_row.and_then(|app| app.agent_version_id) {
+                            self.db
+                                .get_agent_version(
+                                    org_id,
+                                    everruns_core::AgentVersionId::from_uuid(version_id),
+                                )
+                                .await?
+                        } else {
+                            None
+                        }
+                    }
+                    AgentVersionPolicy::Latest => {
+                        self.db.get_latest_agent_version(org_id, agent_id).await?
+                    }
+                    AgentVersionPolicy::Default => {
+                        if let Some(version_id) = agent.as_ref().and_then(|a| a.default_version_id)
+                        {
+                            self.db.get_agent_version(org_id, version_id).await?
+                        } else {
+                            None
+                        }
+                    }
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
         let agent_identity_id = if let Some(identity_id) = req.agent_identity_id {
             let identity = self
                 .db
@@ -329,6 +372,22 @@ impl SessionService {
             blueprint_config: None,
         };
         let row = self.db.create_session(input).await?;
+        let row = if let Some(version) = resolved_agent_version.as_ref() {
+            self.db
+                .update_session(
+                    org_id,
+                    row.id,
+                    UpdateSession {
+                        agent_version_id: Some(version.id),
+                        agent_config_hash: Some(version.config_hash.clone()),
+                        ..Default::default()
+                    },
+                )
+                .await?
+                .unwrap_or(row)
+        } else {
+            row
+        };
         let mut session = Self::row_to_session(row, org_public_id, Some(harness_id));
         self.hydrate_ownership(org_id, &mut session).await?;
 
@@ -1297,6 +1356,7 @@ impl SessionService {
                 )
             }),
             agent_id: row.agent_id,
+            agent_version_id: row.agent_version_id,
             agent_identity_id: row.agent_identity_id,
             owner_principal_id: row.owner_principal_id,
             resolved_owner_user_id: row.resolved_owner_user_id,

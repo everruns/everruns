@@ -101,6 +101,7 @@ impl SessionStore for DbSessionStore {
                     organization_id: self.org_public_id.clone(),
                     harness_id,
                     agent_id: row.agent_id,
+                    agent_version_id: row.agent_version_id,
                     agent_identity_id: row.agent_identity_id,
                     owner_principal_id: row.owner_principal_id,
                     resolved_owner_user_id: row.resolved_owner_user_id,

@@ -5,10 +5,16 @@ import { api, throwApiError } from "./client";
 import { createCrudApi } from "./crud";
 import type {
   Agent,
+  AgentVersion,
+  AgentVersionDiffResponse,
   AgentPreviewResponse,
+  CreateAgentVersionRequest,
   CreateAgentRequest,
+  ForkAgentVersionRequest,
   PreviewAgentRequest,
+  RollbackAgentVersionRequest,
   ResourceStats,
+  SetDefaultAgentVersionRequest,
   UpdateAgentRequest,
 } from "./types";
 
@@ -74,5 +80,61 @@ export async function checkAgentName(
 
 export async function previewAgent(request: PreviewAgentRequest): Promise<AgentPreviewResponse> {
   const response = await api.post<AgentPreviewResponse>("/v1/agents/preview", request);
+  return response.data;
+}
+
+export async function listAgentVersions(agentId: string): Promise<AgentVersion[]> {
+  const response = await api.get<AgentVersion[]>(`/v1/agents/${agentId}/versions`);
+  return response.data;
+}
+
+export async function createAgentVersion(
+  agentId: string,
+  request: CreateAgentVersionRequest,
+): Promise<AgentVersion> {
+  const response = await api.post<AgentVersion>(`/v1/agents/${agentId}/versions`, request);
+  return response.data;
+}
+
+export async function setDefaultAgentVersion(
+  agentId: string,
+  request: SetDefaultAgentVersionRequest,
+): Promise<Agent> {
+  const response = await api.post<Agent>(`/v1/agents/${agentId}/versions/default`, request);
+  return response.data;
+}
+
+export async function rollbackAgentVersion(
+  agentId: string,
+  versionId: string,
+  request: RollbackAgentVersionRequest,
+): Promise<Agent> {
+  const response = await api.post<Agent>(
+    `/v1/agents/${agentId}/versions/${versionId}/rollback`,
+    request,
+  );
+  return response.data;
+}
+
+export async function forkAgentVersion(
+  agentId: string,
+  versionId: string,
+  request: ForkAgentVersionRequest,
+): Promise<Agent> {
+  const response = await api.post<Agent>(
+    `/v1/agents/${agentId}/versions/${versionId}/fork`,
+    request,
+  );
+  return response.data;
+}
+
+export async function diffAgentVersions(
+  agentId: string,
+  fromVersionId: string,
+  toVersionId: string,
+): Promise<AgentVersionDiffResponse> {
+  const response = await api.get<AgentVersionDiffResponse>(
+    `/v1/agents/${agentId}/versions/${fromVersionId}/diff/${toVersionId}`,
+  );
   return response.data;
 }

@@ -17,7 +17,7 @@ use crate::mcp_server::{ScopedMcpServers, scoped_mcp_servers_is_empty};
 use crate::network_access::NetworkAccessList;
 use crate::session_file::InitialFile;
 use crate::tool_types::ToolDefinition;
-use crate::typed_id::{AgentId, ModelId};
+use crate::typed_id::{AgentId, AgentVersionId, ModelId, PrincipalId};
 
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
@@ -36,6 +36,84 @@ pub enum AgentStatus {
     Archived,
     /// Agent is deleted and should only survive as a tombstone for references.
     Deleted,
+}
+
+/// Reason a version was created. Stored as lower_snake_case text.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum AgentVersionChangeKind {
+    Manual,
+    Patch,
+    Minor,
+    Major,
+    Import,
+    Rollback,
+    Fork,
+}
+
+impl std::fmt::Display for AgentVersionChangeKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AgentVersionChangeKind::Manual => write!(f, "manual"),
+            AgentVersionChangeKind::Patch => write!(f, "patch"),
+            AgentVersionChangeKind::Minor => write!(f, "minor"),
+            AgentVersionChangeKind::Major => write!(f, "major"),
+            AgentVersionChangeKind::Import => write!(f, "import"),
+            AgentVersionChangeKind::Rollback => write!(f, "rollback"),
+            AgentVersionChangeKind::Fork => write!(f, "fork"),
+        }
+    }
+}
+
+impl From<&str> for AgentVersionChangeKind {
+    fn from(s: &str) -> Self {
+        match s {
+            "patch" => AgentVersionChangeKind::Patch,
+            "minor" => AgentVersionChangeKind::Minor,
+            "major" => AgentVersionChangeKind::Major,
+            "import" => AgentVersionChangeKind::Import,
+            "rollback" => AgentVersionChangeKind::Rollback,
+            "fork" => AgentVersionChangeKind::Fork,
+            _ => AgentVersionChangeKind::Manual,
+        }
+    }
+}
+
+/// Immutable snapshot of an Agent's authored and resolved runtime config.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct AgentVersion {
+    #[serde(rename = "id")]
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "agentver_01933b5a000070008000000000000001"))]
+    pub public_id: AgentVersionId,
+    #[serde(skip, default = "uuid::Uuid::nil")]
+    pub internal_id: uuid::Uuid,
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "agent_01933b5a000070008000000000000001"))]
+    pub agent_id: AgentId,
+    pub version_number: i32,
+    pub semver_major: i32,
+    pub semver_minor: i32,
+    pub semver_patch: i32,
+    pub version: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>))]
+    pub parent_version_id: Option<AgentVersionId>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>))]
+    pub source_version_id: Option<AgentVersionId>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>))]
+    pub created_by_principal_id: Option<PrincipalId>,
+    pub change_kind: AgentVersionChangeKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
+    pub config_hash: String,
+    #[cfg_attr(feature = "openapi", schema(value_type = Object))]
+    pub authored_config: serde_json::Value,
+    #[cfg_attr(feature = "openapi", schema(value_type = Object))]
+    pub resolved_config: serde_json::Value,
+    pub created_at: DateTime<Utc>,
 }
 
 impl std::fmt::Display for AgentStatus {
@@ -88,6 +166,22 @@ pub struct Agent {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "model_01933b5a00007000800000000000001"))]
     pub default_model_id: Option<ModelId>,
+    /// Default immutable version used by deployments that choose the default policy.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "agentver_01933b5a00007000800000000000001"))]
+    pub default_version_id: Option<AgentVersionId>,
+    /// Source agent for a forked agent.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "agent_01933b5a00007000800000000000001"))]
+    pub forked_from_agent_id: Option<AgentId>,
+    /// Source version for a forked agent.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "agentver_01933b5a00007000800000000000001"))]
+    pub forked_from_version_id: Option<AgentVersionId>,
+    /// Root agent lineage identifier for grouping fork families.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "agent_01933b5a00007000800000000000001"))]
+    pub root_agent_id: Option<AgentId>,
     /// Tags for organizing and filtering agents.
     #[serde(default)]
     pub tags: Vec<String>,
@@ -242,6 +336,10 @@ mod tests {
             description: None,
             system_prompt: "test".to_string(),
             default_model_id: None,
+            default_version_id: None,
+            forked_from_agent_id: None,
+            forked_from_version_id: None,
+            root_agent_id: None,
             tags: vec![],
             capabilities: vec![],
             initial_files: vec![],

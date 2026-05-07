@@ -18,7 +18,7 @@ impl Database {
             r#"
             INSERT INTO agents (org_id, public_id, name, display_name, description, system_prompt, default_model_id, tags, initial_files, tools, mcp_servers, network_access, max_iterations, status)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, 'active')
-            RETURNING id, public_id, org_id, name, display_name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations,
+            RETURNING id, public_id, org_id, name, display_name, description, system_prompt, default_model_id, default_version_id, forked_from_agent_id, forked_from_version_id, root_agent_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             "#,
         )
@@ -76,7 +76,7 @@ impl Database {
                 OR agents.mcp_servers IS DISTINCT FROM EXCLUDED.mcp_servers
                 OR agents.network_access IS DISTINCT FROM EXCLUDED.network_access
                 OR agents.max_iterations IS DISTINCT FROM EXCLUDED.max_iterations
-            RETURNING id, public_id, org_id, name, display_name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations,
+            RETURNING id, public_id, org_id, name, display_name, description, system_prompt, default_model_id, default_version_id, forked_from_agent_id, forked_from_version_id, root_agent_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             "#,
         )
@@ -103,7 +103,7 @@ impl Database {
     pub async fn get_agent(&self, org_id: i64, id: AgentId) -> Result<Option<AgentRow>> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
-            SELECT id, public_id, org_id, name, display_name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations,
+            SELECT id, public_id, org_id, name, display_name, description, system_prompt, default_model_id, default_version_id, forked_from_agent_id, forked_from_version_id, root_agent_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             FROM agents
             WHERE org_id = $1 AND id = $2
@@ -137,7 +137,7 @@ impl Database {
     ) -> Result<Option<AgentRow>> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
-            SELECT id, public_id, org_id, name, display_name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations,
+            SELECT id, public_id, org_id, name, display_name, description, system_prompt, default_model_id, default_version_id, forked_from_agent_id, forked_from_version_id, root_agent_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             FROM agents
             WHERE org_id = $1 AND public_id = $2
@@ -184,7 +184,7 @@ impl Database {
         let limit_idx = param_idx + 1;
         let offset_idx = param_idx + 2;
         let sql = format!(
-            r#"SELECT id, public_id, org_id, name, display_name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations,
+            r#"SELECT id, public_id, org_id, name, display_name, description, system_prompt, default_model_id, default_version_id, forked_from_agent_id, forked_from_version_id, root_agent_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations,
                        total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
                 FROM agents
                 WHERE org_id = $1{status_sql}{search_sql}
@@ -207,7 +207,7 @@ impl Database {
     pub async fn get_agent_by_name(&self, org_id: i64, name: &str) -> Result<Option<AgentRow>> {
         let row = sqlx::query_as::<_, AgentRow>(
             r#"
-            SELECT id, public_id, org_id, name, display_name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations,
+            SELECT id, public_id, org_id, name, display_name, description, system_prompt, default_model_id, default_version_id, forked_from_agent_id, forked_from_version_id, root_agent_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations,
                    total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             FROM agents
             WHERE org_id = $1 AND name = $2 AND status != 'deleted'
@@ -243,9 +243,13 @@ impl Database {
                 mcp_servers = COALESCE($12, mcp_servers),
                 network_access = CASE WHEN $13 THEN $14 ELSE network_access END,
                 max_iterations = CASE WHEN $15 THEN $16 ELSE max_iterations END,
+                default_version_id = COALESCE($17, default_version_id),
+                forked_from_agent_id = COALESCE($18, forked_from_agent_id),
+                forked_from_version_id = COALESCE($19, forked_from_version_id),
+                root_agent_id = COALESCE($20, root_agent_id),
                 updated_at = NOW()
             WHERE org_id = $1 AND id = $2
-            RETURNING id, public_id, org_id, name, display_name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations,
+            RETURNING id, public_id, org_id, name, display_name, description, system_prompt, default_model_id, default_version_id, forked_from_agent_id, forked_from_version_id, root_agent_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             "#,
         )
@@ -265,6 +269,10 @@ impl Database {
         .bind(input.network_access.flatten())
         .bind(input.max_iterations.is_some())
         .bind(input.max_iterations.flatten())
+        .bind(input.default_version_id)
+        .bind(input.forked_from_agent_id)
+        .bind(input.forked_from_version_id)
+        .bind(input.root_agent_id)
         .fetch_optional(&self.pool)
         .await?;
 
@@ -332,7 +340,7 @@ impl Database {
                 max_iterations = EXCLUDED.max_iterations,
                 status = 'active',
                 updated_at = NOW()
-            RETURNING id, public_id, org_id, name, display_name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations,
+            RETURNING id, public_id, org_id, name, display_name, description, system_prompt, default_model_id, default_version_id, forked_from_agent_id, forked_from_version_id, root_agent_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             "#,
         )
@@ -380,7 +388,7 @@ impl Database {
                 max_iterations = EXCLUDED.max_iterations,
                 status = 'active',
                 updated_at = NOW()
-            RETURNING id, public_id, org_id, name, display_name, description, system_prompt, default_model_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations,
+            RETURNING id, public_id, org_id, name, display_name, description, system_prompt, default_model_id, default_version_id, forked_from_agent_id, forked_from_version_id, root_agent_id, tags, status, created_at, updated_at, archived_at, deleted_at, initial_files, tools, mcp_servers, network_access, max_iterations,
                       total_input_tokens, total_output_tokens, total_cache_read_tokens, total_cache_creation_tokens
             "#,
         )
@@ -414,6 +422,112 @@ impl Database {
                 .await?;
 
         Ok(row.map(|r| r.0))
+    }
+
+    pub async fn create_agent_version(
+        &self,
+        input: CreateAgentVersionRow,
+    ) -> Result<AgentVersionRow> {
+        Ok(sqlx::query_as::<_, AgentVersionRow>(
+            r#"
+            INSERT INTO agent_versions (
+                id, public_id, org_id, agent_id, version_number,
+                semver_major, semver_minor, semver_patch, version,
+                parent_version_id, source_version_id, created_by_principal_id,
+                change_kind, summary, config_hash, authored_config, resolved_config
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+            RETURNING id, public_id, org_id, agent_id, version_number,
+                semver_major, semver_minor, semver_patch, version,
+                parent_version_id, source_version_id, created_by_principal_id,
+                change_kind, summary, config_hash, authored_config, resolved_config, created_at
+            "#,
+        )
+        .bind(input.id)
+        .bind(input.public_id)
+        .bind(input.org_id)
+        .bind(input.agent_id)
+        .bind(input.version_number)
+        .bind(input.semver_major)
+        .bind(input.semver_minor)
+        .bind(input.semver_patch)
+        .bind(input.version)
+        .bind(input.parent_version_id)
+        .bind(input.source_version_id)
+        .bind(input.created_by_principal_id)
+        .bind(input.change_kind)
+        .bind(input.summary)
+        .bind(input.config_hash)
+        .bind(input.authored_config)
+        .bind(input.resolved_config)
+        .fetch_one(&self.pool)
+        .await?)
+    }
+
+    pub async fn list_agent_versions(
+        &self,
+        org_id: i64,
+        agent_id: AgentId,
+    ) -> Result<Vec<AgentVersionRow>> {
+        Ok(sqlx::query_as::<_, AgentVersionRow>(
+            r#"
+            SELECT id, public_id, org_id, agent_id, version_number,
+                semver_major, semver_minor, semver_patch, version,
+                parent_version_id, source_version_id, created_by_principal_id,
+                change_kind, summary, config_hash, authored_config, resolved_config, created_at
+            FROM agent_versions
+            WHERE org_id = $1 AND agent_id = $2
+            ORDER BY version_number DESC
+            "#,
+        )
+        .bind(org_id)
+        .bind(agent_id)
+        .fetch_all(&self.pool)
+        .await?)
+    }
+
+    pub async fn get_agent_version(
+        &self,
+        org_id: i64,
+        id: everruns_core::AgentVersionId,
+    ) -> Result<Option<AgentVersionRow>> {
+        Ok(sqlx::query_as::<_, AgentVersionRow>(
+            r#"
+            SELECT id, public_id, org_id, agent_id, version_number,
+                semver_major, semver_minor, semver_patch, version,
+                parent_version_id, source_version_id, created_by_principal_id,
+                change_kind, summary, config_hash, authored_config, resolved_config, created_at
+            FROM agent_versions
+            WHERE org_id = $1 AND id = $2
+            "#,
+        )
+        .bind(org_id)
+        .bind(id.uuid())
+        .fetch_optional(&self.pool)
+        .await?)
+    }
+
+    pub async fn get_latest_agent_version(
+        &self,
+        org_id: i64,
+        agent_id: AgentId,
+    ) -> Result<Option<AgentVersionRow>> {
+        Ok(sqlx::query_as::<_, AgentVersionRow>(
+            r#"
+            SELECT id, public_id, org_id, agent_id, version_number,
+                semver_major, semver_minor, semver_patch, version,
+                parent_version_id, source_version_id, created_by_principal_id,
+                change_kind, summary, config_hash, authored_config, resolved_config, created_at
+            FROM agent_versions
+            WHERE org_id = $1 AND agent_id = $2
+            ORDER BY version_number DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(org_id)
+        .bind(agent_id)
+        .fetch_optional(&self.pool)
+        .await?)
     }
 
     // ============================================

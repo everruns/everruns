@@ -18,6 +18,7 @@ const DEFAULT_FLAGS: FeatureFlags = {
   mcp_endpoint: false,
   evals: false,
   app_budgets: false,
+  agent_versions: false,
 };
 
 export interface FeatureFlagsContextValue {

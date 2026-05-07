@@ -29,6 +29,8 @@ For the full list of entity prefixes and type aliases, see `crates/core/src/type
 
 **Example:** `agent_01933b5a00007000800000000000002`
 
+Agent version IDs use the `agentver_` prefix.
+
 ### ID Generation
 
 - IDs are generated using UUIDv7 for time-ordering benefits
@@ -70,6 +72,7 @@ All entities use a **dual-ID pattern** with an internal UUID primary key and an 
 
 **Session FK resolution:**
 - `sessions.agent_id` stores the agent's internal UUID (FK to `agents.id`)
+- `sessions.agent_version_id` stores the agent version internal UUID when a session is bound to an immutable agent snapshot
 - API responses resolve this to the agent's `public_id` via a lookup/JOIN
 - Session creation accepts the agent's `public_id`, resolves to internal UUID for storage
 

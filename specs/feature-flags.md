@@ -41,6 +41,10 @@ Planned flag:
 |------|------|------------|---------|---------|
 | `voice` | Experimental | API-visible | `FEATURE_VOICE` | Enables Realtime voice endpoints and microphone controls in session chat, agent chat, and Platform Chat. |
 
+Current API-visible experimental flags include:
+
+- `agent_versions`: gates immutable Agent snapshots, forks, rollback, version diffs, and App version binding. See `specs/agent-versions.md`.
+
 ## Architecture
 
 ### Backend

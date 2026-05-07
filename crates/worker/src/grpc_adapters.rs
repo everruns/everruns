@@ -1057,6 +1057,10 @@ fn proto_agent_to_agent(proto_agent: proto::Agent) -> Result<Agent> {
         description: non_empty_string(proto_agent.description),
         system_prompt: proto_agent.system_prompt,
         default_model_id: default_model_id.map(|u| u.into()),
+        default_version_id: None,
+        forked_from_agent_id: None,
+        forked_from_version_id: None,
+        root_agent_id: None,
         tags: vec![],
         capabilities: proto_agent
             .capability_ids
@@ -1239,6 +1243,11 @@ fn proto_session_to_session(proto_session: proto::Session) -> Result<Session> {
         id: id.into(),
         organization_id: proto_session.organization_id,
         agent_id: agent_id.map(|u| u.into()),
+        agent_version_id: proto_session
+            .agent_version_id
+            .as_ref()
+            .map(|id| proto_uuid_to_uuid(Some(id)).map(everruns_core::AgentVersionId::from_uuid))
+            .transpose()?,
         agent_identity_id: None,
         harness_id: harness_id.into(),
         owner_principal_id: owner_principal_id.into(),

@@ -1032,6 +1032,8 @@ impl Command for CreateApp {
             description,
             harness_id,
             agent_id,
+            agent_version_policy,
+            agent_version_id,
             agent_identity_id,
             channel_type,
             channel_config,
@@ -1059,6 +1061,22 @@ impl Command for CreateApp {
             Some(agent_id) => Some(validate_agent(ctx, &agent_id).await?),
             None => None,
         };
+        let agent_version_uuid = if let Some(version_id) = agent_version_id {
+            let version = ctx
+                .db
+                .get_agent_version(ctx.org_id(), version_id)
+                .await
+                .map_err(classify_anyhow)?
+                .ok_or_else(|| CommandError::not_found("Agent version"))?;
+            if Some(version.agent_id.uuid()) != agent_uuid {
+                return Err(CommandError::bad_request(
+                    "Agent version must belong to the selected agent",
+                ));
+            }
+            Some(version.id.uuid())
+        } else {
+            None
+        };
         let agent_identity_uuid = if let Some(identity_id) = agent_identity_id {
             Some(validate_agent_identity(ctx, identity_id).await?)
         } else {
@@ -1082,6 +1100,8 @@ impl Command for CreateApp {
             description,
             harness_id: harness_uuid,
             agent_id: agent_uuid,
+            agent_version_policy: agent_version_policy.to_string(),
+            agent_version_id: agent_version_uuid,
             agent_identity_id: agent_identity_uuid,
             owner_principal_id: owner_principal.id,
             resolved_owner_user_id: owner_principal.resolved_user_id,
@@ -1288,6 +1308,25 @@ impl Command for UpdateAppCmd {
         } else {
             None
         };
+        let effective_agent_id = agent_id.or(existing.agent_id);
+        let agent_version_id = match req.agent_version_id {
+            UpdateField::Set(version_id) => {
+                let version = ctx
+                    .db
+                    .get_agent_version(ctx.org_id(), version_id)
+                    .await
+                    .map_err(classify_anyhow)?
+                    .ok_or_else(|| CommandError::not_found("Agent version"))?;
+                if Some(version.agent_id.uuid()) != effective_agent_id {
+                    return Err(CommandError::bad_request(
+                        "Agent version must belong to the selected agent",
+                    ));
+                }
+                UpdateField::Set(version.id.uuid())
+            }
+            UpdateField::Clear => UpdateField::Clear,
+            UpdateField::Unchanged => UpdateField::Unchanged,
+        };
 
         let agent_identity_id = match req.agent_identity_id {
             UpdateField::Set(identity_id) => {
@@ -1349,6 +1388,8 @@ impl Command for UpdateAppCmd {
             description: req.description,
             harness_id,
             agent_id,
+            agent_version_policy: req.agent_version_policy.map(|policy| policy.to_string()),
+            agent_version_id,
             agent_identity_id,
             owner_principal_id,
             resolved_owner_user_id,
@@ -2305,6 +2346,8 @@ mod tests {
             description: None,
             harness_id: HarnessId::from_seed(3),
             agent_id: None,
+            agent_version_policy: everruns_core::AgentVersionPolicy::Default,
+            agent_version_id: None,
             agent_identity_id: None,
             owner_principal_id: PrincipalId::from_seed(4),
             resolved_owner_user_id: None,

@@ -9,6 +9,7 @@ import {
   usePublishApp,
   useUnpublishApp,
 } from "@/hooks/use-apps";
+import { useAgentVersions } from "@/hooks/use-agents";
 import { usePolicies } from "@/hooks/use-policies";
 import { useAgents, usePageTitle } from "@/hooks";
 import { useHarnesses } from "@/hooks/use-harnesses";
@@ -78,6 +79,7 @@ import type {
   AgUiChannelConfig,
   AgUiToolVisibility,
   AppChannel,
+  AgentVersionPolicy,
   ChannelType,
   InvocationSessionMode,
   ScheduleChannelConfig,
@@ -240,6 +242,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
   const unpublishApp = useUnpublishApp();
   const { can: canPolicies } = usePolicies("apps");
   const appBudgetsEnabled = useFeatureFlag("app_budgets");
+  const agentVersionsEnabled = useFeatureFlag("agent_versions");
 
   const [editingBasic, setEditingBasic] = useState(false);
   const [editingChannelId, setEditingChannelId] = useState<string | null>(null);
@@ -254,6 +257,9 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
   const [editName, setEditName] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [editAgentId, setEditAgentId] = useState("");
+  const [editAgentVersionPolicy, setEditAgentVersionPolicy] =
+    useState<AgentVersionPolicy>("default");
+  const [editAgentVersionId, setEditAgentVersionId] = useState("");
   const [editHarnessId, setEditHarnessId] = useState("");
   const [editAgentIdentityId, setEditAgentIdentityId] = useState("");
 
@@ -294,6 +300,12 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
   const [rotatingA2aChannelId, setRotatingA2aChannelId] = useState<string | null>(null);
 
   const [creatingSlackApp, setCreatingSlackApp] = useState(false);
+  const { data: appAgentVersions = [] } = useAgentVersions(
+    agentVersionsEnabled ? (app?.agent_id ?? undefined) : undefined,
+  );
+  const { data: editableAgentVersions = [] } = useAgentVersions(
+    agentVersionsEnabled && editAgentId ? editAgentId : undefined,
+  );
 
   const invalidateApp = () => {
     queryClient.invalidateQueries({ queryKey: queryKeys.apps.detail(appId) });
@@ -454,6 +466,8 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
     setEditName(app.name);
     setEditDescription(app.description ?? "");
     setEditAgentId(app.agent_id ?? "");
+    setEditAgentVersionPolicy(app.agent_version_policy ?? "default");
+    setEditAgentVersionId(app.agent_version_id ?? "");
     setEditHarnessId(app.harness_id);
     setEditAgentIdentityId(app.agent_identity_id ?? "");
     setEditingBasic(true);
@@ -467,6 +481,15 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
         name: editName,
         description: editDescription || undefined,
         agent_id: editAgentId || undefined,
+        ...(agentVersionsEnabled
+          ? {
+              agent_version_policy: editAgentId ? editAgentVersionPolicy : "default",
+              agent_version_id:
+                editAgentId && editAgentVersionPolicy === "pinned"
+                  ? editAgentVersionId || null
+                  : null,
+            }
+          : {}),
         agent_identity_id: editAgentIdentityId || null,
         harness_id: editHarnessId,
       },
@@ -674,6 +697,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
 
   const agent = agents?.find((candidate) => candidate.id === app?.agent_id);
   const harness = harnesses?.find((candidate) => candidate.id === app?.harness_id);
+  const pinnedVersion = appAgentVersions.find((version) => version.id === app?.agent_version_id);
 
   if (isLoading) {
     return (
@@ -1736,8 +1760,58 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
 
                   <div>
                     <Label>Agent</Label>
-                    <AgentSelect value={editAgentId} onValueChange={setEditAgentId} />
+                    <AgentSelect
+                      value={editAgentId}
+                      onValueChange={(value) => {
+                        setEditAgentId(value);
+                        setEditAgentVersionId("");
+                        if (!value) setEditAgentVersionPolicy("default");
+                      }}
+                      includeNoneOption
+                    />
                   </div>
+
+                  {agentVersionsEnabled && editAgentId && (
+                    <div className="space-y-3 border p-3">
+                      <div>
+                        <Label>Agent version</Label>
+                        <Select
+                          value={editAgentVersionPolicy}
+                          onValueChange={(value) => {
+                            const policy = value as AgentVersionPolicy;
+                            setEditAgentVersionPolicy(policy);
+                            if (policy !== "pinned") setEditAgentVersionId("");
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="default">Default version</SelectItem>
+                            <SelectItem value="latest">Latest version</SelectItem>
+                            <SelectItem value="pinned">Pinned version</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      {editAgentVersionPolicy === "pinned" && (
+                        <div>
+                          <Label>Pinned version</Label>
+                          <Select value={editAgentVersionId} onValueChange={setEditAgentVersionId}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select version" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {editableAgentVersions.map((version) => (
+                                <SelectItem key={version.id} value={version.id}>
+                                  {version.version}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   <div>
                     <Label>Agent identity</Label>
@@ -1792,6 +1866,14 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
                           })
                         : "None assigned"}
                     </p>
+                    {agentVersionsEnabled && app.agent_id && (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Version policy: {app.agent_version_policy}
+                        {app.agent_version_policy === "pinned" && app.agent_version_id
+                          ? ` · ${pinnedVersion?.version ?? app.agent_version_id}`
+                          : ""}
+                      </p>
+                    )}
                   </div>
 
                   <div>

@@ -15,7 +15,9 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::principal::PrincipalSummary;
-use crate::typed_id::{AgentId, AgentIdentityId, AppChannelId, AppId, HarnessId, PrincipalId};
+use crate::typed_id::{
+    AgentId, AgentIdentityId, AgentVersionId, AppChannelId, AppId, HarnessId, PrincipalId,
+};
 
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
@@ -33,6 +35,40 @@ pub enum AppStatus {
     Published,
     Archived,
     Deleted,
+}
+
+/// How an App resolves the Agent version it runs.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "lowercase")]
+pub enum AgentVersionPolicy {
+    /// Resolve the agent's default_version_id at session creation/invocation time.
+    #[default]
+    Default,
+    /// Resolve the newest agent_versions row for the app's agent.
+    Latest,
+    /// Use the app's pinned agent_version_id.
+    Pinned,
+}
+
+impl std::fmt::Display for AgentVersionPolicy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AgentVersionPolicy::Default => write!(f, "default"),
+            AgentVersionPolicy::Latest => write!(f, "latest"),
+            AgentVersionPolicy::Pinned => write!(f, "pinned"),
+        }
+    }
+}
+
+impl From<&str> for AgentVersionPolicy {
+    fn from(s: &str) -> Self {
+        match s {
+            "latest" => AgentVersionPolicy::Latest,
+            "pinned" => AgentVersionPolicy::Pinned,
+            _ => AgentVersionPolicy::Default,
+        }
+    }
 }
 
 impl std::fmt::Display for AppStatus {
@@ -123,6 +159,13 @@ pub struct App {
     /// Optional ID of the agent to use (format: agent_{32-hex}).
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "agent_01933b5a00007000800000000000001"))]
     pub agent_id: Option<AgentId>,
+    /// Version resolution policy for the optional agent.
+    #[serde(default)]
+    pub agent_version_policy: AgentVersionPolicy,
+    /// Pinned agent version. Required when policy is `pinned`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "agentver_01933b5a00007000800000000000001"))]
+    pub agent_version_id: Option<AgentVersionId>,
     /// Optional virtual identity that represents the app in unattended/channel execution.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "identity_01933b5a00007000800000000000001"))]
@@ -791,6 +834,8 @@ mod tests {
             description: None,
             harness_id: HarnessId::from_uuid(Uuid::nil()),
             agent_id: Some(AgentId::from_uuid(Uuid::nil())),
+            agent_version_policy: AgentVersionPolicy::Default,
+            agent_version_id: None,
             agent_identity_id: None,
             owner_principal_id: PrincipalId::from_seed(1),
             resolved_owner_user_id: None,

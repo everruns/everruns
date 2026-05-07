@@ -31,6 +31,9 @@ pub struct FeatureFlags {
     /// App / channel scoped budgets and periodic budget resets (`5h`, `1d`, ...).
     /// Experimental.
     pub app_budgets: bool,
+    /// Immutable agent versions, snapshots, forks, and app version binding.
+    /// Experimental.
+    pub agent_versions: bool,
 }
 
 impl FeatureFlags {
@@ -43,6 +46,7 @@ impl FeatureFlags {
             mcp_endpoint: experimental_flag("FEATURE_MCP_ENDPOINT", grade),
             evals: experimental_flag("FEATURE_EVALS", grade),
             app_budgets: experimental_flag("FEATURE_APP_BUDGETS", grade),
+            agent_versions: experimental_flag("FEATURE_AGENT_VERSIONS", grade),
         }
     }
 
@@ -61,6 +65,7 @@ impl FeatureFlags {
             "mcp_endpoint" => self.mcp_endpoint,
             "evals" => self.evals,
             "app_budgets" => self.app_budgets,
+            "agent_versions" => self.agent_versions,
             _ => false,
         }
     }
@@ -75,6 +80,7 @@ impl FeatureFlags {
             mcp_endpoint: true,
             evals: true,
             app_budgets: true,
+            agent_versions: true,
         }
     }
 }
@@ -213,6 +219,7 @@ mod tests {
             mcp_endpoint: true,
             evals: true,
             app_budgets: true,
+            agent_versions: true,
         };
         assert!(flags.is_enabled("global_chat"));
         assert!(flags.is_enabled("apps"));
@@ -220,6 +227,7 @@ mod tests {
         assert!(flags.is_enabled("mcp_endpoint"));
         assert!(flags.is_enabled("evals"));
         assert!(flags.is_enabled("app_budgets"));
+        assert!(flags.is_enabled("agent_versions"));
         assert!(!flags.is_enabled("nonexistent"));
     }
 
@@ -232,11 +240,13 @@ mod tests {
             mcp_endpoint: true,
             evals: true,
             app_budgets: true,
+            agent_versions: true,
         };
         let json = serde_json::to_string(&flags).unwrap();
         assert!(json.contains("\"global_chat\":true"));
         assert!(json.contains("\"notifications\":true"));
         assert!(json.contains("\"app_budgets\":true"));
+        assert!(json.contains("\"agent_versions\":true"));
 
         let parsed: FeatureFlags = serde_json::from_str(&json).unwrap();
         assert_eq!(flags, parsed);
