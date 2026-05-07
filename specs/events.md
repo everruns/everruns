@@ -1233,7 +1233,39 @@ Both the SSE (`/v1/sessions/{id}/sse`) and JSON (`/v1/sessions/{id}/events`) end
 
 **Validation:**
 - Both parameters accept only known event types (see Event Type Registry). Unknown types return 400.
-- Maximum 25 values per parameter to prevent abuse.
+- Maximum 40 values per parameter to prevent abuse.
+
+### Debug Filters (JSON endpoint only)
+
+The `/v1/sessions/{id}/events` JSON endpoint exposes additional filters used by debugging tooling and the MCP catalog. Setting any of these routes the query to the `list_events_advanced` storage path; otherwise the default path is used (which preserves turn-boundary snapping for UI pagination).
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `after_sequence` | i32 | Forward cursor — `sequence > after_sequence`. Mutually exclusive with `before_sequence` and `around`. |
+| `around` | EventId | Anchor event id. Returns up to `window` events on each side. Mutually exclusive with `since_id`, `after_sequence`, and `before_sequence` (combinations return 400). |
+| `window` | i32 | Window size for `around` (default 50, max 500). |
+| `from_ts` / `to_ts` | RFC 3339 | Filter by `created_at` range. |
+| `turn_id` | string | Filter by `context.turn_id`. |
+| `exec_id` | string | Filter by `context.exec_id`. |
+| `trace_id` | string | Filter by `context.trace_id`. |
+| `tags` | string[] | Any-match against `events.tags` (max 20). |
+| `tool_name` | string | Match `data.tool_name` (useful for `tool.*` events). |
+| `q` | string | Full-text search via Postgres `tsvector` (substring fallback in-memory). |
+| `order_desc` | bool | Return newest first; default oldest first. |
+
+The debug path enforces the same session ownership check and event-type allowlist as the default path. Limit defaults to 1000 and is capped at 10 000 rows.
+
+### Debug Summary Endpoint
+
+`GET /v1/sessions/{id}/events/summary` (and the `events_summary` MCP command) returns a one-shot debug snapshot:
+
+| Field | Description |
+|-------|-------------|
+| `total` | Total event count for the session. |
+| `by_type` | Per-type counts, sorted by event_type. |
+| `first_ts` / `last_ts` | Earliest / latest event timestamps. |
+| `turn_count` | Convenience: count of `turn.started`. |
+| `error_count` | Convenience: sum of `turn.failed`, `tool.failed`, `subagent.failed`, and `*.error`. |
 
 ### Partial Indexes
 
