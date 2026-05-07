@@ -34,8 +34,8 @@ guidance.
    On first run the plugin opens an OAuth flow in your browser to authenticate
    against the Everruns(Dev) platform over MCP.
 
-If `/plugin` is not recognized, update Claude Code (plugin marketplaces are a
-recent feature) and try again.
+If `/plugin` is not recognized, update Claude Code to a version that supports
+the plugin marketplace and try again.
 
 ### Use Everruns
 
