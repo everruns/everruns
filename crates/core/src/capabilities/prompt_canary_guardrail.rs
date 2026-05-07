@@ -162,9 +162,7 @@ fn extract_canary(prompt: &str) -> Option<String> {
             let end = (i + 1).min(bytes.len());
             let sentence = core[start..end].trim();
             let mut needle = normalize(sentence);
-            if needle.len() > MAX_CANARY_LEN {
-                needle.truncate(MAX_CANARY_LEN);
-            }
+            truncate_at_char_boundary(&mut needle, MAX_CANARY_LEN);
             if needle.len() >= MIN_CANARY_LEN {
                 return Some(needle);
             }
@@ -174,10 +172,21 @@ fn extract_canary(prompt: &str) -> Option<String> {
     // No sentence boundary found — fall back to the whole prompt if it's
     // long enough on its own.
     let mut needle = normalize(&core[start..]);
-    if needle.len() > MAX_CANARY_LEN {
-        needle.truncate(MAX_CANARY_LEN);
-    }
+    truncate_at_char_boundary(&mut needle, MAX_CANARY_LEN);
     (needle.len() >= MIN_CANARY_LEN).then_some(needle)
+}
+
+fn truncate_at_char_boundary(s: &mut String, max_bytes: usize) {
+    if s.len() <= max_bytes {
+        return;
+    }
+    let truncate_at = s
+        .char_indices()
+        .map(|(idx, _)| idx)
+        .take_while(|idx| *idx <= max_bytes)
+        .last()
+        .unwrap_or(0);
+    s.truncate(truncate_at);
 }
 
 /// Append the normalized form of `chunk` to `acc`, preserving the
@@ -404,5 +413,19 @@ mod tests {
             }
         }
         assert!(tripped, "expected canary to trip on multi-chunk leak");
+    }
+
+    #[test]
+    fn extract_canary_does_not_panic_when_truncation_hits_multibyte_in_sentence_path() {
+        let prompt = format!("{}é. trailing sentence.", "a".repeat(MAX_CANARY_LEN - 1));
+        let needle = extract_canary(&prompt).expect("extracted");
+        assert!(needle.len() <= MAX_CANARY_LEN);
+    }
+
+    #[test]
+    fn extract_canary_does_not_panic_when_truncation_hits_multibyte_in_fallback_path() {
+        let prompt = format!("{}é trailing text", "a".repeat(MAX_CANARY_LEN - 1));
+        let needle = extract_canary(&prompt).expect("extracted");
+        assert!(needle.len() <= MAX_CANARY_LEN);
     }
 }
