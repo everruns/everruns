@@ -299,6 +299,21 @@ async fn webhook_channel_shared_session_reuses_session_and_renders_template() {
 
 #[tokio::test]
 async fn webhook_shared_session_does_not_reuse_user_seeded_tag_session() {
+    // Defense in depth against an org member trying to hijack an app's shared
+    // invocation session by pre-seeding one with the matching surface tags:
+    //
+    //   1. TM-AUTHZ-009 — the session create path rejects external callers
+    //      that stamp `app:` / `app_channel:` / `slack:app:` tags. That gate
+    //      makes the attack non-starter for normal API users.
+    //
+    //   2. `__internal:app_invocation` tag — even if such a session somehow
+    //      existed, the lookup in `find_app_session_by_tags_and_owner` only
+    //      matches sessions carrying this internal-only tag, which external
+    //      callers cannot stamp (`__internal:` prefix is also reserved).
+    //
+    // This test pins both layers: it asserts the seed attempt is rejected
+    // (layer 1) and that a subsequent legitimate webhook invocation creates a
+    // fresh, app-owned session — never an attacker's session.
     let server = TestServer::in_memory().await;
     let app = create_app(
         &server,
@@ -315,7 +330,7 @@ async fn webhook_shared_session_does_not_reuse_user_seeded_tag_session() {
     let app_id = app["id"].as_str().unwrap();
     let channel_id = app["channels"][0]["id"].as_str().unwrap();
 
-    let seeded_session: Value = server
+    let seed_response = server
         .post(
             "/v1/sessions",
             json!({
@@ -328,9 +343,17 @@ async fn webhook_shared_session_does_not_reuse_user_seeded_tag_session() {
                 ],
             }),
         )
-        .await
-        .assert_status(StatusCode::CREATED)
-        .json();
+        .await;
+    assert_eq!(
+        seed_response.status(),
+        StatusCode::BAD_REQUEST,
+        "TM-AUTHZ-009 must reject external sessions stamping app:/app_channel: tags with 400"
+    );
+    let seed_body = seed_response.text();
+    assert!(
+        seed_body.contains("reserved for internal subsystems"),
+        "TM-AUTHZ-009 rejection must explain the reservation; got: {seed_body}"
+    );
 
     publish_app(&server, app_id).await;
 
@@ -351,7 +374,8 @@ async fn webhook_shared_session_does_not_reuse_user_seeded_tag_session() {
         .assert_status(StatusCode::ACCEPTED)
         .json();
 
-    assert_ne!(invoked["session_id"], seeded_session["id"]);
+    // Webhook always creates the canonical app-owned session; the attempted
+    // pre-seed did not exist, so reuse is impossible.
     assert!(invoked["created_session"].as_bool().unwrap());
 }
 

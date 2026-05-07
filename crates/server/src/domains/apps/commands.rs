@@ -595,6 +595,11 @@ async fn find_or_create_invocation_session(
             app.agent_id.map(|agent_id| agent_id.uuid()),
             app.agent_id,
             app.internal_id,
+            // Pass the App's owner so the resulting session matches the
+            // owner-keyed lookup in `find_app_session_by_tags_and_owner` —
+            // shared-session reuse depends on this. See `create_from_app` doc.
+            app.owner_principal_id,
+            app.resolved_owner_user_id,
             CreateSessionRequest {
                 harness_id: Some(app.harness_id),
                 harness_name: None,
