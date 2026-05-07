@@ -9,6 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.8.27] - 2026-05-07
+
+### Highlights
+
+- **A2A (Agent2Agent) channel** - Apps can now expose agents over the A2A JSON-RPC protocol with API key auth, and agents can delegate outbound to other A2A agents ([#1695](https://github.com/everruns/everruns/pull/1695)).
+- **Knowledge Bases foundation** - New first-class Knowledge Bases entity with curated entries and an agent-facing `search_knowledge` capability ([#1688](https://github.com/everruns/everruns/pull/1688)).
+- **Org memory stores** - Persistent cross-session memory now ships with org-scoped stores (API + UI), a memory detail drawer, and tag filtering on the Memory page ([#1687](https://github.com/everruns/everruns/pull/1687), [#1689](https://github.com/everruns/everruns/pull/1689), [#1693](https://github.com/everruns/everruns/pull/1693)).
+- **MCP Apps entity-card standard** - New `agent_get_card` tool plus the MCP Apps entity-card spec gives clients a standard way to render rich agent cards from MCP responses ([#1691](https://github.com/everruns/everruns/pull/1691)).
+- **Session context usage report** - Sessions now expose a structured context usage report so operators and agents can see token budget consumption ([#1694](https://github.com/everruns/everruns/pull/1694)).
+
+### What's Changed
+
+- chore(maintenance): refresh docs and dependency locks by [@chaliy](https://github.com/chaliy)
+- feat(ag-ui): support public image uploads by [@chaliy](https://github.com/chaliy)
+- feat(memory): add org memory stores API and UI ([#1687](https://github.com/everruns/everruns/pull/1687)) by [@chaliy](https://github.com/chaliy)
+- feat(knowledge): add Knowledge Bases foundation (EVE-423) ([#1688](https://github.com/everruns/everruns/pull/1688)) by [@chaliy](https://github.com/chaliy)
+- chore(specs): add reporting design by [@chaliy](https://github.com/chaliy)
+- feat(memory): add memory detail drawer on Memory page ([#1689](https://github.com/everruns/everruns/pull/1689)) by [@chaliy](https://github.com/chaliy)
+- feat(memory): add tag filter UI on Memory page ([#1693](https://github.com/everruns/everruns/pull/1693)) by [@chaliy](https://github.com/chaliy)
+- test(volumes): add UI test cases for workspace volumes ([#1692](https://github.com/everruns/everruns/pull/1692)) by [@chaliy](https://github.com/chaliy)
+- feat(sessions): add context usage report ([#1694](https://github.com/everruns/everruns/pull/1694)) by [@chaliy](https://github.com/chaliy)
+- feat(apps): add A2A (Agent2Agent) channel with API key auth ([#1695](https://github.com/everruns/everruns/pull/1695)) by [@chaliy](https://github.com/chaliy)
+- feat(core): add outbound A2A delegation by [@chaliy](https://github.com/chaliy)
+- feat(mcp): add MCP Apps entity-card standard with agent_get_card tool ([#1691](https://github.com/everruns/everruns/pull/1691)) by [@chaliy](https://github.com/chaliy)
+- test(memory): add UI test cases for memory stores ([#1697](https://github.com/everruns/everruns/pull/1697)) by [@chaliy](https://github.com/chaliy)
+- chore(ship): surface follow-ups explicitly in ship workflow ([#1698](https://github.com/everruns/everruns/pull/1698)) by [@chaliy](https://github.com/chaliy)
+
 ## [0.8.26] - 2026-05-06
 
 ### Highlights
