@@ -217,11 +217,13 @@ pub async fn invoke_a2a(
 
 /// Authenticated request context — the app and channel resolution + API key
 /// check that both `message/send` and `message/stream` need to perform up
-/// front before any session work.
+/// front before any session work. Carries the public ids that downstream
+/// handlers use to bind a per-call session lookup back to the
+/// authenticated channel (TM-A2A-012).
 struct AuthorizedA2a {
     org_id: i64,
-    // Kept for future use (per-channel rate limits, telemetry).
-    _channel_id: everruns_core::typed_id::AppChannelId,
+    app_public_id: String,
+    channel_public_id: everruns_core::typed_id::AppChannelId,
 }
 
 async fn authenticate_request(
@@ -268,8 +270,23 @@ async fn authenticate_request(
 
     Ok(AuthorizedA2a {
         org_id: app.org_id,
-        _channel_id: channel_id_typed,
+        app_public_id: app.public_id.to_string(),
+        channel_public_id: channel_id_typed,
     })
+}
+
+/// Verify that a session looked up by an A2A task id belongs to the same
+/// app + channel that the API key authenticates against. Without this check
+/// an API key for one A2A channel could read or cancel sessions created by
+/// any other channel in the same org once the session id leaks.
+/// THREAT[TM-A2A-012].
+fn session_belongs_to_a2a_channel(
+    session: &crate::storage::SessionRow,
+    auth: &AuthorizedA2a,
+) -> bool {
+    let app_tag = format!("app:{}", auth.app_public_id);
+    let channel_tag = format!("app_channel:{}", auth.channel_public_id);
+    session.tags.iter().any(|t| t == &app_tag) && session.tags.iter().any(|t| t == &channel_tag)
 }
 
 /// Pull the joined text from `params.message.parts`, plus the `role`,
@@ -412,6 +429,14 @@ async fn handle_tasks_get(
         Err(err) => return internal_error(err).into_response(),
     };
 
+    // THREAT[TM-A2A-012]: org-level scoping is not enough — the API key is
+    // bound to a specific app/channel, and a session belongs to exactly one
+    // channel via its routing tags. Reject with -32001 (rather than leaking
+    // existence) when the session was created by a different channel.
+    if !session_belongs_to_a2a_channel(&session, &auth) {
+        return (StatusCode::OK, rpc_error(rpc_id, -32001, "Task not found")).into_response();
+    }
+
     let state_label = match derive_task_state_from_events(&state.db, session_id).await {
         Ok(label) => label,
         Err(err) => return internal_error(err).into_response(),
@@ -422,8 +447,7 @@ async fn handle_tasks_get(
 }
 
 /// THREAT[TM-A2A-012]: `tasks/cancel` performs a destructive action on a
-/// session — it must respect the same org boundary as `tasks/get`. The
-/// lookup is org-scoped via the authenticated API key.
+/// session — it must respect the same channel binding as `tasks/get`.
 async fn handle_tasks_cancel(
     state: &AppA2aState,
     auth: AuthorizedA2a,
@@ -442,6 +466,11 @@ async fn handle_tasks_cancel(
         }
         Err(err) => return internal_error(err).into_response(),
     };
+
+    // THREAT[TM-A2A-012]: same channel-binding check as tasks/get.
+    if !session_belongs_to_a2a_channel(&session, &auth) {
+        return (StatusCode::OK, rpc_error(rpc_id, -32001, "Task not found")).into_response();
+    }
 
     // Determine current task state. If terminal already, return idempotently
     // without re-cancelling — A2A spec requires `tasks/cancel` on a finished
@@ -535,6 +564,20 @@ async fn cancel_a2a_session_turn(
     // not surfaced — the turn-cancelled event is what tasks/get keys off.
     if let Err(err) = state.message_service.runner().cancel_run(session_id).await {
         tracing::warn!(session_id = %session_id, error = %err, "A2A tasks/cancel: cancel_run failed");
+    }
+
+    // Re-check terminality before emitting a synthetic turn.cancelled event.
+    // Between the pre-check in `handle_tasks_cancel` and this point the
+    // workflow may have landed a real turn.completed/turn.failed event; if
+    // we always emitted turn.cancelled here, derived state would race-flip
+    // a completed task to canceled. Skip emission when the task has already
+    // reached a terminal state.
+    let already_terminal = matches!(
+        derive_task_state_from_events(&state.db, session_id).await?,
+        "completed" | "failed" | "canceled"
+    );
+    if already_terminal {
+        return Ok(());
     }
 
     let turn_id = TurnId::from_uuid(session_id.uuid());

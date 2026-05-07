@@ -609,6 +609,111 @@ async fn a2a_tasks_cancel_terminates_task_idempotently() {
     assert_eq!(get_response["result"]["status"]["state"], "canceled");
 }
 
+/// Channel binding (TM-A2A-012): a task created on one A2A channel must not
+/// be readable or cancellable by an API key authenticated against a
+/// different channel — even when both channels live in the same org. The
+/// out-of-channel lookup must surface `-32001 Task not found` rather than
+/// leaking session existence.
+#[tokio::test]
+async fn a2a_tasks_get_rejects_cross_channel_lookup() {
+    let server = TestServer::in_memory().await;
+    let (app_a, key_a) = create_app_with_a2a(&server, "a2a-cross-a", "{{a2a.text}}").await;
+    let (app_b, key_b) = create_app_with_a2a(&server, "a2a-cross-b", "{{a2a.text}}").await;
+    let a_id = app_a["id"].as_str().unwrap();
+    let a_channel = app_a["channels"][0]["id"].as_str().unwrap();
+    let b_id = app_b["id"].as_str().unwrap();
+    let b_channel = app_b["channels"][0]["id"].as_str().unwrap();
+    publish_app(&server, a_id).await;
+    publish_app(&server, b_id).await;
+
+    // Submit a task on channel A.
+    let send_body = serde_json::to_vec(&json!({
+        "jsonrpc": "2.0",
+        "id": "send-a",
+        "method": "message/send",
+        "params": {
+            "message": { "role": "user", "parts": [{ "kind": "text", "text": "hi" }] }
+        }
+    }))
+    .unwrap();
+    let send_response: Value = server
+        .request_raw(
+            Method::POST,
+            &format!("/v1/apps/{a_id}/a2a/{a_channel}"),
+            vec![
+                ("content-type", "application/json"),
+                ("authorization", &format!("Bearer {key_a}")),
+            ],
+            send_body,
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    let task_id = send_response["result"]["id"].as_str().unwrap().to_string();
+
+    // Channel A's own key reads the task fine.
+    let get_body = serde_json::to_vec(&json!({
+        "jsonrpc": "2.0",
+        "id": "get-a",
+        "method": "tasks/get",
+        "params": { "id": task_id }
+    }))
+    .unwrap();
+    let own: Value = server
+        .request_raw(
+            Method::POST,
+            &format!("/v1/apps/{a_id}/a2a/{a_channel}"),
+            vec![
+                ("content-type", "application/json"),
+                ("authorization", &format!("Bearer {key_a}")),
+            ],
+            get_body.clone(),
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(own["result"]["id"], task_id);
+
+    // Channel B's key on its own endpoint must not see channel A's task.
+    let cross: Value = server
+        .request_raw(
+            Method::POST,
+            &format!("/v1/apps/{b_id}/a2a/{b_channel}"),
+            vec![
+                ("content-type", "application/json"),
+                ("authorization", &format!("Bearer {key_b}")),
+            ],
+            get_body,
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(cross["error"]["code"], -32001);
+
+    // tasks/cancel must also refuse the cross-channel attempt.
+    let cancel_body = serde_json::to_vec(&json!({
+        "jsonrpc": "2.0",
+        "id": "cancel-cross",
+        "method": "tasks/cancel",
+        "params": { "id": task_id }
+    }))
+    .unwrap();
+    let cross_cancel: Value = server
+        .request_raw(
+            Method::POST,
+            &format!("/v1/apps/{b_id}/a2a/{b_channel}"),
+            vec![
+                ("content-type", "application/json"),
+                ("authorization", &format!("Bearer {key_b}")),
+            ],
+            cancel_body,
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(cross_cancel["error"]["code"], -32001);
+}
+
 #[tokio::test]
 async fn a2a_agent_card_published_only_when_live() {
     let server = TestServer::in_memory().await;
