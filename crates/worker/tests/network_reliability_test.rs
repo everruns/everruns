@@ -5,13 +5,14 @@
 // model because it injects at the store layer rather than the transport.
 //
 // What this file currently exercises:
-//   * Two simulated hosts ("cp", "worker") communicating over turmoil's TCP
-//     shim, modelling a heartbeat-like request/response loop.
-//   * `partition` / `repair` to verify the worker observes I/O errors during
+//   * One simulated host ("cp") and one simulated client ("driver")
+//     communicating over turmoil's TCP shim, modelling a heartbeat-like
+//     request/response loop.
+//   * `partition` / `repair` to verify the client observes I/O errors during
 //     an outage and reconnects after recovery.
 //
 // Next step (not yet wired): drive the real tonic `WorkerService` client from
-// `everruns-worker::grpc_durable_store` through turmoil. That requires a
+// `everruns_worker::grpc_durable_store` through turmoil. That requires a
 // custom tonic connector that calls `turmoil::net::TcpStream::connect` instead
 // of `tokio::net::TcpStream::connect`. See turmoil's `examples/grpc.rs`.
 

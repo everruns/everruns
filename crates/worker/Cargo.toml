@@ -57,4 +57,3 @@ prost-types.workspace = true
 # with a simulated clock. See specs/agent-reliability-tests.md scenario 3.
 turmoil.workspace = true
 tokio = { workspace = true }
-bytes = "1"
