@@ -152,7 +152,8 @@ Always make sure you are working on top of latest main from remote.
 - `specs/agent-identities.md` - Agent identities (virtual principals for unattended execution)
 - `specs/agent-blueprints.md` - Pre-built agent definitions (private tools, fixed models, typed config)
 - `specs/messaging-integrations.md` - Messaging integrations (channel abstractions, parity requirements, platform adapters)
-- `specs/a2a-channel.md` - A2A (Agent2Agent) channel for App invocation via JSON-RPC + API key auth
+- `specs/a2a-channel.md` - A2A (Agent2Agent) inbound channel for App invocation via JSON-RPC + API key auth
+- `specs/a2a-capability.md` - A2A outbound delegation capability (Everruns agent calling external A2A agents)
 
 ### Test Cases
 

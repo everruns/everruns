@@ -35,10 +35,17 @@ References:
    `message/stream`, `tasks/get`, `tasks/cancel`, push notifications, etc. are
    out of scope.
 2. Authentication schemes beyond API key (HTTP, OAuth2, OIDC, mTLS).
-3. Outbound A2A delivery (one app calling another app's A2A endpoint as a
-   client) — only inbound ingress.
-4. Multi-turn task state machine — every `message/send` returns a terminal
+3. Multi-turn task state machine — every `message/send` returns a terminal
    `completed` task with no follow-up handle.
+
+This spec covers **inbound** A2A only — exposing an Everruns App as an A2A
+server for other agents to call. The complementary **outbound** direction —
+letting an Everruns agent call an external A2A agent — lives as a separate
+capability spec, [`specs/a2a-capability.md`](a2a-capability.md), and a
+separate threat-model surface (TM-AGENT-005 covers the high-risk capability
+gate; SSRF protection comes from `validate_safe_url`, response size is
+bounded by `MAX_RESULT_CHARS`, and external agent IDs are configured rather
+than model-supplied).
 
 ## Model
 
