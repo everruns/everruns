@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use everruns_core::error::Result;
 use everruns_core::traits::{
     AgentStore, EventEmitter, HarnessStore, ImageArtifactStore, ImageResolver, LlmProviderStore,
-    ProviderCredentialStore, SessionFileStore, SessionMutator, SessionStore,
+    PaymentAuthority, ProviderCredentialStore, SessionFileStore, SessionMutator, SessionStore,
 };
 use everruns_core::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_core::{Agent, CapabilityRegistry, DriverRegistry, Harness, Session, SessionStatus};
@@ -187,5 +187,13 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         agent_id: Option<AgentId>,
     ) -> Option<Arc<dyn everruns_core::traits::BudgetChecker>> {
         self.adapters.budget_checker(org_id, agent_id)
+    }
+
+    fn payment_authority(
+        &self,
+        org_id: i64,
+        agent_id: Option<AgentId>,
+    ) -> Option<Arc<dyn PaymentAuthority>> {
+        self.adapters.payment_authority(org_id, agent_id)
     }
 }

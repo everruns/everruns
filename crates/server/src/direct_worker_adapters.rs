@@ -14,7 +14,7 @@ use everruns_core::events::{Event, EventRequest};
 use everruns_core::permissions::PermissionResolver;
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use everruns_core::traits::{
-    BudgetChecker, CreateStoredImage, ImageArtifactStore, ModelWithProvider,
+    BudgetChecker, CreateStoredImage, ImageArtifactStore, ModelWithProvider, PaymentAuthority,
     ProviderCredentialStore, ProviderCredentials, ResolvedImage, StoredImage, StoredImageInfo,
 };
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId};
@@ -1423,6 +1423,21 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 agent_id: agent_id.map(|id| id.to_string()),
             }) as Arc<dyn BudgetChecker>
         })
+    }
+
+    fn payment_authority(
+        &self,
+        org_id: i64,
+        agent_id: Option<AgentId>,
+    ) -> Option<Arc<dyn PaymentAuthority>> {
+        Some(Arc::new(
+            crate::domains::payments::ServerPaymentAuthority::new(
+                self.db.clone(),
+                self.encryption.clone(),
+                org_id,
+                agent_id,
+            ),
+        ))
     }
 
     async fn invoke_scheduled_app_channel(

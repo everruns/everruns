@@ -156,6 +156,13 @@ export const queryKeys = {
     list: () => ["user-connections"] as const,
   },
 
+  payments: {
+    all: ["payments"] as const,
+    accounts: (params: Record<string, unknown> = {}) => ["payments", "accounts", params] as const,
+    policies: (params: Record<string, unknown> = {}) => ["payments", "policies", params] as const,
+    attempts: (params: Record<string, unknown> = {}) => ["payments", "attempts", params] as const,
+  },
+
   // Session schedule queries
   sessionSchedules: {
     all: ["session-schedules"] as const,

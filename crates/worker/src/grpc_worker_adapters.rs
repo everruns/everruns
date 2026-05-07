@@ -23,8 +23,8 @@ use uuid::Uuid;
 use crate::grpc_adapters::{
     GrpcAgentStore, GrpcBudgetChecker, GrpcClient, GrpcEventEmitter, GrpcHarnessStore,
     GrpcImageArtifactStore, GrpcImageResolver, GrpcLeasedResourceStore, GrpcLlmProviderStore,
-    GrpcMessageRetriever, GrpcProviderCredentialStore, GrpcSessionFileStore, GrpcSessionSqlDbStore,
-    GrpcSessionStorageStore, GrpcSessionStore,
+    GrpcMessageRetriever, GrpcPaymentAuthority, GrpcProviderCredentialStore, GrpcSessionFileStore,
+    GrpcSessionSqlDbStore, GrpcSessionStorageStore, GrpcSessionStore,
 };
 use crate::mcp_executor::McpServerInfo;
 use crate::worker_adapters::{TurnContext, WorkerAdapters};
@@ -435,6 +435,17 @@ impl WorkerAdapters for GrpcWorkerAdapters {
     ) -> Option<Arc<dyn everruns_core::traits::BudgetChecker>> {
         Some(Arc::new(
             GrpcBudgetChecker::new(self.client.clone(), org_id)
+                .with_agent_id(agent_id.map(|id| id.to_string())),
+        ))
+    }
+
+    fn payment_authority(
+        &self,
+        org_id: i64,
+        agent_id: Option<AgentId>,
+    ) -> Option<Arc<dyn everruns_core::traits::PaymentAuthority>> {
+        Some(Arc::new(
+            GrpcPaymentAuthority::new(self.client.clone(), org_id)
                 .with_agent_id(agent_id.map(|id| id.to_string())),
         ))
     }

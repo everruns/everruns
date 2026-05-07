@@ -190,6 +190,8 @@ where
     network_access: Option<crate::network_access::NetworkAccessList>,
     /// Optional budget checker for the check_budget tool.
     budget_checker: Option<Arc<dyn crate::traits::BudgetChecker>>,
+    /// Optional internal payment authority for paid capability tools.
+    payment_authority: Option<Arc<dyn crate::traits::PaymentAuthority>>,
     /// Post-act hooks that run after tool execution completes.
     /// Hooks inspect the result and may emit events (e.g. tool.call_requested).
     hooks: Vec<Box<dyn PostActHook>>,
@@ -233,6 +235,7 @@ where
             org_id: None,
             network_access: None,
             budget_checker: None,
+            payment_authority: None,
             hooks: Self::default_hooks(),
             post_tool_hooks: Vec::new(),
             tool_call_hooks: Vec::new(),
@@ -268,6 +271,7 @@ where
             org_id: None,
             network_access: None,
             budget_checker: None,
+            payment_authority: None,
             hooks: Self::default_hooks(),
             post_tool_hooks: Vec::new(),
             tool_call_hooks: Vec::new(),
@@ -449,6 +453,15 @@ where
     /// Set the budget checker for the check_budget tool.
     pub fn with_budget_checker(mut self, checker: Arc<dyn crate::traits::BudgetChecker>) -> Self {
         self.budget_checker = Some(checker);
+        self
+    }
+
+    /// Set the internal payment authority for paid capability tools.
+    pub fn with_payment_authority(
+        mut self,
+        authority: Arc<dyn crate::traits::PaymentAuthority>,
+    ) -> Self {
+        self.payment_authority = Some(authority);
         self
     }
 }
@@ -939,6 +952,9 @@ where
         }
         if let Some(ref checker) = self.budget_checker {
             tool_context.budget_checker = Some(checker.clone());
+        }
+        if let Some(ref authority) = self.payment_authority {
+            tool_context.payment_authority = Some(authority.clone());
         }
         tool_context.org_id = self.org_id;
         // Input network_access (per-session, merged from harness+agent+session) takes precedence

@@ -36,6 +36,7 @@ pub mod memory_stores;
 pub mod messages;
 pub mod notifications;
 pub mod organizations;
+pub mod payments;
 pub mod prometheus;
 pub mod public;
 pub mod resolver;

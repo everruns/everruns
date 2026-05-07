@@ -33,6 +33,7 @@ describe("SettingsLayout", () => {
     expect(screen.getByText("Organisations")).toBeInTheDocument();
     expect(screen.getByText("LLM Providers")).toBeInTheDocument();
     expect(screen.getByText("Members")).toBeInTheDocument();
+    expect(screen.getByText("Payments")).toBeInTheDocument();
     expect(screen.getByText("Profile")).toBeInTheDocument();
     expect(screen.getByText("Connections")).toBeInTheDocument();
     expect(screen.getByText("API Keys")).toBeInTheDocument();
@@ -59,6 +60,7 @@ describe("SettingsLayout", () => {
     const organisationsLink = screen.getByRole("link", { name: /Organisations/i });
     const providersLink = screen.getByRole("link", { name: /LLM Providers/i });
     const membersLink = screen.getByRole("link", { name: /Members/i });
+    const paymentsLink = screen.getByRole("link", { name: /Payments/i });
     const profileLink = screen.getByRole("link", { name: /Profile/i });
     const connectionsLink = screen.getByRole("link", { name: /Connections/i });
     const apiKeysLink = screen.getByRole("link", { name: /API Keys/i });
@@ -66,6 +68,7 @@ describe("SettingsLayout", () => {
     expect(organisationsLink).toHaveAttribute("href", "/settings/organisations");
     expect(providersLink).toHaveAttribute("href", "/settings/providers");
     expect(membersLink).toHaveAttribute("href", "/settings/members");
+    expect(paymentsLink).toHaveAttribute("href", "/settings/payments");
     expect(profileLink).toHaveAttribute("href", "/settings/profile");
     expect(connectionsLink).toHaveAttribute("href", "/settings/connections");
     expect(apiKeysLink).toHaveAttribute("href", "/settings/api-keys");
@@ -118,7 +121,7 @@ describe("SettingsLayout", () => {
     expect(membersLink).toHaveClass("border-accent");
   });
 
-  it("has exactly 6 navigation items", () => {
+  it("has exactly 7 navigation items", () => {
     render(
       <SettingsLayout>
         <div>Test Content</div>
@@ -126,7 +129,7 @@ describe("SettingsLayout", () => {
     );
 
     const navLinks = screen.getAllByRole("link");
-    expect(navLinks).toHaveLength(6);
+    expect(navLinks).toHaveLength(7);
   });
 
   it("groups items under correct sections", () => {
@@ -145,6 +148,7 @@ describe("SettingsLayout", () => {
     expect(orgSection).toHaveTextContent("Organisations");
     expect(orgSection).toHaveTextContent("LLM Providers");
     expect(orgSection).toHaveTextContent("Members");
+    expect(orgSection).toHaveTextContent("Payments");
     expect(orgSection).not.toHaveTextContent("Connections");
     expect(orgSection).not.toHaveTextContent("API Keys");
 

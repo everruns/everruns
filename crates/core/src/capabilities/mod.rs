@@ -100,6 +100,7 @@ pub mod mcp;
 mod noop;
 mod openai_tool_search;
 mod openui;
+mod parallel;
 pub mod persistent_memory;
 mod platform_management;
 mod prompt_caching;
@@ -199,6 +200,7 @@ pub use openai_tool_search::{
     DEFAULT_TOOL_SEARCH_THRESHOLD, OPENAI_TOOL_SEARCH_CAPABILITY_ID, OpenAiToolSearchCapability,
 };
 pub use openui::{OPENUI_CAPABILITY_ID, OpenUiCapability};
+pub use parallel::ParallelCapability;
 pub use persistent_memory::{
     ForgetTool, MEMORY_CAPABILITY_ID, MemoryCapability, MemoryConfig, RecallTool, RememberTool,
 };
@@ -796,6 +798,7 @@ impl CapabilityRegistry {
         registry.register(InfinityContextCapability);
         registry.register(budgeting::BudgetingCapability);
         registry.register(SelfBudgetCapability);
+        registry.register(ParallelCapability);
         registry.register(CompactionCapability);
         registry.register(MemoryCapability);
 
@@ -1798,6 +1801,7 @@ mod tests {
             "human_intent",
             "budgeting",
             "self_budget",
+            "parallel",
             "noop",
             "current_time",
             "research",

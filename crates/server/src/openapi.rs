@@ -191,11 +191,24 @@ use utoipa::OpenApi;
         api::skills::update_skill,
         api::skills::delete_skill,
         api::skills::validate_skill,
+        // Payments
+        api::payments::create_payment_account,
+        api::payments::list_payment_accounts,
+        api::payments::get_payment_account,
+        api::payments::update_payment_account,
+        api::payments::disable_payment_account,
+        api::payments::create_payment_policy,
+        api::payments::list_payment_policies,
+        api::payments::get_payment_policy,
+        api::payments::update_payment_policy,
+        api::payments::disable_payment_policy,
+        api::payments::list_payment_attempts,
     ),
     components(
         schemas(
             Agent, AgentStatus,
             Session, SessionStatus, Event, EventContext, EventData,
+            everruns_core::typed_id::EventId,
             // Event data types
             InputMessageData, OutputMessageStartedData, OutputMessageDeltaData, OutputMessageCompletedData,
             ModelMetadata, TokenUsage,
@@ -309,6 +322,16 @@ use utoipa::OpenApi;
             api::knowledge_bases::UpdateKnowledgeEntryRequest,
             api::knowledge_bases::ListKnowledgeEntriesQuery,
             api::knowledge_bases::KnowledgeEntryResponse,
+            everruns_core::payment::PaymentAccount,
+            everruns_core::payment::PaymentAttempt,
+            everruns_core::payment::PaymentPolicy,
+            everruns_core::payment::PaymentRail,
+            everruns_core::payment::PaymentStatus,
+            everruns_core::payment::PaymentOwnerType,
+            domains::payments::types::CreatePaymentAccountRequest,
+            domains::payments::types::UpdatePaymentAccountRequest,
+            domains::payments::types::CreatePaymentPolicyRequest,
+            domains::payments::types::UpdatePaymentPolicyRequest,
         )
     ),
     tags(
@@ -334,6 +357,7 @@ use utoipa::OpenApi;
         (name = "session-storage", description = "Session key-value storage endpoints"),
         (name = "harnesses", description = "Harness management endpoints"),
         (name = "skills", description = "Skills registry endpoints"),
+        (name = "payments", description = "Machine payment wallet, policy, and attempt endpoints"),
     ),
     info(
         title = "Everruns API",

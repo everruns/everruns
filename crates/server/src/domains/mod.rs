@@ -24,6 +24,7 @@ pub mod messages;
 pub mod notifications;
 pub mod org_resolver;
 pub mod organizations;
+pub mod payments;
 pub mod schedules;
 pub mod session_commands;
 pub mod session_databases;

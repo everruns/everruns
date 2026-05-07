@@ -3914,9 +3914,101 @@ impl WorkerService for WorkerServiceImpl {
             hint,
         }))
     }
+
+    async fn execute_machine_payment(
+        &self,
+        request: Request<ExecuteMachinePaymentRequest>,
+    ) -> Result<Response<ExecuteMachinePaymentResponse>, Status> {
+        use everruns_core::payment::{MachinePaymentRequest, PaymentMethod, PaymentRail};
+        use everruns_core::traits::PaymentAuthority;
+        use everruns_core::typed_id::{AgentId, SessionId};
+
+        let req = request.into_inner();
+        let session_id = SessionId::parse(&req.session_id)
+            .or_else(|_| uuid::Uuid::parse_str(&req.session_id).map(SessionId::from_uuid))
+            .map_err(|error| Status::invalid_argument(format!("Invalid session_id: {error}")))?;
+        let agent_id = req
+            .agent_id
+            .as_deref()
+            .map(|value| {
+                AgentId::parse(value)
+                    .or_else(|_| uuid::Uuid::parse_str(value).map(AgentId::from_uuid))
+            })
+            .transpose()
+            .map_err(|error| Status::invalid_argument(format!("Invalid agent_id: {error}")))?;
+        let method: PaymentMethod = req.method.parse().map_err(|error| {
+            Status::invalid_argument(format!("Invalid payment method: {error}"))
+        })?;
+        let rail_preference = req
+            .rail_preference
+            .iter()
+            .map(|rail| rail.parse::<PaymentRail>())
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(|error| Status::invalid_argument(format!("Invalid payment rail: {error}")))?;
+        let body = req
+            .body
+            .as_ref()
+            .map(everruns_internal_protocol::proto_value_to_json);
+        let metadata = req
+            .metadata
+            .as_ref()
+            .map(everruns_internal_protocol::proto_value_to_json)
+            .unwrap_or_else(|| serde_json::json!({}));
+
+        let authority = crate::domains::payments::ServerPaymentAuthority::new(
+            self.db.clone(),
+            self.encryption.clone(),
+            req.org_id,
+            agent_id,
+        );
+        let response = authority
+            .execute_machine_payment(
+                session_id,
+                MachinePaymentRequest {
+                    capability: req.capability,
+                    operation: req.operation,
+                    method,
+                    url: req.url,
+                    body,
+                    max_amount_usd: req.max_amount_usd,
+                    rail_preference,
+                    metadata,
+                },
+            )
+            .await
+            .map_err(payment_error_to_status)?;
+
+        Ok(Response::new(ExecuteMachinePaymentResponse {
+            attempt_id: response.attempt_id.map(|id| id.to_string()),
+            amount_usd: response.amount_usd,
+            rail: response.rail.map(|rail| rail.to_string()),
+            response: Some(everruns_internal_protocol::json_to_proto_value(
+                &response.response,
+            )),
+            receipt: Some(everruns_internal_protocol::json_to_proto_value(
+                &response.receipt,
+            )),
+        }))
+    }
 }
 
 // Helper functions for status conversion
+
+fn payment_error_to_status(error: everruns_core::error::AgentLoopError) -> Status {
+    use everruns_core::error::AgentLoopError;
+
+    match error {
+        AgentLoopError::Configuration(message) | AgentLoopError::ToolExecution(message) => {
+            Status::failed_precondition(message)
+        }
+        AgentLoopError::SessionNotFound(session_id) => {
+            Status::not_found(format!("Session not found: {session_id}"))
+        }
+        AgentLoopError::MessageStore(message) => Status::internal(message),
+        AgentLoopError::Internal(error) => Status::internal(error.to_string()),
+        other => Status::internal(other.to_string()),
+    }
+}
 
 fn circuit_state_to_proto(state: CircuitState) -> ProtoCircuitBreakerState {
     match state {

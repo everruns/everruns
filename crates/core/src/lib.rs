@@ -70,6 +70,7 @@ pub mod memory_store;
 pub mod model_router;
 pub mod network_access;
 pub mod organization;
+pub mod payment;
 pub mod principal;
 pub mod session;
 pub mod session_file;
@@ -354,6 +355,10 @@ pub use organization::{
     DEFAULT_ORG_PUBLIC_ID, OrgMembership, OrgRole, Organization, generate_org_public_id,
     org_public_id_from_internal, validate_org_public_id,
 };
+pub use payment::{
+    MachinePaymentRequest, MachinePaymentResponse, PaymentAccount, PaymentAttempt, PaymentMethod,
+    PaymentOwnerType, PaymentPolicy, PaymentRail, PaymentStatus,
+};
 pub use principal::{Principal, PrincipalKind, PrincipalStatus, PrincipalSummary};
 pub use session::{Session, SessionStatus, SubagentStatus};
 pub use session_file::{FileInfo, FileStat, GrepMatch, GrepResult, InitialFile, SessionFile};
@@ -372,8 +377,8 @@ pub use typed_id::{
     AgentId, AgentIdentityId, AppChannelId, AppId, DeclarativeCapabilityId, EvalCaseId, EvalId,
     EvalResultId, EvalRunId, EventId, ExecId, HarnessId, IdMarker, IdParseError, ImageId,
     KnowledgeBaseId, KnowledgeEntryId, LeasedResourceId, McpServerId, MemoryId, MemoryStoreId,
-    MessageId, ModelId, NotificationId, OrgId, PrincipalId, ProviderId, ScheduleId, SessionId,
-    SkillId, TurnId, TypedId,
+    MessageId, ModelId, NotificationId, OrgId, PaymentAccountId, PaymentAttemptId, PaymentPolicyId,
+    PrincipalId, ProviderId, ScheduleId, SessionId, SkillId, TurnId, TypedId,
 };
 
 // Audit logging re-exports

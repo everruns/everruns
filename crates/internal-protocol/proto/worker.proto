@@ -265,6 +265,10 @@ service WorkerService {
     // === Budget operations ===
     // Check budget status for a session (used by check_budget tool)
     rpc CheckBudgetsForSession(CheckBudgetsForSessionRequest) returns (CheckBudgetsForSessionResponse);
+
+    // === Machine payment operations ===
+    // Execute a paid capability request through the control-plane payment authority.
+    rpc ExecuteMachinePayment(ExecuteMachinePaymentRequest) returns (ExecuteMachinePaymentResponse);
 }
 
 // ============================================================================
@@ -1810,6 +1814,30 @@ message CheckBudgetsForSessionResponse {
     string status = 1;
     repeated BudgetSummaryProto budgets = 2;
     optional string hint = 3;
+}
+
+// === Machine payment messages ===
+
+message ExecuteMachinePaymentRequest {
+    int64 org_id = 1;
+    string session_id = 2;
+    optional string agent_id = 3;
+    string capability = 4;
+    string operation = 5;
+    string method = 6;
+    string url = 7;
+    optional google.protobuf.Value body = 8;
+    double max_amount_usd = 9;
+    repeated string rail_preference = 10;
+    google.protobuf.Value metadata = 11;
+}
+
+message ExecuteMachinePaymentResponse {
+    optional string attempt_id = 1;
+    double amount_usd = 2;
+    optional string rail = 3;
+    google.protobuf.Value response = 4;
+    google.protobuf.Value receipt = 5;
 }
 
 // ============================================

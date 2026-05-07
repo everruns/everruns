@@ -4378,6 +4378,496 @@
         ]
       }
     },
+    "/v1/payments/accounts": {
+      "get": {
+        "tags": [
+          "payments"
+        ],
+        "operationId": "list_payment_accounts",
+        "parameters": [
+          {
+            "name": "owner_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "owner_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List payment accounts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PaymentAccount"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "payments"
+        ],
+        "operationId": "create_payment_account",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePaymentAccountRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Payment account created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentAccount"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/payments/accounts/{payment_account_id}": {
+      "get": {
+        "tags": [
+          "payments"
+        ],
+        "operationId": "get_payment_account",
+        "parameters": [
+          {
+            "name": "payment_account_id",
+            "in": "path",
+            "description": "Payment account ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Payment account",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentAccount"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "payments"
+        ],
+        "operationId": "disable_payment_account",
+        "parameters": [
+          {
+            "name": "payment_account_id",
+            "in": "path",
+            "description": "Payment account ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Payment account disabled"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "payments"
+        ],
+        "operationId": "update_payment_account",
+        "parameters": [
+          {
+            "name": "payment_account_id",
+            "in": "path",
+            "description": "Payment account ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePaymentAccountRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Payment account updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentAccount"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/payments/attempts": {
+      "get": {
+        "tags": [
+          "payments"
+        ],
+        "operationId": "list_payment_attempts",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List payment attempts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PaymentAttempt"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/payments/policies": {
+      "get": {
+        "tags": [
+          "payments"
+        ],
+        "operationId": "list_payment_policies",
+        "parameters": [
+          {
+            "name": "payment_account_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "subject_type",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "subject_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List payment policies",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PaymentPolicy"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "payments"
+        ],
+        "operationId": "create_payment_policy",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePaymentPolicyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Payment policy created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentPolicy"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/payments/policies/{payment_policy_id}": {
+      "get": {
+        "tags": [
+          "payments"
+        ],
+        "operationId": "get_payment_policy",
+        "parameters": [
+          {
+            "name": "payment_policy_id",
+            "in": "path",
+            "description": "Payment policy ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Payment policy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentPolicy"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "payments"
+        ],
+        "operationId": "disable_payment_policy",
+        "parameters": [
+          {
+            "name": "payment_policy_id",
+            "in": "path",
+            "description": "Payment policy ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Payment policy disabled"
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "payments"
+        ],
+        "operationId": "update_payment_policy",
+        "parameters": [
+          {
+            "name": "payment_policy_id",
+            "in": "path",
+            "description": "Payment policy ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePaymentPolicyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Payment policy updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentPolicy"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/sessions": {
       "get": {
         "tags": [
@@ -4980,7 +5470,7 @@
                   "type": "null"
                 },
                 {
-                  "$ref": "#/components/schemas/TypedId"
+                  "$ref": "#/components/schemas/eventId"
                 }
               ]
             }
@@ -6213,7 +6703,7 @@
                   "type": "null"
                 },
                 {
-                  "$ref": "#/components/schemas/TypedId"
+                  "$ref": "#/components/schemas/eventId"
                 }
               ]
             }
@@ -8654,6 +9144,108 @@
             "type": "string",
             "description": "The display name of the organization.",
             "example": "Acme Corp"
+          }
+        }
+      },
+      "CreatePaymentAccountRequest": {
+        "type": "object",
+        "required": [
+          "owner_type",
+          "owner_id",
+          "rail",
+          "label"
+        ],
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "metadata": {},
+          "owner_id": {
+            "type": "string"
+          },
+          "owner_type": {
+            "type": "string"
+          },
+          "private_key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "public_address": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rail": {
+            "type": "string"
+          }
+        }
+      },
+      "CreatePaymentPolicyRequest": {
+        "type": "object",
+        "required": [
+          "payment_account_id",
+          "subject_type",
+          "subject_id"
+        ],
+        "properties": {
+          "allowed_capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "allowed_hosts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "max_amount_usd_per_day": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "max_amount_usd_per_request": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "max_amount_usd_per_turn": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "metadata": {},
+          "payment_account_id": {
+            "type": "string"
+          },
+          "rail_preference": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "require_approval_above_usd": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "subject_id": {
+            "type": "string"
+          },
+          "subject_type": {
+            "type": "string"
           }
         }
       },
@@ -15401,6 +15993,269 @@
           }
         }
       },
+      "PaymentAccount": {
+        "type": "object",
+        "required": [
+          "id",
+          "organization_id",
+          "owner_type",
+          "owner_id",
+          "rail",
+          "label",
+          "status",
+          "metadata",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "$ref": "#/components/schemas/payacctId"
+          },
+          "label": {
+            "type": "string"
+          },
+          "metadata": {},
+          "organization_id": {
+            "type": "string"
+          },
+          "owner_id": {
+            "type": "string"
+          },
+          "owner_type": {
+            "$ref": "#/components/schemas/PaymentOwnerType"
+          },
+          "public_address": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rail": {
+            "$ref": "#/components/schemas/PaymentRail"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PaymentStatus"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "PaymentAttempt": {
+        "type": "object",
+        "required": [
+          "id",
+          "organization_id",
+          "capability",
+          "operation",
+          "amount_usd",
+          "currency",
+          "target_url",
+          "status",
+          "receipt",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "amount_usd": {
+            "type": "number",
+            "format": "double"
+          },
+          "capability": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "error_message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "$ref": "#/components/schemas/payattId"
+          },
+          "operation": {
+            "type": "string"
+          },
+          "organization_id": {
+            "type": "string"
+          },
+          "payment_account_id": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/payacctId"
+              }
+            ]
+          },
+          "rail": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PaymentRail"
+              }
+            ]
+          },
+          "receipt": {},
+          "request_hash": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/PaymentStatus"
+          },
+          "target_url": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "PaymentOwnerType": {
+        "type": "string",
+        "description": "Principal class that owns a payment account.",
+        "enum": [
+          "user",
+          "agent_identity",
+          "organization"
+        ]
+      },
+      "PaymentPolicy": {
+        "type": "object",
+        "required": [
+          "id",
+          "organization_id",
+          "payment_account_id",
+          "subject_type",
+          "subject_id",
+          "allowed_capabilities",
+          "allowed_hosts",
+          "rail_preference",
+          "status",
+          "metadata",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "allowed_capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "allowed_hosts": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "$ref": "#/components/schemas/paypolId"
+          },
+          "max_amount_usd_per_day": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "max_amount_usd_per_request": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "max_amount_usd_per_turn": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "metadata": {},
+          "organization_id": {
+            "type": "string"
+          },
+          "payment_account_id": {
+            "$ref": "#/components/schemas/payacctId"
+          },
+          "rail_preference": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PaymentRail"
+            }
+          },
+          "require_approval_above_usd": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PaymentStatus"
+          },
+          "subject_id": {
+            "type": "string"
+          },
+          "subject_type": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "PaymentRail": {
+        "type": "string",
+        "description": "Payment rail used to settle a machine payment.",
+        "enum": [
+          "mpp_tempo",
+          "x402_base"
+        ]
+      },
+      "PaymentStatus": {
+        "type": "string",
+        "enum": [
+          "active",
+          "disabled",
+          "pending",
+          "succeeded",
+          "failed",
+          "released"
+        ]
+      },
       "PreviewAgentRequest": {
         "type": "object",
         "description": "Request to preview the final agent shape with capabilities applied",
@@ -15583,13 +16438,13 @@
                 "type": "null"
               },
               {
-                "$ref": "#/components/schemas/TypedId",
+                "$ref": "#/components/schemas/agentId",
                 "description": "Agent ID being used (optional)"
               }
             ]
           },
           "harness_id": {
-            "$ref": "#/components/schemas/TypedId",
+            "$ref": "#/components/schemas/harnessId",
             "description": "Harness ID being used"
           },
           "metadata": {
@@ -17768,12 +18623,6 @@
           }
         }
       },
-      "TypedId": {
-        "type": "string",
-        "description": "Prefixed identifier with 'agent' prefix",
-        "example": "agent_01933b5a00007000800000000000001",
-        "pattern": "^agent_[0-9a-f]{32}$"
-      },
       "UpdateAgentRequest": {
         "type": "object",
         "description": "Request to update an agent. Only provided fields will be updated.",
@@ -18340,6 +19189,103 @@
             ],
             "description": "The display name of the organization.",
             "example": "Acme Corporation"
+          }
+        }
+      },
+      "UpdatePaymentAccountRequest": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "metadata": {},
+          "private_key": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "public_address": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "UpdatePaymentPolicyRequest": {
+        "type": "object",
+        "properties": {
+          "allowed_capabilities": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "allowed_hosts": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "max_amount_usd_per_day": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "max_amount_usd_per_request": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "max_amount_usd_per_turn": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "metadata": {},
+          "rail_preference": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "require_approval_above_usd": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double"
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -20394,6 +21340,42 @@
           }
         ],
         "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer)."
+      },
+      "agentId": {
+        "type": "string",
+        "description": "Prefixed identifier with 'agent' prefix",
+        "example": "agent_01933b5a00007000800000000000001",
+        "pattern": "^agent_[0-9a-f]{32}$"
+      },
+      "eventId": {
+        "type": "string",
+        "description": "Prefixed identifier with 'event' prefix",
+        "example": "event_01933b5a00007000800000000000001",
+        "pattern": "^event_[0-9a-f]{32}$"
+      },
+      "harnessId": {
+        "type": "string",
+        "description": "Prefixed identifier with 'harness' prefix",
+        "example": "harness_01933b5a00007000800000000000001",
+        "pattern": "^harness_[0-9a-f]{32}$"
+      },
+      "payacctId": {
+        "type": "string",
+        "description": "Prefixed identifier with 'payacct' prefix",
+        "example": "payacct_01933b5a00007000800000000000001",
+        "pattern": "^payacct_[0-9a-f]{32}$"
+      },
+      "payattId": {
+        "type": "string",
+        "description": "Prefixed identifier with 'payatt' prefix",
+        "example": "payatt_01933b5a00007000800000000000001",
+        "pattern": "^payatt_[0-9a-f]{32}$"
+      },
+      "paypolId": {
+        "type": "string",
+        "description": "Prefixed identifier with 'paypol' prefix",
+        "example": "paypol_01933b5a00007000800000000000001",
+        "pattern": "^paypol_[0-9a-f]{32}$"
       }
     }
   },
@@ -20485,6 +21467,10 @@
     {
       "name": "skills",
       "description": "Skills registry endpoints"
+    },
+    {
+      "name": "payments",
+      "description": "Machine payment wallet, policy, and attempt endpoints"
     }
   ]
 }
