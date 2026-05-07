@@ -225,7 +225,7 @@ impl Default for DurableWorkerConfig {
                 "invoke_scheduled_app_channel".to_string(),
             ],
             max_concurrent_tasks: 1000, // High default for massive workflow parallelism
-            poll_interval: Duration::from_millis(100), // Fallback when push notifications unavailable
+            poll_interval: Duration::from_millis(10), // Fallback when push notifications unavailable
             heartbeat_interval: Duration::from_secs(10),
             grpc_address: "127.0.0.1:9001".to_string(),
             connect_timeout: Duration::from_secs(30),

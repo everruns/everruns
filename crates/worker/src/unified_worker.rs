@@ -70,7 +70,7 @@ impl Default for TaskWorkerConfig {
                 activity_types::INVOKE_SCHEDULED_APP_CHANNEL.to_string(),
             ],
             max_concurrent_tasks: 1000,
-            poll_interval: Duration::from_millis(100),
+            poll_interval: Duration::from_millis(10),
             heartbeat_interval: Duration::from_secs(10),
             worker_group: None,
         }
@@ -84,7 +84,7 @@ impl TaskWorkerConfig {
             worker_id: format!("dev-worker-{}", Uuid::now_v7()),
             worker_group: Some("dev".to_string()),
             max_concurrent_tasks: 10,
-            poll_interval: Duration::from_millis(100),
+            poll_interval: Duration::from_millis(10),
             ..Default::default()
         }
     }
@@ -93,7 +93,7 @@ impl TaskWorkerConfig {
     pub fn production() -> Self {
         Self {
             max_concurrent_tasks: 1000,
-            poll_interval: Duration::from_millis(100),
+            poll_interval: Duration::from_millis(10),
             ..Default::default()
         }
     }

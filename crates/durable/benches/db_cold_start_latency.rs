@@ -23,15 +23,44 @@ use sqlx::postgres::PgListener;
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc;
 
+use chrono::Utc;
 use everruns_durable::bench::{
     BenchmarkCheckpoint, BenchmarkMetrics, BenchmarkReport, CheckpointStore, EnvironmentInfo,
     ReportConfig,
 };
 use everruns_durable::persistence::{
-    PostgresWorkflowEventStore, TaskDefinition, WorkflowEventStore,
+    PostgresWorkflowEventStore, TaskDefinition, WorkerInfo, WorkflowEventStore,
 };
 use everruns_durable::workflow::ActivityOptions;
 use uuid::Uuid;
+
+async fn register_benchmark_worker(
+    store: &PostgresWorkflowEventStore,
+    worker_id: String,
+    activity_type: &str,
+) {
+    store
+        .register_worker(WorkerInfo {
+            id: worker_id,
+            worker_group: Some("bench".to_string()),
+            activity_types: vec![activity_type.to_string()],
+            max_concurrency: 1,
+            current_load: 0,
+            status: "active".to_string(),
+            accepting_tasks: true,
+            backpressure_reason: None,
+            started_at: Utc::now(),
+            last_heartbeat_at: Utc::now(),
+            hostname: None,
+            version: None,
+            metadata: None,
+            tasks_completed: 0,
+            tasks_failed: 0,
+            avg_task_duration_ms: None,
+        })
+        .await
+        .unwrap();
+}
 
 /// Get test database URL from environment or use default
 fn get_database_url() -> String {
@@ -136,10 +165,16 @@ async fn run_cold_start_scenario(pool: PgPool, config: ColdStartConfig) -> Arc<B
         let claim_time = claim_time.clone();
         let shutdown = shutdown.clone();
         let tasks_completed = tasks_completed.clone();
+        let worker_name = format!("db-cold-start-worker-{}-{}", worker_id, workflow_id);
+
+        register_benchmark_worker(
+            store.as_ref(),
+            worker_name.clone(),
+            "db_cold_start_activity",
+        )
+        .await;
 
         worker_handles.push(tokio::spawn(async move {
-            let worker_name = format!("db-cold-start-worker-{}", worker_id);
-
             loop {
                 if shutdown.load(Ordering::SeqCst) {
                     break;
@@ -258,6 +293,13 @@ async fn run_push_notification_scenario(
     // Set up LISTEN for task notifications
     let mut listener = PgListener::connect_with(&pool).await.unwrap();
     listener.listen("task_available").await.unwrap();
+    let worker_name = format!("push-notification-worker-{}", workflow_id);
+    register_benchmark_worker(
+        store.as_ref(),
+        worker_name.clone(),
+        "db_push_notification_activity",
+    )
+    .await;
 
     // Channel for notification receipt timing
     let (notify_tx, mut notify_rx) = mpsc::channel::<Instant>(1);
@@ -319,7 +361,7 @@ async fn run_push_notification_scenario(
         let claim_start = Instant::now();
         let claimed = store
             .claim_task(
-                "push-notification-worker",
+                &worker_name,
                 &["db_push_notification_activity".to_string()],
                 1,
             )
@@ -331,11 +373,7 @@ async fn run_push_notification_scenario(
         // Complete the task
         for task in claimed {
             store
-                .complete_task(
-                    task.id,
-                    "push-notification-worker",
-                    serde_json::json!({"ok": true}),
-                )
+                .complete_task(task.id, &worker_name, serde_json::json!({"ok": true}))
                 .await
                 .unwrap();
         }
@@ -477,14 +515,14 @@ fn main() {
     println!("\nCompares polling vs push-based notification approaches.");
     println!("This is what users experience when sending a message to an idle agent.\n");
 
-    // Scenario 1: Polling approach (100ms interval)
+    // Scenario 1: Polling fallback using the current worker default.
     let polling = rt.block_on(run_cold_start_scenario(
         pool.clone(),
         ColdStartConfig {
             iterations: 20,
             worker_count: 1,
-            check_interval: Duration::from_millis(100),
-            name: "polling_100ms".to_string(),
+            check_interval: Duration::from_millis(10),
+            name: "polling_10ms".to_string(),
         },
     ));
 

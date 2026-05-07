@@ -26,8 +26,8 @@ use everruns_durable::{
     ActivityOptions, CircuitBreakerConfig, CircuitState, DistributedCircuitBreaker,
     PostgresWorkflowEventStore, StoreError, TaskDefinition, TaskFailureOutcome, WorkerInfo,
     WorkflowError, WorkflowEvent, WorkflowEventStore, WorkflowStatus, append_event,
-    record_activity_completed, record_activity_failed, record_activity_started,
-    record_workflow_cancelled, record_workflow_completed, record_workflow_failed,
+    record_activity_completed, record_activity_failed, record_workflow_cancelled,
+    record_workflow_completed, record_workflow_failed,
 };
 use everruns_internal_protocol::proto::{
     self,

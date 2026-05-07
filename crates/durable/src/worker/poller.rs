@@ -39,7 +39,7 @@ pub struct PollerConfig {
 impl Default for PollerConfig {
     fn default() -> Self {
         Self {
-            min_interval: Duration::from_millis(100),
+            min_interval: Duration::from_millis(10),
             max_interval: Duration::from_secs(5),
             backoff_multiplier: 1.5,
             batch_size: 10,
@@ -307,7 +307,7 @@ mod tests {
     #[test]
     fn test_default_config() {
         let config = PollerConfig::default();
-        assert_eq!(config.min_interval, Duration::from_millis(100));
+        assert_eq!(config.min_interval, Duration::from_millis(10));
         assert_eq!(config.max_interval, Duration::from_secs(5));
         assert_eq!(config.backoff_multiplier, 1.5);
         assert_eq!(config.batch_size, 10);

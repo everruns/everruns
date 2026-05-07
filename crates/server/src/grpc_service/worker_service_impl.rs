@@ -1331,18 +1331,6 @@ impl WorkerService for WorkerServiceImpl {
                 Status::internal("Failed to claim tasks")
             })?;
 
-        // Record ActivityStarted events for each claimed task
-        for task in &tasks {
-            record_activity_started(
-                store.as_ref(),
-                task.workflow_id,
-                task.activity_id.clone(),
-                task.attempt,
-                req.worker_id.clone(),
-            )
-            .await;
-        }
-
         let proto_tasks: Vec<proto::DurableClaimedTask> = tasks
             .into_iter()
             .map(|t| proto::DurableClaimedTask {

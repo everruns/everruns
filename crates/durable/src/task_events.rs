@@ -28,26 +28,25 @@ pub async fn append_event<S: WorkflowEventStore + ?Sized>(
     event: WorkflowEvent,
 ) -> Result<(), StoreError> {
     for attempt in 0..MAX_RETRY_ATTEMPTS {
-        // Get current sequence by loading events
-        let events = match store.load_events(workflow_id).await {
-            Ok(events) => events,
+        // Get current sequence without materializing the workflow replay payload.
+        let current_seq = match store.count_events(workflow_id).await {
+            Ok(count) => count as i32,
             Err(StoreError::WorkflowNotFound(_)) if attempt < MAX_RETRY_ATTEMPTS - 1 => {
                 // Workflow might not be visible yet due to race condition, retry
                 debug!(
                     %workflow_id,
                     attempt = attempt + 1,
-                    "Workflow not found when loading events, retrying"
+                    "Workflow not found when counting events, retrying"
                 );
                 tokio::time::sleep(std::time::Duration::from_millis(10 * (attempt as u64 + 1)))
                     .await;
                 continue;
             }
             Err(e) => {
-                warn!(%workflow_id, error = %e, "Failed to load events for workflow");
+                warn!(%workflow_id, error = %e, "Failed to count events for workflow");
                 return Err(e);
             }
         };
-        let current_seq = events.len() as i32;
 
         match store
             .append_events(workflow_id, current_seq, vec![event.clone()])
