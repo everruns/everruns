@@ -662,7 +662,29 @@ pub struct GrpcBudgetChecker {
     agent_id: Option<String>,
 }
 
+/// Payment authority that forwards paid capability requests to the control plane.
+pub struct GrpcPaymentAuthority {
+    client: GrpcClient,
+    org_id: i64,
+    agent_id: Option<String>,
+}
+
 impl GrpcBudgetChecker {
+    pub fn new(client: GrpcClient, org_id: i64) -> Self {
+        Self {
+            client,
+            org_id,
+            agent_id: None,
+        }
+    }
+
+    pub fn with_agent_id(mut self, agent_id: Option<String>) -> Self {
+        self.agent_id = agent_id;
+        self
+    }
+}
+
+impl GrpcPaymentAuthority {
     pub fn new(client: GrpcClient, org_id: i64) -> Self {
         Self {
             client,
@@ -3491,6 +3513,77 @@ impl everruns_core::traits::BudgetChecker for GrpcBudgetChecker {
                 })
                 .collect(),
             hint: resp.hint,
+        })
+    }
+}
+
+#[async_trait]
+impl everruns_core::traits::PaymentAuthority for GrpcPaymentAuthority {
+    async fn execute_machine_payment(
+        &self,
+        session_id: SessionId,
+        request: everruns_core::payment::MachinePaymentRequest,
+    ) -> everruns_core::error::Result<everruns_core::payment::MachinePaymentResponse> {
+        let mut client = self.client.inner.lock().await;
+        let proto_request = proto::ExecuteMachinePaymentRequest {
+            org_id: self.org_id,
+            session_id: session_id.to_string(),
+            agent_id: self.agent_id.clone(),
+            capability: request.capability,
+            operation: request.operation,
+            method: request.method.to_string(),
+            url: request.url,
+            body: request
+                .body
+                .as_ref()
+                .map(everruns_internal_protocol::json_to_proto_value),
+            max_amount_usd: request.max_amount_usd,
+            rail_preference: request
+                .rail_preference
+                .iter()
+                .map(ToString::to_string)
+                .collect(),
+            metadata: Some(everruns_internal_protocol::json_to_proto_value(
+                &request.metadata,
+            )),
+        };
+        let response = client
+            .execute_machine_payment(proto_request)
+            .await
+            .map_err(grpc_status_to_error)?
+            .into_inner();
+
+        let attempt_id = response
+            .attempt_id
+            .as_deref()
+            .map(everruns_core::PaymentAttemptId::parse)
+            .transpose()
+            .map_err(|error| {
+                AgentLoopError::store(format!("Invalid payment attempt id: {error}"))
+            })?;
+        let rail = response
+            .rail
+            .as_deref()
+            .map(str::parse)
+            .transpose()
+            .map_err(AgentLoopError::config)?;
+        let body = response
+            .response
+            .as_ref()
+            .map(everruns_internal_protocol::proto_value_to_json)
+            .unwrap_or(serde_json::Value::Null);
+        let receipt = response
+            .receipt
+            .as_ref()
+            .map(everruns_internal_protocol::proto_value_to_json)
+            .unwrap_or_else(|| serde_json::json!({}));
+
+        Ok(everruns_core::payment::MachinePaymentResponse {
+            attempt_id,
+            amount_usd: response.amount_usd,
+            rail,
+            response: body,
+            receipt,
         })
     }
 }

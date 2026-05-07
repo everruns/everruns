@@ -421,6 +421,12 @@ pub const ENCRYPTED_COLUMNS: &[EncryptedColumn] = &[
         column: "refresh_token_encrypted",
         id_column: "id",
     },
+    // Machine-payment wallet credentials are encrypted at rest
+    EncryptedColumn {
+        table: "payment_accounts",
+        column: "credential_encrypted",
+        id_column: "id",
+    },
 ];
 
 #[cfg(test)]

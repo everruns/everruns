@@ -2855,4 +2855,101 @@ impl StorageBackend {
     pub async fn set_budget_status(&self, id: Uuid, status: &str) -> Result<Option<BudgetRow>> {
         dispatch!(self, set_budget_status, id, status)
     }
+
+    // ============================================
+    // Machine payments
+    // ============================================
+
+    pub async fn create_payment_account(
+        &self,
+        org_id: i64,
+        input: CreatePaymentAccountRow,
+    ) -> Result<PaymentAccountRow> {
+        dispatch!(self, create_payment_account, org_id, input)
+    }
+
+    pub async fn list_payment_accounts(
+        &self,
+        org_id: i64,
+        owner_type: Option<&str>,
+        owner_id: Option<&str>,
+    ) -> Result<Vec<PaymentAccountRow>> {
+        dispatch!(self, list_payment_accounts, org_id, owner_type, owner_id)
+    }
+
+    pub async fn get_payment_account(
+        &self,
+        org_id: i64,
+        id: Uuid,
+    ) -> Result<Option<PaymentAccountRow>> {
+        dispatch!(self, get_payment_account, org_id, id)
+    }
+
+    pub async fn update_payment_account(
+        &self,
+        org_id: i64,
+        id: Uuid,
+        input: UpdatePaymentAccountRow,
+    ) -> Result<Option<PaymentAccountRow>> {
+        dispatch!(self, update_payment_account, org_id, id, input)
+    }
+
+    pub async fn create_payment_policy(
+        &self,
+        org_id: i64,
+        input: CreatePaymentPolicyRow,
+    ) -> Result<PaymentPolicyRow> {
+        dispatch!(self, create_payment_policy, org_id, input)
+    }
+
+    pub async fn list_payment_policies(
+        &self,
+        org_id: i64,
+        payment_account_id: Option<Uuid>,
+        subject_type: Option<&str>,
+        subject_id: Option<&str>,
+    ) -> Result<Vec<PaymentPolicyRow>> {
+        dispatch!(
+            self,
+            list_payment_policies,
+            org_id,
+            payment_account_id,
+            subject_type,
+            subject_id
+        )
+    }
+
+    pub async fn get_payment_policy(
+        &self,
+        org_id: i64,
+        id: Uuid,
+    ) -> Result<Option<PaymentPolicyRow>> {
+        dispatch!(self, get_payment_policy, org_id, id)
+    }
+
+    pub async fn update_payment_policy(
+        &self,
+        org_id: i64,
+        id: Uuid,
+        input: UpdatePaymentPolicyRow,
+    ) -> Result<Option<PaymentPolicyRow>> {
+        dispatch!(self, update_payment_policy, org_id, id, input)
+    }
+
+    pub async fn list_payment_attempts(
+        &self,
+        org_id: i64,
+        session_id: Option<Uuid>,
+        limit: i64,
+    ) -> Result<Vec<PaymentAttemptRow>> {
+        dispatch!(self, list_payment_attempts, org_id, session_id, limit)
+    }
+
+    pub async fn create_payment_attempt(
+        &self,
+        org_id: i64,
+        input: CreatePaymentAttemptRow,
+    ) -> Result<PaymentAttemptRow> {
+        dispatch!(self, create_payment_attempt, org_id, input)
+    }
 }

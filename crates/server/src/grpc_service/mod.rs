@@ -78,6 +78,8 @@ use everruns_internal_protocol::proto::{
     EnqueueDurableTaskResponse,
     ExecuteCommandRequest,
     ExecuteCommandResponse,
+    ExecuteMachinePaymentRequest,
+    ExecuteMachinePaymentResponse,
     FailDurableTaskRequest,
     FailDurableTaskResponse,
     GetAgentRequest,

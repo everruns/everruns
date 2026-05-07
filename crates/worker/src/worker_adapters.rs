@@ -16,7 +16,7 @@ use everruns_core::leased_resource::LeasedResource;
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use everruns_core::traits::{
     BudgetChecker, ImageArtifactStore, ImageResolver, LeasedResourceStore, ModelWithProvider,
-    ProviderCredentialStore, ResolvedImage,
+    PaymentAuthority, ProviderCredentialStore, ResolvedImage,
 };
 use everruns_core::typed_id::{
     AgentId, HarnessId, LeasedResourceId, MessageId, ModelId, SessionId,
@@ -283,6 +283,15 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         _org_id: i64,
         _agent_id: Option<AgentId>,
     ) -> Option<Arc<dyn BudgetChecker>> {
+        None
+    }
+
+    /// Get the payment authority for paid internal capability tools, if available.
+    fn payment_authority(
+        &self,
+        _org_id: i64,
+        _agent_id: Option<AgentId>,
+    ) -> Option<Arc<dyn PaymentAuthority>> {
         None
     }
 

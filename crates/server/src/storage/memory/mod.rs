@@ -25,6 +25,7 @@ mod mcp_servers;
 mod memories;
 mod notifications;
 mod organizations;
+mod payments;
 mod principals;
 mod schedules;
 mod session_files;
@@ -146,6 +147,9 @@ pub struct InMemoryDatabase {
     budgets: RwLock<HashMap<Uuid, BudgetRow>>,
     usage_journal: RwLock<HashMap<Uuid, UsageJournalRow>>,
     usage_ledger: RwLock<Vec<UsageLedgerRow>>,
+    payment_accounts: RwLock<HashMap<Uuid, PaymentAccountRow>>,
+    payment_policies: RwLock<HashMap<Uuid, PaymentPolicyRow>>,
+    payment_attempts: RwLock<HashMap<Uuid, PaymentAttemptRow>>,
     // Workspace volumes
     volumes: RwLock<HashMap<Uuid, VolumeRow>>,
     // Memory stores and memories (org-scoped agent memory)
@@ -226,6 +230,9 @@ impl Default for InMemoryDatabase {
             budgets: RwLock::new(HashMap::new()),
             usage_journal: RwLock::new(HashMap::new()),
             usage_ledger: RwLock::new(Vec::new()),
+            payment_accounts: RwLock::new(HashMap::new()),
+            payment_policies: RwLock::new(HashMap::new()),
+            payment_attempts: RwLock::new(HashMap::new()),
             volumes: RwLock::new(HashMap::new()),
             memory_stores: RwLock::new(HashMap::new()),
             memories: RwLock::new(HashMap::new()),

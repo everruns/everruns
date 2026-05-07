@@ -607,6 +607,23 @@ pub trait BudgetChecker: Send + Sync {
     async fn check_budgets(&self, session_id: &str) -> Result<crate::budget::BudgetToolResponse>;
 }
 
+// ============================================================================
+// PaymentAuthority - For capability-internal machine payments
+// ============================================================================
+
+/// Internal authority for paid capability operations.
+///
+/// Capabilities call this with fixed, typed requests. The model never receives a
+/// generic paid HTTP tool, wallet credentials, or payment payloads.
+#[async_trait]
+pub trait PaymentAuthority: Send + Sync {
+    async fn execute_machine_payment(
+        &self,
+        session_id: SessionId,
+        request: crate::payment::MachinePaymentRequest,
+    ) -> Result<crate::payment::MachinePaymentResponse>;
+}
+
 /// Runtime context provided to tools during execution.
 ///
 /// This context contains:
@@ -696,6 +713,9 @@ pub struct ToolContext {
 
     /// Optional budget checker for the check_budget tool.
     pub budget_checker: Option<Arc<dyn BudgetChecker>>,
+
+    /// Optional internal payment authority for paid capability tools.
+    pub payment_authority: Option<Arc<dyn PaymentAuthority>>,
 }
 
 impl ToolContext {
@@ -727,6 +747,7 @@ impl ToolContext {
             network_access: None,
             locale: None,
             budget_checker: None,
+            payment_authority: None,
         }
     }
 
@@ -758,6 +779,7 @@ impl ToolContext {
             network_access: None,
             locale: None,
             budget_checker: None,
+            payment_authority: None,
         }
     }
 
@@ -792,6 +814,7 @@ impl ToolContext {
             network_access: None,
             locale: None,
             budget_checker: None,
+            payment_authority: None,
         }
     }
 
@@ -827,6 +850,7 @@ impl ToolContext {
             network_access: None,
             locale: None,
             budget_checker: None,
+            payment_authority: None,
         }
     }
 
@@ -900,6 +924,7 @@ impl ToolContext {
             network_access: None,
             locale: None,
             budget_checker: None,
+            payment_authority: None,
         }
     }
 
@@ -969,6 +994,12 @@ impl ToolContext {
         network_access: Option<crate::network_access::NetworkAccessList>,
     ) -> Self {
         self.network_access = network_access;
+        self
+    }
+
+    /// Set the internal payment authority for paid capability operations.
+    pub fn with_payment_authority(mut self, authority: Arc<dyn PaymentAuthority>) -> Self {
+        self.payment_authority = Some(authority);
         self
     }
 
@@ -1063,6 +1094,7 @@ impl std::fmt::Debug for ToolContext {
             .field("event_emitter", &self.event_emitter.is_some())
             .field("tool_registry", &self.tool_registry.is_some())
             .field("memory_store", &self.memory_store.is_some())
+            .field("payment_authority", &self.payment_authority.is_some())
             .field("org_id", &self.org_id)
             .finish()
     }

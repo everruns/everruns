@@ -230,7 +230,7 @@ impl<'de, T: IdMarker> Deserialize<'de> for TypedId<T> {
 #[cfg(feature = "openapi")]
 impl<T: IdMarker> utoipa::ToSchema for TypedId<T> {
     fn name() -> std::borrow::Cow<'static, str> {
-        std::borrow::Cow::Borrowed("TypedId")
+        std::borrow::Cow::Owned(format!("{}Id", T::PREFIX))
     }
 }
 
@@ -483,6 +483,27 @@ impl IdMarker for BudgetIdMarker {
     const PREFIX: &'static str = "bdgt";
 }
 
+/// Marker for payment account IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct PaymentAccountIdMarker;
+impl IdMarker for PaymentAccountIdMarker {
+    const PREFIX: &'static str = "payacct";
+}
+
+/// Marker for payment policy IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct PaymentPolicyIdMarker;
+impl IdMarker for PaymentPolicyIdMarker {
+    const PREFIX: &'static str = "paypol";
+}
+
+/// Marker for payment attempt IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct PaymentAttemptIdMarker;
+impl IdMarker for PaymentAttemptIdMarker {
+    const PREFIX: &'static str = "payatt";
+}
+
 /// Marker for Budget Ledger Entry IDs
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct LedgerEntryIdMarker;
@@ -576,6 +597,12 @@ pub type EvalRunId = TypedId<EvalRunIdMarker>;
 pub type EvalResultId = TypedId<EvalResultIdMarker>;
 /// Budget ID
 pub type BudgetId = TypedId<BudgetIdMarker>;
+/// Payment account ID
+pub type PaymentAccountId = TypedId<PaymentAccountIdMarker>;
+/// Payment policy ID
+pub type PaymentPolicyId = TypedId<PaymentPolicyIdMarker>;
+/// Payment attempt ID
+pub type PaymentAttemptId = TypedId<PaymentAttemptIdMarker>;
 /// Budget Ledger Entry ID
 pub type LedgerEntryId = TypedId<LedgerEntryIdMarker>;
 /// Volume ID (workspace volumes — see `specs/volumes.md`)

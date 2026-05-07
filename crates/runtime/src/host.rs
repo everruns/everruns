@@ -18,9 +18,10 @@ use everruns_core::platform_store::PlatformStore;
 use everruns_core::session::SessionStatus;
 use everruns_core::traits::{
     AgentStore, BudgetChecker, EventEmitter, HarnessStore, ImageArtifactStore, ImageResolver,
-    LeasedResourceStore, LlmProviderStore, ModelWithProvider, ProviderCredentialStore,
-    SessionFileStore, SessionMutator, SessionResourceRegistry, SessionScheduleStore,
-    SessionSqlDbStoreRef, SessionStorageStore, SessionStore, UserConnectionResolver,
+    LeasedResourceStore, LlmProviderStore, ModelWithProvider, PaymentAuthority,
+    ProviderCredentialStore, SessionFileStore, SessionMutator, SessionResourceRegistry,
+    SessionScheduleStore, SessionSqlDbStoreRef, SessionStorageStore, SessionStore,
+    UserConnectionResolver,
 };
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::{
@@ -255,6 +256,14 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
         _org_id: i64,
         _agent_id: Option<AgentId>,
     ) -> Option<Arc<dyn BudgetChecker>> {
+        None
+    }
+
+    fn payment_authority(
+        &self,
+        _org_id: i64,
+        _agent_id: Option<AgentId>,
+    ) -> Option<Arc<dyn PaymentAuthority>> {
         None
     }
 }
@@ -792,6 +801,9 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
     }
     if let Some(budget_checker) = adapter.budget_checker(org_id, input.agent_id) {
         atom = atom.with_budget_checker(budget_checker);
+    }
+    if let Some(payment_authority) = adapter.payment_authority(org_id, input.agent_id) {
+        atom = atom.with_payment_authority(payment_authority);
     }
 
     atom.execute(input).await

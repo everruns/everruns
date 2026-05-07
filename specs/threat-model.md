@@ -144,6 +144,7 @@ Display:   evr_<first-8-chars>...   (prefix for identification)
 | TM-CRYPTO-005 | Stale encryption key | Medium | Key rotation supported (primary + previous KEK); key_id in payload | MITIGATED |
 | TM-CRYPTO-006 | Re-encryption job missing | Low | CLI tool `reencrypt_secrets` implemented with batch processing, dry-run mode, and key rotation detection | MITIGATED |
 | TM-CRYPTO-007 | Limited encryption scope | Medium | LLM API keys encrypted; system prompt encryption reverted (PII should not be in prompts) | **OPEN** |
+| TM-CRYPTO-008 | Machine-payment wallet key exposure | Critical | Wallet private keys are accepted only on payment account create/update, encrypted with the server envelope encryption service, never returned from API responses, decrypted only inside `ServerPaymentAuthority` immediately before native rail signing, and never sent to workers | MITIGATED |
 
 ### Mitigation Details
 
@@ -169,6 +170,9 @@ Re-encryption CLI tool implemented at `crates/server/src/bin/reencrypt_secrets.r
 - Per-table filtering
 - Key rotation detection via `is_current_key()`
 - Full UPDATE statements to write re-encrypted data back
+
+**TM-CRYPTO-008 — Machine-Payment Wallet Custody (MITIGATED):**
+Payment accounts store wallet signing material in `credential_encrypted`, protected by the same envelope encryption service used for other secrets. The public `PaymentAccount` model intentionally omits this field. Native x402 signing happens only in `ServerPaymentAuthority`; external workers call the control-plane `ExecuteMachinePayment` RPC and never receive private keys.
 
 ## 3. Tenant Isolation (TM-TENANT)
 
@@ -686,6 +690,7 @@ The agent loop is a core trust boundary: an LLM decides which tools to call with
 | TM-AGENT-019 | Internal network probing via high-risk execution capabilities | High | `daytona` and `e2b` provide full network access by design; `docker_container` uses host networking in dev mode; all rely on Admin-only assignment plus infrastructure egress isolation | **ACCEPTED** |
 | TM-AGENT-020 | Cross-session resource reuse via stale or guessed external IDs | Critical | Provider-owned resource IDs are checked against the active session's leased-resource/session-resource ownership before tool execution; raw sandbox list endpoints are filtered to owned IDs only | MITIGATED |
 | TM-AGENT-021 | System prompt regurgitation | Medium | Opt-in `prompt_canary_guardrail` capability runs a streaming output guardrail that replaces the assistant message when the first sentence of the system prompt appears verbatim in the model output; original tokens are dropped and never persisted. Catches verbatim leaks only — paraphrased or partial leaks pass through. See `specs/capabilities.md` § Output Guardrails | MITIGATED (partial, opt-in) |
+| TM-AGENT-022 | Agent-initiated machine-payment spend | High | Paid capabilities cannot directly sign or submit arbitrary paid HTTP requests. They call `PaymentAuthority`, which selects an active policy matching the session/agent/agent identity/user/org, capability, target host, rail, and per-request limit before signing; attempts are audited | MITIGATED |
 
 ### Mitigation Details
 
@@ -785,6 +790,14 @@ similar handles) resolve ownership through the active session's leased resources
 the backend. The session resource registry carries the same external-ID metadata for runtimes
 that only expose the generic registry. Raw sandbox list calls are filtered to the IDs owned by
 the active session before results are returned to the agent.
+
+**TM-AGENT-022 — Agent-Initiated Machine-Payment Spend (MITIGATED):**
+Agents can invoke paid capabilities such as Parallel search/extract/task, but V1 deliberately has
+no generic `paid_http_request` tool. The capability submits a typed payment request to
+`PaymentAuthority`; the server selects only active spend policies scoped to the current session,
+agent, agent identity, user, or organization and checks capability allowlist, host allowlist, rail
+preference, and per-request maximum before creating any rail-specific signature. Every attempt is
+persisted with status, amount, target URL, and receipt/error.
 
 ## 14. Bash Sandbox (TM-BASH)
 

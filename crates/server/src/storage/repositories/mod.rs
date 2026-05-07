@@ -20,6 +20,7 @@ mod mcp_servers;
 mod memories;
 mod notifications;
 mod organizations;
+mod payments;
 mod principals;
 mod schedules;
 mod session_files;
