@@ -104,6 +104,8 @@ Always make sure you are working on top of latest main from remote.
 - `specs/cli.md` - CLI specification (commands, file sync, wire protocol)
 - `specs/usage-tracking.md` - LLM token usage tracking
 - `specs/budgeting.md` - Extensible budgeting system (budgets, meters, rules, soft enforcement)
+- `specs/reporting.md` - Async reporting (outbox, fact datasets, semantic query API, backend abstraction)
+- `specs/reporting-backends.md` - Phase 3 reference evaluation: StarRocks and DuckDB-over-object-storage
 - `specs/documentation.md` - Documentation site (Astro Starlight)
 - `specs/brand.md` - Brand identity, colors, typography
 - `specs/diagrams.md` - Diagram specification (SVG style guide, building blocks, colors)
