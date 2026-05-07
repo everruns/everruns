@@ -500,6 +500,22 @@ function MemoryContentPartView({ part }: { part: MemoryContentPart }) {
     );
   }
   if (part.type === "image") {
+    const SAFE_MEMORY_IMAGE_MEDIA_TYPES = new Set([
+      "image/png",
+      "image/jpeg",
+      "image/gif",
+      "image/webp",
+      "image/bmp",
+      "image/x-icon",
+      "image/vnd.microsoft.icon",
+    ]);
+    if (!SAFE_MEMORY_IMAGE_MEDIA_TYPES.has(part.media_type.toLowerCase())) {
+      return (
+        <div className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
+          Unsupported image media type: {part.media_type}
+        </div>
+      );
+    }
     const src = `data:${part.media_type};base64,${part.base64}`;
     return (
       <div className="rounded-md border bg-muted/30 p-2">
