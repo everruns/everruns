@@ -3,7 +3,19 @@
 import { config, proxy } from "@/proxy";
 
 describe("auth proxy", () => {
+  const previousAuthMode = process.env.AUTH_MODE;
+
+  afterEach(() => {
+    if (previousAuthMode === undefined) {
+      delete process.env.AUTH_MODE;
+    } else {
+      process.env.AUTH_MODE = previousAuthMode;
+    }
+  });
+
   it("redirects protected routes to login when the access token is missing", () => {
+    process.env.AUTH_MODE = "full";
+
     const request = {
       cookies: { has: () => false },
       nextUrl: new URL("http://localhost/settings/providers?tab=models"),
@@ -17,6 +29,24 @@ describe("auth proxy", () => {
       "http://localhost/login?return_to=%2Fsettings%2Fproviders%3Ftab%3Dmodels",
     );
   });
+
+  it.each(["/chat", "/settings/providers?tab=models"])(
+    "allows %s through when AUTH_MODE=none and cookie is missing",
+    (path) => {
+      process.env.AUTH_MODE = "none";
+
+      const request = {
+        cookies: { has: () => false },
+        nextUrl: new URL(`http://localhost${path}`),
+        url: `http://localhost${path}`,
+      } as Parameters<typeof proxy>[0];
+
+      const response = proxy(request);
+
+      expect(response.headers.get("x-middleware-next")).toBe("1");
+      expect(response.headers.get("location")).toBeNull();
+    },
+  );
 
   it("allows protected routes through when the access token cookie exists", () => {
     const request = {
