@@ -20,7 +20,10 @@
 // called synchronously but should be non-blocking.
 
 use crate::event_delivery::EventDelivery;
-use crate::storage::{EventRow, StorageBackend, models::CreateEventRow};
+use crate::storage::{
+    EventRow, StorageBackend,
+    models::{CreateEventRow, EventsSummary as EventsSummaryRow, ListEventsParams},
+};
 use anyhow::{Result, bail};
 use everruns_core::typed_id::{EventId, SessionId};
 use everruns_core::{Event, EventListener, EventRequest};
@@ -285,6 +288,25 @@ impl EventService {
             .map(Self::row_to_event)
             .filter(|e| !e.is_unsupported())
             .collect())
+    }
+
+    /// Advanced event listing for debugging.
+    ///
+    /// Filters out unsupported events. Returns rows in `sequence ASC` order.
+    pub async fn list_advanced(&self, params: &ListEventsParams) -> Result<Vec<Event>> {
+        let rows = self.db.list_events_advanced(params).await?;
+        Ok(rows
+            .into_iter()
+            .map(Self::row_to_event)
+            .filter(|e| !e.is_unsupported())
+            .collect())
+    }
+
+    /// Per-type event count summary (for debug snapshot tooling).
+    pub async fn summary(&self, session_id: Uuid) -> Result<EventsSummaryRow> {
+        self.db
+            .events_summary(SessionId::from_uuid(session_id))
+            .await
     }
 
     /// Count events for a session, excluding specified types (for X-Total-Count header).

@@ -4,7 +4,7 @@
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
-use crate::domains::events::ListEvents;
+use crate::domains::events::{EventsSummaryCmd, EventsSummaryResult, ListEvents};
 use crate::storage::StorageBackend;
 use axum::{
     Json, Router,
@@ -43,7 +43,7 @@ use crate::domains::sessions::SessionService;
 use utoipa::{IntoParams, ToSchema};
 
 /// Query parameters for event listing
-#[derive(Debug, Deserialize, ToSchema, IntoParams)]
+#[derive(Debug, Default, Deserialize, ToSchema, IntoParams)]
 pub struct EventsQuery {
     /// Filter events with ID greater than this event ID (prefixed format: event_{32-hex})
     pub since_id: Option<EventId>,
@@ -64,6 +64,36 @@ pub struct EventsQuery {
     /// Cursor for backward pagination: only return events with sequence < this value.
     /// Used with `limit` to paginate backward through event history.
     pub before_sequence: Option<i32>,
+
+    // -------- Debugging extensions --------
+    /// Forward cursor: only return events with sequence > this value.
+    pub after_sequence: Option<i32>,
+    /// Anchor event id: returns up to `window` events on each side (default 50, max 500).
+    /// When set, other cursors are ignored.
+    pub around: Option<EventId>,
+    /// Window size for `around` (events on each side). Defaults to 50, max 500.
+    pub window: Option<i32>,
+    /// Lower bound on `created_at` (RFC 3339, e.g. `2025-05-07T00:00:00Z`).
+    pub from_ts: Option<chrono::DateTime<chrono::Utc>>,
+    /// Upper bound on `created_at`.
+    pub to_ts: Option<chrono::DateTime<chrono::Utc>>,
+    /// Filter by `context.turn_id` (prefixed id, e.g. `turn_...`).
+    pub turn_id: Option<String>,
+    /// Filter by `context.exec_id` (prefixed id, e.g. `exec_...`).
+    pub exec_id: Option<String>,
+    /// Filter by `context.trace_id`.
+    pub trace_id: Option<String>,
+    /// Tag any-match against `events.tags` (repeat key for multiple values).
+    #[serde(default)]
+    #[param(style = Form, explode = true)]
+    pub tags: Vec<String>,
+    /// Filter by `data.tool_name` — useful for narrowing `tool.*` events.
+    pub tool_name: Option<String>,
+    /// Full-text search (Postgres tsvector; substring fallback for in-memory mode).
+    pub q: Option<String>,
+    /// When true, return newest first; default oldest first.
+    #[serde(default)]
+    pub order_desc: bool,
 }
 
 impl EventsQuery {
@@ -162,6 +192,10 @@ pub fn routes(state: AppState) -> Router {
     Router::new()
         .route("/v1/sessions/{session_id}/sse", get(stream_sse))
         .route("/v1/sessions/{session_id}/events", get(list_events))
+        .route(
+            "/v1/sessions/{session_id}/events/summary",
+            get(events_summary),
+        )
         .with_state(state)
 }
 
@@ -705,6 +739,18 @@ pub async fn list_events(
         exclude: query.exclude,
         limit: query.limit,
         before_sequence: query.before_sequence,
+        after_sequence: query.after_sequence,
+        around: query.around,
+        window: query.window,
+        from_ts: query.from_ts,
+        to_ts: query.to_ts,
+        turn_id: query.turn_id,
+        exec_id: query.exec_id,
+        trace_id: query.trace_id,
+        tags: query.tags,
+        tool_name: query.tool_name,
+        q: query.q,
+        order_desc: query.order_desc,
     }
     .run(&state.ctx(&org))
     .await?;
@@ -722,6 +768,36 @@ pub async fn list_events(
 
     let body = Json(ListResponse { data: result.data });
     Ok((headers, body).into_response())
+}
+
+// ============================================
+// Events Summary (debug snapshot)
+// ============================================
+
+/// GET /v1/sessions/{session_id}/events/summary - one-shot debug summary
+#[utoipa::path(
+    get,
+    path = "/v1/sessions/{session_id}/events/summary",
+    params(
+        ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)"),
+    ),
+    responses(
+        (status = 200, description = "Per-type counts and time span for the session", body = EventsSummaryResult),
+        (status = 400, description = "Invalid session ID"),
+        (status = 404, description = "Session not found"),
+        (status = 500, description = "Internal server error")
+    ),
+    tag = "events"
+)]
+pub async fn events_summary(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(session_id): Path<String>,
+) -> Result<Json<EventsSummaryResult>, (StatusCode, Json<ErrorResponse>)> {
+    let result = EventsSummaryCmd { session_id }
+        .run(&state.ctx(&org))
+        .await?;
+    Ok(Json(result))
 }
 
 #[cfg(test)]
@@ -937,6 +1013,7 @@ mod tests {
             exclude: vec![],
             limit: None,
             before_sequence: None,
+            ..Default::default()
         };
         assert!(query.validate().is_ok());
     }
@@ -952,6 +1029,7 @@ mod tests {
             ],
             limit: None,
             before_sequence: None,
+            ..Default::default()
         };
         assert!(query.validate().is_ok());
     }
@@ -964,6 +1042,7 @@ mod tests {
             exclude: vec![],
             limit: None,
             before_sequence: None,
+            ..Default::default()
         };
         assert!(query.validate().is_ok());
     }
@@ -976,6 +1055,7 @@ mod tests {
             exclude: vec![],
             limit: None,
             before_sequence: None,
+            ..Default::default()
         };
         let err = query.validate().unwrap_err();
         assert_eq!(err.0, StatusCode::BAD_REQUEST);
@@ -991,6 +1071,7 @@ mod tests {
             exclude: vec!["not.a.real.type".to_string()],
             limit: None,
             before_sequence: None,
+            ..Default::default()
         };
         let err = query.validate().unwrap_err();
         assert_eq!(err.0, StatusCode::BAD_REQUEST);
@@ -1007,6 +1088,7 @@ mod tests {
             exclude: vec![],
             limit: None,
             before_sequence: None,
+            ..Default::default()
         };
         let err = query.validate().unwrap_err();
         assert_eq!(err.0, StatusCode::BAD_REQUEST);
@@ -1022,6 +1104,7 @@ mod tests {
             exclude,
             limit: None,
             before_sequence: None,
+            ..Default::default()
         };
         let err = query.validate().unwrap_err();
         assert_eq!(err.0, StatusCode::BAD_REQUEST);
@@ -1036,6 +1119,7 @@ mod tests {
             exclude: vec![],
             limit: None,
             before_sequence: None,
+            ..Default::default()
         };
         assert!(query.validate().is_ok());
     }

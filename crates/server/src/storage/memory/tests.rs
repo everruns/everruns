@@ -1085,6 +1085,86 @@ async fn test_list_events_default_cap_keeps_earliest_forward_window() {
 }
 
 #[tokio::test]
+async fn test_list_events_advanced_filters_by_turn_and_tool() {
+    use crate::storage::models::ListEventsParams;
+
+    let db = InMemoryDatabase::new();
+    let session_id = create_session_with_events(&db).await;
+
+    // Add a turn-tagged tool event we can target.
+    db.create_event(CreateEventRow {
+        session_id,
+        event_type: "tool.completed".to_string(),
+        ts: Utc::now(),
+        context: serde_json::json!({"turn_id": "turn_aaa"}),
+        data: serde_json::json!({"tool_name": "fetch"}),
+        metadata: None,
+        tags: Some(vec!["error".to_string()]),
+    })
+    .await
+    .unwrap();
+    db.create_event(CreateEventRow {
+        session_id,
+        event_type: "tool.completed".to_string(),
+        ts: Utc::now(),
+        context: serde_json::json!({"turn_id": "turn_bbb"}),
+        data: serde_json::json!({"tool_name": "search"}),
+        metadata: None,
+        tags: Some(vec!["ok".to_string()]),
+    })
+    .await
+    .unwrap();
+
+    let by_turn = db
+        .list_events_advanced(&ListEventsParams {
+            session_id,
+            turn_id: Some("turn_aaa".to_string()),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(by_turn.len(), 1);
+    assert_eq!(by_turn[0].event_type, "tool.completed");
+
+    let by_tool = db
+        .list_events_advanced(&ListEventsParams {
+            session_id,
+            tool_name: Some("search".to_string()),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(by_tool.len(), 1);
+
+    let by_tag = db
+        .list_events_advanced(&ListEventsParams {
+            session_id,
+            tags: vec!["error".to_string()],
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert_eq!(by_tag.len(), 1);
+}
+
+#[tokio::test]
+async fn test_events_summary_counts_by_type() {
+    let db = InMemoryDatabase::new();
+    let session_id = create_session_with_events(&db).await;
+
+    let summary = db.events_summary(session_id).await.unwrap();
+    assert_eq!(summary.total, 6);
+    let turn_started = summary
+        .by_type
+        .iter()
+        .find(|c| c.event_type == "turn.started")
+        .unwrap();
+    assert_eq!(turn_started.count, 1);
+    assert!(summary.first_ts.is_some());
+    assert!(summary.last_ts.is_some());
+}
+
+#[tokio::test]
 async fn test_list_events_with_limit() {
     let db = InMemoryDatabase::new();
     let session_id = create_session_with_events(&db).await;

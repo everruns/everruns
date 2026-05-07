@@ -1111,6 +1111,24 @@ impl StorageBackend {
         dispatch!(self, count_events, session_id, exclude_types)
     }
 
+    /// Advanced event listing for debugging.
+    /// Supports time range, context-id (turn/exec/trace), tags, tool name,
+    /// full-text search, around-id windowing, and direction.
+    pub async fn list_events_advanced(
+        &self,
+        params: &crate::storage::models::ListEventsParams,
+    ) -> Result<Vec<EventRow>> {
+        dispatch!(self, list_events_advanced, params)
+    }
+
+    /// One-shot debug summary: per-type counts + first/last timestamps.
+    pub async fn events_summary(
+        &self,
+        session_id: SessionId,
+    ) -> Result<crate::storage::models::EventsSummary> {
+        dispatch!(self, events_summary, session_id)
+    }
+
     /// Find the nearest turn.started sequence at or before the given sequence.
     pub async fn find_turn_boundary(
         &self,

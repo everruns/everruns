@@ -8,6 +8,54 @@ use everruns_core::message_filter::{MessageFilter, MessageQuery};
 use everruns_core::typed_id::{EventId, SessionId};
 use uuid::Uuid;
 
+/// Shared filter builder for `list_events_advanced` (and its `around_id` branch).
+/// Pushes type/time/context/tag/tool/search predicates onto the running query.
+fn push_common_filters(qb: &mut sqlx::QueryBuilder<'_, sqlx::Postgres>, params: &ListEventsParams) {
+    if !params.filter_types.is_empty() {
+        qb.push(" AND event_type = ANY(");
+        qb.push_bind(params.filter_types.clone());
+        qb.push(")");
+    }
+    if !params.exclude_types.is_empty() {
+        qb.push(" AND event_type <> ALL(");
+        qb.push_bind(params.exclude_types.clone());
+        qb.push(")");
+    }
+    if let Some(from) = params.from_ts {
+        qb.push(" AND created_at >= ");
+        qb.push_bind(from);
+    }
+    if let Some(to) = params.to_ts {
+        qb.push(" AND created_at <= ");
+        qb.push_bind(to);
+    }
+    if let Some(turn_id) = params.turn_id.as_deref() {
+        qb.push(" AND context->>'turn_id' = ");
+        qb.push_bind(turn_id.to_string());
+    }
+    if let Some(exec_id) = params.exec_id.as_deref() {
+        qb.push(" AND context->>'exec_id' = ");
+        qb.push_bind(exec_id.to_string());
+    }
+    if let Some(trace_id) = params.trace_id.as_deref() {
+        qb.push(" AND context->>'trace_id' = ");
+        qb.push_bind(trace_id.to_string());
+    }
+    if !params.tags.is_empty() {
+        qb.push(" AND tags && ");
+        qb.push_bind(params.tags.clone());
+    }
+    if let Some(tool_name) = params.tool_name.as_deref() {
+        qb.push(" AND data->>'tool_name' = ");
+        qb.push_bind(tool_name.to_string());
+    }
+    if let Some(q) = params.q.as_deref() {
+        qb.push(" AND search_vector @@ plainto_tsquery('english', ");
+        qb.push_bind(q.to_string());
+        qb.push(")");
+    }
+}
+
 impl Database {
     // ============================================
     // Events (source of truth for messages)
@@ -205,6 +253,119 @@ impl Database {
         };
 
         Ok(rows)
+    }
+
+    /// Advanced event listing for debugging.
+    ///
+    /// Supports time range, context-id filters (turn/exec/trace), tags, tool name,
+    /// full-text search, around-id windowing, and direction. Builds dynamic SQL
+    /// via `QueryBuilder` so filters are pushed to the database.
+    ///
+    /// Returns rows in `sequence ASC` order regardless of `order_desc` so
+    /// callers can rely on stable ordering; the service layer reverses if
+    /// the caller requested descending output.
+    pub async fn list_events_advanced(&self, params: &ListEventsParams) -> Result<Vec<EventRow>> {
+        // around_id: resolve to its sequence and return [seq-window, seq+window].
+        // Other cursors are ignored when around_id is set.
+        if let Some(anchor) = params.around_id {
+            const DEFAULT_WINDOW: i32 = 50;
+            const MAX_WINDOW: i32 = 500;
+            let window = params.window.unwrap_or(DEFAULT_WINDOW).clamp(1, MAX_WINDOW);
+            let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
+                "WITH anchor AS (SELECT sequence FROM events WHERE id = ",
+            );
+            qb.push_bind(anchor.uuid());
+            qb.push(") SELECT id, session_id, sequence, event_type, ts, context, data, metadata, tags, created_at FROM events WHERE session_id = ");
+            qb.push_bind(params.session_id.uuid());
+            qb.push(" AND sequence BETWEEN (SELECT sequence FROM anchor) - ");
+            qb.push_bind(window);
+            qb.push(" AND (SELECT sequence FROM anchor) + ");
+            qb.push_bind(window);
+            push_common_filters(&mut qb, params);
+            qb.push(" ORDER BY sequence ASC LIMIT ");
+            qb.push_bind((window as i64) * 2 + 1);
+            return Ok(qb
+                .build_query_as::<EventRow>()
+                .fetch_all(&self.pool)
+                .await?);
+        }
+
+        let mut qb = sqlx::QueryBuilder::<sqlx::Postgres>::new(
+            "SELECT id, session_id, sequence, event_type, ts, context, data, metadata, tags, created_at FROM events WHERE session_id = ",
+        );
+        qb.push_bind(params.session_id.uuid());
+
+        // since_id resolves to a sequence subquery (PK lookup).
+        if let Some(id) = params.since_id {
+            qb.push(" AND sequence > (SELECT sequence FROM events WHERE id = ");
+            qb.push_bind(id.uuid());
+            qb.push(")");
+        }
+        if let Some(seq) = params.after_sequence {
+            qb.push(" AND sequence > ");
+            qb.push_bind(seq);
+        }
+        if let Some(seq) = params.before_sequence {
+            qb.push(" AND sequence < ");
+            qb.push_bind(seq);
+        }
+
+        push_common_filters(&mut qb, params);
+
+        // Direction-aware ordering with safety-capped limit.
+        if params.order_desc {
+            qb.push(" ORDER BY sequence DESC LIMIT ");
+        } else {
+            qb.push(" ORDER BY sequence ASC LIMIT ");
+        }
+        let limit = params.limit.unwrap_or(1_000).clamp(1, 10_000);
+        qb.push_bind(limit as i64);
+
+        let mut rows = qb
+            .build_query_as::<EventRow>()
+            .fetch_all(&self.pool)
+            .await?;
+        if params.order_desc {
+            // Service layer expects ascending; flip back here.
+            rows.reverse();
+        }
+        Ok(rows)
+    }
+
+    /// One-shot debug summary: per-type counts + first/last timestamps.
+    pub async fn events_summary(&self, session_id: SessionId) -> Result<EventsSummary> {
+        type SummaryRow = (String, i64, Option<DateTime<Utc>>, Option<DateTime<Utc>>);
+        let rows: Vec<SummaryRow> = sqlx::query_as(
+            r#"
+                SELECT event_type, COUNT(*)::bigint, MIN(ts), MAX(ts)
+                FROM events
+                WHERE session_id = $1
+                GROUP BY event_type
+                ORDER BY event_type ASC
+                "#,
+        )
+        .bind(session_id.uuid())
+        .fetch_all(&self.pool)
+        .await?;
+
+        let mut summary = EventsSummary::default();
+        for (event_type, count, min_ts, max_ts) in rows {
+            summary.total += count;
+            if let Some(t) = min_ts {
+                summary.first_ts = Some(match summary.first_ts {
+                    Some(prev) if prev < t => prev,
+                    _ => t,
+                });
+            }
+            if let Some(t) = max_ts {
+                summary.last_ts = Some(match summary.last_ts {
+                    Some(prev) if prev > t => prev,
+                    _ => t,
+                });
+            }
+            summary.by_type.push(EventTypeCount { event_type, count });
+        }
+        Ok(summary)
     }
 
     /// Count events for a session using SELECT COUNT(*) — no row materialization.

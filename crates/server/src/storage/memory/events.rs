@@ -116,6 +116,170 @@ impl InMemoryDatabase {
         Ok(result)
     }
 
+    /// Advanced event listing for debugging (in-memory mirror of the PG path).
+    pub async fn list_events_advanced(&self, params: &ListEventsParams) -> Result<Vec<EventRow>> {
+        let events = self.events.read();
+
+        // Resolve around_id anchor if requested.
+        let anchor_seq = match params.around_id {
+            Some(id) => match events.get(&id).map(|e| e.sequence) {
+                Some(s) => Some(s),
+                None => return Ok(Vec::new()),
+            },
+            None => None,
+        };
+
+        // Resolve since_id to its sequence (matches PG semantics).
+        let since_id_seq = params
+            .since_id
+            .and_then(|id| events.get(&id).map(|e| e.sequence));
+
+        let q_lower: Option<String> = params.q.as_ref().map(|s| s.to_lowercase());
+
+        let event_matches = |e: &EventRow| -> bool {
+            if e.session_id != params.session_id {
+                return false;
+            }
+            if !params.filter_types.is_empty() && !params.filter_types.contains(&e.event_type) {
+                return false;
+            }
+            if !params.exclude_types.is_empty() && params.exclude_types.contains(&e.event_type) {
+                return false;
+            }
+            if let Some(from) = params.from_ts
+                && e.created_at < from
+            {
+                return false;
+            }
+            if let Some(to) = params.to_ts
+                && e.created_at > to
+            {
+                return false;
+            }
+            if let Some(turn_id) = params.turn_id.as_deref() {
+                let ctx_turn = e.context.get("turn_id").and_then(|v| v.as_str());
+                if ctx_turn != Some(turn_id) {
+                    return false;
+                }
+            }
+            if let Some(exec_id) = params.exec_id.as_deref() {
+                let ctx_exec = e.context.get("exec_id").and_then(|v| v.as_str());
+                if ctx_exec != Some(exec_id) {
+                    return false;
+                }
+            }
+            if let Some(trace_id) = params.trace_id.as_deref() {
+                let ctx_trace = e.context.get("trace_id").and_then(|v| v.as_str());
+                if ctx_trace != Some(trace_id) {
+                    return false;
+                }
+            }
+            if !params.tags.is_empty() {
+                let row_tags = e.tags.as_deref().unwrap_or(&[]);
+                if !params.tags.iter().any(|t| row_tags.contains(t)) {
+                    return false;
+                }
+            }
+            if let Some(tool_name) = params.tool_name.as_deref() {
+                let data_tool = e.data.get("tool_name").and_then(|v| v.as_str());
+                if data_tool != Some(tool_name) {
+                    return false;
+                }
+            }
+            if let Some(needle) = q_lower.as_deref() {
+                let haystack = serde_json::to_string(&e.data).unwrap_or_default();
+                if !haystack.to_lowercase().contains(needle) {
+                    return false;
+                }
+            }
+            true
+        };
+
+        let mut result: Vec<EventRow> = if let Some(seq) = anchor_seq {
+            const DEFAULT_WINDOW: i32 = 50;
+            const MAX_WINDOW: i32 = 500;
+            let window = params.window.unwrap_or(DEFAULT_WINDOW).clamp(1, MAX_WINDOW);
+            let lo = seq - window;
+            let hi = seq + window;
+            events
+                .values()
+                .filter(|e| e.sequence >= lo && e.sequence <= hi && event_matches(e))
+                .cloned()
+                .collect()
+        } else {
+            events
+                .values()
+                .filter(|e| {
+                    if let Some(seq) = since_id_seq
+                        && e.sequence <= seq
+                    {
+                        return false;
+                    }
+                    if let Some(seq) = params.after_sequence
+                        && e.sequence <= seq
+                    {
+                        return false;
+                    }
+                    if let Some(seq) = params.before_sequence
+                        && e.sequence >= seq
+                    {
+                        return false;
+                    }
+                    event_matches(e)
+                })
+                .cloned()
+                .collect()
+        };
+
+        result.sort_by_key(|e| e.sequence);
+
+        // Mirror PG: order_desc takes the last N then service flips. Easier here:
+        // when descending, take the top N highest sequences then return in asc order.
+        let limit = params.limit.unwrap_or(1_000).clamp(1, 10_000) as usize;
+        if anchor_seq.is_none() && result.len() > limit {
+            if params.order_desc {
+                result = result.split_off(result.len() - limit);
+            } else {
+                result.truncate(limit);
+            }
+        }
+        Ok(result)
+    }
+
+    /// One-shot debug summary: per-type counts + first/last timestamps.
+    pub async fn events_summary(&self, session_id: SessionId) -> Result<EventsSummary> {
+        use std::collections::BTreeMap;
+
+        let events = self.events.read();
+        let mut by_type: BTreeMap<String, i64> = BTreeMap::new();
+        let mut total = 0i64;
+        let mut first_ts: Option<chrono::DateTime<chrono::Utc>> = None;
+        let mut last_ts: Option<chrono::DateTime<chrono::Utc>> = None;
+
+        for e in events.values().filter(|e| e.session_id == session_id) {
+            total += 1;
+            *by_type.entry(e.event_type.clone()).or_insert(0) += 1;
+            first_ts = Some(match first_ts {
+                Some(prev) if prev < e.ts => prev,
+                _ => e.ts,
+            });
+            last_ts = Some(match last_ts {
+                Some(prev) if prev > e.ts => prev,
+                _ => e.ts,
+            });
+        }
+
+        Ok(EventsSummary {
+            total,
+            by_type: by_type
+                .into_iter()
+                .map(|(event_type, count)| EventTypeCount { event_type, count })
+                .collect(),
+            first_ts,
+            last_ts,
+        })
+    }
+
     /// Find the nearest turn.started sequence at or before the given sequence.
     pub async fn find_turn_boundary(
         &self,
