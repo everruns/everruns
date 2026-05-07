@@ -127,6 +127,11 @@ futures-util = "0.3"
 # Everruns SDK
 everruns-sdk = "0.1.8"
 
+# A2A protocol
+a2a = { package = "a2a-lf", version = "0.2" }
+a2a-client = { package = "a2a-client-lf", version = "0.1" }
+a2a-server = { package = "a2a-server-lf", version = "0.2" }
+
 # gRPC (tonic)
 tonic = { version = "0.14", features = ["tls-ring"] }
 tonic-prost = "0.14"

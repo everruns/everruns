@@ -77,6 +77,7 @@ pub use crate::capability_types::{
 // Capability Modules
 // ============================================================================
 
+mod a2a_delegation;
 mod a2ui;
 mod agent_instructions;
 pub mod attach_skill;
@@ -122,6 +123,10 @@ mod web_fetch;
 mod workspace_volumes;
 
 // Re-export capabilities
+pub use a2a_delegation::{
+    A2A_AGENT_DELEGATION_CAPABILITY_ID, A2aAgentDelegationCapability, CancelAgentTool,
+    GetAgentRunsTool, MessageAgentTool, SpawnAgentTool, WaitAgentTool,
+};
 pub use a2ui::{A2UI_CAPABILITY_ID, A2UiCapability};
 pub use agent_instructions::{
     AGENT_INSTRUCTIONS_CAPABILITY_ID, AGENTS_MD_PATH, AgentInstructionsCapability,
@@ -796,6 +801,7 @@ impl CapabilityRegistry {
 
         // Subagents (spawn child agent sessions, all environments)
         registry.register(SubagentCapability);
+        registry.register(A2aAgentDelegationCapability);
 
         // System commands (/clear, /status, /compact, /model)
         registry.register(SystemCommandsCapability);
@@ -1744,6 +1750,7 @@ mod tests {
             "prompt_caching",
             "skills",
             "subagents",
+            "a2a_agent_delegation",
             "system_commands",
             "openui",
             "a2ui",
