@@ -172,6 +172,34 @@ The UI also prevents setting reasoning on non-thinking models (checks `profile.r
 - `model`: Actual model used
 - `finish_reason`: Why generation stopped
 
+### Realtime Voice Driver
+
+Realtime voice does not use `LlmDriver::chat_completion_stream()` because a
+voice connection is a long-lived bidirectional provider session, not a bounded
+request/response generation. Voice support adds a separate Realtime provider
+adapter owned by the server voice domain. See [voice.md](voice.md).
+
+V1 adapter requirements:
+
+- OpenAI only, model `gpt-realtime-2`.
+- Mint client secrets through `/v1/realtime/client_secrets` or proxy SDP through
+  `/v1/realtime/calls`.
+- Prefer WebRTC proxy bootstrap for browser voice so the server can capture the
+  provider call ID and open a sideband control channel.
+- Set `OpenAI-Safety-Identifier` on the trusted server request that creates the
+  provider realtime session.
+- Open a sideband WebSocket when a provider call ID is known.
+- Convert effective Everruns capabilities into provider tool definitions and
+  execute tool calls through the normal server-side capability path.
+- Map provider transcript and lifecycle events into Everruns `voice.*`,
+  `input.message`, `output.message.*`, and `tool.*` events.
+- Never log or persist standard API keys, client secrets, raw SDP, or raw audio.
+
+`gpt-realtime-2` model profiles should mark the model as a realtime reasoning
+voice model with configurable reasoning efforts (`minimal`, `low`, `medium`,
+`high`, `xhigh`). It should not appear in normal text chat model pickers unless
+the UI is explicitly rendering a voice-capable picker.
+
 ## Error Handling Flow
 
 ```mermaid

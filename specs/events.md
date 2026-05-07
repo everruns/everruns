@@ -420,6 +420,100 @@ output.message.delta  output.message.delta  ← UI shows streaming text (batched
 └──────────────────────────┘
 ```
 
+### Voice Events
+
+Voice events track an active Realtime API connection attached to the session.
+They supplement, but do not replace, canonical `input.message` and
+`output.message.completed` transcript persistence. See [voice.md](voice.md).
+
+#### `voice.session.started`
+
+Emitted after the backend creates a Voice Connection and starts provider
+bootstrap.
+
+```json
+{
+  "id": "...",
+  "type": "voice.session.started",
+  "ts": "2026-05-07T20:15:00.000Z",
+  "session_id": "...",
+  "context": {},
+  "data": {
+    "voice_connection_id": "voice_conn_01933b5a00007000800000000000001",
+    "model": "gpt-realtime-2",
+    "voice": "marin",
+    "reasoning_effort": "low",
+    "transport": "webrtc_proxy"
+  }
+}
+```
+
+#### `voice.input_transcript.delta`
+
+Streaming transcript text for user speech before the user utterance is
+committed. Clients may render it as provisional text and discard it when the
+corresponding completed event arrives.
+
+```json
+{
+  "id": "...",
+  "type": "voice.input_transcript.delta",
+  "ts": "2026-05-07T20:15:01.000Z",
+  "session_id": "...",
+  "context": {},
+  "data": {
+    "voice_connection_id": "voice_conn_...",
+    "item_id": "provider_item_id",
+    "delta": "check order",
+    "accumulated": "check order"
+  }
+}
+```
+
+#### `voice.input_transcript.completed`
+
+Final transcript text for a user utterance. The server also emits a canonical
+`input.message` with the same text and `metadata.source = "voice"`.
+
+#### `voice.output_transcript.delta`
+
+Streaming assistant transcript text for spoken output. `phase` is optional and
+may be `commentary` or `final_answer` when the provider exposes response
+phases.
+
+```json
+{
+  "id": "...",
+  "type": "voice.output_transcript.delta",
+  "ts": "2026-05-07T20:15:02.000Z",
+  "session_id": "...",
+  "context": {},
+  "data": {
+    "voice_connection_id": "voice_conn_...",
+    "response_id": "provider_response_id",
+    "phase": "commentary",
+    "delta": "I'll check that now.",
+    "accumulated": "I'll check that now."
+  }
+}
+```
+
+#### `voice.output_transcript.completed`
+
+Final transcript text for assistant speech. The server emits canonical
+`output.message.completed` only for provider output that belongs to the final
+answer phase.
+
+#### `voice.session.ended`
+
+Emitted when the browser, provider, or server closes the Voice Connection.
+
+#### `voice.session.failed`
+
+Emitted when provider bootstrap, client-secret minting, sideband connection, or
+voice event handling fails. Failure events must not include raw provider secrets,
+raw SDP, or unsanitized provider payloads.
+
 ### Turn Lifecycle Events
 
 Turn events track the lifecycle of a single turn in the conversation.

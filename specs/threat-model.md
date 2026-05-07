@@ -24,6 +24,7 @@ Format: `TM-<CATEGORY>-<NNN>`
 | TM-OBS | Observability | Data leakage via traces/logs |
 | TM-WEB | Web Security | XSS, CSRF, CORS misconfiguration |
 | TM-AGENT | AI Agent | Prompt injection, jailbreak, capability abuse, cost runaway |
+| TM-VOICE | Voice Sessions | Microphone capture, Realtime client secrets, sideband tool control |
 | TM-BASH | Bash Sandbox | Bashkit sandbox escape, resource exhaustion, VFS boundary |
 | TM-DOS | Denial of Service | Resource exhaustion, large payloads |
 | TM-CLIENT | Client-Side Tools | Tool ID spoofing, timeout abuse |
@@ -800,7 +801,22 @@ agent, agent identity, user, or organization and checks capability allowlist, ho
 preference, and per-request maximum before creating any rail-specific signature. Every attempt is
 persisted with status, amount, target URL, and receipt/error.
 
-## 14. Bash Sandbox (TM-BASH)
+## 14. Voice Sessions (TM-VOICE)
+
+Voice Sessions add browser microphone capture and provider realtime sessions.
+See [voice.md](voice.md) for the feature contract.
+
+| ID | Threat | Severity | Mitigation | Status |
+|----|--------|----------|------------|--------|
+| TM-VOICE-001 | Standard OpenAI API key exposed to browser | Critical | Voice endpoints mint short-lived client secrets or proxy SDP server-side; standard provider API keys never leave the backend | MITIGATED |
+| TM-VOICE-002 | Browser-supplied safety identifier impersonates another user | Medium | Server derives and sets `OpenAI-Safety-Identifier`; browser values are ignored | MITIGATED |
+| TM-VOICE-003 | Sideband tool execution bypasses Everruns authorization | Critical | Sideband tool calls execute through the normal capability path using the session owner's caller context, permission resolver, audit logging, and org scoping | MITIGATED |
+| TM-VOICE-004 | Raw audio retained without consent | High | V1 stores transcript text only; raw user/model audio, SDP bodies, and raw provider events are not persisted | MITIGATED |
+| TM-VOICE-005 | Sensitive spoken content leaks through transcripts/logs | High | Voice transcripts are treated as normal chat messages for retention/export/observability; logs must not include raw SDP, client secrets, or unsanitized sideband payloads | OPEN |
+| TM-VOICE-006 | Voice model performs write action after mishearing exact identifiers | High | Voice prompts require clarification for unclear audio and confirmation for high-precision identifiers and write/dangerous actions before tool calls | MITIGATED |
+| TM-VOICE-007 | Long-running voice session causes cost runaway | Medium | Voice Connections are leased session resources with expiry, explicit end endpoint, cleanup, and future budget enforcement using usage metadata | OPEN |
+
+## 15. Bash Sandbox (TM-BASH)
 
 Everruns uses [bashkit](https://github.com/everruns/bashkit) (v0.2.1) as a sandboxed bash interpreter for the `virtual_bash` capability. Bashkit provides WASM-like isolation: no real filesystem, no network, no system calls. The session file store is bridged via the `SessionFileSystemAdapter`.
 
@@ -876,7 +892,7 @@ When a bash script calls `bash` or `sh` or uses `eval`, bashkit re-invokes its o
 | Privilege escalation | Blocked (no sudo/su) |
 | Resource exhaustion | Limited (commands, loops, depth, timeout) |
 
-## 15. Denial of Service (TM-DOS)
+## 16. Denial of Service (TM-DOS)
 
 | ID | Threat | Severity | Mitigation | Status |
 |----|--------|----------|------------|--------|
@@ -903,7 +919,7 @@ Valkey (Redis-compatible) is used for distributed rate limiting. In local/dev co
 **TM-DOS-010 — Fail-Open Rate Limiting (ACCEPTED):**
 By design, Valkey errors cause rate limiting to fail open (allow requests). This prioritizes availability over strictness. The blast radius is limited to auth endpoints (login/register/refresh) and only matters if Valkey is persistently down.
 
-## 16. Daytona Cloud Sandbox (TM-DAYTONA)
+## 17. Daytona Cloud Sandbox (TM-DAYTONA)
 
 Daytona sandboxes are remote Linux environments managed via REST API. The agent can create, exec commands, and manage files in these sandboxes. The `daytona_git_credentials` tool writes a GitHub token to disk inside the sandbox to enable git push/pull/fetch operations.
 
@@ -943,7 +959,7 @@ before the Daytona API call, and persisted sandbox state is still scoped by sess
 ```
 
 
-## 16A. Deno Sandbox (TM-DENO)
+## 17A. Deno Sandbox (TM-DENO)
 
 Deno sandboxes are remote Linux microVMs managed over a websocket + REST control plane. Everruns creates sandboxes with a fixed timeout, reconnects for each tool call, and deletes them via leased-resource cleanup.
 
@@ -955,7 +971,7 @@ Deno sandboxes are remote Linux microVMs managed over a websocket + REST control
 | TM-API-015 | Lease metadata exposure | Medium | Deno lease metadata stores only non-secret routing/debug fields (`region`, optional `org`, workspace path, timestamps); tokens still resolve from connections/env at cleanup time | MITIGATED |
 | TM-DENO-004 | Network probing from remote sandbox | High | Capability is Admin-gated; residual exposure depends on operator egress controls | **ACCEPTED** |
 
-## 16B. Cursor Cloud Agents (TM-CURSOR)
+## 17B. Cursor Cloud Agents (TM-CURSOR)
 
 Cursor Cloud Agents are third-party asynchronous coding agents that clone GitHub repositories, run commands in Cursor-managed remote environments, push branches, and may create PRs. Everruns calls Cursor's REST API with a user or operator-provided Cursor Cloud Agents API key.
 
@@ -969,7 +985,7 @@ Cursor Cloud Agents are third-party asynchronous coding agents that clone GitHub
 | TM-CURSOR-006 | Large prompt or identifier payload causes API/resource abuse | Medium | Tool-side length validation bounds prompt, agent id, ref, model, and branch fields before outbound requests. | MITIGATED |
 | TM-CURSOR-007 | Repository enumeration and rate-limit abuse | Low | `cursor_list_repositories` is read-only but documented as heavily rate-limited; seed prompt instructs agents to prefer explicit repository URLs and use the endpoint sparingly. | MITIGATED |
 
-## 17. E2B Cloud Sandbox (TM-E2B)
+## 18. E2B Cloud Sandbox (TM-E2B)
 
 E2B sandboxes are remote Linux environments managed through the E2B Management API plus per-sandbox envd runtime endpoints. Everruns uses a platform-owned `E2B_API_KEY` from environment or session secret override, and stores per-sandbox envd access tokens in session-scoped secrets.
 
@@ -992,7 +1008,7 @@ Session A cannot access sb_xyz because tool-side ownership checks reject non-own
 before the E2B API call, and storage lookups remain scoped by session_id.
 ```
 
-## 18. Client-Side Tools (TM-CLIENT)
+## 19. Client-Side Tools (TM-CLIENT)
 
 Client-side tools pause server execution and wait for client to submit results via API. Attack surface includes tool call ID spoofing and timeout abuse.
 
@@ -1002,7 +1018,7 @@ Client-side tools pause server execution and wait for client to submit results v
 | TM-CLIENT-002 | Tool result size explosion | Medium | Per-result size capped at 100 KB | MITIGATED |
 | TM-CLIENT-003 | Client timeout abuse | Low | Default 5 min timeout; session transitions to failed state on expiry | MITIGATED |
 
-## 19. Brave Search (TM-LLM)
+## 20. Brave Search (TM-LLM)
 
 Search results from Brave Search are returned as tool results. Adversarial content in search results could influence LLM behavior.
 
@@ -1011,7 +1027,7 @@ Search results from Brave Search are returned as tool results. Adversarial conte
 | TM-LLM-008 | Search result prompt injection | Medium | Results returned as `tool_result` role; inherent LLM limitation (same as TM-TOOL-005) | **ACCEPTED** |
 | TM-LLM-009 | Search query privacy | Low | Queries sent to Brave Search (third party); caller responsibility to assess data classification | **CALLER RISK** |
 
-## 20. Container Sandbox (TM-SANDBOX)
+## 21. Container Sandbox (TM-SANDBOX)
 
 Self-hosted container sandboxes via Docker Engine REST API. Agents create, exec, and manage containers per-session. Containers run on the same infrastructure as the server/worker, unlike cloud sandboxes (Daytona, E2B, Deno) which run on third-party infrastructure.
 
@@ -1052,7 +1068,7 @@ Session A cannot access Session B's container:
 5. Egress filtering: block private IPs + cloud metadata from sandbox bridges
 6. Runtime isolation: configurable (sysbox adds user-ns + procfs virtualization)
 
-## 21. A2A Channel (TM-A2A)
+## 22. A2A Channel (TM-A2A)
 
 App-scoped Agent2Agent (A2A) protocol ingress. JSON-RPC 2.0 endpoint authenticated by a per-channel API key. Mitigations live in `crates/server/src/api/app_a2a.rs` and `crates/server/src/domains/apps/commands.rs`. See `specs/a2a-channel.md`.
 

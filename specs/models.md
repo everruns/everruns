@@ -85,6 +85,21 @@ Key design points:
 - System messages handled internally, not persisted.
 - `ContentPart` variants: `text`, `image`, `image_file`, `tool_call`, `tool_result`. Users can only send `text`, `image`, `image_file` via API.
 - `metadata.locale` and `metadata.timezone` are reserved for one-turn execution-context overrides. See `specs/localization.md`.
+- Voice transcripts are stored as normal text content with `metadata.source = "voice"`. Raw audio is not a `ContentPart` in V1.
+
+### Voice Connection
+
+Short-lived provider realtime state attached to a durable Everruns session.
+
+See [voice.md](voice.md) for full lifecycle, endpoint, and sideband design.
+
+Key design points:
+- `VoiceConnection` is a session resource and leased resource, not a top-level conversation.
+- The external ID prefix is `voice_conn`.
+- V1 supports OpenAI `gpt-realtime-2` through WebRTC.
+- Provider API keys stay server-side. Browser clients receive either an SDP answer from the Everruns proxy or a provider client secret minted by the server.
+- Provider call IDs and sideband sockets are implementation state. They must not become durable conversation references.
+- Transcript text is persisted through `input.message` and `output.message.completed`; raw audio is not stored.
 
 ### User Profile
 

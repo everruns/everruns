@@ -44,6 +44,7 @@ rather than duplicate.
 | Subagents                    | `spawn_subagent` tool                 | `subagent`        | Child session public ID    |
 | Background tool runs         | `spawn_background` tool              | `background_run`  | Generated background run ID |
 | Sprites                      | `LeasedResourceStore.upsert_resource` | `sprite`          | Leased resource public ID  |
+| Voice Connections            | Voice bootstrap endpoints             | `voice_connection` | Voice connection public ID |
 | *(future)*                   | Direct `registry.register()`          | *(any string)*    | Caller-defined             |
 
 ### Storage

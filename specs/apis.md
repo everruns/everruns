@@ -221,6 +221,27 @@ Messages store all conversation content (user, agent, tool calls, tool results).
 
 `CreateMessageRequest.controls.hints` allows per-message client hint overrides. These are shallow-merged with session-level hints (message wins per key). See the Client Hints section under Create Session.
 
+### Voice
+
+Voice endpoints create short-lived Realtime API connections for an existing
+Everruns session, an agent-backed new session, or the singleton Platform Chat
+session. The durable Everruns session remains the source of truth; provider
+realtime state is ephemeral. See [voice.md](voice.md).
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/v1/sessions/{session_id}/voice/client-secret` | Create a Voice Connection and mint a browser-safe Realtime client secret |
+| POST | `/v1/sessions/{session_id}/voice/calls` | Proxy browser SDP to the Realtime API and return the SDP answer |
+| POST | `/v1/sessions/{session_id}/voice/{voice_connection_id}/attach` | Attach a provider call ID after client-secret bootstrap |
+| POST | `/v1/sessions/{session_id}/voice/{voice_connection_id}/end` | End a Voice Connection |
+| POST | `/v1/agents/{agent_id}/voice/sessions` | Create an agent session and bootstrap voice |
+| POST | `/v1/sessions/chat/voice` | Get or create Platform Chat and bootstrap voice |
+
+Voice endpoints are gated by the `voice` feature flag. V1 supports OpenAI
+`gpt-realtime-2` with WebRTC. Standard provider API keys stay server-side;
+browser clients receive either an SDP answer from the Everruns proxy or a
+short-lived provider client secret.
+
 ### Images
 
 Org-scoped image storage for message attachments. Images are stored with optional session metadata.
