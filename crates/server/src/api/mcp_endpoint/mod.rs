@@ -16,6 +16,7 @@
 // - No MCP session state — stateless request/response per JSON-RPC call
 // - Multi-org: all tools accept optional `organization_id` to override the default org
 
+mod cards;
 mod tool_registry;
 
 use crate::auth::AuthMethod;
@@ -667,6 +668,34 @@ async fn handle_tools_call(
         );
     };
 
+    // Card tools return an MCP content array directly (resource + summary
+    // text) and skip the JSON-string wrapping path used by other tools.
+    // See specs/mcp-cards.md.
+    if tool_name == "agent_get_card" {
+        let card_result = tokio::time::timeout(
+            std::time::Duration::from_millis(tool_def.timeout_ms()),
+            async {
+                match resolve_org_override(&arguments, auth_user, org, state).await {
+                    Ok(org) => tool_agent_get_card(&arguments, &org, state).await,
+                    Err(e) => Err(e),
+                }
+            },
+        )
+        .await
+        .unwrap_or_else(|_| Err(format!("Tool timed out after {}ms", tool_def.timeout_ms())));
+
+        return match card_result {
+            Ok(content_array) => JsonRpcResponse::success(id, json!({ "content": content_array })),
+            Err(msg) => JsonRpcResponse::success(
+                id,
+                json!({
+                    "content": [{ "type": "text", "text": msg }],
+                    "isError": true
+                }),
+            ),
+        };
+    }
+
     let result = tokio::time::timeout(
         std::time::Duration::from_millis(tool_def.timeout_ms()),
         async {
@@ -1157,6 +1186,45 @@ async fn tool_session_get_status(
     });
     link_builder(state).decorate_value_links(&mut result);
     pretty_json(&result)
+}
+
+// ============================================================================
+// Tier 1: agent_get_card — MCP-Apps card resource for an agent
+// See specs/mcp-cards.md for the card standard.
+// ============================================================================
+
+async fn tool_agent_get_card(
+    args: &Value,
+    org: &ResolvedOrg,
+    state: &AppState,
+) -> Result<Value, String> {
+    let agent_ref = args
+        .get("agent_id")
+        .and_then(|v| v.as_str())
+        .ok_or("Missing required parameter: agent_id")?;
+
+    let ctx = mcp_ctx(org, state);
+    let agent = crate::domains::agents::GetAgent {
+        id: agent_ref.to_string(),
+    }
+    .run(&ctx)
+    .await
+    .map_err(|e| resource_error("agent", e))?;
+
+    // Cumulative session count for this agent in the resolved org. We
+    // intentionally hit the storage layer directly here instead of going
+    // through a list-and-count: callers asking for a card don't need the
+    // list payload, and `count_sessions_for_agent` is a single COUNT query.
+    let session_count = state
+        .db
+        .count_sessions_for_agent(org.org_id, agent.public_id)
+        .await
+        .map_err(|e| format!("Failed to count sessions: {e}"))?;
+
+    let stats = cards::AgentCardStats { session_count };
+    let card = cards::agent_card(&agent, stats);
+    let summary = cards::agent_card_summary(&agent, stats);
+    cards::card_tool_content(&card, &summary)
 }
 
 // ============================================================================
