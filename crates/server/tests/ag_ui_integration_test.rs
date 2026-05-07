@@ -172,10 +172,8 @@ async fn upload_ag_ui_image(
     ]);
     body.extend_from_slice(b"\r\n");
     body.extend_from_slice(format!("--{boundary}--\r\n", boundary = boundary).as_bytes());
-    let mut request_headers = vec![(
-        "content-type",
-        "multipart/form-data; boundary=agui-test-boundary",
-    )];
+    let content_type_header = format!("multipart/form-data; boundary={boundary}");
+    let mut request_headers = vec![("content-type", content_type_header.as_str())];
     request_headers.extend(headers);
 
     server
