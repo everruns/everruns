@@ -2429,6 +2429,10 @@ impl StorageBackend {
         dispatch!(self, get_eval_organization_id, public_id)
     }
 
+    pub async fn get_volume_organization_id(&self, public_id: &str) -> Result<Option<i64>> {
+        dispatch!(self, get_volume_organization_id, public_id)
+    }
+
     pub async fn upsert_leased_resource(
         &self,
         input: UpsertLeasedResourceRow,

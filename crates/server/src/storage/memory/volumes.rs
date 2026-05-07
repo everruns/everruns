@@ -63,6 +63,15 @@ impl InMemoryDatabase {
             .cloned())
     }
 
+    pub async fn get_volume_organization_id(&self, public_id: &str) -> Result<Option<i64>> {
+        Ok(self
+            .volumes
+            .read()
+            .values()
+            .find(|volume| volume.public_id == public_id && volume.status != "deleted")
+            .map(|volume| volume.org_id))
+    }
+
     pub async fn list_volumes(
         &self,
         org_id: i64,

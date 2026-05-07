@@ -178,6 +178,13 @@ inventory::submit! {
     }
 }
 
+inventory::submit! {
+    ResourceOrgResolver {
+        prefix: "vol",
+        resolve: |db, id| Box::pin(async move { db.get_volume_organization_id(id).await }),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -197,8 +204,8 @@ mod tests {
         // Guard against a missing `inventory::submit!` silently passing CI.
         // Must stay in sync with the registrations above.
         assert!(
-            seen.len() >= 8,
-            "expected at least 8 resolvers, found {}",
+            seen.len() >= 9,
+            "expected at least 9 resolvers, found {}",
             seen.len()
         );
     }
