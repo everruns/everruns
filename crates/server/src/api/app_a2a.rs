@@ -698,6 +698,7 @@ async fn handle_message_stream(
 
     let session_id_uuid = result.session_id.uuid();
     let context_id = result.session_id.to_string();
+    let task_id = context_id.clone();
 
     let subscription = match subscription_slot.lock().await.take() {
         Some(sub) => sub,
