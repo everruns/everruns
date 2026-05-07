@@ -11,6 +11,8 @@ const MAX_EVENT_TYPE_FILTER_SIZE: usize = 40;
 const MAX_EVENT_LIMIT: i32 = 1000;
 const MAX_TAGS_FILTER_SIZE: usize = 20;
 const MAX_AROUND_WINDOW: i32 = 500;
+const MAX_Q_BYTES: usize = 4096;
+const MAX_Q_TOKENS: usize = 64;
 
 #[derive(Debug, Serialize)]
 pub struct ListEventsResult {
@@ -32,6 +34,25 @@ fn validate_event_type_list(types: &[String], param_name: &str) -> Result<(), Co
                 "{param_name}: unknown event type '{event_type}'"
             )));
         }
+    }
+    Ok(())
+}
+
+fn validate_q_filter(q: Option<&str>) -> Result<(), CommandError> {
+    let Some(q) = q else {
+        return Ok(());
+    };
+    if q.len() > MAX_Q_BYTES {
+        return Err(CommandError::bad_request(format!(
+            "q: too long ({} bytes, max {MAX_Q_BYTES})",
+            q.len()
+        )));
+    }
+    let token_count = q.split_whitespace().count();
+    if token_count > MAX_Q_TOKENS {
+        return Err(CommandError::bad_request(format!(
+            "q: too many tokens ({token_count}, max {MAX_Q_TOKENS})"
+        )));
     }
     Ok(())
 }
@@ -117,6 +138,7 @@ impl Command for ListEvents {
     async fn execute(self, ctx: &Ctx) -> Result<ListEventsResult, CommandError> {
         validate_event_type_list(&self.types, "types")?;
         validate_event_type_list(&self.exclude, "exclude")?;
+        validate_q_filter(self.q.as_deref())?;
 
         if self.tags.len() > MAX_TAGS_FILTER_SIZE {
             return Err(CommandError::bad_request(format!(
@@ -406,3 +428,31 @@ impl Command for StreamSse {
 }
 
 inventory::submit! { CommandDescriptor::of::<StreamSse>() }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn q_filter_rejects_long_input() {
+        let q = "a".repeat(MAX_Q_BYTES + 1);
+        let err = validate_q_filter(Some(&q)).expect_err("long q should fail");
+        assert!(err.to_string().contains("q: too long"));
+    }
+
+    #[test]
+    fn q_filter_rejects_too_many_tokens() {
+        let q = (0..=MAX_Q_TOKENS)
+            .map(|_| "token")
+            .collect::<Vec<_>>()
+            .join(" ");
+        let err = validate_q_filter(Some(&q)).expect_err("too many tokens should fail");
+        assert!(err.to_string().contains("q: too many tokens"));
+    }
+
+    #[test]
+    fn q_filter_accepts_bounded_input() {
+        let q = "tool failed retry";
+        validate_q_filter(Some(q)).expect("bounded q should pass");
+    }
+}
