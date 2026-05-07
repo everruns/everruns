@@ -407,7 +407,7 @@ impl ServerPaymentAuthority {
         payment_header: Option<(&str, &str)>,
     ) -> Result<PaidHttpResponse> {
         let client = reqwest::Client::builder()
-            // THREAT[TM-TOOL-?]: Paid endpoints may redirect to disallowed/internal hosts.
+            // THREAT[TM-AGENT-023]: Paid endpoints may redirect to disallowed/internal hosts.
             // Mitigation: never follow redirects for machine payments; policy checks apply
             // only to the original validated URL.
             .redirect(reqwest::redirect::Policy::none())
