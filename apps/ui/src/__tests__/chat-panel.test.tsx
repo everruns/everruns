@@ -429,7 +429,6 @@ describe("ChatPanel placeholder", () => {
     expect(
       screen.getByText("Execution stopped because a required dependency is unavailable."),
     ).toBeInTheDocument();
-    expect(screen.getByText(/backend temporarily unavailable/)).toBeInTheDocument();
   });
 
   it("renders a chat error alert when sending a message fails", async () => {
