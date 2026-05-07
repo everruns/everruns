@@ -10,6 +10,10 @@ const HOMEPAGE_DISCOVERY_LINKS = [
 // Decision: proxy only enforces cookie presence for protected app routes.
 // AuthProvider remains the source of truth for config bootstrap, user loading,
 // token refresh, and auth-unavailable fallback UI.
+function authDisabled(): boolean {
+  return process.env.AUTH_MODE === "none";
+}
+
 export function proxy(request: NextRequest) {
   if (request.nextUrl.pathname === "/") {
     const response = NextResponse.next();
@@ -17,7 +21,7 @@ export function proxy(request: NextRequest) {
     return response;
   }
 
-  if (request.cookies.has("access_token")) {
+  if (authDisabled() || request.cookies.has("access_token")) {
     return NextResponse.next();
   }
 
