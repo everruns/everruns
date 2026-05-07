@@ -34,6 +34,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -105,6 +106,7 @@ import {
   getSessionStrategyDisplayName,
   getSlackReplyModeDisplayName,
 } from "@/lib/app-channels";
+import { cn } from "@/lib/utils";
 
 type ChannelConfigInput =
   | SlackChannelConfig
@@ -112,6 +114,116 @@ type ChannelConfigInput =
   | ScheduleChannelConfig
   | WebhookChannelConfig
   | A2aChannelConfig;
+
+type ChannelSummary = {
+  target: string;
+  group: string;
+  health: string;
+  healthVariant: "default" | "secondary" | "destructive" | "outline";
+};
+
+function getChannelSummary(channel: AppChannel, isPublished: boolean): ChannelSummary {
+  const publishedPrefix = isPublished ? "" : "Draft: ";
+
+  switch (channel.channel_type) {
+    case "slack": {
+      const config = channel.channel_config as SlackChannelConfig;
+      const hasCredentials = !!config?.signing_secret && !!config?.bot_token;
+      const target = config?.channel_id ?? config?.team_id ?? "Workspace events";
+      if (!hasCredentials) {
+        return {
+          target,
+          group: "Client surfaces",
+          health: "Needs credentials",
+          healthVariant: "secondary",
+        };
+      }
+      if (!config?.webhook_verified_at) {
+        return {
+          target,
+          group: "Client surfaces",
+          health: `${publishedPrefix}Needs webhook`,
+          healthVariant: "secondary",
+        };
+      }
+      if (!config?.first_message_received_at) {
+        return {
+          target,
+          group: "Client surfaces",
+          health: "Awaiting test",
+          healthVariant: "outline",
+        };
+      }
+      return {
+        target,
+        group: "Client surfaces",
+        health: "Ready",
+        healthVariant: "default",
+      };
+    }
+    case "ag_ui": {
+      const config = channel.channel_config as AgUiChannelConfig;
+      return {
+        target: config?.token ? "Token-protected endpoint" : "Public client endpoint",
+        group: "Client surfaces",
+        health: isPublished ? "Ready" : "Draft",
+        healthVariant: isPublished ? "default" : "secondary",
+      };
+    }
+    case "schedule": {
+      const config = channel.channel_config as ScheduleChannelConfig;
+      const configured = !!config?.cron_expression && !!config?.message;
+      return {
+        target: config?.cron_expression
+          ? `${config.cron_expression} (${config.timezone ?? "UTC"})`
+          : "Cron trigger",
+        group: "Automation",
+        health: configured ? (isPublished ? "Active" : "Draft") : "Incomplete",
+        healthVariant: configured && isPublished ? "default" : "secondary",
+      };
+    }
+    case "webhook": {
+      const config = channel.channel_config as WebhookChannelConfig;
+      const configured = !!config?.token && !!config?.message;
+      return {
+        target: "Authenticated HTTP endpoint",
+        group: "Programmatic ingress",
+        health: configured ? (isPublished ? "Ready" : "Draft") : "Incomplete",
+        healthVariant: configured && isPublished ? "default" : "secondary",
+      };
+    }
+    case "a2a": {
+      const config = channel.channel_config as A2aChannelConfig;
+      const configured = !!config?.api_key_hash && !!config?.message;
+      return {
+        target: config?.agent_card_name || "Agent endpoint",
+        group: "Programmatic ingress",
+        health: configured ? (isPublished ? "Ready" : "Draft") : "Incomplete",
+        healthVariant: configured && isPublished ? "default" : "secondary",
+      };
+    }
+  }
+}
+
+function ChannelFact({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-sm font-medium">{label}</p>
+      <p className="text-sm text-muted-foreground">{value}</p>
+    </div>
+  );
+}
+
+function ChannelMessagePreview({ message }: { message: string }) {
+  return (
+    <div>
+      <p className="text-sm font-medium">Invocation message</p>
+      <div className="mt-2 rounded-md border p-3 text-sm text-muted-foreground">
+        <code className="whitespace-pre-wrap break-words">{message || "Not set"}</code>
+      </div>
+    </div>
+  );
+}
 
 export default function AppDetailPage({ params }: { params: Promise<{ appId: string }> }) {
   const { appId } = use(params);
@@ -131,6 +243,8 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
 
   const [editingBasic, setEditingBasic] = useState(false);
   const [editingChannelId, setEditingChannelId] = useState<string | null>(null);
+  const [selectedChannelId, setSelectedChannelId] = useState<string | null>(null);
+  const [channelDetailTab, setChannelDetailTab] = useState("overview");
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showAddChannel, setShowAddChannel] = useState(false);
   const [editingChannelType, setEditingChannelType] = useState<ChannelType>("slack");
@@ -281,12 +395,6 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
   const isReadOnly = isReadOnlyStatus(app?.status);
   const canDangerousDelete = canPolicies("app.dangerous");
 
-  // Find first Slack channel for backward-compat checks
-  const slackChannel = app?.channels?.find(
-    (ch: AppChannel) => ch.channel_type === "slack" && ch.enabled,
-  );
-  const slackConfig = slackChannel?.channel_config as SlackChannelConfig | undefined;
-  const hasSlackConfig = slackConfig?.signing_secret && slackConfig?.bot_token;
   const canPublishApp =
     app?.channels?.some((channel) => {
       if (!channel.enabled) {
@@ -1204,6 +1312,244 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
     );
   };
 
+  const renderChannelOverview = (channel: AppChannel) => {
+    const summary = getChannelSummary(channel, isPublished);
+
+    if (channel.channel_type === "ag_ui") {
+      const config = channel.channel_config as AgUiChannelConfig;
+      return (
+        <div className="grid gap-4 md:grid-cols-2">
+          <ChannelFact label="Access" value={config?.token ? "Token protected" : "No token"} />
+          <ChannelFact
+            label="Thread expiration"
+            value={`${(config?.session_expiration_seconds ?? DEFAULT_AG_UI_SESSION_EXPIRATION_SECONDS) / 3600}h`}
+          />
+          <ChannelFact
+            label="Rate limit"
+            value={
+              config?.rate_limit_per_minute
+                ? `${config.rate_limit_per_minute}/minute/IP`
+                : "Global limit only"
+            }
+          />
+          <ChannelFact
+            label="Tool activity"
+            value={getAgUiToolVisibilityDisplayName(config?.tool_visibility ?? "generic")}
+          />
+        </div>
+      );
+    }
+
+    if (channel.channel_type === "slack") {
+      const config = channel.channel_config as SlackChannelConfig;
+      const hasCredentials = !!config?.signing_secret && !!config?.bot_token;
+      return (
+        <div className="grid gap-4 md:grid-cols-2">
+          <ChannelFact label="Credentials" value={hasCredentials ? "Configured" : "Missing"} />
+          <ChannelFact label="Workspace" value={config?.team_id ?? "Any workspace"} />
+          <ChannelFact label="Channel" value={config?.channel_id ?? "Any channel"} />
+          <ChannelFact
+            label="Session strategy"
+            value={getSessionStrategyDisplayName(config?.session_strategy ?? "per_thread")}
+          />
+          <ChannelFact
+            label="Reply mode"
+            value={getSlackReplyModeDisplayName(config?.reply_mode ?? "all_messages")}
+          />
+          <ChannelFact
+            label="Health"
+            value={`${summary.health}${channel.enabled ? "" : " (disabled)"}`}
+          />
+        </div>
+      );
+    }
+
+    if (channel.channel_type === "schedule") {
+      const config = channel.channel_config as ScheduleChannelConfig;
+      return (
+        <div className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            <ChannelFact label="Cron" value={config?.cron_expression ?? "Not set"} />
+            <ChannelFact label="Timezone" value={config?.timezone ?? "UTC"} />
+            <ChannelFact
+              label="Session mode"
+              value={getInvocationSessionModeDisplayName(config?.session_mode ?? "shared_session")}
+            />
+            <ChannelFact label="Health" value={summary.health} />
+          </div>
+          <ChannelMessagePreview message={config?.message ?? ""} />
+        </div>
+      );
+    }
+
+    if (channel.channel_type === "webhook") {
+      const config = channel.channel_config as WebhookChannelConfig;
+      return (
+        <div className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            <ChannelFact label="Authentication" value={config?.token ? "Token set" : "Missing"} />
+            <ChannelFact
+              label="Session mode"
+              value={getInvocationSessionModeDisplayName(config?.session_mode ?? "shared_session")}
+            />
+            <ChannelFact label="Health" value={summary.health} />
+          </div>
+          <ChannelMessagePreview message={config?.message ?? ""} />
+        </div>
+      );
+    }
+
+    const config = channel.channel_config as A2aChannelConfig;
+    return (
+      <div className="space-y-4">
+        <div className="grid gap-4 md:grid-cols-2">
+          <ChannelFact
+            label="API key"
+            value={config?.api_key_prefix ? `${config.api_key_prefix}...` : "Missing"}
+          />
+          <ChannelFact
+            label="Session mode"
+            value={getInvocationSessionModeDisplayName(config?.session_mode ?? "shared_session")}
+          />
+          <ChannelFact label="Agent card" value={config?.agent_card_name ?? app.name} />
+          <ChannelFact label="Health" value={summary.health} />
+        </div>
+        <ChannelMessagePreview message={config?.message ?? ""} />
+      </div>
+    );
+  };
+
+  const renderChannelEndpoint = (channel: AppChannel) => {
+    const endpoint =
+      channel.channel_type === "slack"
+        ? slackWebhookPath
+        : channel.channel_type === "ag_ui"
+          ? `/api/v1/apps/${appId}/ag-ui`
+          : channel.channel_type === "webhook"
+            ? `/api/v1/apps/${appId}/webhooks/${channel.id}`
+            : channel.channel_type === "a2a"
+              ? `/api/v1/apps/${appId}/a2a/${channel.id}`
+              : "";
+
+    if (!endpoint) {
+      return null;
+    }
+
+    return (
+      <div>
+        <p className="text-sm font-medium">Endpoint</p>
+        <div className="mt-2 flex items-center gap-2 bg-muted p-3">
+          <Globe className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <code className="flex-1 truncate text-sm">{endpoint}</code>
+          <CopyButton value={endpoint} />
+        </div>
+      </div>
+    );
+  };
+
+  const renderChannelDetail = (channel: AppChannel) => {
+    const summary = getChannelSummary(channel, isPublished);
+    const isEditingThisChannel = editingChannelId === channel.id;
+
+    return (
+      <Card className="min-h-[520px]">
+        <CardHeader className="space-y-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <CardTitle>{getChannelTypeDisplayName(channel.channel_type)}</CardTitle>
+                <Badge variant={channel.enabled ? "default" : "secondary"}>
+                  {channel.enabled ? "Enabled" : "Disabled"}
+                </Badge>
+                <Badge variant={summary.healthVariant}>{summary.health}</Badge>
+              </div>
+              <p className="text-sm text-muted-foreground">{summary.target}</p>
+            </div>
+            {!isReadOnly && (
+              <div className="flex flex-wrap gap-2">
+                {!isEditingThisChannel && (
+                  <Button size="sm" variant="outline" onClick={() => startEditChannel(channel)}>
+                    <Pencil className="h-3 w-3" />
+                    Configure
+                  </Button>
+                )}
+                {channel.channel_type === "a2a" && !isEditingThisChannel && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => rotateA2aMutation.mutate(channel.id)}
+                    disabled={rotateA2aMutation.isPending && rotatingA2aChannelId === channel.id}
+                  >
+                    <RefreshCw className="h-3 w-3" />
+                    {rotateA2aMutation.isPending && rotatingA2aChannelId === channel.id
+                      ? "Rotating"
+                      : "Rotate key"}
+                  </Button>
+                )}
+                {(app.channels ?? []).length > 1 && !isEditingThisChannel && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => deleteChannelMutation.mutate(channel.id)}
+                    disabled={deleteChannelMutation.isPending}
+                  >
+                    <Trash2 className="h-3 w-3" />
+                    Delete
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent>
+          {isEditingThisChannel ? (
+            renderChannelForm(updateChannelMutation.isPending, channel.id)
+          ) : (
+            <Tabs value={channelDetailTab} onValueChange={setChannelDetailTab}>
+              <TabsList className="mb-4">
+                <TabsTrigger value="overview">Overview</TabsTrigger>
+                <TabsTrigger value="setup">Setup</TabsTrigger>
+                <TabsTrigger value="settings">Settings</TabsTrigger>
+              </TabsList>
+              <TabsContent value="overview" className="space-y-5">
+                {renderChannelEndpoint(channel)}
+                {renderChannelOverview(channel)}
+              </TabsContent>
+              <TabsContent value="setup">{renderChannelDisplay(channel)}</TabsContent>
+              <TabsContent value="settings" className="space-y-5">
+                <div className="rounded-md border p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-medium">Channel status</p>
+                      <p className="text-sm text-muted-foreground">
+                        Disabled channels remain configured but stop accepting or emitting new
+                        invocations. Use Edit settings to change this channel state.
+                      </p>
+                    </div>
+                    <Badge variant={channel.enabled ? "default" : "secondary"}>
+                      {channel.enabled ? "Enabled" : "Disabled"}
+                    </Badge>
+                  </div>
+                </div>
+                {renderChannelOverview(channel)}
+                {!isReadOnly && (
+                  <Button size="sm" variant="outline" onClick={() => startEditChannel(channel)}>
+                    <Pencil className="h-3 w-3" />
+                    Edit settings
+                  </Button>
+                )}
+              </TabsContent>
+            </Tabs>
+          )}
+        </CardContent>
+      </Card>
+    );
+  };
+
+  const channels = app.channels ?? [];
+  const selectedChannel =
+    channels.find((channel) => channel.id === selectedChannelId) ?? channels[0] ?? null;
+
   return (
     <div className="container mx-auto p-6">
       <Link
@@ -1268,123 +1614,85 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-6">
-          {/* Channels */}
-          {(app.channels ?? []).map((channel: AppChannel) => (
-            <Card key={channel.id}>
+          <div className="grid gap-6 xl:grid-cols-[minmax(280px,340px),1fr]">
+            <Card className="h-fit">
               <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle className="flex items-center gap-2">
-                  <Badge variant="outline">{getChannelTypeDisplayName(channel.channel_type)}</Badge>
-                  {!channel.enabled && <Badge variant="secondary">Disabled</Badge>}
-                  {(app.channels ?? []).length > 1 && (
-                    <span className="text-xs text-muted-foreground font-mono">{channel.id}</span>
-                  )}
-                </CardTitle>
-                <div className="flex gap-1">
-                  {editingChannelId !== channel.id && !isReadOnly && (
-                    <>
-                      <Button variant="outline" size="sm" onClick={() => startEditChannel(channel)}>
-                        <Pencil className="w-3 h-3 mr-1" />
-                        {channel.channel_type === "slack" &&
-                        (channel.channel_config as SlackChannelConfig)?.signing_secret
-                          ? "Edit"
-                          : "Configure"}
-                      </Button>
-                      {(app.channels ?? []).length > 1 && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => deleteChannelMutation.mutate(channel.id)}
-                          disabled={deleteChannelMutation.isPending}
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </Button>
-                      )}
-                    </>
-                  )}
-                </div>
-              </CardHeader>
-              <CardContent>
-                {editingChannelId === channel.id
-                  ? renderChannelForm(updateChannelMutation.isPending, channel.id)
-                  : renderChannelDisplay(channel)}
-              </CardContent>
-            </Card>
-          ))}
-
-          {/* Add Channel button */}
-          {!isReadOnly && !showAddChannel && (
-            <Button variant="outline" className="w-full" onClick={startAddChannel}>
-              <Plus className="w-4 h-4 mr-2" />
-              Add Channel
-            </Button>
-          )}
-
-          {appBudgetsEnabled && <AppBudgetsCard app={app} readOnly={isReadOnly} />}
-
-          {/* Add Channel form */}
-          {showAddChannel && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Add Channel</CardTitle>
-              </CardHeader>
-              <CardContent>{renderChannelForm(addChannelMutation.isPending, "new")}</CardContent>
-            </Card>
-          )}
-
-          {/* Webhook URL Card - shown when published and configured */}
-          {isPublished && hasSlackConfig && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Globe className="w-5 h-5" />
-                  Event Subscriptions
-                </CardTitle>
+                <CardTitle>Channels</CardTitle>
+                {!isReadOnly && !showAddChannel && (
+                  <Button variant="outline" size="sm" onClick={startAddChannel}>
+                    <Plus className="h-3 w-3" />
+                    Add
+                  </Button>
+                )}
               </CardHeader>
               <CardContent className="space-y-3">
-                {isLocalhost ? (
-                  <>
-                    <p className="text-sm text-muted-foreground">
-                      Slack can&apos;t reach <code className="text-xs">localhost</code>. Use{" "}
-                      <a
-                        href="https://ngrok.com"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="underline"
-                      >
-                        ngrok
-                      </a>{" "}
-                      to expose your local server:
-                    </p>
-                    <div className="bg-muted p-3 space-y-1">
-                      <p className="text-xs font-medium text-muted-foreground">1. Start ngrok:</p>
-                      <code className="text-xs block">
-                        ngrok http{" "}
-                        {typeof window !== "undefined" ? window.location.port || "9300" : "9300"}
-                      </code>
-                      <p className="text-xs font-medium text-muted-foreground mt-2">
-                        2. Copy your Request URL:
-                      </p>
-                      <code className="text-xs block">
-                        https://&lt;your-id&gt;.ngrok-free.app{slackWebhookPath}
-                      </code>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-sm text-muted-foreground">
-                      Paste this URL in your Slack app &rarr; <strong>Event Subscriptions</strong>{" "}
-                      &rarr; <strong>Request URL</strong>.
-                    </p>
-                    <div className="flex items-center gap-2 bg-muted p-3">
-                      <Globe className="w-4 h-4 shrink-0 text-muted-foreground" />
-                      <code className="text-sm flex-1 truncate">{slackWebhookUrl}</code>
-                      <CopyButton value={slackWebhookUrl} />
-                    </div>
-                  </>
+                {channels.length === 0 && (
+                  <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+                    No channels configured.
+                  </div>
                 )}
+
+                {channels.map((channel) => {
+                  const summary = getChannelSummary(channel, isPublished);
+                  const selected = selectedChannel?.id === channel.id && !showAddChannel;
+
+                  return (
+                    <button
+                      key={channel.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedChannelId(channel.id);
+                        setShowAddChannel(false);
+                      }}
+                      aria-pressed={selected}
+                      className={cn(
+                        "w-full rounded-md border p-3 text-left transition-colors hover:bg-muted/50",
+                        selected ? "border-primary bg-muted" : "border-border",
+                      )}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 space-y-1">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <Badge variant="outline">
+                              {getChannelTypeDisplayName(channel.channel_type)}
+                            </Badge>
+                            {!channel.enabled && <Badge variant="secondary">Disabled</Badge>}
+                          </div>
+                          <p className="truncate text-sm font-medium">{summary.target}</p>
+                          <p className="text-xs text-muted-foreground">{summary.group}</p>
+                        </div>
+                        <Badge variant={summary.healthVariant}>{summary.health}</Badge>
+                      </div>
+                    </button>
+                  );
+                })}
               </CardContent>
             </Card>
-          )}
+
+            {showAddChannel ? (
+              <Card className="min-h-[520px]">
+                <CardHeader>
+                  <CardTitle>Add Channel</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {renderChannelForm(
+                    addChannelMutation.isPending || addA2aMutation.isPending,
+                    "new",
+                  )}
+                </CardContent>
+              </Card>
+            ) : selectedChannel ? (
+              renderChannelDetail(selectedChannel)
+            ) : (
+              <Card className="min-h-[320px]">
+                <CardContent className="flex h-full min-h-[320px] items-center justify-center text-sm text-muted-foreground">
+                  Add a channel to expose this app.
+                </CardContent>
+              </Card>
+            )}
+          </div>
+
+          {appBudgetsEnabled && <AppBudgetsCard app={app} readOnly={isReadOnly} />}
         </div>
 
         {/* Sidebar */}
