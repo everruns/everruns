@@ -709,8 +709,8 @@ impl EventListener for BudgetService {
 // ============================================================================
 
 /// Pull `(app_id, app_channel_id)` from session tags. Both legacy
-/// `slack:app:<id>` and the canonical `app:<id>` / `app_channel:<id>` forms
-/// are recognised.
+/// `slack:app:<id>`, `ag_ui:app:<id>`, and the canonical
+/// `app:<id>` / `app_channel:<id>` forms are recognised.
 fn extract_app_subjects(tags: &[String]) -> (Option<String>, Option<String>) {
     let mut app_id: Option<String> = None;
     let mut channel_id: Option<String> = None;
@@ -720,6 +720,8 @@ fn extract_app_subjects(tags: &[String]) -> (Option<String>, Option<String>) {
         } else if let Some(rest) = tag.strip_prefix("app_channel:") {
             channel_id.get_or_insert_with(|| rest.to_string());
         } else if let Some(rest) = tag.strip_prefix("slack:app:") {
+            app_id.get_or_insert_with(|| rest.to_string());
+        } else if let Some(rest) = tag.strip_prefix("ag_ui:app:") {
             app_id.get_or_insert_with(|| rest.to_string());
         }
     }
@@ -800,7 +802,7 @@ mod period_tests {
     }
 
     #[test]
-    fn extract_subjects_handles_both_tag_styles() {
+    fn extract_subjects_handles_supported_tag_styles() {
         let tags = vec![
             "app:app_abc".to_string(),
             "app_channel:appchan_xyz".to_string(),
@@ -809,8 +811,12 @@ mod period_tests {
         assert_eq!(app.as_deref(), Some("app_abc"));
         assert_eq!(ch.as_deref(), Some("appchan_xyz"));
 
-        let legacy = vec!["slack:app:app_legacy".to_string()];
-        let (app, _) = extract_app_subjects(&legacy);
+        let slack_legacy = vec!["slack:app:app_legacy".to_string()];
+        let (app, _) = extract_app_subjects(&slack_legacy);
         assert_eq!(app.as_deref(), Some("app_legacy"));
+
+        let ag_ui_legacy = vec!["ag_ui:app:app_ag_ui".to_string()];
+        let (app, _) = extract_app_subjects(&ag_ui_legacy);
+        assert_eq!(app.as_deref(), Some("app_ag_ui"));
     }
 }
