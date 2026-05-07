@@ -103,8 +103,11 @@ Before promoting StarRocks past reference status:
 3. Replay a representative org's history through `reporting_outbox` and confirm
    parity of every dataset's measures and dimensions against the PostgreSQL
    backend within freshness tolerance.
-4. Stress-test concurrency: at least N viewers per org running the heaviest
-   dashboards, and verify per-query memory caps prevent noisy-neighbor effects.
+4. Stress-test concurrency: at least 50 concurrent viewers per org running the
+   heaviest dashboards with p95 query latency under 1 second, sustained for at
+   least 30 minutes, and verify per-query memory caps prevent noisy-neighbor
+   effects across orgs. Adjust the concurrency target upward to match real
+   dashboard usage at promotion time, but do not promote below this floor.
 
 ## DuckDB Over S3-Compatible Object Storage
 
@@ -123,8 +126,12 @@ Before promoting StarRocks past reference status:
   s3://reports/fact_llm_generation/org_id=1/day=2026-05-06/*.parquet
   s3://reports/fact_budget_posting/org_id=1/day=2026-05-06/*.parquet
   ```
-- Org partition prefix combined with predicate pushdown enforces tenant scope
-  at file selection time, before query execution.
+- The `org_id=...` partition prefix is an optimization that lets predicate
+  pushdown prune unrelated org partitions before scan, but it is not the
+  isolation boundary. Tenant scope is still enforced by the query compiler
+  always injecting `org_id = scope.org_id` and by storage/IAM policies that
+  prevent cross-prefix access; the partition layout simply makes that scope
+  cheap to evaluate.
 - Cheap long-term retention. Cold facts can stay in object storage at low cost
   with tiered storage policies independent of operational PostgreSQL retention.
 - Excellent fit for export and offline analytics. `EXPORT DATABASE` and
