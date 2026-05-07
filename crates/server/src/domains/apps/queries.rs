@@ -7,8 +7,8 @@ use crate::services::row_to_principal;
 use crate::storage::StorageBackend;
 use crate::storage::encryption::EncryptionService;
 use crate::storage::models::UpdateAppChannel;
-use everruns_core::typed_id::{AgentId, AgentIdentityId, AppChannelId, HarnessId};
-use everruns_core::{App, AppChannel, AppId, AppStatus, ChannelType};
+use everruns_core::typed_id::{AgentId, AgentIdentityId, AgentVersionId, AppChannelId, HarnessId};
+use everruns_core::{AgentVersionPolicy, App, AppChannel, AppId, AppStatus, ChannelType};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -221,6 +221,8 @@ pub async fn row_to_app(
         description: row.description,
         harness_id,
         agent_id,
+        agent_version_policy: AgentVersionPolicy::from(row.agent_version_policy.as_str()),
+        agent_version_id: row.agent_version_id.map(AgentVersionId::from_uuid),
         agent_identity_id: row.agent_identity_id.map(AgentIdentityId::from_uuid),
         owner_principal_id: row.owner_principal_id,
         resolved_owner_user_id: row.resolved_owner_user_id,

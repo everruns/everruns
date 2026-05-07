@@ -26,6 +26,7 @@ import { ProviderIcon } from "@/components/providers/provider-icon";
 import { SessionCard } from "@/components/session/session-card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { AgentPreview } from "@/components/agents/agent-preview";
+import { AgentVersionHistory } from "@/components/agents/agent-version-history";
 import {
   ArrowLeft,
   Plus,
@@ -36,6 +37,7 @@ import {
   Eye,
   LayoutDashboard,
   BarChart3,
+  GitBranch,
 } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
 import { ResourceStatsPanel } from "@/components/stats/resource-stats-panel";
@@ -49,6 +51,7 @@ import {
 import { useOrganization } from "@/hooks/use-organizations";
 import { formatTokens, pluralize } from "@/lib/formatting";
 import { normalizeTags } from "@/lib/tags";
+import { useFeatureFlag } from "@/providers/feature-flags-provider";
 
 // Helper function to calculate total tokens
 function totalTokens(usage: TokenUsage): number {
@@ -59,6 +62,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
   const { agentId } = use(params);
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("overview");
+  const agentVersionsEnabled = useFeatureFlag("agent_versions");
   const { data: agent, isLoading: agentLoading } = useAgent(agentId);
   usePageTitle(agent ? getDisplayName(agent) : null, "Agent");
   // Fetch only top 10 sessions for the overview
@@ -219,6 +223,12 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
             <BarChart3 className="w-4 h-4 mr-2" />
             Stats
           </TabsTrigger>
+          {agentVersionsEnabled && (
+            <TabsTrigger value="versions">
+              <GitBranch className="w-4 h-4 mr-2" />
+              Versions
+            </TabsTrigger>
+          )}
         </TabsList>
 
         <TabsContent value="overview">
@@ -431,6 +441,12 @@ export default function AgentDetailPage({ params }: { params: Promise<{ agentId:
         <TabsContent value="stats">
           <ResourceStatsPanel stats={stats} isLoading={statsLoading} error={statsError} />
         </TabsContent>
+
+        {agentVersionsEnabled && (
+          <TabsContent value="versions">
+            <AgentVersionHistory agent={agent} />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );

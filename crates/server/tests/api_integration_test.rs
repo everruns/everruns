@@ -106,6 +106,112 @@ async fn test_create_agent() {
 }
 
 #[tokio::test]
+async fn test_agent_versions_snapshot_diff_default_and_session_capture() {
+    // Feature flags are process-level env in this pilot; enable explicitly for
+    // the in-process server before it computes route state.
+    unsafe {
+        std::env::set_var("FEATURE_AGENT_VERSIONS", "true");
+    }
+    let server = TestServer::in_memory().await;
+
+    let agent: Agent = server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": "versioned-agent",
+                "display_name": "Versioned Agent",
+                "description": "An agent with versions",
+                "system_prompt": "You are version one"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let first: Value = server
+        .post(
+            &format!("/v1/agents/{}/versions", agent.public_id),
+            json!({
+                "summary": "Initial saved prompt",
+                "change_kind": "manual"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(first["version"], "0.1.0");
+
+    let _: Agent = server
+        .patch(
+            &format!("/v1/agents/{}", agent.public_id),
+            json!({
+                "system_prompt": "You are version two"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+
+    let second: Value = server
+        .post(
+            &format!("/v1/agents/{}/versions", agent.public_id),
+            json!({
+                "summary": "Prompt update",
+                "change_kind": "patch"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(second["version"], "0.1.1");
+
+    let diff: Value = server
+        .get(&format!(
+            "/v1/agents/{}/versions/{}/diff/{}",
+            agent.public_id,
+            first["id"].as_str().unwrap(),
+            second["id"].as_str().unwrap()
+        ))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(
+        diff["authored_diff"]["system_prompt"]["from"],
+        "You are version one"
+    );
+    assert_eq!(
+        diff["authored_diff"]["system_prompt"]["to"],
+        "You are version two"
+    );
+
+    let updated_agent: Agent = server
+        .post(
+            &format!("/v1/agents/{}/versions/default", agent.public_id),
+            json!({ "version_id": second["id"] }),
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(
+        updated_agent.default_version_id.unwrap().to_string(),
+        second["id"]
+    );
+
+    let session: Session = server
+        .post(
+            "/v1/sessions",
+            json!({
+                "agent_id": agent.public_id,
+                "title": "Version capture"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    assert_eq!(session.agent_version_id.unwrap().to_string(), second["id"]);
+}
+
+#[tokio::test]
 async fn test_list_agents() {
     let server = TestServer::new().await;
 

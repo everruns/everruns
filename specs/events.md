@@ -110,6 +110,12 @@ Every event MUST conform to this schema:
 | `metadata` | object | No | Arbitrary metadata for the event |
 | `tags` | array | No | Tags for filtering and categorization |
 
+When `FEATURE_AGENT_VERSIONS` is enabled and a session is bound to a saved agent version, emitted events include agent version metadata:
+
+- `agent_id`
+- `agent_version_id`
+- `agent_config_hash`
+
 ### Context Object
 
 The context provides correlation data for tracing and filtering. All existing context fields are **stable** — they will not be removed, renamed, or have their types changed without a major version bump. New optional fields may be added.

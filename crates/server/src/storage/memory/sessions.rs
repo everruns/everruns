@@ -22,6 +22,8 @@ impl InMemoryDatabase {
             app_id: input.app_id,
             harness_id: input.harness_id,
             agent_id: input.agent_id,
+            agent_version_id: None,
+            agent_config_hash: None,
             agent_identity_id: input.agent_identity_id,
             owner_principal_id: input.owner_principal_id,
             resolved_owner_user_id: input.resolved_owner_user_id,
@@ -386,6 +388,12 @@ impl InMemoryDatabase {
         if let Some(session) = sessions.get_mut(&id) {
             if let Some(harness_id) = input.harness_id {
                 session.harness_id = Some(harness_id);
+            }
+            if let Some(agent_version_id) = input.agent_version_id {
+                session.agent_version_id = Some(agent_version_id);
+            }
+            if let Some(agent_config_hash) = input.agent_config_hash {
+                session.agent_config_hash = Some(agent_config_hash);
             }
             if let Some(title) = input.title {
                 session.title = Some(title);

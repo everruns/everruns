@@ -12,7 +12,9 @@ use crate::mcp_server::{ScopedMcpServers, scoped_mcp_servers_is_empty};
 use crate::network_access::NetworkAccessList;
 use crate::principal::PrincipalSummary;
 use crate::tool_types::ToolDefinition;
-use crate::typed_id::{AgentId, AgentIdentityId, HarnessId, ModelId, PrincipalId, SessionId};
+use crate::typed_id::{
+    AgentId, AgentIdentityId, AgentVersionId, HarnessId, ModelId, PrincipalId, SessionId,
+};
 
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
@@ -123,6 +125,10 @@ pub struct Session {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "agent_01933b5a00007000800000000000001"))]
     pub agent_id: Option<AgentId>,
+    /// Immutable agent version captured when the session was created or rebound.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "agentver_01933b5a00007000800000000000001"))]
+    pub agent_version_id: Option<AgentVersionId>,
     /// Optional resident agent identity for unattended/background execution.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "identity_01933b5a00007000800000000000001"))]

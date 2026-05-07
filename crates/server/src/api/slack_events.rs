@@ -2036,6 +2036,8 @@ mod tests {
             description: None,
             harness_id: HarnessId::from_uuid(uuid::Uuid::nil()),
             agent_id: Some(AgentId::from_uuid(uuid::Uuid::nil())),
+            agent_version_policy: everruns_core::AgentVersionPolicy::Default,
+            agent_version_id: None,
             agent_identity_id: None,
             owner_principal_id: everruns_core::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,

@@ -301,6 +301,13 @@ impl IdMarker for AgentIdMarker {
     const PREFIX: &'static str = "agent";
 }
 
+/// Marker for immutable Agent Version IDs
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct AgentVersionIdMarker;
+impl IdMarker for AgentVersionIdMarker {
+    const PREFIX: &'static str = "agentver";
+}
+
 /// Marker for Harness IDs
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct HarnessIdMarker;
@@ -547,6 +554,8 @@ impl IdMarker for ModelRouterIdMarker {
 pub type OrgId = TypedId<OrgIdMarker>;
 /// Agent ID
 pub type AgentId = TypedId<AgentIdMarker>;
+/// Immutable Agent Version ID
+pub type AgentVersionId = TypedId<AgentVersionIdMarker>;
 /// Harness ID
 pub type HarnessId = TypedId<HarnessIdMarker>;
 /// Agent identity ID

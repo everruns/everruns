@@ -8,6 +8,7 @@ export type SessionStrategy = "per_thread" | "per_channel" | "per_user";
 export type SlackReplyMode = "all_messages" | "report_progress_only";
 export type InvocationSessionMode = "shared_session" | "session_per_invocation";
 export type AgUiToolVisibility = "none" | "generic" | "narrated";
+export type AgentVersionPolicy = "default" | "latest" | "pinned";
 
 export interface SlackChannelConfig {
   signing_secret: string;
@@ -104,6 +105,8 @@ export interface App {
   description: string | null;
   harness_id: string;
   agent_id: string | null;
+  agent_version_policy: AgentVersionPolicy;
+  agent_version_id: string | null;
   agent_identity_id?: string | null;
   owner_principal_id: string;
   resolved_owner_user_id?: string | null;
@@ -123,6 +126,8 @@ export interface CreateAppRequest {
   description?: string;
   harness_id: string;
   agent_id?: string;
+  agent_version_policy?: AgentVersionPolicy;
+  agent_version_id?: string;
   agent_identity_id?: string;
   channel_type?: ChannelType;
   channel_config?:
@@ -139,6 +144,8 @@ export interface UpdateAppRequest {
   description?: string;
   harness_id?: string;
   agent_id?: string;
+  agent_version_policy?: AgentVersionPolicy;
+  agent_version_id?: string | null;
   agent_identity_id?: string | null;
   status?: AppStatus;
 }

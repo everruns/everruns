@@ -324,6 +324,14 @@ pub struct AgentRow {
     pub description: Option<String>,
     pub system_prompt: String,
     pub default_model_id: Option<ModelId>,
+    #[sqlx(default)]
+    pub default_version_id: Option<everruns_core::AgentVersionId>,
+    #[sqlx(default)]
+    pub forked_from_agent_id: Option<AgentId>,
+    #[sqlx(default)]
+    pub forked_from_version_id: Option<everruns_core::AgentVersionId>,
+    #[sqlx(default)]
+    pub root_agent_id: Option<AgentId>,
     pub tags: Vec<String>,
     pub status: String,
     pub created_at: DateTime<Utc>,
@@ -359,6 +367,49 @@ pub struct AgentRow {
     pub total_cache_creation_tokens: i64,
 }
 
+#[derive(Debug, Clone, FromRow)]
+pub struct AgentVersionRow {
+    pub id: everruns_core::AgentVersionId,
+    pub public_id: String,
+    pub org_id: i64,
+    pub agent_id: AgentId,
+    pub version_number: i32,
+    pub semver_major: i32,
+    pub semver_minor: i32,
+    pub semver_patch: i32,
+    pub version: String,
+    pub parent_version_id: Option<everruns_core::AgentVersionId>,
+    pub source_version_id: Option<everruns_core::AgentVersionId>,
+    pub created_by_principal_id: Option<PrincipalId>,
+    pub change_kind: String,
+    pub summary: Option<String>,
+    pub config_hash: String,
+    pub authored_config: serde_json::Value,
+    pub resolved_config: serde_json::Value,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateAgentVersionRow {
+    pub id: everruns_core::AgentVersionId,
+    pub public_id: String,
+    pub org_id: i64,
+    pub agent_id: AgentId,
+    pub version_number: i32,
+    pub semver_major: i32,
+    pub semver_minor: i32,
+    pub semver_patch: i32,
+    pub version: String,
+    pub parent_version_id: Option<everruns_core::AgentVersionId>,
+    pub source_version_id: Option<everruns_core::AgentVersionId>,
+    pub created_by_principal_id: Option<PrincipalId>,
+    pub change_kind: String,
+    pub summary: Option<String>,
+    pub config_hash: String,
+    pub authored_config: serde_json::Value,
+    pub resolved_config: serde_json::Value,
+}
+
 #[derive(Debug, Clone)]
 pub struct CreateAgentRow {
     pub public_id: String,
@@ -387,6 +438,10 @@ pub struct UpdateAgent {
     pub description: Option<String>,
     pub system_prompt: Option<String>,
     pub default_model_id: Option<ModelId>,
+    pub default_version_id: Option<everruns_core::AgentVersionId>,
+    pub forked_from_agent_id: Option<AgentId>,
+    pub forked_from_version_id: Option<everruns_core::AgentVersionId>,
+    pub root_agent_id: Option<AgentId>,
     pub tags: Option<Vec<String>>,
     pub status: Option<String>,
     pub initial_files: Option<serde_json::Value>,
@@ -494,6 +549,10 @@ pub struct SessionRow {
     #[sqlx(default)]
     pub harness_id: Option<HarnessId>,
     pub agent_id: Option<AgentId>,
+    #[sqlx(default)]
+    pub agent_version_id: Option<everruns_core::AgentVersionId>,
+    #[sqlx(default)]
+    pub agent_config_hash: Option<String>,
     #[sqlx(default)]
     pub agent_identity_id: Option<AgentIdentityId>,
     pub owner_principal_id: PrincipalId,
@@ -617,6 +676,8 @@ pub struct CreateSessionRow {
 #[derive(Debug, Clone, Default)]
 pub struct UpdateSession {
     pub harness_id: Option<HarnessId>,
+    pub agent_version_id: Option<everruns_core::AgentVersionId>,
+    pub agent_config_hash: Option<String>,
     pub title: Option<String>,
     pub agent_identity_id: UpdateField<AgentIdentityId>,
     pub owner_principal_id: Option<PrincipalId>,
@@ -1803,6 +1864,10 @@ pub struct AppRow {
     pub description: Option<String>,
     pub harness_id: Uuid,
     pub agent_id: Option<Uuid>,
+    #[sqlx(default)]
+    pub agent_version_policy: String,
+    #[sqlx(default)]
+    pub agent_version_id: Option<Uuid>,
     pub agent_identity_id: Option<Uuid>,
     pub owner_principal_id: PrincipalId,
     #[sqlx(default)]
@@ -1826,6 +1891,8 @@ pub struct CreateAppRow {
     pub description: Option<String>,
     pub harness_id: Uuid,
     pub agent_id: Option<Uuid>,
+    pub agent_version_policy: String,
+    pub agent_version_id: Option<Uuid>,
     pub agent_identity_id: Option<Uuid>,
     pub owner_principal_id: PrincipalId,
     pub resolved_owner_user_id: Option<Uuid>,
@@ -1842,6 +1909,8 @@ pub struct UpdateApp {
     pub description: Option<String>,
     pub harness_id: Option<Uuid>,
     pub agent_id: Option<Uuid>,
+    pub agent_version_policy: Option<String>,
+    pub agent_version_id: UpdateField<Uuid>,
     pub agent_identity_id: UpdateField<Uuid>,
     pub owner_principal_id: Option<PrincipalId>,
     pub resolved_owner_user_id: UpdateField<Uuid>,

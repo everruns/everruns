@@ -409,6 +409,10 @@ pub fn proto_session_to_schema(
         .agent_id
         .as_ref()
         .map(|u| format!("agent_{}", u.value.replace("-", "")));
+    let agent_version_id_str = value
+        .agent_version_id
+        .as_ref()
+        .map(|u| format!("agentver_{}", u.value.replace("-", "")));
     let harness_id_str = value
         .harness_id
         .as_ref()
@@ -435,6 +439,7 @@ pub fn proto_session_to_schema(
         "organization_id": value.organization_id,
         "harness_id": harness_id_str,
         "agent_id": agent_id_str,
+        "agent_version_id": agent_version_id_str,
         "owner_principal_id": owner_principal_id_str,
         "resolved_owner_user_id": value
             .resolved_owner_user_id
@@ -462,6 +467,9 @@ pub fn schema_session_to_proto(value: &everruns_core::Session) -> proto::Session
     proto::Session {
         id: Some(uuid_to_proto_uuid(value.id.uuid())),
         agent_id: value.agent_id.map(|id| uuid_to_proto_uuid(id.uuid())),
+        agent_version_id: value
+            .agent_version_id
+            .map(|id| uuid_to_proto_uuid(id.uuid())),
         title: value.title.clone().unwrap_or_default(),
         locale: value.locale.clone().unwrap_or_default(),
         status: value.status.to_string(),
@@ -1124,6 +1132,10 @@ mod tests {
             description: Some("Test description".to_string()),
             system_prompt: "You are a helpful assistant".to_string(),
             default_model_id: None,
+            default_version_id: None,
+            forked_from_agent_id: None,
+            forked_from_version_id: None,
+            root_agent_id: None,
             tags: vec!["slack:thread:123.456".to_string()],
             capabilities: vec![
                 AgentCapabilityConfig::new("tools:read_file"),
@@ -1186,6 +1198,10 @@ mod tests {
             description: None,
             system_prompt: "You are a helpful assistant".to_string(),
             default_model_id: None,
+            default_version_id: None,
+            forked_from_agent_id: None,
+            forked_from_version_id: None,
+            root_agent_id: None,
             tags: vec!["slack:thread:123.456".to_string()],
             capabilities: vec![],
             initial_files: vec![],
@@ -1374,6 +1390,7 @@ mod tests {
             organization_id: "org_00000000000000000000000000000001".to_string(),
             harness_id: everruns_core::HarnessId::new(),
             agent_id: None,
+            agent_version_id: None,
             agent_identity_id: None,
             owner_principal_id: everruns_core::PrincipalId::from_seed(1),
             resolved_owner_user_id: None,

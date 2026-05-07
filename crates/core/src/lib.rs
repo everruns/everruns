@@ -300,13 +300,13 @@ pub use tool_types::{
 // Domain entity re-exports
 // Note: LlmProvider entity is in llm_models module. Import as: everruns_core::llm_models::LlmProvider
 pub use agent::{
-    Agent, AgentStatus, MAX_ADDRESSABLE_NAME_LEN, generate_agent_public_id,
-    validate_addressable_name, validate_agent_public_id,
+    Agent, AgentStatus, AgentVersion, AgentVersionChangeKind, MAX_ADDRESSABLE_NAME_LEN,
+    generate_agent_public_id, validate_addressable_name, validate_agent_public_id,
 };
 pub use agent_identity::{AgentIdentity, AgentIdentityStatus};
 pub use app::{
-    A2aChannelConfig, AgUiChannelConfig, AgUiToolVisibility, App, AppChannel, AppStatus,
-    ChannelType, SessionStrategy, SlackChannelConfig, SlackReplyMode,
+    A2aChannelConfig, AgUiChannelConfig, AgUiToolVisibility, AgentVersionPolicy, App, AppChannel,
+    AppStatus, ChannelType, SessionStrategy, SlackChannelConfig, SlackReplyMode,
 };
 pub use capability_dto::{AgentCapability, CapabilityInfo};
 pub use context_report::{
@@ -374,11 +374,12 @@ pub use skill::{
     SkillValidationResult, parse_skill_md, validate_skill_md, validate_skill_name,
 };
 pub use typed_id::{
-    AgentId, AgentIdentityId, AppChannelId, AppId, DeclarativeCapabilityId, EvalCaseId, EvalId,
-    EvalResultId, EvalRunId, EventId, ExecId, HarnessId, IdMarker, IdParseError, ImageId,
-    KnowledgeBaseId, KnowledgeEntryId, LeasedResourceId, McpServerId, MemoryId, MemoryStoreId,
-    MessageId, ModelId, NotificationId, OrgId, PaymentAccountId, PaymentAttemptId, PaymentPolicyId,
-    PrincipalId, ProviderId, ScheduleId, SessionId, SkillId, TurnId, TypedId,
+    AgentId, AgentIdentityId, AgentVersionId, AppChannelId, AppId, DeclarativeCapabilityId,
+    EvalCaseId, EvalId, EvalResultId, EvalRunId, EventId, ExecId, HarnessId, IdMarker,
+    IdParseError, ImageId, KnowledgeBaseId, KnowledgeEntryId, LeasedResourceId, McpServerId,
+    MemoryId, MemoryStoreId, MessageId, ModelId, NotificationId, OrgId, PaymentAccountId,
+    PaymentAttemptId, PaymentPolicyId, PrincipalId, ProviderId, ScheduleId, SessionId, SkillId,
+    TurnId, TypedId,
 };
 
 // Audit logging re-exports

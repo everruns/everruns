@@ -43,9 +43,9 @@ mod tests;
 
 use chrono::{DateTime, Utc};
 use everruns_core::{
-    AgentId, AgentIdentityId, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, EventId, HarnessId, ImageId,
-    LeasedResourceId, McpServerId, MessageId, ModelId, NotificationId, PrincipalId, ProviderId,
-    ScheduleId, SessionId, SkillId,
+    AgentId, AgentIdentityId, AgentVersionId, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, EventId,
+    HarnessId, ImageId, LeasedResourceId, McpServerId, MessageId, ModelId, NotificationId,
+    PrincipalId, ProviderId, ScheduleId, SessionId, SkillId,
 };
 use parking_lot::RwLock;
 use std::collections::HashMap;
@@ -90,6 +90,7 @@ pub struct InMemoryDatabase {
     cli_auth_sessions: RwLock<HashMap<Uuid, CliAuthSessionRow>>,
     refresh_tokens: RwLock<HashMap<Uuid, RefreshTokenRow>>,
     agents: RwLock<HashMap<AgentId, AgentRow>>,
+    agent_versions: RwLock<HashMap<AgentVersionId, AgentVersionRow>>,
     sessions: RwLock<HashMap<SessionId, SessionRow>>,
     events: RwLock<HashMap<EventId, EventRow>>,
     llm_providers: RwLock<HashMap<ProviderId, LlmProviderRow>>,
@@ -191,6 +192,7 @@ impl Default for InMemoryDatabase {
             cli_auth_sessions: RwLock::new(HashMap::new()),
             refresh_tokens: RwLock::new(HashMap::new()),
             agents: RwLock::new(HashMap::new()),
+            agent_versions: RwLock::new(HashMap::new()),
             sessions: RwLock::new(HashMap::new()),
             events: RwLock::new(HashMap::new()),
             llm_providers: RwLock::new(HashMap::new()),

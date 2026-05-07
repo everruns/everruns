@@ -25,6 +25,10 @@ impl InMemoryDatabase {
             description: input.description,
             system_prompt: input.system_prompt,
             default_model_id: input.default_model_id,
+            default_version_id: None,
+            forked_from_agent_id: None,
+            forked_from_version_id: None,
+            root_agent_id: None,
             tags: input.tags,
             initial_files: input.initial_files,
             tools: input.tools,
@@ -96,6 +100,10 @@ impl InMemoryDatabase {
             description: input.description,
             system_prompt: input.system_prompt,
             default_model_id: input.default_model_id,
+            default_version_id: None,
+            forked_from_agent_id: None,
+            forked_from_version_id: None,
+            root_agent_id: None,
             tags: input.tags,
             initial_files: input.initial_files,
             tools: input.tools,
@@ -220,6 +228,18 @@ impl InMemoryDatabase {
             if let Some(default_model_id) = input.default_model_id {
                 agent.default_model_id = Some(default_model_id);
             }
+            if let Some(default_version_id) = input.default_version_id {
+                agent.default_version_id = Some(default_version_id);
+            }
+            if let Some(forked_from_agent_id) = input.forked_from_agent_id {
+                agent.forked_from_agent_id = Some(forked_from_agent_id);
+            }
+            if let Some(forked_from_version_id) = input.forked_from_version_id {
+                agent.forked_from_version_id = Some(forked_from_version_id);
+            }
+            if let Some(root_agent_id) = input.root_agent_id {
+                agent.root_agent_id = Some(root_agent_id);
+            }
             if let Some(tags) = input.tags {
                 agent.tags = tags;
             }
@@ -314,6 +334,10 @@ impl InMemoryDatabase {
                 description: input.description,
                 system_prompt: input.system_prompt,
                 default_model_id: input.default_model_id,
+                default_version_id: None,
+                forked_from_agent_id: None,
+                forked_from_version_id: None,
+                root_agent_id: None,
                 tags: input.tags,
                 initial_files: input.initial_files,
                 tools: input.tools,
@@ -374,6 +398,10 @@ impl InMemoryDatabase {
                 description: input.description,
                 system_prompt: input.system_prompt,
                 default_model_id: input.default_model_id,
+                default_version_id: None,
+                forked_from_agent_id: None,
+                forked_from_version_id: None,
+                root_agent_id: None,
                 tags: input.tags,
                 initial_files: input.initial_files,
                 tools: input.tools,
@@ -403,6 +431,75 @@ impl InMemoryDatabase {
             .get(&id)
             .filter(|a| a.org_id == org_id)
             .map(|a| a.public_id.clone()))
+    }
+
+    pub async fn create_agent_version(
+        &self,
+        input: CreateAgentVersionRow,
+    ) -> Result<AgentVersionRow> {
+        let row = AgentVersionRow {
+            id: input.id,
+            public_id: input.public_id,
+            org_id: input.org_id,
+            agent_id: input.agent_id,
+            version_number: input.version_number,
+            semver_major: input.semver_major,
+            semver_minor: input.semver_minor,
+            semver_patch: input.semver_patch,
+            version: input.version,
+            parent_version_id: input.parent_version_id,
+            source_version_id: input.source_version_id,
+            created_by_principal_id: input.created_by_principal_id,
+            change_kind: input.change_kind,
+            summary: input.summary,
+            config_hash: input.config_hash,
+            authored_config: input.authored_config,
+            resolved_config: input.resolved_config,
+            created_at: Self::now(),
+        };
+        self.agent_versions.write().insert(row.id, row.clone());
+        Ok(row)
+    }
+
+    pub async fn list_agent_versions(
+        &self,
+        org_id: i64,
+        agent_id: AgentId,
+    ) -> Result<Vec<AgentVersionRow>> {
+        let mut rows: Vec<_> = self
+            .agent_versions
+            .read()
+            .values()
+            .filter(|row| row.org_id == org_id && row.agent_id == agent_id)
+            .cloned()
+            .collect();
+        rows.sort_by_key(|row| std::cmp::Reverse(row.version_number));
+        Ok(rows)
+    }
+
+    pub async fn get_agent_version(
+        &self,
+        org_id: i64,
+        id: everruns_core::AgentVersionId,
+    ) -> Result<Option<AgentVersionRow>> {
+        Ok(self
+            .agent_versions
+            .read()
+            .get(&id)
+            .filter(|row| row.org_id == org_id)
+            .cloned())
+    }
+
+    pub async fn get_latest_agent_version(
+        &self,
+        org_id: i64,
+        agent_id: AgentId,
+    ) -> Result<Option<AgentVersionRow>> {
+        Ok(self
+            .list_agent_versions(org_id, agent_id)
+            .await?
+            .into_iter()
+            .next())
     }
 
     // ============================================

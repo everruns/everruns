@@ -13,6 +13,7 @@ export interface FeatureFlags {
   mcp_endpoint: boolean;
   evals: boolean;
   app_budgets: boolean;
+  agent_versions: boolean;
 }
 
 export interface AuthConfigResponse {

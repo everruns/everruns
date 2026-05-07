@@ -504,6 +504,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 organization_id: everruns_core::org_public_id_from_internal(org_id),
                 harness_id: r.harness_id.unwrap_or_else(|| HarnessId::from_seed(1)),
                 agent_id: r.agent_id,
+                agent_version_id: r.agent_version_id,
                 agent_identity_id: r.agent_identity_id,
                 owner_principal_id: r.owner_principal_id,
                 resolved_owner_user_id: r.resolved_owner_user_id,
@@ -1170,10 +1171,16 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 .get_harness_impl(org_id, session.harness_id.uuid())
                 .await?
         {
-            let agent = match session.agent_id {
+            let mut agent = match session.agent_id {
                 Some(agent_id) => self.get_agent(org_id, agent_id.uuid()).await?,
                 None => None,
             };
+            if let (Some(agent), Some(version_id)) = (agent.as_mut(), session.agent_version_id)
+                && let Some(version_row) = self.db.get_agent_version(org_id, version_id).await?
+            {
+                let version = crate::domains::agents::queries::row_to_agent_version(version_row);
+                *agent = crate::domains::agents::queries::version_to_agent(agent, &version);
+            }
 
             if let Some(resolved) = resolve_scoped_mcp_server_with_capabilities(
                 &harness,
@@ -1250,7 +1257,21 @@ impl WorkerAdapters for DirectWorkerAdapters {
                     .hydrate_capability_rows(org_id, capability_rows)
                     .await
                     .unwrap_or_default();
-                let agent = Self::row_to_agent(row, hydrated_capabilities);
+                let mut agent = Self::row_to_agent(row, hydrated_capabilities);
+                if let Some(version_id) = session.agent_version_id
+                    && let Some(version_row) = self
+                        .db
+                        .get_agent_version(org_id, version_id)
+                        .await
+                        .map_err(|e| {
+                        tracing::error!("Failed to get agent version: {}", e);
+                        store_error("Failed to get agent version")
+                    })?
+                {
+                    let version =
+                        crate::domains::agents::queries::row_to_agent_version(version_row);
+                    agent = crate::domains::agents::queries::version_to_agent(&agent, &version);
+                }
 
                 (Some(agent), mcp_tools)
             } else {
@@ -1655,6 +1676,10 @@ impl DirectWorkerAdapters {
             description: r.description,
             system_prompt: r.system_prompt,
             default_model_id: r.default_model_id,
+            default_version_id: r.default_version_id,
+            forked_from_agent_id: r.forked_from_agent_id,
+            forked_from_version_id: r.forked_from_version_id,
+            root_agent_id: r.root_agent_id,
             tags: r.tags,
             capabilities,
             initial_files: serde_json::from_value(r.initial_files).unwrap_or_default(),
@@ -2004,6 +2029,7 @@ impl DirectPlatformStore {
                 )
             }),
             agent_id: row.agent_id,
+            agent_version_id: row.agent_version_id,
             agent_identity_id: row.agent_identity_id,
             owner_principal_id: row.owner_principal_id,
             resolved_owner_user_id: row.resolved_owner_user_id,

@@ -14,6 +14,7 @@ Top-level deployment entity. Composes existing building blocks (Harness, optiona
 
 - Each App references exactly one Harness (required)
 - Each App references zero or one Agent
+- When `FEATURE_AGENT_VERSIONS` is enabled, each App may choose an Agent version policy: `default`, `latest`, or `pinned`. See [agent-versions.md](agent-versions.md).
 - Each App has zero or more **Channels** (stored in `app_channels` table)
 - Apps have a publish lifecycle: `draft` → `published` → `draft`
 - Apps also participate in the default building-block lifecycle: `active/draft/published -> archived -> deleted`
@@ -121,6 +122,11 @@ draft → published → draft → archived → deleted
 ## Data Model
 
 See `crates/core/src/app.rs` for the complete `App` and `AppChannel` definitions.
+
+Version binding fields:
+
+- `agent_version_policy`: `default`, `latest`, or `pinned`
+- `agent_version_id`: required only when policy is `pinned`
 
 ## API
 

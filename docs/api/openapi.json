@@ -648,6 +648,375 @@
         }
       }
     },
+    "/v1/agents/{agent_id}/versions": {
+      "get": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "GET /v1/agents/{agent_id}/versions - List saved agent versions",
+        "operationId": "list_agent_versions",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID (prefixed) or name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Saved agent versions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AgentVersion"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent not found or agent_versions disabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "POST /v1/agents/{agent_id}/versions - Save the current agent configuration as a version",
+        "operationId": "create_agent_version",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID (prefixed) or name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateAgentVersionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Agent version created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentVersion"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent not found or agent_versions disabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/versions/default": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "POST /v1/agents/{agent_id}/versions/default - Set the default version for an agent",
+        "operationId": "set_default_agent_version",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID (prefixed) or name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetDefaultAgentVersionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Default version updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithUrls_Agent"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent or version not found, or agent_versions disabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/versions/{from_version_id}/diff/{to_version_id}": {
+      "get": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "GET /v1/agents/{agent_id}/versions/{from_version_id}/diff/{to_version_id} - Diff two agent versions",
+        "operationId": "diff_agent_versions",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID (prefixed) or name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "from_version_id",
+            "in": "path",
+            "description": "Base agent version ID",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/agentverId"
+            }
+          },
+          {
+            "name": "to_version_id",
+            "in": "path",
+            "description": "Comparison agent version ID",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/agentverId"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Agent version diff",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentVersionDiffResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent or version not found, or agent_versions disabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/versions/{version_id}/fork": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "POST /v1/agents/{agent_id}/versions/{version_id}/fork - Create a new agent from a saved version",
+        "operationId": "fork_agent_version",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Source agent ID (prefixed) or name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "version_id",
+            "in": "path",
+            "description": "Agent version ID",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/agentverId"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForkAgentVersionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Agent fork created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithUrls_Agent"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent or version not found, or agent_versions disabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/agents/{agent_id}/versions/{version_id}/rollback": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "POST /v1/agents/{agent_id}/versions/{version_id}/rollback - Restore an agent from a saved version",
+        "operationId": "rollback_agent_version",
+        "parameters": [
+          {
+            "name": "agent_id",
+            "in": "path",
+            "description": "Agent ID (prefixed) or name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "version_id",
+            "in": "path",
+            "description": "Agent version ID",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/agentverId"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RollbackAgentVersionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Agent rolled back",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WithUrls_Agent"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Agent or version not found, or agent_versions disabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/apps/{app_id}/a2a/{channel_id}": {
       "post": {
         "tags": [
@@ -7848,6 +8217,14 @@
             "description": "Default LLM model ID for this agent.\nCan be overridden at the session level.",
             "example": "model_01933b5a00007000800000000000001"
           },
+          "default_version_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Default immutable version used by deployments that choose the default policy.",
+            "example": "agentver_01933b5a00007000800000000000001"
+          },
           "deleted_at": {
             "type": [
               "string",
@@ -7869,6 +8246,22 @@
               "null"
             ],
             "description": "Human-readable display name shown in UI (e.g. \"Customer Support Agent\").\nFalls back to `name` when absent."
+          },
+          "forked_from_agent_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Source agent for a forked agent.",
+            "example": "agent_01933b5a00007000800000000000001"
+          },
+          "forked_from_version_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Source version for a forked agent.",
+            "example": "agentver_01933b5a00007000800000000000001"
           },
           "id": {
             "type": "string",
@@ -7908,6 +8301,14 @@
                 "description": "Network access list controlling which hosts/URLs agent sessions can reach.\nMerged with harness and session layers (allowed: intersect, blocked: union)."
               }
             ]
+          },
+          "root_agent_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Root agent lineage identifier for grouping fork families.",
+            "example": "agent_01933b5a00007000800000000000001"
           },
           "status": {
             "$ref": "#/components/schemas/AgentStatus",
@@ -7994,6 +8395,125 @@
           "archived",
           "deleted"
         ]
+      },
+      "AgentVersion": {
+        "type": "object",
+        "description": "Immutable snapshot of an Agent's authored and resolved runtime config.",
+        "required": [
+          "id",
+          "agent_id",
+          "version_number",
+          "semver_major",
+          "semver_minor",
+          "semver_patch",
+          "version",
+          "change_kind",
+          "config_hash",
+          "authored_config",
+          "resolved_config",
+          "created_at"
+        ],
+        "properties": {
+          "agent_id": {
+            "type": "string",
+            "example": "agent_01933b5a000070008000000000000001"
+          },
+          "authored_config": {
+            "type": "object"
+          },
+          "change_kind": {
+            "$ref": "#/components/schemas/AgentVersionChangeKind"
+          },
+          "config_hash": {
+            "type": "string"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "created_by_principal_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "example": "agentver_01933b5a000070008000000000000001"
+          },
+          "parent_version_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "resolved_config": {
+            "type": "object"
+          },
+          "semver_major": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "semver_minor": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "semver_patch": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "source_version_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "summary": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "version": {
+            "type": "string"
+          },
+          "version_number": {
+            "type": "integer",
+            "format": "int32"
+          }
+        }
+      },
+      "AgentVersionChangeKind": {
+        "type": "string",
+        "description": "Reason a version was created. Stored as lower_snake_case text.",
+        "enum": [
+          "manual",
+          "patch",
+          "minor",
+          "major",
+          "import",
+          "rollback",
+          "fork"
+        ]
+      },
+      "AgentVersionDiffResponse": {
+        "type": "object",
+        "required": [
+          "from_version_id",
+          "to_version_id",
+          "authored_diff",
+          "resolved_diff"
+        ],
+        "properties": {
+          "authored_diff": {},
+          "from_version_id": {
+            "$ref": "#/components/schemas/agentverId"
+          },
+          "resolved_diff": {},
+          "to_version_id": {
+            "$ref": "#/components/schemas/agentverId"
+          }
+        }
       },
       "BTreeMap": {
         "type": "object",
@@ -8869,6 +9389,27 @@
               "$ref": "#/components/schemas/ToolDefinition"
             },
             "description": "Client-side tools for this agent.\nThese tools are sent to the LLM but executed by the client, not the server."
+          }
+        }
+      },
+      "CreateAgentVersionRequest": {
+        "type": "object",
+        "properties": {
+          "change_kind": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AgentVersionChangeKind"
+              }
+            ]
+          },
+          "summary": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },
@@ -10278,6 +10819,29 @@
           }
         }
       },
+      "ForkAgentVersionRequest": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "display_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
       "GetOrCreateChatSessionRequest": {
         "type": "object",
         "properties": {
@@ -11445,6 +12009,14 @@
                   "description": "Default LLM model ID for this agent.\nCan be overridden at the session level.",
                   "example": "model_01933b5a00007000800000000000001"
                 },
+                "default_version_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Default immutable version used by deployments that choose the default policy.",
+                  "example": "agentver_01933b5a00007000800000000000001"
+                },
                 "deleted_at": {
                   "type": [
                     "string",
@@ -11466,6 +12038,22 @@
                     "null"
                   ],
                   "description": "Human-readable display name shown in UI (e.g. \"Customer Support Agent\").\nFalls back to `name` when absent."
+                },
+                "forked_from_agent_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Source agent for a forked agent.",
+                  "example": "agent_01933b5a00007000800000000000001"
+                },
+                "forked_from_version_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Source version for a forked agent.",
+                  "example": "agentver_01933b5a00007000800000000000001"
                 },
                 "id": {
                   "type": "string",
@@ -11505,6 +12093,14 @@
                       "description": "Network access list controlling which hosts/URLs agent sessions can reach.\nMerged with harness and session layers (allowed: intersect, blocked: union)."
                     }
                   ]
+                },
+                "root_agent_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Root agent lineage identifier for grouping fork families.",
+                  "example": "agent_01933b5a00007000800000000000001"
                 },
                 "status": {
                   "$ref": "#/components/schemas/AgentStatus",
@@ -15205,6 +15801,14 @@
                   "description": "Optional resident agent identity for unattended/background execution.",
                   "example": "identity_01933b5a00007000800000000000001"
                 },
+                "agent_version_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Immutable agent version captured when the session was created or rebound.",
+                  "example": "agentver_01933b5a00007000800000000000001"
+                },
                 "blueprint_config": {
                   "description": "Validated config passed by host at blueprint spawn time."
                 },
@@ -15707,6 +16311,14 @@
                           "description": "Default LLM model ID for this agent.\nCan be overridden at the session level.",
                           "example": "model_01933b5a00007000800000000000001"
                         },
+                        "default_version_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "description": "Default immutable version used by deployments that choose the default policy.",
+                          "example": "agentver_01933b5a00007000800000000000001"
+                        },
                         "deleted_at": {
                           "type": [
                             "string",
@@ -15728,6 +16340,22 @@
                             "null"
                           ],
                           "description": "Human-readable display name shown in UI (e.g. \"Customer Support Agent\").\nFalls back to `name` when absent."
+                        },
+                        "forked_from_agent_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "description": "Source agent for a forked agent.",
+                          "example": "agent_01933b5a00007000800000000000001"
+                        },
+                        "forked_from_version_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "description": "Source version for a forked agent.",
+                          "example": "agentver_01933b5a00007000800000000000001"
                         },
                         "id": {
                           "type": "string",
@@ -15767,6 +16395,14 @@
                               "description": "Network access list controlling which hosts/URLs agent sessions can reach.\nMerged with harness and session layers (allowed: intersect, blocked: union)."
                             }
                           ]
+                        },
+                        "root_agent_id": {
+                          "type": [
+                            "string",
+                            "null"
+                          ],
+                          "description": "Root agent lineage identifier for grouping fork families.",
+                          "example": "agent_01933b5a00007000800000000000001"
                         },
                         "status": {
                           "$ref": "#/components/schemas/AgentStatus",
@@ -15930,6 +16566,14 @@
                       ],
                       "description": "Optional resident agent identity for unattended/background execution.",
                       "example": "identity_01933b5a00007000800000000000001"
+                    },
+                    "agent_version_id": {
+                      "type": [
+                        "string",
+                        "null"
+                      ],
+                      "description": "Immutable agent version captured when the session was created or rebound.",
+                      "example": "agentver_01933b5a00007000800000000000001"
                     },
                     "blueprint_config": {
                       "description": "Validated config passed by host at blueprint spawn time."
@@ -16957,6 +17601,20 @@
           "high"
         ]
       },
+      "RollbackAgentVersionRequest": {
+        "type": "object",
+        "properties": {
+          "save_version": {
+            "type": "boolean"
+          },
+          "summary": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "ScheduleExecutionResponse": {
         "type": "object",
         "description": "Schedule execution response",
@@ -17315,6 +17973,14 @@
             ],
             "description": "Optional resident agent identity for unattended/background execution.",
             "example": "identity_01933b5a00007000800000000000001"
+          },
+          "agent_version_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Immutable agent version captured when the session was created or rebound.",
+            "example": "agentver_01933b5a00007000800000000000001"
           },
           "blueprint_config": {
             "description": "Validated config passed by host at blueprint spawn time."
@@ -17848,6 +18514,17 @@
           "waitingfortoolresults",
           "paused"
         ]
+      },
+      "SetDefaultAgentVersionRequest": {
+        "type": "object",
+        "required": [
+          "version_id"
+        ],
+        "properties": {
+          "version_id": {
+            "$ref": "#/components/schemas/agentverId"
+          }
+        }
       },
       "Skill": {
         "type": "object",
@@ -19853,6 +20530,14 @@
                 "description": "Default LLM model ID for this agent.\nCan be overridden at the session level.",
                 "example": "model_01933b5a00007000800000000000001"
               },
+              "default_version_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Default immutable version used by deployments that choose the default policy.",
+                "example": "agentver_01933b5a00007000800000000000001"
+              },
               "deleted_at": {
                 "type": [
                   "string",
@@ -19874,6 +20559,22 @@
                   "null"
                 ],
                 "description": "Human-readable display name shown in UI (e.g. \"Customer Support Agent\").\nFalls back to `name` when absent."
+              },
+              "forked_from_agent_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Source agent for a forked agent.",
+                "example": "agent_01933b5a00007000800000000000001"
+              },
+              "forked_from_version_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Source version for a forked agent.",
+                "example": "agentver_01933b5a00007000800000000000001"
               },
               "id": {
                 "type": "string",
@@ -19913,6 +20614,14 @@
                     "description": "Network access list controlling which hosts/URLs agent sessions can reach.\nMerged with harness and session layers (allowed: intersect, blocked: union)."
                   }
                 ]
+              },
+              "root_agent_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Root agent lineage identifier for grouping fork families.",
+                "example": "agent_01933b5a00007000800000000000001"
               },
               "status": {
                 "$ref": "#/components/schemas/AgentStatus",
@@ -20812,6 +21521,14 @@
                     "description": "Default LLM model ID for this agent.\nCan be overridden at the session level.",
                     "example": "model_01933b5a00007000800000000000001"
                   },
+                  "default_version_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Default immutable version used by deployments that choose the default policy.",
+                    "example": "agentver_01933b5a00007000800000000000001"
+                  },
                   "deleted_at": {
                     "type": [
                       "string",
@@ -20833,6 +21550,22 @@
                       "null"
                     ],
                     "description": "Human-readable display name shown in UI (e.g. \"Customer Support Agent\").\nFalls back to `name` when absent."
+                  },
+                  "forked_from_agent_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Source agent for a forked agent.",
+                    "example": "agent_01933b5a00007000800000000000001"
+                  },
+                  "forked_from_version_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Source version for a forked agent.",
+                    "example": "agentver_01933b5a00007000800000000000001"
                   },
                   "id": {
                     "type": "string",
@@ -20872,6 +21605,14 @@
                         "description": "Network access list controlling which hosts/URLs agent sessions can reach.\nMerged with harness and session layers (allowed: intersect, blocked: union)."
                       }
                     ]
+                  },
+                  "root_agent_id": {
+                    "type": [
+                      "string",
+                      "null"
+                    ],
+                    "description": "Root agent lineage identifier for grouping fork families.",
+                    "example": "agent_01933b5a00007000800000000000001"
                   },
                   "status": {
                     "$ref": "#/components/schemas/AgentStatus",
@@ -21181,6 +21922,14 @@
                 ],
                 "description": "Optional resident agent identity for unattended/background execution.",
                 "example": "identity_01933b5a00007000800000000000001"
+              },
+              "agent_version_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Immutable agent version captured when the session was created or rebound.",
+                "example": "agentver_01933b5a00007000800000000000001"
               },
               "blueprint_config": {
                 "description": "Validated config passed by host at blueprint spawn time."
@@ -21585,6 +22334,12 @@
         "description": "Prefixed identifier with 'agent' prefix",
         "example": "agent_01933b5a00007000800000000000001",
         "pattern": "^agent_[0-9a-f]{32}$"
+      },
+      "agentverId": {
+        "type": "string",
+        "description": "Prefixed identifier with 'agentver' prefix",
+        "example": "agentver_01933b5a00007000800000000000001",
+        "pattern": "^agentver_[0-9a-f]{32}$"
       },
       "eventId": {
         "type": "string",

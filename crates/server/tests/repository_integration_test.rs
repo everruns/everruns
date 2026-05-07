@@ -630,6 +630,8 @@ async fn test_session_crud() {
                 description: None,
                 harness_id: app_harness.id.uuid(),
                 agent_id: None,
+                agent_version_policy: "default".to_string(),
+                agent_version_id: None,
                 agent_identity_id: None,
                 owner_principal_id,
                 resolved_owner_user_id: None,

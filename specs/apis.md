@@ -92,6 +92,17 @@ New organizations initialize these to the built-in `Generic` and `Base` harnesse
 
 ### Agents
 
+Agent versions are available behind `FEATURE_AGENT_VERSIONS`:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/v1/agents/{agent_id}/versions` | List saved agent versions |
+| POST | `/v1/agents/{agent_id}/versions` | Save current draft as a version |
+| POST | `/v1/agents/{agent_id}/versions/default` | Set default version |
+| POST | `/v1/agents/{agent_id}/versions/{version_id}/rollback` | Roll back draft to a version |
+| POST | `/v1/agents/{agent_id}/versions/{version_id}/fork` | Fork a version into a new agent |
+| GET | `/v1/agents/{agent_id}/versions/{from_version_id}/diff/{to_version_id}` | Compare versions |
+
 | Method | Path | Description |
 |--------|------|-------------|
 | POST | `/v1/agents` | Create agent (optional client-supplied `id`) |

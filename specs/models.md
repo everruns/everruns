@@ -15,8 +15,15 @@ See `crates/core/src/agent.rs` for full field definitions.
 Key design points:
 - All entity IDs use the dual-ID pattern (internal UUID PK + external public_id). See `specs/id-schema.md`.
 - `capabilities` field stores enabled capability references (resolved at runtime from registry)
+- `default_version_id` selects the immutable AgentVersion used by default deployments when `FEATURE_AGENT_VERSIONS` is enabled. See `specs/agent-versions.md`.
 - `status`: `active`, `archived`, or `deleted`
 - `archived_at` and `deleted_at` capture lifecycle timestamps
+
+### AgentVersion
+
+Immutable snapshot of an Agent's authored and resolved configuration. AgentVersion is a pilot-specific model, not a generic entity versioning abstraction.
+
+See `crates/core/src/agent.rs` for full field definitions and `specs/agent-versions.md` for behavior.
 
 ### Building Block Lifecycle
 
@@ -52,6 +59,7 @@ See `specs/localization.md` for locale/timezone resolution and durable preferenc
 
 Key design points:
 - Sessions are direct children of organizations (not agents). The `agent_id` specifies which agent is assigned.
+- `agent_version_id` captures the immutable AgentVersion used for runtime execution when agent versions are enabled.
 - `app_id` is a nullable internal backreference set only when the server creates a session from an App channel. User/API, MCP, and platform-management session creation paths cannot set it.
 - `locale` is an optional session-level BCP 47 tag (for example `uk-UA`). The worker carries it through turn loading and prompt construction so scheduled runs, resumed runs, and subagents can inherit localized behavior.
 - `timezone` should be a separate optional session-level IANA timezone for unattended execution defaults. Interactive turns may override it with live browser timezone for that turn.

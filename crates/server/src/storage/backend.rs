@@ -426,6 +426,37 @@ impl StorageBackend {
         dispatch!(self, get_agent_public_id, org_id, id)
     }
 
+    pub async fn create_agent_version(
+        &self,
+        input: CreateAgentVersionRow,
+    ) -> Result<AgentVersionRow> {
+        dispatch!(self, create_agent_version, input)
+    }
+
+    pub async fn list_agent_versions(
+        &self,
+        org_id: i64,
+        agent_id: AgentId,
+    ) -> Result<Vec<AgentVersionRow>> {
+        dispatch!(self, list_agent_versions, org_id, agent_id)
+    }
+
+    pub async fn get_agent_version(
+        &self,
+        org_id: i64,
+        id: everruns_core::AgentVersionId,
+    ) -> Result<Option<AgentVersionRow>> {
+        dispatch!(self, get_agent_version, org_id, id)
+    }
+
+    pub async fn get_latest_agent_version(
+        &self,
+        org_id: i64,
+        agent_id: AgentId,
+    ) -> Result<Option<AgentVersionRow>> {
+        dispatch!(self, get_latest_agent_version, org_id, agent_id)
+    }
+
     // ============================================
     // Harnesses
     // ============================================

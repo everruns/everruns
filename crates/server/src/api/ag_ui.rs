@@ -1412,6 +1412,8 @@ mod tests {
             description: None,
             harness_id: HarnessId::from_seed(2),
             agent_id: None,
+            agent_version_policy: everruns_core::AgentVersionPolicy::Default,
+            agent_version_id: None,
             agent_identity_id: None,
             owner_principal_id: PrincipalId::from_seed(3),
             resolved_owner_user_id: None,
