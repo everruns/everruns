@@ -2215,6 +2215,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-integrations-cursor"
+version = "0.8.27"
+dependencies = [
+ "async-trait",
+ "everruns-core",
+ "inventory",
+ "reqwest 0.13.3",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "wiremock",
+]
+
+[[package]]
 name = "everruns-integrations-daytona"
 version = "0.8.27"
 dependencies = [
@@ -2469,6 +2484,7 @@ dependencies = [
  "everruns-durable",
  "everruns-integrations-brave-search",
  "everruns-integrations-browserless",
+ "everruns-integrations-cursor",
  "everruns-integrations-daytona",
  "everruns-integrations-deno",
  "everruns-integrations-docker",
@@ -2564,6 +2580,7 @@ dependencies = [
  "everruns-gemini",
  "everruns-integrations-brave-search",
  "everruns-integrations-browserless",
+ "everruns-integrations-cursor",
  "everruns-integrations-daytona",
  "everruns-integrations-deno",
  "everruns-integrations-docker",

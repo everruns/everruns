@@ -955,6 +955,20 @@ Deno sandboxes are remote Linux microVMs managed over a websocket + REST control
 | TM-API-015 | Lease metadata exposure | Medium | Deno lease metadata stores only non-secret routing/debug fields (`region`, optional `org`, workspace path, timestamps); tokens still resolve from connections/env at cleanup time | MITIGATED |
 | TM-DENO-004 | Network probing from remote sandbox | High | Capability is Admin-gated; residual exposure depends on operator egress controls | **ACCEPTED** |
 
+## 16B. Cursor Cloud Agents (TM-CURSOR)
+
+Cursor Cloud Agents are third-party asynchronous coding agents that clone GitHub repositories, run commands in Cursor-managed remote environments, push branches, and may create PRs. Everruns calls Cursor's REST API with a user or operator-provided Cursor Cloud Agents API key.
+
+| ID | Threat | Severity | Mitigation | Status |
+|----|--------|----------|------------|--------|
+| TM-CURSOR-001 | Cursor API key captured in chat history | High | Cursor tools return `ConnectionRequired` when no key is configured, causing the inline connection dialog; user connection credentials are encrypted at rest. Operator env fallback is for Doppler-backed deployments/tests. | MITIGATED |
+| TM-CURSOR-002 | Over-scoped Cursor/GitHub repository access | High | Cursor GitHub app access and Cloud Agents API key scope are controlled in Cursor/GitHub; Everruns docs tell users to grant only intended repos. | **CALLER RISK** |
+| TM-CURSOR-003 | Prompt injection or malicious repo content causes remote command/data exfiltration | High | Capability is high-risk/Admin-gated via capability assignment policy; prompts should provide bounded task scope. Residual risk belongs to Cursor's remote agent environment and repository/secret configuration. | **ACCEPTED** |
+| TM-CURSOR-004 | Cost/resource runaway from launching too many Cursor agents | Medium | Cursor enforces account limits; Everruns marks launch as long-running/external and seed prompts tell agents to triage first. Operators/users must monitor Cursor usage. | **CALLER RISK** |
+| TM-CURSOR-005 | Sensitive webhook secret stored in tool call history | High | First release intentionally omits webhook secret support from tool schema; add only with a dedicated secret flow. | MITIGATED |
+| TM-CURSOR-006 | Large prompt or identifier payload causes API/resource abuse | Medium | Tool-side length validation bounds prompt, agent id, ref, model, and branch fields before outbound requests. | MITIGATED |
+| TM-CURSOR-007 | Repository enumeration and rate-limit abuse | Low | `cursor_list_repositories` is read-only but documented as heavily rate-limited; seed prompt instructs agents to prefer explicit repository URLs and use the endpoint sparingly. | MITIGATED |
+
 ## 17. E2B Cloud Sandbox (TM-E2B)
 
 E2B sandboxes are remote Linux environments managed through the E2B Management API plus per-sandbox envd runtime endpoints. Everruns uses a platform-owned `E2B_API_KEY` from environment or session secret override, and stores per-sandbox envd access tokens in session-scoped secrets.
