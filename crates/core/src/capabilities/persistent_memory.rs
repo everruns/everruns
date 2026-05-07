@@ -55,10 +55,19 @@ impl Capability for MemoryCapability {
     }
 
     fn tools(&self) -> Vec<Box<dyn Tool>> {
+        self.tools_with_config(&Value::Null)
+    }
+
+    fn tools_with_config(&self, config: &Value) -> Vec<Box<dyn Tool>> {
+        let config = MemoryConfig::from_json(config);
         vec![
-            Box::new(RememberTool),
-            Box::new(RecallTool),
-            Box::new(ForgetTool),
+            Box::new(RememberTool {
+                config: config.clone(),
+            }),
+            Box::new(RecallTool {
+                config: config.clone(),
+            }),
+            Box::new(ForgetTool { config }),
         ]
     }
 
@@ -177,7 +186,18 @@ async fn resolve_store_id(
 // Remember Tool
 // ============================================================================
 
-pub struct RememberTool;
+pub struct RememberTool {
+    config: MemoryConfig,
+}
+
+#[cfg(test)]
+impl RememberTool {
+    fn with_default_config() -> Self {
+        Self {
+            config: MemoryConfig::default(),
+        }
+    }
+}
 
 #[derive(Debug, Deserialize)]
 struct RememberParams {
@@ -309,11 +329,7 @@ impl Tool for RememberTool {
             None => MemoryKind::Fact,
         };
 
-        // TODO(V1): Resolve MemoryConfig from agent/harness capability config
-        // instead of using defaults. Tools don't currently have access to the
-        // per-agent AgentCapabilityConfig; requires ToolContext extension.
-        let config = MemoryConfig::default();
-        let store_id = match resolve_store_id(&config, context).await {
+        let store_id = match resolve_store_id(&self.config, context).await {
             Ok(id) => id,
             Err(e) => return e,
         };
@@ -359,7 +375,18 @@ impl Tool for RememberTool {
 // Recall Tool
 // ============================================================================
 
-pub struct RecallTool;
+pub struct RecallTool {
+    config: MemoryConfig,
+}
+
+#[cfg(test)]
+impl RecallTool {
+    fn with_default_config() -> Self {
+        Self {
+            config: MemoryConfig::default(),
+        }
+    }
+}
 
 #[derive(Debug, Deserialize)]
 struct RecallParams {
@@ -445,9 +472,7 @@ impl Tool for RecallTool {
             Err(e) => return ToolExecutionResult::tool_error(format!("Invalid parameters: {e}")),
         };
 
-        // TODO(V1): Resolve MemoryConfig from agent/harness capability config
-        let config = MemoryConfig::default();
-        let store_id = match resolve_store_id(&config, context).await {
+        let store_id = match resolve_store_id(&self.config, context).await {
             Ok(id) => id,
             Err(e) => return e,
         };
@@ -519,7 +544,18 @@ impl Tool for RecallTool {
 // Forget Tool
 // ============================================================================
 
-pub struct ForgetTool;
+pub struct ForgetTool {
+    config: MemoryConfig,
+}
+
+#[cfg(test)]
+impl ForgetTool {
+    fn with_default_config() -> Self {
+        Self {
+            config: MemoryConfig::default(),
+        }
+    }
+}
 
 #[derive(Debug, Deserialize)]
 struct ForgetParams {
@@ -586,9 +622,7 @@ impl Tool for ForgetTool {
             }
         };
 
-        // TODO(V1): Resolve MemoryConfig from agent/harness capability config
-        let config = MemoryConfig::default();
-        let store_id = match resolve_store_id(&config, context).await {
+        let store_id = match resolve_store_id(&self.config, context).await {
             Ok(id) => id,
             Err(e) => return e,
         };
@@ -650,7 +684,7 @@ mod tests {
         let (ctx, _, _) = test_context();
 
         // Remember
-        let result = RememberTool
+        let result = RememberTool::with_default_config()
             .execute_with_context(
                 json!({
                     "content": "The project uses Rust edition 2024",
@@ -671,7 +705,7 @@ mod tests {
         }
 
         // Recall by query
-        let result = RecallTool
+        let result = RecallTool::with_default_config()
             .execute_with_context(json!({"query": "rust"}), &ctx)
             .await;
 
@@ -688,7 +722,7 @@ mod tests {
         }
 
         // Recall by tag
-        let result = RecallTool
+        let result = RecallTool::with_default_config()
             .execute_with_context(json!({"tags": ["project"]}), &ctx)
             .await;
 
@@ -704,7 +738,7 @@ mod tests {
     async fn test_remember_with_images() {
         let (ctx, _, _) = test_context();
 
-        let result = RememberTool
+        let result = RememberTool::with_default_config()
             .execute_with_context(
                 json!({
                     "content": "Architecture diagram",
@@ -722,7 +756,7 @@ mod tests {
         }
 
         // Recall should include image parts
-        let result = RecallTool
+        let result = RecallTool::with_default_config()
             .execute_with_context(json!({"query": "architecture"}), &ctx)
             .await;
 
@@ -743,7 +777,7 @@ mod tests {
         let (ctx, _, _) = test_context();
 
         // Create a memory
-        let result = RememberTool
+        let result = RememberTool::with_default_config()
             .execute_with_context(json!({"content": "temporary fact", "tags": ["temp"]}), &ctx)
             .await;
 
@@ -753,7 +787,7 @@ mod tests {
         };
 
         // Forget it
-        let result = ForgetTool
+        let result = ForgetTool::with_default_config()
             .execute_with_context(json!({"memory_id": memory_id}), &ctx)
             .await;
 
@@ -763,7 +797,7 @@ mod tests {
         }
 
         // Recall should return nothing
-        let result = RecallTool
+        let result = RecallTool::with_default_config()
             .execute_with_context(json!({"query": "temporary"}), &ctx)
             .await;
 
@@ -778,7 +812,7 @@ mod tests {
         let (ctx, _, _) = test_context();
 
         let long_content = "x".repeat(2001);
-        let result = RememberTool
+        let result = RememberTool::with_default_config()
             .execute_with_context(json!({"content": long_content}), &ctx)
             .await;
 
@@ -795,7 +829,7 @@ mod tests {
         let (ctx, _, _) = test_context();
 
         let tags: Vec<String> = (0..11).map(|i| format!("tag{i}")).collect();
-        let result = RememberTool
+        let result = RememberTool::with_default_config()
             .execute_with_context(json!({"content": "test", "tags": tags}), &ctx)
             .await;
 
@@ -811,7 +845,7 @@ mod tests {
     async fn test_recall_empty_store() {
         let (ctx, _, _) = test_context();
 
-        let result = RecallTool.execute_with_context(json!({}), &ctx).await;
+        let result = RecallTool::with_default_config().execute_with_context(json!({}), &ctx).await;
 
         match &result {
             ToolExecutionResult::Success(v) => {
@@ -827,7 +861,7 @@ mod tests {
         let (ctx, _, _) = test_context();
 
         let fake_id = MemoryId::new().to_string();
-        let result = ForgetTool
+        let result = ForgetTool::with_default_config()
             .execute_with_context(json!({"memory_id": fake_id}), &ctx)
             .await;
 
@@ -841,7 +875,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_remember_without_context_errors() {
-        let result = RememberTool.execute(json!({"content": "test"})).await;
+        let result = RememberTool::with_default_config().execute(json!({"content": "test"})).await;
         match result {
             ToolExecutionResult::ToolError(msg) => {
                 assert!(msg.contains("requires session context"));
@@ -854,18 +888,18 @@ mod tests {
     async fn test_recall_by_kind() {
         let (ctx, _, _) = test_context();
 
-        RememberTool
+        RememberTool::with_default_config()
             .execute_with_context(
                 json!({"content": "User prefers dark mode", "kind": "preference"}),
                 &ctx,
             )
             .await;
 
-        RememberTool
+        RememberTool::with_default_config()
             .execute_with_context(json!({"content": "The sky is blue", "kind": "fact"}), &ctx)
             .await;
 
-        let result = RecallTool
+        let result = RecallTool::with_default_config()
             .execute_with_context(json!({"kind": "preference"}), &ctx)
             .await;
 
@@ -909,8 +943,8 @@ mod tests {
 
     #[test]
     fn test_tools_require_context() {
-        assert!(RememberTool.requires_context());
-        assert!(RecallTool.requires_context());
-        assert!(ForgetTool.requires_context());
+        assert!(RememberTool::with_default_config().requires_context());
+        assert!(RecallTool::with_default_config().requires_context());
+        assert!(ForgetTool::with_default_config().requires_context());
     }
 }
