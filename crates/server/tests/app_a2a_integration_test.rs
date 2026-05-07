@@ -144,13 +144,17 @@ async fn a2a_message_send_creates_session_and_returns_completed_task() {
         .await
         .assert_status(StatusCode::OK)
         .json();
-    // Both sessions exist for this app + channel. Shared-session reuse is
-    // exercised by the existing webhook integration suite which goes through
-    // the same `find_or_create_invocation_session` codepath; here we just
-    // check that both invocations land messages on app-owned sessions.
-    assert!(response2["result"]["contextId"].as_str().is_some());
+    // Second invocation must land in the same shared session — `contextId`
+    // echoes the Everruns SessionId and shared_session mode reuses one
+    // session for the channel.
+    assert_eq!(
+        response2["result"]["contextId"].as_str().unwrap(),
+        session_id,
+        "shared_session A2A invocations must reuse the same session",
+    );
     let texts = list_user_message_texts(&server, session_id).await;
     assert!(texts.iter().any(|t| t == "from a2a: hello"));
+    assert!(texts.iter().any(|t| t == "from a2a: again"));
 }
 
 #[tokio::test]

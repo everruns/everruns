@@ -664,6 +664,8 @@ async fn process_slack_message(
                     app.agent_id.map(|agent_id| agent_id.uuid()),
                     app.agent_id,
                     app.internal_id,
+                    app.owner_principal_id,
+                    app.resolved_owner_user_id,
                     req,
                 )
                 .await?;

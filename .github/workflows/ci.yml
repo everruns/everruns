@@ -444,6 +444,8 @@ jobs:
         run: |
           cargo test -p everruns-server \
             --test ag_ui_integration_test \
+            --test app_a2a_integration_test \
+            --test app_invocation_channels_integration_test \
             --test auth_integration_test \
             --test cli_auth_test \
             --test cli_auth_no_org_test \
