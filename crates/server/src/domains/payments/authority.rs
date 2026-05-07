@@ -406,7 +406,15 @@ impl ServerPaymentAuthority {
         request: &MachinePaymentRequest,
         payment_header: Option<(&str, &str)>,
     ) -> Result<PaidHttpResponse> {
-        let client = reqwest::Client::new();
+        let client = reqwest::Client::builder()
+            // THREAT[TM-TOOL-?]: Paid endpoints may redirect to disallowed/internal hosts.
+            // Mitigation: never follow redirects for machine payments; policy checks apply
+            // only to the original validated URL.
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .map_err(|error| {
+                AgentLoopError::tool(format!("Failed to initialize x402 client: {error}"))
+            })?;
         let mut builder = match request.method {
             PaymentMethod::Get => client.get(&request.url),
             PaymentMethod::Post => client.post(&request.url),
