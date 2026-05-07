@@ -202,6 +202,19 @@ impl MessageService {
         Ok(message)
     }
 
+    /// Access the registered durable runner. Used by sibling callers that
+    /// need to cancel an in-flight workflow without going through the
+    /// session command surface.
+    pub fn runner(&self) -> &Arc<dyn AgentRunner> {
+        &self.runner
+    }
+
+    /// Access the underlying event service. Used by sibling callers that
+    /// need to emit lifecycle events outside of `MessageService::create`.
+    pub fn event_service(&self) -> &EventService {
+        &self.event_service
+    }
+
     pub async fn list(&self, session_id: Uuid) -> Result<Vec<Message>> {
         self.list_limited(session_id, None).await
     }

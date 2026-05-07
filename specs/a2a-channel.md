@@ -31,13 +31,13 @@ References:
 
 ## Non-Goals
 
-1. The full A2A method surface — this iteration supports `message/send` and
-   `message/stream`. `tasks/get`, `tasks/cancel`, push notifications, etc.
-   remain out of scope.
+1. The full A2A method surface — this iteration supports `message/send`,
+   `message/stream`, `tasks/get`, and `tasks/cancel`. `tasks/resubscribe`,
+   push notifications, and authenticated extensions remain out of scope.
 2. Authentication schemes beyond API key (HTTP, OAuth2, OIDC, mTLS).
-3. Multi-turn task state machine — every `message/send` and `message/stream`
-   call returns a terminal task (`completed`, `failed`, or `canceled`) with
-   no follow-up `tasks/*` handle yet.
+3. Persistent per-task identity beyond the session lifecycle. Tasks are
+   identified by the underlying session id (`task_id == contextId`); a
+   shared session reuses the same task id across follow-up messages.
 
 This spec covers **inbound** A2A only — exposing an Everruns App as an A2A
 server for other agents to call. The complementary **outbound** direction —
@@ -108,24 +108,27 @@ API key generation:
 }
 ```
 
-Response: A2A JSON-RPC 2.0 success with a terminal `Task` result:
+Response: A2A JSON-RPC 2.0 success with a non-terminal `Task` result:
 
 ```json
 {
   "jsonrpc": "2.0",
   "id": "req-1",
   "result": {
-    "id": "<task_id>",
+    "id": "<session_id>",
     "contextId": "<session_id>",
-    "status": { "state": "completed" },
+    "status": { "state": "submitted" },
     "kind": "task"
   }
 }
 ```
 
-The task `id` is a fresh UUID per invocation; `contextId` is the Everruns
-`SessionId` (so subsequent A2A calls referencing the same `contextId` can be
-correlated for debugging — Everruns does not require it).
+The task `id` is the underlying Everruns `SessionId` — it is intentionally
+the same value as `contextId`. The durable workflow is asynchronous, so the
+initial response is always non-terminal (`submitted`). Clients observe
+state transitions via `tasks/get` (see "Task Lifecycle" below) or
+`message/stream` (see "Streaming"). Shared sessions reuse the same task id
+across follow-up messages.
 
 Error mapping. Transport-level failures use plain HTTP errors; protocol-level
 failures use JSON-RPC error envelopes returned with HTTP 200 so A2A clients
@@ -138,8 +141,9 @@ that key off the JSON-RPC `id` and `error.code` see a structured response:
 | 404  | —             | App or channel not found              |
 | 400  | —             | Invalid path-level input (e.g. malformed channel ID) |
 | 400  | `-32600`      | Invalid Request (malformed envelope, returned with HTTP 400) |
-| 200  | `-32601`      | Method not found (only `message/send` and `message/stream` are supported) |
-| 200  | `-32602`      | Invalid params (e.g. no non-empty text parts) |
+| 200  | `-32601`      | Method not found (only `message/send`, `message/stream`, `tasks/get`, `tasks/cancel` are supported) |
+| 200  | `-32602`      | Invalid params (e.g. no non-empty text parts, malformed task id) |
+| 200  | `-32001`      | Task not found (`tasks/get` / `tasks/cancel` against an unknown task id) |
 
 ### Streaming (`message/stream`)
 
@@ -175,6 +179,46 @@ the same JSON-RPC error envelope as `message/send` (returned as a normal
 `application/json` response with HTTP 200 and `error.code` set, except for
 401/403/404/400 transport-level failures which are returned as plain HTTP
 errors).
+
+### Task Lifecycle (`tasks/get`, `tasks/cancel`)
+
+The same endpoint accepts `method = "tasks/get"` and `method = "tasks/cancel"`
+with `params = { "id": "<task_id>" }`. Authentication, channel gating, and
+method allowlisting are identical to `message/send`.
+
+Task identity. The task id returned by `message/send` and `message/stream`
+is the underlying Everruns `SessionId`. The state of a task is **derived**
+from the most recent turn lifecycle event on that session; there is no
+separate task table in this iteration:
+
+| Latest turn event       | A2A state    |
+|-------------------------|--------------|
+| `turn.completed`        | `completed`  |
+| `turn.failed`           | `failed`     |
+| `turn.cancelled`        | `canceled`   |
+| `turn.started`          | `working`    |
+| (no turn events yet)    | `submitted`  |
+
+`tasks/get` returns the current task with `id` and `contextId` echoing the
+session id. An unknown but well-formed task id surfaces `-32001 Task not
+found`. A malformed task id surfaces `-32602 Invalid params`.
+
+`tasks/cancel` cancels the in-flight durable workflow for the underlying
+session and emits a `turn.cancelled` event so subsequent `tasks/get` calls
+observe the canceled state. Cancelling an already-terminal task is
+idempotent: the same terminal task object is returned without any state
+transition.
+
+Reusing the session id as the task id is acceptable for the in-channel
+contract because:
+
+- Each shared-session invocation runs at most one durable turn at a time,
+  so there is exactly one in-flight task per session and "the most recent
+  turn" is unambiguous.
+- The contract advertised in the Agent Card does not promise per-message
+  task identity; clients that need that should use `message/stream`.
+- Persistent multi-task state across the lifetime of a session is a
+  separate concern that belongs to a future iteration if required.
 
 ### Agent Card
 
