@@ -1148,20 +1148,18 @@ fn translate_event(state: &mut AgUiStreamState, event: &everruns_core::Event) {
             state.thinking_text_started = false;
             state.public_tool_activity_opened_thinking = false;
         }
-        "tool.started" => {
-            if let Ok(data) = parse_event_data::<ToolStartedData>(event) {
-                ensure_assistant_message_id(state, event);
-                state.active_tool_activity_count += 1;
-                match state.tool_visibility {
-                    AgUiToolVisibility::None => {}
-                    AgUiToolVisibility::Generic => {
-                        push_public_tool_activity_start(state, state.generic_tool_text.clone());
-                    }
-                    AgUiToolVisibility::Narrated => {
-                        // Public streams must not emit backend/model-authored narration because
-                        // narration may derive from raw tool-call arguments.
-                        push_public_tool_activity_start(state, state.generic_tool_text.clone());
-                    }
+        "tool.started" if parse_event_data::<ToolStartedData>(event).is_ok() => {
+            ensure_assistant_message_id(state, event);
+            state.active_tool_activity_count += 1;
+            match state.tool_visibility {
+                AgUiToolVisibility::None => {}
+                AgUiToolVisibility::Generic => {
+                    push_public_tool_activity_start(state, state.generic_tool_text.clone());
+                }
+                AgUiToolVisibility::Narrated => {
+                    // Public streams must not emit backend/model-authored narration because
+                    // narration may derive from raw tool-call arguments.
+                    push_public_tool_activity_start(state, state.generic_tool_text.clone());
                 }
             }
         }
