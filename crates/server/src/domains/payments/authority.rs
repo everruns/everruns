@@ -406,15 +406,7 @@ impl ServerPaymentAuthority {
         request: &MachinePaymentRequest,
         payment_header: Option<(&str, &str)>,
     ) -> Result<PaidHttpResponse> {
-        let client = reqwest::Client::builder()
-            // THREAT[TM-AGENT-023]: Paid endpoints may redirect to disallowed/internal hosts.
-            // Mitigation: never follow redirects for machine payments; policy checks apply
-            // only to the original validated URL.
-            .redirect(reqwest::redirect::Policy::none())
-            .build()
-            .map_err(|error| {
-                AgentLoopError::tool(format!("Failed to initialize x402 client: {error}"))
-            })?;
+        let client = build_payment_http_client()?;
         let mut builder = match request.method {
             PaymentMethod::Get => client.get(&request.url),
             PaymentMethod::Post => client.post(&request.url),
@@ -473,6 +465,20 @@ impl ServerPaymentAuthority {
                 AgentLoopError::store(format!("Failed to record payment attempt: {error}"))
             })
     }
+}
+
+fn build_payment_http_client() -> Result<reqwest::Client> {
+    reqwest::Client::builder()
+        // THREAT[TM-AGENT-023]: Paid endpoints may redirect to disallowed/internal hosts.
+        // Mitigation: never follow redirects for machine payments; policy checks apply
+        // only to the original validated URL.
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .map_err(|error| {
+            AgentLoopError::tool(format!(
+                "Failed to initialize payment authority HTTP client: {error}"
+            ))
+        })
 }
 
 fn validate_request_shape(request: &MachinePaymentRequest) -> Result<()> {
@@ -790,6 +796,40 @@ mod tests {
             payload["payload"]["signature"]
                 .as_str()
                 .is_some_and(|signature| signature.starts_with("0x") && signature.len() == 132)
+        );
+    }
+
+    /// Regression test for TM-AGENT-023: the payment HTTP client must not follow
+    /// 30x redirects, which would otherwise bypass the policy host allowlist
+    /// applied to the original request URL.
+    #[tokio::test]
+    async fn payment_http_client_does_not_follow_redirects() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/redirect"))
+            .respond_with(
+                ResponseTemplate::new(302).insert_header("location", "http://127.0.0.1:1/internal"),
+            )
+            .mount(&server)
+            .await;
+
+        let client = build_payment_http_client().expect("client");
+        let response = client
+            .get(format!("{}/redirect", server.uri()))
+            .send()
+            .await
+            .expect("redirect response");
+
+        assert_eq!(response.status().as_u16(), 302);
+        assert_eq!(
+            response
+                .headers()
+                .get("location")
+                .and_then(|value| value.to_str().ok()),
+            Some("http://127.0.0.1:1/internal"),
         );
     }
 }
