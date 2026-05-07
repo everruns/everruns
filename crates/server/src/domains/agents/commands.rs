@@ -80,12 +80,19 @@ fn initial_files_total_bytes(files: &[InitialFile]) -> usize {
     files.iter().map(|f| f.content.len()).sum()
 }
 
-fn check_high_risk_caps(ctx: &Ctx, caps: &[AgentCapabilityConfig]) -> Result<(), CommandError> {
+async fn check_high_risk_caps(
+    ctx: &Ctx,
+    caps: &[AgentCapabilityConfig],
+) -> Result<(), CommandError> {
     if caps.is_empty() || ctx.caller.role.has_permission(OrgRole::Admin) {
         return Ok(());
     }
     let refs: Vec<&str> = caps.iter().map(|c| c.capability_ref.as_str()).collect();
-    let high = ctx.capability_service.high_risk_ids(&refs);
+    let high = ctx
+        .capability_service
+        .high_risk_ids_for_org(ctx.org_id(), &refs)
+        .await
+        .map_err(classify_anyhow)?;
     if !high.is_empty() {
         return Err(CommandError::Forbidden(format!(
             "Admin role required to assign high-risk capabilities: {}",
@@ -155,7 +162,7 @@ impl Command for CreateAgent {
         // Validate
         validate_name("Agent", &req.name)?;
         validate_create_limits(&req)?;
-        check_high_risk_caps(ctx, &req.capabilities)?;
+        check_high_risk_caps(ctx, &req.capabilities).await?;
 
         // Business rules
         q::ensure_name_available(&ctx.db, ctx.org_id(), &req.name, None).await?;
@@ -404,7 +411,7 @@ impl Command for UpdateAgentCmd {
             ));
         }
         if let Some(ref caps) = req.capabilities {
-            check_high_risk_caps(ctx, caps)?;
+            check_high_risk_caps(ctx, caps).await?;
         }
 
         // Resolve existing
@@ -626,7 +633,7 @@ impl Command for UpsertAgent {
         // Validate (same checks as CreateAgent)
         validate_name("Agent", &req.name)?;
         validate_create_limits(&req)?;
-        check_high_risk_caps(ctx, &req.capabilities)?;
+        check_high_risk_caps(ctx, &req.capabilities).await?;
 
         let caps = normalize_capability_refs(
             ctx,

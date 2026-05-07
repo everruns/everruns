@@ -354,6 +354,46 @@ impl CapabilityService {
             .collect()
     }
 
+    /// Return high-risk built-in capability IDs reachable from the given refs.
+    ///
+    /// Declarative refs are expanded using their persisted `dependencies`.
+    pub async fn high_risk_ids_for_org(
+        &self,
+        org_id: i64,
+        cap_refs: &[&str],
+    ) -> Result<Vec<String>> {
+        let mut refs: Vec<String> = cap_refs.iter().map(|id| (*id).to_string()).collect();
+        for cap_ref in cap_refs {
+            if !is_declarative_capability(cap_ref) {
+                continue;
+            }
+            let Some(name) = parse_declarative_capability_id(cap_ref) else {
+                continue;
+            };
+            let Some(row) = self
+                .db
+                .get_declarative_capability_by_name(org_id, name)
+                .await?
+            else {
+                continue;
+            };
+            // Fail closed: a broken declarative definition must NOT silently skip
+            // dependency expansion, since this function gates admin-only high-risk
+            // capability assignment. Propagate the parse error to the caller.
+            let definition: DeclarativeCapabilityDefinition =
+                serde_json::from_value(row.definition).map_err(|error| {
+                    anyhow::anyhow!(
+                        "declarative capability {cap_ref} has malformed definition: {error}"
+                    )
+                })?;
+            refs.extend(definition.dependencies);
+        }
+
+        refs.sort();
+        refs.dedup();
+        Ok(self.high_risk_ids(&refs.iter().map(String::as_str).collect::<Vec<_>>()))
+    }
+
     /// List system commands from all registered capabilities.
     ///
     /// System commands execute directly without the LLM (e.g., /clear, /status).
@@ -649,6 +689,35 @@ mod tests {
         fn empty_input_returns_empty() {
             let svc = make_service();
             assert!(svc.high_risk_ids(&[]).is_empty());
+        }
+
+        #[tokio::test]
+        async fn flags_declarative_dependencies_as_high_risk() {
+            use crate::storage::models::CreateDeclarativeCapabilityRow;
+            let svc = make_service();
+            svc.db
+                .create_declarative_capability(
+                    1,
+                    CreateDeclarativeCapabilityRow {
+                        public_id: everruns_core::DeclarativeCapabilityId::new().to_string(),
+                        name: "hidden_fetch".to_string(),
+                        display_name: Some("Hidden Fetch".to_string()),
+                        description: "test".to_string(),
+                        definition: serde_json::json!({
+                            "name": "hidden_fetch",
+                            "description": "test",
+                            "dependencies": ["web_fetch"],
+                        }),
+                    },
+                )
+                .await
+                .unwrap();
+
+            let high = svc
+                .high_risk_ids_for_org(1, &["declarative:hidden_fetch"])
+                .await
+                .unwrap();
+            assert_eq!(high, vec!["web_fetch".to_string()]);
         }
     }
 }
