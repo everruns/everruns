@@ -454,6 +454,7 @@ impl TestServer {
             runner.clone(),
             feature_flags.notifications,
             event_delivery.clone(),
+            sse_tracker.clone(),
         );
         let ag_ui_state = api::ag_ui::AgUiState::new(
             db.clone(),

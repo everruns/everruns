@@ -31,12 +31,13 @@ References:
 
 ## Non-Goals
 
-1. The full A2A method surface — this iteration only supports `message/send`.
-   `message/stream`, `tasks/get`, `tasks/cancel`, push notifications, etc. are
-   out of scope.
+1. The full A2A method surface — this iteration supports `message/send` and
+   `message/stream`. `tasks/get`, `tasks/cancel`, push notifications, etc.
+   remain out of scope.
 2. Authentication schemes beyond API key (HTTP, OAuth2, OIDC, mTLS).
-3. Multi-turn task state machine — every `message/send` returns a terminal
-   `completed` task with no follow-up handle.
+3. Multi-turn task state machine — every `message/send` and `message/stream`
+   call returns a terminal task (`completed`, `failed`, or `canceled`) with
+   no follow-up `tasks/*` handle yet.
 
 This spec covers **inbound** A2A only — exposing an Everruns App as an A2A
 server for other agents to call. The complementary **outbound** direction —
@@ -137,8 +138,43 @@ that key off the JSON-RPC `id` and `error.code` see a structured response:
 | 404  | —             | App or channel not found              |
 | 400  | —             | Invalid path-level input (e.g. malformed channel ID) |
 | 400  | `-32600`      | Invalid Request (malformed envelope, returned with HTTP 400) |
-| 200  | `-32601`      | Method not found (only `message/send` is supported) |
+| 200  | `-32601`      | Method not found (only `message/send` and `message/stream` are supported) |
 | 200  | `-32602`      | Invalid params (e.g. no non-empty text parts) |
+
+### Streaming (`message/stream`)
+
+The same endpoint accepts `method = "message/stream"`. Authentication, channel
+gating, method allowlist, and `params.message.parts` validation are identical
+to `message/send`. On success the response is `Content-Type:
+text/event-stream` instead of `application/json`, and the body is a sequence
+of SSE events. Each event's `data:` payload is a JSON-RPC 2.0 envelope whose
+`id` echoes the request `id` and whose `result` carries one A2A streaming
+frame.
+
+Frame kinds emitted:
+
+- `status-update` with `status.state = "working"` and `final = false` — sent
+  immediately after the session is resolved so clients see liveness even
+  before the durable runtime emits its first event.
+- `message` with `role = "agent"` and `parts: [{ kind: "text", text: ... }]`
+  — emitted from `output.message.completed` events for the same session.
+  Tool calls and intermediate deltas are not surfaced in this iteration.
+- A terminal `status-update` with `final = true` and one of
+  `state = "completed" | "failed" | "canceled"` — emitted from the
+  corresponding `turn.completed` / `turn.failed` / `turn.cancelled` event.
+  The stream closes after this frame.
+
+If the session subscription drops without a terminal turn event, the channel
+emits a synthetic `status-update` with `state = "failed"` and `final = true`
+so clients do not hang. Reconnection / replay (`tasks/resubscribe`,
+`Last-Event-ID`) is not supported in this iteration; clients that lose the
+stream should retry the original `message/stream` call.
+
+Authentication, gating, and validation errors before the stream opens follow
+the same JSON-RPC error envelope as `message/send` (returned as a normal
+`application/json` response with HTTP 200 and `error.code` set, except for
+401/403/404/400 transport-level failures which are returned as plain HTTP
+errors).
 
 ### Agent Card
 
@@ -157,7 +193,7 @@ A2A channels; otherwise `404`. Card shape:
   "version": "0.1",
   "preferredTransport": "JSONRPC",
   "capabilities": {
-    "streaming": false,
+    "streaming": true,
     "pushNotifications": false,
     "stateTransitionHistory": false
   },

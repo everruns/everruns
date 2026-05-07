@@ -685,7 +685,7 @@
         },
         "responses": {
           "200": {
-            "description": "JSON-RPC 2.0 response (success or A2A error envelope)"
+            "description": "JSON-RPC 2.0 response (single JSON for message/send, text/event-stream for message/stream)"
           },
           "401": {
             "description": "Missing or invalid API key",
