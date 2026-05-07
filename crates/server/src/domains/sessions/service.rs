@@ -1170,14 +1170,11 @@ impl SessionService {
         let capability_ids = self
             .collect_session_capability_ids(org_id, harness_id, agent_id, session_capabilities)
             .await?;
-        let high_risk: Vec<String> = capability_ids
-            .into_iter()
-            .filter(|capability_id| {
-                self.capability_registry
-                    .get(capability_id)
-                    .is_some_and(|capability| capability.risk_level() == RiskLevel::High)
-            })
-            .collect();
+        let cap_refs: Vec<&str> = capability_ids.iter().map(String::as_str).collect();
+        let high_risk = self
+            .capability_service
+            .high_risk_ids_for_org(org_id, &cap_refs)
+            .await?;
         if high_risk.is_empty() {
             return Ok(());
         }
