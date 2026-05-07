@@ -2270,6 +2270,70 @@ async fn test_llm_model_provider_reads_fail_closed_on_cross_org_provider_postgre
 }
 
 #[tokio::test]
+async fn test_disabled_model_is_not_resolvable_or_default_postgres() {
+    let backend = create_test_backend().await;
+
+    let provider = backend
+        .create_llm_provider(
+            TEST_ORG_ID,
+            CreateLlmProviderRow {
+                name: format!("Prov-{}", Uuid::now_v7()),
+                provider_type: "openai".to_string(),
+                base_url: None,
+                api_key_encrypted: None,
+                settings: None,
+            },
+        )
+        .await
+        .expect("create provider");
+
+    let disabled_model = backend
+        .create_llm_model(
+            TEST_ORG_ID,
+            CreateLlmModelRow {
+                provider_id: provider.id,
+                model_id: format!("disabled-model-{}", Uuid::now_v7()),
+                display_name: "Disabled Model".to_string(),
+                capabilities: vec!["chat".to_string()],
+                enabled: false,
+                is_favorite: false,
+                source: "manual".to_string(),
+                provider_metadata: None,
+            },
+        )
+        .await
+        .expect("create disabled model");
+
+    backend
+        .upsert_organization_settings(TEST_ORG_ID, Some(disabled_model.id.uuid()))
+        .await
+        .expect("set default model");
+
+    assert!(
+        backend
+            .get_default_llm_model(TEST_ORG_ID)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        backend
+            .get_llm_model_by_model_id(TEST_ORG_ID, &disabled_model.model_id)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        backend
+            .list_all_llm_models(TEST_ORG_ID)
+            .await
+            .unwrap()
+            .into_iter()
+            .all(|model| model.id != disabled_model.id)
+    );
+}
+
+#[tokio::test]
 async fn test_image_org_isolation_postgres() {
     let backend = create_test_backend().await;
     let org2 = create_test_org(&backend, "Image Isolation Org").await;

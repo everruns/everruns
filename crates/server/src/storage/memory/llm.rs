@@ -233,6 +233,7 @@ impl InMemoryDatabase {
             && let Some(provider) = providers.get(&model.provider_id)
             && provider.org_id == org_id
             && provider.status == "active"
+            && model.enabled
         {
             return Ok(Some(LlmModelWithProviderRow {
                 id: model.id,
@@ -406,7 +407,7 @@ impl InMemoryDatabase {
 
         let mut result: Vec<_> = models
             .values()
-            .filter(|model| model.org_id == org_id)
+            .filter(|model| model.org_id == org_id && model.enabled)
             .filter_map(|model| {
                 providers
                     .get(&model.provider_id)
@@ -498,6 +499,7 @@ impl InMemoryDatabase {
                 && let Some(provider) = providers.get(&model.provider_id)
                 && provider.org_id == org_id
                 && provider.status == "active"
+            && model.enabled
             {
                 return Ok(Some(LlmModelWithProviderRow {
                     id: model.id,
