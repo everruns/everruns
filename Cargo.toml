@@ -141,6 +141,11 @@ tonic-prost-build = "0.14"
 
 # Protocol Buffers (used by tonic/gRPC)
 prost = "0.14"
+
+# Deterministic network simulation (dev-only). Used to test worker↔control-plane
+# transport reliability (drops, partitions, latency, reorder) with a simulated
+# clock. See specs/agent-reliability-tests.md scenario 3.
+turmoil = "0.7"
 prost-build = "0.14"
 prost-types = "0.14"
 
