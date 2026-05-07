@@ -35,6 +35,12 @@ Flags have two visibility levels, modeled as separate structs:
 
 See `crates/core/src/feature_flags.rs` for the complete list of flags and their resolution logic.
 
+Planned flag:
+
+| Flag | Type | Visibility | Env var | Purpose |
+|------|------|------------|---------|---------|
+| `voice` | Experimental | API-visible | `FEATURE_VOICE` | Enables Realtime voice endpoints and microphone controls in session chat, agent chat, and Platform Chat. |
+
 ## Architecture
 
 ### Backend

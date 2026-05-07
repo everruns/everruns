@@ -1,6 +1,6 @@
 # Leased Resources
 
-Leased resources are the generic control-plane primitive for any provider-owned state that must be cleaned up eventually. Daytona sandboxes and Browserless persistent sessions are the first adopters, but the model is intentionally cross-provider: any subsystem that creates remote state with a lifecycle beyond a single tool call should register a lease instead of inventing another ad hoc cleanup path.
+Leased resources are the generic control-plane primitive for any provider-owned state that must be cleaned up eventually. Daytona sandboxes and Browserless persistent sessions are the first adopters, and Voice Connections use the same pattern for provider realtime calls. The model is intentionally cross-provider: any subsystem that creates remote state with a lifecycle beyond a single tool call should register a lease instead of inventing another ad hoc cleanup path.
 
 ## Intent
 
