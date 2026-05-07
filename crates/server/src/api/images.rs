@@ -20,6 +20,7 @@ use axum_extra::extract::Multipart;
 use chrono::{DateTime, Utc};
 use everruns_core::typed_id::{ImageId, SessionId};
 use image::ImageFormat;
+use image::ImageReader;
 use serde::{Deserialize, Serialize};
 use std::io::Cursor;
 use std::sync::Arc;
@@ -34,6 +35,7 @@ pub(crate) const MAX_IMAGE_SIZE: usize = 100 * 1024 * 1024;
 
 /// Thumbnail max dimension (width or height)
 const THUMBNAIL_MAX_DIM: u32 = 200;
+const MAX_IMAGE_PIXELS: u64 = 40_000_000;
 
 /// Allowed MIME types
 pub(crate) const ALLOWED_CONTENT_TYPES: &[&str] =
@@ -124,14 +126,35 @@ pub fn routes(state: AppState) -> Router {
 // Helper Functions
 // ============================================
 
+/// Strip MIME parameters (`; charset=...`) and lowercase the bare media type
+/// so callers tolerate common header variations.
+fn normalize_content_type(content_type: &str) -> String {
+    content_type
+        .split(';')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase()
+}
+
 /// Validate content type is allowed
 pub(crate) fn is_valid_content_type(content_type: &str) -> bool {
-    ALLOWED_CONTENT_TYPES.contains(&content_type)
+    ALLOWED_CONTENT_TYPES.contains(&normalize_content_type(content_type).as_str())
+}
+
+/// Validate uploaded bytes are a real image matching declared content type.
+pub(crate) fn validate_image_bytes(data: &[u8], content_type: &str) -> bool {
+    let expected_format = match format_from_content_type(content_type) {
+        Some(format) => format,
+        None => return false,
+    };
+
+    image::guess_format(data).is_ok_and(|format| format == expected_format)
 }
 
 /// Detect image format from content type
 fn format_from_content_type(content_type: &str) -> Option<ImageFormat> {
-    match content_type {
+    match normalize_content_type(content_type).as_str() {
         "image/png" => Some(ImageFormat::Png),
         "image/jpeg" => Some(ImageFormat::Jpeg),
         "image/gif" => Some(ImageFormat::Gif),
@@ -144,8 +167,21 @@ fn format_from_content_type(content_type: &str) -> Option<ImageFormat> {
 pub(crate) fn generate_thumbnail(data: &[u8], content_type: &str) -> Option<(Vec<u8>, String)> {
     let format = format_from_content_type(content_type)?;
 
-    // Load image
-    let img = image::load_from_memory_with_format(data, format).ok()?;
+    // Load image with allocation limits to avoid decompression bombs.
+    //
+    // - max_alloc binds the decoder's working memory to MAX_IMAGE_PIXELS * 4 bytes
+    //   (assumes RGBA8, the worst case for the formats we accept).
+    // - max_image_width/height cap any single dimension well below the area
+    //   implied by MAX_IMAGE_PIXELS so an extreme aspect ratio (e.g. 1 x 4B)
+    //   is rejected at header parse before allocation work happens.
+    let max_dim = (MAX_IMAGE_PIXELS as f64).sqrt() as u32;
+    let mut reader = ImageReader::with_format(Cursor::new(data), format);
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(max_dim);
+    limits.max_image_height = Some(max_dim);
+    limits.max_alloc = Some(MAX_IMAGE_PIXELS * 4);
+    reader.limits(limits);
+    let img = reader.decode().ok()?;
 
     // Resize to thumbnail
     let thumbnail = img.thumbnail(THUMBNAIL_MAX_DIM, THUMBNAIL_MAX_DIM);
