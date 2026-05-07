@@ -199,7 +199,7 @@ impl Database {
             FROM organization_settings os
             JOIN llm_models m ON m.id = os.default_model_id AND m.org_id = os.org_id
             JOIN llm_providers p ON m.provider_id = p.id AND p.org_id = m.org_id
-            WHERE os.org_id = $1 AND p.status = 'active'
+            WHERE os.org_id = $1 AND p.status = 'active' AND m.enabled = TRUE
             "#,
         )
         .bind(org_id)
@@ -350,7 +350,7 @@ impl Database {
                    p.name as provider_name, p.provider_type, p.api_key_set as provider_api_key_set, p.status as provider_status
             FROM llm_models m
             JOIN llm_providers p ON m.provider_id = p.id AND p.org_id = m.org_id
-            WHERE p.status = 'active' AND m.org_id = $1
+            WHERE p.status = 'active' AND m.org_id = $1 AND m.enabled = TRUE
             ORDER BY m.enabled DESC, m.is_favorite DESC, p.name ASC, m.display_name ASC
             "#,
         )
@@ -425,7 +425,7 @@ impl Database {
                    p.name as provider_name, p.provider_type, p.api_key_set as provider_api_key_set, p.status as provider_status
             FROM llm_models m
             JOIN llm_providers p ON m.provider_id = p.id AND p.org_id = m.org_id
-            WHERE m.model_id = $1 AND p.status = 'active' AND m.org_id = $2
+            WHERE m.model_id = $1 AND p.status = 'active' AND m.org_id = $2 AND m.enabled = TRUE
             "#,
         )
         .bind(model_id)
