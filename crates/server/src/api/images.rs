@@ -158,11 +158,11 @@ pub(crate) fn generate_thumbnail(data: &[u8], content_type: &str) -> Option<(Vec
 
     // Load image with allocation limits to avoid decompression bombs
     let mut reader = ImageReader::with_format(Cursor::new(data), format);
-    reader.limits(image::Limits {
-        max_image_width: Some(20_000),
-        max_image_height: Some(20_000),
-        max_alloc: Some(MAX_IMAGE_PIXELS * 4),
-    });
+    let mut limits = image::Limits::default();
+    limits.max_image_width = Some(20_000);
+    limits.max_image_height = Some(20_000);
+    limits.max_alloc = Some(MAX_IMAGE_PIXELS * 4);
+    reader.limits(limits);
     let img = reader.decode().ok()?;
 
     // Resize to thumbnail
