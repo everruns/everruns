@@ -504,8 +504,10 @@ them; prefer IDs and display names.
 
 ### Phase 3: Reference Backends Only
 
-Phase 3 is reference material for future backend implementations. It is not part
-of the initial product commitment.
+Phase 3 is reference material for future backend implementations. It is not
+part of the initial product commitment. See
+[`specs/reporting-backends.md`](reporting-backends.md) for the full evaluation,
+adoption tests, and recommendation.
 
 Candidate backends:
 
@@ -518,17 +520,6 @@ The phase 1 and phase 2 contract must remain backend-neutral: semantic queries,
 `ReportingProjectionSink`, `ReportingQueryBackend`, org-scoped facts, and
 idempotent projectors. A phase 3 backend plugs into those traits without
 changing canonical tables or public report query shapes.
-
-DuckDB/object-storage layouts should partition by dataset, org, and day:
-
-```text
-s3://reports/fact_tool_call/org_id=1/day=2026-05-06/*.parquet
-s3://reports/fact_llm_generation/org_id=1/day=2026-05-06/*.parquet
-s3://reports/fact_budget_posting/org_id=1/day=2026-05-06/*.parquet
-```
-
-StarRocks layouts should keep the same logical fact schemas and source keys so
-backfills can replay from the same outbox and canonical sources.
 
 ## Open Questions
 
