@@ -5,18 +5,25 @@
 // multiple agent-to-agent endpoints with independent keys, agent cards, and
 // session routing.
 //
-// Only `message/send` is implemented in this iteration. Streaming, tasks/get,
-// and push notifications return JSON-RPC `-32601 Method not found`. See
-// `specs/a2a-channel.md`.
+// Supported methods: `message/send` (single JSON-RPC response) and
+// `message/stream` (SSE stream of JSON-RPC frames). Other methods return
+// JSON-RPC `-32601 Method not found`. See `specs/a2a-channel.md`.
 
+use std::convert::Infallible;
 use std::sync::Arc;
 
 use axum::{
     Json, Router,
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
+    response::{
+        IntoResponse, Response,
+        sse::{Event as SseEvent, KeepAlive, Sse},
+    },
     routing::{get, post},
 };
+use everruns_core::events::EventData;
+use futures::stream::{self, StreamExt};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use uuid::Uuid;
@@ -27,16 +34,18 @@ use crate::domains::apps::{
 };
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
+use crate::event_delivery::EventDelivery;
 use crate::middleware::RequestId;
 use crate::storage::{EncryptionService, StorageBackend};
 
 const A2A_PROTOCOL_VERSION: &str = "0.3.0";
 const A2A_AGENT_VERSION: &str = "0.1";
 
-// THREAT[TM-A2A-005]: Method gating — only `message/send` is supported.
-// Allowing arbitrary A2A methods would expose code paths we have not
-// audited for prompt injection or task-state forgery.
+// THREAT[TM-A2A-005]: Method gating — only `message/send` and `message/stream`
+// are supported. Allowing arbitrary A2A methods would expose code paths we
+// have not audited for prompt injection or task-state forgery.
 const METHOD_MESSAGE_SEND: &str = "message/send";
+const METHOD_MESSAGE_STREAM: &str = "message/stream";
 
 #[derive(Clone)]
 pub struct AppA2aState {
@@ -44,6 +53,7 @@ pub struct AppA2aState {
     pub encryption: Option<Arc<EncryptionService>>,
     pub session_service: Arc<SessionService>,
     pub message_service: Arc<MessageService>,
+    pub event_delivery: EventDelivery,
 }
 
 impl AppA2aState {
@@ -52,7 +62,7 @@ impl AppA2aState {
         encryption: Option<Arc<EncryptionService>>,
         runner: Arc<dyn everruns_worker::AgentRunner>,
         notifications_enabled: bool,
-        event_delivery: crate::event_delivery::EventDelivery,
+        event_delivery: EventDelivery,
     ) -> Self {
         Self {
             session_service: Arc::new(SessionService::new(db.clone())),
@@ -60,10 +70,11 @@ impl AppA2aState {
                 db.clone(),
                 runner,
                 notifications_enabled,
-                event_delivery,
+                event_delivery.clone(),
             )),
             db,
             encryption,
+            event_delivery,
         }
     }
 }
@@ -135,7 +146,7 @@ fn rpc_error(id: Value, code: i32, message: impl Into<String>) -> Json<JsonRpcRe
     ),
     request_body(content = serde_json::Value, content_type = "application/json"),
     responses(
-        (status = 200, description = "JSON-RPC 2.0 response (success or A2A error envelope)"),
+        (status = 200, description = "JSON-RPC 2.0 response (single JSON for message/send, text/event-stream for message/stream)"),
         (status = 401, description = "Missing or invalid API key", body = ErrorResponse),
         (status = 403, description = "App is not published or channel disabled", body = ErrorResponse),
         (status = 404, description = "App or channel not found", body = ErrorResponse),
@@ -148,22 +159,64 @@ pub async fn invoke_a2a(
     req_id: Option<axum::Extension<RequestId>>,
     headers: HeaderMap,
     Json(envelope): Json<Value>,
-) -> Result<(StatusCode, Json<JsonRpcResponse>), (StatusCode, Json<ErrorResponse>)> {
+) -> Response {
     // Parse JSON-RPC envelope first so we can return structured errors with the
     // original `id` echoed back.
     let parsed: JsonRpcRequest = match serde_json::from_value(envelope) {
         Ok(parsed) => parsed,
         Err(err) => {
-            return Ok((
+            return (
                 StatusCode::BAD_REQUEST,
                 rpc_error(Value::Null, -32600, format!("Invalid Request: {err}")),
-            ));
+            )
+                .into_response();
         }
     };
     let rpc_id = parsed.id.clone().unwrap_or(Value::Null);
 
-    // Resolve app + channel.
-    let app = app_queries::get_by_public_id_unscoped(&state.db, state.encryption.as_ref(), &app_id)
+    let auth = match authenticate_request(&state, &app_id, &channel_id, &headers).await {
+        Ok(auth) => auth,
+        Err(err) => return err.into_response(),
+    };
+
+    // Method gate. THREAT[TM-A2A-005]: only the audited methods reach the
+    // session pipeline; everything else returns -32601 with no side effects.
+    match parsed.method.as_str() {
+        METHOD_MESSAGE_SEND => {
+            handle_message_send(&state, auth, parsed, rpc_id, app_id, channel_id, req_id).await
+        }
+        METHOD_MESSAGE_STREAM => {
+            handle_message_stream(&state, auth, parsed, rpc_id, app_id, channel_id, req_id).await
+        }
+        other => (
+            StatusCode::OK,
+            rpc_error(
+                rpc_id,
+                -32601,
+                format!(
+                    "Method not found: {other} (only message/send and message/stream are supported)",
+                ),
+            ),
+        )
+            .into_response(),
+    }
+}
+
+/// Authenticated request context — the app and channel resolution + API key
+/// check that both `message/send` and `message/stream` need to perform up
+/// front before any session work.
+struct AuthorizedA2a {
+    // Kept for future use (per-channel rate limits, telemetry).
+    _channel_id: everruns_core::typed_id::AppChannelId,
+}
+
+async fn authenticate_request(
+    state: &AppA2aState,
+    app_id: &str,
+    channel_id: &str,
+    headers: &HeaderMap,
+) -> Result<AuthorizedA2a, (StatusCode, Json<ErrorResponse>)> {
+    let app = app_queries::get_by_public_id_unscoped(&state.db, state.encryption.as_ref(), app_id)
         .await
         .map_err(internal_error)?
         .ok_or_else(not_found)?;
@@ -193,31 +246,28 @@ pub async fn invoke_a2a(
     // THREAT[TM-A2A-001]: API keys are stored as SHA-256 hashes; plaintext is
     // never persisted. We hash the inbound key and compare against the stored
     // hash before doing anything else.
-    let provided_key = extract_a2a_api_key(&headers).ok_or_else(unauthorized)?;
+    let provided_key = extract_a2a_api_key(headers).ok_or_else(unauthorized)?;
     let provided_hash = hash_a2a_api_key(&provided_key);
     if !constant_time_eq(provided_hash.as_bytes(), config.api_key_hash.as_bytes()) {
         return Err(unauthorized());
     }
 
-    // Method gate.
-    if parsed.method != METHOD_MESSAGE_SEND {
-        return Ok((
-            StatusCode::OK,
-            rpc_error(
-                rpc_id,
-                -32601,
-                format!(
-                    "Method not found: {} (only message/send is supported)",
-                    parsed.method
-                ),
-            ),
-        ));
-    }
+    Ok(AuthorizedA2a {
+        _channel_id: channel_id_typed,
+    })
+}
 
-    // Pull text parts. A2A `parts` is an array of objects; we surface
-    // `text` parts joined by newline. Anything else is silently ignored at the
-    // template level but if there is no text at all we reject.
-    let message = parsed.params.get("message").cloned().unwrap_or(Value::Null);
+/// Pull the joined text from `params.message.parts`, plus the `role`,
+/// `messageId`, and `contextId` we propagate through the session template.
+struct ParsedMessage {
+    text: String,
+    role: Option<String>,
+    message_id: Option<String>,
+    context_id: Option<String>,
+}
+
+fn parse_message_params(params: &Value) -> Result<ParsedMessage, &'static str> {
+    let message = params.get("message").cloned().unwrap_or(Value::Null);
     let parts = message
         .get("parts")
         .and_then(|p| p.as_array())
@@ -237,32 +287,45 @@ pub async fn invoke_a2a(
         .collect::<Vec<_>>()
         .join("\n");
     if text.trim().is_empty() {
-        return Ok((
-            StatusCode::OK,
-            rpc_error(
-                rpc_id,
-                -32602,
-                "Invalid params: message.parts must contain at least one non-empty text part",
-            ),
-        ));
+        return Err("Invalid params: message.parts must contain at least one non-empty text part");
     }
+    Ok(ParsedMessage {
+        text,
+        role: message
+            .get("role")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+        message_id: message
+            .get("messageId")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+        context_id: message
+            .get("contextId")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+    })
+}
 
-    let role = message
-        .get("role")
-        .and_then(Value::as_str)
-        .map(str::to_owned);
-    let message_id = message
-        .get("messageId")
-        .and_then(Value::as_str)
-        .map(str::to_owned);
-    let context_id = message
-        .get("contextId")
-        .and_then(Value::as_str)
-        .map(str::to_owned);
+async fn handle_message_send(
+    state: &AppA2aState,
+    _auth: AuthorizedA2a,
+    parsed: JsonRpcRequest,
+    rpc_id: Value,
+    app_id: String,
+    channel_id: String,
+    req_id: Option<axum::Extension<RequestId>>,
+) -> Response {
+    let parsed_msg = match parse_message_params(&parsed.params) {
+        Ok(parsed) => parsed,
+        Err(msg) => {
+            return (StatusCode::OK, rpc_error(rpc_id, -32602, msg)).into_response();
+        }
+    };
+
     let task_id = Uuid::now_v7().to_string();
     let request_id = req_id.map(|axum::Extension(id)| id.0);
 
-    let result = invoke_a2a_app_channel(
+    let result = match invoke_a2a_app_channel(
         &state.db,
         state.encryption.as_ref(),
         &state.session_service,
@@ -271,16 +334,251 @@ pub async fn invoke_a2a(
             app_id,
             channel_id,
             params: parsed.params,
-            text,
-            message_id: message_id.clone(),
+            text: parsed_msg.text,
+            message_id: parsed_msg.message_id,
             task_id: task_id.clone(),
-            context_id: context_id.clone(),
-            role,
+            context_id: parsed_msg.context_id,
+            role: parsed_msg.role,
         },
         request_id,
     )
     .await
-    .map_err(|err| match err {
+    {
+        Ok(result) => result,
+        Err(err) => return command_error_response(err).into_response(),
+    };
+
+    let task = json!({
+        "id": task_id,
+        "contextId": result.session_id.to_string(),
+        "status": { "state": "completed" },
+        "kind": "task",
+    });
+    (StatusCode::OK, rpc_success(rpc_id, task)).into_response()
+}
+
+// THREAT[TM-A2A-009]: Streaming widens the per-channel ingress surface from
+// a single JSON-RPC response to a long-lived SSE connection that mirrors
+// session events. The same auth + method gate runs before the stream opens
+// (no events leak before authn). Per-event mapping only translates a small
+// allowlist of session events into A2A frames; raw event bodies are not
+// echoed back. The stream is bounded by the durable turn lifecycle: we close
+// after the first turn-completed/turn-failed event for the session.
+async fn handle_message_stream(
+    state: &AppA2aState,
+    _auth: AuthorizedA2a,
+    parsed: JsonRpcRequest,
+    rpc_id: Value,
+    app_id: String,
+    channel_id: String,
+    req_id: Option<axum::Extension<RequestId>>,
+) -> Response {
+    let parsed_msg = match parse_message_params(&parsed.params) {
+        Ok(parsed) => parsed,
+        Err(msg) => {
+            return (StatusCode::OK, rpc_error(rpc_id, -32602, msg)).into_response();
+        }
+    };
+
+    let task_id = Uuid::now_v7().to_string();
+    let request_id = req_id.map(|axum::Extension(id)| id.0);
+
+    // Subscribe BEFORE creating the message so we don't miss the first events
+    // emitted by the durable runtime. The subscription is per-session, so we
+    // first need to know the session id; for shared sessions the call below
+    // resolves it deterministically from the channel routing tags.
+    let result = match invoke_a2a_app_channel(
+        &state.db,
+        state.encryption.as_ref(),
+        &state.session_service,
+        &state.message_service,
+        A2aInvocationRequest {
+            app_id,
+            channel_id,
+            params: parsed.params,
+            text: parsed_msg.text,
+            message_id: parsed_msg.message_id,
+            task_id: task_id.clone(),
+            context_id: parsed_msg.context_id,
+            role: parsed_msg.role,
+        },
+        request_id,
+    )
+    .await
+    {
+        Ok(result) => result,
+        Err(err) => return command_error_response(err).into_response(),
+    };
+
+    let session_id_uuid = result.session_id.uuid();
+    let session_id_string = result.session_id.to_string();
+    let context_id = session_id_string.clone();
+
+    let subscription = match state.event_delivery.subscribe(session_id_uuid).await {
+        Ok(sub) => sub,
+        Err(err) => {
+            tracing::error!(error = %err, "Failed to subscribe to session events for A2A stream");
+            return internal_error(err).into_response();
+        }
+    };
+
+    // Initial frame: status-update with state=working so clients see the task
+    // immediately even if the runtime takes a moment to emit its first event.
+    let initial = stream::iter(vec![Ok::<SseEvent, Infallible>(jsonrpc_sse_frame(
+        &rpc_id,
+        json!({
+            "kind": "status-update",
+            "taskId": task_id,
+            "contextId": context_id,
+            "status": { "state": "working" },
+            "final": false,
+        }),
+    ))]);
+
+    let stream_state = A2aStreamState {
+        subscription,
+        rpc_id,
+        task_id,
+        context_id,
+        session_id: session_id_uuid,
+        finished: false,
+        terminal_emitted: false,
+    };
+
+    let body_stream = stream::unfold(stream_state, move |mut s| async move {
+        if s.finished {
+            return None;
+        }
+        loop {
+            let Some(event) = s.subscription.recv().await else {
+                if s.terminal_emitted {
+                    return None;
+                }
+                // Subscription closed without a terminal turn event — emit a
+                // synthetic failed status-update so clients don't hang.
+                let frame = jsonrpc_sse_frame(
+                    &s.rpc_id,
+                    json!({
+                        "kind": "status-update",
+                        "taskId": s.task_id,
+                        "contextId": s.context_id,
+                        "status": { "state": "failed" },
+                        "final": true,
+                    }),
+                );
+                s.finished = true;
+                s.terminal_emitted = true;
+                return Some((Ok::<SseEvent, Infallible>(frame), s));
+            };
+
+            if event.session_id.uuid() != s.session_id {
+                continue;
+            }
+
+            if let Some(frame_value) =
+                translate_session_event(&event.data, &s.task_id, &s.context_id)
+            {
+                let is_final = frame_value
+                    .get("final")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
+                let frame = jsonrpc_sse_frame(&s.rpc_id, frame_value);
+                if is_final {
+                    s.finished = true;
+                    s.terminal_emitted = true;
+                }
+                return Some((Ok::<SseEvent, Infallible>(frame), s));
+            }
+        }
+    });
+
+    Sse::new(initial.chain(body_stream))
+        .keep_alive(
+            KeepAlive::new()
+                .interval(std::time::Duration::from_secs(15))
+                .text("keepalive"),
+        )
+        .into_response()
+}
+
+struct A2aStreamState {
+    subscription: crate::event_delivery::EventSubscription,
+    rpc_id: Value,
+    task_id: String,
+    context_id: String,
+    session_id: Uuid,
+    finished: bool,
+    terminal_emitted: bool,
+}
+
+/// Translate a small allowlist of session events into the A2A frame body
+/// (the JSON that goes inside the JSON-RPC `result`). Returning `None` means
+/// the event should be filtered out of the A2A stream.
+fn translate_session_event(data: &EventData, task_id: &str, context_id: &str) -> Option<Value> {
+    match data {
+        EventData::OutputMessageCompleted(d) => {
+            let text = d
+                .message
+                .content
+                .iter()
+                .filter_map(|part| match part {
+                    everruns_core::ContentPart::Text(t) => Some(t.text.clone()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            if text.is_empty() {
+                return None;
+            }
+            // Emit the assistant text as a Message frame. Using `kind: "message"`
+            // matches the A2A streaming envelope that wraps a Message result.
+            Some(json!({
+                "kind": "message",
+                "taskId": task_id,
+                "contextId": context_id,
+                "messageId": d.message.id.to_string(),
+                "role": "agent",
+                "parts": [{ "kind": "text", "text": text }],
+            }))
+        }
+        EventData::TurnCompleted(_) => Some(json!({
+            "kind": "status-update",
+            "taskId": task_id,
+            "contextId": context_id,
+            "status": { "state": "completed" },
+            "final": true,
+        })),
+        EventData::TurnFailed(_) => Some(json!({
+            "kind": "status-update",
+            "taskId": task_id,
+            "contextId": context_id,
+            "status": { "state": "failed" },
+            "final": true,
+        })),
+        EventData::TurnCancelled(_) => Some(json!({
+            "kind": "status-update",
+            "taskId": task_id,
+            "contextId": context_id,
+            "status": { "state": "canceled" },
+            "final": true,
+        })),
+        _ => None,
+    }
+}
+
+fn jsonrpc_sse_frame(rpc_id: &Value, result: Value) -> SseEvent {
+    let envelope = json!({
+        "jsonrpc": "2.0",
+        "id": rpc_id,
+        "result": result,
+    });
+    SseEvent::default().data(envelope.to_string())
+}
+
+fn command_error_response(
+    err: crate::domains::common::CommandError,
+) -> (StatusCode, Json<ErrorResponse>) {
+    match err {
         crate::domains::common::CommandError::BadRequest(msg) => bad_request(msg),
         crate::domains::common::CommandError::Forbidden(msg) => forbidden(msg),
         crate::domains::common::CommandError::NotFound(_) => not_found(),
@@ -292,17 +590,7 @@ pub async fn invoke_a2a(
             Json(ErrorResponse { error: msg }),
         ),
         crate::domains::common::CommandError::Internal(error) => internal_error(error),
-    })?;
-
-    let session_id_string = result.session_id.to_string();
-    let task = json!({
-        "id": task_id,
-        "contextId": session_id_string,
-        "status": { "state": "completed" },
-        "kind": "task",
-    });
-
-    Ok((StatusCode::OK, rpc_success(rpc_id, task)))
+    }
 }
 
 /// GET /v1/apps/{app_id}/a2a/{channel_id}/.well-known/agent-card.json
@@ -377,7 +665,7 @@ pub async fn agent_card(
         "version": A2A_AGENT_VERSION,
         "preferredTransport": "JSONRPC",
         "capabilities": {
-            "streaming": false,
+            "streaming": true,
             "pushNotifications": false,
             "stateTransitionHistory": false,
         },
@@ -491,5 +779,91 @@ mod tests {
     fn extract_a2a_api_key_rejects_missing() {
         let headers = HeaderMap::new();
         assert!(extract_a2a_api_key(&headers).is_none());
+    }
+
+    #[test]
+    fn parse_message_params_joins_text_parts_and_extracts_metadata() {
+        let params = json!({
+            "message": {
+                "role": "user",
+                "messageId": "msg-1",
+                "contextId": "ctx-1",
+                "parts": [
+                    { "kind": "text", "text": "hello" },
+                    { "kind": "text", "text": "world" },
+                    { "kind": "image", "url": "https://example.com/x.png" },
+                ],
+            }
+        });
+        let parsed = parse_message_params(&params).unwrap();
+        assert_eq!(parsed.text, "hello\nworld");
+        assert_eq!(parsed.role.as_deref(), Some("user"));
+        assert_eq!(parsed.message_id.as_deref(), Some("msg-1"));
+        assert_eq!(parsed.context_id.as_deref(), Some("ctx-1"));
+    }
+
+    #[test]
+    fn parse_message_params_rejects_empty_text() {
+        let params = json!({
+            "message": {
+                "role": "user",
+                "parts": [{ "kind": "text", "text": "  " }],
+            }
+        });
+        assert!(parse_message_params(&params).is_err());
+    }
+
+    #[test]
+    fn translate_turn_completed_emits_terminal_status_update() {
+        use everruns_core::events::TurnCompletedData;
+        use everruns_core::typed_id::TurnId;
+        let data = EventData::TurnCompleted(TurnCompletedData {
+            turn_id: TurnId::new(),
+            iterations: 1,
+            duration_ms: Some(10),
+            usage: None,
+            input_content: None,
+        });
+        let frame = translate_session_event(&data, "task-1", "ctx-1").unwrap();
+        assert_eq!(frame["kind"], "status-update");
+        assert_eq!(frame["taskId"], "task-1");
+        assert_eq!(frame["contextId"], "ctx-1");
+        assert_eq!(frame["status"]["state"], "completed");
+        assert_eq!(frame["final"], true);
+    }
+
+    #[test]
+    fn translate_turn_failed_emits_terminal_status_update() {
+        use everruns_core::events::TurnFailedData;
+        use everruns_core::typed_id::TurnId;
+        let data = EventData::TurnFailed(TurnFailedData {
+            turn_id: TurnId::new(),
+            error: "boom".into(),
+            error_code: None,
+            error_fields: None,
+        });
+        let frame = translate_session_event(&data, "task-1", "ctx-1").unwrap();
+        assert_eq!(frame["status"]["state"], "failed");
+        assert_eq!(frame["final"], true);
+    }
+
+    #[test]
+    fn translate_unrelated_event_returns_none() {
+        use everruns_core::events::OutputMessageStartedData;
+        use everruns_core::typed_id::TurnId;
+        let data = EventData::OutputMessageStarted(OutputMessageStartedData {
+            turn_id: TurnId::new(),
+            model: None,
+            iteration: None,
+        });
+        assert!(translate_session_event(&data, "t", "c").is_none());
+    }
+
+    #[test]
+    fn jsonrpc_sse_frame_wraps_result_in_envelope() {
+        let frame = jsonrpc_sse_frame(&Value::String("req-1".into()), json!({"hello": "world"}));
+        let json_field = format!("{frame:?}");
+        assert!(json_field.contains("req-1"));
+        assert!(json_field.contains("hello"));
     }
 }

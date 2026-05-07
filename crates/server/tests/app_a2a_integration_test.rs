@@ -278,14 +278,12 @@ async fn a2a_rejects_unsupported_methods_and_empty_text() {
     let channel_id = app["channels"][0]["id"].as_str().unwrap();
     publish_app(&server, app_id).await;
 
-    // message/stream is not supported.
+    // tasks/cancel is not supported (sentinel for unhandled method).
     let body = serde_json::to_vec(&json!({
         "jsonrpc": "2.0",
         "id": "x",
-        "method": "message/stream",
-        "params": {
-            "message": { "role": "user", "parts": [{ "kind": "text", "text": "hi" }] }
-        }
+        "method": "tasks/cancel",
+        "params": { "id": "task-1" }
     }))
     .unwrap();
     let response: Value = server
@@ -365,7 +363,8 @@ async fn a2a_agent_card_published_only_when_live() {
             .unwrap()
             .ends_with(&format!("/v1/apps/{app_id}/a2a/{channel_id}"))
     );
-    assert_eq!(card["capabilities"]["streaming"], false);
+    assert_eq!(card["capabilities"]["streaming"], true);
+    assert_eq!(card["capabilities"]["pushNotifications"], false);
     // Card never echoes secrets.
     let serialized = serde_json::to_string(&card).unwrap();
     assert!(!serialized.contains("api_key"));
