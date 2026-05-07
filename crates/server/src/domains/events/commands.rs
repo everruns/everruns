@@ -52,7 +52,8 @@ pub struct ListEvents {
     /// Mutually exclusive with `before_sequence` and `around`.
     pub after_sequence: Option<i32>,
     /// Anchor event id: returns up to `window` events on each side
-    /// (default 50, max 500). When set, other cursors are ignored.
+    /// (default 50, max 500). Mutually exclusive with `since_id`,
+    /// `after_sequence`, and `before_sequence` — combining returns 400.
     pub around: Option<EventId>,
     /// Window size for `around` (events on each side).
     pub window: Option<i32>,

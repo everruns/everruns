@@ -1242,7 +1242,7 @@ The `/v1/sessions/{id}/events` JSON endpoint exposes additional filters used by 
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `after_sequence` | i32 | Forward cursor — `sequence > after_sequence`. Mutually exclusive with `before_sequence` and `around`. |
-| `around` | EventId | Anchor event id. Returns up to `window` events on each side; other cursors are ignored. |
+| `around` | EventId | Anchor event id. Returns up to `window` events on each side. Mutually exclusive with `since_id`, `after_sequence`, and `before_sequence` (combinations return 400). |
 | `window` | i32 | Window size for `around` (default 50, max 500). |
 | `from_ts` / `to_ts` | RFC 3339 | Filter by `created_at` range. |
 | `turn_id` | string | Filter by `context.turn_id`. |

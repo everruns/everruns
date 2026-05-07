@@ -117,22 +117,33 @@ impl InMemoryDatabase {
     }
 
     /// Advanced event listing for debugging (in-memory mirror of the PG path).
+    ///
+    /// `since_id` and `around_id` lookups are scoped to `params.session_id` so a
+    /// foreign event id silently produces an empty result. When `order_desc` is
+    /// true, rows are returned newest-first.
     pub async fn list_events_advanced(&self, params: &ListEventsParams) -> Result<Vec<EventRow>> {
         let events = self.events.read();
 
-        // Resolve around_id anchor if requested.
+        // Resolve around_id within the requested session only.
         let anchor_seq = match params.around_id {
-            Some(id) => match events.get(&id).map(|e| e.sequence) {
+            Some(id) => match events
+                .get(&id)
+                .filter(|e| e.session_id == params.session_id)
+                .map(|e| e.sequence)
+            {
                 Some(s) => Some(s),
                 None => return Ok(Vec::new()),
             },
             None => None,
         };
 
-        // Resolve since_id to its sequence (matches PG semantics).
-        let since_id_seq = params
-            .since_id
-            .and_then(|id| events.get(&id).map(|e| e.sequence));
+        // Resolve since_id only when the referenced event is in this session.
+        let since_id_seq = params.since_id.and_then(|id| {
+            events
+                .get(&id)
+                .filter(|e| e.session_id == params.session_id)
+                .map(|e| e.sequence)
+        });
 
         let q_lower: Option<String> = params.q.as_ref().map(|s| s.to_lowercase());
 
@@ -233,13 +244,16 @@ impl InMemoryDatabase {
 
         result.sort_by_key(|e| e.sequence);
 
-        // Mirror PG: order_desc takes the last N then service flips. Easier here:
-        // when descending, take the top N highest sequences then return in asc order.
+        // around_id always returns the contiguous window in ASC order; the
+        // direction flag only applies to non-anchored queries.
         let limit = params.limit.unwrap_or(1_000).clamp(1, 10_000) as usize;
-        if anchor_seq.is_none() && result.len() > limit {
+        if anchor_seq.is_none() {
             if params.order_desc {
-                result = result.split_off(result.len() - limit);
-            } else {
+                if result.len() > limit {
+                    result = result.split_off(result.len() - limit);
+                }
+                result.reverse();
+            } else if result.len() > limit {
                 result.truncate(limit);
             }
         }

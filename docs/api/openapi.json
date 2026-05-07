@@ -4988,7 +4988,7 @@
           {
             "name": "types",
             "in": "query",
-            "description": "Positive type filter: only return events matching these types (can be specified multiple times).\nWhen empty, all types are returned. Example: ?types=turn.started&types=turn.completed",
+            "description": "Positive type filter (repeat key). Empty = all types.",
             "required": false,
             "schema": {
               "type": "array",
@@ -5002,7 +5002,7 @@
           {
             "name": "exclude",
             "in": "query",
-            "description": "Event types to exclude from the response (can be specified multiple times).\nApplied after `types` filter. Common delta events to exclude: output.message.delta, reason.thinking.delta",
+            "description": "Event types to exclude (repeat key); applied after `types`.",
             "required": false,
             "schema": {
               "type": "array",
@@ -5031,7 +5031,7 @@
           {
             "name": "before_sequence",
             "in": "query",
-            "description": "Cursor for backward pagination: only return events with sequence < this value.\nUsed with `limit` to paginate backward through event history.",
+            "description": "Cursor for backward pagination: only return events with sequence < this value.",
             "required": false,
             "schema": {
               "type": [
@@ -5057,7 +5057,7 @@
           {
             "name": "around",
             "in": "query",
-            "description": "Anchor event id: returns up to `window` events on each side (default 50, max 500).\nWhen set, other cursors are ignored.",
+            "description": "Anchor event id: returns up to `window` events on each side (default 50, max 500).\nMutually exclusive with `since_id`, `after_sequence`, and `before_sequence` — 400 if combined.",
             "required": false,
             "schema": {
               "oneOf": [
@@ -6437,185 +6437,6 @@
             },
             "style": "form",
             "explode": true
-          },
-          {
-            "name": "limit",
-            "in": "query",
-            "description": "Max events to return (backward pagination). When set, returns the last N events\n(or last N before `before_sequence`). Results are ordered oldest→newest.",
-            "required": false,
-            "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "int32",
-              "maximum": 1000,
-              "minimum": 1
-            }
-          },
-          {
-            "name": "before_sequence",
-            "in": "query",
-            "description": "Cursor for backward pagination: only return events with sequence < this value.\nUsed with `limit` to paginate backward through event history.",
-            "required": false,
-            "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "int32"
-            }
-          },
-          {
-            "name": "after_sequence",
-            "in": "query",
-            "description": "Forward cursor: only return events with sequence > this value.",
-            "required": false,
-            "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "int32"
-            }
-          },
-          {
-            "name": "around",
-            "in": "query",
-            "description": "Anchor event id: returns up to `window` events on each side (default 50, max 500).\nWhen set, other cursors are ignored.",
-            "required": false,
-            "schema": {
-              "oneOf": [
-                {
-                  "type": "null"
-                },
-                {
-                  "$ref": "#/components/schemas/TypedId"
-                }
-              ]
-            }
-          },
-          {
-            "name": "window",
-            "in": "query",
-            "description": "Window size for `around` (events on each side). Defaults to 50, max 500.",
-            "required": false,
-            "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "format": "int32"
-            }
-          },
-          {
-            "name": "from_ts",
-            "in": "query",
-            "description": "Lower bound on `created_at` (RFC 3339, e.g. `2025-05-07T00:00:00Z`).",
-            "required": false,
-            "schema": {
-              "type": [
-                "string",
-                "null"
-              ],
-              "format": "date-time"
-            }
-          },
-          {
-            "name": "to_ts",
-            "in": "query",
-            "description": "Upper bound on `created_at`.",
-            "required": false,
-            "schema": {
-              "type": [
-                "string",
-                "null"
-              ],
-              "format": "date-time"
-            }
-          },
-          {
-            "name": "turn_id",
-            "in": "query",
-            "description": "Filter by `context.turn_id` (prefixed id, e.g. `turn_...`).",
-            "required": false,
-            "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          },
-          {
-            "name": "exec_id",
-            "in": "query",
-            "description": "Filter by `context.exec_id` (prefixed id, e.g. `exec_...`).",
-            "required": false,
-            "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          },
-          {
-            "name": "trace_id",
-            "in": "query",
-            "description": "Filter by `context.trace_id`.",
-            "required": false,
-            "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          },
-          {
-            "name": "tags",
-            "in": "query",
-            "description": "Tag any-match against `events.tags` (repeat key for multiple values).",
-            "required": false,
-            "schema": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              }
-            },
-            "style": "form",
-            "explode": true
-          },
-          {
-            "name": "tool_name",
-            "in": "query",
-            "description": "Filter by `data.tool_name` — useful for narrowing `tool.*` events.",
-            "required": false,
-            "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          },
-          {
-            "name": "q",
-            "in": "query",
-            "description": "Full-text search (Postgres tsvector; substring fallback for in-memory mode).",
-            "required": false,
-            "schema": {
-              "type": [
-                "string",
-                "null"
-              ]
-            }
-          },
-          {
-            "name": "order_desc",
-            "in": "query",
-            "description": "When true, return newest first; default oldest first.",
-            "required": false,
-            "schema": {
-              "type": "boolean"
-            }
           }
         ],
         "responses": {

@@ -292,7 +292,9 @@ impl EventService {
 
     /// Advanced event listing for debugging.
     ///
-    /// Filters out unsupported events. Returns rows in `sequence ASC` order.
+    /// Filters out unsupported events. Order follows `params.order_desc`
+    /// (DESC = newest first; ASC = oldest first; the `around_id` window is
+    /// always returned ASC regardless of the flag).
     pub async fn list_advanced(&self, params: &ListEventsParams) -> Result<Vec<Event>> {
         let rows = self.db.list_events_advanced(params).await?;
         Ok(rows

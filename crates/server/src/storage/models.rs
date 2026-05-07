@@ -675,7 +675,8 @@ pub struct ListEventsParams {
     /// Backward cursor: events with `sequence < before_sequence`.
     pub before_sequence: Option<i32>,
     /// Window anchor: returns up to `window` events on each side of this id.
-    /// When set, `before_sequence`, `after_sequence`, and `since_id` are ignored.
+    /// Mutually exclusive with `before_sequence`, `after_sequence`, and `since_id`
+    /// (the command layer rejects combinations with a 400).
     pub around_id: Option<EventId>,
     /// Window size for `around_id` (rows on each side). Defaults to 50; capped at 500.
     pub window: Option<i32>,
@@ -700,7 +701,8 @@ pub struct ListEventsParams {
     /// Full-text search via `search_vector @@ plainto_tsquery('english', q)`.
     /// In-memory mode falls back to a case-insensitive substring scan.
     pub q: Option<String>,
-    /// When true, return newest first (sequence DESC).
+    /// When true, return newest first (sequence DESC). Ignored when
+    /// `around_id` is set — the window is always returned in ASC order.
     pub order_desc: bool,
     /// Max rows to return.
     pub limit: Option<i32>,

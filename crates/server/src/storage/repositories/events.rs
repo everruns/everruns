@@ -261,12 +261,15 @@ impl Database {
     /// full-text search, around-id windowing, and direction. Builds dynamic SQL
     /// via `QueryBuilder` so filters are pushed to the database.
     ///
-    /// Returns rows in `sequence ASC` order regardless of `order_desc` so
-    /// callers can rely on stable ordering; the service layer reverses if
-    /// the caller requested descending output.
+    /// `since_id` and `around_id` lookups are scoped to `params.session_id` so a
+    /// foreign event id silently produces an empty result rather than anchoring
+    /// in another session.
+    ///
+    /// When `order_desc` is true, rows are returned newest-first.
     pub async fn list_events_advanced(&self, params: &ListEventsParams) -> Result<Vec<EventRow>> {
-        // around_id: resolve to its sequence and return [seq-window, seq+window].
-        // Other cursors are ignored when around_id is set.
+        // around_id: resolve to its sequence (within this session) and return
+        // [seq-window, seq+window]. Other cursors are rejected at the command
+        // layer when around_id is set.
         if let Some(anchor) = params.around_id {
             const DEFAULT_WINDOW: i32 = 50;
             const MAX_WINDOW: i32 = 500;
@@ -275,6 +278,8 @@ impl Database {
                 "WITH anchor AS (SELECT sequence FROM events WHERE id = ",
             );
             qb.push_bind(anchor.uuid());
+            qb.push(" AND session_id = ");
+            qb.push_bind(params.session_id.uuid());
             qb.push(") SELECT id, session_id, sequence, event_type, ts, context, data, metadata, tags, created_at FROM events WHERE session_id = ");
             qb.push_bind(params.session_id.uuid());
             qb.push(" AND sequence BETWEEN (SELECT sequence FROM anchor) - ");
@@ -295,10 +300,13 @@ impl Database {
         );
         qb.push_bind(params.session_id.uuid());
 
-        // since_id resolves to a sequence subquery (PK lookup).
+        // since_id resolves to a sequence subquery, scoped to this session.
+        // A foreign id matches no row → `sequence > NULL` is false → empty result.
         if let Some(id) = params.since_id {
             qb.push(" AND sequence > (SELECT sequence FROM events WHERE id = ");
             qb.push_bind(id.uuid());
+            qb.push(" AND session_id = ");
+            qb.push_bind(params.session_id.uuid());
             qb.push(")");
         }
         if let Some(seq) = params.after_sequence {
@@ -312,7 +320,6 @@ impl Database {
 
         push_common_filters(&mut qb, params);
 
-        // Direction-aware ordering with safety-capped limit.
         if params.order_desc {
             qb.push(" ORDER BY sequence DESC LIMIT ");
         } else {
@@ -321,15 +328,10 @@ impl Database {
         let limit = params.limit.unwrap_or(1_000).clamp(1, 10_000);
         qb.push_bind(limit as i64);
 
-        let mut rows = qb
+        Ok(qb
             .build_query_as::<EventRow>()
             .fetch_all(&self.pool)
-            .await?;
-        if params.order_desc {
-            // Service layer expects ascending; flip back here.
-            rows.reverse();
-        }
-        Ok(rows)
+            .await?)
     }
 
     /// One-shot debug summary: per-type counts + first/last timestamps.

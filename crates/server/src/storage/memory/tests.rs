@@ -1148,6 +1148,97 @@ async fn test_list_events_advanced_filters_by_turn_and_tool() {
 }
 
 #[tokio::test]
+async fn test_list_events_advanced_around_id_scoped_to_session() {
+    use crate::storage::models::ListEventsParams;
+
+    let db = InMemoryDatabase::new();
+    let session_a = create_session_with_events(&db).await;
+    let session_b = create_session_with_events(&db).await;
+
+    // Pick an event id from session B and try to anchor against session A.
+    let foreign_event_id = db
+        .list_events(session_b, None, None, &[], &[], None, None)
+        .await
+        .unwrap()[0]
+        .id;
+
+    let result = db
+        .list_events_advanced(&ListEventsParams {
+            session_id: session_a,
+            around_id: Some(foreign_event_id),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert!(
+        result.is_empty(),
+        "around_id from another session must yield empty"
+    );
+}
+
+#[tokio::test]
+async fn test_list_events_advanced_since_id_scoped_to_session() {
+    use crate::storage::models::ListEventsParams;
+
+    let db = InMemoryDatabase::new();
+    let session_a = create_session_with_events(&db).await;
+    let session_b = create_session_with_events(&db).await;
+
+    // Foreign since_id must NOT advance the cursor for session A; we should
+    // still see all session A events.
+    let foreign_event_id = db
+        .list_events(session_b, None, None, &[], &[], None, None)
+        .await
+        .unwrap()[0]
+        .id;
+
+    let result = db
+        .list_events_advanced(&ListEventsParams {
+            session_id: session_a,
+            since_id: Some(foreign_event_id),
+            order_desc: true, // force advanced path
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let baseline = db
+        .list_events(session_a, None, None, &[], &[], None, None)
+        .await
+        .unwrap();
+    assert_eq!(result.len(), baseline.len());
+}
+
+#[tokio::test]
+async fn test_list_events_advanced_order_desc_returns_newest_first() {
+    use crate::storage::models::ListEventsParams;
+
+    let db = InMemoryDatabase::new();
+    let session_id = create_session_with_events(&db).await;
+    let asc = db
+        .list_events_advanced(&ListEventsParams {
+            session_id,
+            order_desc: false,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    let desc = db
+        .list_events_advanced(&ListEventsParams {
+            session_id,
+            order_desc: true,
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+    assert!(!asc.is_empty());
+    assert_eq!(asc.len(), desc.len());
+    let mut asc_seq: Vec<_> = asc.iter().map(|e| e.sequence).collect();
+    let desc_seq: Vec<_> = desc.iter().map(|e| e.sequence).collect();
+    asc_seq.reverse();
+    assert_eq!(asc_seq, desc_seq);
+}
+
+#[tokio::test]
 async fn test_events_summary_counts_by_type() {
     let db = InMemoryDatabase::new();
     let session_id = create_session_with_events(&db).await;
