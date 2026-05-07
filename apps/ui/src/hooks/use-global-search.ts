@@ -39,6 +39,7 @@ import {
   FlaskConical,
   Cpu,
   HardDrive,
+  Building2,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useAgents } from "@/hooks/use-agents";
@@ -51,6 +52,7 @@ import { useEvals } from "@/hooks/use-evals";
 import { useApps } from "@/hooks/use-apps";
 import { useAgentIdentities } from "@/hooks/use-agent-identities";
 import { getDisplayName } from "@/lib/entity-lifecycle";
+import { useOrg } from "@/providers/org-provider";
 
 export type SearchResultCategory =
   | "navigation"
@@ -63,6 +65,7 @@ export type SearchResultCategory =
   | "capability"
   | "app"
   | "eval"
+  | "organization"
   | "id";
 
 export interface SearchResult {
@@ -73,6 +76,7 @@ export interface SearchResult {
   /** Breadcrumb-style subtitle, e.g. "Agents > Daytona Coder" */
   subtitle?: string;
   href: string;
+  onSelect?: () => void;
 }
 
 interface NavigationPage {
@@ -249,6 +253,7 @@ function matchesTokens(tokens: string[], ...texts: (string | undefined | null)[]
 const EMPTY_ARRAY: never[] = [];
 
 export function useGlobalSearch(query: string) {
+  const { currentOrg, organizations, setCurrentOrg } = useOrg();
   const { data: agentsData } = useAgents();
   const { data: sessionsData } = useSessions(undefined, { limit: 100 });
   const { data: harnessesData } = useHarnesses();
@@ -348,7 +353,36 @@ export function useGlobalSearch(query: string) {
       }
     }
 
-    // 3. Agents
+    // 3. Organizations
+    let orgCount = 0;
+    for (const org of organizations) {
+      if (orgCount >= MAX_PER_CATEGORY) break;
+      const isCurrent = currentOrg?.public_id === org.public_id;
+      if (
+        matchesTokens(
+          tokens,
+          org.name,
+          org.public_id,
+          org.role,
+          "organization organisation org team tenant switch",
+        )
+      ) {
+        results.push({
+          id: `organization:${org.public_id}`,
+          category: "organization",
+          icon: Building2,
+          title: org.name,
+          subtitle: isCurrent
+            ? `Current organisation > ${org.public_id}`
+            : `Switch organisation > ${org.public_id}`,
+          href: "/settings/organisations",
+          onSelect: isCurrent ? undefined : () => setCurrentOrg(org),
+        });
+        orgCount++;
+      }
+    }
+
+    // 4. Agents
     let agentCount = 0;
     for (const agent of agents) {
       if (agentCount >= MAX_PER_CATEGORY) break;
@@ -368,7 +402,7 @@ export function useGlobalSearch(query: string) {
       }
     }
 
-    // 4. Sessions
+    // 5. Sessions
     let sessionCount = 0;
     for (const session of sessions) {
       if (sessionCount >= MAX_PER_CATEGORY) break;
@@ -386,7 +420,7 @@ export function useGlobalSearch(query: string) {
       }
     }
 
-    // 5. Harnesses
+    // 6. Harnesses
     let harnessCount = 0;
     for (const harness of harnesses) {
       if (harnessCount >= MAX_PER_CATEGORY) break;
@@ -413,7 +447,7 @@ export function useGlobalSearch(query: string) {
       }
     }
 
-    // 6. Skills
+    // 7. Skills
     let skillCount = 0;
     for (const skill of skills) {
       if (skillCount >= MAX_PER_CATEGORY) break;
@@ -430,7 +464,7 @@ export function useGlobalSearch(query: string) {
       }
     }
 
-    // 7. MCP Servers
+    // 8. MCP Servers
     let mcpCount = 0;
     for (const server of mcpServers) {
       if (mcpCount >= MAX_PER_CATEGORY) break;
@@ -447,7 +481,7 @@ export function useGlobalSearch(query: string) {
       }
     }
 
-    // 8. Capabilities
+    // 9. Capabilities
     let capabilityCount = 0;
     for (const capability of capabilities) {
       if (capabilityCount >= MAX_PER_CATEGORY) break;
@@ -473,7 +507,7 @@ export function useGlobalSearch(query: string) {
       }
     }
 
-    // 8b. Declarative capability resources by public ID/display name
+    // 9b. Declarative capability resources by public ID/display name
     for (const capability of declarativeCapabilities) {
       if (capabilityCount >= MAX_PER_CATEGORY) break;
       if (
@@ -500,7 +534,7 @@ export function useGlobalSearch(query: string) {
       }
     }
 
-    // 9. Evals
+    // 10. Evals
     let evalCount = 0;
     for (const ev of evals) {
       if (evalCount >= MAX_PER_CATEGORY) break;
@@ -517,7 +551,7 @@ export function useGlobalSearch(query: string) {
       }
     }
 
-    // 10. Apps
+    // 11. Apps
     let appCount = 0;
     for (const app of apps) {
       if (appCount >= MAX_PER_CATEGORY) break;
@@ -534,7 +568,7 @@ export function useGlobalSearch(query: string) {
       }
     }
 
-    // 11. Agent Identities
+    // 12. Agent Identities
     let identityCount = 0;
     for (const identity of agentIdentities) {
       if (identityCount >= MAX_PER_CATEGORY) break;
@@ -556,6 +590,9 @@ export function useGlobalSearch(query: string) {
     return results;
   }, [
     query,
+    currentOrg?.public_id,
+    organizations,
+    setCurrentOrg,
     agents,
     sessions,
     harnesses,

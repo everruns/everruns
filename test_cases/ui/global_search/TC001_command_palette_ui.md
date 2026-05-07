@@ -8,6 +8,7 @@ Verify the Cmd+K / Ctrl+K command palette opens, shows navigation pages by defau
 
 - UI running (dev or full mode)
 - At least 1 agent and 1 session exist
+- User belongs to at least 2 organisations
 
 ## Steps
 
@@ -19,6 +20,8 @@ Verify the Cmd+K / Ctrl+K command palette opens, shows navigation pages by defau
 6. Open palette again, press Escape — verify palette closes
 7. Type a long poem — verify no hang, shows "No results" message
 8. Type an entity ID prefix (e.g. `agent_`) — verify "Go to" section appears
+9. Search for another organisation by name — verify it appears under "Organisations"
+10. Select that organisation — verify the current organisation switches without going to settings
 
 ## Expected Result
 
@@ -29,3 +32,4 @@ Verify the Cmd+K / Ctrl+K command palette opens, shows navigation pages by defau
 - Step 6: Palette closes on Escape
 - Step 7: "No results" displayed promptly (no lag)
 - Step 8: ID-based lookup result with "Go to Agent" label
+- Steps 9-10: Palette closes and the selected organisation becomes current
