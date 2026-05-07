@@ -46,7 +46,13 @@ Use this skill when the user asks to:
    - Use `just start-all --no-watch` when database, migration, infra, or API integration risk exists.
    - Stop any servers you started.
    - Docs-only or config-only changes that do not affect runtime behavior may skip smoke testing with explicit justification.
-6. The PR is mergeable and merged safely.
+6. Follow-ups are surfaced, not silently dropped.
+   - **Default to implementing everything in scope before merging.** Do not defer work just because the PR is "big enough".
+   - During diff review, security review, smoke testing, and review-comment handling, actively look for: TODOs you added, partial fixes, known edge cases not covered by tests, suggestions you chose not to apply, related bugs you noticed, spec/doc drift you did not fix, and threat-model items that warrant a separate change.
+   - For each candidate, decide explicitly: **implement now** (preferred) or **defer**. Prefer implementing now whenever the work is small, clearly in scope, or required for correctness.
+   - For anything deferred, list it under a **Follow-ups** section in the PR body with a one-line rationale per item (why it is safe to defer and what should happen later). File Linear issues for non-trivial follow-ups when appropriate (OSS project, EVE team).
+   - If there are no follow-ups, state "No follow-ups." in the PR body. Silence is not acceptable — readers must be able to tell the difference between "nothing left" and "agent forgot".
+7. The PR is mergeable and merged safely.
    - Push the branch.
    - Create or update the PR with `.github/pull_request_template.md`.
    - Check the PR conversation, review threads, and review state from all reviewers, including bots.
@@ -123,7 +129,7 @@ Pick only what matches the changed surface:
 ## PR And Merge
 
 - Use a conventional-commit style PR title.
-- In the PR body, explain what changed, why it changed, how it was validated, and notable risks or follow-ups.
+- In the PR body, explain what changed, why it changed, how it was validated, notable risks, and an explicit **Follow-ups** section (or "No follow-ups." if none). Prefer implementing follow-ups in this PR; only defer when the work is genuinely out of scope or too large, and say so per item.
 - Use `gh pr view --json url` to detect an existing PR.
 - Create a PR with `gh pr create` if needed.
 - Use `gh pr view --comments` to inspect the PR conversation, including bot comments.

@@ -37,7 +37,8 @@ Relevant references:
 3. Merge-ready code: touched code is reviewed for avoidable complexity and performance risk. A structured security review is performed against the relevant threat model categories from `specs/threat-model.md` (see the Security Review section in the ship skill). Issues found during review are addressed or explicitly blocked.
 4. Synced artifacts: only the affected artifacts are updated, including specs, threat model, docs, OpenAPI, test cases, and agent instructions when relevant. Specs touched by the change must not contain implementation details that duplicate code (struct fields, enum variants, exhaustive tables, code snippets) — replace with links to source files per the spec content principle in `AGENTS.md`.
 5. Smoke test impacted functionality: always smoke test the flows affected by the change end-to-end. This is mandatory, not conditional on risk assessment. Docs-only or config-only changes that do not affect runtime behavior may skip smoke testing with explicit justification.
-6. Safe merge: the PR uses the repo template, CI is green, **every** review comment from all reviewers (including async bot reviewers and low-confidence suggestions) is explicitly analyzed, reasoned about, and resolved — either with a code change or a written explanation — after a final post-green sweep, and merge happens with squash only.
+6. Follow-ups surfaced: the agent actively looks for in-scope work that risks being silently dropped (TODOs, partial fixes, declined suggestions, missed edge cases, spec/doc drift) and prefers to implement them in this PR. Anything deferred is listed under a **Follow-ups** section in the PR body with a one-line rationale; if nothing is deferred, the PR body must explicitly state "No follow-ups." so readers can distinguish completeness from omission.
+7. Safe merge: the PR uses the repo template, CI is green, **every** review comment from all reviewers (including async bot reviewers and low-confidence suggestions) is explicitly analyzed, reasoned about, and resolved — either with a code change or a written explanation — after a final post-green sweep, and merge happens with squash only.
 
 ## Constraints
 
@@ -59,4 +60,5 @@ Shipping output should make it easy to evaluate readiness:
 - security review: which threat categories were checked, any findings, and how they were resolved
 - what was skipped and why
 - review comments: how each comment was addressed (code change or written reasoning)
+- follow-ups: what was deferred and why (or an explicit "No follow-ups." statement)
 - what blockers or residual risks remain

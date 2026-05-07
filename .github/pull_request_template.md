@@ -15,6 +15,9 @@ High-level approach.
 - Threat categories reviewed: (e.g. TM-AUTH, TM-API, or "No security-relevant code changes" with justification)
 - Findings and resolutions:
 
+## Follow-ups
+List anything intentionally deferred with a one-line rationale, or write "No follow-ups." Prefer implementing in-scope work in this PR over deferring it.
+
 ## Checklist
 - [ ] Tests added or updated
 - [ ] Backward compatibility considered
