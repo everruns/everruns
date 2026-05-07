@@ -151,16 +151,27 @@ async fn upload_ag_ui_image(
     headers: Vec<(&str, &str)>,
 ) -> test_harness::TestResponse {
     let boundary = "agui-test-boundary";
-    let body = format!(
-        concat!(
-            "--{boundary}\r\n",
-            "Content-Disposition: form-data; name=\"file\"; filename=\"photo.png\"\r\n",
-            "Content-Type: image/png\r\n\r\n",
-            "fake-png-bytes\r\n",
-            "--{boundary}--\r\n",
-        ),
-        boundary = boundary
+    let mut body = Vec::new();
+    body.extend_from_slice(
+        format!(
+            concat!(
+                "--{boundary}\r\n",
+                "Content-Disposition: form-data; name=\"file\"; filename=\"photo.png\"\r\n",
+                "Content-Type: image/png\r\n\r\n"
+            ),
+            boundary = boundary
+        )
+        .as_bytes(),
     );
+    body.extend_from_slice(&[
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44,
+        0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x02, 0x00, 0x00, 0x00, 0x90,
+        0x77, 0x53, 0xde, 0x00, 0x00, 0x00, 0x0c, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0x60,
+        0x60, 0x00, 0x00, 0x00, 0x02, 0x00, 0x01, 0xe2, 0x21, 0xbc, 0x33, 0x00, 0x00, 0x00, 0x00,
+        0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+    ]);
+    body.extend_from_slice(b"\r\n");
+    body.extend_from_slice(format!("--{boundary}--\r\n", boundary = boundary).as_bytes());
     let mut request_headers = vec![(
         "content-type",
         "multipart/form-data; boundary=agui-test-boundary",
@@ -172,7 +183,7 @@ async fn upload_ag_ui_image(
             Method::POST,
             &format!("/v1/apps/{}/ag-ui/images", app_id),
             request_headers,
-            body.into_bytes(),
+            body,
         )
         .await
 }

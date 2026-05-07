@@ -67,7 +67,7 @@ use uuid::Uuid;
 use crate::api::ag_ui_rate_limit::AgUiRateLimiter;
 use crate::api::common::ErrorResponse;
 use crate::api::images::{
-    ImageUploadResponse, MAX_IMAGE_SIZE, generate_thumbnail, is_valid_content_type,
+    ImageUploadResponse, generate_thumbnail, is_valid_content_type, validate_image_bytes,
 };
 use crate::api::messages::{
     CreateMessageRequest, InputContentPart, InputMessage, MessageRole as ApiMessageRole,
@@ -87,6 +87,7 @@ use crate::storage::{
 
 const AG_UI_TOKEN_HEADER: &str = "x-everruns-ag-ui-token";
 const MAX_AG_UI_IMAGES_PER_RUN: usize = 10;
+const MAX_PUBLIC_AG_UI_IMAGE_SIZE: usize = 10 * 1024 * 1024;
 
 #[derive(Clone)]
 pub struct AgUiState {
@@ -131,7 +132,9 @@ pub fn routes(state: AgUiState) -> Router {
         .route("/v1/apps/{app_id}/ag-ui", post(run_agent))
         .route(
             "/v1/apps/{app_id}/ag-ui/images",
-            post(upload_image).layer(DefaultBodyLimit::max(MAX_IMAGE_SIZE + 1024 * 1024)),
+            post(upload_image).layer(DefaultBodyLimit::max(
+                MAX_PUBLIC_AG_UI_IMAGE_SIZE + 1024 * 1024,
+            )),
         )
         .with_state(state)
 }
@@ -243,7 +246,11 @@ async fn upload_image(
             .bytes()
             .await
             .map_err(|_| bad_request("invalid_request"))?;
-        if data.len() > MAX_IMAGE_SIZE {
+        if data.len() > MAX_PUBLIC_AG_UI_IMAGE_SIZE {
+            return Err(bad_request("invalid_request"));
+        }
+
+        if !validate_image_bytes(&data, &content_type) {
             return Err(bad_request("invalid_request"));
         }
 
