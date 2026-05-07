@@ -2,6 +2,7 @@
 extern crate everruns_container_sandbox;
 extern crate everruns_integrations_brave_search;
 extern crate everruns_integrations_browserless;
+extern crate everruns_integrations_cursor;
 extern crate everruns_integrations_daytona;
 extern crate everruns_integrations_deno;
 extern crate everruns_integrations_docker;

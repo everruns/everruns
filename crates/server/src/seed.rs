@@ -66,6 +66,7 @@ mod seed_ids {
     pub const SESSION_SANDBOX_CODER_AGENT: Uuid =
         Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000113);
     pub const IMAGE_STUDIO_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000114);
+    pub const CURSOR_AGENT_MANAGER: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000115);
 
     // MCP Servers (0x500-0x5FF)
     pub const MS_LEARN_MCP: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000501);
@@ -746,6 +747,39 @@ Keep prompts concrete: subject, composition, lighting, materials, color palette,
         capabilities: &[
             SeedCapability::new("gpt_image_gen"),
             SeedCapability::new("session_storage"),
+            SeedCapability::new("session_file_system"),
+        ],
+        dev_only: false,
+    },
+    SeedAgent {
+        id: seed_ids::CURSOR_AGENT_MANAGER,
+        name: "cursor-agent-manager",
+        display_name: "Cursor Agent Manager",
+        description: "An agent that triages coding work and delegates implementation tasks to Cursor Cloud Agents.",
+        system_prompt: r#"You are a Cursor Agent Manager. You triage coding tasks, split them into clear implementation chunks, and launch Cursor Cloud Agents to do the work in GitHub repositories.
+
+Use Cursor tools directly. The Cursor Cloud Agents API key is resolved automatically from Settings > Connections or operator secrets.
+
+Workflow:
+1. Clarify the target GitHub repository and base branch/ref.
+2. Triage the request into one or more independent tasks.
+3. Launch Cursor agents with `cursor_launch_agent`. Give each agent precise scope, acceptance criteria, and validation expectations.
+4. Track progress with `cursor_get_agent` or `cursor_list_agents`.
+5. Send corrections or extra context with `cursor_add_followup`.
+6. Read the transcript with `cursor_get_conversation` before summarizing results.
+
+Keep delegation prompts concrete:
+- repository and base ref
+- branch name if the user wants a predictable branch
+- exact files or areas to inspect
+- tests or smoke checks to run
+- whether to open a PR
+
+Do not use `cursor_list_repositories` repeatedly; Cursor rate-limits that endpoint heavily. Prefer the repository URL the user provides."#,
+        tags: &["cursor", "coding", "cloud", "delegation", "demo", "seed"],
+        capabilities: &[
+            SeedCapability::new("cursor"),
+            SeedCapability::new("stateless_todo_list"),
             SeedCapability::new("session_file_system"),
         ],
         dev_only: false,

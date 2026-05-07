@@ -29,12 +29,14 @@ jobs:
       rust: ${{ steps.core_filter.outputs.rust }}
       daytona: ${{ steps.live_filter.outputs.daytona }}
       deno: ${{ steps.live_filter.outputs.deno }}
+      cursor: ${{ steps.live_filter.outputs.cursor }}
       browserless: ${{ steps.live_filter.outputs.browserless }}
       e2b: ${{ steps.live_filter.outputs.e2b }}
       sdk_compat: ${{ steps.core_filter.outputs.sdk_compat }}
       shell: ${{ steps.core_filter.outputs.shell }}
       ui: ${{ steps.core_filter.outputs.ui }}
       docs: ${{ steps.core_filter.outputs.docs }}
+      docs_notebooks: ${{ steps.core_filter.outputs.docs_notebooks }}
       docker: ${{ steps.core_filter.outputs.docker }}
     steps:
       - uses: actions/checkout@v4
@@ -76,6 +78,10 @@ jobs:
               - 'apps/docs/**'
               - 'docs/**'
               - '.github/workflows/ci.yml'
+            docs_notebooks:
+              - 'apps/docs/scripts/execute-notebooks.py'
+              - 'apps/docs/scripts/render-notebooks.mjs'
+              - 'docs/tutorials/**'
             docker:
               - 'docker/**'
               - 'crates/**'
@@ -103,6 +109,9 @@ jobs:
             deno:
               - 'integrations/deno/**'
               - '!integrations/deno/**/*.md'
+            cursor:
+              - 'integrations/cursor/**'
+              - '!integrations/cursor/**/*.md'
             browserless:
               - 'integrations/browserless/**'
               - '!integrations/browserless/**/*.md'
@@ -205,6 +214,7 @@ jobs:
           cargo test -p everruns-integrations-daytona
           cargo test -p everruns-integrations-deno
           cargo test -p everruns-integrations-browserless
+          cargo test -p everruns-integrations-cursor
           cargo test -p everruns-integrations-e2b
           cargo test -p everruns-integrations-sprites
 
@@ -987,7 +997,11 @@ jobs:
       - name: Rebuild native dependencies
         run: npm rebuild --ignore-scripts=false
 
+      - name: Prepare notebook docs content
+        run: npm run prepare-content
+
       - name: Execute notebook tutorials
+        if: needs.changes.outputs.docs_notebooks == 'true'
         working-directory: .
         env:
           ADDR: 127.0.0.1:9301
@@ -1021,7 +1035,6 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install nbclient nbformat ipykernel everruns-sdk requests
           cd apps/docs
-          npm run prepare-content
           python scripts/execute-notebooks.py
 
       - name: Astro check

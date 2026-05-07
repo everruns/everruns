@@ -43,6 +43,8 @@ jobs:
           - name: Deno Live API Tests
             command: cargo test -p everruns-integrations-deno --features deno-live-tests --test live_api_test -- --test-threads=1
             deno_sandbox_region: ams
+          - name: Cursor Live API Tests
+            command: cargo test -p everruns-integrations-cursor --features cursor-live-tests --test live_api_test -- --test-threads=1
           - name: Sprites Live API Tests
             command: cargo test -p everruns-integrations-sprites --features sprites-live-tests --test live_api_test -- --test-threads=1
             required_secret: SPRITES_API_TOKEN

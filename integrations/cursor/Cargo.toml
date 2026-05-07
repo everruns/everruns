@@ -1,0 +1,27 @@
+# Cursor Integration
+# Decision: Direct REST client for Cursor Background/Cloud Agents API.
+
+[package]
+name = "everruns-integrations-cursor"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+description = "Cursor Cloud Agents integration for Everruns"
+
+[dependencies]
+everruns-core = { path = "../../crates/core" }
+inventory.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+async-trait.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+
+[features]
+cursor-live-tests = []
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }
+wiremock = "0.6"
