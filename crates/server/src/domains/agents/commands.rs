@@ -80,7 +80,10 @@ fn initial_files_total_bytes(files: &[InitialFile]) -> usize {
     files.iter().map(|f| f.content.len()).sum()
 }
 
-async fn check_high_risk_caps(ctx: &Ctx, caps: &[AgentCapabilityConfig]) -> Result<(), CommandError> {
+async fn check_high_risk_caps(
+    ctx: &Ctx,
+    caps: &[AgentCapabilityConfig],
+) -> Result<(), CommandError> {
     if caps.is_empty() || ctx.caller.role.has_permission(OrgRole::Admin) {
         return Ok(());
     }

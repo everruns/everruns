@@ -21,11 +21,12 @@ use crate::storage::{
 use anyhow::Result;
 use everruns_core::session_sandbox::SESSION_SANDBOX_CAPABILITY_ID;
 use everruns_core::{
-    AgentCapabilityConfig, AgentId, Caller, CapabilityRegistry, HarnessId, InitialFile, ModelId,
-    MountPoint, OrgRole, Permission, Policy, PrincipalId, Rule, Session, SessionId, SessionStatus,
-    SubagentStatus, TokenUsage,
+    AgentCapabilityConfig, AgentId, Caller, CapabilityRegistry, DeclarativeCapabilityDefinition,
+    HarnessId, InitialFile, ModelId, MountPoint, OrgRole, Permission, Policy, PrincipalId, Rule,
+    Session, SessionId, SessionStatus, SubagentStatus, TokenUsage,
     capabilities::{RiskLevel, SystemPromptContext, collect_capabilities, compute_features},
-    merge_capabilities, merge_initial_files, normalize_initial_file_path,
+    is_declarative_capability, merge_capabilities, merge_initial_files,
+    normalize_initial_file_path, parse_declarative_capability_id,
 };
 use everruns_durable::UpdateField;
 use std::collections::HashSet;
@@ -1167,14 +1168,44 @@ impl SessionService {
             return Ok(());
         }
 
-        let capability_ids = self
+        let mut capability_ids = self
             .collect_session_capability_ids(org_id, harness_id, agent_id, session_capabilities)
             .await?;
-        let cap_refs: Vec<&str> = capability_ids.iter().map(String::as_str).collect();
-        let high_risk = self
-            .capability_service
-            .high_risk_ids_for_org(org_id, &cap_refs)
-            .await?;
+        // Expand declarative capability dependencies so hidden high-risk built-ins
+        // (e.g. `web_fetch`, `virtual_bash`) cannot bypass the admin gate. Validation
+        // forbids nested declarative deps, so a single expansion pass is sufficient.
+        let declarative_refs: Vec<String> = capability_ids
+            .iter()
+            .filter(|id| is_declarative_capability(id))
+            .cloned()
+            .collect();
+        for cap_ref in &declarative_refs {
+            let Some(name) = parse_declarative_capability_id(cap_ref) else {
+                continue;
+            };
+            let Some(row) = self
+                .db
+                .get_declarative_capability_by_name(org_id, name)
+                .await?
+            else {
+                continue;
+            };
+            let definition: DeclarativeCapabilityDefinition =
+                serde_json::from_value(row.definition).unwrap_or_default();
+            for dep in definition.dependencies {
+                if !capability_ids.contains(&dep) {
+                    capability_ids.push(dep);
+                }
+            }
+        }
+        let high_risk: Vec<String> = capability_ids
+            .into_iter()
+            .filter(|capability_id| {
+                self.capability_registry
+                    .get(capability_id)
+                    .is_some_and(|capability| capability.risk_level() == RiskLevel::High)
+            })
+            .collect();
         if high_risk.is_empty() {
             return Ok(());
         }
@@ -2126,6 +2157,91 @@ mod tests {
         db.set_harness_capabilities(
             harness.id.uuid(),
             vec![("test_high_risk".to_string(), 0, serde_json::json!({}))],
+        )
+        .await
+        .unwrap();
+
+        let member = Caller {
+            org_id: owner.org_id,
+            org_public_id: owner.org_public_id.clone(),
+            user_id: None,
+            role: OrgRole::Member,
+            is_platform_user: false,
+            is_internal: false,
+        };
+
+        let err = session_service
+            .create(
+                &member,
+                harness.id.uuid(),
+                None,
+                None,
+                build_create_request(harness.id, None, None),
+            )
+            .await
+            .unwrap_err();
+
+        assert!(
+            err.to_string()
+                .contains("Admin role required to create sessions with high-risk capabilities"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn create_rejects_declarative_capability_with_high_risk_dependency_for_members() {
+        use crate::storage::models::CreateDeclarativeCapabilityRow;
+
+        let db = Arc::new(StorageBackend::in_memory());
+        let mut registry = CapabilityRegistry::new();
+        registry.register(TestHighRiskCapability);
+        let session_service = SessionService::with_registry(db.clone(), registry);
+        let owner = Caller::internal(DEFAULT_ORG_ID);
+
+        // Declarative capability that hides a high-risk built-in dependency.
+        db.create_declarative_capability(
+            owner.org_id,
+            CreateDeclarativeCapabilityRow {
+                public_id: everruns_core::DeclarativeCapabilityId::new().to_string(),
+                name: "hidden_admin_tool".to_string(),
+                display_name: Some("Hidden Admin Tool".to_string()),
+                description: "wraps a high-risk built-in".to_string(),
+                definition: serde_json::json!({
+                    "name": "hidden_admin_tool",
+                    "description": "wraps a high-risk built-in",
+                    "dependencies": ["test_high_risk"],
+                }),
+            },
+        )
+        .await
+        .unwrap();
+
+        let harness = db
+            .create_harness(
+                owner.org_id,
+                CreateHarnessRow {
+                    name: "declarative-harness".to_string(),
+                    display_name: Some("Declarative Harness".to_string()),
+                    description: None,
+                    system_prompt: "declarative".to_string(),
+                    parent_harness_id: None,
+                    default_model_id: None,
+                    tags: vec![],
+                    initial_files: serde_json::json!([]),
+                    mcp_servers: serde_json::json!({}),
+                    network_access: None,
+                    is_built_in: false,
+                },
+            )
+            .await
+            .unwrap();
+        db.set_harness_capabilities(
+            harness.id.uuid(),
+            vec![(
+                "declarative:hidden_admin_tool".to_string(),
+                0,
+                serde_json::json!({}),
+            )],
         )
         .await
         .unwrap();

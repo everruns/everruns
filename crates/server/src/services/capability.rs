@@ -370,7 +370,11 @@ impl CapabilityService {
             let Some(name) = parse_declarative_capability_id(cap_ref) else {
                 continue;
             };
-            let Some(row) = self.db.get_declarative_capability_by_name(org_id, name).await? else {
+            let Some(row) = self
+                .db
+                .get_declarative_capability_by_name(org_id, name)
+                .await?
+            else {
                 continue;
             };
             let definition: DeclarativeCapabilityDefinition =
@@ -682,20 +686,25 @@ mod tests {
 
         #[tokio::test]
         async fn flags_declarative_dependencies_as_high_risk() {
+            use crate::storage::models::CreateDeclarativeCapabilityRow;
             let svc = make_service();
-            svc.db.create_declarative_capability(
-                1,
-                "hidden_fetch",
-                "hidden_fetch",
-                Some("Hidden Fetch".to_string()),
-                None,
-                &serde_json::json!({
-                    "name": "hidden_fetch",
-                    "dependencies": ["web_fetch"]
-                }),
-            )
-            .await
-            .unwrap();
+            svc.db
+                .create_declarative_capability(
+                    1,
+                    CreateDeclarativeCapabilityRow {
+                        public_id: everruns_core::DeclarativeCapabilityId::new().to_string(),
+                        name: "hidden_fetch".to_string(),
+                        display_name: Some("Hidden Fetch".to_string()),
+                        description: "test".to_string(),
+                        definition: serde_json::json!({
+                            "name": "hidden_fetch",
+                            "description": "test",
+                            "dependencies": ["web_fetch"],
+                        }),
+                    },
+                )
+                .await
+                .unwrap();
 
             let high = svc
                 .high_risk_ids_for_org(1, &["declarative:hidden_fetch"])
