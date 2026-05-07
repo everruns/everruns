@@ -97,6 +97,11 @@ describe("WorkspaceVolumesConfigEditor", () => {
     expect(screen.getAllByTestId("volume-mount-row")).toHaveLength(1);
   });
 
+  it("treats null config as empty mounts", () => {
+    render(<WorkspaceVolumesConfigEditor config={null} onChange={jest.fn()} />);
+    expect(screen.queryByTestId("volume-mount-row")).not.toBeInTheDocument();
+  });
+
   it("calls onChange when adding a mount row with empty defaults", () => {
     const onChange = jest.fn();
     render(<WorkspaceVolumesConfigEditor config={{}} onChange={onChange} />);
