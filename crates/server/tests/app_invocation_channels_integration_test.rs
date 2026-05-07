@@ -330,7 +330,7 @@ async fn webhook_shared_session_does_not_reuse_user_seeded_tag_session() {
     let app_id = app["id"].as_str().unwrap();
     let channel_id = app["channels"][0]["id"].as_str().unwrap();
 
-    let seed_status = server
+    let seed_response = server
         .post(
             "/v1/sessions",
             json!({
@@ -343,12 +343,16 @@ async fn webhook_shared_session_does_not_reuse_user_seeded_tag_session() {
                 ],
             }),
         )
-        .await
-        .status();
-    assert_ne!(
-        seed_status,
-        StatusCode::CREATED,
-        "TM-AUTHZ-009 must reject external sessions stamping app:/app_channel: tags"
+        .await;
+    assert_eq!(
+        seed_response.status(),
+        StatusCode::BAD_REQUEST,
+        "TM-AUTHZ-009 must reject external sessions stamping app:/app_channel: tags with 400"
+    );
+    let seed_body = seed_response.text();
+    assert!(
+        seed_body.contains("reserved for internal subsystems"),
+        "TM-AUTHZ-009 rejection must explain the reservation; got: {seed_body}"
     );
 
     publish_app(&server, app_id).await;

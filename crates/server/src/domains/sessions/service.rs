@@ -10,7 +10,7 @@ use crate::api::common::Pagination;
 use crate::domains::harnesses::queries::resolve_effective as resolve_effective_harness;
 use crate::domains::session_files::{CreateFileInput, SessionFileService};
 use crate::domains::session_sandbox::SessionSandboxService;
-use crate::errors::ResourceNotFoundError;
+use crate::errors::{BadRequestError, ResourceNotFoundError};
 use crate::max_iterations;
 use crate::org_init;
 use crate::services::PrincipalService;
@@ -264,7 +264,7 @@ impl SessionService {
             .map(|h| serde_json::to_value(h).unwrap_or_default());
 
         if !caller.is_internal && req.tags.iter().any(|tag| tag.starts_with("__internal:")) {
-            anyhow::bail!("Tags with '__internal:' prefix are reserved");
+            return Err(BadRequestError::new("Tags with '__internal:' prefix are reserved").into());
         }
         // THREAT[TM-AUTHZ-009]: `app:<id>`, `app_channel:<id>` and the legacy
         // `slack:app:<id>` tags all drive budget hierarchy attribution (see
@@ -281,9 +281,10 @@ impl SessionService {
                     || tag.starts_with("slack:app:")
             })
         {
-            anyhow::bail!(
-                "Tags with 'app:', 'app_channel:', or 'slack:app:' prefix are reserved for internal subsystems"
-            );
+            return Err(BadRequestError::new(
+                "Tags with 'app:', 'app_channel:', or 'slack:app:' prefix are reserved for internal subsystems",
+            )
+            .into());
         }
 
         let (owner_principal_id, resolved_owner_user_id) = match owner_override {
@@ -791,7 +792,7 @@ impl SessionService {
                 .as_ref()
                 .is_some_and(|tags| tags.iter().any(|tag| tag.starts_with("__internal:")))
         {
-            anyhow::bail!("Tags with '__internal:' prefix are reserved");
+            return Err(BadRequestError::new("Tags with '__internal:' prefix are reserved").into());
         }
         // THREAT[TM-AUTHZ-009]: same reservation enforced on update — see
         // create() for the rationale. Includes the legacy `slack:app:` tag.
@@ -804,9 +805,10 @@ impl SessionService {
                 })
             })
         {
-            anyhow::bail!(
-                "Tags with 'app:', 'app_channel:', or 'slack:app:' prefix are reserved for internal subsystems"
-            );
+            return Err(BadRequestError::new(
+                "Tags with 'app:', 'app_channel:', or 'slack:app:' prefix are reserved for internal subsystems",
+            )
+            .into());
         }
 
         let agent_identity_id = match req.agent_identity_id {
@@ -1518,13 +1520,38 @@ mod tests {
         .unwrap();
 
         let app_internal_id = Uuid::now_v7();
-        // Resolve a stable owner the way real app-channel ingress does — the
-        // App row's owner is plumbed in explicitly (see `create_from_app`
-        // doc comment).
-        let owner = PrincipalService::new(db.clone())
+        // Build a real user principal to act as the App owner. This must be
+        // distinct from the caller-derived default (the system principal that
+        // `Caller::internal` resolves to) so the assertions below actually
+        // exercise the override codepath rather than coincidentally matching.
+        let principal_service = PrincipalService::new(db.clone());
+        let user = db
+            .create_user(crate::storage::CreateUserRow {
+                external_id: None,
+                email: "app-owner@example.com".to_string(),
+                name: "App Owner".to_string(),
+                avatar_url: None,
+                roles: vec![],
+                password_hash: None,
+                email_verified: true,
+                auth_provider: None,
+                auth_provider_id: None,
+            })
+            .await
+            .unwrap();
+        let app_owner = principal_service
+            .ensure_user_principal(1, user.id)
+            .await
+            .unwrap();
+        let caller_default_owner = principal_service
             .default_owner_principal(&caller, None)
             .await
             .unwrap();
+        assert_ne!(
+            app_owner.id, caller_default_owner.id,
+            "test setup invariant: app owner must differ from caller-derived default",
+        );
+
         let app_session = session_service
             .create_from_app(
                 &caller,
@@ -1532,8 +1559,8 @@ mod tests {
                 None,
                 None,
                 app_internal_id,
-                owner.id,
-                owner.resolved_user_id,
+                app_owner.id,
+                app_owner.resolved_user_id,
                 build_create_request(harness.id, None, None),
             )
             .await
@@ -1544,6 +1571,20 @@ mod tests {
             .unwrap()
             .expect("app session should be stored");
         assert_eq!(stored_app_session.app_id, Some(app_internal_id));
+        // The override actually took effect: stored session is owned by the
+        // App's owner, NOT the caller-derived system principal.
+        assert_eq!(
+            stored_app_session.owner_principal_id, app_owner.id,
+            "create_from_app must persist the App's owner_principal_id",
+        );
+        assert_ne!(
+            stored_app_session.owner_principal_id, caller_default_owner.id,
+            "create_from_app must override the caller-derived default principal",
+        );
+        assert_eq!(
+            stored_app_session.resolved_owner_user_id, app_owner.resolved_user_id,
+            "create_from_app must persist the App's resolved_owner_user_id",
+        );
 
         let normal_session = session_service
             .create(
