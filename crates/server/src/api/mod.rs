@@ -56,6 +56,7 @@ pub mod tool_results;
 pub mod user_connections;
 pub mod users;
 pub mod validation;
+pub mod voice;
 pub mod volumes;
 
 // Re-export common types

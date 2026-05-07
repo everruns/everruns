@@ -74,7 +74,12 @@ pub const LLM_GENERATION: &str = "llm.generation";
 fn is_ephemeral_event_type(event_type: &str) -> bool {
     matches!(
         event_type,
-        OUTPUT_MESSAGE_DELTA | REASON_THINKING_DELTA | TOOL_OUTPUT_DELTA | LLM_GENERATION
+        OUTPUT_MESSAGE_DELTA
+            | REASON_THINKING_DELTA
+            | TOOL_OUTPUT_DELTA
+            | LLM_GENERATION
+            | VOICE_INPUT_TRANSCRIPT_DELTA
+            | VOICE_OUTPUT_TRANSCRIPT_DELTA
     )
 }
 
@@ -109,6 +114,15 @@ pub const BUDGET_WARNING: &str = "budget.warning";
 pub const BUDGET_PAUSED: &str = "budget.paused";
 pub const BUDGET_EXHAUSTED: &str = "budget.exhausted";
 pub const BUDGET_RESUMED: &str = "budget.resumed";
+
+// Voice events
+pub const VOICE_SESSION_STARTED: &str = "voice.session.started";
+pub const VOICE_INPUT_TRANSCRIPT_DELTA: &str = "voice.input_transcript.delta";
+pub const VOICE_INPUT_TRANSCRIPT_COMPLETED: &str = "voice.input_transcript.completed";
+pub const VOICE_OUTPUT_TRANSCRIPT_DELTA: &str = "voice.output_transcript.delta";
+pub const VOICE_OUTPUT_TRANSCRIPT_COMPLETED: &str = "voice.output_transcript.completed";
+pub const VOICE_SESSION_ENDED: &str = "voice.session.ended";
+pub const VOICE_SESSION_FAILED: &str = "voice.session.failed";
 
 /// All valid event types for API filtering validation.
 /// Used by `types` and `exclude` query parameter validation to reject unknown types
@@ -150,6 +164,13 @@ pub const VALID_EVENT_TYPES: &[&str] = &[
     BUDGET_PAUSED,
     BUDGET_EXHAUSTED,
     BUDGET_RESUMED,
+    VOICE_SESSION_STARTED,
+    VOICE_INPUT_TRANSCRIPT_DELTA,
+    VOICE_INPUT_TRANSCRIPT_COMPLETED,
+    VOICE_OUTPUT_TRANSCRIPT_DELTA,
+    VOICE_OUTPUT_TRANSCRIPT_COMPLETED,
+    VOICE_SESSION_ENDED,
+    VOICE_SESSION_FAILED,
     FILE_WRITTEN,
 ];
 
@@ -1805,6 +1826,56 @@ pub struct BudgetEventData {
 }
 
 // ============================================================================
+// Voice Event Data Types
+// ============================================================================
+
+/// Data for voice.session.started.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct VoiceSessionStartedData {
+    pub voice_connection_id: String,
+    pub model: String,
+    pub voice: String,
+    pub reasoning_effort: String,
+    pub transport: String,
+}
+
+/// Data for voice transcript delta/completed events.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct VoiceTranscriptData {
+    pub voice_connection_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub item_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub response_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub phase: Option<String>,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub delta: String,
+    pub accumulated: String,
+}
+
+/// Data for voice.session.ended.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct VoiceSessionEndedData {
+    pub voice_connection_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
+}
+
+/// Data for voice.session.failed.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct VoiceSessionFailedData {
+    pub voice_connection_id: String,
+    pub error: String,
+}
+
+// ============================================================================
 // EventData Enum - Typed event payloads
 // ============================================================================
 
@@ -1926,6 +1997,15 @@ pub enum EventData {
     BudgetExhausted(BudgetEventData),
     BudgetResumed(BudgetEventData),
 
+    // Voice events
+    VoiceSessionStarted(VoiceSessionStartedData),
+    VoiceInputTranscriptDelta(VoiceTranscriptData),
+    VoiceInputTranscriptCompleted(VoiceTranscriptData),
+    VoiceOutputTranscriptDelta(VoiceTranscriptData),
+    VoiceOutputTranscriptCompleted(VoiceTranscriptData),
+    VoiceSessionEnded(VoiceSessionEndedData),
+    VoiceSessionFailed(VoiceSessionFailedData),
+
     /// Internal-only variant for unknown event types.
     /// Never serialized to API responses - filtered out before transmission.
     /// Logs a warning when created to alert developers of unknown types.
@@ -1979,6 +2059,13 @@ impl EventData {
             EventData::BudgetPaused(_) => BUDGET_PAUSED,
             EventData::BudgetExhausted(_) => BUDGET_EXHAUSTED,
             EventData::BudgetResumed(_) => BUDGET_RESUMED,
+            EventData::VoiceSessionStarted(_) => VOICE_SESSION_STARTED,
+            EventData::VoiceInputTranscriptDelta(_) => VOICE_INPUT_TRANSCRIPT_DELTA,
+            EventData::VoiceInputTranscriptCompleted(_) => VOICE_INPUT_TRANSCRIPT_COMPLETED,
+            EventData::VoiceOutputTranscriptDelta(_) => VOICE_OUTPUT_TRANSCRIPT_DELTA,
+            EventData::VoiceOutputTranscriptCompleted(_) => VOICE_OUTPUT_TRANSCRIPT_COMPLETED,
+            EventData::VoiceSessionEnded(_) => VOICE_SESSION_ENDED,
+            EventData::VoiceSessionFailed(_) => VOICE_SESSION_FAILED,
             EventData::Unsupported { .. } => "unsupported",
         }
     }
@@ -2098,6 +2185,30 @@ pub fn deserialize_event_data(event_type: &str, data: serde_json::Value) -> Even
                 .map(EventData::BudgetExhausted),
             BUDGET_RESUMED => serde_json::from_value::<BudgetEventData>(data.clone())
                 .map(EventData::BudgetResumed),
+            VOICE_SESSION_STARTED => {
+                serde_json::from_value::<VoiceSessionStartedData>(data.clone())
+                    .map(EventData::VoiceSessionStarted)
+            }
+            VOICE_INPUT_TRANSCRIPT_DELTA => {
+                serde_json::from_value::<VoiceTranscriptData>(data.clone())
+                    .map(EventData::VoiceInputTranscriptDelta)
+            }
+            VOICE_INPUT_TRANSCRIPT_COMPLETED => {
+                serde_json::from_value::<VoiceTranscriptData>(data.clone())
+                    .map(EventData::VoiceInputTranscriptCompleted)
+            }
+            VOICE_OUTPUT_TRANSCRIPT_DELTA => {
+                serde_json::from_value::<VoiceTranscriptData>(data.clone())
+                    .map(EventData::VoiceOutputTranscriptDelta)
+            }
+            VOICE_OUTPUT_TRANSCRIPT_COMPLETED => {
+                serde_json::from_value::<VoiceTranscriptData>(data.clone())
+                    .map(EventData::VoiceOutputTranscriptCompleted)
+            }
+            VOICE_SESSION_ENDED => serde_json::from_value::<VoiceSessionEndedData>(data.clone())
+                .map(EventData::VoiceSessionEnded),
+            VOICE_SESSION_FAILED => serde_json::from_value::<VoiceSessionFailedData>(data.clone())
+                .map(EventData::VoiceSessionFailed),
             _ => {
                 // Unknown event type - return as unsupported with warning
                 return EventData::unsupported(event_type.to_string(), data);
@@ -2163,6 +2274,21 @@ impl_from_event_data! {
     ContextCompactingData => ContextCompacting,
     ContextCompactedData => ContextCompacted,
     FileWrittenData => FileWritten,
+    VoiceSessionStartedData => VoiceSessionStarted,
+    VoiceSessionEndedData => VoiceSessionEnded,
+    VoiceSessionFailedData => VoiceSessionFailed,
+}
+
+impl EventData {
+    pub fn voice_transcript_event(data: VoiceTranscriptData, event_type: &str) -> Self {
+        match event_type {
+            VOICE_INPUT_TRANSCRIPT_DELTA => EventData::VoiceInputTranscriptDelta(data),
+            VOICE_INPUT_TRANSCRIPT_COMPLETED => EventData::VoiceInputTranscriptCompleted(data),
+            VOICE_OUTPUT_TRANSCRIPT_DELTA => EventData::VoiceOutputTranscriptDelta(data),
+            VOICE_OUTPUT_TRANSCRIPT_COMPLETED => EventData::VoiceOutputTranscriptCompleted(data),
+            _ => panic!("Unknown voice transcript event type: {event_type}"),
+        }
+    }
 }
 
 // Budget events reuse BudgetEventData for all four variants,

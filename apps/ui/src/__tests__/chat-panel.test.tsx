@@ -97,6 +97,10 @@ jest.mock("@/lib/api/messages", () => ({
   sendUserMessageWithImages: jest.fn(),
 }));
 
+jest.mock("@/providers/feature-flags-provider", () => ({
+  useFeatureFlag: () => false,
+}));
+
 jest.mock("@/components/ui/button", () => ({
   Button: ({
     children,

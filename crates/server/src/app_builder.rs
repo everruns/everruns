@@ -763,6 +763,15 @@ impl ServerAppBuilder {
             auth_state.clone(),
             Some(llm_resolver.clone()),
         );
+        let voice_state = api::voice::AppState::new(
+            db.clone(),
+            runner.clone(),
+            auth_state.clone(),
+            llm_resolver.clone(),
+            feature_flags.clone(),
+            platform_definition.as_ref(),
+            event_delivery.clone(),
+        );
         let capability_service = Arc::new(services::CapabilityService::with_registry(
             db.clone(),
             encryption.clone(),
@@ -1050,6 +1059,7 @@ impl ServerAppBuilder {
             .merge(api::harnesses::routes(harnesses_state))
             .merge(api::sessions::routes(sessions_state))
             .merge(api::messages::routes(messages_state))
+            .merge(api::voice::routes(voice_state))
             .merge(api::tool_results::routes(tool_results_state))
             .merge(api::events::routes(events_state))
             .merge(api::llm_models::routes(llm_models_state))

@@ -247,6 +247,13 @@ fn serialize_event_data(data: &everruns_core::EventData) -> serde_json::Value {
         EventData::BudgetExhausted(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::BudgetResumed(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::FileWritten(d) => serde_json::to_value(d).unwrap_or_default(),
+        EventData::VoiceSessionStarted(d) => serde_json::to_value(d).unwrap_or_default(),
+        EventData::VoiceInputTranscriptDelta(d) => serde_json::to_value(d).unwrap_or_default(),
+        EventData::VoiceInputTranscriptCompleted(d) => serde_json::to_value(d).unwrap_or_default(),
+        EventData::VoiceOutputTranscriptDelta(d) => serde_json::to_value(d).unwrap_or_default(),
+        EventData::VoiceOutputTranscriptCompleted(d) => serde_json::to_value(d).unwrap_or_default(),
+        EventData::VoiceSessionEnded(d) => serde_json::to_value(d).unwrap_or_default(),
+        EventData::VoiceSessionFailed(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::Unsupported { data, .. } => {
             // Should not happen in production - unsupported events are filtered before reaching here
             data.clone()

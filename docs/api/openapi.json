@@ -1017,6 +1017,36 @@
         }
       }
     },
+    "/v1/agents/{agent_id}/voice/sessions": {
+      "post": {
+        "tags": [
+          "voice"
+        ],
+        "operationId": "create_agent_voice_session",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoiceCallRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Agent session and realtime call created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceSessionResponse_VoiceCallResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/apps/{app_id}/a2a/{channel_id}": {
       "post": {
         "tags": [
@@ -5408,6 +5438,36 @@
         }
       }
     },
+    "/v1/sessions/chat/voice": {
+      "post": {
+        "tags": [
+          "voice"
+        ],
+        "operationId": "create_chat_voice_session",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoiceCallRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Platform chat session and realtime call created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceSessionResponse_VoiceCallResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/sessions/{session_id}": {
       "get": {
         "tags": [
@@ -7454,6 +7514,182 @@
           },
           "500": {
             "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/voice/calls": {
+      "post": {
+        "tags": [
+          "voice"
+        ],
+        "operationId": "create_call",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoiceCallRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Realtime WebRTC call created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceCallResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/voice/client-secret": {
+      "post": {
+        "tags": [
+          "voice"
+        ],
+        "operationId": "create_client_secret",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoiceClientSecretRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Realtime client secret created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceClientSecretResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/voice/{voice_connection_id}/attach": {
+      "post": {
+        "tags": [
+          "voice"
+        ],
+        "operationId": "attach_call",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "voice_connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoiceAttachRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Realtime sideband attached",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceAttachResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/sessions/{session_id}/voice/{voice_connection_id}/end": {
+      "post": {
+        "tags": [
+          "voice"
+        ],
+        "operationId": "end_call",
+        "parameters": [
+          {
+            "name": "session_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "voice_connection_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VoiceEndRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Realtime voice connection ended",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoiceEndResponse"
+                }
+              }
+            }
           }
         }
       }
@@ -10579,6 +10815,27 @@
           },
           {
             "$ref": "#/components/schemas/BudgetEventData"
+          },
+          {
+            "$ref": "#/components/schemas/VoiceSessionStartedData"
+          },
+          {
+            "$ref": "#/components/schemas/VoiceTranscriptData"
+          },
+          {
+            "$ref": "#/components/schemas/VoiceTranscriptData"
+          },
+          {
+            "$ref": "#/components/schemas/VoiceTranscriptData"
+          },
+          {
+            "$ref": "#/components/schemas/VoiceTranscriptData"
+          },
+          {
+            "$ref": "#/components/schemas/VoiceSessionEndedData"
+          },
+          {
+            "$ref": "#/components/schemas/VoiceSessionFailedData"
           }
         ],
         "title": "EventData",
@@ -20419,6 +20676,377 @@
           }
         }
       },
+      "VoiceAttachRequest": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/VoiceSessionOptions"
+          },
+          {
+            "type": "object",
+            "required": [
+              "provider_call_id"
+            ],
+            "properties": {
+              "provider_call_id": {
+                "type": "string"
+              }
+            }
+          }
+        ]
+      },
+      "VoiceAttachResponse": {
+        "type": "object",
+        "required": [
+          "voice_connection_id",
+          "provider_call_id",
+          "provider",
+          "model",
+          "voice",
+          "reasoning_effort",
+          "expires_at"
+        ],
+        "properties": {
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "model": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "provider_call_id": {
+            "type": "string"
+          },
+          "reasoning_effort": {
+            "type": "string"
+          },
+          "voice": {
+            "type": "string"
+          },
+          "voice_connection_id": {
+            "type": "string"
+          }
+        }
+      },
+      "VoiceCallRequest": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/VoiceSessionOptions"
+          },
+          {
+            "type": "object",
+            "required": [
+              "sdp"
+            ],
+            "properties": {
+              "sdp": {
+                "type": "string"
+              }
+            }
+          }
+        ]
+      },
+      "VoiceCallResponse": {
+        "type": "object",
+        "required": [
+          "voice_connection_id",
+          "provider",
+          "model",
+          "voice",
+          "reasoning_effort",
+          "expires_at",
+          "answer_sdp"
+        ],
+        "properties": {
+          "answer_sdp": {
+            "type": "string"
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "model": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "provider_call_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reasoning_effort": {
+            "type": "string"
+          },
+          "voice": {
+            "type": "string"
+          },
+          "voice_connection_id": {
+            "type": "string"
+          }
+        }
+      },
+      "VoiceClientSecretRequest": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/VoiceSessionOptions"
+          }
+        ]
+      },
+      "VoiceClientSecretResponse": {
+        "type": "object",
+        "required": [
+          "voice_connection_id",
+          "provider",
+          "model",
+          "voice",
+          "reasoning_effort",
+          "expires_at",
+          "client_secret"
+        ],
+        "properties": {
+          "client_secret": {},
+          "expires_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "model": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "reasoning_effort": {
+            "type": "string"
+          },
+          "voice": {
+            "type": "string"
+          },
+          "voice_connection_id": {
+            "type": "string"
+          }
+        }
+      },
+      "VoiceEndRequest": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "VoiceEndResponse": {
+        "type": "object",
+        "required": [
+          "voice_connection_id",
+          "status"
+        ],
+        "properties": {
+          "status": {
+            "type": "string"
+          },
+          "voice_connection_id": {
+            "type": "string"
+          }
+        }
+      },
+      "VoiceSessionEndedData": {
+        "type": "object",
+        "description": "Data for voice.session.ended.",
+        "required": [
+          "voice_connection_id"
+        ],
+        "properties": {
+          "duration_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "voice_connection_id": {
+            "type": "string"
+          }
+        }
+      },
+      "VoiceSessionFailedData": {
+        "type": "object",
+        "description": "Data for voice.session.failed.",
+        "required": [
+          "voice_connection_id",
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "voice_connection_id": {
+            "type": "string"
+          }
+        }
+      },
+      "VoiceSessionOptions": {
+        "type": "object",
+        "properties": {
+          "instructions": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reasoning_effort": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "voice": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "VoiceSessionResponse_VoiceCallResponse": {
+        "type": "object",
+        "required": [
+          "session",
+          "voice"
+        ],
+        "properties": {
+          "session": {
+            "$ref": "#/components/schemas/Session"
+          },
+          "voice": {
+            "type": "object",
+            "required": [
+              "voice_connection_id",
+              "provider",
+              "model",
+              "voice",
+              "reasoning_effort",
+              "expires_at",
+              "answer_sdp"
+            ],
+            "properties": {
+              "answer_sdp": {
+                "type": "string"
+              },
+              "expires_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "model": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              },
+              "provider_call_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "reasoning_effort": {
+                "type": "string"
+              },
+              "voice": {
+                "type": "string"
+              },
+              "voice_connection_id": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "VoiceSessionStartedData": {
+        "type": "object",
+        "description": "Data for voice.session.started.",
+        "required": [
+          "voice_connection_id",
+          "model",
+          "voice",
+          "reasoning_effort",
+          "transport"
+        ],
+        "properties": {
+          "model": {
+            "type": "string"
+          },
+          "reasoning_effort": {
+            "type": "string"
+          },
+          "transport": {
+            "type": "string"
+          },
+          "voice": {
+            "type": "string"
+          },
+          "voice_connection_id": {
+            "type": "string"
+          }
+        }
+      },
+      "VoiceTranscriptData": {
+        "type": "object",
+        "description": "Data for voice transcript delta/completed events.",
+        "required": [
+          "voice_connection_id",
+          "accumulated"
+        ],
+        "properties": {
+          "accumulated": {
+            "type": "string"
+          },
+          "delta": {
+            "type": "string"
+          },
+          "item_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "phase": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "response_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "voice_connection_id": {
+            "type": "string"
+          }
+        }
+      },
       "VolumeResponse": {
         "type": "object",
         "required": [
@@ -22385,6 +23013,10 @@
     {
       "name": "messages",
       "description": "Message management endpoints"
+    },
+    {
+      "name": "voice",
+      "description": "Realtime voice session endpoints"
     },
     {
       "name": "events",

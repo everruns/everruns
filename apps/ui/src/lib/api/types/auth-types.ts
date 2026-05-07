@@ -14,6 +14,7 @@ export interface FeatureFlags {
   evals: boolean;
   app_budgets: boolean;
   agent_versions: boolean;
+  voice: boolean;
 }
 
 export interface AuthConfigResponse {

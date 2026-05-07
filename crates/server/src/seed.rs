@@ -109,6 +109,7 @@ mod seed_ids {
     pub const GPT_5_4_NANO: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000222);
     pub const GPT_5_5: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000223);
     pub const GPT_5_5_PRO: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000224);
+    pub const GPT_REALTIME_2: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000225);
     pub const O1_PREVIEW: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_00000000021e);
 
     // Anthropic Models (0x300-0x3FF)
@@ -1403,6 +1404,15 @@ struct SeedModel {
 
 /// Built-in seed models
 const SEED_MODELS: &[SeedModel] = &[
+    // OpenAI Realtime series
+    SeedModel {
+        id: seed_ids::GPT_REALTIME_2,
+        provider_id: seed_ids::OPENAI_PROVIDER,
+        model_id: "gpt-realtime-2",
+        display_name: "GPT Realtime 2",
+        enabled: false,
+        is_favorite: false,
+    },
     // OpenAI GPT-5.5 series
     SeedModel {
         id: seed_ids::GPT_5_5,
