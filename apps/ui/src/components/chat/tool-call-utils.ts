@@ -189,7 +189,7 @@ function normalizeMcpAppResource(value: unknown): McpAppResource[] {
         ? value.text
         : undefined;
 
-  if (!uri?.startsWith("ui://")) return [];
+  if (!uri?.startsWith("ui://everruns/")) return [];
   if (mimeType?.toLowerCase() !== "text/html") return [];
   if (!html) return [];
 
