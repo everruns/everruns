@@ -648,7 +648,11 @@ async fn wake_parent(context: &ToolContext, record: &AgentRunRecord) -> Result<(
         .await
 }
 
-fn enforce_network_access(agent: &ExternalA2aAgentConfig, card: &AgentCard, context: &ToolContext) -> std::result::Result<(), String> {
+fn enforce_network_access(
+    agent: &ExternalA2aAgentConfig,
+    card: &AgentCard,
+    context: &ToolContext,
+) -> std::result::Result<(), String> {
     if let Some(ref acl) = context.network_access {
         if let Some(base_url) = &agent.base_url
             && !acl.is_url_allowed(base_url)
@@ -1779,6 +1783,106 @@ mod tests {
         assert!(config.agents[0].validate().is_err());
         config.agents[0].allow_local_urls = true;
         assert!(config.agents[0].validate().is_ok());
+    }
+
+    #[test]
+    fn enforce_network_access_blocks_disallowed_base_url() {
+        use crate::SessionId;
+        use crate::network_access::NetworkAccessList;
+
+        let agent = ExternalA2aAgentConfig {
+            id: "a".to_string(),
+            name: "a".to_string(),
+            description: None,
+            base_url: Some("https://blocked.example.com".to_string()),
+            agent_card: None,
+            headers: BTreeMap::new(),
+            preferred_binding: None,
+            poll_interval_ms: None,
+            allow_local_urls: false,
+        };
+        let card = AgentCard {
+            name: "a".to_string(),
+            description: "a".to_string(),
+            version: "1".to_string(),
+            supported_interfaces: vec![],
+            capabilities: AgentCapabilities {
+                streaming: None,
+                push_notifications: None,
+                extensions: None,
+                extended_agent_card: None,
+            },
+            default_input_modes: vec![],
+            default_output_modes: vec![],
+            skills: vec![],
+            provider: None,
+            documentation_url: None,
+            icon_url: None,
+            security_schemes: None,
+            security_requirements: None,
+            signatures: None,
+        };
+
+        let ctx = ToolContext::new(SessionId::new()).with_network_access(Some(
+            NetworkAccessList::allow_only(vec!["allowed.example.com".to_string()]),
+        ));
+        let err = enforce_network_access(&agent, &card, &ctx).unwrap_err();
+        assert!(
+            err.contains("blocked.example.com"),
+            "unexpected error: {err}"
+        );
+
+        let ctx = ToolContext::new(SessionId::new()).with_network_access(Some(
+            NetworkAccessList::allow_only(vec!["blocked.example.com".to_string()]),
+        ));
+        enforce_network_access(&agent, &card, &ctx).unwrap();
+    }
+
+    #[test]
+    fn enforce_network_access_blocks_disallowed_interface_url() {
+        use crate::SessionId;
+        use crate::network_access::NetworkAccessList;
+
+        let agent = ExternalA2aAgentConfig {
+            id: "a".to_string(),
+            name: "a".to_string(),
+            description: None,
+            base_url: None,
+            agent_card: None,
+            headers: BTreeMap::new(),
+            preferred_binding: None,
+            poll_interval_ms: None,
+            allow_local_urls: false,
+        };
+        let card = AgentCard {
+            name: "a".to_string(),
+            description: "a".to_string(),
+            version: "1".to_string(),
+            supported_interfaces: vec![AgentInterface::new(
+                "https://probe.internal/api".to_string(),
+                "JSONRPC",
+            )],
+            capabilities: AgentCapabilities {
+                streaming: None,
+                push_notifications: None,
+                extensions: None,
+                extended_agent_card: None,
+            },
+            default_input_modes: vec![],
+            default_output_modes: vec![],
+            skills: vec![],
+            provider: None,
+            documentation_url: None,
+            icon_url: None,
+            security_schemes: None,
+            security_requirements: None,
+            signatures: None,
+        };
+        let ctx = ToolContext::new(SessionId::new()).with_network_access(Some(
+            NetworkAccessList::allow_only(vec!["allowed.example.com".to_string()]),
+        ));
+        let err = enforce_network_access(&agent, &card, &ctx).unwrap_err();
+        assert!(err.contains("probe.internal"), "unexpected error: {err}");
     }
 
     #[test]
