@@ -30,12 +30,14 @@ const CATEGORY_LABELS: Record<SearchResultCategory, string> = {
   mcp_server: "MCP Servers",
   app: "Apps",
   eval: "Evals",
+  organization: "Organisations",
   id: "Go to",
 };
 
 const CATEGORY_ORDER: SearchResultCategory[] = [
   "id",
   "navigation",
+  "organization",
   "agent",
   "agent_identity",
   "session",
@@ -103,6 +105,10 @@ export function CommandPalette() {
   const navigate = useCallback(
     (result: SearchResult) => {
       setOpen(false);
+      if (result.onSelect) {
+        result.onSelect();
+        return;
+      }
       router.push(result.href);
     },
     [router, setOpen],
@@ -163,7 +169,7 @@ export function CommandPalette() {
                 ref={inputRef}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search pages, agents, sessions..."
+                placeholder="Search pages, organisations, agents..."
                 className="flex-1 bg-transparent py-3.5 text-sm outline-none placeholder:text-muted-foreground"
               />
               <kbd className="hidden sm:inline-flex h-5 items-center gap-1 border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
