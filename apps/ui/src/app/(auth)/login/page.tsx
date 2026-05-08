@@ -78,12 +78,13 @@ export default function LoginPage() {
       }
       await loginMutation.mutateAsync({ email, password });
       router.push(target);
-    } catch (err) {
-      if (err instanceof Error) {
-        setError(err.message);
-      } else {
-        setError("Login failed. Please try again.");
-      }
+    } catch {
+      // EVE-452 / TM-AUTH-019: never render raw server messages on a login
+      // failure. The backend already returns a generic "Invalid email or
+      // password" for every credential failure path (unknown email,
+      // OAuth-only account, bad password) so a future regression cannot
+      // re-introduce an enumeration oracle through this component.
+      setError("Invalid email or password.");
     }
   };
 

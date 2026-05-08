@@ -366,11 +366,24 @@ pub async fn login(
         return Err(AuthError::unauthorized("Invalid email or password"));
     };
 
-    // Verify password
-    let password_hash = user
-        .password_hash
-        .as_ref()
-        .ok_or_else(|| AuthError::unauthorized("Password login not available for this account"))?;
+    // EVE-452 / TM-AUTH-019: account-enumeration via login error differences.
+    // OAuth-only accounts (no `password_hash`) used to receive a distinct
+    // "Password login not available for this account" message, letting an
+    // attacker tell OAuth-registered emails apart from unknown emails or
+    // password-backed login failures. Return the same generic
+    // `Invalid email or password` for *all* credential failure paths so the
+    // UI cannot leak the difference even if it renders the raw message.
+    let Some(password_hash) = user.password_hash.as_ref() else {
+        audit::emit(
+            state.db.clone(),
+            DEFAULT_ORG_ID,
+            Some(user.id),
+            "auth.login.failure",
+            ip.clone(),
+            serde_json::json!({"reason": "no_password_hash"}),
+        );
+        return Err(AuthError::unauthorized("Invalid email or password"));
+    };
 
     let valid = verify_password(&req.password, password_hash).map_err(|e| {
         tracing::error!("Password verification error: {}", e);

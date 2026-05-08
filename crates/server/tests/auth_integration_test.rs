@@ -442,6 +442,71 @@ async fn test_refresh_with_access_token_returns_401() {
 // Login flow tests
 // ============================================
 
+// EVE-452 / TM-AUTH-019: an OAuth-only account (one without a password hash)
+// must produce the same generic credential failure as an unknown email or a
+// wrong password. Otherwise an attacker can enumerate which addresses are
+// registered via OAuth.
+#[tokio::test]
+async fn test_login_oauth_only_account_returns_generic_error() {
+    use everruns_server::storage::models::CreateUserRow;
+
+    let (router, db) = auth_router().await;
+
+    // Insert an OAuth-only account directly: `password_hash = None`.
+    db.create_user(CreateUserRow {
+        email: "oauth-only@example.com".to_string(),
+        name: "OAuth Only".to_string(),
+        avatar_url: None,
+        roles: vec!["user".to_string()],
+        password_hash: None,
+        email_verified: true,
+        auth_provider: Some("google".to_string()),
+        auth_provider_id: Some("google-sub-1".to_string()),
+        external_id: None,
+    })
+    .await
+    .expect("failed to seed oauth-only user");
+
+    // Attempt password login on the OAuth-only account.
+    let (status_oauth, body_oauth, _) = send(
+        &router,
+        "POST",
+        "/v1/auth/login",
+        Some(json!({
+            "email": "oauth-only@example.com",
+            "password": "anypassword",
+        })),
+        None,
+    )
+    .await;
+
+    // Attempt password login on a totally unknown email.
+    let (status_unknown, body_unknown, _) = send(
+        &router,
+        "POST",
+        "/v1/auth/login",
+        Some(json!({
+            "email": "ghost@example.com",
+            "password": "anypassword",
+        })),
+        None,
+    )
+    .await;
+
+    assert_eq!(status_oauth, StatusCode::UNAUTHORIZED);
+    assert_eq!(status_unknown, StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        body_oauth, body_unknown,
+        "OAuth-only and unknown-email login failures must be indistinguishable"
+    );
+    // Belt-and-suspenders: the legacy distinguishing string is gone.
+    let body_text = body_oauth.to_string();
+    assert!(
+        !body_text.contains("Password login not available"),
+        "legacy enumeration message must not appear: {body_text}"
+    );
+}
+
 #[tokio::test]
 async fn test_login_sets_cookies_with_root_path() {
     let (router, _db) = auth_router().await;
