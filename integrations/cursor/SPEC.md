@@ -14,8 +14,11 @@ Primary use case: a user configures an orchestration agent that investigates an 
 - API base: `https://api.cursor.com`
 - Credential sources:
   1. User connection token from Settings > Connections
-  2. Operator env var `CURSOR_API_KEY` for Doppler-backed deployments and live tests
-  3. Session secret `CURSOR_API_KEY` as a compatibility fallback
+  2. Session secret `CURSOR_API_KEY` (per-session opt-in)
+
+  The previous process-wide `CURSOR_API_KEY` env-var fallback was removed:
+  it let any session inherit an operator key and access account-wide Cursor
+  resources, which violates per-session credential boundaries.
 
 The crate uses Cursor's public Background/Cloud Agents REST API directly. Cursor's public docs do not publish an official Rust SDK, so the integration keeps a small typed `reqwest` client in `src/client.rs`.
 

@@ -28,7 +28,6 @@ async fn get_api_key(context: &ToolContext) -> Result<String, ToolExecutionResul
         }
     }
 
-
     if let Some(storage) = context.storage_store.as_ref() {
         match storage
             .get_secret(context.session_id, CURSOR_API_KEY_SECRET)
