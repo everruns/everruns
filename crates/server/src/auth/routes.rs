@@ -556,25 +556,22 @@ pub async fn refresh_token(
         .validate_refresh_token(&refresh_token_value)
         .map_err(|_| AuthError::unauthorized("Invalid refresh token"))?;
 
-    // Check if token is in database (not revoked)
+    // EVE-454 / TM-AUTH-018: atomic single-use consume. The previous
+    // get-then-delete pattern allowed concurrent refresh requests with the
+    // same token to both pass the existence check before either delete
+    // committed, weakening single-use rotation. The consume is one SQL
+    // statement (`DELETE … RETURNING`) and one in-memory write-lock for the
+    // memory backend, so only one caller observes the row.
     let token_hash = hash_token(&refresh_token_value);
-    let token_row = state
+    let _token_row = state
         .db
-        .get_refresh_token_by_hash(&token_hash)
+        .consume_refresh_token_by_hash(&token_hash)
         .await
         .map_err(|e| {
             tracing::error!("Database error during refresh: {}", e);
             AuthError::unauthorized("Refresh failed")
         })?
         .ok_or_else(|| AuthError::unauthorized("Invalid refresh token"))?;
-
-    // Check expiration
-    if token_row.expires_at < Utc::now() {
-        return Err(AuthError::unauthorized("Refresh token expired"));
-    }
-
-    // Delete old refresh token
-    let _ = state.db.delete_refresh_token(token_row.id).await;
 
     // Get user
     let user_id = Uuid::parse_str(&claims.sub)

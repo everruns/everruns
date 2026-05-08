@@ -260,6 +260,15 @@ impl StorageBackend {
         dispatch!(self, delete_refresh_token, id)
     }
 
+    /// EVE-454: atomic single-use refresh-token consume. See
+    /// `repositories::auth::AuthRepository::consume_refresh_token_by_hash`.
+    pub async fn consume_refresh_token_by_hash(
+        &self,
+        token_hash: &str,
+    ) -> Result<Option<RefreshTokenRow>> {
+        dispatch!(self, consume_refresh_token_by_hash, token_hash)
+    }
+
     pub async fn delete_expired_refresh_tokens(&self) -> Result<u64> {
         dispatch!(self, delete_expired_refresh_tokens)
     }
