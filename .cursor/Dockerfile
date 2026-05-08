@@ -10,13 +10,45 @@ ENV CARGO_INCREMENTAL=0
 # If you bump versions in one place, bump all three.
 
 # System tools required by full-stack local runs.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    postgresql \
-    postgresql-client \
-    valkey \
-    netcat-openbsd \
-    jq \
-    && rm -rf /var/lib/apt/lists/*
+#
+# Valkey: build from the GitHub release tarball so we ship real `valkey-server`
+# / `valkey-cli` (licensing) without relying on `download.valkey.io` (often
+# blocks automated downloads with HTTP 403) or mixing prebuilt glibc versions.
+#
+# The universal devcontainer image ships a Yarn APT source that can break
+# `apt-get update` (missing/rotated key). Yarn is provided via other tooling in
+# the base image; drop the apt source so package installs remain reliable.
+#
+# NOTE(sync): Bump VALKEY_VERSION with `examples/docker-compose-full.yaml` /
+# production Valkey major line when you intentionally upgrade.
+RUN set -eux; \
+    rm -f /etc/apt/sources.list.d/yarn.list /etc/apt/sources.list.d/yarn-stable.list; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends \
+      ca-certificates \
+      curl \
+      build-essential \
+      pkg-config \
+      libssl-dev \
+      postgresql \
+      postgresql-client \
+      netcat-openbsd \
+      jq; \
+    VALKEY_VERSION="8.1.7"; \
+    curl -fsSL --retry 3 --retry-delay 2 \
+      "https://github.com/valkey-io/valkey/archive/refs/tags/${VALKEY_VERSION}.tar.gz" \
+      -o /tmp/valkey.tgz; \
+    tar -xzf /tmp/valkey.tgz -C /tmp; \
+    make -C "/tmp/valkey-${VALKEY_VERSION}" MALLOC=libc -j"$(nproc)"; \
+    make -C "/tmp/valkey-${VALKEY_VERSION}" MALLOC=libc install PREFIX=/usr/local; \
+    rm -rf "/tmp/valkey-${VALKEY_VERSION}" /tmp/valkey.tgz; \
+    valkey-server --version; \
+    valkey-cli --version; \
+    apt-get purge -y --auto-remove \
+      build-essential \
+      pkg-config \
+      libssl-dev; \
+    rm -rf /var/lib/apt/lists/*
 
 # Preinstall tools that scripts/init-cloud-env.sh expects.
 # NOTE(sync): Versions below intentionally mirror scripts/init-cloud-env.sh:
