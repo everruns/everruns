@@ -11,6 +11,7 @@ use super::types::{
 use super::{APP_DANGEROUS, APP_MANAGE, APP_VIEW};
 use crate::api::messages::{CreateMessageRequest, InputContentPart, InputMessage, MessageRole};
 use crate::api::sessions::CreateSessionRequest;
+use crate::auth::audit;
 use crate::domains::common::*;
 use crate::domains::messages::{CreateMessageContext, MessageService};
 use crate::domains::sessions::SessionService;
@@ -21,8 +22,8 @@ use chrono::{DateTime, Utc};
 use everruns_core::app::{InvocationSessionMode, ScheduleChannelConfig, WebhookChannelConfig};
 use everruns_core::typed_id::{AgentId, AppChannelId, AppId, HarnessId, SessionId};
 use everruns_core::{
-    A2aChannelConfig, AgUiChannelConfig, AgUiToolVisibility, App, AppChannel, AppStatus,
-    ChannelType, Policy, SlackChannelConfig,
+    A2aChannelConfig, AgUiChannelConfig, AgUiToolVisibility, AgentAction, App, AppChannel,
+    AppStatus, AuditEvent, ChannelType, Policy, SlackChannelConfig,
 };
 use everruns_durable::{
     CreateScheduleRow, ScheduleTargetType, StoreError, UpdateField, UpdateSchedule,
@@ -321,6 +322,29 @@ fn app_invocation_message_metadata(
     ]
     .into_iter()
     .collect()
+}
+
+fn emit_app_invocation_audit_event(
+    db: Arc<crate::storage::StorageBackend>,
+    app: &App,
+    channel: &AppChannel,
+    session_id: SessionId,
+    source: AppInvocationSource,
+    created_session: bool,
+) {
+    let mut event = AuditEvent::agent(AgentAction::AppInvocationStarted, app.org_id, None)
+        .target("app_channel", channel.public_id.to_string())
+        .detail("source", format!("app_{}", source.as_str()))
+        .detail("app_id", app.public_id.to_string())
+        .detail("app_channel_id", channel.public_id.to_string())
+        .detail("app_channel_type", channel.channel_type.to_string())
+        .detail("session_id", session_id.to_string())
+        .detail("created_session", created_session);
+    event = event.detail("app_owner_principal_id", app.owner_principal_id.to_string());
+    if let Some(agent_identity_id) = app.agent_identity_id {
+        event = event.detail("agent_identity_id", agent_identity_id.to_string());
+    }
+    audit::emit_event(db, event.build());
 }
 
 async fn set_channel_durable_schedule_id(
@@ -777,6 +801,15 @@ where
         rendered_message,
     )
     .await?;
+
+    emit_app_invocation_audit_event(
+        Arc::clone(services.db),
+        &app,
+        &channel,
+        session_id,
+        source,
+        created_session,
+    );
 
     Ok(AppInvocationResult {
         session_id,

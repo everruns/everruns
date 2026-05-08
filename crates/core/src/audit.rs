@@ -148,6 +148,7 @@ pub enum AgentAction {
     RunFailed,
     ToolExecuted,
     LlmRequest,
+    AppInvocationStarted,
 }
 
 impl AgentAction {
@@ -158,6 +159,7 @@ impl AgentAction {
             Self::RunFailed => "agent.run.failed",
             Self::ToolExecuted => "agent.tool.executed",
             Self::LlmRequest => "agent.llm.request",
+            Self::AppInvocationStarted => "agent.app_invocation.started",
         }
     }
 }
@@ -274,6 +276,7 @@ impl std::str::FromStr for AgentAction {
             "agent.run.failed" => Ok(Self::RunFailed),
             "agent.tool.executed" => Ok(Self::ToolExecuted),
             "agent.llm.request" => Ok(Self::LlmRequest),
+            "agent.app_invocation.started" => Ok(Self::AppInvocationStarted),
             other => Err(format!("unknown agent action: {other}")),
         }
     }

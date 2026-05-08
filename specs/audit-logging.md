@@ -13,11 +13,20 @@ Two audit domains cover complementary surfaces:
 | Domain | What it tracks | Who writes |
 |--------|---------------|------------|
 | **Management** | Org CRUD, member invite/remove, role change, API key create/revoke, settings changes | Service layer via `#[audit]` macro |
-| **Agent** | Agent runs, tool calls, LLM interactions | Execution engine (future) |
+| **Agent** | Agent runs, app-channel invocations, tool calls, LLM interactions | Execution engine and app-channel ingress |
 
 ## Core Types
 
 See `crates/core/src/audit.rs` for full type definitions (`AuditDomain`, `AuditAction`, `AuditTarget`, `AuditEvent`, `AuditLogger` trait) and domain-specific builders.
+
+## App-Channel Invocations
+
+Webhook, schedule, and A2A app-channel invocations emit
+`agent.app_invocation.started` after the session is resolved and the rendered
+user message is dispatched. The target is the app channel; metadata records the
+source (`app_webhook`, `app_schedule`, or `app_a2a`), app id, channel id/type,
+session id, whether a new session was created, the app owner principal id, and
+the agent identity id when the invocation runs through an agent identity.
 
 ## AOP: `#[audit]` Proc Macro
 

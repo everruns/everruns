@@ -286,6 +286,24 @@ Template context:
 If no `text` part is present the channel rejects the request with
 `-32602 Invalid params`.
 
+## Audit Logging
+
+A2A uses the shared app-channel invocation path with webhook and schedule
+channels. After a request successfully resolves a session and dispatches the
+rendered user message, the server emits one audit log entry:
+
+- domain/action: `agent` / `agent.app_invocation.started`
+- target: `app_channel:{channel_id}`
+- actor: none, because the caller is an external API-key holder rather than an
+  Everruns user
+- metadata: `source = "app_a2a"`, `app_id`, `app_channel_id`,
+  `app_channel_type = "a2a"`, `session_id`, `created_session`, and the app
+  owner principal id; `agent_identity_id` is also present when the invocation
+  runs through an agent identity
+
+This mirrors webhook/schedule coverage because the event is emitted by the
+common app-channel invocation helper, not by the A2A HTTP adapter.
+
 ## Lifecycle
 
 - Publish/unpublish controls whether the endpoint accepts traffic.
