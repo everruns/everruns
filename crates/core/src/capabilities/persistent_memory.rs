@@ -845,7 +845,9 @@ mod tests {
     async fn test_recall_empty_store() {
         let (ctx, _, _) = test_context();
 
-        let result = RecallTool::with_default_config().execute_with_context(json!({}), &ctx).await;
+        let result = RecallTool::with_default_config()
+            .execute_with_context(json!({}), &ctx)
+            .await;
 
         match &result {
             ToolExecutionResult::Success(v) => {
@@ -875,7 +877,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_remember_without_context_errors() {
-        let result = RememberTool::with_default_config().execute(json!({"content": "test"})).await;
+        let result = RememberTool::with_default_config()
+            .execute(json!({"content": "test"}))
+            .await;
         match result {
             ToolExecutionResult::ToolError(msg) => {
                 assert!(msg.contains("requires session context"));
