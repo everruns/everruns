@@ -108,6 +108,7 @@ Format: `TM-<CATEGORY>-<NNN>`
 | TM-AUTH-014 | Account enumeration via registration | Medium | Returns generic "Registration failed" for existing emails; password hash computed first for timing consistency | MITIGATED |
 | TM-AUTH-015 | JWT secret insecure default | High | Falls back to hardcoded `insecure-dev-secret-change-me` if `AUTH_JWT_SECRET` unset; no startup check in production | **OPEN** |
 | TM-AUTH-016 | OSS harness reseeding via public signup | High | The signup safety net in `register` / `oauth_callback` uses `state.platform_definition.built_in_harnesses()` via `initialize_org_harnesses_with_definitions`, **not** `oss_built_in_harnesses()`. An operator's custom `PlatformDefinition` is the source of truth — public signup cannot reintroduce OSS harnesses that were removed. Original concern tracked by PR #1462; the safety-net semantics re-added in EVE-390 preserve pre-seed correctness without re-opening the override path. | MITIGATED |
+| TM-AUTH-017 | Google OAuth identity bypass | High | After `exchange_code` and before user lookup or creation, `oauth_callback` calls `oauth_identity_rejection_reason` (`crates/server/src/auth/routes.rs`). Rejects `email_verified=false` and, when `AUTH_GOOGLE_ALLOWED_DOMAINS` is set, rejects email domains not in the list (case-insensitive). Applied to both first-time and returning OAuth users. Failure path emits `auth.oauth.failure` audit with a reason and returns `403`. | MITIGATED |
 
 ### Mitigation Details
 
