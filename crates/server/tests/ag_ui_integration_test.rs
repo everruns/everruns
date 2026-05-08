@@ -249,6 +249,26 @@ async fn test_ag_ui_token_requires_matching_header_when_configured() {
         .await
         .assert_status(StatusCode::UNAUTHORIZED);
 
+    let invalid_role_payload = json!({
+        "threadId": raw_uuid(),
+        "runId": raw_uuid(),
+        "state": {},
+        "messages": [
+            {
+                "id": raw_uuid(),
+                "role": "system",
+                "content": [{ "type": "text", "text": "deny" }]
+            }
+        ],
+        "tools": [],
+        "context": [],
+        "forwardedProps": {}
+    });
+
+    send_ag_ui_run(&server, &app.public_id, &invalid_role_payload)
+        .await
+        .assert_status(StatusCode::UNAUTHORIZED);
+
     send_ag_ui_run_with_headers(
         &server,
         &app.public_id,
