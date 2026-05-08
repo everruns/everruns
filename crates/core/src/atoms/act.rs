@@ -500,6 +500,11 @@ where
                     .unwrap_or(true) // unknown tools go to server (will error there)
             });
 
+        let client_tool_calls: Vec<_> = client_tool_calls
+            .into_iter()
+            .map(|tool_call| self.transform_tool_call_for_execution(tool_call))
+            .collect();
+
         let client_tool_definitions: Vec<_> = if client_tool_calls.is_empty() {
             vec![]
         } else {
@@ -1309,6 +1314,58 @@ mod tests {
             panic!("expected tool.completed data");
         };
         assert_eq!(data.narration.as_deref(), Some("Echoing test arguments"));
+    }
+
+    #[tokio::test]
+    async fn test_act_atom_strips_human_intent_from_client_tool_calls() {
+        use crate::capabilities::{Capability, HumanIntentCapability};
+
+        let executor = ToolRegistry::new();
+        let emitter = crate::memory::InMemoryEventEmitter::new();
+        let atom = ActAtom::new(executor, emitter)
+            .with_tool_call_hooks(HumanIntentCapability.tool_call_hooks());
+
+        let context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
+        let input = ActInput {
+            org_id: Some(1),
+            context,
+            harness_id: HarnessId::from_seed(1),
+            agent_id: Some(AgentId::new()),
+            tool_calls: vec![ToolCall {
+                id: "call_client".to_string(),
+                name: "browser_click".to_string(),
+                arguments: json!({
+                    "selector": "#btn",
+                    "human_intent": "Clicking approve"
+                }),
+            }],
+            tool_definitions: vec![crate::ToolDefinition::ClientSide(crate::ClientSideTool {
+                name: "browser_click".to_string(),
+                display_name: None,
+                description: "Click button".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {
+                        "selector": {"type": "string"}
+                    },
+                    "required": ["selector"]
+                }),
+                category: None,
+                deferrable: Default::default(),
+                hints: crate::tool_types::ToolHints::default(),
+            })],
+            locale: None,
+            blueprint_id: None,
+            network_access: None,
+        };
+
+        let result = atom.execute(input).await.unwrap();
+
+        assert_eq!(result.client_tool_calls.len(), 1);
+        assert_eq!(
+            result.client_tool_calls[0].arguments,
+            json!({ "selector": "#btn" })
+        );
     }
 
     fn manage_harnesses_tool_def() -> crate::ToolDefinition {
