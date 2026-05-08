@@ -20,7 +20,7 @@ use everruns_core::{
     AgentCapabilityConfig, Caller, DeploymentGrade, Harness, PlatformDefinition,
     ResourceConfigResponse, evaluate_policies_with,
 };
-use futures::future::try_join_all;
+use futures::{StreamExt, TryStreamExt, stream};
 
 use super::common::{
     ApiOptionExt, ApiResult, ApiResultExt, ErrorResponse, ListResponse, ResourceStatsResponse,
@@ -108,16 +108,20 @@ async fn add_harness_counts(
     })
 }
 
+const HARNESS_COUNT_CONCURRENCY_LIMIT: usize = 8;
+
 async fn add_harnesses_counts(
     db: &StorageBackend,
     org_id: i64,
     harnesses: Vec<Harness>,
 ) -> Result<Vec<ResourceWithCounts<Harness>>, (StatusCode, Json<ErrorResponse>)> {
-    try_join_all(
+    stream::iter(
         harnesses
             .into_iter()
             .map(|harness| add_harness_counts(db, org_id, harness)),
     )
+    .buffered(HARNESS_COUNT_CONCURRENCY_LIMIT)
+    .try_collect::<Vec<_>>()
     .await
 }
 
