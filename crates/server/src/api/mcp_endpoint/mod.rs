@@ -1179,9 +1179,10 @@ async fn tool_agent_get_card(
     // intentionally hit the storage layer directly here instead of going
     // through a list-and-count: callers asking for a card don't need the
     // list payload, and `count_sessions_for_agent` is a single COUNT query.
+    let agent_id = everruns_core::AgentId::from_uuid(agent.internal_id);
     let session_count = state
         .db
-        .count_sessions_for_agent(org.org_id, agent.public_id)
+        .count_sessions_for_agent(org.org_id, agent_id)
         .await
         .map_err(|e| format!("Failed to count sessions: {e}"))?;
 
