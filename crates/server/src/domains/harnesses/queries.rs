@@ -248,8 +248,12 @@ pub async fn resolve_effective(
                 return Ok(None);
             }
             // EVE-437: typed 404 instead of an unclassified anyhow that
-            // would map to 500. The cycle case above stays as a generic
-            // bail because it is a true invariant violation.
+            // would map to 500. The inheritance-cycle bail above stays as
+            // an `anyhow::bail!` but is mapped to 400 by `classify_anyhow`'s
+            // substring list — the cycle is reachable only when the
+            // operator-supplied `parent_harness_id` graph contains a loop,
+            // so it is a client-input validation failure, not an internal
+            // invariant violation.
             return Err(ResourceNotFoundError::new("Parent harness").into());
         };
         cursor = harness.parent_harness_id;
