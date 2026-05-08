@@ -1408,7 +1408,7 @@ async fn test_session_inherits_agent_default_model() {
             json!({
                 "model_id": "inherit-test-model",
                 "display_name": "Inherit Test Model",
-                "enabled": false
+                "enabled": true
             }),
         )
         .await
@@ -2028,6 +2028,7 @@ async fn create_llmsim_agent(server: &TestServer, name: &str) -> Agent {
             json!({
                 "model_id": format!("{name}-model-{}", uuid::Uuid::new_v4()),
                 "display_name": format!("{name} model"),
+                "enabled": true,
             }),
         )
         .await
