@@ -3,6 +3,7 @@ use chrono::{DateTime, Utc};
 use everruns_core::typed_id::VolumeId;
 use everruns_durable::UpdateField;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
@@ -15,6 +16,14 @@ pub struct VolumeResponse {
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    pub source_type: String,
+    pub source: Value,
+    pub is_readonly: bool,
+    pub sync_status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_synced_at: Option<DateTime<Utc>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_sync_error: Option<String>,
     #[serde(skip)]
     pub internal_id: Uuid,
     pub status: String,
@@ -31,6 +40,8 @@ pub struct CreateVolumeRequest {
     pub name: String,
     #[serde(default)]
     pub description: Option<String>,
+    #[serde(default)]
+    pub source: Option<CreateVolumeSourceRequest>,
 }
 
 #[derive(Debug, Clone, Deserialize, ToSchema)]
@@ -50,11 +61,42 @@ pub struct ListVolumesQuery {
     pub include_archived: Option<bool>,
 }
 
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum CreateVolumeSourceRequest {
+    Github(GitHubVolumeSourceRequest),
+    Git(GitVolumeSourceRequest),
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct GitHubVolumeSourceRequest {
+    pub repository: String,
+    #[serde(default)]
+    pub branch: Option<String>,
+    #[serde(default)]
+    pub root_folder: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct GitVolumeSourceRequest {
+    pub url: String,
+    #[serde(default)]
+    pub branch: Option<String>,
+    #[serde(default)]
+    pub root_folder: Option<String>,
+}
+
 pub fn volume_response(row: VolumeRow) -> anyhow::Result<VolumeResponse> {
     Ok(VolumeResponse {
         id: row.public_id.parse()?,
         name: row.name,
         description: row.description,
+        source_type: row.source_type,
+        source: row.source_config,
+        is_readonly: row.is_readonly,
+        sync_status: row.sync_status,
+        last_synced_at: row.last_synced_at,
+        last_sync_error: row.last_sync_error,
         internal_id: row.id,
         status: row.status,
         created_at: row.created_at,

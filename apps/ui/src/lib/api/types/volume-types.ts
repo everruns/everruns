@@ -6,6 +6,12 @@ export interface Volume {
   id: string;
   name: string;
   description?: string | null;
+  source_type: VolumeSourceType;
+  source: VolumeSource;
+  is_readonly: boolean;
+  sync_status: VolumeSyncStatus;
+  last_synced_at?: string | null;
+  last_sync_error?: string | null;
   status: VolumeStatus;
   created_at: string;
   updated_at: string;
@@ -13,9 +19,42 @@ export interface Volume {
   deleted_at?: string | null;
 }
 
+export type VolumeSourceType = "manual" | "github" | "git";
+export type VolumeSyncStatus = "idle" | "pending" | "syncing" | "synced" | "failed";
+
+export type VolumeSource =
+  | Record<string, never>
+  | {
+      provider: "github";
+      repository: string;
+      branch: string;
+      root_folder?: string | null;
+    }
+  | {
+      provider: "git";
+      url: string;
+      branch: string;
+      root_folder?: string | null;
+    };
+
+export type CreateVolumeSource =
+  | {
+      type: "github";
+      repository: string;
+      branch?: string;
+      root_folder?: string;
+    }
+  | {
+      type: "git";
+      url: string;
+      branch?: string;
+      root_folder?: string;
+    };
+
 export interface CreateVolumeRequest {
   name: string;
   description?: string;
+  source?: CreateVolumeSource;
 }
 
 export interface UpdateVolumeRequest {

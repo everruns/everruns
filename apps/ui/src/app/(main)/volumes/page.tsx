@@ -2,7 +2,16 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Archive, FolderOpen, HardDrive, Pencil, Plus, Search } from "lucide-react";
+import {
+  Archive,
+  FolderOpen,
+  GitBranch,
+  Github,
+  HardDrive,
+  Pencil,
+  Plus,
+  Search,
+} from "lucide-react";
 import { ArchiveFilter } from "@/components/archive-filter";
 import { QueryStateWrapper } from "@/components/query-state-wrapper";
 import { ArchiveVolumeDialog } from "@/components/volumes/archive-volume-dialog";
@@ -145,13 +154,33 @@ function VolumeCard({
             </div>
           </div>
         </div>
-        <Badge variant={getEntityStatusBadgeVariant(volume.status)}>{volume.status}</Badge>
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          <Badge variant={getEntityStatusBadgeVariant(volume.status)}>{volume.status}</Badge>
+          {volume.is_readonly && <Badge variant="secondary">Read-only</Badge>}
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="min-h-10 text-sm text-muted-foreground">
           {volume.description || "No description"}
         </p>
         <div className="grid grid-cols-2 gap-3 text-xs text-muted-foreground">
+          <div>
+            <div className="font-medium text-foreground">Source</div>
+            <div className="flex items-center gap-1">
+              {volume.source_type === "github" ? (
+                <Github className="h-3.5 w-3.5" />
+              ) : volume.source_type === "git" ? (
+                <GitBranch className="h-3.5 w-3.5" />
+              ) : (
+                <HardDrive className="h-3.5 w-3.5" />
+              )}
+              <span>{volume.source_type === "manual" ? "Manual" : volume.source_type}</span>
+            </div>
+          </div>
+          <div>
+            <div className="font-medium text-foreground">Sync</div>
+            <div>{volume.sync_status}</div>
+          </div>
           <div>
             <div className="font-medium text-foreground">Created</div>
             <div>{formatRelativeTime(volume.created_at)}</div>

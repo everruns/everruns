@@ -1,6 +1,7 @@
 use super::types::{
-    CreateVolumeRequest, CreateVolumeRow, ListVolumesQuery, UpdateVolume, UpdateVolumeRequest,
-    VolumeResponse, volume_response,
+    CreateVolumeRequest, CreateVolumeRow, CreateVolumeSourceRequest, GitHubVolumeSourceRequest,
+    GitVolumeSourceRequest, ListVolumesQuery, UpdateVolume, UpdateVolumeRequest, VolumeResponse,
+    volume_response,
 };
 use super::{VOLUME_MANAGE, VOLUME_VIEW};
 use crate::domains::common::*;
@@ -8,7 +9,10 @@ use everruns_core::Policy;
 use everruns_core::typed_id::VolumeId;
 use everruns_durable::UpdateField;
 use serde::Deserialize;
+use serde_json::{Value, json};
 use utoipa::ToSchema;
+
+const DEFAULT_GIT_BRANCH: &str = "main";
 
 fn validate_name(name: &str) -> Result<String, CommandError> {
     let trimmed = name.trim();
@@ -21,6 +25,156 @@ fn validate_name(name: &str) -> Result<String, CommandError> {
         ));
     }
     Ok(trimmed.to_string())
+}
+
+fn validate_optional_ref(
+    value: Option<String>,
+    field: &str,
+) -> Result<Option<String>, CommandError> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    if trimmed.len() > 255 || trimmed.contains('\0') {
+        return Err(CommandError::bad_request(format!(
+            "{field} must be a non-empty ref at most 255 characters"
+        )));
+    }
+    Ok(Some(trimmed.to_string()))
+}
+
+fn normalize_root_folder(value: Option<String>) -> Result<Option<String>, CommandError> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let trimmed = value.trim().trim_matches('/');
+    if trimmed.is_empty() || trimmed == "." {
+        return Ok(None);
+    }
+    if trimmed.contains('\0')
+        || trimmed.contains("//")
+        || trimmed
+            .split('/')
+            .any(|segment| segment == ".." || segment.is_empty())
+    {
+        return Err(CommandError::bad_request(
+            "root_folder must be a relative path without empty segments or '..'",
+        ));
+    }
+    Ok(Some(trimmed.to_string()))
+}
+
+fn normalize_github_repository(repository: &str) -> Result<String, CommandError> {
+    let trimmed = repository.trim().trim_end_matches(".git");
+    let repo_path = if let Some(path) = trimmed.strip_prefix("https://github.com/") {
+        path
+    } else if let Some(path) = trimmed.strip_prefix("git@github.com:") {
+        path
+    } else {
+        trimmed
+    };
+    let repo_path = repo_path.trim_matches('/');
+    let parts: Vec<&str> = repo_path.split('/').collect();
+    if parts.len() != 2
+        || parts.iter().any(|part| {
+            part.is_empty()
+                || part.len() > 100
+                || !part
+                    .chars()
+                    .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' || ch == '.')
+        })
+    {
+        return Err(CommandError::bad_request(
+            "GitHub repository must be owner/repo or a github.com repository URL",
+        ));
+    }
+    Ok(format!("{}/{}", parts[0], parts[1]))
+}
+
+fn validate_git_url(url: &str) -> Result<String, CommandError> {
+    let trimmed = url.trim();
+    if trimmed.is_empty() || trimmed.len() > 2048 || trimmed.contains(char::is_whitespace) {
+        return Err(CommandError::bad_request(
+            "Git URL must be a non-empty URL without whitespace",
+        ));
+    }
+    if let Ok(parsed) = url::Url::parse(trimmed) {
+        match parsed.scheme() {
+            "https" | "ssh" | "git" => {}
+            _ => {
+                return Err(CommandError::bad_request(
+                    "Git URL must use https, ssh, or git scheme",
+                ));
+            }
+        }
+        if parsed.password().is_some()
+            || !(parsed.username().is_empty()
+                || parsed.scheme() == "ssh" && parsed.username() == "git")
+        {
+            return Err(CommandError::bad_request(
+                "Git URL must not include inline credentials",
+            ));
+        }
+        if parsed.host_str().is_none() {
+            return Err(CommandError::bad_request("Git URL must include a host"));
+        }
+        return Ok(trimmed.to_string());
+    }
+    if trimmed.starts_with("git@") && trimmed.contains(':') {
+        return Ok(trimmed.to_string());
+    }
+    Err(CommandError::bad_request(
+        "Git URL must be an absolute URL or git@host:owner/repo.git",
+    ))
+}
+
+fn github_source_config(request: GitHubVolumeSourceRequest) -> Result<Value, CommandError> {
+    let repository = normalize_github_repository(&request.repository)?;
+    let branch = validate_optional_ref(request.branch, "branch")?
+        .unwrap_or_else(|| DEFAULT_GIT_BRANCH.to_string());
+    let root_folder = normalize_root_folder(request.root_folder)?;
+    Ok(json!({
+        "provider": "github",
+        "repository": repository,
+        "branch": branch,
+        "root_folder": root_folder,
+    }))
+}
+
+fn git_source_config(request: GitVolumeSourceRequest) -> Result<Value, CommandError> {
+    let url = validate_git_url(&request.url)?;
+    let branch = validate_optional_ref(request.branch, "branch")?
+        .unwrap_or_else(|| DEFAULT_GIT_BRANCH.to_string());
+    let root_folder = normalize_root_folder(request.root_folder)?;
+    Ok(json!({
+        "provider": "git",
+        "url": url,
+        "branch": branch,
+        "root_folder": root_folder,
+    }))
+}
+
+fn create_volume_source(
+    source: Option<CreateVolumeSourceRequest>,
+) -> Result<(String, Value, bool, String), CommandError> {
+    match source {
+        None => Ok(("manual".to_string(), json!({}), false, "idle".to_string())),
+        Some(CreateVolumeSourceRequest::Github(request)) => Ok((
+            "github".to_string(),
+            github_source_config(request)?,
+            true,
+            "pending".to_string(),
+        )),
+        Some(CreateVolumeSourceRequest::Git(request)) => Ok((
+            "git".to_string(),
+            git_source_config(request)?,
+            true,
+            "pending".to_string(),
+        )),
+    }
 }
 
 fn parse_volume_id(volume_id: &str) -> Result<VolumeId, CommandError> {
@@ -90,6 +244,8 @@ pub struct CreateVolume {
     pub name: String,
     #[serde(default)]
     pub description: Option<String>,
+    #[serde(default)]
+    pub source: Option<CreateVolumeSourceRequest>,
 }
 
 impl From<CreateVolumeRequest> for CreateVolume {
@@ -97,6 +253,7 @@ impl From<CreateVolumeRequest> for CreateVolume {
         Self {
             name: request.name,
             description: request.description,
+            source: request.source,
         }
     }
 }
@@ -124,10 +281,16 @@ impl Command for CreateVolume {
 
     async fn execute(self, ctx: &Ctx) -> Result<VolumeResponse, CommandError> {
         let name = validate_name(&self.name)?;
+        let (source_type, source_config, is_readonly, sync_status) =
+            create_volume_source(self.source)?;
         let input = CreateVolumeRow {
             public_id: VolumeId::new().to_string(),
             name,
             description: self.description,
+            source_type,
+            source_config,
+            is_readonly,
+            sync_status,
             owner_principal_id: None,
             resolved_owner_user_id: ctx.caller.user_id,
         };
@@ -241,6 +404,10 @@ impl Command for UpdateVolumeCmd {
                         UpdateField::Unchanged => None,
                     },
                     status: None,
+                    source_config: None,
+                    sync_status: None,
+                    last_synced_at: None,
+                    last_sync_error: None,
                 },
             )
             .await
@@ -342,6 +509,7 @@ mod tests {
         let created = CreateVolume {
             name: "Team Memory".into(),
             description: Some("Shared working files".into()),
+            source: None,
         }
         .run(&ctx)
         .await
@@ -350,6 +518,9 @@ mod tests {
         assert!(created.id.to_string().starts_with("vol_"));
         assert_eq!(created.name, "Team Memory");
         assert_eq!(created.status, "active");
+        assert_eq!(created.source_type, "manual");
+        assert!(!created.is_readonly);
+        assert_eq!(created.sync_status, "idle");
 
         let listed = ListVolumes {
             search: Some("memory".into()),
@@ -423,6 +594,7 @@ mod tests {
         let created = CreateVolume {
             name: "Private".into(),
             description: None,
+            source: None,
         }
         .run(&org_one)
         .await
@@ -443,6 +615,7 @@ mod tests {
         CreateVolume {
             name: "Research".into(),
             description: None,
+            source: None,
         }
         .run(&ctx)
         .await
@@ -451,10 +624,58 @@ mod tests {
         let err = CreateVolume {
             name: "research".into(),
             description: None,
+            source: None,
         }
         .run(&ctx)
         .await
         .expect_err("duplicate name should fail");
         assert!(matches!(err, CommandError::Conflict(_)));
+    }
+
+    #[tokio::test]
+    async fn github_volume_is_readonly_and_pending_sync() {
+        let ctx = ctx_for_org(DEFAULT_ORG_ID);
+
+        let created = CreateVolume {
+            name: "Repo Docs".into(),
+            description: None,
+            source: Some(CreateVolumeSourceRequest::Github(
+                GitHubVolumeSourceRequest {
+                    repository: "https://github.com/everruns/everruns.git".into(),
+                    branch: Some("docs".into()),
+                    root_folder: Some("/specs/".into()),
+                },
+            )),
+        }
+        .run(&ctx)
+        .await
+        .expect("create github volume");
+
+        assert_eq!(created.source_type, "github");
+        assert!(created.is_readonly);
+        assert_eq!(created.sync_status, "pending");
+        assert_eq!(created.source["repository"], "everruns/everruns");
+        assert_eq!(created.source["branch"], "docs");
+        assert_eq!(created.source["root_folder"], "specs");
+    }
+
+    #[tokio::test]
+    async fn git_volume_rejects_inline_credentials() {
+        let ctx = ctx_for_org(DEFAULT_ORG_ID);
+
+        let err = CreateVolume {
+            name: "Unsafe Repo".into(),
+            description: None,
+            source: Some(CreateVolumeSourceRequest::Git(GitVolumeSourceRequest {
+                url: "https://token@example.com/org/repo.git".into(),
+                branch: None,
+                root_folder: None,
+            })),
+        }
+        .run(&ctx)
+        .await
+        .expect_err("inline credentials should fail");
+
+        assert!(matches!(err, CommandError::BadRequest(_)));
     }
 }

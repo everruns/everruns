@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import * as mockReact from "react";
 import VolumesPage from "@/app/(main)/volumes/page";
 import type { Volume } from "@/lib/api/types";
 
@@ -15,11 +16,73 @@ jest.mock("@/hooks", () => ({
   usePageTitle: () => undefined,
 }));
 
+jest.mock("@/components/ui/select", () => {
+  function collectOptions(node: mockReact.ReactNode): mockReact.ReactNode[] {
+    const options: mockReact.ReactNode[] = [];
+    mockReact.Children.forEach(node, (child: mockReact.ReactNode) => {
+      if (!mockReact.isValidElement(child)) return;
+      if ((child.type as { isSelectItem?: boolean }).isSelectItem) {
+        const props = child.props as {
+          value: string;
+          children: mockReact.ReactNode;
+        };
+        options.push(
+          <option key={props.value} value={props.value}>
+            {props.children}
+          </option>,
+        );
+        return;
+      }
+      options.push(...collectOptions((child.props as { children?: React.ReactNode }).children));
+    });
+    return options;
+  }
+
+  function Select({
+    value,
+    onValueChange,
+    children,
+  }: {
+    value: string;
+    onValueChange: (value: string) => void;
+    children: mockReact.ReactNode;
+  }) {
+    return (
+      <select
+        aria-label="Source"
+        value={value}
+        onChange={(event) => onValueChange(event.target.value)}
+      >
+        {collectOptions(children)}
+      </select>
+    );
+  }
+
+  function SelectItem(_: { value: string; children: mockReact.ReactNode }) {
+    return null;
+  }
+  SelectItem.isSelectItem = true;
+
+  return {
+    Select,
+    SelectContent: ({ children }: { children: mockReact.ReactNode }) => <>{children}</>,
+    SelectItem,
+    SelectTrigger: ({ children }: { children: mockReact.ReactNode }) => <>{children}</>,
+    SelectValue: () => null,
+  };
+});
+
 const volumes: Volume[] = [
   {
     id: "vol_019dfb261a407c6085dcdd602402c3f7",
     name: "Research",
     description: "Shared research files",
+    source_type: "manual",
+    source: {},
+    is_readonly: false,
+    sync_status: "idle",
+    last_synced_at: null,
+    last_sync_error: null,
     status: "active",
     created_at: "2026-05-06T02:37:51.552849Z",
     updated_at: "2026-05-06T02:37:51.552849Z",
@@ -31,7 +94,11 @@ const volumes: Volume[] = [
 describe("VolumesPage", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockUseVolumes.mockReturnValue({ data: volumes, isLoading: false, error: null });
+    mockUseVolumes.mockReturnValue({
+      data: volumes,
+      isLoading: false,
+      error: null,
+    });
     mockUseCreateVolume.mockReturnValue({
       mutateAsync: jest.fn().mockResolvedValue({}),
       isPending: false,
@@ -61,7 +128,9 @@ describe("VolumesPage", () => {
   it("passes search text into the volumes query", () => {
     render(<VolumesPage />);
 
-    fireEvent.change(screen.getByLabelText("Search volumes"), { target: { value: "research" } });
+    fireEvent.change(screen.getByLabelText("Search volumes"), {
+      target: { value: "research" },
+    });
 
     expect(mockUseVolumes).toHaveBeenLastCalledWith({
       includeArchived: false,
@@ -76,7 +145,9 @@ describe("VolumesPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "New Volume" }));
     const dialog = screen.getByRole("dialog");
-    fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "Runbooks" } });
+    fireEvent.change(within(dialog).getByLabelText("Name"), {
+      target: { value: "Runbooks" },
+    });
     fireEvent.change(within(dialog).getByLabelText("Description"), {
       target: { value: "Operations notes" },
     });
@@ -90,6 +161,43 @@ describe("VolumesPage", () => {
     );
   });
 
+  it("creates a github-backed read-only volume from the dialog", async () => {
+    const mutateAsync = jest.fn().mockResolvedValue({});
+    mockUseCreateVolume.mockReturnValue({ mutateAsync, isPending: false });
+    render(<VolumesPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "New Volume" }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Name"), {
+      target: { value: "Repo Docs" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Source"), {
+      target: { value: "github" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Repository"), {
+      target: { value: "everruns/everruns" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Branch"), {
+      target: { value: "docs" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Root Folder"), {
+      target: { value: "specs" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Create Volume" }));
+
+    await waitFor(() =>
+      expect(mutateAsync).toHaveBeenCalledWith({
+        name: "Repo Docs",
+        source: {
+          type: "github",
+          repository: "everruns/everruns",
+          branch: "docs",
+          root_folder: "specs",
+        },
+      }),
+    );
+  });
+
   it("updates a volume and clears blank descriptions", async () => {
     const mutateAsync = jest.fn().mockResolvedValue({});
     mockUseUpdateVolume.mockReturnValue({ mutateAsync, isPending: false });
@@ -97,8 +205,12 @@ describe("VolumesPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     const dialog = screen.getByRole("dialog");
-    fireEvent.change(within(dialog).getByLabelText("Name"), { target: { value: "Research Hub" } });
-    fireEvent.change(within(dialog).getByLabelText("Description"), { target: { value: "" } });
+    fireEvent.change(within(dialog).getByLabelText("Name"), {
+      target: { value: "Research Hub" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Description"), {
+      target: { value: "" },
+    });
     fireEvent.click(within(dialog).getByRole("button", { name: "Save Changes" }));
 
     await waitFor(() =>

@@ -33,6 +33,8 @@ read-write shared working memory.
 | Name        | Description                                                       |
 |-------------|-------------------------------------------------------------------|
 | **Volume**  | Org-scoped, named filesystem tree. Public ID prefix: `vol_`.      |
+| **Manual Volume** | User-managed Volume whose files can be edited directly.      |
+| **Source-backed Volume** | Provider-synced Volume populated from an external repository and exposed read-only. |
 | **Volume File** | A file or directory entry inside a Volume.                    |
 | **Mount**   | Binding of a Volume to a path under `/workspace` for a session.   |
 | **Capability config** | `mounts[]` array on `workspace_volumes` capability.     |
@@ -57,6 +59,12 @@ Volumes follow the standard building-block lifecycle from `specs/models.md`:
 | `public_id`               | TEXT        | `vol_<32-hex>`. Unique per `org_id`.                   |
 | `name`                    | VARCHAR     | Unique within `org_id` while not deleted.              |
 | `description`             | TEXT?       |                                                        |
+| `source_type`             | VARCHAR     | `manual` / `github` / `git`. Defaults to `manual`.     |
+| `source_config`           | JSONB       | Non-secret source coordinates. `{}` for manual.        |
+| `is_readonly`             | BOOL        | True for source-backed Volumes.                        |
+| `sync_status`             | VARCHAR     | `idle` / `pending` / `syncing` / `synced` / `failed`.  |
+| `last_synced_at`          | TIMESTAMPTZ? | Last successful provider sync.                        |
+| `last_sync_error`         | TEXT?       | Sanitized last sync error for UI/admin debugging.      |
 | `owner_principal_id`      | TEXT?       | Principal that created the volume.                     |
 | `resolved_owner_user_id`  | UUID?       | Resolved user id, if known.                            |
 | `status`                  | VARCHAR     | `active` / `archived` / `deleted`.                     |
@@ -64,6 +72,33 @@ Volumes follow the standard building-block lifecycle from `specs/models.md`:
 | `archived_at` / `deleted_at` | TIMESTAMPTZ? |                                                     |
 
 `UNIQUE(org_id, public_id)` and `UNIQUE(org_id, name) WHERE status != 'deleted'`.
+
+`source_config` never stores provider credentials. GitHub sources use the
+creator's GitHub connection or a future agent identity connection at sync time.
+Generic Git sources are limited to public URLs or credential-less SSH/HTTPS
+coordinates until a credential reference type exists.
+
+GitHub source example:
+
+```json
+{
+  "provider": "github",
+  "repository": "everruns/everruns",
+  "branch": "main",
+  "root_folder": "specs"
+}
+```
+
+Generic Git source example:
+
+```json
+{
+  "provider": "git",
+  "url": "https://github.com/everruns/everruns.git",
+  "branch": "main",
+  "root_folder": null
+}
+```
 
 ### `volume_files`
 
@@ -154,12 +189,76 @@ volume archival/deletion is handled gracefully against this snapshot.
 
 ### Write
 
+* Source-backed Volumes are read-only regardless of mount access. Capability
+  validation must reject `readwrite` mounts for `source_type != 'manual'`.
+  Direct Volume filesystem write APIs must return a read-only error.
 * Read-only mounted paths reject `write_file`, `edit_file`, `delete_file`,
   moves into the mount root, and copies that overwrite mounted content.
 * Read-write mounted paths write through to `volume_files`. The Volume row's
   `updated_at` is refreshed.
 * Stale-edit protection uses `content_hash` exactly like `session_files`.
 * Writes outside mounted paths continue to use session-local files.
+
+## Source Sync
+
+Source-backed Volumes populate `volume_files` by syncing an external repository
+into the same storage shape used by manual Volumes. Consumers read them through
+the regular Volume mount and filesystem APIs; no source-specific read tool is
+introduced.
+
+### GitHub
+
+Creation accepts:
+
+```json
+{
+  "source": {
+    "type": "github",
+    "repository": "owner/repo",
+    "branch": "main",
+    "root_folder": "docs"
+  }
+}
+```
+
+`repository` may be `owner/repo` or a `github.com` repository URL. `branch`
+defaults to `main`; `root_folder` is optional and normalized as a relative path.
+Private repository access uses the existing GitHub user connection. If no
+connection is available or the installation cannot access the repository, sync
+sets `sync_status = failed` with a sanitized error and leaves previous files in
+place.
+
+### Generic Git
+
+Creation accepts:
+
+```json
+{
+  "source": {
+    "type": "git",
+    "url": "https://example.com/org/repo.git",
+    "branch": "main",
+    "root_folder": "src"
+  }
+}
+```
+
+Generic Git URLs must not contain inline credentials. Credentialed generic Git
+sync should use a future connection reference rather than embedding secrets in
+the Volume row.
+
+### Sync Semantics
+
+* Source-backed creation sets `sync_status = pending`; a background sync worker
+  claims pending/stale rows.
+* Sync checks out the configured branch/ref, snapshots `root_folder`, and
+  replaces the Volume file tree atomically so sessions never observe a partial
+  update.
+* Sync excludes VCS metadata (`.git/`) and applies the same path validation used
+  by `volume_files`.
+* If a sync fails, existing files remain readable, `sync_status = failed`, and
+  `last_sync_error` stores a sanitized operator-facing reason.
+* Consumers always see source-backed Volumes as read-only regular Volumes.
 
 ### Mount lifecycle vs Volume lifecycle
 
@@ -236,6 +335,11 @@ coverage at full delivery:
 * Reject cross-org / archived / deleted Volume references.
 * Read-only write attempts return readonly errors.
 * Read-write writes update Volume store.
+* Source-backed Volumes cannot be mounted read-write.
+* Source-backed Volume filesystem write APIs return readonly errors.
+* GitHub/git source creation validates repository/ref/root-folder shape.
+* Source sync atomically replaces `volume_files` and preserves previous files on
+  sync failure.
 * Content-hash stale edits fail on read-write mounts.
 * Directory listing merge order is deterministic.
 * Grep searches mounted content and session-local content.
@@ -256,5 +360,9 @@ coverage at full delivery:
   filesystem feature?
 * Should mount conflicts always fail, or should users be able to choose
   precedence later?
+* What sync cadence should source-backed Volumes use after the initial sync:
+  webhook-triggered, periodic polling, or both?
+* Should source-backed Volumes bind to creator user connections, agent identity
+  connections, or explicit per-Volume connection references?
 
 [EVE-396]: https://linear.app/everruns/issue/EVE-396
