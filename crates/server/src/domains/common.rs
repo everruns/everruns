@@ -92,6 +92,14 @@ pub fn classify_anyhow(e: anyhow::Error) -> CommandError {
         return CommandError::Conflict(msg);
     }
 
+    // EVE-437: this list catches `anyhow::bail!` strings emitted from
+    // `crates/server/src/domains/**` that represent client-input or
+    // already-validated resource state, not internal invariants. New entries
+    // here keep older calls that have not been migrated to typed errors from
+    // silently mapping to 500. New code SHOULD emit `BadRequestError`,
+    // `ResourceNotFoundError`, or `PolicyError` directly so this list does
+    // not have to grow indefinitely. Each substring is matched against the
+    // lowercased anyhow message — keep the patterns short and unambiguous.
     let is_bad_request = [
         "cannot be assigned",
         "cannot be edited",
@@ -106,6 +114,21 @@ pub fn classify_anyhow(e: anyhow::Error) -> CommandError {
         "invalid skill capability reference",
         "unsupported locale",
         "unsupported timezone",
+        // EVE-437: harness validation
+        "harness inheritance cycle detected",
+        "harness cannot inherit from itself",
+        "parent harness must be active",
+        "cannot archive or delete harness while child harnesses",
+        // EVE-437: unique-name allocation in agents/harnesses queries
+        "could not find a unique name",
+        // EVE-437: eval target validation
+        "eval target must specify",
+        "app targets not yet supported",
+        "harness_id and harness_name are mutually exclusive",
+        // EVE-437: MCP server config validation (auth-mode and key checks)
+        "only api key mcp servers can store an api key",
+        "api key auth mode requires",
+        "oauth mcp servers require a user connection",
     ]
     .iter()
     .any(|pattern| lowered.contains(pattern));
@@ -1031,6 +1054,62 @@ mod error_tests {
     fn classify_anyhow_maps_not_found_error() {
         let err = classify_anyhow(crate::errors::ResourceNotFoundError::new("Thing").into());
         assert!(matches!(err, CommandError::NotFound(msg) if msg == "Thing not found"));
+    }
+
+    // EVE-437: every substring added to the `is_bad_request` list must in
+    // fact map an `anyhow::bail!` to `CommandError::BadRequest` rather than
+    // silently 500ing. New entries here pin the contract.
+    #[test]
+    fn classify_anyhow_maps_eve437_validation_substrings() {
+        let cases = [
+            "Harness inheritance cycle detected",
+            "Harness cannot inherit from itself",
+            "Parent harness must be active",
+            "Cannot archive or delete harness while child harnesses still inherit from it: a, b",
+            "Could not find a unique name for 'foo'",
+            "eval target must specify harness_id or harness_name",
+            "App targets not yet supported in eval execution",
+            "harness_id and harness_name are mutually exclusive in eval target",
+            "Only API key MCP servers can store an API key",
+            "API key auth mode requires an API key",
+            "API key auth mode requires a non-empty API key",
+            "OAuth MCP servers require a user connection before tools can be refreshed",
+        ];
+        for raw in cases {
+            let err = classify_anyhow(anyhow::anyhow!("{raw}"));
+            assert!(
+                matches!(err, CommandError::BadRequest(_)),
+                "{raw} must classify as BadRequest, got {err:?}"
+            );
+        }
+    }
+
+    // EVE-437: a generic anyhow error with no recognized pattern must keep
+    // mapping to Internal so we do not accidentally widen the bad-request
+    // class for unrelated future failures.
+    #[test]
+    fn classify_anyhow_unknown_message_is_internal() {
+        let err = classify_anyhow(anyhow::anyhow!("connection timed out"));
+        assert!(
+            matches!(err, CommandError::Internal(_)),
+            "unknown messages must remain Internal: {err:?}"
+        );
+    }
+
+    // EVE-437: PolicyError stays mapped to Forbidden — this is the path used
+    // by the new sessions/service.rs high-risk capability check that used to
+    // be a bail! and 500'd.
+    #[test]
+    fn classify_anyhow_maps_policy_error() {
+        let pe = everruns_core::PolicyError::denied("test_policy", "admin role");
+        let err = classify_anyhow(anyhow::Error::new(pe));
+        let CommandError::Forbidden(msg) = &err else {
+            panic!("PolicyError must classify as Forbidden, got {err:?}");
+        };
+        assert!(
+            msg.contains("admin role"),
+            "Forbidden message must include detail, got {msg:?}"
+        );
     }
 }
 
