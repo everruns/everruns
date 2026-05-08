@@ -5,9 +5,11 @@
 // This module owns the enforcement primitive shared across requests.
 // Decision: Two backends mirror `auth::rate_limit::ApiRateLimiter` —
 //   in-memory (governor) for single-instance/dev, Valkey for distributed.
-// Decision: In-memory limiters are stored per `(app_id, limit)` so a config
-//   change replaces the limiter cleanly without leaking stale state across
-//   different limit values.
+// Decision: In-memory limiters are stored per `app_id` and remember the
+//   active `limit` next to the limiter. When the configured limit changes
+//   we replace the entry in place rather than inserting a new bucket,
+//   which previously allowed an attacker who could cycle
+//   `rate_limit_per_minute` to grow the cache without bound (TM-DOS-010).
 
 use std::collections::HashMap;
 use std::net::IpAddr;
@@ -20,7 +22,14 @@ use parking_lot::RwLock;
 use crate::valkey::ValkeyClient;
 
 type KeyedLimiter = RateLimiter<IpAddr, DashMapStateStore<IpAddr>, DefaultClock>;
-type LimiterCache = RwLock<HashMap<(String, u32), Arc<KeyedLimiter>>>;
+
+#[derive(Clone)]
+struct CachedLimiter {
+    limit: u32,
+    limiter: Arc<KeyedLimiter>,
+}
+
+type LimiterCache = RwLock<HashMap<String, CachedLimiter>>;
 
 const WINDOW_SECS: u64 = 60;
 
@@ -33,8 +42,8 @@ pub struct AgUiRateLimiter {
 #[derive(Clone)]
 enum Backend {
     InMemory {
-        // Key: (app_id, limit_per_minute) — limiters keyed by limit so a config
-        // change drops the old limiter instead of mutating the existing one.
+        // Key: app_id. Each entry stores the active limit and limiter; when the
+        // limit changes we replace the entry to avoid unbounded per-limit growth.
         cache: Arc<LimiterCache>,
     },
     Valkey(ValkeyClient),
@@ -69,22 +78,31 @@ impl AgUiRateLimiter {
         }
         match &self.backend {
             Backend::InMemory { cache } => {
-                let key = (app_id.to_string(), limit);
                 // parking_lot::RwLock does not poison; this stays panic-free
                 // even if a writer panics holding the lock.
                 let limiter = {
-                    if let Some(existing) = cache.read().get(&key) {
-                        existing.clone()
+                    if let Some(existing) = cache.read().get(app_id)
+                        && existing.limit == limit
+                    {
+                        existing.limiter.clone()
                     } else {
-                        cache
-                            .write()
-                            .entry(key)
-                            .or_insert_with(|| {
-                                Arc::new(RateLimiter::keyed(Quota::per_minute(
+                        let mut write = cache.write();
+                        match write.get(app_id) {
+                            Some(existing) if existing.limit == limit => existing.limiter.clone(),
+                            _ => {
+                                let limiter = Arc::new(RateLimiter::keyed(Quota::per_minute(
                                     NonZeroU32::new(limit).expect("limit > 0 checked above"),
-                                )))
-                            })
-                            .clone()
+                                )));
+                                write.insert(
+                                    app_id.to_string(),
+                                    CachedLimiter {
+                                        limit,
+                                        limiter: limiter.clone(),
+                                    },
+                                );
+                                limiter
+                            }
+                        }
                     }
                 };
                 match limiter.check_key(&ip) {
@@ -167,6 +185,24 @@ mod tests {
         }
         assert!(limiter.check("app_x", ip1, 2).await.is_err());
         assert!(limiter.check("app_x", ip2, 2).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn changing_limit_replaces_cached_entry_for_app() {
+        let limiter = AgUiRateLimiter::in_memory();
+        let ip = IpAddr::V4(Ipv4Addr::new(10, 0, 0, 7));
+
+        assert!(limiter.check("app_x", ip, 2).await.is_ok());
+        assert!(limiter.check("app_x", ip, 7).await.is_ok());
+
+        let Backend::InMemory { cache } = &limiter.backend else {
+            panic!("expected in-memory backend")
+        };
+
+        let cache = cache.read();
+        let entry = cache.get("app_x").expect("cache entry should exist");
+        assert_eq!(entry.limit, 7);
+        assert_eq!(cache.len(), 1);
     }
 
     #[tokio::test]
