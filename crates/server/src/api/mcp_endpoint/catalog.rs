@@ -21,6 +21,13 @@ pub enum ToolsetMode {
     ReadOnly,
 }
 
+fn excluded_from_read_only_query(name: &str) -> bool {
+    // THREAT[TM-MCP-002]: read-only MCP `query` must not allow commands that
+    // can perform open-world side effects (for example, scoped MCP tool
+    // discovery performs outbound HTTP requests).
+    matches!(name, "preview_agent" | "preview_harness")
+}
+
 static INVENTORY_TOOL_DEFS: LazyLock<HashMap<&'static str, ToolDef>> = LazyLock::new(|| {
     inventory::iter::<crate::domains::common::CommandDescriptor>
         .into_iter()
@@ -83,7 +90,10 @@ pub fn build_toolset(ctx: CatalogContext, mode: ToolsetMode) -> ScriptingToolSet
     for desc in inventory::iter::<crate::domains::common::CommandDescriptor> {
         // THREAT[TM-MCP-002]: MCP `query` must not expose mutating server
         // tools. Read-only classification is backed by inventory tests.
-        if mode == ToolsetMode::ReadOnly && !(desc.read_only)() {
+        let meta = (desc.meta)();
+        if mode == ToolsetMode::ReadOnly
+            && (!(desc.read_only)() || excluded_from_read_only_query(meta.name))
+        {
             continue;
         }
         let def = command_descriptor_to_def(desc);
@@ -753,5 +763,12 @@ mod tests {
         assert!(internal.starts_with("internal:"));
         assert!(forbidden.starts_with("forbidden:"));
         assert_ne!(internal, forbidden);
+    }
+
+    #[test]
+    fn read_only_query_excludes_preview_commands_with_network_side_effects() {
+        assert!(excluded_from_read_only_query("preview_agent"));
+        assert!(excluded_from_read_only_query("preview_harness"));
+        assert!(!excluded_from_read_only_query("list_agents"));
     }
 }

@@ -1262,7 +1262,11 @@ async fn test_mcp_query_list_harnesses_wrong_jq_shape_is_concise() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn test_mcp_query_allows_read_only_post_helpers() {
+async fn test_mcp_query_rejects_preview_commands_with_network_side_effects() {
+    // EVE / TM-MCP-002: even though `preview_agent` and `preview_harness`
+    // are flagged `read_only()`, they perform scoped MCP discovery which
+    // makes outbound HTTP requests. They must not be exposed under the
+    // read-only `query` tool, which is the no-side-effects entry point.
     let server = TestServer::in_memory().await;
     let resp = mcp_tool_call(
         &server,
@@ -1271,14 +1275,22 @@ async fn test_mcp_query_allows_read_only_post_helpers() {
     )
     .await;
     assert!(
-        !tool_is_error(&resp),
-        "query preview_agent failed: {}",
+        tool_is_error(&resp),
+        "query preview_agent unexpectedly succeeded: {}",
         tool_text(&resp)
     );
 
-    let result = tool_json(&resp);
-    assert_eq!(result["system_prompt"], "Preview via query");
-    assert!(result["tools"].is_array());
+    let resp_harness = mcp_tool_call(
+        &server,
+        "query",
+        json!({ "commands": "preview_harness --system_prompt 'Preview via query'" }),
+    )
+    .await;
+    assert!(
+        tool_is_error(&resp_harness),
+        "query preview_harness unexpectedly succeeded: {}",
+        tool_text(&resp_harness)
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
