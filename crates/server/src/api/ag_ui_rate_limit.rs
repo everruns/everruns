@@ -5,9 +5,11 @@
 // This module owns the enforcement primitive shared across requests.
 // Decision: Two backends mirror `auth::rate_limit::ApiRateLimiter` —
 //   in-memory (governor) for single-instance/dev, Valkey for distributed.
-// Decision: In-memory limiters are stored per `(app_id, limit)` so a config
-//   change replaces the limiter cleanly without leaking stale state across
-//   different limit values.
+// Decision: In-memory limiters are stored per `app_id` and remember the
+//   active `limit` next to the limiter. When the configured limit changes
+//   we replace the entry in place rather than inserting a new bucket,
+//   which previously allowed an attacker who could cycle
+//   `rate_limit_per_minute` to grow the cache without bound (TM-DOS-010).
 
 use std::collections::HashMap;
 use std::net::IpAddr;
