@@ -224,7 +224,7 @@ struct AuthorizedA2a {
     org_id: i64,
     app_public_id: String,
     channel_public_id: everruns_core::typed_id::AppChannelId,
-    session_mode: everruns_core::InvocationSessionMode,
+    session_mode: everruns_core::app::InvocationSessionMode,
 }
 
 async fn authenticate_request(
@@ -629,7 +629,7 @@ async fn handle_message_stream(
     channel_id: String,
     req_id: Option<axum::Extension<RequestId>>,
 ) -> Response {
-    if auth.session_mode != everruns_core::InvocationSessionMode::SessionPerInvocation {
+    if auth.session_mode != everruns_core::app::InvocationSessionMode::SessionPerInvocation {
         return (
             StatusCode::OK,
             rpc_error(
