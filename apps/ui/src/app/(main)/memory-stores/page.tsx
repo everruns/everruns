@@ -72,14 +72,15 @@ export default function MemoryStoresPage() {
   const createStore = useCreateMemoryStore();
   const forgetMemory = useForgetMemory(activeStoreId ?? undefined);
 
+  const trimmedSearch = search.trim();
   const memoriesQuery = useMemories(activeStoreId ?? undefined, {
-    query: search,
+    query: trimmedSearch,
     kind: kind === "all" ? undefined : kind,
     tag: selectedTags.length > 0 ? selectedTags : undefined,
     limit: 200,
   });
 
-  const filtersActive = search.trim().length > 0 || kind !== "all" || selectedTags.length > 0;
+  const filtersActive = trimmedSearch.length > 0 || kind !== "all" || selectedTags.length > 0;
   const clearFilters = () => {
     setSearch("");
     setKind("all");
@@ -268,7 +269,7 @@ function StoreCard({
     <button
       type="button"
       onClick={onSelect}
-      aria-pressed={active}
+      aria-current={active ? "true" : undefined}
       className={`flex w-full items-center gap-3 rounded-md border px-3 py-2.5 text-left transition hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
         active ? "border-primary bg-accent/60 shadow-sm" : "border-border bg-card"
       }`}
@@ -283,7 +284,8 @@ function StoreCard({
           )}
         </div>
         <div className="mt-0.5 text-xs text-muted-foreground">
-          {store.active_memory_count} {store.active_memory_count === 1 ? "memory" : "memories"}
+          {store.active_memory_count} active{" "}
+          {store.active_memory_count === 1 ? "memory" : "memories"}
         </div>
       </div>
       <ChevronRight
