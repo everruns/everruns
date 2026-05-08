@@ -36,7 +36,7 @@ use ag_ui_core::types::{
 };
 use axum::{
     Extension, Json, Router,
-    extract::{ConnectInfo, DefaultBodyLimit, Path, Request, State},
+    extract::{ConnectInfo, DefaultBodyLimit, FromRequest, Path, Request, State},
     http::{HeaderMap, StatusCode, header::AUTHORIZATION},
     response::{
         IntoResponse, Response,
