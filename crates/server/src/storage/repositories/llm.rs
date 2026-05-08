@@ -284,12 +284,19 @@ impl Database {
         Ok(row)
     }
 
+    /// Resolve an LLM model by UUID for use (e.g. agent execution, validation).
+    ///
+    /// Disabled models are filtered out: callers on this path must not be able
+    /// to resolve a model that an administrator has disabled. Admin code that
+    /// needs to read disabled rows (e.g. the management UI, update/delete by id)
+    /// uses `get_llm_model_with_provider` or operates via `update_llm_model` /
+    /// `delete_llm_model` directly.
     pub async fn get_llm_model(&self, org_id: i64, id: Uuid) -> Result<Option<LlmModelRow>> {
         let row = sqlx::query_as::<_, LlmModelRow>(
             r#"
             SELECT id, org_id, provider_id, model_id, display_name, capabilities, is_favorite, enabled, source, last_seen_at, provider_metadata, created_at, updated_at
             FROM llm_models
-            WHERE org_id = $1 AND id = $2
+            WHERE org_id = $1 AND id = $2 AND enabled = TRUE
             "#,
         )
         .bind(org_id)
@@ -343,6 +350,12 @@ impl Database {
         Ok(rows)
     }
 
+    /// List all LLM models for the org, including disabled ones.
+    ///
+    /// Admin/management surface. Used by the models management UI which must show
+    /// disabled models so administrators can re-enable them. Resolution paths
+    /// (`get_default_llm_model`, `get_llm_model_by_model_id`, `get_llm_model`)
+    /// enforce `enabled = TRUE`; this listing intentionally does not.
     pub async fn list_all_llm_models(&self, org_id: i64) -> Result<Vec<LlmModelWithProviderRow>> {
         let rows = sqlx::query_as::<_, LlmModelWithProviderRow>(
             r#"
@@ -350,7 +363,7 @@ impl Database {
                    p.name as provider_name, p.provider_type, p.api_key_set as provider_api_key_set, p.status as provider_status
             FROM llm_models m
             JOIN llm_providers p ON m.provider_id = p.id AND p.org_id = m.org_id
-            WHERE p.status = 'active' AND m.org_id = $1 AND m.enabled = TRUE
+            WHERE p.status = 'active' AND m.org_id = $1
             ORDER BY m.enabled DESC, m.is_favorite DESC, p.name ASC, m.display_name ASC
             "#,
         )
