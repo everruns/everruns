@@ -28,7 +28,7 @@ interface WorkspaceVolumesConfig {
 }
 
 interface WorkspaceVolumesConfigEditorProps {
-  config: Record<string, unknown>;
+  config: unknown;
   onChange: (config: Record<string, unknown>) => void;
   disabled?: boolean;
 }
@@ -116,7 +116,8 @@ function validateMounts(mounts: VolumeMountEntry[]): MountValidation[] {
   return validations;
 }
 
-function readMounts(config: Record<string, unknown>): VolumeMountEntry[] {
+function readMounts(config: unknown): VolumeMountEntry[] {
+  if (!config || typeof config !== "object") return [];
   const typed = config as WorkspaceVolumesConfig;
   if (!Array.isArray(typed.mounts)) return [];
   return typed.mounts
