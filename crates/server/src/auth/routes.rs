@@ -57,15 +57,36 @@ fn email_domain_lowercase(email: &str) -> Option<String> {
         .filter(|d| !d.is_empty())
 }
 
+/// Normalize a configured `allowed_domains` entry: trim whitespace, drop an
+/// optional leading `@`, lowercase. Returns `None` for empty entries so a
+/// stray `,` in `AUTH_GOOGLE_ALLOWED_DOMAINS=,company.com` does not silently
+/// match every email.
+///
+/// Matching is intentionally **exact-domain** (not suffix).
+/// `company.com` does not authorize `attacker.company.com`. Operators who
+/// want subdomains must list each one explicitly.
+fn normalize_allowed_domain(entry: &str) -> Option<String> {
+    let trimmed = entry.trim().strip_prefix('@').unwrap_or(entry.trim());
+    let cleaned = trimmed.trim();
+    if cleaned.is_empty() {
+        None
+    } else {
+        Some(cleaned.to_ascii_lowercase())
+    }
+}
+
 /// Whether `email` belongs to one of `allowed_domains` (case-insensitive,
-/// exact match against the lowercased host portion of the address).
+/// **exact** match against the lowercased host portion of the address).
+/// Accepts configured entries written as either `company.com` or
+/// `@company.com` so a small operator typo is not silently permissive.
 fn email_domain_allowed(email: &str, allowed_domains: &[String]) -> bool {
     let Some(domain) = email_domain_lowercase(email) else {
         return false;
     };
     allowed_domains
         .iter()
-        .any(|d| d.trim().eq_ignore_ascii_case(&domain))
+        .filter_map(|d| normalize_allowed_domain(d))
+        .any(|d| d == domain)
 }
 
 /// Per-provider identity gates applied after `exchange_code` and before any
@@ -88,7 +109,9 @@ fn oauth_identity_rejection_reason(
             if let Some(google) = config.google.as_ref()
                 && let Some(allowed) = google.allowed_domains.as_ref()
             {
-                let any_real = allowed.iter().any(|d| !d.trim().is_empty());
+                let any_real = allowed
+                    .iter()
+                    .any(|d| normalize_allowed_domain(d).is_some());
                 if any_real && !email_domain_allowed(&user_info.email, allowed) {
                     return Some("domain_not_allowed");
                 }
@@ -1197,6 +1220,43 @@ mod tests {
         assert!(!email_domain_allowed("user@evil.com", &allowed));
         assert!(!email_domain_allowed("not-an-email", &allowed));
         assert!(!email_domain_allowed("user@", &allowed));
+    }
+
+    // EVE-451 (review feedback): operators sometimes write `@company.com` —
+    // accept it as an equivalent of `company.com` rather than silently
+    // failing closed.
+    #[test]
+    fn test_email_domain_allowed_accepts_at_prefixed_entries() {
+        let allowed = vec!["@company.com".to_string(), " @other.io ".to_string()];
+        assert!(email_domain_allowed("user@company.com", &allowed));
+        assert!(email_domain_allowed("user@other.io", &allowed));
+        assert!(!email_domain_allowed("user@evil.com", &allowed));
+    }
+
+    // EVE-451 (review feedback): exact-domain semantics — `company.com` must
+    // not authorize an `attacker.company.com` subdomain. Operators who want
+    // subdomains must list each one.
+    #[test]
+    fn test_email_domain_allowed_does_not_match_subdomains() {
+        let allowed = vec!["company.com".to_string()];
+        assert!(!email_domain_allowed("user@attacker.company.com", &allowed));
+        assert!(!email_domain_allowed("user@xcompany.com", &allowed));
+    }
+
+    #[test]
+    fn test_normalize_allowed_domain_drops_empty_entries() {
+        assert_eq!(normalize_allowed_domain(""), None);
+        assert_eq!(normalize_allowed_domain("   "), None);
+        assert_eq!(normalize_allowed_domain("@"), None);
+        assert_eq!(normalize_allowed_domain(" @  "), None);
+        assert_eq!(
+            normalize_allowed_domain("@Company.COM"),
+            Some("company.com".to_string())
+        );
+        assert_eq!(
+            normalize_allowed_domain("  company.com  "),
+            Some("company.com".to_string())
+        );
     }
 
     // EVE-451: Google OAuth must require email_verified=true.
