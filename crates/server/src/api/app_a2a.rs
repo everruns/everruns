@@ -974,7 +974,10 @@ pub async fn agent_card(
         "version": A2A_AGENT_VERSION,
         "preferredTransport": "JSONRPC",
         "capabilities": {
-            "streaming": true,
+            // Streaming is only supported on session_per_invocation channels.
+            // Shared-session channels reject message/stream because events
+            // cannot be safely correlated across concurrent callers.
+            "streaming": config.session_mode == everruns_core::app::InvocationSessionMode::SessionPerInvocation,
             "pushNotifications": false,
             "stateTransitionHistory": false,
         },
