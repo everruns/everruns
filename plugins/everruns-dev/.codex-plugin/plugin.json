@@ -30,7 +30,7 @@
     ],
     "websiteURL": "https://everruns.com",
     "defaultPrompt": [
-      "Create an Everruns(Dev) agent to summarize news from https://news.ycombinator.com/, pick the right harness and capabilities, and run it against this task"
+      "Create an Everruns(Dev) Hacker News summarizer, pick the right harness and capabilities, and run it."
     ],
     "brandColor": "#D4A43A",
     "composerIcon": "./assets/everruns-small.svg",
