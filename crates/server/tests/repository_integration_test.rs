@@ -2369,10 +2369,11 @@ async fn test_llm_model_provider_reads_fail_closed_on_cross_org_provider_postgre
 #[tokio::test]
 async fn test_disabled_model_is_not_resolvable_or_default_postgres() {
     let backend = create_test_backend().await;
+    let org_id = create_test_org(&backend, "Disabled Model Resolution Org").await;
 
     let provider = backend
         .create_llm_provider(
-            TEST_ORG_ID,
+            org_id,
             CreateLlmProviderRow {
                 name: format!("Prov-{}", Uuid::now_v7()),
                 provider_type: "openai".to_string(),
@@ -2386,7 +2387,7 @@ async fn test_disabled_model_is_not_resolvable_or_default_postgres() {
 
     let disabled_model = backend
         .create_llm_model(
-            TEST_ORG_ID,
+            org_id,
             CreateLlmModelRow {
                 provider_id: provider.id,
                 model_id: format!("disabled-model-{}", Uuid::now_v7()),
@@ -2402,14 +2403,14 @@ async fn test_disabled_model_is_not_resolvable_or_default_postgres() {
         .expect("create disabled model");
 
     backend
-        .upsert_organization_settings(TEST_ORG_ID, Some(disabled_model.id.uuid()))
+        .upsert_organization_settings(org_id, Some(disabled_model.id.uuid()))
         .await
         .expect("set default model");
 
     // Resolution paths must fail closed for disabled models.
     assert!(
         backend
-            .get_default_llm_model(TEST_ORG_ID)
+            .get_default_llm_model(org_id)
             .await
             .unwrap()
             .is_none(),
@@ -2417,7 +2418,7 @@ async fn test_disabled_model_is_not_resolvable_or_default_postgres() {
     );
     assert!(
         backend
-            .get_llm_model_by_model_id(TEST_ORG_ID, &disabled_model.model_id)
+            .get_llm_model_by_model_id(org_id, &disabled_model.model_id)
             .await
             .unwrap()
             .is_none(),
@@ -2425,7 +2426,7 @@ async fn test_disabled_model_is_not_resolvable_or_default_postgres() {
     );
     assert!(
         backend
-            .get_llm_model(TEST_ORG_ID, disabled_model.id.uuid())
+            .get_llm_model(org_id, disabled_model.id.uuid())
             .await
             .unwrap()
             .is_none(),
@@ -2434,26 +2435,23 @@ async fn test_disabled_model_is_not_resolvable_or_default_postgres() {
 
     // Admin listing must still include disabled models so administrators can
     // see and re-enable them via the management UI.
-    let listed = backend.list_all_llm_models(TEST_ORG_ID).await.unwrap();
+    let listed = backend.list_all_llm_models(org_id).await.unwrap();
     assert!(
         listed.iter().any(|model| model.id == disabled_model.id),
         "admin listing must include disabled models"
     );
 
-    // Teardown: this test runs against a shared Postgres database alongside
-    // others. Clear the org default we set and delete the rows we created so
-    // we don't leave the org pinned to a deleted/disabled model and don't
-    // make sibling tests order-dependent.
+    // Teardown the isolated org state created above.
     backend
-        .upsert_organization_settings(TEST_ORG_ID, None)
+        .upsert_organization_settings(org_id, None)
         .await
         .expect("clear default model");
     backend
-        .delete_llm_model(TEST_ORG_ID, disabled_model.id.uuid())
+        .delete_llm_model(org_id, disabled_model.id.uuid())
         .await
         .expect("delete disabled model");
     backend
-        .delete_llm_provider(TEST_ORG_ID, provider.id.uuid())
+        .delete_llm_provider(org_id, provider.id.uuid())
         .await
         .expect("delete provider");
 }

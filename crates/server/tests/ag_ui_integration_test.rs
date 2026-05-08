@@ -59,7 +59,8 @@ async fn create_llmsim_agent(server: &TestServer) -> String {
             ),
             json!({
                 "model_id": unique_id("llmsim-streaming"),
-                "display_name": unique_id("AG-UI Streaming Model")
+                "display_name": unique_id("AG-UI Streaming Model"),
+                "enabled": true
             }),
         )
         .await
