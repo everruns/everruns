@@ -230,5 +230,6 @@ export const queryKeys = {
     list: (includeArchived = false) => ["skills", { includeArchived }] as const,
     detail: (skillId: string) => ["skill", skillId] as const,
     content: (skillId: string) => ["skill", skillId, "content"] as const,
+    usage: () => ["skills", "usage"] as const,
   },
 };

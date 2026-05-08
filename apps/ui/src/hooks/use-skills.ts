@@ -1,7 +1,12 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { getSkillContent, skillsCrudApi, uploadSkillArchive } from "@/lib/api/skills";
+import {
+  getSkillContent,
+  getSkillsUsage,
+  skillsCrudApi,
+  uploadSkillArchive,
+} from "@/lib/api/skills";
 import type { CreateSkillRequest, UpdateSkillRequest } from "@/lib/api/types";
 import { queryKeys } from "@/lib/query-keys";
 import { createCrudHooks, useOrgScopedQuery } from "./create-crud-hooks";
@@ -43,6 +48,14 @@ export function useSkillContent(skillId: string) {
     queryKey: queryKeys.skills.content(skillId),
     queryFn: () => getSkillContent(skillId),
     enabled: !!skillId,
+  });
+}
+
+export function useSkillsUsage() {
+  return useOrgScopedQuery({
+    queryKey: queryKeys.skills.usage(),
+    queryFn: getSkillsUsage,
+    staleTime: 30000,
   });
 }
 

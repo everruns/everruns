@@ -228,6 +228,17 @@ pub struct SkillFileEntry {
     pub content: String,
 }
 
+/// Number of agents and harnesses that reference a skill via its
+/// `skill:{uuid}` capability id. Skills with zero usage are returned as
+/// `agents = 0, harnesses = 0` rather than being omitted, so the UI can
+/// distinguish "loaded but unused" from "not yet loaded".
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct SkillUsage {
+    pub agents: u64,
+    pub harnesses: u64,
+}
+
 /// Validation result for SKILL.md
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
