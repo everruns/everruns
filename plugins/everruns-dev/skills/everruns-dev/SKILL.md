@@ -264,6 +264,18 @@ execute { "commands": "create_mcp_server --name \"jira\" --url \"https://mcp.exa
 query { "commands": "get_org org_01933b5a00007000800000000000004 | jq '{id, name, display_name}'" }
 ```
 
+**Find which org owns an entity.**
+
+`resolve_org` takes any prefixed entity id (`agent_...`, `session_...`,
+`harness_...`, `app_...`, `skill_...`, `mcp:...`, `identity_...`, `eval_...`)
+and returns `{org_id, org_name}` of the owning org — but only if the caller
+is a member of that org. Use it to recover from a direct link into a
+resource owned by a different org you also belong to.
+
+```bash
+query { "commands": "resolve_org session_019db85695a8785e87e8203109109343 | jq" }
+```
+
 **Preview an agent or harness before saving.**
 
 `preview_agent` and `preview_harness` resolve capabilities, scoped MCP servers, and
