@@ -82,10 +82,48 @@ if "category" in claude:
         "plugin entry instead."
     )
 
+if "interface" in claude:
+    raise SystemExit(
+        "Claude plugin.json must not declare 'interface' — it is a Codex-only "
+        "field. Adding it to the Claude manifest breaks plugin loading."
+    )
+
 if not claude_marketplace.get("description"):
     raise SystemExit(
         "marketplace.json must declare a top-level 'description' so the "
         "marketplace renders correctly in Claude Code's plugin browser."
+    )
+
+# Both manifests must declare the shared payload explicitly so each host
+# loads the same skills and MCP server. See specs/everruns-dev-plugin.md.
+expected_pointers = {"skills": "./skills/", "mcpServers": "./.mcp.json"}
+for label, plugin in {"codex": codex, "claude": claude}.items():
+    for key, value in expected_pointers.items():
+        if plugin.get(key) != value:
+            raise SystemExit(
+                f"Everruns Dev {label} plugin must declare {key!r}: {value!r} "
+                f"to keep Claude Code and Codex pointing at the same shared "
+                f"payload (got {plugin.get(key)!r}). "
+                f"See specs/everruns-dev-plugin.md."
+            )
+
+# Shared metadata that must match verbatim between both host manifests.
+shared_keys = ("author", "homepage", "repository", "license", "keywords")
+for key in shared_keys:
+    if codex.get(key) != claude.get(key):
+        raise SystemExit(
+            f"Everruns Dev plugin {key!r} drifted between Claude and Codex "
+            f"manifests. Keep them identical. "
+            f"See specs/everruns-dev-plugin.md."
+        )
+
+# Descriptions must match aside from the optional Codex host marker.
+codex_desc_normalized = codex["description"].replace(" from Codex", "")
+if codex_desc_normalized != claude["description"]:
+    raise SystemExit(
+        "Everruns Dev description drifted between Claude and Codex manifests. "
+        "Codex may insert ' from Codex' once; otherwise the wording must "
+        "match. See specs/everruns-dev-plugin.md."
     )
 
 skill = (plugin_dir / "skills" / "everruns-dev" / "SKILL.md").read_text()
