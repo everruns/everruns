@@ -91,7 +91,7 @@ Production event routing therefore prefers:
 2. **Crate Separation** (folder → package name):
    - `server/` → `everruns-server` - **Control plane**: HTTP API (axum) + gRPC server (tonic), SSE streaming, database layer
    - `worker/` → `everruns-worker` - TaskWorker, WorkerAdapters, activities, gRPC adapters, durable task execution
-   - `core/` → `everruns-core` - Core agent abstractions (traits, atoms, tools, events, capabilities, LLM drivers, shared types)
+   - `core/` → `everruns-core` - Core agent abstractions (traits, atoms, tools, events, capabilities, LLM drivers, internal system services, shared types)
    - `runtime/` → `everruns-runtime` - Public in-process runtime plus reusable host-phase execution for embedded and durable/server-backed execution
    - `internal-protocol/` → `everruns-internal-protocol` - gRPC protocol for worker ↔ server
    - `durable/` → `everruns-durable` - PostgreSQL-backed durable execution engine
@@ -167,13 +167,14 @@ Everruns runtime composition is centered on `PlatformDefinition` in `crates/core
 - LLM drivers
 - Connection providers
 - Built-in harness templates
+- System email sender
 
 The server and worker builders both accept an explicit `PlatformDefinition`. If none is supplied, they fall back to crate-local presets:
 
 - `everruns_server::oss_platform_definition()`
 - `everruns_worker::default_platform_definition()`
 
-This keeps the existing OSS runtime as the default while allowing embedders to remove integrations, add custom capabilities, replace harness templates, or register different LLM drivers without forking Everruns internals.
+This keeps the existing OSS runtime as the default while allowing embedders to remove integrations, add custom capabilities, replace harness templates, register different LLM drivers, or install a different system email provider without forking Everruns internals.
 
 ### Embedded Runtime
 

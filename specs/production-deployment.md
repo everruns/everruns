@@ -49,6 +49,7 @@ Every production deployment must make explicit decisions for:
 - auth mode
 - worker authentication
 - secrets encryption keys
+- system email provider and verified sender domain, if email is enabled
 - observability and metrics exposure
 - whether Valkey and NATS are enabled
 
@@ -56,6 +57,7 @@ See:
 - [`docs/sre/environment-variables.md`](../docs/sre/environment-variables.md)
 - [`specs/authentication.md`](./authentication.md)
 - [`specs/encryption.md`](./encryption.md)
+- [`specs/email.md`](./email.md)
 - [`specs/prometheus-metrics.md`](./prometheus-metrics.md)
 - [`specs/observability.md`](./observability.md)
 - [`specs/threat-model.md`](./threat-model.md)
@@ -138,6 +140,7 @@ Production deployments must satisfy these minimums:
 - `AUTH_JWT_SECRET` configured
 - `WORKER_GRPC_AUTH_TOKEN` configured
 - secrets encryption key configured
+- `EMAIL_PROVIDER`, provider API key, and verified sender domain configured when deployment features send email
 - explicit CORS policy when UI and API origins differ
 - private network or equivalent isolation for PostgreSQL, worker gRPC, Valkey, and NATS
 

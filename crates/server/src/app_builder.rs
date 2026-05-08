@@ -98,6 +98,8 @@ pub struct ServerContext {
     pub runner: Arc<dyn AgentRunner>,
     pub driver_registry: Arc<everruns_core::DriverRegistry>,
     pub platform_definition: Arc<PlatformDefinition>,
+    /// System-wide email sender from the platform profile.
+    pub email_sender: Arc<dyn everruns_core::EmailSender>,
     /// Vendor-neutral embedder-provided error reporter. Always present;
     /// defaults to a no-op when no embedder has installed one.
     pub error_reporter: SharedErrorReporter,
@@ -1335,6 +1337,7 @@ impl ServerAppBuilder {
             runner: runner.clone(),
             driver_registry: driver_registry.clone(),
             platform_definition: platform_definition.clone(),
+            email_sender: platform_definition.email_sender(),
             error_reporter: error_reporter.clone(),
         };
 

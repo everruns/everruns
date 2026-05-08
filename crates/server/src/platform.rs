@@ -8,7 +8,9 @@
 
 use everruns_core::connection_provider::{ConnectionProviderPlugin, ConnectionProviderRegistry};
 use everruns_core::deployment::DeploymentGrade;
-use everruns_core::{BuiltInHarnessDefinition, CapabilityRegistry, PlatformDefinition};
+use everruns_core::{
+    BuiltInHarnessDefinition, CapabilityRegistry, PlatformDefinition, SystemEmailConfig,
+};
 
 /// Build the default OSS `PlatformDefinition` for the current deployment grade.
 pub fn oss_platform_definition() -> PlatformDefinition {
@@ -20,12 +22,16 @@ pub fn oss_platform_definition_for_grade(grade: DeploymentGrade) -> PlatformDefi
     let capability_registry = CapabilityRegistry::with_builtins_for_grade(grade);
     let driver_registry = everruns_worker::create_driver_registry();
     let connection_providers = oss_connection_provider_registry_for_grade(grade);
+    let email_sender = SystemEmailConfig::from_env()
+        .expect("Invalid system email configuration")
+        .into_sender();
 
     PlatformDefinition::builder()
         .capability_registry(capability_registry)
         .driver_registry(driver_registry)
         .connection_providers(connection_providers)
         .built_in_harnesses(oss_built_in_harnesses())
+        .email_sender(email_sender)
         .build()
 }
 
