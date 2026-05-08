@@ -1362,7 +1362,10 @@ mod tests {
         let result = atom.execute(input).await.unwrap();
 
         assert_eq!(result.client_tool_calls.len(), 1);
-        assert_eq!(result.client_tool_calls[0].arguments, json!({ "selector": "#btn" }));
+        assert_eq!(
+            result.client_tool_calls[0].arguments,
+            json!({ "selector": "#btn" })
+        );
     }
 
     fn manage_harnesses_tool_def() -> crate::ToolDefinition {
