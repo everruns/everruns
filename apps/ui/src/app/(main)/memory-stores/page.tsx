@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Brain, Plus, Search, Star, Trash2, X } from "lucide-react";
+import { Brain, ChevronRight, Plus, Search, Star, Trash2, X } from "lucide-react";
 import { QueryStateWrapper } from "@/components/query-state-wrapper";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { CopyButton } from "@/components/ui/copy-button";
 import { Input } from "@/components/ui/input";
 import {
@@ -72,12 +72,20 @@ export default function MemoryStoresPage() {
   const createStore = useCreateMemoryStore();
   const forgetMemory = useForgetMemory(activeStoreId ?? undefined);
 
+  const trimmedSearch = search.trim();
   const memoriesQuery = useMemories(activeStoreId ?? undefined, {
-    query: search,
+    query: trimmedSearch,
     kind: kind === "all" ? undefined : kind,
     tag: selectedTags.length > 0 ? selectedTags : undefined,
     limit: 200,
   });
+
+  const filtersActive = trimmedSearch.length > 0 || kind !== "all" || selectedTags.length > 0;
+  const clearFilters = () => {
+    setSearch("");
+    setKind("all");
+    setSelectedTags([]);
+  };
 
   // Tag chip set: union of tags present in the current results and tags
   // already selected, so a chip you picked doesn't disappear when the
@@ -102,9 +110,11 @@ export default function MemoryStoresPage() {
     setDetailMemoryId(null);
   }, [activeStoreId, search, kind, selectedTags]);
 
-  // Reset tag selection on store switch — tags are scoped to a store.
+  // Reset filters on store switch — they are scoped to a store.
   useEffect(() => {
     setSelectedTags([]);
+    setSearch("");
+    setKind("all");
   }, [activeStoreId]);
 
   return (
@@ -129,7 +139,7 @@ export default function MemoryStoresPage() {
       >
         {(items) => (
           <div className="grid gap-6 lg:grid-cols-[18rem_1fr]">
-            <aside className="flex flex-col gap-2">
+            <aside className="flex flex-col gap-1.5">
               {items.map((store) => (
                 <StoreCard
                   key={store.id}
@@ -140,9 +150,11 @@ export default function MemoryStoresPage() {
               ))}
             </aside>
             <section className="space-y-4">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div className="relative sm:w-72">
-                  <Search className="pointer-events-none absolute left-2.5 top-2 h-4 w-4 text-muted-foreground" />
+              {activeStore && <StoreHeader store={activeStore} />}
+
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                <div className="relative flex-1">
+                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
@@ -180,12 +192,14 @@ export default function MemoryStoresPage() {
                 data={memoriesQuery.data?.data}
                 errorMessagePrefix="Failed to load memories"
                 skeletonCount={4}
-                emptyState={<MemoriesEmptyState />}
+                emptyState={
+                  <MemoriesEmptyState filtersActive={filtersActive} onClearFilters={clearFilters} />
+                }
               >
                 {(items) => {
                   const total = memoriesQuery.data?.total ?? items.length;
                   return (
-                    <div className="space-y-3">
+                    <div className="space-y-2">
                       <p className="text-xs text-muted-foreground">
                         {total} {total === 1 ? "memory" : "memories"}
                       </p>
@@ -252,36 +266,63 @@ function StoreCard({
   onSelect: () => void;
 }) {
   return (
-    <Card
-      role="button"
-      tabIndex={0}
+    <button
+      type="button"
       onClick={onSelect}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onSelect();
-        }
-      }}
-      className={`cursor-pointer transition ${active ? "border-primary" : ""}`}
+      aria-current={active ? "true" : undefined}
+      className={`flex w-full items-center gap-3 rounded-md border px-3 py-2.5 text-left transition hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+        active ? "border-primary bg-accent/60 shadow-sm" : "border-border bg-card"
+      }`}
     >
-      <CardHeader className="space-y-2">
-        <div className="flex items-start justify-between gap-2">
-          <CardTitle className="truncate text-base">{store.name}</CardTitle>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <span className="truncate text-sm font-semibold">{store.name}</span>
+          {store.is_default && (
+            <Badge variant="secondary" className="shrink-0 px-1.5 py-0 text-[10px]">
+              <Star className="h-3 w-3" /> Default
+            </Badge>
+          )}
+        </div>
+        <div className="mt-0.5 text-xs text-muted-foreground">
+          {store.active_memory_count} active{" "}
+          {store.active_memory_count === 1 ? "memory" : "memories"}
+        </div>
+      </div>
+      <ChevronRight
+        className={`h-4 w-4 shrink-0 transition ${
+          active ? "text-primary" : "text-muted-foreground/40"
+        }`}
+      />
+    </button>
+  );
+}
+
+function StoreHeader({ store }: { store: MemoryStore }) {
+  return (
+    <div className="flex flex-wrap items-start justify-between gap-3 border-b pb-3">
+      <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          <h2 className="truncate text-lg font-semibold">{store.name}</h2>
           {store.is_default && (
             <Badge variant="secondary">
               <Star className="h-3 w-3" /> Default
             </Badge>
           )}
         </div>
-        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+        <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
           <span className="truncate font-mono">{store.id}</span>
           <CopyButton value={store.id} />
         </div>
-      </CardHeader>
-      <CardContent className="text-xs text-muted-foreground">
-        {store.active_memory_count} active {store.active_memory_count === 1 ? "memory" : "memories"}
-      </CardContent>
-    </Card>
+      </div>
+      <div className="text-right text-xs text-muted-foreground">
+        <div className="text-2xl font-semibold leading-none text-foreground">
+          {store.active_memory_count}
+        </div>
+        <div className="mt-1">
+          {store.active_memory_count === 1 ? "active memory" : "active memories"}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -311,63 +352,71 @@ function MemoryCard({
           onSelect();
         }
       }}
-      className="cursor-pointer transition hover:border-primary"
+      className="cursor-pointer gap-2 py-3 transition hover:border-primary hover:bg-accent/30 hover:shadow-sm focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
-      <CardHeader className="flex flex-row items-start justify-between gap-3 space-y-0">
-        <div className="flex flex-wrap items-center gap-2">
-          <Badge variant="outline">{memory.kind}</Badge>
-          <Badge variant="secondary">importance {memory.importance}</Badge>
-          {!memory.active && <Badge variant="destructive">forgotten</Badge>}
-          {memory.tags.map((tag) => {
-            const active = selectedTags.includes(tag);
-            return (
-              <button
-                key={tag}
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggleTag(tag);
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") {
-                    e.stopPropagation();
-                  }
-                }}
-                aria-pressed={active}
-                aria-label={`${active ? "Remove" : "Add"} tag filter ${tag}`}
-                className="cursor-pointer"
-              >
-                <Badge
-                  variant={active ? "default" : "outline"}
-                  className="text-xs hover:border-primary"
-                >
-                  {tag}
-                </Badge>
-              </button>
-            );
-          })}
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={(e) => {
-            e.stopPropagation();
-            onForget();
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.stopPropagation();
-            }
-          }}
-          disabled={!memory.active || forgetting}
-          aria-label="Forget memory"
-        >
-          <Trash2 className="h-4 w-4" />
-          Forget
-        </Button>
-      </CardHeader>
       <CardContent className="space-y-2">
-        <p className="text-sm">{memory.content}</p>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Badge variant="outline" className="text-[11px]">
+              {memory.kind}
+            </Badge>
+            <Badge variant="secondary" className="text-[11px]">
+              importance {memory.importance}
+            </Badge>
+            {!memory.active && (
+              <Badge variant="destructive" className="text-[11px]">
+                forgotten
+              </Badge>
+            )}
+            {memory.tags.map((tag) => {
+              const active = selectedTags.includes(tag);
+              return (
+                <button
+                  key={tag}
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onToggleTag(tag);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.stopPropagation();
+                    }
+                  }}
+                  aria-pressed={active}
+                  aria-label={`${active ? "Remove" : "Add"} tag filter ${tag}`}
+                  className="cursor-pointer"
+                >
+                  <Badge
+                    variant={active ? "default" : "outline"}
+                    className="text-[11px] hover:border-primary"
+                  >
+                    {tag}
+                  </Badge>
+                </button>
+              );
+            })}
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              onForget();
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.stopPropagation();
+              }
+            }}
+            disabled={!memory.active || forgetting}
+            aria-label="Forget memory"
+            className="h-7 shrink-0 px-2 text-muted-foreground hover:text-destructive"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+        <p className="line-clamp-3 text-sm leading-relaxed">{memory.content}</p>
         <div
           role="presentation"
           onClick={(e) => e.stopPropagation()}
@@ -605,7 +654,24 @@ function EmptyState({ onCreate }: { onCreate: () => void }) {
   );
 }
 
-function MemoriesEmptyState() {
+function MemoriesEmptyState({
+  filtersActive,
+  onClearFilters,
+}: {
+  filtersActive: boolean;
+  onClearFilters: () => void;
+}) {
+  if (filtersActive) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 py-10 text-center text-sm text-muted-foreground">
+        <p>No memories match the current filters.</p>
+        <Button variant="outline" size="sm" onClick={onClearFilters}>
+          <X className="h-3.5 w-3.5" />
+          Clear filters
+        </Button>
+      </div>
+    );
+  }
   return (
     <div className="flex flex-col items-center justify-center py-10 text-center text-sm text-muted-foreground">
       No memories yet. Agents using the <code className="font-mono">memory</code> capability will
