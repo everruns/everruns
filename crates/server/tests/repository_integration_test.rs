@@ -2439,6 +2439,23 @@ async fn test_disabled_model_is_not_resolvable_or_default_postgres() {
         listed.iter().any(|model| model.id == disabled_model.id),
         "admin listing must include disabled models"
     );
+
+    // Teardown: this test runs against a shared Postgres database alongside
+    // others. Clear the org default we set and delete the rows we created so
+    // we don't leave the org pinned to a deleted/disabled model and don't
+    // make sibling tests order-dependent.
+    backend
+        .upsert_organization_settings(TEST_ORG_ID, None)
+        .await
+        .expect("clear default model");
+    backend
+        .delete_llm_model(TEST_ORG_ID, disabled_model.id.uuid())
+        .await
+        .expect("delete disabled model");
+    backend
+        .delete_llm_provider(TEST_ORG_ID, provider.id.uuid())
+        .await
+        .expect("delete provider");
 }
 
 #[tokio::test]

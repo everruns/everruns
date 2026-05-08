@@ -184,10 +184,13 @@ impl Database {
 
     /// Get the default LLM model with provider info.
     /// Reads from organization_settings.default_model_id.
-    /// Filters to providers that are administratively active. The provider's
-    /// API-key state is *not* gated here; readiness is surfaced via the
-    /// derived `healthy` field on `LlmModelWithProvider`, and downstream LLM
-    /// calls fail loudly if the key is missing.
+    ///
+    /// Fail-closed: filters to providers that are administratively active *and*
+    /// to models with `enabled = TRUE`, so disabling a model — even if it is
+    /// the org default and its provider is still active — removes it from
+    /// resolution. The provider's API-key state is *not* gated here; readiness
+    /// is surfaced via the derived `healthy` field on `LlmModelWithProvider`,
+    /// and downstream LLM calls fail loudly if the key is missing.
     pub async fn get_default_llm_model(
         &self,
         org_id: i64,
