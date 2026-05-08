@@ -420,6 +420,12 @@ pub async fn login(
     generate_token_response(&state, jar, &auth_user).await
 }
 
+/// Minimum password length enforced on `/v1/auth/register`. Matches the
+/// commitment in `specs/authentication.md` and the UI's `minLength={8}` on
+/// the register form (TM-AUTH-004 / EVE-453). UI validation is convenience;
+/// this server-side check is the trust boundary.
+const PASSWORD_MIN_LENGTH: usize = 8;
+
 /// POST /v1/auth/register - Register a new user
 pub async fn register(
     State(state): State<BuiltinAuthBackend>,
@@ -435,6 +441,21 @@ pub async fn register(
     // Check if password auth is enabled
     if !state.config.password_auth_enabled() {
         return Err(AuthError::forbidden("Password registration is disabled"));
+    }
+
+    // EVE-453 / TM-AUTH-004: enforce the documented 8-character minimum here
+    // so direct API callers cannot bypass the UI's `minLength={8}` and create
+    // weak-password accounts. Validate using `chars().count()` so a password
+    // padded with multi-byte characters that happens to be < 8 codepoints
+    // long still fails. Run before the email lookup and password hash so
+    // timing reflects "request rejected" rather than "registration failed",
+    // and use `unprocessable` (422) instead of the generic 401, since this
+    // is an input validation error and does not touch any account record —
+    // no new account-enumeration signal.
+    if req.password.chars().count() < PASSWORD_MIN_LENGTH {
+        return Err(AuthError::unprocessable(
+            "Password must be at least 8 characters",
+        ));
     }
 
     // Hash password first to make timing consistent whether or not the email exists.

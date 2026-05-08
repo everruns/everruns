@@ -134,6 +134,93 @@ async fn register_user(
 }
 
 // ============================================
+// Registration validation tests (EVE-453)
+// ============================================
+
+// EVE-453 / TM-AUTH-004: direct API calls must not be able to bypass the UI's
+// `minLength={8}` and create weak-password accounts.
+#[tokio::test]
+async fn test_register_rejects_short_password_via_api() {
+    let (router, _db) = auth_router().await;
+
+    let (status, body, _cookies) = send(
+        &router,
+        "POST",
+        "/v1/auth/register",
+        Some(json!({
+            "email": "weak@example.com",
+            "password": "short",
+            "name": "Weak Pw User"
+        })),
+        None,
+    )
+    .await;
+
+    assert_eq!(
+        status,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "short password must be rejected: {body}"
+    );
+
+    // Acceptable password works.
+    let (status_ok, _body_ok, _) = send(
+        &router,
+        "POST",
+        "/v1/auth/register",
+        Some(json!({
+            "email": "weak@example.com",
+            "password": "longenough",
+            "name": "Weak Pw User"
+        })),
+        None,
+    )
+    .await;
+    assert_eq!(status_ok, StatusCode::CREATED);
+}
+
+// EVE-453: rejection happens before any account-existence check, so the
+// short-password error is identical whether or not the email already exists.
+// Prevents using the new validation as an enumeration oracle.
+#[tokio::test]
+async fn test_register_short_password_does_not_leak_account_existence() {
+    let (router, _db) = auth_router().await;
+
+    // Pre-register the email with a valid password.
+    register_user(&router, "exists@example.com", "validpassword").await;
+
+    let (status_a, body_a, _) = send(
+        &router,
+        "POST",
+        "/v1/auth/register",
+        Some(json!({
+            "email": "exists@example.com",
+            "password": "short",
+            "name": "X"
+        })),
+        None,
+    )
+    .await;
+    let (status_b, body_b, _) = send(
+        &router,
+        "POST",
+        "/v1/auth/register",
+        Some(json!({
+            "email": "fresh@example.com",
+            "password": "short",
+            "name": "Y"
+        })),
+        None,
+    )
+    .await;
+    assert_eq!(status_a, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(status_b, StatusCode::UNPROCESSABLE_ENTITY);
+    assert_eq!(
+        body_a, body_b,
+        "short-password rejection must not depend on account existence"
+    );
+}
+
+// ============================================
 // Positive path tests
 // ============================================
 
