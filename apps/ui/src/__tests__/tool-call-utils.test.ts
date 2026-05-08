@@ -78,6 +78,44 @@ describe("tool-call-utils MCP App resources", () => {
     ]);
   });
 
+  it("rejects untrusted ui:// authorities", () => {
+    const result: ContentPart[] = [
+      {
+        type: "text",
+        text: JSON.stringify({
+          content: [
+            {
+              type: "resource",
+              uri: "ui://evil/agent/agent_01/card",
+              mime_type: "text/html",
+              text: html,
+            },
+            {
+              type: "resource",
+              uri: "ui://everruns.evil.com/agent/agent_01/card",
+              mime_type: "text/html",
+              text: html,
+            },
+            {
+              type: "resource",
+              uri: "ui://everrunsx/agent/agent_01/card",
+              mime_type: "text/html",
+              text: html,
+            },
+            {
+              type: "resource",
+              uri: "ui://everruns",
+              mime_type: "text/html",
+              text: html,
+            },
+          ],
+        }),
+      },
+    ];
+
+    expect(extractMcpAppResources(result)).toEqual([]);
+  });
+
   it("ignores non-ui and non-html resources", () => {
     const result: ContentPart[] = [
       {
