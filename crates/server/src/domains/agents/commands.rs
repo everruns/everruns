@@ -1084,6 +1084,8 @@ impl Command for SetDefaultAgentVersion {
                 "Agent version belongs to another agent",
             ));
         }
+        let version_agent = q::version_to_agent(&agent, &version);
+        check_high_risk_caps(ctx, &version_agent.capabilities).await?;
         let row = ctx
             .db
             .update_agent(
@@ -1139,6 +1141,7 @@ impl Command for RollbackAgentVersion {
             ));
         }
         let restored = q::version_to_agent(&current, &version);
+        check_high_risk_caps(ctx, &restored.capabilities).await?;
         let row = ctx
             .db
             .update_agent(
@@ -1486,6 +1489,13 @@ inventory::submit! { CommandDescriptor::of::<CheckAgentName>() }
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::services::CapabilityService;
+    use crate::storage::StorageBackend;
+    use everruns_core::{
+        Caller, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, DefaultPermissionResolver, OrgRole,
+    };
+    use std::sync::Arc;
+    use uuid::Uuid;
 
     #[test]
     fn first_agent_version_is_initial_minor_even_for_major_change() {
@@ -1495,6 +1505,132 @@ mod tests {
         assert_eq!(number, 1);
         assert_eq!((major, minor, patch), (0, 1, 0));
         assert_eq!(version, "0.1.0");
+    }
+
+    fn ctx_with_role(db: Arc<StorageBackend>, role: OrgRole) -> Ctx {
+        let capability_service = Arc::new(CapabilityService::new(db.clone(), None));
+        Ctx::new(
+            Caller {
+                org_id: DEFAULT_ORG_ID,
+                org_public_id: DEFAULT_ORG_PUBLIC_ID.to_string(),
+                user_id: Some(Uuid::nil()),
+                role,
+                is_platform_user: false,
+                is_internal: false,
+            },
+            db,
+            capability_service,
+            None,
+            Arc::new(DefaultPermissionResolver),
+        )
+    }
+
+    fn high_risk_agent_request(name: String) -> CreateAgentRequest {
+        CreateAgentRequest {
+            id: None,
+            name,
+            display_name: None,
+            description: None,
+            system_prompt: "test".to_string(),
+            default_model_id: None,
+            tags: Vec::new(),
+            capabilities: vec![AgentCapabilityConfig::new("virtual_bash")],
+            initial_files: Vec::new(),
+            tools: Vec::new(),
+            mcp_servers: Default::default(),
+            network_access: None,
+            max_iterations: None,
+        }
+    }
+
+    async fn create_high_risk_agent_version(ctx: &Ctx, name: &str) -> (Agent, AgentVersion) {
+        let agent = CreateAgent(high_risk_agent_request(name.to_string()))
+            .run(ctx)
+            .await
+            .expect("admin can create high-risk agent");
+        let version = CreateAgentVersionCmd {
+            agent_id: agent.public_id.to_string(),
+            req: CreateAgentVersionRequest {
+                summary: None,
+                change_kind: None,
+            },
+        }
+        .run(ctx)
+        .await
+        .expect("admin can create high-risk version");
+        (agent, version)
+    }
+
+    #[tokio::test]
+    async fn set_default_version_blocks_member_for_high_risk_capabilities() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let admin_ctx = ctx_with_role(db.clone(), OrgRole::Admin);
+        let member_ctx = ctx_with_role(db, OrgRole::Member);
+        let (agent, version) =
+            create_high_risk_agent_version(&admin_ctx, "member-set-default-denied").await;
+
+        let err = SetDefaultAgentVersion {
+            agent_id: agent.public_id.to_string(),
+            req: SetDefaultAgentVersionRequest {
+                version_id: version.public_id,
+            },
+        }
+        .run(&member_ctx)
+        .await
+        .expect_err("member must not activate high-risk version");
+
+        assert!(
+            matches!(err, CommandError::Forbidden(_)),
+            "expected Forbidden, got {err:?}"
+        );
+
+        SetDefaultAgentVersion {
+            agent_id: agent.public_id.to_string(),
+            req: SetDefaultAgentVersionRequest {
+                version_id: version.public_id,
+            },
+        }
+        .run(&admin_ctx)
+        .await
+        .expect("admin can activate high-risk version");
+    }
+
+    #[tokio::test]
+    async fn rollback_version_blocks_member_for_high_risk_capabilities() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let owner_ctx = ctx_with_role(db.clone(), OrgRole::Owner);
+        let member_ctx = ctx_with_role(db, OrgRole::Member);
+        let (agent, version) =
+            create_high_risk_agent_version(&owner_ctx, "member-rollback-denied").await;
+
+        let err = RollbackAgentVersion {
+            agent_id: agent.public_id.to_string(),
+            version_id: version.public_id,
+            req: RollbackAgentVersionRequest {
+                save_version: false,
+                summary: None,
+            },
+        }
+        .run(&member_ctx)
+        .await
+        .expect_err("member must not roll back to high-risk version");
+
+        assert!(
+            matches!(err, CommandError::Forbidden(_)),
+            "expected Forbidden, got {err:?}"
+        );
+
+        RollbackAgentVersion {
+            agent_id: agent.public_id.to_string(),
+            version_id: version.public_id,
+            req: RollbackAgentVersionRequest {
+                save_version: false,
+                summary: None,
+            },
+        }
+        .run(&owner_ctx)
+        .await
+        .expect("owner can roll back to high-risk version");
     }
 }
 
