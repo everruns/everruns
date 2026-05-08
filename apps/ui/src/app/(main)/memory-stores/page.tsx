@@ -491,6 +491,19 @@ function MemoryDetailDrawer({
   );
 }
 
+// Allowlist of safe raster MIME types for inline `<img>` rendering. SVG is
+// intentionally excluded — it can execute script in the authenticated UI
+// context. Hoisted to module scope so we don't allocate a Set per render.
+const SAFE_MEMORY_IMAGE_MEDIA_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+  "image/bmp",
+  "image/x-icon",
+  "image/vnd.microsoft.icon",
+]);
+
 function MemoryContentPartView({ part }: { part: MemoryContentPart }) {
   if (part.type === "text") {
     return (
@@ -500,15 +513,6 @@ function MemoryContentPartView({ part }: { part: MemoryContentPart }) {
     );
   }
   if (part.type === "image") {
-    const SAFE_MEMORY_IMAGE_MEDIA_TYPES = new Set([
-      "image/png",
-      "image/jpeg",
-      "image/gif",
-      "image/webp",
-      "image/bmp",
-      "image/x-icon",
-      "image/vnd.microsoft.icon",
-    ]);
     if (!SAFE_MEMORY_IMAGE_MEDIA_TYPES.has(part.media_type.toLowerCase())) {
       return (
         <div className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
