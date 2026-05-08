@@ -1,6 +1,6 @@
 {
   "name": "everruns-dev",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Interact with the Everruns(Dev) managed harnesses platform from Codex. Manage harnesses, agents, and capabilities. Run agentic sessions. Create and deploy agentic applications.",
   "author": {
     "name": "Everruns",
