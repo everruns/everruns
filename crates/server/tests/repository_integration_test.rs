@@ -1185,7 +1185,8 @@ async fn test_llm_model_crud() {
         .await
         .expect("Failed to create provider");
 
-    // Create model
+    // Create model (enabled — `get_llm_model` filters disabled rows on the
+    // resolution path and is exercised below).
     let model = backend
         .create_llm_model(
             TEST_ORG_ID,
@@ -1194,7 +1195,7 @@ async fn test_llm_model_crud() {
                 model_id: "gpt-4-test".to_string(),
                 display_name: "GPT-4 Test".to_string(),
                 capabilities: vec!["chat".to_string()],
-                enabled: false,
+                enabled: true,
                 is_favorite: false,
                 source: "manual".to_string(),
                 provider_metadata: None,
@@ -2116,7 +2117,9 @@ async fn test_llm_model_org_isolation_postgres() {
                 model_id: format!("model-{}", Uuid::now_v7()),
                 display_name: "Test Model".to_string(),
                 capabilities: vec![],
-                enabled: false,
+                // Enabled — `get_llm_model` enforces enabled = TRUE on the
+                // resolution path; this test focuses on org isolation.
+                enabled: true,
                 is_favorite: false,
                 source: "manual".to_string(),
                 provider_metadata: None,
@@ -2309,27 +2312,38 @@ async fn test_disabled_model_is_not_resolvable_or_default_postgres() {
         .await
         .expect("set default model");
 
+    // Resolution paths must fail closed for disabled models.
     assert!(
         backend
             .get_default_llm_model(TEST_ORG_ID)
             .await
             .unwrap()
-            .is_none()
+            .is_none(),
+        "default resolution must not return a disabled model"
     );
     assert!(
         backend
             .get_llm_model_by_model_id(TEST_ORG_ID, &disabled_model.model_id)
             .await
             .unwrap()
-            .is_none()
+            .is_none(),
+        "by-model-id resolution must not return a disabled model"
     );
     assert!(
         backend
-            .list_all_llm_models(TEST_ORG_ID)
+            .get_llm_model(TEST_ORG_ID, disabled_model.id.uuid())
             .await
             .unwrap()
-            .into_iter()
-            .all(|model| model.id != disabled_model.id)
+            .is_none(),
+        "by-UUID resolution must not return a disabled model (used by agent execution paths)"
+    );
+
+    // Admin listing must still include disabled models so administrators can
+    // see and re-enable them via the management UI.
+    let listed = backend.list_all_llm_models(TEST_ORG_ID).await.unwrap();
+    assert!(
+        listed.iter().any(|model| model.id == disabled_model.id),
+        "admin listing must include disabled models"
     );
 }
 

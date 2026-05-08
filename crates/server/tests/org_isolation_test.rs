@@ -305,7 +305,9 @@ async fn test_llm_model_positive_own_org() {
                 model_id: "gpt-4".to_string(),
                 display_name: "GPT-4".to_string(),
                 capabilities: vec![],
-                enabled: false,
+                // Enabled — `get_llm_model` filters disabled rows on the
+                // resolution path; this test focuses on org isolation.
+                enabled: true,
                 is_favorite: false,
                 source: "manual".to_string(),
                 provider_metadata: None,
@@ -380,7 +382,9 @@ async fn test_llm_model_negative_cross_org() {
                 model_id: "gpt-4".to_string(),
                 display_name: "GPT-4".to_string(),
                 capabilities: vec![],
-                enabled: false,
+                // Enabled — `get_llm_model` filters disabled rows on the
+                // resolution path; this test focuses on cross-org isolation.
+                enabled: true,
                 is_favorite: false,
                 source: "manual".to_string(),
                 provider_metadata: None,

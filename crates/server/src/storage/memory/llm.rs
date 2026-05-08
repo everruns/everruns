@@ -338,13 +338,16 @@ impl InMemoryDatabase {
         Ok(Some(row))
     }
 
+    /// Resolve an LLM model by UUID for use. Mirrors the SQL backend: disabled
+    /// models are filtered out so resolution paths cannot reach a model the
+    /// administrator has disabled.
     pub async fn get_llm_model(&self, org_id: i64, id: Uuid) -> Result<Option<LlmModelRow>> {
         let id = ModelId::from_uuid(id);
         Ok(self
             .llm_models
             .read()
             .get(&id)
-            .filter(|m| m.org_id == org_id)
+            .filter(|m| m.org_id == org_id && m.enabled)
             .cloned())
     }
 
@@ -401,13 +404,19 @@ impl InMemoryDatabase {
         Ok(result)
     }
 
+    /// List all LLM models for the org, including disabled ones (admin surface).
+    ///
+    /// Mirrors `Database::list_all_llm_models`: this listing intentionally returns
+    /// disabled models so the management UI can show them. Resolution paths use
+    /// `get_default_llm_model`, `get_llm_model_by_model_id`, and `get_llm_model`
+    /// which all enforce `enabled = TRUE`.
     pub async fn list_all_llm_models(&self, org_id: i64) -> Result<Vec<LlmModelWithProviderRow>> {
         let models = self.llm_models.read();
         let providers = self.llm_providers.read();
 
         let mut result: Vec<_> = models
             .values()
-            .filter(|model| model.org_id == org_id && model.enabled)
+            .filter(|model| model.org_id == org_id)
             .filter_map(|model| {
                 providers
                     .get(&model.provider_id)
@@ -499,7 +508,7 @@ impl InMemoryDatabase {
                 && let Some(provider) = providers.get(&model.provider_id)
                 && provider.org_id == org_id
                 && provider.status == "active"
-            && model.enabled
+                && model.enabled
             {
                 return Ok(Some(LlmModelWithProviderRow {
                     id: model.id,
