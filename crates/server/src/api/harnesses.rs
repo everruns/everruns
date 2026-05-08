@@ -20,7 +20,7 @@ use everruns_core::{
     AgentCapabilityConfig, Caller, DeploymentGrade, Harness, PlatformDefinition,
     ResourceConfigResponse, evaluate_policies_with,
 };
-use futures::{StreamExt, stream};
+use futures::{StreamExt, TryStreamExt, stream};
 
 use super::common::{
     ApiOptionExt, ApiResult, ApiResultExt, ErrorResponse, ListResponse, ResourceStatsResponse,
@@ -121,9 +121,8 @@ async fn add_harnesses_counts(
             .map(|harness| add_harness_counts(db, org_id, harness)),
     )
     .buffered(HARNESS_COUNT_CONCURRENCY_LIMIT)
-    .collect::<Vec<_>>()
-    .into_iter()
-    .collect()
+    .try_collect::<Vec<_>>()
+    .await
 }
 
 /// Create harness routes
