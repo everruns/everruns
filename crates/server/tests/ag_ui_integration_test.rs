@@ -146,6 +146,41 @@ async fn send_ag_ui_run_with_headers(
         .await
 }
 
+async fn start_ag_ui_run(
+    server: &TestServer,
+    app_id: impl std::fmt::Display,
+    payload: &Value,
+) -> test_harness::TestResponse {
+    server
+        .request_raw_without_collecting_body(
+            Method::POST,
+            &format!("/v1/apps/{}/ag-ui", app_id),
+            vec![
+                ("content-type", "application/json"),
+                ("accept", "text/event-stream"),
+            ],
+            serde_json::to_vec(payload).unwrap(),
+        )
+        .await
+}
+
+async fn sessions_with_tag(server: &TestServer, tag: &str) -> Vec<Value> {
+    let sessions: Value = server.get("/v1/sessions").await.assert_success().json();
+    let empty = vec![];
+    sessions["data"]
+        .as_array()
+        .unwrap_or(&empty)
+        .iter()
+        .filter(|session| {
+            session["tags"]
+                .as_array()
+                .map(|tags| tags.iter().any(|candidate| candidate.as_str() == Some(tag)))
+                .unwrap_or(false)
+        })
+        .cloned()
+        .collect()
+}
+
 async fn upload_ag_ui_image(
     server: &TestServer,
     app_id: impl std::fmt::Display,
@@ -402,6 +437,66 @@ async fn test_ag_ui_run_rejects_image_uploaded_for_other_app() {
     send_ag_ui_run(&server, &second_app.public_id, &payload)
         .await
         .assert_status(StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_ag_ui_same_thread_id_reuses_session() {
+    let server = TestServer::in_memory().await;
+    let app = create_published_ag_ui_app(&server).await;
+    let thread_id = raw_uuid();
+    let expected_tag = format!("ag_ui:thread:{thread_id}");
+
+    let first_payload = json!({
+        "threadId": thread_id,
+        "runId": raw_uuid(),
+        "state": {},
+        "messages": [
+            { "id": raw_uuid(), "role": "user", "content": "Start this AG-UI thread" }
+        ],
+        "tools": [],
+        "context": [],
+        "forwardedProps": {}
+    });
+
+    start_ag_ui_run(&server, &app.public_id, &first_payload)
+        .await
+        .assert_status(StatusCode::OK);
+
+    let first_sessions = sessions_with_tag(&server, &expected_tag).await;
+    assert_eq!(
+        first_sessions.len(),
+        1,
+        "first AG-UI request should create exactly one tagged session"
+    );
+    let first_session_id = first_sessions[0]["id"].as_str().unwrap().to_string();
+
+    let second_payload = json!({
+        "threadId": thread_id,
+        "runId": raw_uuid(),
+        "state": {},
+        "messages": [
+            { "id": raw_uuid(), "role": "user", "content": "Continue this AG-UI thread" }
+        ],
+        "tools": [],
+        "context": [],
+        "forwardedProps": {}
+    });
+
+    start_ag_ui_run(&server, &app.public_id, &second_payload)
+        .await
+        .assert_status(StatusCode::OK);
+
+    let resumed_sessions = sessions_with_tag(&server, &expected_tag).await;
+    assert_eq!(
+        resumed_sessions.len(),
+        1,
+        "second AG-UI request with same threadId should not create another session"
+    );
+    assert_eq!(
+        resumed_sessions[0]["id"].as_str().unwrap(),
+        first_session_id,
+        "AG-UI thread resume should reuse the original session id"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

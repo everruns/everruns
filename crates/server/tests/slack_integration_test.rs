@@ -415,7 +415,9 @@ async fn test_slack_threaded_message_reuses_session() {
 
     // Wait for first message to create session
     let expected_tag = format!("slack:thread:{}", thread_ts);
-    wait_for_sessions_with_tag(&server, &expected_tag, 1).await;
+    let first_sessions = wait_for_sessions_with_tag(&server, &expected_tag, 1).await;
+    assert_eq!(first_sessions.len(), 1);
+    let first_session_id = first_sessions[0]["id"].as_str().unwrap().to_string();
 
     // Second message in the same thread
     let payload2 = json!({
@@ -441,6 +443,11 @@ async fn test_slack_threaded_message_reuses_session() {
         sessions.len(),
         1,
         "Should reuse the same session for threaded replies"
+    );
+    assert_eq!(
+        sessions[0]["id"].as_str().unwrap(),
+        first_session_id,
+        "Threaded replies should land in the original Slack session"
     );
 }
 
