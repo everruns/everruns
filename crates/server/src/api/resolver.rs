@@ -71,56 +71,21 @@ pub async fn resolve_org(
     auth: AuthUser,
     Query(query): Query<ResolveOrgQuery>,
 ) -> Result<Json<ResolveOrgResponse>, StatusCode> {
-    let trimmed = query.id.trim();
-    if trimmed.is_empty() {
-        return Err(StatusCode::NOT_FOUND);
-    }
-
-    let owning_org_id = org_resolver::resolve_resource_org(&state.db, trimmed)
+    // SECURITY: shared with the `resolve_org` domain command. THREAT[TM-TENANT-010]
+    // — the membership gate inside `resolve_owning_org_for_user` is what
+    // prevents this endpoint from becoming a generic resource→org oracle.
+    let resolved = org_resolver::resolve_owning_org_for_user(&state.db, auth.id, &query.id)
         .await
         .map_err(|e| {
             tracing::error!("resolve-org lookup failed: {e}");
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    let Some(owning_org_id) = owning_org_id else {
+    let Some((org_id, org_name)) = resolved else {
         return Err(StatusCode::NOT_FOUND);
     };
 
-    // Gate: only reveal the org if the caller is already a member. Without
-    // this filter the endpoint would be a generic resource→org oracle.
-    // THREAT[TM-TENANT-010]: membership gate — DO NOT remove.
-    let is_member = state
-        .db
-        .is_organization_member(owning_org_id, auth.id)
-        .await
-        .map_err(|e| {
-            tracing::error!("resolve-org membership lookup failed: {e}");
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-    if !is_member {
-        return Err(StatusCode::NOT_FOUND);
-    }
-
-    // Only load the org record once membership is established.
-    let Some(org) = state
-        .db
-        .get_organization(owning_org_id)
-        .await
-        .map_err(|e| {
-            tracing::error!("resolve-org org lookup failed: {e}");
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-    else {
-        // Theoretically unreachable (membership implies the org exists),
-        // but treat a vanished row as 404 rather than 500.
-        return Err(StatusCode::NOT_FOUND);
-    };
-
-    Ok(Json(ResolveOrgResponse {
-        org_id: org.public_id,
-        org_name: org.name,
-    }))
+    Ok(Json(ResolveOrgResponse { org_id, org_name }))
 }
 
 pub fn routes(state: AppState) -> Router {

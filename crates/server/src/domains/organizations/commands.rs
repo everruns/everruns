@@ -1,6 +1,7 @@
 use super::queries as q;
-use super::types::{ListOrganizationsResponse, OrganizationResponse};
+use super::types::{ListOrganizationsResponse, OrganizationResponse, ResolveOrgResponse};
 use crate::domains::common::*;
+use crate::domains::org_resolver;
 use everruns_core::validate_org_public_id;
 use serde::Deserialize;
 use utoipa::ToSchema;
@@ -83,13 +84,168 @@ impl Command for GetOrg {
 
 inventory::submit! { CommandDescriptor::of::<GetOrg>() }
 
+// SECURITY: this is the only domain command that may reveal an `org_id` the
+// caller's active session is not currently scoped to. The shared helper
+// `org_resolver::resolve_owning_org_for_user` enforces the membership gate
+// (THREAT[TM-TENANT-010]); we return NotFound for every failure mode to
+// preserve the org-enumeration guarantee. See specs/multitenancy.md
+// (Cross-Org Resource Resolution).
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ResolveOrg {
+    pub id: String,
+}
+
+impl Command for ResolveOrg {
+    type Output = ResolveOrgResponse;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "resolve_org",
+            category: "organizations",
+            description: "Resolve the owning organization for a prefixed entity id (agent, session, harness, app, skill, mcp server, identity, eval). Requires an authenticated user; returns NotFound when the caller is not a member of the owning org or the id does not resolve.",
+            method: "GET",
+            path: "/v1/resolve-org",
+        }
+    }
+
+    fn positional_arg() -> Option<&'static str> {
+        Some("id")
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<ResolveOrgResponse, CommandError> {
+        let user_id = q::require_user_id(ctx)?;
+
+        let resolved = org_resolver::resolve_owning_org_for_user(&ctx.db, user_id, &self.id)
+            .await
+            .map_err(classify_anyhow)?
+            .ok_or_else(|| CommandError::not_found("Resource"))?;
+
+        Ok(ResolveOrgResponse {
+            org_id: resolved.0,
+            org_name: resolved.1,
+        })
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<ResolveOrg>() }
+
 #[cfg(test)]
 mod tests {
-    use crate::domains::common::Ctx;
+    use crate::domains::common::{CommandError, Ctx};
     use crate::storage::StorageBackend;
+    use crate::storage::models::CreateAgentRow;
     use everruns_core::{Caller, DEFAULT_ORG_ID, OrgRole};
     use serde_json::json;
     use std::sync::Arc;
+    use uuid::Uuid;
+
+    fn seed_caller(user_id: Uuid) -> Caller {
+        Caller {
+            org_id: DEFAULT_ORG_ID,
+            org_public_id: "org_00000000000000000000000000000001".to_string(),
+            user_id: Some(user_id),
+            role: OrgRole::Owner,
+            is_platform_user: false,
+            is_internal: false,
+        }
+    }
+
+    #[tokio::test]
+    async fn resolve_org_returns_owning_org_when_caller_is_member() {
+        let db = Arc::new(StorageBackend::in_memory());
+        crate::seed::seed_all(
+            &db,
+            everruns_core::DeploymentGrade::Dev,
+            &crate::seed::SeedAuthContext::default(),
+        )
+        .await
+        .expect("seed test data");
+
+        let agent_public_id = "agent_00000000000000000000000000000077".to_string();
+        db.create_agent(
+            DEFAULT_ORG_ID,
+            CreateAgentRow {
+                public_id: agent_public_id.clone(),
+                name: "resolve-test".to_string(),
+                display_name: None,
+                description: None,
+                system_prompt: String::new(),
+                default_model_id: None,
+                tags: vec![],
+                initial_files: serde_json::json!([]),
+                tools: serde_json::json!([]),
+                mcp_servers: serde_json::json!([]),
+                network_access: None,
+                max_iterations: None,
+            },
+        )
+        .await
+        .expect("create agent");
+
+        let ctx = Ctx::minimal_for_test(seed_caller(everruns_core::ANONYMOUS_USER_ID), db, None);
+
+        let json =
+            crate::domains::common::dispatch("resolve_org", json!({ "id": agent_public_id }), &ctx)
+                .await
+                .expect("dispatch resolve_org");
+        let response: serde_json::Value =
+            serde_json::from_str(&json).expect("deserialize resolve_org response");
+        assert_eq!(
+            response.get("org_id").and_then(|v| v.as_str()),
+            Some("org_00000000000000000000000000000001")
+        );
+        assert!(response.get("org_name").and_then(|v| v.as_str()).is_some());
+    }
+
+    #[tokio::test]
+    async fn resolve_org_returns_not_found_for_non_member() {
+        let db = Arc::new(StorageBackend::in_memory());
+
+        // Other-org agent: created in org 42 with no membership for the caller.
+        let agent_public_id = "agent_00000000000000000000000000000088".to_string();
+        db.create_agent(
+            42,
+            CreateAgentRow {
+                public_id: agent_public_id.clone(),
+                name: "other-org-agent".to_string(),
+                display_name: None,
+                description: None,
+                system_prompt: String::new(),
+                default_model_id: None,
+                tags: vec![],
+                initial_files: serde_json::json!([]),
+                tools: serde_json::json!([]),
+                mcp_servers: serde_json::json!([]),
+                network_access: None,
+                max_iterations: None,
+            },
+        )
+        .await
+        .expect("create agent");
+
+        let ctx = Ctx::minimal_for_test(seed_caller(Uuid::new_v4()), db, None);
+
+        let err =
+            crate::domains::common::dispatch("resolve_org", json!({ "id": agent_public_id }), &ctx)
+                .await
+                .expect_err("dispatch resolve_org should fail for non-member");
+        assert!(matches!(err, CommandError::NotFound(_)), "got {err:?}");
+    }
+
+    #[tokio::test]
+    async fn resolve_org_returns_not_found_for_unknown_prefix() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = Ctx::minimal_for_test(seed_caller(everruns_core::ANONYMOUS_USER_ID), db, None);
+
+        let err = crate::domains::common::dispatch(
+            "resolve_org",
+            json!({ "id": "totallybogus_00000000000000000000000000000001" }),
+            &ctx,
+        )
+        .await
+        .expect_err("unknown prefix should not resolve");
+        assert!(matches!(err, CommandError::NotFound(_)), "got {err:?}");
+    }
 
     #[tokio::test]
     async fn list_orgs_dispatch_accepts_empty_object_params() {

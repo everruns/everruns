@@ -256,6 +256,40 @@ query { "commands": "list_agents | jq -r '.data[].id' | while read id; do\n  get
 execute { "commands": "create_mcp_server --name \"jira\" --url \"https://mcp.example.com/jira\" --auth_mode oauth" }
 ```
 
+**Look up an org by id.**
+
+`get_org` accepts the `org_...` entity id as a positional arg.
+
+```bash
+query { "commands": "get_org org_01933b5a00007000800000000000004 | jq '{id, name, default_model_id, default_harness_id}'" }
+```
+
+**Find which org owns an entity.**
+
+`resolve_org` takes any prefixed entity id (`agent_...`, `session_...`,
+`harness_...`, `app_...`, `skill_...`, `mcp:...`, `identity_...`, `eval_...`)
+and returns `{org_id, org_name}` of the owning org — but only if the caller
+is a member of that org. Use it to recover from a direct link into a
+resource owned by a different org you also belong to.
+
+```bash
+query { "commands": "resolve_org session_019db85695a8785e87e8203109109343 | jq" }
+```
+
+**Preview an agent or harness before saving.**
+
+`preview_agent` and `preview_harness` resolve capabilities, scoped MCP servers, and
+parent harness inheritance into the final system prompt and tool list without
+persisting anything. Read-only, available in `query`.
+
+```bash
+query { "commands": "preview_agent --system_prompt \"You are a careful researcher.\" --capabilities '[{\"ref\":\"web_fetch\"}]' | jq '{system_prompt, tools: [.tools[].name]}'" }
+```
+
+```bash
+query { "commands": "preview_harness --parent_harness_id \"$HID\" --system_prompt \"Research harness.\" | jq '{system_prompt, tools: [.tools[].name]}'" }
+```
+
 ### Raw builtin examples
 
 ```bash

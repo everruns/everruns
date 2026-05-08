@@ -21,6 +21,7 @@ use everruns_core::{
     CapabilityId,
     typed_id::{McpServerId, SessionId, SkillId},
 };
+use uuid::Uuid;
 
 use crate::storage::StorageBackend;
 
@@ -72,6 +73,44 @@ pub async fn resolve_resource_org(db: &StorageBackend, id: &str) -> Result<Optio
         }
     }
     Ok(None)
+}
+
+/// Resolve and authorize the owning org for a prefixed entity id.
+///
+/// SECURITY: this is the only path that may reveal an org id outside the
+/// caller's currently active org. It enforces `is_organization_member` and
+/// returns `None` for any failure mode (unknown id, unknown prefix, empty
+/// id, non-member, vanished org row) so callers cannot distinguish them —
+/// preserving the org-enumeration guarantee documented in
+/// specs/multitenancy.md (THREAT[TM-TENANT-010]).
+///
+/// Returns `(org_public_id, org_name)` on success, `None` otherwise.
+/// Used by both `GET /v1/resolve-org` and the `resolve_org` domain command.
+pub async fn resolve_owning_org_for_user(
+    db: &StorageBackend,
+    user_id: Uuid,
+    id: &str,
+) -> Result<Option<(String, String)>> {
+    let trimmed = id.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+
+    let Some(owning_org_id) = resolve_resource_org(db, trimmed).await? else {
+        return Ok(None);
+    };
+
+    if !db.is_organization_member(owning_org_id, user_id).await? {
+        return Ok(None);
+    }
+
+    // Theoretically unreachable (membership implies the org exists), but
+    // treat a vanished row as `None` rather than surfacing an error.
+    let Some(org) = db.get_organization(owning_org_id).await? else {
+        return Ok(None);
+    };
+
+    Ok(Some((org.public_id, org.name)))
 }
 
 // ============================================================================
