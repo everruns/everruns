@@ -1,4 +1,5 @@
 ---
+name: query
 description: Inspect Everruns(Dev) platform data with a bash script
 argument-hint: "<bash script>"
 ---

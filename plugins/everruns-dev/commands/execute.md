@@ -1,4 +1,5 @@
 ---
+name: execute
 description: Run an Everruns(Dev) workflow that can modify platform state
 argument-hint: "<bash script>"
 ---

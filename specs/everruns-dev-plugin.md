@@ -3,11 +3,12 @@
 ## Abstract
 
 Single-source plugin under `plugins/everruns-dev/` packages the Everruns(Dev)
-MCP server, the `everruns-dev` skill, and shared slash commands for both
-Claude Code and Codex. The two host manifests
-(`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`) MUST stay in sync
-on shared metadata and on the shared payload they expose. Drift between the
-two hosts is a release-blocking bug.
+MCP server, the `everruns-dev` skill, and shared slash commands for Claude
+Code, Codex, and Cursor. The three host manifests
+(`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`,
+`.cursor-plugin/plugin.json`) MUST stay in sync on shared metadata and on the
+shared payload they expose. Drift between any two hosts is a release-blocking
+bug.
 
 `scripts/test-everruns-dev-plugin.sh` is the authoritative gate. CI invokes it
 through `just pre-push`. Any change to the plugin layout, manifests, or
@@ -17,42 +18,55 @@ marketplace registrations MUST keep that script green.
 
 ```
 plugins/everruns-dev/
-├── .claude-plugin/plugin.json   # Claude Code manifest
-├── .codex-plugin/plugin.json    # Codex manifest
-├── .mcp.json                    # Shared MCP server config
+├── .claude-plugin/plugin.json    # Claude Code manifest
+├── .codex-plugin/plugin.json     # Codex manifest
+├── .cursor-plugin/plugin.json    # Cursor manifest
+├── .mcp.json                     # Shared MCP server config
 ├── README.md
-├── assets/                      # Codex UI metadata (icon, logo)
-├── commands/                    # Shared slash commands
-└── skills/everruns-dev/SKILL.md # Shared skill
+├── assets/                       # Codex/Cursor UI metadata (icon, logo)
+├── commands/                     # Shared slash commands
+└── skills/everruns-dev/SKILL.md  # Shared skill
 ```
 
 Marketplace registrations live outside the plugin directory:
 
 - `.claude-plugin/marketplace.json` — Claude Code marketplace
 - `.agents/plugins/marketplace.json` — Codex marketplace
+- `.cursor-plugin/marketplace.json` — Cursor marketplace
 
 ## Sync Contract
 
-The two manifests describe the same plugin to two different hosts. Some fields
-are shared verbatim; some are host-specific.
+The three manifests describe the same plugin to three different hosts. Some
+fields are shared verbatim; some are host-specific. The Claude manifest is the
+canonical source for shared metadata; Codex and Cursor mirror it.
 
-### Fields That MUST Match Verbatim
+### Fields That MUST Match Verbatim Across All Hosts
 
 | Field        | Source of truth                                                  |
 | ------------ | ---------------------------------------------------------------- |
 | `name`       | Always `everruns-dev`                                            |
-| `version`    | Bumped together; `claude-marketplace` entry must match           |
-| `author`     | Identical object in both manifests                               |
+| `version`    | Bumped together across all manifests + Claude/Cursor marketplaces |
 | `homepage`   | `https://everruns.com`                                           |
 | `repository` | `https://github.com/everruns/everruns`                           |
 | `license`    | `MIT`                                                            |
 | `keywords`   | Identical, identical order                                       |
 
+### Author
+
+Claude and Codex share an identical `author` object including
+`{ "name": "Everruns", "url": "https://everruns.com" }`. Cursor's plugin
+manifest schema rejects `author.url` (only `name` and `email` are accepted),
+so Cursor's `author` is `{ "name": "Everruns", "email": "support@everruns.com" }`.
+The validator enforces:
+
+- Claude `author` == Codex `author` (verbatim object equality)
+- Cursor `author.name` == Claude `author.name`
+
 ### Description
 
-Both descriptions describe the same product, but the Codex variant is allowed
-to add `from Codex` to disambiguate the host. Aside from the optional
-`from Codex` insertion, the wording MUST match.
+All three descriptions describe the same product. The Codex variant may add
+`from Codex` and the Cursor variant may add `from Cursor` to disambiguate the
+host. Aside from at-most-one such marker insertion, the wording MUST match.
 
 - Claude:
   `Interact with the Everruns(Dev) managed harnesses platform. Manage
@@ -62,28 +76,52 @@ to add `from Codex` to disambiguate the host. Aside from the optional
   `Interact with the Everruns(Dev) managed harnesses platform from Codex.
   Manage harnesses, agents, and capabilities. Run agentic sessions. Create and
   deploy agentic applications.`
+- Cursor:
+  `Interact with the Everruns(Dev) managed harnesses platform from Cursor.
+  Manage harnesses, agents, and capabilities. Run agentic sessions. Create and
+  deploy agentic applications.`
 
 ### Component Pointers
 
-Both manifests MUST declare the shared payload explicitly so each host loads
-the same skill set and MCP config:
+All three manifests MUST declare the shared payload explicitly so each host
+loads the same skill set and MCP config:
 
 - `skills`: `"./skills/"`
 - `mcpServers`: `"./.mcp.json"`
 
-These paths point at files at the plugin root, not inside `.claude-plugin/`.
-Claude Code rejects components living inside `.claude-plugin/`.
+The Cursor manifest additionally declares `commands: "./commands/"` to make
+the slash commands explicit (Cursor would otherwise discover them via the
+default folder, but the explicit path keeps the manifest self-describing).
+
+These paths point at files at the plugin root, not inside `.claude-plugin/`,
+`.codex-plugin/`, or `.cursor-plugin/`. Each host rejects components living
+inside the manifest folder.
+
+The shared `.mcp.json` file (with leading dot) lives at the plugin root.
+Cursor's default convention is `mcp.json` (no dot); we override discovery via
+the explicit `mcpServers: "./.mcp.json"` path so all three hosts read the
+same file. Cursor's official plugin validator emits a "no mcp.json file"
+warning, which is informational — the manifest path resolves correctly.
 
 ### Host-Specific Fields
 
-| Field       | Host   | Notes                                                                                                                |
-| ----------- | ------ | -------------------------------------------------------------------------------------------------------------------- |
-| `interface` | Codex  | UI metadata: `displayName`, `shortDescription`, `longDescription`, `category`, `capabilities`, icons, screenshots    |
-| `category`  | Marketplace entry only | Claude Code's `plugin.json` schema does NOT accept `category`. Put it on the marketplace plugin entry instead. |
+| Field         | Host   | Notes                                                                                                                |
+| ------------- | ------ | -------------------------------------------------------------------------------------------------------------------- |
+| `interface`   | Codex  | UI metadata: `displayName`, `shortDescription`, `longDescription`, `category`, `capabilities`, icons, screenshots    |
+| `displayName` | Cursor | Human-readable name; rendered in the Cursor marketplace and plugin chrome.                                           |
+| `publisher`   | Cursor | Publishing org. Set to `Everruns`.                                                                                   |
+| `logo`        | Cursor | Relative path to a logo image (`assets/everruns.png`) committed to the repo.                                         |
+| `tags`        | Cursor | Free-form filter tags surfaced in the marketplace UI.                                                                |
+| `category`    | Marketplace entry only | Claude Code's `plugin.json` schema does NOT accept `category`. Put it on the marketplace plugin entry instead (Cursor accepts it on either). |
 
 Adding `interface` to the Claude manifest breaks loading (`Invalid manifest
 file`). Codex tolerates the extra fields it does not understand, but
 new host-specific keys SHOULD live on the matching host's manifest only.
+
+Cursor's manifest schema is `additionalProperties: false`, so unknown fields
+are rejected. Slash command files MUST declare both `name` and `description`
+in YAML frontmatter for Cursor compatibility — this is a no-op for Claude
+Code and Codex, which ignore the extra `name` field.
 
 ### Marketplace Registrations
 
@@ -93,8 +131,14 @@ new host-specific keys SHOULD live on the matching host's manifest only.
 - Codex: `.agents/plugins/marketplace.json` — uses `source: { source: local,
   path: ./plugins/everruns-dev }` and a `policy` block
   (`installation: AVAILABLE`, `authentication: ON_INSTALL`).
+- Cursor: `.cursor-plugin/marketplace.json` at the repo root — uses
+  `source: "./plugins/everruns-dev"`. Both `metadata.version` and the per-plugin
+  `version` MUST match `plugin.json`. The marketplace entry's `logo` is
+  resolved from the repo root (`plugins/everruns-dev/assets/everruns.png`),
+  while the plugin manifest's `logo` is resolved relative to the plugin
+  directory (`assets/everruns.png`).
 
-Both marketplaces MUST point at `./plugins/everruns-dev`.
+All marketplaces MUST point at `./plugins/everruns-dev`.
 
 ### MCP Server Endpoint
 
@@ -116,19 +160,23 @@ context. See `specs/mcp.md`.
 When changing the plugin:
 
 1. Update the shared payload (`.mcp.json`, `commands/`, `skills/`, README) once
-   — both hosts pick it up.
-2. Update both `plugin.json` files together for any shared metadata change.
-3. Bump `version` in both `plugin.json` files and in
-   `.claude-plugin/marketplace.json` together. Codex marketplace does not
-   pin a version; Claude marketplace does.
+   — all three hosts pick it up.
+2. Update all three `plugin.json` files together for any shared metadata change.
+3. Bump `version` in all three `plugin.json` files, in
+   `.claude-plugin/marketplace.json`, and in `.cursor-plugin/marketplace.json`
+   (both `metadata.version` and the per-plugin `version`) together. Codex
+   marketplace does not pin a version.
 4. Run `bash scripts/test-everruns-dev-plugin.sh` and `just pre-push` before
    pushing.
 5. Smoke test:
    - Claude Code: `/plugin install everruns-dev@everruns-dev`, then
      `/everruns-dev:whoami`.
    - Codex: workspace marketplace install, then the same skill command.
+   - Cursor: load the local marketplace via the plugins UI (or push and
+     submit at <https://cursor.com/marketplace/publish>), install the plugin,
+     and run the `whoami` slash command.
 
-## Connector Install UX (Claude vs Codex)
+## Connector Install UX (Claude vs Codex vs Cursor)
 
 Codex installs the plugin's MCP server during plugin install, gated on the
 marketplace `authentication: ON_INSTALL` policy. The OAuth flow runs
@@ -143,9 +191,15 @@ configuration. The plugin's role is limited to declaring `mcpServers` in
 `plugin.json` and shipping a valid `.mcp.json` with `oauth_resource`; the
 rest is up to the host.
 
-If Claude Code adds an auto-install policy in the future, this spec and the
-validator should be updated to require the equivalent declaration so both
-hosts behave the same.
+Cursor reads the `mcpServers` path from `plugin.json` and registers the
+remote MCP server during plugin install. OAuth runs in the user's browser on
+first use; there is no plugin-side switch to skip the consent flow. The
+manifest shape is the same as Claude/Codex — the differences are purely in
+how each host renders consent and lifetime of the granted credential.
+
+If any host adds or changes its auto-install policy, this spec and the
+validator should be updated to require the equivalent declaration so all
+three hosts behave the same.
 
 ## Validation
 
@@ -153,21 +207,32 @@ hosts behave the same.
 
 - `.mcp.json` `url` and `oauth_resource` equal `https://dev.everruns.com/mcp`,
   no `scopes`.
-- Both manifests declare `name: everruns-dev`.
-- `version` is identical across both manifests and the Claude marketplace
-  entry.
+- All three manifests declare `name: everruns-dev`.
+- `version` is identical across all three manifests, the Claude marketplace
+  entry, and both `metadata.version` and the per-plugin `version` of the
+  Cursor marketplace.
 - Claude marketplace `source` is `./plugins/everruns-dev`; Codex marketplace
-  `source` is local at the same path.
-- Claude `plugin.json` does NOT contain `category`.
-- Claude `plugin.json` does NOT contain `interface` (Codex-only field;
-  including it breaks Claude Code plugin loading).
-- Both manifests declare `skills: "./skills/"` and
+  `source` is local at the same path; Cursor marketplace `source` is
+  `./plugins/everruns-dev`.
+- Claude `plugin.json` does NOT contain `category` or `interface`.
+- All three manifests declare `skills: "./skills/"` and
   `mcpServers: "./.mcp.json"`.
 - Shared metadata (`author`, `homepage`, `repository`, `license`, `keywords`)
-  matches between the two manifests.
-- Both manifests declare a non-empty `description`. The Codex description
-  equals the Claude description, optionally with the `from Codex` host
-  marker inserted exactly once; any other deviation fails the check.
+  matches between Claude and Codex manifests verbatim.
+- Cursor manifest's `homepage`, `repository`, `license`, and `keywords` match
+  Claude verbatim. `author.name` matches Claude (the rest of `author` may
+  differ because Cursor's schema rejects `author.url`).
+- All three manifests declare a non-empty `description`. The Codex
+  description equals the Claude description with at most one ` from Codex`
+  insertion; the Cursor description equals the Claude description with at
+  most one ` from Cursor` insertion.
+- Cursor manifest declares a non-empty `displayName` and a `logo` whose path
+  resolves to a file on disk (or an absolute URL).
+- Cursor manifest's `name` matches the Cursor marketplace name pattern
+  `^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$`.
+- Every command file under `commands/*.md` declares `name: <filename-stem>`
+  and a non-empty `description` in YAML frontmatter (required by Cursor;
+  ignored by Claude/Codex).
 - `marketplace.json` declares a top-level `description`.
 - `SKILL.md` has no `switch_organization` references and contains the
   required multi-org phrases.

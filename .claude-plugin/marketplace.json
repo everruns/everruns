@@ -10,7 +10,7 @@
       "name": "everruns-dev",
       "source": "./plugins/everruns-dev",
       "description": "Interact with the Everruns(Dev) managed harnesses platform. Manage harnesses, agents, and capabilities. Run agentic sessions. Create and deploy agentic applications.",
-      "version": "0.1.4",
+      "version": "0.1.5",
       "author": {
         "name": "Everruns",
         "url": "https://everruns.com"

@@ -1,7 +1,7 @@
 # Everruns(Dev) Plugin
 
-This directory is the shared source of truth for the Everruns(Dev) plugin in both
-Claude Code and Codex.
+This directory is the shared source of truth for the Everruns(Dev) plugin in
+Claude Code, Codex, and Cursor.
 
 It wires the [Everruns](https://everruns.com) dev managed harnesses platform into
 local agent tools. The shared payload is the Everruns(Dev) MCP server config, the
@@ -15,10 +15,11 @@ local agent tools. The shared payload is the Everruns(Dev) MCP server config, th
 
 - `.claude-plugin/plugin.json` for Claude Code metadata
 - `.codex-plugin/plugin.json` for Codex metadata
-- `.mcp.json` for the Everruns(Dev) MCP server
+- `.cursor-plugin/plugin.json` for Cursor metadata
+- `.mcp.json` for the Everruns(Dev) MCP server (referenced by all three hosts)
 - `skills/everruns-dev/SKILL.md` for Everruns(Dev) concepts and workflows
 - `commands/` for the main Everruns(Dev) slash commands
-- `assets/` for Codex UI metadata
+- `assets/` for Codex and Cursor marketplace metadata
 
 ## Install
 
@@ -48,14 +49,24 @@ claude --plugin-dir ./plugins/everruns-dev
 Codex discovers the plugin through the workspace marketplace at
 `.agents/plugins/marketplace.json`, which points at `./plugins/everruns-dev`.
 
+### Cursor
+
+Cursor discovers the plugin through the marketplace manifest at
+`.cursor-plugin/marketplace.json` in the repository root, which points at
+`./plugins/everruns-dev`. Submit the repository to the
+[Cursor Marketplace](https://cursor.com/marketplace/publish) for public listing,
+or load it locally during development by opening the repo in Cursor and
+enabling the plugin from the marketplace UI.
+
 ## First Run
 
-1. Install the plugin in Claude Code or expose it through the Codex marketplace.
-2. Run `/everruns-dev:whoami`.
+1. Install the plugin in Claude Code, Codex, or Cursor.
+2. Run `/everruns-dev:whoami` (Claude/Codex) or invoke the `whoami` command (Cursor).
 3. Complete the OAuth flow in the browser if prompted.
 4. Ask for an Everruns(Dev) task in natural language.
 
 ## Pointing At Another Everruns(Dev) Deployment
 
 Edit `plugins/everruns-dev/.mcp.json` and replace the `url` value with your
-deployment's `/mcp` endpoint.
+deployment's `/mcp` endpoint. All three hosts (Claude Code, Codex, Cursor) read
+this file, so a single change keeps them aligned.
