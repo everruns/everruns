@@ -429,6 +429,31 @@ describe("ChatPanel placeholder", () => {
     expect(
       screen.getByText("Execution stopped because a required dependency is unavailable."),
     ).toBeInTheDocument();
+    expect(screen.queryByText("backend temporarily unavailable")).not.toBeInTheDocument();
+  });
+
+  it("hides raw failed turn diagnostics when no structured error code is available", () => {
+    mockSessionContext.chatEvents = [
+      {
+        id: "evt-failed-raw-1",
+        type: "turn.failed",
+        session_id: "session-1",
+        ts: new Date().toISOString(),
+        context: { turn_id: "turn-1" },
+        data: {
+          turn_id: "turn-1",
+          error: "provider token leaked in diagnostic payload",
+        },
+      },
+    ];
+
+    render(<ChatPanel />);
+
+    expect(screen.getByText("Something went wrong")).toBeInTheDocument();
+    expect(screen.getByText("Message failed.")).toBeInTheDocument();
+    expect(
+      screen.queryByText("provider token leaked in diagnostic payload"),
+    ).not.toBeInTheDocument();
   });
 
   it("renders a chat error alert when sending a message fails", async () => {

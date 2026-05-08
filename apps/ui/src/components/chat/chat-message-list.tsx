@@ -74,7 +74,7 @@ function getMessageImages(content: ContentPart[]): Array<{ image_id: string; fil
 }
 
 function getTurnFailedMessage(locale: SupportedLocale, data: TurnFailedData): string {
-  return localizeRuntimeError(locale, getRuntimeErrorFromTurnFailed(data), data.error);
+  return localizeRuntimeError(locale, getRuntimeErrorFromTurnFailed(data), "");
 }
 
 function buildActGroups(chatEvents: Event[], workingLabel: string) {
@@ -262,10 +262,7 @@ export const ChatMessageList = memo(function ChatMessageList({
         const turnFailedData = getEventData(event, "turn.failed");
         if (turnFailedData) {
           return (
-            <ChatErrorAlert
-              key={event.id}
-              message={getTurnFailedMessage(locale, turnFailedData)}
-            />
+            <ChatErrorAlert key={event.id} message={getTurnFailedMessage(locale, turnFailedData)} />
           );
         }
 
@@ -373,12 +370,7 @@ export const ChatMessageList = memo(function ChatMessageList({
         const textContent = getMessageText(data);
         const outputError = outputData ? getRuntimeErrorFromOutputMessage(outputData) : undefined;
         if (outputData && outputError) {
-          return (
-            <ChatErrorAlert
-              key={event.id}
-              message={textContent}
-            />
-          );
+          return <ChatErrorAlert key={event.id} message={textContent} />;
         }
         const toolCalls = isUser
           ? []
