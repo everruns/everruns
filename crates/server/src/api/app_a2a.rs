@@ -648,7 +648,12 @@ async fn handle_message_stream(
         }
     };
 
-    let task_id = Uuid::now_v7().to_string();
+    // Per-invocation correlation id used by `A2aInvocationRequest` for
+    // request tracing only. The *streamed* `taskId` (which clients use for
+    // `tasks/get` / `tasks/cancel`) is set further down to the resolved
+    // session/context id so the streaming task identity matches the
+    // session-scoped task identity, not this random per-invocation id.
+    let invocation_task_id = Uuid::now_v7().to_string();
     let request_id = req_id.map(|axum::Extension(id)| id.0);
 
     // Subscribe to session events at the safe point — between session
@@ -672,7 +677,7 @@ async fn handle_message_stream(
             params: parsed.params,
             text: parsed_msg.text,
             message_id: parsed_msg.message_id,
-            task_id: task_id.clone(),
+            task_id: invocation_task_id,
             context_id: parsed_msg.context_id,
             role: parsed_msg.role,
         },
@@ -698,7 +703,10 @@ async fn handle_message_stream(
 
     let session_id_uuid = result.session_id.uuid();
     let context_id = result.session_id.to_string();
-    let task_id = context_id.clone();
+    // EVE-A2A: the task identity exposed to A2A clients via SSE must match
+    // the session/context id so subsequent `tasks/get` / `tasks/cancel`
+    // calls (which look up the task by session id) resolve correctly.
+    let stream_task_id = context_id.clone();
 
     let subscription = match subscription_slot.lock().await.take() {
         Some(sub) => sub,
@@ -731,7 +739,7 @@ async fn handle_message_stream(
         &rpc_id,
         json!({
             "kind": "status-update",
-            "taskId": task_id,
+            "taskId": stream_task_id,
             "contextId": context_id,
             "status": { "state": "working" },
             "final": false,
@@ -741,7 +749,7 @@ async fn handle_message_stream(
     let stream_state = A2aStreamState {
         subscription,
         rpc_id,
-        task_id,
+        task_id: stream_task_id,
         context_id,
         session_id: session_id_uuid,
         finished: false,
