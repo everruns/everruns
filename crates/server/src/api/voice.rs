@@ -25,11 +25,10 @@ use everruns_core::events::{
     VOICE_OUTPUT_TRANSCRIPT_COMPLETED, VOICE_OUTPUT_TRANSCRIPT_DELTA, VoiceSessionEndedData,
     VoiceSessionFailedData, VoiceSessionStartedData, VoiceTranscriptData,
 };
-use everruns_core::traits::{LeasedResourceStore, ToolExecutor};
+use everruns_core::traits::LeasedResourceStore;
 use everruns_core::typed_id::{AgentId, SessionId};
 use everruns_core::{
-    Caller, FeatureFlags, LeasedResource, Message, ToolCall, ToolContext, ToolRegistry,
-    UpsertLeasedResource,
+    Caller, FeatureFlags, LeasedResource, Message, ToolCall, UpsertLeasedResource,
 };
 use futures_util::{SinkExt, StreamExt};
 use reqwest::multipart;
@@ -608,7 +607,7 @@ fn realtime_session_payload(options: &NormalizedVoiceOptions) -> Value {
         "reasoning": {
             "effort": options.reasoning_effort
         },
-        "tools": realtime_tools()
+        "tools": []
     });
     if let Some(instructions) = options
         .instructions
@@ -618,24 +617,6 @@ fn realtime_session_payload(options: &NormalizedVoiceOptions) -> Value {
         payload["instructions"] = json!(instructions);
     }
     payload
-}
-
-fn realtime_tools() -> Value {
-    let registry = ToolRegistry::with_defaults();
-    Value::Array(
-        registry
-            .tool_definitions()
-            .into_iter()
-            .map(|tool| {
-                json!({
-                    "type": "function",
-                    "name": tool.name(),
-                    "description": tool.description(),
-                    "parameters": tool.parameters(),
-                })
-            })
-            .collect(),
-    )
 }
 
 async fn authorize_session(
@@ -1136,36 +1117,10 @@ fn extract_function_calls(value: &Value) -> Vec<ToolCall> {
         .collect()
 }
 
-async fn execute_realtime_tool(session_id: SessionId, call: ToolCall) -> RealtimeToolOutput {
-    let registry = ToolRegistry::with_defaults();
-    let tool_def = registry
-        .tool_definitions()
-        .into_iter()
-        .find(|definition| definition.name() == call.name);
-    let Some(tool_def) = tool_def else {
-        return RealtimeToolOutput {
-            call_id: call.id,
-            output: json!({ "error": "tool_not_found" }).to_string(),
-        };
-    };
-    let context = ToolContext::new(session_id);
-    match registry
-        .execute_with_context(&call, &tool_def, &context)
-        .await
-    {
-        Ok(result) => RealtimeToolOutput {
-            call_id: result.tool_call_id,
-            output: serde_json::to_string(&json!({
-                "result": result.result,
-                "error": result.error,
-                "connection_required": result.connection_required,
-            }))
-            .unwrap_or_else(|_| "{\"error\":\"serialization_failed\"}".to_string()),
-        },
-        Err(_) => RealtimeToolOutput {
-            call_id: call.id,
-            output: json!({ "error": "tool_execution_failed" }).to_string(),
-        },
+async fn execute_realtime_tool(_session_id: SessionId, call: ToolCall) -> RealtimeToolOutput {
+    RealtimeToolOutput {
+        call_id: call.id,
+        output: json!({ "error": "tool_execution_disabled" }).to_string(),
     }
 }
 
