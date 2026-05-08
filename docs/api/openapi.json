@@ -11462,6 +11462,27 @@
           }
         }
       },
+      "GitHubVolumeSourceResponse": {
+        "type": "object",
+        "required": [
+          "repository",
+          "branch"
+        ],
+        "properties": {
+          "branch": {
+            "type": "string"
+          },
+          "repository": {
+            "type": "string"
+          },
+          "root_folder": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "GitRefInfo": {
         "type": "object",
         "description": "A git ref (branch pointer)",
@@ -11493,6 +11514,27 @@
               "string",
               "null"
             ]
+          },
+          "root_folder": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "url": {
+            "type": "string"
+          }
+        }
+      },
+      "GitVolumeSourceResponse": {
+        "type": "object",
+        "required": [
+          "url",
+          "branch"
+        ],
+        "properties": {
+          "branch": {
+            "type": "string"
           },
           "root_folder": {
             "type": [
@@ -13790,7 +13832,9 @@
                 "name": {
                   "type": "string"
                 },
-                "source": {},
+                "source": {
+                  "$ref": "#/components/schemas/VolumeSourceResponse"
+                },
                 "source_type": {
                   "type": "string"
                 },
@@ -15600,6 +15644,9 @@
             ]
           }
         }
+      },
+      "ManualVolumeSourceResponse": {
+        "type": "object"
       },
       "McpServer": {
         "type": "object",
@@ -21323,7 +21370,9 @@
           "name": {
             "type": "string"
           },
-          "source": {},
+          "source": {
+            "$ref": "#/components/schemas/VolumeSourceResponse"
+          },
           "source_type": {
             "type": "string"
           },
@@ -21338,6 +21387,73 @@
             "format": "date-time"
           }
         }
+      },
+      "VolumeSourceResponse": {
+        "oneOf": [
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ManualVolumeSourceResponse"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "provider"
+                ],
+                "properties": {
+                  "provider": {
+                    "type": "string",
+                    "enum": [
+                      "manual"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GitHubVolumeSourceResponse"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "provider"
+                ],
+                "properties": {
+                  "provider": {
+                    "type": "string",
+                    "enum": [
+                      "github"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GitVolumeSourceResponse"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "provider"
+                ],
+                "properties": {
+                  "provider": {
+                    "type": "string",
+                    "enum": [
+                      "git"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ]
       },
       "WebhookInvocationResponse": {
         "type": "object",

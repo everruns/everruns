@@ -23,7 +23,9 @@ export type VolumeSourceType = "manual" | "github" | "git";
 export type VolumeSyncStatus = "idle" | "pending" | "syncing" | "synced" | "failed";
 
 export type VolumeSource =
-  | Record<string, never>
+  | {
+      provider: "manual";
+    }
   | {
       provider: "github";
       repository: string;

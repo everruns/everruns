@@ -33,7 +33,7 @@ jest.mock("@/components/ui/select", () => {
         );
         return;
       }
-      options.push(...collectOptions((child.props as { children?: React.ReactNode }).children));
+      options.push(...collectOptions((child.props as { children?: mockReact.ReactNode }).children));
     });
     return options;
   }
@@ -78,7 +78,7 @@ const volumes: Volume[] = [
     name: "Research",
     description: "Shared research files",
     source_type: "manual",
-    source: {},
+    source: { provider: "manual" },
     is_readonly: false,
     sync_status: "idle",
     last_synced_at: null,

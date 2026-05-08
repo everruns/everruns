@@ -101,6 +101,11 @@ fn validate_git_url(url: &str) -> Result<String, CommandError> {
             "Git URL must be a non-empty URL without whitespace",
         ));
     }
+    if trimmed.contains('?') || trimmed.contains('#') {
+        return Err(CommandError::bad_request(
+            "Git URL must not include query strings or fragments",
+        ));
+    }
     if let Ok(parsed) = url::Url::parse(trimmed) {
         match parsed.scheme() {
             "https" | "ssh" | "git" => {}
@@ -466,6 +471,7 @@ inventory::submit! { CommandDescriptor::of::<DeleteVolume>() }
 
 #[cfg(test)]
 mod tests {
+    use super::super::types::VolumeSourceResponse;
     use super::*;
     use crate::domains::common::Ctx;
     use crate::storage::StorageBackend;
@@ -654,28 +660,40 @@ mod tests {
         assert_eq!(created.source_type, "github");
         assert!(created.is_readonly);
         assert_eq!(created.sync_status, "pending");
-        assert_eq!(created.source["repository"], "everruns/everruns");
-        assert_eq!(created.source["branch"], "docs");
-        assert_eq!(created.source["root_folder"], "specs");
+        match created.source {
+            VolumeSourceResponse::Github(source) => {
+                assert_eq!(source.repository, "everruns/everruns");
+                assert_eq!(source.branch, "docs");
+                assert_eq!(source.root_folder.as_deref(), Some("specs"));
+            }
+            other => panic!("expected github source, got {other:?}"),
+        }
     }
 
     #[tokio::test]
-    async fn git_volume_rejects_inline_credentials() {
+    async fn git_volume_rejects_secret_bearing_urls() {
         let ctx = ctx_for_org(DEFAULT_ORG_ID);
 
-        let err = CreateVolume {
-            name: "Unsafe Repo".into(),
-            description: None,
-            source: Some(CreateVolumeSourceRequest::Git(GitVolumeSourceRequest {
-                url: "https://token@example.com/org/repo.git".into(),
-                branch: None,
-                root_folder: None,
-            })),
-        }
-        .run(&ctx)
-        .await
-        .expect_err("inline credentials should fail");
+        for url in [
+            "https://token@example.com/org/repo.git",
+            "https://example.com/org/repo.git?token=secret",
+            "https://example.com/org/repo.git#token=secret",
+            "git@example.com:org/repo.git?token=secret",
+        ] {
+            let err = CreateVolume {
+                name: format!("Unsafe Repo {url}"),
+                description: None,
+                source: Some(CreateVolumeSourceRequest::Git(GitVolumeSourceRequest {
+                    url: url.into(),
+                    branch: None,
+                    root_folder: None,
+                })),
+            }
+            .run(&ctx)
+            .await
+            .expect_err("secret-bearing URL should fail");
 
-        assert!(matches!(err, CommandError::BadRequest(_)));
+            assert!(matches!(err, CommandError::BadRequest(_)));
+        }
     }
 }

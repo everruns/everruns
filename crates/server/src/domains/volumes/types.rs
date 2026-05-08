@@ -3,7 +3,6 @@ use chrono::{DateTime, Utc};
 use everruns_core::typed_id::VolumeId;
 use everruns_durable::UpdateField;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
@@ -17,7 +16,7 @@ pub struct VolumeResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     pub source_type: String,
-    pub source: Value,
+    pub source: VolumeSourceResponse,
     pub is_readonly: bool,
     pub sync_status: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -68,6 +67,33 @@ pub enum CreateVolumeSourceRequest {
     Git(GitVolumeSourceRequest),
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(tag = "provider", rename_all = "lowercase")]
+pub enum VolumeSourceResponse {
+    Manual(ManualVolumeSourceResponse),
+    Github(GitHubVolumeSourceResponse),
+    Git(GitVolumeSourceResponse),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct ManualVolumeSourceResponse {}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct GitHubVolumeSourceResponse {
+    pub repository: String,
+    pub branch: String,
+    #[serde(default)]
+    pub root_folder: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct GitVolumeSourceResponse {
+    pub url: String,
+    pub branch: String,
+    #[serde(default)]
+    pub root_folder: Option<String>,
+}
+
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct GitHubVolumeSourceRequest {
     pub repository: String,
@@ -86,13 +112,28 @@ pub struct GitVolumeSourceRequest {
     pub root_folder: Option<String>,
 }
 
+fn volume_source_response(row: &VolumeRow) -> anyhow::Result<VolumeSourceResponse> {
+    if row.source_type == "manual" {
+        return Ok(VolumeSourceResponse::Manual(ManualVolumeSourceResponse {}));
+    }
+
+    let source: VolumeSourceResponse = serde_json::from_value(row.source_config.clone())?;
+    match (&source, row.source_type.as_str()) {
+        (VolumeSourceResponse::Github(_), "github") | (VolumeSourceResponse::Git(_), "git") => {
+            Ok(source)
+        }
+        _ => anyhow::bail!("volume source_type does not match source config provider"),
+    }
+}
+
 pub fn volume_response(row: VolumeRow) -> anyhow::Result<VolumeResponse> {
+    let source = volume_source_response(&row)?;
     Ok(VolumeResponse {
         id: row.public_id.parse()?,
         name: row.name,
         description: row.description,
         source_type: row.source_type,
-        source: row.source_config,
+        source,
         is_readonly: row.is_readonly,
         sync_status: row.sync_status,
         last_synced_at: row.last_synced_at,
