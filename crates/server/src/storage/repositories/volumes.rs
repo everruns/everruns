@@ -9,15 +9,22 @@ impl Database {
     pub async fn create_volume(&self, org_id: i64, input: CreateVolumeRow) -> Result<VolumeRow> {
         let row = sqlx::query_as::<_, VolumeRow>(
             r#"
-            INSERT INTO volumes (org_id, public_id, name, description, owner_principal_id, resolved_owner_user_id)
-            VALUES ($1, $2, $3, $4, $5, $6)
-            RETURNING id, org_id, public_id, name, description, owner_principal_id, resolved_owner_user_id, status, created_at, updated_at, archived_at, deleted_at
+            INSERT INTO volumes (
+                org_id, public_id, name, description, source_type, source_config,
+                is_readonly, sync_status, owner_principal_id, resolved_owner_user_id
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+            RETURNING id, org_id, public_id, name, description, source_type, source_config, is_readonly, sync_status, last_synced_at, last_sync_error, owner_principal_id, resolved_owner_user_id, status, created_at, updated_at, archived_at, deleted_at
             "#,
         )
         .bind(org_id)
         .bind(&input.public_id)
         .bind(&input.name)
         .bind(&input.description)
+        .bind(&input.source_type)
+        .bind(&input.source_config)
+        .bind(input.is_readonly)
+        .bind(&input.sync_status)
         .bind(&input.owner_principal_id)
         .bind(input.resolved_owner_user_id)
         .fetch_one(&self.pool)
@@ -33,7 +40,7 @@ impl Database {
     ) -> Result<Option<VolumeRow>> {
         let row = sqlx::query_as::<_, VolumeRow>(
             r#"
-            SELECT id, org_id, public_id, name, description, owner_principal_id, resolved_owner_user_id, status, created_at, updated_at, archived_at, deleted_at
+            SELECT id, org_id, public_id, name, description, source_type, source_config, is_readonly, sync_status, last_synced_at, last_sync_error, owner_principal_id, resolved_owner_user_id, status, created_at, updated_at, archived_at, deleted_at
             FROM volumes
             WHERE org_id = $1 AND public_id = $2 AND status != 'deleted'
             "#,
@@ -49,7 +56,7 @@ impl Database {
     pub async fn get_volume_by_id(&self, org_id: i64, id: Uuid) -> Result<Option<VolumeRow>> {
         let row = sqlx::query_as::<_, VolumeRow>(
             r#"
-            SELECT id, org_id, public_id, name, description, owner_principal_id, resolved_owner_user_id, status, created_at, updated_at, archived_at, deleted_at
+            SELECT id, org_id, public_id, name, description, source_type, source_config, is_readonly, sync_status, last_synced_at, last_sync_error, owner_principal_id, resolved_owner_user_id, status, created_at, updated_at, archived_at, deleted_at
             FROM volumes
             WHERE org_id = $1 AND id = $2 AND status != 'deleted'
             "#,
@@ -93,7 +100,7 @@ impl Database {
         };
         let sql = format!(
             r#"
-            SELECT id, org_id, public_id, name, description, owner_principal_id, resolved_owner_user_id, status, created_at, updated_at, archived_at, deleted_at
+            SELECT id, org_id, public_id, name, description, source_type, source_config, is_readonly, sync_status, last_synced_at, last_sync_error, owner_principal_id, resolved_owner_user_id, status, created_at, updated_at, archived_at, deleted_at
             FROM volumes
             WHERE org_id = $1{status_sql}{search_sql}
             ORDER BY created_at DESC
@@ -120,6 +127,10 @@ impl Database {
                 name = COALESCE($3, name),
                 description = CASE WHEN $4 THEN $5 ELSE description END,
                 status = COALESCE($6, status),
+                source_config = COALESCE($7, source_config),
+                sync_status = COALESCE($8, sync_status),
+                last_synced_at = CASE WHEN $9 THEN $10 ELSE last_synced_at END,
+                last_sync_error = CASE WHEN $11 THEN $12 ELSE last_sync_error END,
                 archived_at = CASE
                     WHEN $6 = 'archived' THEN COALESCE(archived_at, NOW())
                     WHEN $6 = 'active' THEN NULL
@@ -131,7 +142,7 @@ impl Database {
                 END,
                 updated_at = NOW()
             WHERE org_id = $1 AND id = $2 AND status != 'deleted'
-            RETURNING id, org_id, public_id, name, description, owner_principal_id, resolved_owner_user_id, status, created_at, updated_at, archived_at, deleted_at
+            RETURNING id, org_id, public_id, name, description, source_type, source_config, is_readonly, sync_status, last_synced_at, last_sync_error, owner_principal_id, resolved_owner_user_id, status, created_at, updated_at, archived_at, deleted_at
             "#,
         )
         .bind(org_id)
@@ -140,6 +151,12 @@ impl Database {
         .bind(input.description.is_some())
         .bind(input.description.flatten())
         .bind(&input.status)
+        .bind(&input.source_config)
+        .bind(&input.sync_status)
+        .bind(input.last_synced_at.is_some())
+        .bind(input.last_synced_at.flatten())
+        .bind(input.last_sync_error.is_some())
+        .bind(input.last_sync_error.flatten())
         .fetch_optional(&self.pool)
         .await?;
 

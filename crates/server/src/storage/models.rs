@@ -1000,6 +1000,12 @@ pub struct VolumeRow {
     pub public_id: String,
     pub name: String,
     pub description: Option<String>,
+    pub source_type: String,
+    pub source_config: serde_json::Value,
+    pub is_readonly: bool,
+    pub sync_status: String,
+    pub last_synced_at: Option<DateTime<Utc>>,
+    pub last_sync_error: Option<String>,
     pub owner_principal_id: Option<String>,
     pub resolved_owner_user_id: Option<Uuid>,
     pub status: String,
@@ -1014,6 +1020,10 @@ pub struct CreateVolumeRow {
     pub public_id: String,
     pub name: String,
     pub description: Option<String>,
+    pub source_type: String,
+    pub source_config: serde_json::Value,
+    pub is_readonly: bool,
+    pub sync_status: String,
     pub owner_principal_id: Option<String>,
     pub resolved_owner_user_id: Option<Uuid>,
 }
@@ -1023,6 +1033,10 @@ pub struct UpdateVolume {
     pub name: Option<String>,
     pub description: Option<Option<String>>,
     pub status: Option<String>,
+    pub source_config: Option<serde_json::Value>,
+    pub sync_status: Option<String>,
+    pub last_synced_at: Option<Option<DateTime<Utc>>>,
+    pub last_sync_error: Option<Option<String>>,
 }
 
 // ============================================

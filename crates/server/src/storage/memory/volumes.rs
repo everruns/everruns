@@ -25,6 +25,12 @@ impl InMemoryDatabase {
             public_id: input.public_id,
             name: input.name,
             description: input.description,
+            source_type: input.source_type,
+            source_config: input.source_config,
+            is_readonly: input.is_readonly,
+            sync_status: input.sync_status,
+            last_synced_at: None,
+            last_sync_error: None,
             owner_principal_id: input.owner_principal_id,
             resolved_owner_user_id: input.resolved_owner_user_id,
             status: "active".to_string(),
@@ -137,6 +143,18 @@ impl InMemoryDatabase {
         }
         if let Some(description) = input.description {
             volume.description = description;
+        }
+        if let Some(source_config) = input.source_config {
+            volume.source_config = source_config;
+        }
+        if let Some(sync_status) = input.sync_status {
+            volume.sync_status = sync_status;
+        }
+        if let Some(last_synced_at) = input.last_synced_at {
+            volume.last_synced_at = last_synced_at;
+        }
+        if let Some(last_sync_error) = input.last_sync_error {
+            volume.last_sync_error = last_sync_error;
         }
         if let Some(status) = input.status {
             volume.status = status.clone();

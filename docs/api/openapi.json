@@ -10491,8 +10491,64 @@
           },
           "name": {
             "type": "string"
+          },
+          "source": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CreateVolumeSourceRequest"
+              }
+            ]
           }
         }
+      },
+      "CreateVolumeSourceRequest": {
+        "oneOf": [
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GitHubVolumeSourceRequest"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "github"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GitVolumeSourceRequest"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "type"
+                ],
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "git"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ]
       },
       "DatabaseInfoResponse": {
         "type": "object",
@@ -11383,6 +11439,50 @@
           }
         }
       },
+      "GitHubVolumeSourceRequest": {
+        "type": "object",
+        "required": [
+          "repository"
+        ],
+        "properties": {
+          "branch": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "repository": {
+            "type": "string"
+          },
+          "root_folder": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "GitHubVolumeSourceResponse": {
+        "type": "object",
+        "required": [
+          "repository",
+          "branch"
+        ],
+        "properties": {
+          "branch": {
+            "type": "string"
+          },
+          "repository": {
+            "type": "string"
+          },
+          "root_folder": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
       "GitRefInfo": {
         "type": "object",
         "description": "A git ref (branch pointer)",
@@ -11399,6 +11499,50 @@
             "type": "string"
           },
           "target": {
+            "type": "string"
+          }
+        }
+      },
+      "GitVolumeSourceRequest": {
+        "type": "object",
+        "required": [
+          "url"
+        ],
+        "properties": {
+          "branch": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "root_folder": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "url": {
+            "type": "string"
+          }
+        }
+      },
+      "GitVolumeSourceResponse": {
+        "type": "object",
+        "required": [
+          "url",
+          "branch"
+        ],
+        "properties": {
+          "branch": {
+            "type": "string"
+          },
+          "root_folder": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "url": {
             "type": "string"
           }
         }
@@ -13632,6 +13776,10 @@
               "required": [
                 "id",
                 "name",
+                "source_type",
+                "source",
+                "is_readonly",
+                "sync_status",
                 "status",
                 "created_at",
                 "updated_at"
@@ -13665,10 +13813,35 @@
                   "type": "string",
                   "example": "vol_01933b5a000070008000000000000001"
                 },
+                "is_readonly": {
+                  "type": "boolean"
+                },
+                "last_sync_error": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "last_synced_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "format": "date-time"
+                },
                 "name": {
                   "type": "string"
                 },
+                "source": {
+                  "$ref": "#/components/schemas/VolumeSourceResponse"
+                },
+                "source_type": {
+                  "type": "string"
+                },
                 "status": {
+                  "type": "string"
+                },
+                "sync_status": {
                   "type": "string"
                 },
                 "updated_at": {
@@ -15471,6 +15644,9 @@
             ]
           }
         }
+      },
+      "ManualVolumeSourceResponse": {
+        "type": "object"
       },
       "McpServer": {
         "type": "object",
@@ -21138,6 +21314,10 @@
         "required": [
           "id",
           "name",
+          "source_type",
+          "source",
+          "is_readonly",
+          "sync_status",
           "status",
           "created_at",
           "updated_at"
@@ -21171,10 +21351,35 @@
             "type": "string",
             "example": "vol_01933b5a000070008000000000000001"
           },
+          "is_readonly": {
+            "type": "boolean"
+          },
+          "last_sync_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_synced_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
           "name": {
             "type": "string"
           },
+          "source": {
+            "$ref": "#/components/schemas/VolumeSourceResponse"
+          },
+          "source_type": {
+            "type": "string"
+          },
           "status": {
+            "type": "string"
+          },
+          "sync_status": {
             "type": "string"
           },
           "updated_at": {
@@ -21182,6 +21387,73 @@
             "format": "date-time"
           }
         }
+      },
+      "VolumeSourceResponse": {
+        "oneOf": [
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ManualVolumeSourceResponse"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "provider"
+                ],
+                "properties": {
+                  "provider": {
+                    "type": "string",
+                    "enum": [
+                      "manual"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GitHubVolumeSourceResponse"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "provider"
+                ],
+                "properties": {
+                  "provider": {
+                    "type": "string",
+                    "enum": [
+                      "github"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/GitVolumeSourceResponse"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "provider"
+                ],
+                "properties": {
+                  "provider": {
+                    "type": "string",
+                    "enum": [
+                      "git"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ]
       },
       "WebhookInvocationResponse": {
         "type": "object",
