@@ -19,6 +19,7 @@ const DEFAULT_FLAGS: FeatureFlags = {
   evals: false,
   app_budgets: false,
   agent_versions: false,
+  voice: false,
 };
 
 export interface FeatureFlagsContextValue {

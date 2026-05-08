@@ -106,6 +106,20 @@ fn reasoning_effort_gpt55() -> ReasoningEffortConfig {
     }
 }
 
+/// Reasoning effort for OpenAI Realtime voice sessions.
+fn reasoning_effort_realtime() -> ReasoningEffortConfig {
+    ReasoningEffortConfig {
+        values: vec![
+            effort(ReasoningEffort::Minimal, "Minimal"),
+            effort(ReasoningEffort::Low, "Low"),
+            effort(ReasoningEffort::Medium, "Medium"),
+            effort(ReasoningEffort::High, "High"),
+            effort(ReasoningEffort::Xhigh, "Extra High"),
+        ],
+        default: ReasoningEffort::Low,
+    }
+}
+
 /// Reasoning effort for gpt-5.2-pro
 /// Default: medium, supports: medium, high, xhigh
 fn reasoning_effort_gpt52_pro() -> ReasoningEffortConfig {
@@ -170,6 +184,30 @@ fn get_openai_profile(model_id: &str) -> Option<LlmModelProfile> {
     let base_id = normalize_model_id(model_id);
 
     match base_id {
+        "gpt-realtime-2" => Some(LlmModelProfile {
+            name: "GPT Realtime 2".into(),
+            family: "gpt-realtime".into(),
+            description: Some("OpenAI Realtime model for low-latency voice sessions".into()),
+            release_date: None,
+            last_updated: None,
+            attachment: false,
+            reasoning: true,
+            temperature: false,
+            knowledge: None,
+            tool_call: true,
+            structured_output: false,
+            open_weights: false,
+            cost: None,
+            limits: None,
+            modalities: Some(LlmModelModalities {
+                input: vec![Modality::Text, Modality::Audio],
+                output: vec![Modality::Text, Modality::Audio],
+            }),
+            reasoning_effort: Some(reasoning_effort_realtime()),
+            tool_search: false,
+            supports_phases: true,
+        }),
+
         "gpt-4o" => Some(LlmModelProfile {
             name: "GPT-4o".into(),
             family: "gpt-4o".into(),
@@ -2258,6 +2296,8 @@ fn get_llmsim_profile(model_id: &str) -> Option<LlmModelProfile> {
 fn normalize_model_id(model_id: &str) -> &str {
     // Known base model patterns (order matters - more specific first)
     let patterns = [
+        // Realtime models
+        "gpt-realtime-2",
         // GPT-5.5 models
         "gpt-5.5-pro",
         "gpt-5.5",
@@ -2646,6 +2686,35 @@ mod tests {
         let effort = profile.reasoning_effort.unwrap();
         assert_eq!(effort.default, ReasoningEffort::Medium);
         assert_eq!(effort.values.len(), 5);
+    }
+
+    #[test]
+    fn test_gpt_realtime_2_profile() {
+        let profile = get_model_profile(&LlmProviderType::Openai, "gpt-realtime-2").unwrap();
+        assert_eq!(profile.name, "GPT Realtime 2");
+        assert_eq!(profile.family, "gpt-realtime");
+        assert!(profile.reasoning);
+        assert!(profile.tool_call);
+        assert!(profile.supports_phases);
+
+        let modalities = profile.modalities.unwrap();
+        assert!(modalities.input.contains(&Modality::Audio));
+        assert!(modalities.output.contains(&Modality::Audio));
+
+        let effort = profile.reasoning_effort.unwrap();
+        assert_eq!(effort.default, ReasoningEffort::Low);
+        assert!(
+            effort
+                .values
+                .iter()
+                .any(|v| v.value == ReasoningEffort::Minimal)
+        );
+        assert!(
+            effort
+                .values
+                .iter()
+                .any(|v| v.value == ReasoningEffort::Xhigh)
+        );
     }
 
     #[test]

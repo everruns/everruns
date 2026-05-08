@@ -34,6 +34,8 @@ pub struct FeatureFlags {
     /// Immutable agent versions, snapshots, forks, and app version binding.
     /// Experimental.
     pub agent_versions: bool,
+    /// Realtime voice endpoints and microphone controls. Experimental.
+    pub voice: bool,
 }
 
 impl FeatureFlags {
@@ -47,6 +49,7 @@ impl FeatureFlags {
             evals: experimental_flag("FEATURE_EVALS", grade),
             app_budgets: experimental_flag("FEATURE_APP_BUDGETS", grade),
             agent_versions: experimental_flag("FEATURE_AGENT_VERSIONS", grade),
+            voice: experimental_flag("FEATURE_VOICE", grade),
         }
     }
 
@@ -66,6 +69,7 @@ impl FeatureFlags {
             "evals" => self.evals,
             "app_budgets" => self.app_budgets,
             "agent_versions" => self.agent_versions,
+            "voice" => self.voice,
             _ => false,
         }
     }
@@ -81,6 +85,7 @@ impl FeatureFlags {
             evals: true,
             app_budgets: true,
             agent_versions: true,
+            voice: true,
         }
     }
 }
@@ -220,6 +225,7 @@ mod tests {
             evals: true,
             app_budgets: true,
             agent_versions: true,
+            voice: true,
         };
         assert!(flags.is_enabled("global_chat"));
         assert!(flags.is_enabled("apps"));
@@ -228,6 +234,7 @@ mod tests {
         assert!(flags.is_enabled("evals"));
         assert!(flags.is_enabled("app_budgets"));
         assert!(flags.is_enabled("agent_versions"));
+        assert!(flags.is_enabled("voice"));
         assert!(!flags.is_enabled("nonexistent"));
     }
 
@@ -241,12 +248,14 @@ mod tests {
             evals: true,
             app_budgets: true,
             agent_versions: true,
+            voice: true,
         };
         let json = serde_json::to_string(&flags).unwrap();
         assert!(json.contains("\"global_chat\":true"));
         assert!(json.contains("\"notifications\":true"));
         assert!(json.contains("\"app_budgets\":true"));
         assert!(json.contains("\"agent_versions\":true"));
+        assert!(json.contains("\"voice\":true"));
 
         let parsed: FeatureFlags = serde_json::from_str(&json).unwrap();
         assert_eq!(flags, parsed);

@@ -15,6 +15,7 @@ import {
 import { useChatModelSelection } from "@/hooks/use-chat-model-selection";
 import { executeSessionCommand } from "@/lib/api/commands";
 import { sendUserMessageWithImages } from "@/lib/api/messages";
+import { endSessionVoice, startSessionVoice } from "@/lib/api/voice";
 import { useMutation } from "@tanstack/react-query";
 import { chatSurfaceStyles } from "@/components/chat/chat-surface";
 import { ChatErrorAlert } from "@/components/chat/chat-error-alert";
@@ -33,6 +34,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useLocale } from "@/providers/locale-provider";
+import { useFeatureFlag } from "@/providers/feature-flags-provider";
 
 interface ParsedSystemCommand {
   command: CommandDescriptor;
@@ -71,6 +73,7 @@ function parseSystemCommandInvocation(
 
 export function ChatPanel() {
   const { t } = useLocale();
+  const voiceFeatureEnabled = useFeatureFlag("voice");
   const {
     agentId,
     events,
@@ -100,7 +103,13 @@ export function ChatPanel() {
   const { data: llmModels = [] } = useLlmModels();
   const [inputValue, setInputValue] = useState("");
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [voiceState, setVoiceState] = useState<"idle" | "connecting" | "connected">("idle");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const voiceConnectionIdRef = useRef<string | null>(null);
+  const peerConnectionRef = useRef<RTCPeerConnection | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const {
     selectedModelId,
@@ -150,6 +159,12 @@ export function ChatPanel() {
   const { data: commandsData } = useSessionCommands(sessionId);
   const commands = commandsData?.commands ?? [];
   const [btwOverlay, setBtwOverlay] = useState<BtwOverlayState | null>(null);
+  const voiceAvailable =
+    voiceFeatureEnabled &&
+    typeof window !== "undefined" &&
+    typeof navigator !== "undefined" &&
+    !!navigator.mediaDevices?.getUserMedia &&
+    typeof RTCPeerConnection !== "undefined";
 
   useEffect(() => {
     if (!eventsLoading) {
@@ -194,6 +209,88 @@ export function ChatPanel() {
     !sendMessage.isPending &&
     !sendMessageWithImages.isPending &&
     !executeCommand.isPending;
+
+  const cleanupVoiceClient = useCallback(() => {
+    peerConnectionRef.current?.close();
+    peerConnectionRef.current = null;
+    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    mediaStreamRef.current = null;
+    if (remoteAudioRef.current) {
+      remoteAudioRef.current.srcObject = null;
+      remoteAudioRef.current.remove();
+      remoteAudioRef.current = null;
+    }
+  }, []);
+
+  const stopVoice = useCallback(
+    async (reason = "client_ended") => {
+      const voiceConnectionId = voiceConnectionIdRef.current;
+      voiceConnectionIdRef.current = null;
+      cleanupVoiceClient();
+      setVoiceState("idle");
+      if (!voiceConnectionId) return;
+      try {
+        await endSessionVoice(sessionId, voiceConnectionId, reason);
+      } catch (error) {
+        console.error("Failed to end voice session:", error);
+      }
+    },
+    [cleanupVoiceClient, sessionId],
+  );
+
+  useEffect(() => {
+    return () => {
+      void stopVoice("unmounted");
+    };
+  }, [stopVoice]);
+
+  const startVoice = useCallback(async () => {
+    if (!voiceAvailable || voiceState !== "idle") return;
+    setVoiceError(null);
+    setVoiceState("connecting");
+    try {
+      const mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const peerConnection = new RTCPeerConnection();
+      peerConnectionRef.current = peerConnection;
+      mediaStreamRef.current = mediaStream;
+      mediaStream.getTracks().forEach((track) => peerConnection.addTrack(track, mediaStream));
+      const remoteAudio = document.createElement("audio");
+      remoteAudio.autoplay = true;
+      remoteAudio.setAttribute("playsinline", "true");
+      remoteAudioRef.current = remoteAudio;
+      peerConnection.ontrack = (event) => {
+        remoteAudio.srcObject = event.streams[0];
+      };
+      const offer = await peerConnection.createOffer();
+      await peerConnection.setLocalDescription(offer);
+      if (!offer.sdp) {
+        throw new Error("Missing local voice offer.");
+      }
+      const voice = await startSessionVoice(sessionId, {
+        sdp: offer.sdp,
+        reasoning_effort: reasoningEffort || undefined,
+      });
+      await peerConnection.setRemoteDescription({ type: "answer", sdp: voice.answer_sdp });
+      document.body.appendChild(remoteAudio);
+      voiceConnectionIdRef.current = voice.voice_connection_id;
+      setVoiceState("connected");
+    } catch (error) {
+      cleanupVoiceClient();
+      setVoiceState("idle");
+      const message = error instanceof Error ? error.message : "Failed to start voice session.";
+      setVoiceError(message);
+    }
+  }, [cleanupVoiceClient, reasoningEffort, sessionId, voiceAvailable, voiceState]);
+
+  const toggleVoice = useCallback(() => {
+    if (voiceState === "connected") {
+      void stopVoice();
+      return;
+    }
+    if (voiceState === "idle") {
+      void startVoice();
+    }
+  }, [startVoice, stopVoice, voiceState]);
 
   const closeBtwOverlay = useCallback(() => {
     setBtwOverlay(null);
@@ -376,6 +473,12 @@ export function ChatPanel() {
           </div>
         )}
 
+        {voiceError && (
+          <div className="mt-4">
+            <ChatErrorAlert message={voiceError} />
+          </div>
+        )}
+
         <div ref={messagesEndRef} />
 
         {hasNewMessages && (
@@ -422,6 +525,10 @@ export function ChatPanel() {
           sendMessage.isPending || sendMessageWithImages.isPending || executeCommand.isPending
         }
         textareaRef={textareaRef}
+        voiceEnabled={voiceAvailable}
+        voiceActive={voiceState === "connected"}
+        voicePending={voiceState === "connecting"}
+        onToggleVoice={toggleVoice}
       />
 
       <Dialog open={!!btwOverlay} onOpenChange={(open) => !open && closeBtwOverlay()}>

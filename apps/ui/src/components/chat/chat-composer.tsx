@@ -6,7 +6,7 @@
  */
 "use client";
 
-import { Brain, ImagePlus, Loader2, Send, StopCircle } from "lucide-react";
+import { Brain, ImagePlus, Loader2, Mic, MicOff, Send, StopCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -59,6 +59,10 @@ export function ChatComposer({
   isUploading,
   sendPending,
   textareaRef,
+  voiceEnabled = false,
+  voiceActive = false,
+  voicePending = false,
+  onToggleVoice,
 }: {
   commands: CommandDescriptor[];
   llmModels: LlmModel[];
@@ -89,6 +93,10 @@ export function ChatComposer({
   isUploading: boolean;
   sendPending: boolean;
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
+  voiceEnabled?: boolean;
+  voiceActive?: boolean;
+  voicePending?: boolean;
+  onToggleVoice?: () => void;
 }) {
   const { backendLocale, t } = useLocale();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -256,6 +264,29 @@ export function ChatComposer({
           </div>
 
           <div className="flex items-center gap-2">
+            {voiceEnabled && onToggleVoice && (
+              <Button
+                type="button"
+                size="icon-lg"
+                variant={voiceActive ? "secondary" : "outline"}
+                className={cn(
+                  chatSurfaceStyles.composerIconButton,
+                  voiceActive && "border-emerald-500/50 text-emerald-600",
+                )}
+                disabled={voicePending}
+                onClick={onToggleVoice}
+                title={voiceActive ? "End voice session" : "Start voice session"}
+              >
+                {voicePending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : voiceActive ? (
+                  <MicOff className="icon-sharp h-4 w-4" />
+                ) : (
+                  <Mic className="icon-sharp h-4 w-4" />
+                )}
+              </Button>
+            )}
+
             {isActive && (
               <Button
                 type="button"
