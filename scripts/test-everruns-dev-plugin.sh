@@ -118,12 +118,28 @@ for key in shared_keys:
         )
 
 # Descriptions must match aside from the optional Codex host marker.
-codex_desc_normalized = codex["description"].replace(" from Codex", "")
-if codex_desc_normalized != claude["description"]:
+# The marker is allowed to appear at most once, anywhere in the Codex
+# description; any other deviation (multiple insertions, different wording)
+# is treated as drift.
+codex_desc = codex.get("description")
+claude_desc = claude.get("description")
+if not codex_desc or not claude_desc:
+    raise SystemExit(
+        "Both Everruns Dev plugin.json files must declare a non-empty "
+        "'description'. See specs/everruns-dev-plugin.md."
+    )
+
+marker = " from Codex"
+matches_exact = codex_desc == claude_desc
+matches_with_marker = (
+    codex_desc.count(marker) == 1
+    and codex_desc.replace(marker, "", 1) == claude_desc
+)
+if not (matches_exact or matches_with_marker):
     raise SystemExit(
         "Everruns Dev description drifted between Claude and Codex manifests. "
-        "Codex may insert ' from Codex' once; otherwise the wording must "
-        "match. See specs/everruns-dev-plugin.md."
+        "Codex may insert ' from Codex' exactly once; otherwise the wording "
+        "must match. See specs/everruns-dev-plugin.md."
     )
 
 skill = (plugin_dir / "skills" / "everruns-dev" / "SKILL.md").read_text()

@@ -159,12 +159,15 @@ hosts behave the same.
 - Claude marketplace `source` is `./plugins/everruns-dev`; Codex marketplace
   `source` is local at the same path.
 - Claude `plugin.json` does NOT contain `category`.
+- Claude `plugin.json` does NOT contain `interface` (Codex-only field;
+  including it breaks Claude Code plugin loading).
 - Both manifests declare `skills: "./skills/"` and
   `mcpServers: "./.mcp.json"`.
 - Shared metadata (`author`, `homepage`, `repository`, `license`, `keywords`)
   matches between the two manifests.
-- Codex description equals the Claude description, optionally with the
-  `from Codex` host marker inserted.
+- Both manifests declare a non-empty `description`. The Codex description
+  equals the Claude description, optionally with the `from Codex` host
+  marker inserted exactly once; any other deviation fails the check.
 - `marketplace.json` declares a top-level `description`.
 - `SKILL.md` has no `switch_organization` references and contains the
   required multi-org phrases.
