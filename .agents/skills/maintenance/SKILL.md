@@ -85,9 +85,22 @@ Good evidence:
 
 Goal: new or changed attack surface is understood, and mitigations/docs match reality.
 
+Actions:
+- run DeepSec when maintenance includes security posture, release readiness, auth/tenant/public-ingress review, or repo-wide hygiene:
+  - if `.deepsec/` is missing, initialize it with `npx deepsec init`
+  - install from `.deepsec/` with `pnpm install`
+  - keep `data/<project>/INFO.md` short and project-specific before processing
+  - run `pnpm deepsec scan --project-id everruns` from `.deepsec/`
+  - use `pnpm deepsec process --project-id everruns --agent codex` only with an explicit budgeted focus (`--filter`, `--limit`, `--only-slugs`, or `--manifest`) unless the user asks for a full AI pass
+  - revalidate high-severity results with `pnpm deepsec revalidate --project-id everruns --agent codex --min-severity HIGH`
+- keep durable DeepSec workspace files tracked: `.deepsec/.gitignore`, `.deepsec/AGENTS.md`, `.deepsec/README.md`, `.deepsec/deepsec.config.ts`, `.deepsec/package.json`, `.deepsec/pnpm-lock.yaml`, `.deepsec/pnpm-workspace.yaml`, and `.deepsec/data/*/{INFO.md,SETUP.md}`
+- do not commit generated DeepSec state unless explicitly requested: `.deepsec/node_modules/`, `.deepsec/.env*.local`, `.deepsec/data/*/{files,runs,reports,project.json,tech.json}`
+- create Linear issues in the OSS project (EVE team) for actionable DeepSec findings that are not fixed in the current maintenance pass
+
 Good evidence:
 - threat model updated when behavior or trust boundaries changed
 - obvious gaps in auth, validation, secret handling, or data exposure were reviewed
+- DeepSec scan/process/revalidate run IDs, scope, finding count, and budget/cost noted when DeepSec was used
 - [GitHub Security Overview](https://github.com/everruns/everruns/security) checked for advisories
 - [Dependabot alerts](https://github.com/everruns/everruns/security/dependabot) reviewed and triaged
 - [Secret scanning alerts](https://github.com/everruns/everruns/security/secret-scanning?query=is%3Aopen+results%3Ageneric) reviewed — no open generic secret leaks
