@@ -379,7 +379,7 @@ pub async fn login(
             DEFAULT_ORG_ID,
             Some(user.id),
             "auth.login.failure",
-            ip.clone(),
+            ip,
             serde_json::json!({"reason": "no_password_hash"}),
         );
         return Err(AuthError::unauthorized("Invalid email or password"));

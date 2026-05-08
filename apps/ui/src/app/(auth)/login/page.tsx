@@ -18,6 +18,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { useAuthConfig, useLogin } from "@/hooks/use-auth";
 import { usePageTitle } from "@/hooks";
+import { ApiError } from "@/lib/api/client";
 import { getOAuthUrl, login } from "@/lib/api/auth";
 import { isBackendNavigationPath, sanitizeReturnTo } from "@/lib/auth-redirect";
 import { Loader2 } from "lucide-react";
@@ -78,13 +79,17 @@ export default function LoginPage() {
       }
       await loginMutation.mutateAsync({ email, password });
       router.push(target);
-    } catch {
+    } catch (err) {
       // EVE-452 / TM-AUTH-019: never render raw server messages on a login
-      // failure. The backend already returns a generic "Invalid email or
-      // password" for every credential failure path (unknown email,
-      // OAuth-only account, bad password) so a future regression cannot
-      // re-introduce an enumeration oracle through this component.
-      setError("Invalid email or password.");
+      // failure. Inspect the error type/status instead so non-credential
+      // problems (network, 500, CSRF) get a useful operator-facing fallback
+      // string while the credential-failure path still gets the fixed
+      // generic message that closes the enumeration oracle.
+      if (err instanceof ApiError && err.status === 401) {
+        setError("Invalid email or password.");
+      } else {
+        setError("Login failed. Please try again.");
+      }
     }
   };
 
