@@ -1202,4 +1202,35 @@ mod tests {
         assert_eq!(calls[0].name, "get_current_time");
         assert_eq!(calls[0].arguments["timezone"], "UTC");
     }
+
+    #[test]
+    fn realtime_session_payload_does_not_advertise_tools() {
+        let payload = realtime_session_payload(&NormalizedVoiceOptions {
+            model: DEFAULT_MODEL.to_string(),
+            voice: DEFAULT_VOICE.to_string(),
+            reasoning_effort: DEFAULT_REASONING_EFFORT.to_string(),
+            instructions: None,
+        });
+
+        assert_eq!(payload["tools"], json!([]));
+    }
+
+    #[tokio::test]
+    async fn realtime_tool_execution_is_disabled() {
+        let output = execute_realtime_tool(
+            SessionId::new(),
+            ToolCall {
+                id: "call_passthrough".to_string(),
+                name: "web_fetch".to_string(),
+                arguments: json!({ "url": "https://example.com" }),
+            },
+        )
+        .await;
+
+        assert_eq!(output.call_id, "call_passthrough");
+        assert_eq!(
+            serde_json::from_str::<Value>(&output.output).expect("json output"),
+            json!({ "error": "tool_execution_disabled" })
+        );
+    }
 }
