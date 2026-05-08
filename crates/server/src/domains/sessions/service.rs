@@ -1278,10 +1278,19 @@ impl SessionService {
             return Ok(());
         }
 
-        anyhow::bail!(
-            "Admin role required to create sessions with high-risk capabilities: {}",
-            high_risk.join(", ")
-        );
+        // EVE-437 / TM-AUTHZ: this is an authorization failure, not an
+        // internal error. Returning an `anyhow::bail!` here used to map to
+        // 500 because `classify_anyhow` did not recognize the message
+        // substring. A `PolicyError` maps to `Forbidden` (403) at the
+        // command boundary.
+        Err(everruns_core::PolicyError::denied(
+            "session_high_risk_capabilities",
+            &format!(
+                "Admin role required to create sessions with high-risk capabilities: {}",
+                high_risk.join(", ")
+            ),
+        )
+        .into())
     }
 
     /// Populate the `features` field on a session by aggregating features from

@@ -3,6 +3,7 @@
 // No policy checks, no input validation. Pure data access + mapping.
 
 use crate::domains::common::CommandError;
+use crate::errors::ResourceNotFoundError;
 use crate::storage::StorageBackend;
 use everruns_core::{
     AgentCapabilityConfig, Harness, HarnessId, HarnessStatus, InitialFile,
@@ -246,7 +247,10 @@ pub async fn resolve_effective(
             if chain.is_empty() {
                 return Ok(None);
             }
-            anyhow::bail!("Parent harness not found");
+            // EVE-437: typed 404 instead of an unclassified anyhow that
+            // would map to 500. The cycle case above stays as a generic
+            // bail because it is a true invariant violation.
+            return Err(ResourceNotFoundError::new("Parent harness").into());
         };
         cursor = harness.parent_harness_id;
         chain.push(harness);
