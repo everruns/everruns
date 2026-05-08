@@ -1,0 +1,20 @@
+{
+  "$schema": "https://www.cursor.com/schemas/environment.schema.json",
+  "//": [
+    "NOTE(sync): Keep this config aligned with .cursor/Dockerfile and scripts/init-cloud-env.sh.",
+    "Dockerfile preinstalls binaries; install still runs init-cloud-env.sh for repo-specific setup (gh repo default, doppler setup/auth checks).",
+    "If startup commands change here, update AGENTS.md Cloud Agent instructions too."
+  ],
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "install": "./scripts/init-cloud-env.sh && just init",
+  "start": "doppler run -- just start-all --no-watch",
+  "terminals": [
+    {
+      "name": "services",
+      "command": "doppler run -- just start-all --no-watch"
+    }
+  ]
+}
