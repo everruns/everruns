@@ -807,6 +807,32 @@ pub trait WorkflowEventStore: Send + Sync + 'static {
         Ok(vec![])
     }
 
+    /// Direct lookup of a single workflow by id, returning the same
+    /// `WorkflowInfoExtended` shape as `list_workflows`. Returns `Ok(None)`
+    /// when the workflow does not exist.
+    ///
+    /// EVE-455: API handlers must use this method instead of scanning the
+    /// first page of `list_workflows`, which silently returns 404 for any
+    /// workflow older than the page once a deployment crosses the page
+    /// limit. The default implementation falls back to the old scan with
+    /// a 1000-row cap so older external impls continue to compile, but
+    /// every backend in this crate overrides it with a direct id lookup.
+    async fn get_workflow_extended(
+        &self,
+        workflow_id: Uuid,
+    ) -> Result<Option<WorkflowInfoExtended>, StoreError> {
+        let workflows = self
+            .list_workflows(
+                WorkflowFilter::default(),
+                Pagination {
+                    offset: 0,
+                    limit: 1000,
+                },
+            )
+            .await?;
+        Ok(workflows.into_iter().find(|w| w.id == workflow_id))
+    }
+
     /// List tasks with filtering and pagination
     async fn list_tasks(
         &self,
