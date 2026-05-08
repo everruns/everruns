@@ -9,6 +9,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.8.28] - 2026-05-07
+
+### Highlights
+
+- **Agent versioning** - Agent definitions can now be versioned, letting operators iterate on agent configurations safely while keeping a stable production version.
+- **A2A inbound and outbound parity** - Inbound A2A channels now support `message/stream` SSE ([#1716](https://github.com/everruns/everruns/pull/1716)) and `tasks/get`/`tasks/cancel` with derived state ([#1720](https://github.com/everruns/everruns/pull/1720)); outbound A2A delegation is now governed by the network access policy ([#1711](https://github.com/everruns/everruns/pull/1711)).
+- **Declarative capabilities** - Capabilities can now be defined declaratively, with a runtime gate that blocks high-risk declarative dependencies ([#1710](https://github.com/everruns/everruns/pull/1710)).
+- **Cursor cloud agents integration** - New first-class integration for running Everruns agents from Cursor's cloud agents surface.
+- **MCP app resource rendering in chat** - Chat now renders `ui://everruns/...` MCP app resources inline so agents can return rich UI cards.
+- **Machine payment authority** - New payment authority surface lets agents and machine clients act on behalf of an authenticated principal for paid actions ([#1703](https://github.com/everruns/everruns/pull/1703)).
+- **Apps channels UI redesign** - The app channels management UI has been redesigned for clarity and faster channel configuration.
+
+### What's Changed
+
+- feat(capabilities): add declarative capabilities by [@chaliy](https://github.com/chaliy)
+- feat(payments): add machine payment authority ([#1703](https://github.com/everruns/everruns/pull/1703)) by [@chaliy](https://github.com/chaliy)
+- docs(reporting): evaluate StarRocks and DuckDB backends ([#1707](https://github.com/everruns/everruns/pull/1707)) by [@chaliy](https://github.com/chaliy)
+- feat(events): list_events debug filters + events_summary tool ([#1706](https://github.com/everruns/everruns/pull/1706)) by [@chaliy](https://github.com/chaliy)
+- docs(getting-started): add Claude Code section to Use in AI Tools ([#1702](https://github.com/everruns/everruns/pull/1702)) by [@chaliy](https://github.com/chaliy)
+- fix(apps): preserve app owner across channel ingress + wire tests into CI ([#1701](https://github.com/everruns/everruns/pull/1701)) by [@chaliy](https://github.com/chaliy)
+- docs(a2a): cross-link inbound channel and outbound capability specs ([#1708](https://github.com/everruns/everruns/pull/1708)) by [@chaliy](https://github.com/chaliy)
+- fix(mcp): remove stateless org switch tool by [@chaliy](https://github.com/chaliy)
+- fix(durable): reduce turn startup latency by [@chaliy](https://github.com/chaliy)
+- fix(payments): disable redirects in payment authority HTTP client ([#1709](https://github.com/everruns/everruns/pull/1709)) by [@chaliy](https://github.com/chaliy)
+- feat(a2a): implement message/stream SSE on inbound channel ([#1716](https://github.com/everruns/everruns/pull/1716)) by [@chaliy](https://github.com/chaliy)
+- feat(chat): render MCP app resources by [@chaliy](https://github.com/chaliy)
+- fix(capabilities): gate declarative high-risk dependencies ([#1710](https://github.com/everruns/everruns/pull/1710)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): search organisations in command palette by [@chaliy](https://github.com/chaliy)
+- feat(cursor): add cloud agents integration by [@chaliy](https://github.com/chaliy)
+- feat(a2a): add tasks/get and tasks/cancel with derived state ([#1720](https://github.com/everruns/everruns/pull/1720)) by [@chaliy](https://github.com/chaliy)
+- chore(specs): design realtime voice sessions by [@chaliy](https://github.com/chaliy)
+- feat(apps): redesign app channels UI by [@chaliy](https://github.com/chaliy)
+- fix(core): enforce network policy for A2A delegation ([#1711](https://github.com/everruns/everruns/pull/1711)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): bump next to 16.2.6 for security patches ([#1732](https://github.com/everruns/everruns/pull/1732)) by [@chaliy](https://github.com/chaliy)
+- test(worker): scaffold turmoil-based transport reliability tests ([#1724](https://github.com/everruns/everruns/pull/1724)) by [@chaliy](https://github.com/chaliy)
+- fix(server): keep AG-UI open through tool commentary by [@chaliy](https://github.com/chaliy)
+- feat(agent-versions): add flagged agent versioning by [@chaliy](https://github.com/chaliy)
+- fix(ui): skip auth proxy redirects when AUTH_MODE is none by [@chaliy](https://github.com/chaliy)
+- fix(server): harden public AG-UI image uploads ([#1712](https://github.com/everruns/everruns/pull/1712)) by [@chaliy](https://github.com/chaliy)
+
 ## [0.8.27] - 2026-05-07
 
 ### Highlights
