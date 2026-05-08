@@ -134,6 +134,38 @@ impl Database {
         Ok(result.rows_affected() > 0)
     }
 
+    /// Atomically consume (delete + return) a refresh token by its hash if it
+    /// is still valid. Used to enforce single-use rotation.
+    ///
+    /// EVE-454 / TM-AUTH-018: callers MUST replace the previous
+    /// `get_refresh_token_by_hash` + `delete_refresh_token` two-step pattern
+    /// with this method. The two-step pattern allowed concurrent refresh
+    /// requests with the same token to both pass the existence check before
+    /// either delete committed, minting multiple replacement tokens. Doing
+    /// the delete in one statement with `RETURNING` ensures only one
+    /// concurrent caller can observe the row.
+    ///
+    /// Also filters expired tokens at the SQL level so the handler does not
+    /// need a separate expiry check after consume.
+    pub async fn consume_refresh_token_by_hash(
+        &self,
+        token_hash: &str,
+    ) -> Result<Option<RefreshTokenRow>> {
+        let row = sqlx::query_as::<_, RefreshTokenRow>(
+            r#"
+            DELETE FROM refresh_tokens
+            WHERE token_hash = $1
+              AND expires_at > NOW()
+            RETURNING id, user_id, token_hash, expires_at, created_at
+            "#,
+        )
+        .bind(token_hash)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
     pub async fn delete_expired_refresh_tokens(&self) -> Result<u64> {
         let result = sqlx::query("DELETE FROM refresh_tokens WHERE expires_at < NOW()")
             .execute(&self.pool)

@@ -367,6 +367,53 @@ async fn test_refresh_reuse_revoked_token_returns_401() {
     );
 }
 
+// EVE-454: concurrent refresh requests using the same token must not both
+// succeed. The previous get-then-delete pattern allowed a race where two
+// requests passed the existence check before either delete committed,
+// minting multiple replacement refresh tokens. The atomic
+// `consume_refresh_token_by_hash` (DELETE … RETURNING) closes that window.
+#[tokio::test]
+async fn test_refresh_concurrent_requests_only_one_succeeds() {
+    let (router, _db) = auth_router().await;
+
+    let (_access, refresh, _cookies) =
+        register_user(&router, "concurrent@example.com", "password123").await;
+
+    // Fire multiple concurrent refreshes with the same refresh token.
+    let mut handles = Vec::new();
+    for _ in 0..8 {
+        let router = router.clone();
+        let refresh = refresh.clone();
+        handles.push(tokio::spawn(async move {
+            let (status, _body, _cookies) = send(
+                &router,
+                "POST",
+                "/v1/auth/refresh",
+                Some(json!({ "refresh_token": refresh })),
+                None,
+            )
+            .await;
+            status
+        }));
+    }
+
+    let mut ok = 0;
+    let mut unauthorized = 0;
+    for h in handles {
+        match h.await.unwrap() {
+            StatusCode::OK => ok += 1,
+            StatusCode::UNAUTHORIZED => unauthorized += 1,
+            other => panic!("unexpected status {other}"),
+        }
+    }
+
+    assert_eq!(
+        ok, 1,
+        "exactly one concurrent refresh must succeed (got ok={ok}, unauthorized={unauthorized})"
+    );
+    assert_eq!(unauthorized, 7, "the other 7 must be rejected");
+}
+
 #[tokio::test]
 async fn test_refresh_with_access_token_returns_401() {
     let (router, _db) = auth_router().await;

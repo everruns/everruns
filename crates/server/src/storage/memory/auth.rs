@@ -177,6 +177,22 @@ impl InMemoryDatabase {
         Ok(self.refresh_tokens.write().remove(&id).is_some())
     }
 
+    /// EVE-454 / TM-AUTH-018: atomic consume mirroring the Postgres
+    /// `DELETE … RETURNING`. Performs the lookup and removal under a single
+    /// write lock so concurrent callers cannot both observe the row.
+    pub async fn consume_refresh_token_by_hash(
+        &self,
+        token_hash: &str,
+    ) -> Result<Option<RefreshTokenRow>> {
+        let now = Self::now();
+        let mut tokens = self.refresh_tokens.write();
+        let id = tokens
+            .iter()
+            .find(|(_, t)| t.token_hash == token_hash && t.expires_at > now)
+            .map(|(id, _)| *id);
+        Ok(id.and_then(|id| tokens.remove(&id)))
+    }
+
     pub async fn delete_expired_refresh_tokens(&self) -> Result<u64> {
         let now = Self::now();
         let mut tokens = self.refresh_tokens.write();
