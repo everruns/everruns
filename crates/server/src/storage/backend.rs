@@ -1802,6 +1802,10 @@ impl StorageBackend {
         dispatch!(self, list_skills, org_id, search, include_archived)
     }
 
+    pub async fn list_non_deleted_skill_ids(&self, org_id: i64) -> Result<Vec<Uuid>> {
+        dispatch!(self, list_non_deleted_skill_ids, org_id)
+    }
+
     pub async fn update_skill(
         &self,
         org_id: i64,

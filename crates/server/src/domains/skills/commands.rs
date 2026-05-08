@@ -594,20 +594,15 @@ impl Command for ListSkillsUsage {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<HashMap<String, SkillUsage>, CommandError> {
-        let visible_skill_ids = ctx
-            .db
-            .list_skills(ctx.org_id(), None, true)
-            .await
-            .map_err(classify_anyhow)?
-            .into_iter()
-            .map(|row| row.id.uuid())
-            .collect::<std::collections::HashSet<_>>();
-
-        let (agent_counts, harness_counts) = tokio::try_join!(
+        let (visible_skill_ids, agent_counts, harness_counts) = tokio::try_join!(
+            ctx.db.list_non_deleted_skill_ids(ctx.org_id()),
             ctx.db.count_agent_capability_references(ctx.org_id()),
             ctx.db.count_harness_capability_references(ctx.org_id()),
         )
         .map_err(classify_anyhow)?;
+        let visible_skill_ids = visible_skill_ids
+            .into_iter()
+            .collect::<std::collections::HashSet<_>>();
 
         let mut usage: HashMap<String, SkillUsage> = HashMap::new();
         for (cap_id, count) in agent_counts {
