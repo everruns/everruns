@@ -3,8 +3,11 @@
 mod test_harness;
 
 use axum::http::{Method, StatusCode};
+use everruns_core::DEFAULT_ORG_ID;
+use everruns_server::storage::models::{AuditLogQuery, AuditLogRow};
 use serde_json::{Value, json};
 use test_harness::TestServer;
+use tokio::time::{Duration, sleep};
 
 async fn create_app_with_a2a(server: &TestServer, name: &str, message: &str) -> (Value, String) {
     create_app_with_a2a_mode(server, name, message, "shared_session").await
@@ -80,6 +83,35 @@ async fn list_user_message_texts(server: &TestServer, session_id: &str) -> Vec<S
             })
         })
         .collect()
+}
+
+async fn wait_for_app_invocation_audit_log(
+    server: &TestServer,
+    channel_id: &str,
+    session_id: &str,
+) -> AuditLogRow {
+    for _ in 0..20 {
+        let rows = server
+            .db
+            .list_audit_logs(AuditLogQuery {
+                org_id: DEFAULT_ORG_ID,
+                limit: 50,
+                action: Some("agent.app_invocation.started"),
+                ..Default::default()
+            })
+            .await
+            .expect("list audit logs");
+        if let Some(row) = rows.into_iter().find(|row| {
+            row.target_type.as_deref() == Some("app_channel")
+                && row.target_id.as_deref() == Some(channel_id)
+                && row.metadata.get("session_id").and_then(Value::as_str) == Some(session_id)
+        }) {
+            return row;
+        }
+        sleep(Duration::from_millis(25)).await;
+    }
+
+    panic!("expected app invocation audit log for channel {channel_id} session {session_id}");
 }
 
 #[tokio::test]
@@ -169,6 +201,57 @@ async fn a2a_message_send_creates_session_and_returns_submitted_task() {
     let texts = list_user_message_texts(&server, session_id).await;
     assert!(texts.iter().any(|t| t == "from a2a: hello"));
     assert!(texts.iter().any(|t| t == "from a2a: again"));
+}
+
+#[tokio::test]
+async fn a2a_message_send_emits_app_invocation_audit_log() {
+    let server = TestServer::in_memory().await;
+    let (app, api_key) = create_app_with_a2a(&server, "a2a-audit", "{{a2a.text}}").await;
+    let app_id = app["id"].as_str().unwrap();
+    let channel_id = app["channels"][0]["id"].as_str().unwrap();
+    publish_app(&server, app_id).await;
+
+    let body = serde_json::to_vec(&json!({
+        "jsonrpc": "2.0",
+        "id": "req-audit",
+        "method": "message/send",
+        "params": {
+            "message": {
+                "role": "user",
+                "messageId": "msg-audit",
+                "parts": [{ "kind": "text", "text": "audit me" }]
+            }
+        }
+    }))
+    .unwrap();
+
+    let response: Value = server
+        .request_raw(
+            Method::POST,
+            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            vec![
+                ("content-type", "application/json"),
+                ("authorization", &format!("Bearer {api_key}")),
+            ],
+            body,
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+
+    let session_id = response["result"]["contextId"].as_str().unwrap();
+    let audit_log = wait_for_app_invocation_audit_log(&server, channel_id, session_id).await;
+
+    assert_eq!(audit_log.domain, "agent");
+    assert_eq!(audit_log.action, "agent.app_invocation.started");
+    assert_eq!(audit_log.event_type, "agent.app_invocation.started");
+    assert_eq!(audit_log.actor_id, None);
+    assert_eq!(audit_log.metadata["source"], "app_a2a");
+    assert_eq!(audit_log.metadata["app_id"], app_id);
+    assert_eq!(audit_log.metadata["app_channel_id"], channel_id);
+    assert_eq!(audit_log.metadata["app_channel_type"], "a2a");
+    assert_eq!(audit_log.metadata["session_id"], session_id);
+    assert_eq!(audit_log.metadata["created_session"], true);
 }
 
 #[tokio::test]
