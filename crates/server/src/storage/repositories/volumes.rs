@@ -62,6 +62,22 @@ impl Database {
         Ok(row)
     }
 
+    pub async fn get_volume_organization_id(&self, public_id: &str) -> Result<Option<i64>> {
+        let row = sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT org_id
+            FROM volumes
+            WHERE public_id = $1 AND status != 'deleted'
+            LIMIT 1
+            "#,
+        )
+        .bind(public_id)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
     pub async fn list_volumes(
         &self,
         org_id: i64,
