@@ -23,6 +23,14 @@ pub struct CreateMemoryStoreRequest {
     pub is_default: bool,
 }
 
+#[derive(Debug, Clone, Default, Deserialize, ToSchema)]
+pub struct UpdateMemoryStoreRequest {
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub is_default: Option<bool>,
+}
+
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct MemoryResponse {
     #[schema(value_type = String, example = "mem_01933b5a000070008000000000000001")]

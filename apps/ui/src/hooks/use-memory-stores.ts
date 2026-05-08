@@ -7,8 +7,14 @@ import {
   getMemoryStore,
   listMemories,
   listMemoryStores,
+  updateMemoryStore,
 } from "@/lib/api/memory-stores";
-import type { CreateMemoryStoreRequest, ListMemoriesParams, MemoryStore } from "@/lib/api/types";
+import type {
+  CreateMemoryStoreRequest,
+  ListMemoriesParams,
+  MemoryStore,
+  UpdateMemoryStoreRequest,
+} from "@/lib/api/types";
 import { queryKeys } from "@/lib/query-keys";
 import { useOrgScopedQuery } from "./create-crud-hooks";
 
@@ -39,6 +45,17 @@ export function useCreateMemoryStore() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (request: CreateMemoryStoreRequest) => createMemoryStore(request),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.memoryStores.all });
+    },
+  });
+}
+
+export function useUpdateMemoryStore() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ storeId, request }: { storeId: string; request: UpdateMemoryStoreRequest }) =>
+      updateMemoryStore(storeId, request),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.memoryStores.all });
     },

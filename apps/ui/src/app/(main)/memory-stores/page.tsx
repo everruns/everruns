@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Brain, ChevronRight, Plus, Search, Star, Trash2, X } from "lucide-react";
+import { Brain, ChevronRight, Pencil, Plus, Search, Star, Trash2, X } from "lucide-react";
 import { QueryStateWrapper } from "@/components/query-state-wrapper";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -37,12 +37,14 @@ import {
   useMemories,
   useMemoryStores,
   usePageTitle,
+  useUpdateMemoryStore,
 } from "@/hooks";
 import type {
   CreateMemoryStoreRequest,
   Memory,
   MemoryContentPart,
   MemoryStore,
+  UpdateMemoryStoreRequest,
 } from "@/lib/api/types";
 import { formatRelativeTime } from "@/lib/formatting";
 
@@ -58,6 +60,7 @@ const KIND_OPTIONS = [
 export default function MemoryStoresPage() {
   usePageTitle("Memory");
   const [createOpen, setCreateOpen] = useState(false);
+  const [editStoreId, setEditStoreId] = useState<string | null>(null);
   const [selectedStoreId, setSelectedStoreId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [kind, setKind] = useState<string>("all");
@@ -70,9 +73,11 @@ export default function MemoryStoresPage() {
   const activeStore = stores?.find((s) => s.id === activeStoreId) ?? null;
 
   const createStore = useCreateMemoryStore();
+  const updateStore = useUpdateMemoryStore();
   const forgetMemory = useForgetMemory(activeStoreId ?? undefined);
 
   const trimmedSearch = search.trim();
+  const editStore = editStoreId ? (stores?.find((s) => s.id === editStoreId) ?? null) : null;
   const memoriesQuery = useMemories(activeStoreId ?? undefined, {
     query: trimmedSearch,
     kind: kind === "all" ? undefined : kind,
@@ -146,6 +151,7 @@ export default function MemoryStoresPage() {
                   store={store}
                   active={store.id === activeStoreId}
                   onSelect={() => setSelectedStoreId(store.id)}
+                  onEdit={() => setEditStoreId(store.id)}
                 />
               ))}
             </aside>
@@ -234,6 +240,20 @@ export default function MemoryStoresPage() {
         }}
       />
 
+      <EditStoreDialog
+        store={editStore}
+        open={editStore !== null}
+        isPending={updateStore.isPending}
+        onOpenChange={(open) => {
+          if (!open) setEditStoreId(null);
+        }}
+        onSubmit={async (request) => {
+          if (!editStore) return;
+          await updateStore.mutateAsync({ storeId: editStore.id, request });
+          setEditStoreId(null);
+        }}
+      />
+
       <MemoryDetailDrawer
         memory={
           detailMemoryId
@@ -260,40 +280,54 @@ function StoreCard({
   store,
   active,
   onSelect,
+  onEdit,
 }: {
   store: MemoryStore;
   active: boolean;
   onSelect: () => void;
+  onEdit: () => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onSelect}
+    <div
       aria-current={active ? "true" : undefined}
-      className={`flex w-full items-center gap-3 rounded-md border px-3 py-2.5 text-left transition hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+      className={`flex w-full items-center rounded-md border transition ${
         active ? "border-primary bg-accent/60 shadow-sm" : "border-border bg-card"
       }`}
     >
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="truncate text-sm font-semibold">{store.name}</span>
-          {store.is_default && (
-            <Badge variant="secondary" className="shrink-0 px-1.5 py-0 text-[10px]">
-              <Star className="h-3 w-3" /> Default
-            </Badge>
-          )}
+      <button
+        type="button"
+        onClick={onSelect}
+        className="flex min-w-0 flex-1 items-center gap-3 rounded-l-md px-3 py-2.5 text-left transition hover:bg-accent/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="truncate text-sm font-semibold">{store.name}</span>
+            {store.is_default && (
+              <Badge variant="secondary" className="shrink-0 px-1.5 py-0 text-[10px]">
+                <Star className="h-3 w-3" /> Default
+              </Badge>
+            )}
+          </div>
+          <div className="mt-0.5 text-xs text-muted-foreground">
+            {store.active_memory_count} active{" "}
+            {store.active_memory_count === 1 ? "memory" : "memories"}
+          </div>
         </div>
-        <div className="mt-0.5 text-xs text-muted-foreground">
-          {store.active_memory_count} active{" "}
-          {store.active_memory_count === 1 ? "memory" : "memories"}
-        </div>
-      </div>
-      <ChevronRight
-        className={`h-4 w-4 shrink-0 transition ${
-          active ? "text-primary" : "text-muted-foreground/40"
-        }`}
-      />
-    </button>
+        <ChevronRight
+          className={`h-4 w-4 shrink-0 transition ${
+            active ? "text-primary" : "text-muted-foreground/40"
+          }`}
+        />
+      </button>
+      <button
+        type="button"
+        onClick={onEdit}
+        aria-label={`Edit ${store.name}`}
+        className="mr-2 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition hover:bg-background hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <Pencil className="h-3.5 w-3.5" />
+      </button>
+    </div>
   );
 }
 
@@ -739,6 +773,110 @@ function CreateStoreDialog({
             }}
           >
             Create
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function EditStoreDialog({
+  store,
+  open,
+  isPending,
+  onOpenChange,
+  onSubmit,
+}: {
+  store: MemoryStore | null;
+  open: boolean;
+  isPending: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSubmit: (request: UpdateMemoryStoreRequest) => Promise<void>;
+}) {
+  const [name, setName] = useState("");
+  const [isDefault, setIsDefault] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Initialize form state only when the dialog opens onto a different store
+  // (or onto a store at all). Re-running on every store-object identity change
+  // would clobber in-progress edits whenever the underlying query refetches.
+  useEffect(() => {
+    if (store) {
+      setName(store.name);
+      setIsDefault(store.is_default);
+      setError(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store?.id]);
+
+  if (!store) return null;
+
+  const trimmed = name.trim();
+  const nameChanged = trimmed.length > 0 && trimmed !== store.name;
+  const defaultChanged = isDefault !== store.is_default;
+  const dirty = nameChanged || defaultChanged;
+  // Demoting the only default is rejected server-side. Disable the toggle
+  // when the store is currently the default — the supported way to move the
+  // default is to promote a different store, which demotes this one.
+  const disableDefaultToggle = store.is_default;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Edit memory store</DialogTitle>
+          <DialogDescription>
+            Rename the store or change which one is the org default.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <label className="text-sm font-medium" htmlFor="memory-store-edit-name">
+              Name
+            </label>
+            <Input
+              id="memory-store-edit-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="team-knowledge"
+            />
+          </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={isDefault}
+              disabled={disableDefaultToggle}
+              onChange={(e) => setIsDefault(e.target.checked)}
+            />
+            Make this the default store for the organization
+            {disableDefaultToggle && (
+              <span className="text-xs text-muted-foreground">
+                — promote another store to demote this one
+              </span>
+            )}
+          </label>
+          {error && <p className="text-sm text-destructive">{error}</p>}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>
+            Cancel
+          </Button>
+          <Button
+            variant="accent"
+            disabled={!dirty || isPending || trimmed.length === 0}
+            onClick={async () => {
+              setError(null);
+              const request: UpdateMemoryStoreRequest = {};
+              if (nameChanged) request.name = trimmed;
+              if (defaultChanged) request.is_default = isDefault;
+              try {
+                await onSubmit(request);
+              } catch (e) {
+                setError(e instanceof Error ? e.message : "Failed to update memory store");
+              }
+            }}
+          >
+            Save
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -165,6 +165,7 @@ use utoipa::OpenApi;
         api::memory_stores::list_memory_stores,
         api::memory_stores::create_memory_store,
         api::memory_stores::get_memory_store,
+        api::memory_stores::update_memory_store,
         api::memory_stores::list_memories,
         api::memory_stores::forget_memory,
         // Knowledge Bases
@@ -335,6 +336,7 @@ use utoipa::OpenApi;
             api::volumes::ListVolumesQuery,
             api::volumes::VolumeResponse,
             api::memory_stores::CreateMemoryStoreRequest,
+            api::memory_stores::UpdateMemoryStoreRequest,
             api::memory_stores::ListMemoriesQuery,
             api::memory_stores::ListMemoriesResponse,
             api::memory_stores::MemoryResponse,

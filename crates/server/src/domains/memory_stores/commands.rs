@@ -1,10 +1,10 @@
 use super::types::{
     CreateMemoryStoreRequest, ListMemoriesQuery, ListMemoriesResponse, MemoryResponse,
-    MemoryStoreResponse, memory_response, store_response,
+    MemoryStoreResponse, UpdateMemoryStoreRequest, memory_response, store_response,
 };
 use super::{MEMORY_STORE_MANAGE, MEMORY_STORE_VIEW};
 use crate::domains::common::*;
-use crate::storage::models::{CreateMemoryStoreRow, ListMemoriesFilter};
+use crate::storage::models::{CreateMemoryStoreRow, ListMemoriesFilter, UpdateMemoryStoreRow};
 use everruns_core::Policy;
 use everruns_core::memory_store::MemoryLimits;
 use everruns_core::typed_id::{MemoryId, MemoryStoreId};
@@ -159,6 +159,111 @@ impl Command for CreateMemoryStore {
 }
 
 inventory::submit! { CommandDescriptor::of::<CreateMemoryStore>() }
+
+#[derive(Debug, Default, Deserialize, ToSchema)]
+pub struct UpdateMemoryStore {
+    pub store_id: String,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub is_default: Option<bool>,
+}
+
+impl UpdateMemoryStore {
+    pub fn from_request(store_id: String, req: UpdateMemoryStoreRequest) -> Self {
+        Self {
+            store_id,
+            name: req.name,
+            is_default: req.is_default,
+        }
+    }
+}
+
+impl Command for UpdateMemoryStore {
+    type Output = MemoryStoreResponse;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "update_memory_store",
+            category: "memory_stores",
+            description: "Rename a memory store and/or change which one is the org default.",
+            method: "PATCH",
+            path: "/v1/memory-stores/{store_id}",
+        }
+    }
+
+    fn positional_arg() -> Option<&'static str> {
+        Some("store_id")
+    }
+
+    fn policy() -> Option<&'static Policy> {
+        Some(&MEMORY_STORE_MANAGE)
+    }
+
+    fn output_schema() -> serde_json::Value {
+        output_schema_for::<MemoryStoreResponse>()
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<MemoryStoreResponse, CommandError> {
+        let id = parse_store_id(&self.store_id)?;
+
+        if self.name.is_none() && self.is_default.is_none() {
+            return Err(CommandError::bad_request(
+                "Provide at least one of `name` or `is_default`.",
+            ));
+        }
+
+        let validated_name = match self.name.as_deref() {
+            Some(n) => Some(validate_store_name(n)?),
+            None => None,
+        };
+
+        // Look up the existing store first so we can reject a demotion of the
+        // only default store with a clear error and return 404 before any write.
+        let existing = ctx
+            .db
+            .get_memory_store_by_public_id(ctx.org_id(), &id.to_string())
+            .await
+            .map_err(classify_anyhow)?
+            .ok_or_else(|| CommandError::not_found("Memory store"))?;
+
+        // Demoting the only default would leave the org without a default
+        // store. Reject with a clear error; promoting another store first
+        // (or PATCHing a different store with `is_default=true`, which
+        // demotes this one in the same transaction) is the supported way to
+        // move the default.
+        if matches!(self.is_default, Some(false)) && existing.is_default {
+            return Err(CommandError::bad_request(
+                "Cannot unset is_default on the only default memory store. \
+                 Promote another store instead — setting is_default=true on \
+                 it will demote this one atomically.",
+            ));
+        }
+
+        let row = ctx
+            .db
+            .update_memory_store(
+                ctx.org_id(),
+                &id.to_string(),
+                UpdateMemoryStoreRow {
+                    name: validated_name,
+                    is_default: self.is_default,
+                },
+            )
+            .await
+            .map_err(classify_anyhow)?
+            .ok_or_else(|| CommandError::not_found("Memory store"))?;
+
+        let count = ctx
+            .db
+            .count_active_memories(row.id)
+            .await
+            .map_err(classify_anyhow)?;
+        store_response(row, count).map_err(classify_anyhow)
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<UpdateMemoryStore>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct GetMemoryStore {
@@ -587,5 +692,152 @@ mod tests {
         // ListMemoryStores in other org should be empty.
         let listed = ListMemoryStores.run(&org_b).await.expect("list stores");
         assert!(listed.is_empty());
+    }
+
+    #[tokio::test]
+    async fn rename_store_updates_name() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = ctx_with_db(DEFAULT_ORG_ID, db);
+
+        let created = CreateMemoryStore {
+            name: "old-name".into(),
+            is_default: true,
+        }
+        .run(&ctx)
+        .await
+        .expect("create store");
+
+        let updated = UpdateMemoryStore {
+            store_id: created.id.to_string(),
+            name: Some("new-name".into()),
+            is_default: None,
+        }
+        .run(&ctx)
+        .await
+        .expect("rename store");
+
+        assert_eq!(updated.id, created.id);
+        assert_eq!(updated.name, "new-name");
+        assert!(updated.is_default);
+    }
+
+    #[tokio::test]
+    async fn promoting_default_demotes_previous_default() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = ctx_with_db(DEFAULT_ORG_ID, db);
+
+        let first = CreateMemoryStore {
+            name: "first".into(),
+            is_default: true,
+        }
+        .run(&ctx)
+        .await
+        .expect("create first store");
+        let second = CreateMemoryStore {
+            name: "second".into(),
+            is_default: false,
+        }
+        .run(&ctx)
+        .await
+        .expect("create second store");
+
+        let promoted = UpdateMemoryStore {
+            store_id: second.id.to_string(),
+            name: None,
+            is_default: Some(true),
+        }
+        .run(&ctx)
+        .await
+        .expect("promote second");
+        assert!(promoted.is_default);
+
+        let listed = ListMemoryStores.run(&ctx).await.expect("list stores");
+        let by_id: std::collections::HashMap<_, _> =
+            listed.iter().map(|s| (s.id, s.is_default)).collect();
+        assert_eq!(by_id.get(&first.id), Some(&false));
+        assert_eq!(by_id.get(&second.id), Some(&true));
+    }
+
+    #[tokio::test]
+    async fn rename_to_existing_name_returns_conflict() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = ctx_with_db(DEFAULT_ORG_ID, db);
+
+        let _ = CreateMemoryStore {
+            name: "team-a".into(),
+            is_default: true,
+        }
+        .run(&ctx)
+        .await
+        .expect("create team-a");
+        let team_b = CreateMemoryStore {
+            name: "team-b".into(),
+            is_default: false,
+        }
+        .run(&ctx)
+        .await
+        .expect("create team-b");
+
+        // Case-insensitive collision: "TEAM-A" should clash with "team-a".
+        let err = UpdateMemoryStore {
+            store_id: team_b.id.to_string(),
+            name: Some("TEAM-A".into()),
+            is_default: None,
+        }
+        .run(&ctx)
+        .await
+        .expect_err("rename should conflict");
+        assert!(matches!(err, CommandError::Conflict(_)));
+    }
+
+    #[tokio::test]
+    async fn demoting_only_default_is_rejected() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = ctx_with_db(DEFAULT_ORG_ID, db);
+
+        let only = CreateMemoryStore {
+            name: "only".into(),
+            is_default: true,
+        }
+        .run(&ctx)
+        .await
+        .expect("create only store");
+
+        let err = UpdateMemoryStore {
+            store_id: only.id.to_string(),
+            name: None,
+            is_default: Some(false),
+        }
+        .run(&ctx)
+        .await
+        .expect_err("demote-only-default should be rejected");
+        assert!(matches!(err, CommandError::BadRequest(_)));
+
+        let listed = ListMemoryStores.run(&ctx).await.expect("list stores");
+        assert!(listed.iter().any(|s| s.id == only.id && s.is_default));
+    }
+
+    #[tokio::test]
+    async fn update_with_no_fields_is_bad_request() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = ctx_with_db(DEFAULT_ORG_ID, db);
+
+        let store = CreateMemoryStore {
+            name: "store".into(),
+            is_default: true,
+        }
+        .run(&ctx)
+        .await
+        .expect("create store");
+
+        let err = UpdateMemoryStore {
+            store_id: store.id.to_string(),
+            name: None,
+            is_default: None,
+        }
+        .run(&ctx)
+        .await
+        .expect_err("empty update should fail");
+        assert!(matches!(err, CommandError::BadRequest(_)));
     }
 }

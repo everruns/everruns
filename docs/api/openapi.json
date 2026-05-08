@@ -4458,6 +4458,75 @@
             }
           }
         }
+      },
+      "patch": {
+        "tags": [
+          "memory_stores"
+        ],
+        "operationId": "update_memory_store",
+        "parameters": [
+          {
+            "name": "store_id",
+            "in": "path",
+            "description": "Memory store ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMemoryStoreRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Memory store updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemoryStoreResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid input",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict (duplicate name or concurrent default reassignment)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/v1/memory-stores/{store_id}/memories": {
@@ -20316,6 +20385,23 @@
             ],
             "description": "The URL of the MCP server endpoint.",
             "example": "https://mcp.example.com/v1/mcp"
+          }
+        }
+      },
+      "UpdateMemoryStoreRequest": {
+        "type": "object",
+        "properties": {
+          "is_default": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         }
       },

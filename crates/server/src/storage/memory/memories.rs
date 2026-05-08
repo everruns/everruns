@@ -108,6 +108,58 @@ impl InMemoryDatabase {
         Ok(result)
     }
 
+    pub async fn update_memory_store(
+        &self,
+        org_id: i64,
+        public_id: &str,
+        input: UpdateMemoryStoreRow,
+    ) -> Result<Option<MemoryStoreDbRow>> {
+        let now = Self::now();
+        let mut stores = self.memory_stores.write();
+
+        let target_id = stores
+            .values()
+            .find(|s| s.org_id == org_id && s.public_id == public_id)
+            .map(|s| s.id);
+        let Some(target_id) = target_id else {
+            return Ok(None);
+        };
+
+        // Validate case-insensitive name uniqueness within the org. The
+        // Postgres backend gets this for free from the unique partial index;
+        // mirror it here so dev mode (in-memory) matches production behaviour.
+        if let Some(ref new_name) = input.name {
+            let collision = stores.values().any(|s| {
+                s.org_id == org_id && s.id != target_id && s.name.eq_ignore_ascii_case(new_name)
+            });
+            if collision {
+                bail!("memory store name already exists");
+            }
+        }
+
+        // Promote: demote the previous default first.
+        if matches!(input.is_default, Some(true)) {
+            for s in stores.values_mut() {
+                if s.org_id == org_id && s.id != target_id && s.is_default {
+                    s.is_default = false;
+                    s.updated_at = now;
+                }
+            }
+        }
+
+        let target = stores
+            .get_mut(&target_id)
+            .expect("memory store row must exist after id lookup");
+        if let Some(ref new_name) = input.name {
+            target.name = new_name.clone();
+        }
+        if let Some(new_default) = input.is_default {
+            target.is_default = new_default;
+        }
+        target.updated_at = now;
+        Ok(Some(target.clone()))
+    }
+
     pub async fn count_memory_stores(&self, org_id: i64) -> Result<i64> {
         Ok(self
             .memory_stores

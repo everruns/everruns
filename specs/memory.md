@@ -163,8 +163,18 @@ Org-scoped CRUD lives at `/v1/memory-stores`:
 | `GET` | `/v1/memory-stores` | List org memory stores |
 | `POST` | `/v1/memory-stores` | Create a new store |
 | `GET` | `/v1/memory-stores/{store_id}` | Get a store with active memory count |
+| `PATCH` | `/v1/memory-stores/{store_id}` | Rename and/or change the org default (optional `name`, `is_default`) |
 | `GET` | `/v1/memory-stores/{store_id}/memories` | Search memories (`query`, `kind`, `tag[]`, `include_inactive`, `limit`) |
 | `DELETE` | `/v1/memory-stores/{store_id}/memories/{memory_id}` | Forget (soft-delete) a memory |
+
+`PATCH` accepts a partial body — supply `name`, `is_default`, or both. Names
+are unique per org case-insensitively (`idx_memory_stores_org_lower_name`); a
+duplicate returns `409`. Promoting a store to default
+(`is_default = true`) atomically demotes the previous default within the
+same transaction so the unique partial index `idx_memory_stores_org_default`
+stays satisfied. **Demoting the only default store is rejected** with `400`
+— move the default by promoting another store instead, which demotes the
+current one in the same transaction.
 
 All routes resolve org from the authenticated request; cross-org access
 returns `404` rather than disclosing existence. Full handlers in
