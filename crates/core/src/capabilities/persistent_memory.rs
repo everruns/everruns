@@ -59,16 +59,28 @@ impl Capability for MemoryCapability {
     }
 
     fn tools_with_config(&self, config: &Value) -> Vec<Box<dyn Tool>> {
-        let config = MemoryConfig::from_json(config);
+        // `validate_config` runs ahead of capability assignment, so by the
+        // time we reach `tools_with_config` an unparseable JSON is already
+        // rejected upstream. Falling back to defaults here (vs panicking)
+        // keeps the deserialization tolerant to forward-compatible additions.
+        let config = MemoryConfig::from_json(config).unwrap_or_default();
         vec![
-            Box::new(RememberTool {
-                config: config.clone(),
-            }),
-            Box::new(RecallTool {
-                config: config.clone(),
-            }),
-            Box::new(ForgetTool { config }),
+            Box::new(RememberTool::new(config.clone())),
+            Box::new(RecallTool::new(config.clone())),
+            Box::new(ForgetTool::new(config)),
         ]
+    }
+
+    fn validate_config(&self, config: &Value) -> std::result::Result<(), String> {
+        if config.is_null() {
+            return Ok(());
+        }
+        // Reject malformed configs at validation time so capability assignment
+        // surfaces a clear error instead of silently routing memory ops to the
+        // org default store. This preserves store-level isolation.
+        MemoryConfig::from_json(config).map(|_| ()).map_err(|e| {
+            format!("Invalid memory capability config: {e}. Expected: {{ \"store\"?: \"mem_store_…\", \"passive_recall_count\"?: u32 }}.")
+        })
     }
 
     fn config_schema(&self) -> Option<Value> {
@@ -129,8 +141,15 @@ impl Default for MemoryConfig {
 }
 
 impl MemoryConfig {
-    pub fn from_json(value: &Value) -> Self {
-        serde_json::from_value(value.clone()).unwrap_or_default()
+    /// Parse a `MemoryConfig` from JSON.
+    ///
+    /// Returns an error when the JSON is structurally wrong (e.g. wrong field
+    /// types). `null` and missing optional fields fall back to defaults.
+    pub fn from_json(value: &Value) -> std::result::Result<Self, serde_json::Error> {
+        if value.is_null() {
+            return Ok(Self::default());
+        }
+        serde_json::from_value(value.clone())
     }
 }
 
@@ -190,12 +209,22 @@ pub struct RememberTool {
     config: MemoryConfig,
 }
 
+impl RememberTool {
+    pub fn new(config: MemoryConfig) -> Self {
+        Self { config }
+    }
+}
+
+impl Default for RememberTool {
+    fn default() -> Self {
+        Self::new(MemoryConfig::default())
+    }
+}
+
 #[cfg(test)]
 impl RememberTool {
     fn with_default_config() -> Self {
-        Self {
-            config: MemoryConfig::default(),
-        }
+        Self::default()
     }
 }
 
@@ -379,12 +408,22 @@ pub struct RecallTool {
     config: MemoryConfig,
 }
 
+impl RecallTool {
+    pub fn new(config: MemoryConfig) -> Self {
+        Self { config }
+    }
+}
+
+impl Default for RecallTool {
+    fn default() -> Self {
+        Self::new(MemoryConfig::default())
+    }
+}
+
 #[cfg(test)]
 impl RecallTool {
     fn with_default_config() -> Self {
-        Self {
-            config: MemoryConfig::default(),
-        }
+        Self::default()
     }
 }
 
@@ -548,12 +587,22 @@ pub struct ForgetTool {
     config: MemoryConfig,
 }
 
+impl ForgetTool {
+    pub fn new(config: MemoryConfig) -> Self {
+        Self { config }
+    }
+}
+
+impl Default for ForgetTool {
+    fn default() -> Self {
+        Self::new(MemoryConfig::default())
+    }
+}
+
 #[cfg(test)]
 impl ForgetTool {
     fn with_default_config() -> Self {
-        Self {
-            config: MemoryConfig::default(),
-        }
+        Self::default()
     }
 }
 
@@ -941,8 +990,19 @@ mod tests {
 
     #[test]
     fn test_memory_config_from_json() {
-        let config = MemoryConfig::from_json(&json!({"passive_recall_count": 10}));
+        let config = MemoryConfig::from_json(&json!({"passive_recall_count": 10})).unwrap();
         assert_eq!(config.passive_recall_count, 10);
+
+        // Null falls back to defaults.
+        let null_config = MemoryConfig::from_json(&Value::Null).unwrap();
+        assert_eq!(
+            null_config.passive_recall_count,
+            default_passive_recall_count()
+        );
+        assert!(null_config.store.is_none());
+
+        // Wrong type surfaces a serde error instead of silently defaulting.
+        assert!(MemoryConfig::from_json(&json!({"passive_recall_count": "ten"})).is_err());
     }
 
     #[test]
