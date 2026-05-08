@@ -228,6 +228,17 @@ pub struct SkillFileEntry {
     pub content: String,
 }
 
+/// Number of agents and harnesses that reference a skill via its
+/// `skill:{uuid}` capability id. The `/v1/skills/usage` endpoint returns this
+/// keyed by public `SkillId`; skills with no references are omitted from the
+/// map and the UI defaults missing entries to zero.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct SkillUsage {
+    pub agents: u64,
+    pub harnesses: u64,
+}
+
 /// Validation result for SKILL.md
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]

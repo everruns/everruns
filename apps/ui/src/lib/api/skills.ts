@@ -7,6 +7,7 @@ import type {
   CreateSkillRequest,
   Skill,
   SkillContent,
+  SkillUsageMap,
   SkillValidationResult,
   UpdateSkillRequest,
   ValidateSkillRequest,
@@ -25,6 +26,11 @@ export const destroySkill = skillsCrudApi.destroy;
 
 export async function getSkillContent(skillId: string): Promise<SkillContent> {
   const response = await api.get<SkillContent>(`/v1/skills/${skillId}/content`);
+  return response.data;
+}
+
+export async function getSkillsUsage(): Promise<SkillUsageMap> {
+  const response = await api.get<SkillUsageMap>("/v1/skills/usage");
   return response.data;
 }
 

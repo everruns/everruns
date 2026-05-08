@@ -36,6 +36,15 @@ export interface SkillFileEntry {
   content: string;
 }
 
+/** Per-skill usage counts (active agents/harnesses referencing the skill capability). */
+export interface SkillUsage {
+  agents: number;
+  harnesses: number;
+}
+
+/** Map keyed by SkillId (e.g. `skill_<32hex>`); skills with zero usage are absent. */
+export type SkillUsageMap = Record<string, SkillUsage>;
+
 /** Validation result for SKILL.md */
 export interface SkillValidationResult {
   valid: boolean;

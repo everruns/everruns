@@ -370,7 +370,7 @@ pub use session_sqldb::{
     SqlQueryResult, TableSchema,
 };
 pub use skill::{
-    ParsedSkillMd, Skill, SkillContent, SkillFileEntry, SkillSourceType, SkillStatus,
+    ParsedSkillMd, Skill, SkillContent, SkillFileEntry, SkillSourceType, SkillStatus, SkillUsage,
     SkillValidationResult, parse_skill_md, validate_skill_md, validate_skill_name,
 };
 pub use typed_id::{

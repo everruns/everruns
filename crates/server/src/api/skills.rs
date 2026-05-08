@@ -21,10 +21,11 @@ use axum::{
 };
 use axum_extra::extract::Multipart;
 use everruns_core::{
-    Caller, ResourceConfigResponse, Skill, SkillContent, SkillValidationResult,
+    Caller, ResourceConfigResponse, Skill, SkillContent, SkillUsage, SkillValidationResult,
     evaluate_policies_with, validate_skill_md,
 };
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::sync::Arc;
 use utoipa::{IntoParams, ToSchema};
 
@@ -128,6 +129,7 @@ pub fn routes(state: AppState) -> Router {
     Router::new()
         .route("/v1/skills", post(create_skill).get(list_skills))
         .route("/v1/skills/config", get(skill_config))
+        .route("/v1/skills/usage", get(list_skills_usage))
         .route(
             "/v1/skills/upload",
             post(upload_skill).layer(DefaultBodyLimit::max(MAX_ARCHIVE_UPLOAD)),
@@ -262,6 +264,25 @@ pub async fn list_skills(
             search: query.search,
             include_archived: query.include_archived.unwrap_or(false),
         })
+        .await
+}
+
+/// GET /v1/skills/usage - Count agents/harnesses referencing each skill
+#[utoipa::path(
+    get,
+    path = "/v1/skills/usage",
+    responses(
+        (status = 200, description = "Usage map keyed by skill id", body = HashMap<String, SkillUsage>),
+    ),
+    tag = "skills"
+)]
+pub async fn list_skills_usage(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+) -> ApiResult<HashMap<String, SkillUsage>> {
+    state
+        .dispatcher(&org)
+        .run(crate::domains::skills::ListSkillsUsage {})
         .await
 }
 

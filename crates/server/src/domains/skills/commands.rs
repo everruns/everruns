@@ -11,7 +11,8 @@ use super::types::{CreateSkillRequest, CreateSkillRow, UpdateSkill, UpdateSkillR
 use super::{SKILL_DANGEROUS, SKILL_MANAGE, SKILL_VIEW};
 use crate::domains::common::*;
 use everruns_core::{
-    Policy, Skill, SkillContent, SkillFileEntry, SkillId, SkillStatus, parse_skill_md,
+    Policy, SKILL_CAPABILITY_PREFIX, Skill, SkillContent, SkillFileEntry, SkillId, SkillStatus,
+    SkillUsage, parse_skill_md,
 };
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -562,3 +563,61 @@ impl Command for DestroySkill {
 }
 
 inventory::submit! { CommandDescriptor::of::<DestroySkill>() }
+
+// ============================================================================
+// ListSkillsUsage
+// ============================================================================
+
+/// List skill usage counts: how many active agents and harnesses reference each
+/// skill via its `skill:{uuid}` capability id. Returned map is keyed by the
+/// public SkillId string (e.g. `skill_<32hex>`). Skills with zero references
+/// are omitted; the UI defaults missing entries to zero.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ListSkillsUsage {}
+
+impl Command for ListSkillsUsage {
+    type Output = HashMap<String, SkillUsage>;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "list_skills_usage",
+            category: "skills",
+            description: "Count agents and harnesses referencing each skill capability.",
+            method: "GET",
+            path: "/v1/skills/usage",
+        }
+    }
+
+    fn policy() -> Option<&'static Policy> {
+        Some(&SKILL_VIEW)
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<HashMap<String, SkillUsage>, CommandError> {
+        let (agent_counts, harness_counts) = tokio::try_join!(
+            ctx.db.count_agent_capability_references(ctx.org_id()),
+            ctx.db.count_harness_capability_references(ctx.org_id()),
+        )
+        .map_err(classify_anyhow)?;
+
+        let mut usage: HashMap<String, SkillUsage> = HashMap::new();
+        for (cap_id, count) in agent_counts {
+            if let Some(uuid_str) = cap_id.strip_prefix(SKILL_CAPABILITY_PREFIX)
+                && let Ok(uuid) = uuid::Uuid::parse_str(uuid_str)
+            {
+                let key = SkillId::from_uuid(uuid).to_string();
+                usage.entry(key).or_default().agents = count;
+            }
+        }
+        for (cap_id, count) in harness_counts {
+            if let Some(uuid_str) = cap_id.strip_prefix(SKILL_CAPABILITY_PREFIX)
+                && let Ok(uuid) = uuid::Uuid::parse_str(uuid_str)
+            {
+                let key = SkillId::from_uuid(uuid).to_string();
+                usage.entry(key).or_default().harnesses = count;
+            }
+        }
+        Ok(usage)
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<ListSkillsUsage>() }
