@@ -649,6 +649,38 @@ impl TestServer {
         }
     }
 
+    /// Make a raw request and return once the response headers are available,
+    /// without collecting a streaming response body.
+    pub async fn request_raw_without_collecting_body(
+        &self,
+        method: Method,
+        uri: &str,
+        headers: Vec<(&str, &str)>,
+        body: Vec<u8>,
+    ) -> TestResponse {
+        let normalized_uri = Self::normalize_uri(uri);
+        let mut builder = Request::builder().method(method).uri(&normalized_uri);
+        for (key, value) in headers {
+            builder = builder.header(key, value);
+        }
+        let request = builder
+            .body(Body::from(body))
+            .expect("Failed to build request");
+
+        let response = self
+            .router
+            .clone()
+            .oneshot(request)
+            .await
+            .expect("Request failed");
+
+        TestResponse {
+            status: response.status(),
+            headers: response.headers().clone(),
+            body: Vec::new(),
+        }
+    }
+
     /// Make a request with custom method and optional body
     async fn request<T: Serialize>(
         &self,
