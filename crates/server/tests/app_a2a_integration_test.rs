@@ -7,6 +7,15 @@ use serde_json::{Value, json};
 use test_harness::TestServer;
 
 async fn create_app_with_a2a(server: &TestServer, name: &str, message: &str) -> (Value, String) {
+    create_app_with_a2a_mode(server, name, message, "shared_session").await
+}
+
+async fn create_app_with_a2a_mode(
+    server: &TestServer,
+    name: &str,
+    message: &str,
+    session_mode: &str,
+) -> (Value, String) {
     let app: Value = server
         .post(
             "/v1/apps",
@@ -24,7 +33,7 @@ async fn create_app_with_a2a(server: &TestServer, name: &str, message: &str) -> 
         .post(
             &format!("/v1/apps/{app_id}/a2a-channels"),
             json!({
-                "session_mode": "shared_session",
+                "session_mode": session_mode,
                 "message": message,
                 "agent_card_name": "Inbox triage",
                 "agent_card_description": "Triages inbound A2A traffic",
@@ -332,25 +341,16 @@ async fn a2a_rejects_unsupported_methods_and_empty_text() {
     assert_eq!(response["error"]["code"], -32602);
 }
 
-/// `message/stream` is dispatched to the streaming branch (it must NOT return
-/// `-32601 Method not found`). A full happy-path SSE assertion (content-type,
-/// initial `working` frame, terminal `status-update final=true`) is covered
-/// by the unit tests on `translate_session_event` and `jsonrpc_sse_frame` in
-/// `crates/server/src/api/app_a2a.rs`; that path requires an LLM provider to
-/// emit a terminal turn event, which the in-memory test harness does not
-/// configure. This integration test verifies the dispatch behavior at the
-/// HTTP layer without consuming the long-lived stream body.
+/// `message/stream` is rejected for shared-session channels because stream
+/// events cannot be safely correlated across concurrent callers.
 #[tokio::test]
-async fn a2a_message_stream_dispatches_to_streaming_branch() {
+async fn a2a_message_stream_rejects_shared_session_channels() {
     let server = TestServer::in_memory().await;
     let (app, api_key) = create_app_with_a2a(&server, "a2a-stream", "{{a2a.text}}").await;
     let app_id = app["id"].as_str().unwrap();
     let channel_id = app["channels"][0]["id"].as_str().unwrap();
     publish_app(&server, app_id).await;
 
-    // Empty parts must reach `parse_message_params` inside the streaming
-    // branch and surface as `-32602 Invalid params`. If the method gate
-    // rejected `message/stream` outright we would see `-32601` instead.
     let body = serde_json::to_vec(&json!({
         "jsonrpc": "2.0",
         "id": "stream-empty",
@@ -373,13 +373,69 @@ async fn a2a_message_stream_dispatches_to_streaming_branch() {
         .await
         .assert_status(StatusCode::OK)
         .json();
-    assert_eq!(response["error"]["code"], -32602);
+    assert_eq!(response["error"]["code"], -32600);
+    assert!(
+        response["error"]["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("session_mode=session_per_invocation"),
+        "expected stream-mode rejection for shared sessions: {response:?}",
+    );
+}
+
+/// `message/stream` is dispatched on `session_per_invocation` channels: the
+/// session-mode gate must not fire, so an empty `parts` body should reach
+/// `parse_message_params` and surface as `-32602 Invalid params`.
+#[tokio::test]
+async fn a2a_message_stream_dispatches_on_session_per_invocation_channels() {
+    let server = TestServer::in_memory().await;
+    let (app, api_key) = create_app_with_a2a_mode(
+        &server,
+        "a2a-stream-spi",
+        "{{a2a.text}}",
+        "session_per_invocation",
+    )
+    .await;
+    let app_id = app["id"].as_str().unwrap();
+    let channel_id = app["channels"][0]["id"].as_str().unwrap();
+    publish_app(&server, app_id).await;
+
+    let body = serde_json::to_vec(&json!({
+        "jsonrpc": "2.0",
+        "id": "stream-empty",
+        "method": "message/stream",
+        "params": {
+            "message": {
+                "role": "user",
+                "parts": []
+            }
+        }
+    }))
+    .unwrap();
+
+    let response: Value = server
+        .request_raw(
+            Method::POST,
+            &format!("/v1/apps/{}/a2a/{}", app_id, channel_id),
+            vec![
+                ("authorization", &format!("Bearer {api_key}")),
+                ("content-type", "application/json"),
+            ],
+            body,
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(
+        response["error"]["code"], -32602,
+        "expected parse_message_params to surface -32602, not the session-mode gate: {response:?}"
+    );
     assert!(
         response["error"]["message"]
             .as_str()
             .unwrap_or("")
             .contains("non-empty text part"),
-        "expected -32602 to come from parse_message_params: {response:?}",
+        "unexpected error message: {response:?}"
     );
 }
 
@@ -750,7 +806,10 @@ async fn a2a_agent_card_published_only_when_live() {
             .unwrap()
             .ends_with(&format!("/v1/apps/{app_id}/a2a/{channel_id}"))
     );
-    assert_eq!(card["capabilities"]["streaming"], true);
+    // Streaming is only advertised for session_per_invocation channels.
+    // The helper builds a shared_session channel by default, so the card
+    // must report streaming=false to stay consistent with the runtime gate.
+    assert_eq!(card["capabilities"]["streaming"], false);
     assert_eq!(card["capabilities"]["pushNotifications"], false);
     // Card never echoes secrets.
     let serialized = serde_json::to_string(&card).unwrap();
