@@ -40,8 +40,14 @@ RUN set -eux; \
     cp /tmp/"gh_${GH_VERSION}_linux_${GH_ARCH}"/bin/gh "$INSTALL_DIR"/gh; \
     chmod +x "$INSTALL_DIR"/gh; \
     DOP_VERSION="3.75.2"; \
+    case "$DOP_ARCH" in \
+      amd64) DOP_SHA256="bfc58d21baa3da2e177a74fb7fbbb8529170b560b1363ac5420de56a2786c489" ;; \
+      arm64) DOP_SHA256="b2cb9e8312a088f5e87bc3c1a4e0bd3162cf8f8aa8ed73adfc08cc50a32e9f4f" ;; \
+      *) echo "Unsupported Doppler architecture: $DOP_ARCH"; exit 1 ;; \
+    esac; \
     DOP_TARBALL="doppler_${DOP_VERSION}_linux_${DOP_ARCH}.tar.gz"; \
     curl -fsSL --retry 3 --retry-delay 2 "https://github.com/DopplerHQ/cli/releases/download/${DOP_VERSION}/${DOP_TARBALL}" -o /tmp/"$DOP_TARBALL"; \
+    echo "${DOP_SHA256}  /tmp/${DOP_TARBALL}" | sha256sum -c - >/dev/null; \
     tar -xzf /tmp/"$DOP_TARBALL" -C /tmp; \
     cp /tmp/doppler "$INSTALL_DIR"/doppler; \
     chmod +x "$INSTALL_DIR"/doppler; \
@@ -66,4 +72,3 @@ RUN set -eux; \
 
 # Keep the default devcontainer user; cloud agents run as non-root.
 USER codespace
-
