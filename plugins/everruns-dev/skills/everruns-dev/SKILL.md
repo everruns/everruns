@@ -256,6 +256,28 @@ query { "commands": "list_agents | jq -r '.data[].id' | while read id; do\n  get
 execute { "commands": "create_mcp_server --name \"jira\" --url \"https://mcp.example.com/jira\" --auth_mode oauth" }
 ```
 
+**Look up an org by id.**
+
+`get_org` accepts the `org_...` entity id as a positional arg.
+
+```bash
+query { "commands": "get_org org_01933b5a00007000800000000000004 | jq '{id, name, display_name}'" }
+```
+
+**Preview an agent or harness before saving.**
+
+`preview_agent` and `preview_harness` resolve capabilities, scoped MCP servers, and
+parent harness inheritance into the final system prompt and tool list without
+persisting anything. Read-only, available in `query`.
+
+```bash
+query { "commands": "preview_agent --system_prompt \"You are a careful researcher.\" --capabilities '[{\"ref\":\"web_fetch\"}]' | jq '{system_prompt, tools: [.tools[].name]}'" }
+```
+
+```bash
+query { "commands": "preview_harness --parent_harness_id \"$HID\" --system_prompt \"Research harness.\" | jq '{system_prompt, tools: [.tools[].name]}'" }
+```
+
 ### Raw builtin examples
 
 ```bash
