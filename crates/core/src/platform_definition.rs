@@ -11,8 +11,10 @@
 
 use crate::{
     Capability, CapabilityRegistry, ConnectionProvider, ConnectionProviderRegistry, DriverRegistry,
+    EmailSender,
 };
 use serde_json::Value;
+use std::sync::Arc;
 
 /// Stable role assigned to a built-in harness template.
 ///
@@ -181,6 +183,7 @@ pub struct PlatformDefinition {
     driver_registry: DriverRegistry,
     connection_providers: ConnectionProviderRegistry,
     built_in_harnesses: Vec<BuiltInHarnessDefinition>,
+    email_sender: Arc<dyn EmailSender>,
 }
 
 impl PlatformDefinition {
@@ -191,6 +194,7 @@ impl PlatformDefinition {
             driver_registry,
             connection_providers: ConnectionProviderRegistry::new(),
             built_in_harnesses: Vec::new(),
+            email_sender: Arc::new(crate::DisabledEmailSender),
         }
     }
 
@@ -239,6 +243,11 @@ impl PlatformDefinition {
         &mut self.built_in_harnesses
     }
 
+    /// System-wide email sender for product and operational flows.
+    pub fn email_sender(&self) -> Arc<dyn EmailSender> {
+        self.email_sender.clone()
+    }
+
     /// Append a built-in harness template.
     pub fn add_built_in_harness(&mut self, harness: BuiltInHarnessDefinition) {
         self.built_in_harnesses.push(harness);
@@ -264,6 +273,7 @@ impl std::fmt::Debug for PlatformDefinition {
             .field("drivers", &self.driver_registry.registered_providers())
             .field("connection_providers", &self.connection_providers)
             .field("built_in_harnesses", &harness_keys)
+            .field("email_sender", &self.email_sender.name())
             .finish()
     }
 }
@@ -323,6 +333,12 @@ impl PlatformDefinitionBuilder {
     /// Append a built-in harness template.
     pub fn add_built_in_harness(mut self, harness: BuiltInHarnessDefinition) -> Self {
         self.platform.built_in_harnesses.push(harness);
+        self
+    }
+
+    /// Set the system-wide email sender.
+    pub fn email_sender(mut self, sender: Arc<dyn EmailSender>) -> Self {
+        self.platform.email_sender = sender;
         self
     }
 

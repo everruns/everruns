@@ -251,6 +251,29 @@ DEFAULT_GEMINI_API_KEY=AIza...
 - The `just start-all` command automatically sets these from `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, and `GEMINI_API_KEY` if present
 - If no API key is configured for a provider, LLM calls will fail and users will see an error message in the chat: "I encountered an error while processing your request. Please try again later."
 
+## System Email Delivery
+
+System email delivery is an internal service used by product and operational flows. It is not an agent capability, public API, or UI setting.
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `EMAIL_PROVIDER` | Yes, when sending email in production | unset / disabled | Email provider. Supported values: `disabled`, `resend` |
+| `RESEND_API_KEY` | Yes, when `EMAIL_PROVIDER=resend` | unset | Resend API key |
+| `RESEND_API_BASE_URL` | No | `https://api.resend.com` | Resend API base URL override for tests or controlled deployments |
+
+**Example:**
+
+```bash
+EMAIL_PROVIDER=resend
+RESEND_API_KEY=re_...
+```
+
+**Notes:**
+- Set these on the control-plane process that performs system email sends.
+- The sender is fixed in code as `Everruns <no-replay@everruns.com>`.
+- The Resend account must have `everruns.com` verified and enabled for sending.
+- See `specs/email.md` for the internal abstraction and provider contract.
+
 ## UI API Proxy Architecture
 
 The UI makes all REST API requests (including SSE) to `/api/*` paths. The backend serves those routes under `/api` directly. Root-level backend routes like `/oauth/*`, `/mcp`, and `/.well-known/*` bypass the UI and are proxied straight to the backend.

@@ -22,6 +22,7 @@ pub mod tool_types;
 
 // Deployment configuration
 pub mod deployment;
+pub mod email;
 pub mod exec_tool_result;
 
 // Feature flags
@@ -199,6 +200,14 @@ pub use event_listeners::{CompositeEventListener, EventListener, NoopEventListen
 // Error reporter re-exports
 pub use error_reporter::{
     ErrorReport, ErrorReporter, ErrorScope, ErrorSeverity, NoopErrorReporter, SharedErrorReporter,
+};
+
+// System email re-exports
+pub use email::{
+    DisabledEmailSender, EmailAddress, EmailError, EmailMessage, EmailResult, EmailSender,
+    EmailTag, EmailTemplate, GenericEmailTemplate, NoopEmailSender, RenderedEmail,
+    ResendEmailConfig, ResendEmailSender, SYSTEM_EMAIL_FROM, SentEmail, SystemEmailConfig,
+    system_email_from,
 };
 
 // LLM driver types re-exports
