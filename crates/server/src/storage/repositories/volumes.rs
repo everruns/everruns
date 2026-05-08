@@ -68,6 +68,7 @@ impl Database {
             SELECT org_id
             FROM volumes
             WHERE public_id = $1 AND status != 'deleted'
+            LIMIT 1
             "#,
         )
         .bind(public_id)

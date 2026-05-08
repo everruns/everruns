@@ -64,11 +64,16 @@ impl InMemoryDatabase {
     }
 
     pub async fn get_volume_organization_id(&self, public_id: &str) -> Result<Option<i64>> {
+        // The new postgres unique index on volumes(public_id) makes duplicate public_ids
+        // impossible at the storage layer, but in-memory state can briefly contain
+        // overlapping rows in tests that build fixtures across orgs. Pick the newest by
+        // created_at to keep behavior deterministic across HashMap iteration orders.
         Ok(self
             .volumes
             .read()
             .values()
-            .find(|volume| volume.public_id == public_id && volume.status != "deleted")
+            .filter(|volume| volume.public_id == public_id && volume.status != "deleted")
+            .max_by_key(|volume| volume.created_at)
             .map(|volume| volume.org_id))
     }
 
