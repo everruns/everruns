@@ -9,6 +9,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.8.29] - 2026-05-08
+
+### Highlights
+
+- **Realtime voice sessions** - New voice capability allows sessions to interact via realtime voice with hardened authorization on tool execution ([#1767](https://github.com/everruns/everruns/pull/1767)).
+- **Skills discovery** - Skills page now ships search, view dialog, and usage counts so operators can find and adopt skills faster ([#1751](https://github.com/everruns/everruns/pull/1751)).
+- **Memory store management** - Memory stores can now be renamed and toggled as default through a new PATCH endpoint ([#1696](https://github.com/everruns/everruns/pull/1696)), with a redesigned memory stores page UX ([#1750](https://github.com/everruns/everruns/pull/1750)).
+- **Source-backed volumes** - Workspace volumes now carry source-backed metadata so agents can reason about volume provenance.
+- **Cursor host in everruns-dev plugin** - The everruns-dev plugin now supports Cursor as a host alongside Claude Code and Codex ([#1754](https://github.com/everruns/everruns/pull/1754)).
+- **Auth hardening** - Generic login errors hide credential validity ([#1763](https://github.com/everruns/everruns/pull/1763)), registration enforces password minimums ([#1762](https://github.com/everruns/everruns/pull/1762)), refresh token rotation is now atomic ([#1761](https://github.com/everruns/everruns/pull/1761)), and Google OAuth requires `email_verified` plus an allowed domain ([#1759](https://github.com/everruns/everruns/pull/1759)).
+
+### What's Changed
+
+- feat(volumes): add source-backed volume metadata by [@chaliy](https://github.com/chaliy)
+- fix(cursor): make cloud Dockerfile build with Valkey on amd64 ([#1773](https://github.com/everruns/everruns/pull/1773)) by [@chaliy](https://github.com/chaliy)
+- fix(skills): hide deleted skills from usage and content ([#1770](https://github.com/everruns/everruns/pull/1770)) by [@chaliy](https://github.com/chaliy)
+- feat(core): add system email sender by [@chaliy](https://github.com/chaliy)
+- test(apps): pin shared session reuse by [@chaliy](https://github.com/chaliy)
+- fix(voice): disable unauthorized realtime tool execution ([#1767](https://github.com/everruns/everruns/pull/1767)) by [@chaliy](https://github.com/chaliy)
+- feat(memory): add PATCH endpoint to rename memory store and toggle default ([#1696](https://github.com/everruns/everruns/pull/1696)) by [@chaliy](https://github.com/chaliy)
+- fix(apps): audit app-channel invocations by [@chaliy](https://github.com/chaliy)
+- fix(server): resolve org for volume IDs ([#1734](https://github.com/everruns/everruns/pull/1734)) by [@chaliy](https://github.com/chaliy)
+- fix(cloud-agent): verify doppler tarball checksum in Dockerfile ([#1765](https://github.com/everruns/everruns/pull/1765)) by [@chaliy](https://github.com/chaliy)
+- fix(llm-models): enforce enabled flag in model resolution paths ([#1730](https://github.com/everruns/everruns/pull/1730)) by [@chaliy](https://github.com/chaliy)
+- fix(agents): enforce high-risk checks on version activation ([#1749](https://github.com/everruns/everruns/pull/1749)) by [@chaliy](https://github.com/chaliy)
+- fix(server): avoid double-applying message query window ([#1746](https://github.com/everruns/everruns/pull/1746)) by [@chaliy](https://github.com/chaliy)
+- fix(server): bound harness usage count fan-out ([#1740](https://github.com/everruns/everruns/pull/1740)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): hide raw chat failure diagnostics ([#1743](https://github.com/everruns/everruns/pull/1743)) by [@chaliy](https://github.com/chaliy)
+- fix(a2a): align stream taskId with session task identity ([#1745](https://github.com/everruns/everruns/pull/1745)) by [@chaliy](https://github.com/chaliy)
+- fix(server): bound in-memory AG-UI limiter cache per app ([#1742](https://github.com/everruns/everruns/pull/1742)) by [@chaliy](https://github.com/chaliy)
+- fix(mcp): block scoped preview commands from read-only query ([#1741](https://github.com/everruns/everruns/pull/1741)) by [@chaliy](https://github.com/chaliy)
+- fix(plugin): shorten everruns dev default prompt ([#1766](https://github.com/everruns/everruns/pull/1766)) by [@chaliy](https://github.com/chaliy)
+- fix(server): map domain anyhow::bail! cases to typed 4xx errors ([#1764](https://github.com/everruns/everruns/pull/1764)) by [@chaliy](https://github.com/chaliy)
+- fix(auth): use generic login errors for credential failures ([#1763](https://github.com/everruns/everruns/pull/1763)) by [@chaliy](https://github.com/chaliy)
+- fix(auth): enforce password minimum on registration API ([#1762](https://github.com/everruns/everruns/pull/1762)) by [@chaliy](https://github.com/chaliy)
+- fix(server): authorize AG-UI before parsing JSON body ([#1755](https://github.com/everruns/everruns/pull/1755)) by [@chaliy](https://github.com/chaliy)
+- fix(core): strip human_intent from client-side tool calls ([#1756](https://github.com/everruns/everruns/pull/1756)) by [@chaliy](https://github.com/chaliy)
+- feat(organizations): add resolve_org command for entity-id lookup ([#1758](https://github.com/everruns/everruns/pull/1758)) by [@chaliy](https://github.com/chaliy)
+- fix(events): bound q filter for list_events ([#1737](https://github.com/everruns/everruns/pull/1737)) by [@chaliy](https://github.com/chaliy)
+- fix(core): avoid utf8 panic in prompt canary truncation ([#1744](https://github.com/everruns/everruns/pull/1744)) by [@chaliy](https://github.com/chaliy)
+- fix(auth): make refresh token rotation atomic ([#1761](https://github.com/everruns/everruns/pull/1761)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): restrict MCP card resources to ui://everruns ([#1736](https://github.com/everruns/everruns/pull/1736)) by [@chaliy](https://github.com/chaliy)
+- fix(durable): direct workflow lookup for detail and SSE ([#1760](https://github.com/everruns/everruns/pull/1760)) by [@chaliy](https://github.com/chaliy)
+- feat(skills): add search, view dialog, and usage counts ([#1751](https://github.com/everruns/everruns/pull/1751)) by [@chaliy](https://github.com/chaliy)
+- fix(auth): enforce Google OAuth email_verified and allowed-domain ([#1759](https://github.com/everruns/everruns/pull/1759)) by [@chaliy](https://github.com/chaliy)
+- chore(skills): upgrade agent-browser skill to discovery stub ([#1757](https://github.com/everruns/everruns/pull/1757)) by [@chaliy](https://github.com/chaliy)
+- feat(plugin): add cursor host to everruns-dev plugin ([#1754](https://github.com/everruns/everruns/pull/1754)) by [@chaliy](https://github.com/chaliy)
+- chore(cloud-agent): add repo environment setup ([#1753](https://github.com/everruns/everruns/pull/1753)) by [@chaliy](https://github.com/chaliy)
+- fix(mcp): count card sessions by internal agent id ([#1733](https://github.com/everruns/everruns/pull/1733)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): handle null workspace volume configs ([#1731](https://github.com/everruns/everruns/pull/1731)) by [@chaliy](https://github.com/chaliy)
+- fix(memory): redesign memory stores page UX ([#1750](https://github.com/everruns/everruns/pull/1750)) by [@chaliy](https://github.com/chaliy)
+- chore(plugin): sync everruns-dev claude manifest with codex ([#1752](https://github.com/everruns/everruns/pull/1752)) by [@chaliy](https://github.com/chaliy)
+- fix(memory): honor capability store config in memory tools ([#1729](https://github.com/everruns/everruns/pull/1729)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): block unsafe memory image media types ([#1728](https://github.com/everruns/everruns/pull/1728)) by [@chaliy](https://github.com/chaliy)
+- fix(a2a): block stream on shared-session channels ([#1727](https://github.com/everruns/everruns/pull/1727)) by [@chaliy](https://github.com/chaliy)
+- fix(cursor): remove global api key fallback ([#1726](https://github.com/everruns/everruns/pull/1726)) by [@chaliy](https://github.com/chaliy)
+- fix(mcp): block oauth token use in explicit scoped servers ([#1714](https://github.com/everruns/everruns/pull/1714)) by [@chaliy](https://github.com/chaliy)
+- feat(voice): add realtime voice sessions by [@chaliy](https://github.com/chaliy)
+- chore(maintenance): add deepsec scan workflow by [@chaliy](https://github.com/chaliy)
+
 ## [0.8.28] - 2026-05-07
 
 ### Highlights
