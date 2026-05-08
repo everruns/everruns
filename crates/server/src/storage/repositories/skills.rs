@@ -106,6 +106,21 @@ impl Database {
         Ok(query.fetch_all(&self.pool).await?)
     }
 
+    pub async fn list_non_deleted_skill_ids(&self, org_id: i64) -> Result<Vec<Uuid>> {
+        let rows = sqlx::query_scalar::<_, Uuid>(
+            r#"
+            SELECT id
+            FROM skills
+            WHERE org_id = $1 AND status != 'deleted'
+            "#,
+        )
+        .bind(org_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows)
+    }
+
     pub async fn update_skill(
         &self,
         org_id: i64,

@@ -101,6 +101,36 @@ async fn test_get_skill_content() {
 }
 
 #[tokio::test]
+async fn test_deleted_skill_content_returns_not_found() {
+    let server = TestServer::new().await;
+
+    let skill_name = format!(
+        "deleted-content-skill-{}",
+        &uuid::Uuid::now_v7().simple().to_string()[..8]
+    );
+    let skill_md = format!(
+        "---\nname: {skill_name}\ndescription: Deleted content visibility test.\n---\n\n# Deleted Content Skill\n"
+    );
+    let create_resp = server
+        .post("/v1/skills", json!({ "skill_md": skill_md }))
+        .await
+        .assert_status(StatusCode::CREATED);
+    let skill_id = create_resp.json_value()["id"].as_str().unwrap().to_string();
+
+    server
+        .delete(&format!("/v1/skills/{skill_id}"))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+    server
+        .post(&format!("/v1/skills/{skill_id}/delete"), json!({}))
+        .await
+        .assert_success();
+
+    let content_resp = server.get(&format!("/v1/skills/{skill_id}/content")).await;
+    assert_eq!(content_resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn test_update_skill() {
     let server = TestServer::new().await;
 
@@ -442,4 +472,63 @@ async fn test_agent_with_skill_capability() {
         agent_caps.iter().any(|c| c["ref"].as_str() == Some(cap_id)),
         "Agent should have skill capability assigned"
     );
+}
+
+#[tokio::test]
+async fn test_deleted_skill_hidden_from_usage() {
+    let server = TestServer::new().await;
+
+    let skill_name = format!(
+        "deleted-usage-skill-{}",
+        &uuid::Uuid::now_v7().simple().to_string()[..8]
+    );
+    let skill_md = format!(
+        "---\nname: {skill_name}\ndescription: Deleted usage visibility test.\n---\n\n# Deleted Usage Skill\n"
+    );
+    let create_resp = server
+        .post("/v1/skills", json!({ "skill_md": skill_md }))
+        .await
+        .assert_status(StatusCode::CREATED);
+    let skill_id = create_resp.json_value()["id"].as_str().unwrap().to_string();
+
+    let caps_resp = server.get("/v1/capabilities").await.assert_success();
+    let capabilities = caps_resp.json_value()["data"].as_array().unwrap().clone();
+    let skill_cap = capabilities
+        .iter()
+        .find(|c| c["name"].as_str() == Some(skill_name.as_str()))
+        .expect("Skill capability should exist");
+    let cap_id = skill_cap["id"].as_str().unwrap().to_string();
+    let agent_name = format!("deleted-skill-usage-agent-{}", &skill_id[6..14]);
+
+    server
+        .post(
+            "/v1/agents",
+            json!({
+                "name": agent_name,
+                "display_name": "Deleted Skill Usage Agent",
+                "system_prompt": "You are a helpful assistant.",
+                "capabilities": [
+                    { "ref": cap_id, "config": {} }
+                ]
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED);
+
+    let usage_before = server.get("/v1/skills/usage").await.assert_success();
+    let usage_before_body = usage_before.json_value();
+    assert_eq!(usage_before_body[&skill_id]["agents"], 1);
+
+    server
+        .delete(&format!("/v1/skills/{skill_id}"))
+        .await
+        .assert_status(StatusCode::NO_CONTENT);
+    server
+        .post(&format!("/v1/skills/{skill_id}/delete"), json!({}))
+        .await
+        .assert_success();
+
+    let usage_after = server.get("/v1/skills/usage").await.assert_success();
+    let usage_after_body = usage_after.json_value();
+    assert!(usage_after_body.get(&skill_id).is_none());
 }

@@ -246,6 +246,7 @@ impl Command for GetSkillContent {
             .get_skill(ctx.org_id(), skill_id.uuid())
             .await
             .map_err(classify_anyhow)?
+            .filter(|r| r.status != "deleted")
             .ok_or_else(|| CommandError::not_found("Skill"))?;
 
         // Reconstruct SKILL.md with frontmatter
@@ -593,16 +594,21 @@ impl Command for ListSkillsUsage {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<HashMap<String, SkillUsage>, CommandError> {
-        let (agent_counts, harness_counts) = tokio::try_join!(
+        let (visible_skill_ids, agent_counts, harness_counts) = tokio::try_join!(
+            ctx.db.list_non_deleted_skill_ids(ctx.org_id()),
             ctx.db.count_agent_capability_references(ctx.org_id()),
             ctx.db.count_harness_capability_references(ctx.org_id()),
         )
         .map_err(classify_anyhow)?;
+        let visible_skill_ids = visible_skill_ids
+            .into_iter()
+            .collect::<std::collections::HashSet<_>>();
 
         let mut usage: HashMap<String, SkillUsage> = HashMap::new();
         for (cap_id, count) in agent_counts {
             if let Some(uuid_str) = cap_id.strip_prefix(SKILL_CAPABILITY_PREFIX)
                 && let Ok(uuid) = uuid::Uuid::parse_str(uuid_str)
+                && visible_skill_ids.contains(&uuid)
             {
                 let key = SkillId::from_uuid(uuid).to_string();
                 usage.entry(key).or_default().agents = count;
@@ -611,6 +617,7 @@ impl Command for ListSkillsUsage {
         for (cap_id, count) in harness_counts {
             if let Some(uuid_str) = cap_id.strip_prefix(SKILL_CAPABILITY_PREFIX)
                 && let Ok(uuid) = uuid::Uuid::parse_str(uuid_str)
+                && visible_skill_ids.contains(&uuid)
             {
                 let key = SkillId::from_uuid(uuid).to_string();
                 usage.entry(key).or_default().harnesses = count;

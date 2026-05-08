@@ -198,6 +198,16 @@ impl InMemoryDatabase {
         Ok(skills)
     }
 
+    pub async fn list_non_deleted_skill_ids(&self, org_id: i64) -> Result<Vec<Uuid>> {
+        Ok(self
+            .skills
+            .read()
+            .values()
+            .filter(|s| s.org_id == org_id && s.status != "deleted")
+            .map(|s| s.id.uuid())
+            .collect())
+    }
+
     pub async fn update_skill(
         &self,
         org_id: i64,
