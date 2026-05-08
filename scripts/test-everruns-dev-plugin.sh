@@ -39,6 +39,22 @@ claude_marketplace = json.loads((root / ".claude-plugin" / "marketplace.json").r
 codex_marketplace = json.loads((root / ".agents" / "plugins" / "marketplace.json").read_text())
 cursor_marketplace = json.loads((root / ".cursor-plugin" / "marketplace.json").read_text())
 
+codex_interface = codex.get("interface")
+if not isinstance(codex_interface, dict):
+    raise SystemExit("Codex plugin.json must declare an 'interface' object")
+
+codex_default_prompts = codex_interface.get("defaultPrompt", [])
+if not isinstance(codex_default_prompts, list):
+    raise SystemExit("Codex interface.defaultPrompt must be a list")
+
+for index, prompt in enumerate(codex_default_prompts):
+    if not isinstance(prompt, str):
+        raise SystemExit(f"Codex defaultPrompt[{index}] must be a string")
+    if len(prompt) > 128:
+        raise SystemExit(
+            f"Codex defaultPrompt[{index}] is too long: {len(prompt)} > 128"
+        )
+
 
 def marketplace_plugin(label, marketplace, name):
     for plugin in marketplace["plugins"]:
