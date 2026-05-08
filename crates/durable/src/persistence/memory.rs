@@ -3055,8 +3055,7 @@ mod tests {
     async fn test_get_workflow_extended_resolves_past_first_page() {
         let store = InMemoryWorkflowEventStore::new();
 
-        // Create the workflow we will look up first, so it has the *oldest*
-        // `created_at` and would land past the first page.
+        // Create the workflow we will look up first.
         let target = Uuid::now_v7();
         store
             .create_workflow(target, "old", serde_json::json!({}), None)
@@ -3069,6 +3068,18 @@ mod tests {
                 .create_workflow(Uuid::now_v7(), "filler", serde_json::json!({}), None)
                 .await
                 .unwrap();
+        }
+
+        // Force the target's `created_at` strictly older than every filler.
+        // Without this the regression guard would be flaky: in a tight loop
+        // two `create_workflow` calls can land on the same `Utc::now()` and
+        // `list_workflows` sorts only by `created_at` (no tie-breaker), so
+        // the target could end up inside the first 1000 by HashMap-iteration
+        // luck even with > 1000 workflows. (Copilot review on PR #1760.)
+        {
+            let mut workflows = store.workflows.write();
+            let target_state = workflows.get_mut(&target).expect("target workflow exists");
+            target_state.created_at = chrono::Utc::now() - chrono::Duration::days(1);
         }
 
         // The legacy first-page scan would not find this workflow.
