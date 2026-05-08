@@ -1084,6 +1084,7 @@ impl Command for SetDefaultAgentVersion {
                 "Agent version belongs to another agent",
             ));
         }
+        check_high_risk_caps(ctx, &version.capabilities).await?;
         let row = ctx
             .db
             .update_agent(
@@ -1139,6 +1140,7 @@ impl Command for RollbackAgentVersion {
             ));
         }
         let restored = q::version_to_agent(&current, &version);
+        check_high_risk_caps(ctx, &restored.capabilities).await?;
         let row = ctx
             .db
             .update_agent(
