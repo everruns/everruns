@@ -28,12 +28,6 @@ async fn get_api_key(context: &ToolContext) -> Result<String, ToolExecutionResul
         }
     }
 
-    if let Ok(key) = std::env::var(CURSOR_API_KEY_SECRET)
-        && !key.trim().is_empty()
-    {
-        return Ok(key);
-    }
-
     if let Some(storage) = context.storage_store.as_ref() {
         match storage
             .get_secret(context.session_id, CURSOR_API_KEY_SECRET)
@@ -726,6 +720,33 @@ impl Tool for CursorKeyInfoTool {
         match cursor_client(api_key).api_key_info().await {
             Ok(response) => ToolExecutionResult::success(json!(response)),
             Err(e) => ToolExecutionResult::tool_error(e),
+        }
+    }
+}
+
+#[cfg(test)]
+mod auth_tests {
+    use super::*;
+    use everruns_core::SessionId;
+
+    /// Regression: ensure tool auth no longer falls back to the process-wide
+    /// `CURSOR_API_KEY` env var. When no session-scoped credential is
+    /// available, `get_api_key` must surface `ConnectionRequired` even if the
+    /// env var is set, so the per-session credential boundary cannot be
+    /// reintroduced accidentally.
+    #[tokio::test]
+    async fn get_api_key_does_not_fall_back_to_global_env_var() {
+        // SAFETY: single-threaded test, no other code reads CURSOR_API_KEY here.
+        unsafe { std::env::set_var(CURSOR_API_KEY_SECRET, "should-not-be-used") };
+        let ctx = ToolContext::new(SessionId::new());
+        let err = get_api_key(&ctx).await.unwrap_err();
+        // SAFETY: same guarantee as set_var above; clean up before assert.
+        unsafe { std::env::remove_var(CURSOR_API_KEY_SECRET) };
+        match err {
+            ToolExecutionResult::ConnectionRequired { provider } => {
+                assert_eq!(provider, CURSOR_CONNECTION_PROVIDER);
+            }
+            other => panic!("expected ConnectionRequired, got {other:?}"),
         }
     }
 }

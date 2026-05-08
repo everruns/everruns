@@ -2,8 +2,9 @@
 //!
 //! Decision: use Cursor's public Background/Cloud Agents REST API directly.
 //! Cursor does not publish an official Rust client in the public API docs.
-//! Decision: API key resolves from user connections first, then operator env
-//! `CURSOR_API_KEY` for managed/Doppler-backed deployments and live tests.
+//! Decision: API key resolves from user connections first, then a per-session
+//! `CURSOR_API_KEY` session secret. The previous process-wide env-var
+//! fallback was removed to enforce per-session credential boundaries.
 
 pub mod client;
 pub mod connection;
@@ -84,7 +85,7 @@ impl Capability for CursorCapability {
 Use Cursor tools to delegate coding work to asynchronous Cursor Cloud Agents.
 
 Prerequisites:
-- Cursor Cloud Agents API key configured in Settings > Connections, or operator-provided `CURSOR_API_KEY`.
+- Cursor Cloud Agents API key configured in Settings > Connections (or a per-session `CURSOR_API_KEY` session secret).
 - Cursor GitHub app must have access to the target repository.
 
 Recommended workflow:
