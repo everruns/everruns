@@ -593,16 +593,11 @@ impl Command for ListSkillsUsage {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<HashMap<String, SkillUsage>, CommandError> {
-        let agent_counts = ctx
-            .db
-            .count_agent_capability_references(ctx.org_id())
-            .await
-            .map_err(classify_anyhow)?;
-        let harness_counts = ctx
-            .db
-            .count_harness_capability_references(ctx.org_id())
-            .await
-            .map_err(classify_anyhow)?;
+        let (agent_counts, harness_counts) = tokio::try_join!(
+            ctx.db.count_agent_capability_references(ctx.org_id()),
+            ctx.db.count_harness_capability_references(ctx.org_id()),
+        )
+        .map_err(classify_anyhow)?;
 
         let mut usage: HashMap<String, SkillUsage> = HashMap::new();
         for (cap_id, count) in agent_counts {

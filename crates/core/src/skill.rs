@@ -229,9 +229,9 @@ pub struct SkillFileEntry {
 }
 
 /// Number of agents and harnesses that reference a skill via its
-/// `skill:{uuid}` capability id. Skills with zero usage are returned as
-/// `agents = 0, harnesses = 0` rather than being omitted, so the UI can
-/// distinguish "loaded but unused" from "not yet loaded".
+/// `skill:{uuid}` capability id. The `/v1/skills/usage` endpoint returns this
+/// keyed by public `SkillId`; skills with no references are omitted from the
+/// map and the UI defaults missing entries to zero.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct SkillUsage {
