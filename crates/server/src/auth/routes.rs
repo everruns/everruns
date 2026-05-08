@@ -49,6 +49,79 @@ fn generate_oauth_state() -> String {
     hex::encode(bytes)
 }
 
+/// Extract the lowercased domain from an email address.
+fn email_domain_lowercase(email: &str) -> Option<String> {
+    email
+        .rsplit_once('@')
+        .map(|(_, d)| d.trim().to_ascii_lowercase())
+        .filter(|d| !d.is_empty())
+}
+
+/// Normalize a configured `allowed_domains` entry: trim whitespace, drop an
+/// optional leading `@`, lowercase. Returns `None` for empty entries so a
+/// stray `,` in `AUTH_GOOGLE_ALLOWED_DOMAINS=,company.com` does not silently
+/// match every email.
+///
+/// Matching is intentionally **exact-domain** (not suffix).
+/// `company.com` does not authorize `attacker.company.com`. Operators who
+/// want subdomains must list each one explicitly.
+fn normalize_allowed_domain(entry: &str) -> Option<String> {
+    let trimmed = entry.trim().strip_prefix('@').unwrap_or(entry.trim());
+    let cleaned = trimmed.trim();
+    if cleaned.is_empty() {
+        None
+    } else {
+        Some(cleaned.to_ascii_lowercase())
+    }
+}
+
+/// Whether `email` belongs to one of `allowed_domains` (case-insensitive,
+/// **exact** match against the lowercased host portion of the address).
+/// Accepts configured entries written as either `company.com` or
+/// `@company.com` so a small operator typo is not silently permissive.
+fn email_domain_allowed(email: &str, allowed_domains: &[String]) -> bool {
+    let Some(domain) = email_domain_lowercase(email) else {
+        return false;
+    };
+    allowed_domains
+        .iter()
+        .filter_map(|d| normalize_allowed_domain(d))
+        .any(|d| d == domain)
+}
+
+/// Per-provider identity gates applied after `exchange_code` and before any
+/// user lookup or creation. Returns the audit `reason` string when the
+/// identity must be rejected.
+///
+/// Google: must report `email_verified` and, when `allowed_domains` is set,
+/// the email domain must be in that list. GitHub does not currently support
+/// per-provider gates here.
+fn oauth_identity_rejection_reason(
+    provider: super::oauth::OAuthProvider,
+    config: &super::config::AuthConfig,
+    user_info: &super::oauth::OAuthUserInfo,
+) -> Option<&'static str> {
+    match provider {
+        super::oauth::OAuthProvider::Google => {
+            if !user_info.email_verified {
+                return Some("email_unverified");
+            }
+            if let Some(google) = config.google.as_ref()
+                && let Some(allowed) = google.allowed_domains.as_ref()
+            {
+                let any_real = allowed
+                    .iter()
+                    .any(|d| normalize_allowed_domain(d).is_some());
+                if any_real && !email_domain_allowed(&user_info.email, allowed) {
+                    return Some("domain_not_allowed");
+                }
+            }
+            None
+        }
+        super::oauth::OAuthProvider::GitHub => None,
+    }
+}
+
 /// Login request
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct LoginRequest {
@@ -745,6 +818,28 @@ pub async fn oauth_callback(
         AuthError::unauthorized("OAuth authentication failed")
     })?;
 
+    // EVE-451 / TM-AUTH: enforce provider-side identity gates before any user
+    // lookup or creation so a hostile provider account cannot mint a session
+    // even on the first use of an existing email and so deployments using
+    // `AUTH_GOOGLE_ALLOWED_DOMAINS` get the restriction they configured.
+    if let Some(reason) = oauth_identity_rejection_reason(provider_enum, &state.config, &user_info)
+    {
+        tracing::warn!(
+            "OAuth identity rejected for provider={} reason={}",
+            provider,
+            reason
+        );
+        audit::emit(
+            state.db.clone(),
+            DEFAULT_ORG_ID,
+            None,
+            "auth.oauth.failure",
+            audit::client_ip(&headers),
+            serde_json::json!({"provider": provider, "reason": reason}),
+        );
+        return Err(AuthError::forbidden("OAuth account not permitted"));
+    }
+
     // Find or create user
     let provider_str = provider_enum.as_str();
     let user = state
@@ -1090,6 +1185,184 @@ mod tests {
 
         assert!(oauth_providers(&config).is_empty());
         assert!(ensure_oauth_enabled(&config).is_err());
+    }
+
+    fn make_google_user(email: &str, verified: bool) -> super::super::oauth::OAuthUserInfo {
+        super::super::oauth::OAuthUserInfo {
+            provider_id: "google-sub-1".to_string(),
+            email: email.to_string(),
+            name: "User".to_string(),
+            avatar_url: None,
+            email_verified: verified,
+        }
+    }
+
+    fn config_with_google(allowed_domains: Option<Vec<String>>) -> AuthConfig {
+        let mut config = AuthConfig::default();
+        config.mode = AuthMode::Full;
+        config.google = Some(crate::auth::config::GoogleOAuthConfig {
+            base: crate::auth::config::OAuthProviderConfig {
+                client_id: "id".to_string(),
+                client_secret: "secret".to_string(),
+                redirect_uri: "http://localhost/callback".to_string(),
+            },
+            allowed_domains,
+        });
+        config
+    }
+
+    #[test]
+    fn test_email_domain_allowed_matches_case_insensitive() {
+        let allowed = vec!["Example.com".to_string(), "Other.io".to_string()];
+        assert!(email_domain_allowed("user@example.com", &allowed));
+        assert!(email_domain_allowed("user@EXAMPLE.COM", &allowed));
+        assert!(email_domain_allowed("user@other.io", &allowed));
+        assert!(!email_domain_allowed("user@evil.com", &allowed));
+        assert!(!email_domain_allowed("not-an-email", &allowed));
+        assert!(!email_domain_allowed("user@", &allowed));
+    }
+
+    // EVE-451 (review feedback): operators sometimes write `@company.com` —
+    // accept it as an equivalent of `company.com` rather than silently
+    // failing closed.
+    #[test]
+    fn test_email_domain_allowed_accepts_at_prefixed_entries() {
+        let allowed = vec!["@company.com".to_string(), " @other.io ".to_string()];
+        assert!(email_domain_allowed("user@company.com", &allowed));
+        assert!(email_domain_allowed("user@other.io", &allowed));
+        assert!(!email_domain_allowed("user@evil.com", &allowed));
+    }
+
+    // EVE-451 (review feedback): exact-domain semantics — `company.com` must
+    // not authorize an `attacker.company.com` subdomain. Operators who want
+    // subdomains must list each one.
+    #[test]
+    fn test_email_domain_allowed_does_not_match_subdomains() {
+        let allowed = vec!["company.com".to_string()];
+        assert!(!email_domain_allowed("user@attacker.company.com", &allowed));
+        assert!(!email_domain_allowed("user@xcompany.com", &allowed));
+    }
+
+    #[test]
+    fn test_normalize_allowed_domain_drops_empty_entries() {
+        assert_eq!(normalize_allowed_domain(""), None);
+        assert_eq!(normalize_allowed_domain("   "), None);
+        assert_eq!(normalize_allowed_domain("@"), None);
+        assert_eq!(normalize_allowed_domain(" @  "), None);
+        assert_eq!(
+            normalize_allowed_domain("@Company.COM"),
+            Some("company.com".to_string())
+        );
+        assert_eq!(
+            normalize_allowed_domain("  company.com  "),
+            Some("company.com".to_string())
+        );
+    }
+
+    // EVE-451: Google OAuth must require email_verified=true.
+    #[test]
+    fn test_google_rejects_unverified_email() {
+        let config = config_with_google(None);
+        let user = make_google_user("user@example.com", false);
+        assert_eq!(
+            oauth_identity_rejection_reason(
+                super::super::oauth::OAuthProvider::Google,
+                &config,
+                &user
+            ),
+            Some("email_unverified")
+        );
+    }
+
+    // EVE-451: When allowed_domains is set, mismatched email domains are rejected.
+    #[test]
+    fn test_google_rejects_disallowed_domain() {
+        let config = config_with_google(Some(vec!["company.com".to_string()]));
+        let user = make_google_user("user@evil.com", true);
+        assert_eq!(
+            oauth_identity_rejection_reason(
+                super::super::oauth::OAuthProvider::Google,
+                &config,
+                &user
+            ),
+            Some("domain_not_allowed")
+        );
+    }
+
+    // EVE-451: Allowed domain on a verified email passes.
+    #[test]
+    fn test_google_accepts_allowed_domain_verified() {
+        let config = config_with_google(Some(vec!["company.com".to_string()]));
+        let user = make_google_user("user@Company.COM", true);
+        assert!(
+            oauth_identity_rejection_reason(
+                super::super::oauth::OAuthProvider::Google,
+                &config,
+                &user
+            )
+            .is_none()
+        );
+    }
+
+    // EVE-451: No allowed_domains config means any verified domain is accepted.
+    #[test]
+    fn test_google_accepts_any_verified_domain_when_unrestricted() {
+        let config = config_with_google(None);
+        let user = make_google_user("user@anywhere.io", true);
+        assert!(
+            oauth_identity_rejection_reason(
+                super::super::oauth::OAuthProvider::Google,
+                &config,
+                &user
+            )
+            .is_none()
+        );
+    }
+
+    // EVE-451: Empty allowed_domains list (only whitespace) does not lock everyone out.
+    // Treats it as "no restriction" rather than "deny all" so an operator who
+    // sets `AUTH_GOOGLE_ALLOWED_DOMAINS=` does not accidentally brick login.
+    #[test]
+    fn test_google_empty_allowed_domains_does_not_lock_out() {
+        let config = config_with_google(Some(vec!["   ".to_string()]));
+        let user = make_google_user("user@anywhere.io", true);
+        assert!(
+            oauth_identity_rejection_reason(
+                super::super::oauth::OAuthProvider::Google,
+                &config,
+                &user
+            )
+            .is_none()
+        );
+    }
+
+    // EVE-451: GitHub flow currently has no per-provider gates here.
+    #[test]
+    fn test_github_has_no_provider_gates() {
+        let mut config = AuthConfig::default();
+        config.mode = AuthMode::Full;
+        config.github = Some(crate::auth::config::GitHubOAuthConfig {
+            base: crate::auth::config::OAuthProviderConfig {
+                client_id: "id".to_string(),
+                client_secret: "secret".to_string(),
+                redirect_uri: "http://localhost/callback".to_string(),
+            },
+        });
+        let user = super::super::oauth::OAuthUserInfo {
+            provider_id: "gh-1".to_string(),
+            email: "user@example.com".to_string(),
+            name: "User".to_string(),
+            avatar_url: None,
+            email_verified: false,
+        };
+        assert!(
+            oauth_identity_rejection_reason(
+                super::super::oauth::OAuthProvider::GitHub,
+                &config,
+                &user
+            )
+            .is_none()
+        );
     }
 
     #[test]
