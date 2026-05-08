@@ -36,7 +36,7 @@ use ag_ui_core::types::{
 };
 use axum::{
     Extension, Json, Router,
-    extract::{ConnectInfo, DefaultBodyLimit, Path, State},
+    extract::{ConnectInfo, DefaultBodyLimit, Path, Request, State},
     http::{HeaderMap, StatusCode, header::AUTHORIZATION},
     response::{
         IntoResponse, Response,
@@ -300,7 +300,7 @@ async fn run_agent(
     req_id: Option<Extension<RequestId>>,
     connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
     headers: HeaderMap,
-    Json(req): Json<AgUiRunAgentInput>,
+    request: Request,
 ) -> Result<Sse<impl Stream<Item = Result<SseEvent, Infallible>>>, Response> {
     // EVE-415: monotonic anchor for the AG-UI ingress phase. Used to attribute
     // the gap between accepted request and `ReasonAtom: starting LLM call`
@@ -310,6 +310,17 @@ async fn run_agent(
     // ingress portion without grepping for adjacent timestamps.
     let ingress_start = Instant::now();
 
+    let request_id = req_id.map(|Extension(r)| r.0);
+    let peer_addr = connect_info.map(|Extension(ConnectInfo(addr))| addr);
+    let AuthorizedAgUiRequest {
+        app,
+        channel_config,
+    } = authorize_ag_ui_request(&state, &app_id, &headers, peer_addr).await?;
+
+    let Json(req): Json<AgUiRunAgentInput> = Json::from_request(request, &state)
+        .await
+        .map_err(IntoResponse::into_response)?;
+
     // THREAT[TM-LLM-020]: Anonymous AG-UI clients must not be able to forge
     // privileged message roles (system/developer/tool) into the LLM context
     // that the server builds from the request body.
@@ -317,13 +328,6 @@ async fn run_agent(
     // boundary, and reject duplicate message IDs. The error is a generic
     // `invalid_request` so we don't echo the offending role back.
     validate_input_messages(&req.messages).map_err(|err| *err)?;
-
-    let request_id = req_id.map(|Extension(r)| r.0);
-    let peer_addr = connect_info.map(|Extension(ConnectInfo(addr))| addr);
-    let AuthorizedAgUiRequest {
-        app,
-        channel_config,
-    } = authorize_ag_ui_request(&state, &app_id, &headers, peer_addr).await?;
 
     let trigger_message = req
         .messages
