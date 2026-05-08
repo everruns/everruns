@@ -95,7 +95,7 @@ Format: `TM-<CATEGORY>-<NNN>`
 | TM-AUTH-001 | Brute force login | High | Per-IP rate limiting on auth endpoints (login 10/min, register 5/min, refresh 30/min); dual backend: in-memory governor or Valkey distributed sliding-window | MITIGATED |
 | TM-AUTH-002 | JWT secret compromise | Critical | Stored in env var `AUTH_JWT_SECRET`; min 32 bytes recommended; never logged | MITIGATED |
 | TM-AUTH-003 | Token replay after logout | Medium | Refresh tokens stored in DB, revocable via DELETE; access tokens short-lived (15 min) | MITIGATED |
-| TM-AUTH-004 | Weak password | Medium | Minimum 8 characters enforced; Argon2id hashing | MITIGATED |
+| TM-AUTH-004 | Weak password | Medium | Minimum 8 characters enforced **server-side** in `register` (`crates/server/src/auth/routes.rs`, before account lookup or creation), independent of the UI's `minLength={8}`. Argon2id hashing on storage. Covered by `test_register_rejects_short_password_via_api`. | MITIGATED |
 | TM-AUTH-005 | API key exposure in transit | High | HTTPS required in production; keys prefixed `evr_` for scanning | MITIGATED |
 | TM-AUTH-006 | API key brute force | Medium | Keys stored as SHA-256 hashes; 128-bit entropy makes brute force infeasible | MITIGATED |
 | TM-AUTH-007 | OAuth state fixation | High | State generated in `oauth_redirect`, stored in HttpOnly/Secure/SameSite=Lax cookie (`oauth_state`), validated and consumed (single-use) in `oauth_callback`; mismatch or missing cookie returns 401 | MITIGATED |
