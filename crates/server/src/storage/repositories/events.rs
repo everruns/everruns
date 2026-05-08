@@ -594,19 +594,24 @@ impl Database {
             }
         }
 
-        let latest_window = query.limit.is_some() && query.offset.is_none();
-        if latest_window {
-            sql.push_str(" ORDER BY sequence DESC");
-        } else {
-            sql.push_str(" ORDER BY sequence ASC");
-        }
-
-        // Apply limit/offset
-        if let Some(limit) = query.limit {
-            sql.push_str(&format!(" LIMIT {}", limit));
-        }
-        if let Some(offset) = query.offset {
-            sql.push_str(&format!(" OFFSET {}", offset));
+        let latest_window = query.limit.is_some();
+        match (query.offset, query.limit) {
+            (Some(offset), Some(limit)) => {
+                sql = format!(
+                    "SELECT * FROM ({sql} ORDER BY sequence ASC OFFSET {}) offset_events ORDER BY sequence DESC LIMIT {}",
+                    offset.max(0),
+                    limit.max(0)
+                );
+            }
+            (Some(offset), None) => {
+                sql.push_str(&format!(" ORDER BY sequence ASC OFFSET {}", offset.max(0)));
+            }
+            (None, Some(limit)) => {
+                sql.push_str(&format!(" ORDER BY sequence DESC LIMIT {}", limit.max(0)));
+            }
+            (None, None) => {
+                sql.push_str(" ORDER BY sequence ASC");
+            }
         }
 
         // Build and execute query with dynamic bindings

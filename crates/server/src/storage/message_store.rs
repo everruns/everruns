@@ -170,7 +170,9 @@ impl MessageRetriever for DbMessageRetriever {
                 .store_err()? as usize
         };
 
-        query.apply_window_bounds(&mut messages);
+        if needs_unbounded_candidates {
+            query.apply_window_bounds(&mut messages);
+        }
         query.prepend_excluded_notice(&mut messages, count_before_limit);
 
         // Apply injections
@@ -339,6 +341,37 @@ mod tests {
         assert_eq!(texts, vec!["keep 2", "keep 3"]);
     }
 
+    #[tokio::test]
+    async fn load_filtered_offset_not_applied_twice_for_db_mappable_query() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let retriever = DbMessageRetriever::new(db);
+        let session_id = SessionId::new();
+
+        add_user_messages(&retriever, session_id, &["m1", "m2", "m3", "m4", "m5"]).await;
+
+        let query = MessageQuery::new(session_id).with_offset(2);
+
+        let messages = retriever.load_filtered(query).await.unwrap();
+
+        let texts: Vec<_> = messages.iter().filter_map(Message::text).collect();
+        assert_eq!(texts, vec!["m3", "m4", "m5"]);
+    }
+
+    #[tokio::test]
+    async fn load_filtered_offset_and_limit_not_applied_twice_for_db_mappable_query() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let retriever = DbMessageRetriever::new(db);
+        let session_id = SessionId::new();
+
+        add_user_messages(&retriever, session_id, &["m1", "m2", "m3", "m4", "m5"]).await;
+
+        let query = MessageQuery::new(session_id).with_offset(2).with_limit(2);
+
+        let messages = retriever.load_filtered(query).await.unwrap();
+
+        let texts: Vec<_> = messages.iter().filter_map(Message::text).collect();
+        assert_eq!(texts, vec!["m4", "m5"]);
+    }
     #[tokio::test]
     async fn load_filtered_notice_counts_filtered_candidates_before_limit() {
         let db = Arc::new(StorageBackend::in_memory());
