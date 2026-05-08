@@ -36,13 +36,28 @@ pub fn merge_effective_scoped_mcp_servers(
     strip_untrusted_oauth_from_scoped_mcp_servers(&merged)
 }
 
+/// Sanitize explicit (user-controlled) scoped MCP servers so they cannot
+/// request OAuth connection tokens for runtime tool discovery.
+///
+/// Capability-contributed servers are trusted (built-in code) and bypass this
+/// step entirely — see `merge_effective_scoped_mcp_servers_with_capabilities`.
+///
+/// Behavior is intentionally narrow: only entries that were explicitly
+/// configured as `auth_mode = OAuth` are altered. We clear `oauth_provider_id`
+/// (so no token resolution happens) and switch `auth_mode` back to `None`. We
+/// also disable `tool_discovery` on those entries — without a token, an
+/// authenticated tools/list would 401, so attempting it would just spam logs
+/// and slow scoped-MCP wiring.
 fn strip_untrusted_oauth_from_scoped_mcp_servers(servers: &ScopedMcpServers) -> ScopedMcpServers {
     servers
         .iter()
         .map(|(name, server)| {
             let mut server = server.clone();
-            server.auth_mode = McpServerAuthMode::None;
-            server.oauth_provider_id = None;
+            if matches!(server.auth_mode, McpServerAuthMode::OAuth) {
+                server.auth_mode = McpServerAuthMode::None;
+                server.oauth_provider_id = None;
+                server.tool_discovery = false;
+            }
             (name.clone(), server)
         })
         .collect()
@@ -421,6 +436,107 @@ mod tests {
 
         assert_eq!(docs.auth_mode, McpServerAuthMode::None);
         assert!(docs.oauth_provider_id.is_none());
+        assert!(
+            !docs.tool_discovery,
+            "tool discovery must be disabled on stripped explicit OAuth servers — without a token, an authenticated tools/list would 401",
+        );
+    }
+
+    #[test]
+    fn merge_effective_scoped_mcp_servers_strips_explicit_only_when_oauth() {
+        // Non-OAuth explicit entries (e.g. `auth_mode = None`) must pass through
+        // unchanged. The sanitizer is narrow on purpose — see the doc comment on
+        // strip_untrusted_oauth_from_scoped_mcp_servers.
+        let mut harness = test_harness();
+        harness.mcp_servers.insert(
+            "docs".to_string(),
+            scoped_server("https://harness.example.com/mcp"),
+        );
+        let agent = test_agent();
+        let session = test_session(harness.id, agent.public_id);
+
+        let merged = merge_effective_scoped_mcp_servers(&harness, Some(&agent), &session);
+        let docs = merged.get("docs").expect("server exists");
+
+        assert_eq!(docs.auth_mode, McpServerAuthMode::None);
+        assert!(docs.oauth_provider_id.is_none());
+        assert!(docs.tool_discovery);
+    }
+
+    #[test]
+    fn merge_with_capabilities_preserves_capability_oauth_strips_explicit() {
+        use everruns_core::AgentCapabilityConfig;
+        use everruns_core::capabilities::{Capability, CapabilityRegistry, RiskLevel};
+
+        struct OAuthMcpCapability;
+
+        impl Capability for OAuthMcpCapability {
+            fn id(&self) -> &str {
+                "oauth_mcp_test"
+            }
+
+            fn name(&self) -> &str {
+                "OAuth MCP Test"
+            }
+
+            fn description(&self) -> &str {
+                "Capability that contributes a scoped MCP server with OAuth"
+            }
+
+            fn risk_level(&self) -> RiskLevel {
+                RiskLevel::Low
+            }
+
+            fn mcp_servers(&self) -> ScopedMcpServers {
+                let mut servers = ScopedMcpServers::default();
+                servers.insert(
+                    "trusted_docs".to_string(),
+                    oauth_scoped_server("https://capability.example.com/mcp", "github"),
+                );
+                servers
+            }
+        }
+
+        let mut registry = CapabilityRegistry::new();
+        registry.register(OAuthMcpCapability);
+
+        let mut harness = test_harness();
+        harness
+            .capabilities
+            .push(AgentCapabilityConfig::new("oauth_mcp_test"));
+        // Explicit OAuth entry on a different name — must be sanitized.
+        harness.mcp_servers.insert(
+            "user_docs".to_string(),
+            oauth_scoped_server("https://harness.example.com/mcp", "github"),
+        );
+
+        let agent = test_agent();
+        let session = test_session(harness.id, agent.public_id);
+
+        let merged = merge_effective_scoped_mcp_servers_with_capabilities(
+            &harness,
+            Some(&agent),
+            &session,
+            &registry,
+        );
+
+        let trusted = merged.get("trusted_docs").expect("contributed server");
+        assert_eq!(
+            trusted.auth_mode,
+            McpServerAuthMode::OAuth,
+            "capability-contributed OAuth must be preserved"
+        );
+        assert_eq!(trusted.oauth_provider_id.as_deref(), Some("github"));
+        assert!(trusted.tool_discovery);
+
+        let user = merged.get("user_docs").expect("explicit server");
+        assert_eq!(
+            user.auth_mode,
+            McpServerAuthMode::None,
+            "explicit OAuth must be stripped"
+        );
+        assert!(user.oauth_provider_id.is_none());
+        assert!(!user.tool_discovery);
     }
 
     #[test]
