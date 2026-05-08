@@ -1,4 +1,5 @@
 ---
+name: agent-card
 description: Render an Everruns(Dev) MCP-Apps card for an agent (sandboxed HTML stats card)
 argument-hint: "<agent_id_or_name>"
 ---

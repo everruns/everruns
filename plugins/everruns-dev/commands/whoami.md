@@ -1,4 +1,5 @@
 ---
+name: whoami
 description: Show the current Everruns(Dev) user and default organization
 ---
 

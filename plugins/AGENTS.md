@@ -8,7 +8,10 @@ For `plugins/everruns-dev`, update:
 
 - `plugins/everruns-dev/.codex-plugin/plugin.json`
 - `plugins/everruns-dev/.claude-plugin/plugin.json`
+- `plugins/everruns-dev/.cursor-plugin/plugin.json`
 - `.claude-plugin/marketplace.json`
+- `.cursor-plugin/marketplace.json` (both the top-level `metadata.version`
+  and the per-plugin `version`)
 
 Validate with:
 

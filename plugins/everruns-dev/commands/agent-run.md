@@ -1,4 +1,5 @@
 ---
+name: agent-run
 description: Start a new Everruns(Dev) agentic session and send the first message
 argument-hint: "<agent_id_or_name> <message>"
 ---
