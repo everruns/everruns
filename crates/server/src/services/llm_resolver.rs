@@ -435,7 +435,9 @@ mod tests {
                     model_id: "gpt-4o".to_string(),
                     display_name: "GPT-4o".to_string(),
                     capabilities: vec!["chat".to_string()],
-                    enabled: false,
+                    // Resolver paths require `enabled = TRUE`; these tests
+                    // exercise successful resolution, so create as enabled.
+                    enabled: true,
                     is_favorite: false,
                     source: "manual".to_string(),
                     provider_metadata: None,
@@ -551,7 +553,8 @@ mod tests {
                     model_id: "claude-3-opus".to_string(),
                     display_name: "Claude 3 Opus".to_string(),
                     capabilities: vec![],
-                    enabled: false,
+                    // Resolver paths require `enabled = TRUE`.
+                    enabled: true,
                     is_favorite: false,
                     source: "manual".to_string(),
                     provider_metadata: None,

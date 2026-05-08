@@ -475,7 +475,7 @@ async fn test_session_inherits_agent_default_model() {
         .json(&json!({
             "model_id": "test-model",
             "display_name": "Test Model",
-            "enabled": false
+            "enabled": true
         }))
         .send()
         .await
@@ -548,7 +548,7 @@ async fn test_session_inherits_agent_default_model() {
         .json(&json!({
             "model_id": "test-model-2",
             "display_name": "Test Model 2",
-            "enabled": false
+            "enabled": true
         }))
         .send()
         .await
@@ -1060,7 +1060,8 @@ async fn test_agent_filesystem_and_bash_workspace_integration() {
         ))
         .json(&json!({
             "model_id": "claude-3-5-haiku-latest",
-            "display_name": "Claude 3.5 Haiku (FS Bash Test)"
+            "display_name": "Claude 3.5 Haiku (FS Bash Test)",
+            "enabled": true
         }))
         .send()
         .await
@@ -1324,7 +1325,8 @@ async fn test_agent_execution_llmsim_with_edit_file_tool() {
         ))
         .json(&json!({
             "model_id": "llmsim-edit-tool-test",
-            "display_name": "LlmSim Edit Tool Test Model"
+            "display_name": "LlmSim Edit Tool Test Model",
+            "enabled": true
         }))
         .send()
         .await
@@ -1531,7 +1533,8 @@ async fn test_message_triggers_agent_workflow() {
         ))
         .json(&json!({
             "model_id": "llmsim-test",
-            "display_name": "LlmSim Test Model"
+            "display_name": "LlmSim Test Model",
+            "enabled": true
         }))
         .send()
         .await
@@ -1813,7 +1816,8 @@ async fn test_no_duplicate_tool_calls() {
         ))
         .json(&json!({
             "model_id": "gpt-4o-mini",
-            "display_name": "GPT-4o Mini Test"
+            "display_name": "GPT-4o Mini Test",
+            "enabled": true
         }))
         .send()
         .await
@@ -2254,7 +2258,8 @@ async fn test_second_message_triggers_workflow() {
         ))
         .json(&json!({
             "model_id": "llmsim-second-msg-test",
-            "display_name": "LlmSim Second Message Test Model"
+            "display_name": "LlmSim Second Message Test Model",
+            "enabled": true
         }))
         .send()
         .await
@@ -3100,7 +3105,8 @@ async fn test_agent_execution_llmsim_with_tool_calls() {
         ))
         .json(&json!({
             "model_id": "llmsim-tool-test",
-            "display_name": "LlmSim Tool Test Model"
+            "display_name": "LlmSim Tool Test Model",
+            "enabled": true
         }))
         .send()
         .await
@@ -3398,7 +3404,8 @@ async fn test_agent_execution_openai_with_tool_calls() {
         ))
         .json(&json!({
             "model_id": "gpt-4o-mini",
-            "display_name": "GPT-4o Mini (Tool Test)"
+            "display_name": "GPT-4o Mini (Tool Test)",
+            "enabled": true
         }))
         .send()
         .await
@@ -3647,7 +3654,8 @@ async fn test_agent_execution_anthropic_with_tool_calls() {
         ))
         .json(&json!({
             "model_id": "claude-3-5-haiku-latest",
-            "display_name": "Claude 3.5 Haiku (Tool Test)"
+            "display_name": "Claude 3.5 Haiku (Tool Test)",
+            "enabled": true
         }))
         .send()
         .await
@@ -3879,7 +3887,8 @@ async fn test_agent_execution_multiple_tool_calls() {
         ))
         .json(&json!({
             "model_id": "llmsim-multi-tool",
-            "display_name": "LlmSim Multi-Tool Model"
+            "display_name": "LlmSim Multi-Tool Model",
+            "enabled": true
         }))
         .send()
         .await
@@ -4055,7 +4064,8 @@ async fn test_streaming_events_emitted() {
         ))
         .json(&json!({
             "model_id": "llmsim-streaming",
-            "display_name": "LlmSim Streaming Model"
+            "display_name": "LlmSim Streaming Model",
+            "enabled": true
         }))
         .send()
         .await
@@ -4382,7 +4392,8 @@ async fn test_cancel_turn_endpoint() {
         ))
         .json(&json!({
             "model_id": "llmsim-cancel-test",
-            "display_name": "LlmSim Cancel Test Model"
+            "display_name": "LlmSim Cancel Test Model",
+            "enabled": true
         }))
         .send()
         .await
@@ -4543,7 +4554,8 @@ async fn test_anthropic_extended_thinking() {
         ))
         .json(&json!({
             "model_id": "claude-sonnet-4-20250514",
-            "display_name": "Claude Sonnet 4 (Thinking Test)"
+            "display_name": "Claude Sonnet 4 (Thinking Test)",
+            "enabled": true
         }))
         .send()
         .await
@@ -4899,7 +4911,8 @@ async fn test_anthropic_extended_thinking_with_tools() {
         ))
         .json(&json!({
             "model_id": "claude-sonnet-4-20250514",
-            "display_name": "Claude Sonnet 4 (Thinking+Tools Test)"
+            "display_name": "Claude Sonnet 4 (Thinking+Tools Test)",
+            "enabled": true
         }))
         .send()
         .await

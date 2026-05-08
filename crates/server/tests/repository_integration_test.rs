@@ -1279,7 +1279,8 @@ async fn test_llm_model_crud() {
         .await
         .expect("Failed to create provider");
 
-    // Create model
+    // Create model (enabled — `get_llm_model` filters disabled rows on the
+    // resolution path and is exercised below).
     let model = backend
         .create_llm_model(
             TEST_ORG_ID,
@@ -1288,7 +1289,7 @@ async fn test_llm_model_crud() {
                 model_id: "gpt-4-test".to_string(),
                 display_name: "GPT-4 Test".to_string(),
                 capabilities: vec!["chat".to_string()],
-                enabled: false,
+                enabled: true,
                 is_favorite: false,
                 source: "manual".to_string(),
                 provider_metadata: None,
@@ -2210,7 +2211,9 @@ async fn test_llm_model_org_isolation_postgres() {
                 model_id: format!("model-{}", Uuid::now_v7()),
                 display_name: "Test Model".to_string(),
                 capabilities: vec![],
-                enabled: false,
+                // Enabled — `get_llm_model` enforces enabled = TRUE on the
+                // resolution path; this test focuses on org isolation.
+                enabled: true,
                 is_favorite: false,
                 source: "manual".to_string(),
                 provider_metadata: None,
@@ -2361,6 +2364,96 @@ async fn test_llm_model_provider_reads_fail_closed_on_cross_org_provider_postgre
         .delete_llm_provider(org2, foreign_provider.id.uuid())
         .await
         .unwrap();
+}
+
+#[tokio::test]
+async fn test_disabled_model_is_not_resolvable_or_default_postgres() {
+    let backend = create_test_backend().await;
+    let org_id = create_test_org(&backend, "Disabled Model Resolution Org").await;
+
+    let provider = backend
+        .create_llm_provider(
+            org_id,
+            CreateLlmProviderRow {
+                name: format!("Prov-{}", Uuid::now_v7()),
+                provider_type: "openai".to_string(),
+                base_url: None,
+                api_key_encrypted: None,
+                settings: None,
+            },
+        )
+        .await
+        .expect("create provider");
+
+    let disabled_model = backend
+        .create_llm_model(
+            org_id,
+            CreateLlmModelRow {
+                provider_id: provider.id,
+                model_id: format!("disabled-model-{}", Uuid::now_v7()),
+                display_name: "Disabled Model".to_string(),
+                capabilities: vec!["chat".to_string()],
+                enabled: false,
+                is_favorite: false,
+                source: "manual".to_string(),
+                provider_metadata: None,
+            },
+        )
+        .await
+        .expect("create disabled model");
+
+    backend
+        .upsert_organization_settings(org_id, Some(disabled_model.id.uuid()))
+        .await
+        .expect("set default model");
+
+    // Resolution paths must fail closed for disabled models.
+    assert!(
+        backend
+            .get_default_llm_model(org_id)
+            .await
+            .unwrap()
+            .is_none(),
+        "default resolution must not return a disabled model"
+    );
+    assert!(
+        backend
+            .get_llm_model_by_model_id(org_id, &disabled_model.model_id)
+            .await
+            .unwrap()
+            .is_none(),
+        "by-model-id resolution must not return a disabled model"
+    );
+    assert!(
+        backend
+            .get_llm_model(org_id, disabled_model.id.uuid())
+            .await
+            .unwrap()
+            .is_none(),
+        "by-UUID resolution must not return a disabled model (used by agent execution paths)"
+    );
+
+    // Admin listing must still include disabled models so administrators can
+    // see and re-enable them via the management UI.
+    let listed = backend.list_all_llm_models(org_id).await.unwrap();
+    assert!(
+        listed.iter().any(|model| model.id == disabled_model.id),
+        "admin listing must include disabled models"
+    );
+
+    // Teardown the isolated org state created above.
+    backend
+        .upsert_organization_settings(org_id, None)
+        .await
+        .expect("clear default model");
+    backend
+        .delete_llm_model(org_id, disabled_model.id.uuid())
+        .await
+        .expect("delete disabled model");
+    backend
+        .delete_llm_provider(org_id, provider.id.uuid())
+        .await
+        .expect("delete provider");
 }
 
 #[tokio::test]

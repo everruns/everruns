@@ -184,10 +184,13 @@ impl Database {
 
     /// Get the default LLM model with provider info.
     /// Reads from organization_settings.default_model_id.
-    /// Filters to providers that are administratively active. The provider's
-    /// API-key state is *not* gated here; readiness is surfaced via the
-    /// derived `healthy` field on `LlmModelWithProvider`, and downstream LLM
-    /// calls fail loudly if the key is missing.
+    ///
+    /// Fail-closed: filters to providers that are administratively active *and*
+    /// to models with `enabled = TRUE`, so disabling a model — even if it is
+    /// the org default and its provider is still active — removes it from
+    /// resolution. The provider's API-key state is *not* gated here; readiness
+    /// is surfaced via the derived `healthy` field on `LlmModelWithProvider`,
+    /// and downstream LLM calls fail loudly if the key is missing.
     pub async fn get_default_llm_model(
         &self,
         org_id: i64,
@@ -199,7 +202,7 @@ impl Database {
             FROM organization_settings os
             JOIN llm_models m ON m.id = os.default_model_id AND m.org_id = os.org_id
             JOIN llm_providers p ON m.provider_id = p.id AND p.org_id = m.org_id
-            WHERE os.org_id = $1 AND p.status = 'active'
+            WHERE os.org_id = $1 AND p.status = 'active' AND m.enabled = TRUE
             "#,
         )
         .bind(org_id)
@@ -284,12 +287,19 @@ impl Database {
         Ok(row)
     }
 
+    /// Resolve an LLM model by UUID for use (e.g. agent execution, validation).
+    ///
+    /// Disabled models are filtered out: callers on this path must not be able
+    /// to resolve a model that an administrator has disabled. Admin code that
+    /// needs to read disabled rows (e.g. the management UI, update/delete by id)
+    /// uses `get_llm_model_with_provider` or operates via `update_llm_model` /
+    /// `delete_llm_model` directly.
     pub async fn get_llm_model(&self, org_id: i64, id: Uuid) -> Result<Option<LlmModelRow>> {
         let row = sqlx::query_as::<_, LlmModelRow>(
             r#"
             SELECT id, org_id, provider_id, model_id, display_name, capabilities, is_favorite, enabled, source, last_seen_at, provider_metadata, created_at, updated_at
             FROM llm_models
-            WHERE org_id = $1 AND id = $2
+            WHERE org_id = $1 AND id = $2 AND enabled = TRUE
             "#,
         )
         .bind(org_id)
@@ -343,6 +353,12 @@ impl Database {
         Ok(rows)
     }
 
+    /// List all LLM models for the org, including disabled ones.
+    ///
+    /// Admin/management surface. Used by the models management UI which must show
+    /// disabled models so administrators can re-enable them. Resolution paths
+    /// (`get_default_llm_model`, `get_llm_model_by_model_id`, `get_llm_model`)
+    /// enforce `enabled = TRUE`; this listing intentionally does not.
     pub async fn list_all_llm_models(&self, org_id: i64) -> Result<Vec<LlmModelWithProviderRow>> {
         let rows = sqlx::query_as::<_, LlmModelWithProviderRow>(
             r#"
@@ -425,7 +441,7 @@ impl Database {
                    p.name as provider_name, p.provider_type, p.api_key_set as provider_api_key_set, p.status as provider_status
             FROM llm_models m
             JOIN llm_providers p ON m.provider_id = p.id AND p.org_id = m.org_id
-            WHERE m.model_id = $1 AND p.status = 'active' AND m.org_id = $2
+            WHERE m.model_id = $1 AND p.status = 'active' AND m.org_id = $2 AND m.enabled = TRUE
             "#,
         )
         .bind(model_id)
