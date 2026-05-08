@@ -85,10 +85,11 @@ impl Command for GetOrg {
 inventory::submit! { CommandDescriptor::of::<GetOrg>() }
 
 // SECURITY: this is the only domain command that may reveal an `org_id` the
-// caller's active session is not currently scoped to. The membership gate
-// below mirrors the `/v1/resolve-org` endpoint (THREAT[TM-TENANT-010]) — for
-// non-member orgs we return NotFound to preserve the org-enumeration
-// guarantee. See specs/multitenancy.md (Cross-Org Resource Resolution).
+// caller's active session is not currently scoped to. The shared helper
+// `org_resolver::resolve_owning_org_for_user` enforces the membership gate
+// (THREAT[TM-TENANT-010]); we return NotFound for every failure mode to
+// preserve the org-enumeration guarantee. See specs/multitenancy.md
+// (Cross-Org Resource Resolution).
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ResolveOrg {
     pub id: String,
@@ -101,7 +102,7 @@ impl Command for ResolveOrg {
         CommandMeta {
             name: "resolve_org",
             category: "organizations",
-            description: "Resolve the owning organization for a prefixed entity id (agent, session, harness, app, skill, mcp server, identity, eval). Returns 404 unless the caller is a member of the owning org.",
+            description: "Resolve the owning organization for a prefixed entity id (agent, session, harness, app, skill, mcp server, identity, eval). Requires an authenticated user; returns NotFound when the caller is not a member of the owning org or the id does not resolve.",
             method: "GET",
             path: "/v1/resolve-org",
         }
@@ -112,37 +113,16 @@ impl Command for ResolveOrg {
     }
 
     async fn execute(self, ctx: &Ctx) -> Result<ResolveOrgResponse, CommandError> {
-        let trimmed = self.id.trim();
-        if trimmed.is_empty() {
-            return Err(CommandError::not_found("Resource"));
-        }
-
         let user_id = q::require_user_id(ctx)?;
 
-        let owning_org_id = org_resolver::resolve_resource_org(&ctx.db, trimmed)
-            .await
-            .map_err(classify_anyhow)?
-            .ok_or_else(|| CommandError::not_found("Resource"))?;
-
-        let is_member = ctx
-            .db
-            .is_organization_member(owning_org_id, user_id)
-            .await
-            .map_err(classify_anyhow)?;
-        if !is_member {
-            return Err(CommandError::not_found("Resource"));
-        }
-
-        let row = ctx
-            .db
-            .get_organization(owning_org_id)
+        let resolved = org_resolver::resolve_owning_org_for_user(&ctx.db, user_id, &self.id)
             .await
             .map_err(classify_anyhow)?
             .ok_or_else(|| CommandError::not_found("Resource"))?;
 
         Ok(ResolveOrgResponse {
-            org_id: row.public_id,
-            org_name: row.name,
+            org_id: resolved.0,
+            org_name: resolved.1,
         })
     }
 }

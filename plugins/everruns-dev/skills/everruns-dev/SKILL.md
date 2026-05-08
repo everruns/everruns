@@ -261,7 +261,7 @@ execute { "commands": "create_mcp_server --name \"jira\" --url \"https://mcp.exa
 `get_org` accepts the `org_...` entity id as a positional arg.
 
 ```bash
-query { "commands": "get_org org_01933b5a00007000800000000000004 | jq '{id, name, display_name}'" }
+query { "commands": "get_org org_01933b5a00007000800000000000004 | jq '{id, name, default_model_id, default_harness_id}'" }
 ```
 
 **Find which org owns an entity.**
