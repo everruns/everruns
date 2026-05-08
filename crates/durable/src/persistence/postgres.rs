@@ -2092,6 +2092,46 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
     }
 
     #[instrument(skip(self))]
+    async fn get_workflow_extended(
+        &self,
+        workflow_id: Uuid,
+    ) -> Result<Option<WorkflowInfoExtended>, StoreError> {
+        // EVE-455: direct id lookup. The previous implementation scanned the
+        // first 1000 rows of `list_workflows`, which silently dropped older
+        // workflows once a deployment grew past that page.
+        let row = sqlx::query(
+            r#"
+            SELECT id, workflow_type, status, input, result, error,
+                   created_at, started_at, completed_at, continued_as_new_id
+            FROM durable_workflow_instances
+            WHERE id = $1
+            "#,
+        )
+        .bind(workflow_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| {
+            error!("Failed to load workflow {}: {}", workflow_id, e);
+            StoreError::Database(e.to_string())
+        })?;
+
+        let Some(row) = row else { return Ok(None) };
+        let status_str: String = row.get("status");
+        let error_json: Option<serde_json::Value> = row.get("error");
+        Ok(Some(WorkflowInfoExtended {
+            id: row.get("id"),
+            workflow_type: row.get("workflow_type"),
+            status: parse_workflow_status(&status_str)?,
+            input: row.get("input"),
+            result: row.get("result"),
+            error: error_json.and_then(|v| serde_json::from_value(v).ok()),
+            created_at: row.get("created_at"),
+            started_at: row.get("started_at"),
+            completed_at: row.get("completed_at"),
+            continued_as_new_id: row.try_get("continued_as_new_id").ok().flatten(),
+        }))
+    }
+
     async fn list_workflows(
         &self,
         filter: WorkflowFilter,

@@ -1040,32 +1040,26 @@ pub async fn get_workflow(
     Path(workflow_id): Path<Uuid>,
 ) -> ApiResult<WorkflowResponse> {
     let store = state.get_store()?;
-    // Use list_workflows with a filter to get the extended info
-    let filter = WorkflowFilter::default();
-    let pagination = Pagination {
-        offset: 0,
-        limit: 1000,
-    };
-
-    let workflows = store
-        .list_workflows(filter, pagination)
+    // EVE-455: direct id lookup; do not scan the first page of
+    // `list_workflows`, which falsely 404s for older workflows.
+    let workflow = store
+        .get_workflow_extended(workflow_id)
         .await
         .map_err(|e| {
-            tracing::error!("Failed to get workflow: {}", e);
+            tracing::error!("Failed to get workflow {}: {}", workflow_id, e);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(ErrorResponse {
                     error: "Internal server error".to_string(),
                 }),
             )
-        })?;
-
-    let workflow = workflows.into_iter().find(|w| w.id == workflow_id).ok_or((
-        StatusCode::NOT_FOUND,
-        Json(ErrorResponse {
-            error: "Workflow not found".to_string(),
-        }),
-    ))?;
+        })?
+        .ok_or((
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: "Workflow not found".to_string(),
+            }),
+        ))?;
 
     Ok(Json(WorkflowResponse::from(workflow)))
 }
@@ -2028,22 +2022,17 @@ pub async fn stream_workflow_sse(
         .get_store()
         .map_err(|_| StatusCode::SERVICE_UNAVAILABLE)?;
 
-    // Verify workflow exists
-    let workflows = store
-        .list_workflows(
-            WorkflowFilter::default(),
-            Pagination {
-                offset: 0,
-                limit: 1000,
-            },
-        )
+    // EVE-455: direct id lookup; do not scan the first page of
+    // `list_workflows`, which silently 404s for older workflows once a
+    // deployment crosses the page limit.
+    let workflow_exists = store
+        .get_workflow_extended(workflow_id)
         .await
         .map_err(|e| {
-            tracing::error!("Failed to get workflows: {}", e);
+            tracing::error!("Failed to look up workflow {}: {}", workflow_id, e);
             StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-
-    let workflow_exists = workflows.iter().any(|w| w.id == workflow_id);
+        })?
+        .is_some();
     if !workflow_exists {
         return Err(StatusCode::NOT_FOUND);
     }
@@ -2172,13 +2161,14 @@ pub async fn stream_workflow_sse(
                     }
                 };
 
-                // Fetch workflow
-                let workflows = fetch_or_disconnect!(
-                    store.list_workflows(WorkflowFilter::default(), Pagination { offset: 0, limit: 1000 }).await,
-                    "Failed to fetch workflows"
+                // EVE-455: direct id lookup so the SSE stream keeps working
+                // for workflows that fall off the first 1000-row page.
+                let workflow_lookup = fetch_or_disconnect!(
+                    store.get_workflow_extended(stream_state.workflow_id).await,
+                    "Failed to fetch workflow"
                 );
 
-                let workflow = match workflows.into_iter().find(|w| w.id == stream_state.workflow_id) {
+                let workflow = match workflow_lookup {
                     Some(w) => WorkflowResponse::from(w),
                     None => {
                         // Workflow deleted, send graceful disconnect

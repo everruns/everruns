@@ -1190,6 +1190,27 @@ impl WorkflowEventStore for InMemoryWorkflowEventStore {
         })
     }
 
+    async fn get_workflow_extended(
+        &self,
+        workflow_id: Uuid,
+    ) -> Result<Option<WorkflowInfoExtended>, StoreError> {
+        // EVE-455: direct id lookup that does not depend on the
+        // `list_workflows` page size.
+        let workflows = self.workflows.read();
+        Ok(workflows.get(&workflow_id).map(|w| WorkflowInfoExtended {
+            id: workflow_id,
+            workflow_type: w.workflow_type.clone(),
+            status: w.status,
+            input: w.input.clone(),
+            result: w.result.clone(),
+            error: w.error.clone(),
+            created_at: w.created_at,
+            started_at: w.started_at,
+            completed_at: w.completed_at,
+            continued_as_new_id: w.continued_as_new_id,
+        }))
+    }
+
     async fn list_workflows(
         &self,
         filter: WorkflowFilter,
@@ -3022,5 +3043,66 @@ mod tests {
         // started_workflows counts workflows where started_at IS NOT NULL
         // wf2 (running) and wf3 (completed after running) should have started_at set
         assert_eq!(health.started_workflows, 2);
+    }
+
+    // EVE-455: previously, the API verified workflow existence by reading the
+    // first 1000 rows of `list_workflows`, ordered by `created_at DESC`. Once
+    // the store had > 1000 workflows, the oldest one fell off the page and
+    // its detail/SSE endpoint silently returned 404. The direct
+    // `get_workflow_extended` lookup must resolve any workflow regardless of
+    // how many newer workflows exist.
+    #[tokio::test]
+    async fn test_get_workflow_extended_resolves_past_first_page() {
+        let store = InMemoryWorkflowEventStore::new();
+
+        // Create the workflow we will look up first, so it has the *oldest*
+        // `created_at` and would land past the first page.
+        let target = Uuid::now_v7();
+        store
+            .create_workflow(target, "old", serde_json::json!({}), None)
+            .await
+            .unwrap();
+
+        // Pile on > 1000 newer workflows.
+        for _ in 0..1100 {
+            store
+                .create_workflow(Uuid::now_v7(), "filler", serde_json::json!({}), None)
+                .await
+                .unwrap();
+        }
+
+        // The legacy first-page scan would not find this workflow.
+        let first_page = store
+            .list_workflows(
+                WorkflowFilter::default(),
+                Pagination {
+                    offset: 0,
+                    limit: 1000,
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(first_page.len(), 1000);
+        assert!(
+            !first_page.iter().any(|w| w.id == target),
+            "regression guard: target workflow must be off the first page"
+        );
+
+        // The direct lookup must resolve it anyway.
+        let resolved = store
+            .get_workflow_extended(target)
+            .await
+            .unwrap()
+            .expect("get_workflow_extended must find old workflow");
+        assert_eq!(resolved.id, target);
+        assert_eq!(resolved.workflow_type, "old");
+    }
+
+    #[tokio::test]
+    async fn test_get_workflow_extended_returns_none_for_unknown_id() {
+        let store = InMemoryWorkflowEventStore::new();
+        let unknown = Uuid::now_v7();
+        let resolved = store.get_workflow_extended(unknown).await.unwrap();
+        assert!(resolved.is_none());
     }
 }
