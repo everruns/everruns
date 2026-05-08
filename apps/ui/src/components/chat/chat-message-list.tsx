@@ -19,7 +19,7 @@ import type {
   ToolProgressData,
 } from "@/lib/api/types";
 import type { ToolOutputStreams } from "@/app/(main)/sessions/[sessionId]/session-context";
-import { getEventData, getTextFromContent, isImageFilePart } from "@/lib/api/types";
+import { getEventData, isImageFilePart } from "@/lib/api/types";
 import { MessageInfoIcon } from "@/components/chat/message-info-icon";
 import { MessageImage } from "@/components/chat/image-attachments";
 import { MessageContent } from "@/components/chat/message-content";
@@ -73,34 +73,8 @@ function getMessageImages(content: ContentPart[]): Array<{ image_id: string; fil
   }));
 }
 
-function formatFailureDetails({
-  event,
-  error,
-  errorCode,
-  errorFields,
-  rawMessage,
-}: {
-  event: Event;
-  error?: string;
-  errorCode?: string;
-  errorFields?: Record<string, unknown>;
-  rawMessage?: string;
-}): string | null {
-  const lines = [
-    `event_id: ${event.id}`,
-    `event_type: ${event.type}`,
-    event.context?.turn_id ? `turn_id: ${event.context.turn_id}` : null,
-    errorCode ? `error_code: ${errorCode}` : null,
-    error && error !== rawMessage ? `error: ${error}` : null,
-    rawMessage ? `message: ${rawMessage}` : null,
-    errorFields ? `error_fields: ${JSON.stringify(errorFields, null, 2)}` : null,
-  ].filter(Boolean);
-
-  return lines.length > 0 ? lines.join("\n") : null;
-}
-
 function getTurnFailedMessage(locale: SupportedLocale, data: TurnFailedData): string {
-  return localizeRuntimeError(locale, getRuntimeErrorFromTurnFailed(data), data.error);
+  return localizeRuntimeError(locale, getRuntimeErrorFromTurnFailed(data), "");
 }
 
 function buildActGroups(chatEvents: Event[], workingLabel: string) {
@@ -288,16 +262,7 @@ export const ChatMessageList = memo(function ChatMessageList({
         const turnFailedData = getEventData(event, "turn.failed");
         if (turnFailedData) {
           return (
-            <ChatErrorAlert
-              key={event.id}
-              message={getTurnFailedMessage(locale, turnFailedData)}
-              details={formatFailureDetails({
-                event,
-                error: turnFailedData.error,
-                errorCode: turnFailedData.error_code,
-                errorFields: turnFailedData.error_fields,
-              })}
-            />
+            <ChatErrorAlert key={event.id} message={getTurnFailedMessage(locale, turnFailedData)} />
           );
         }
 
@@ -405,19 +370,7 @@ export const ChatMessageList = memo(function ChatMessageList({
         const textContent = getMessageText(data);
         const outputError = outputData ? getRuntimeErrorFromOutputMessage(outputData) : undefined;
         if (outputData && outputError) {
-          const rawMessage = getTextFromContent(outputData.message?.content ?? []);
-          return (
-            <ChatErrorAlert
-              key={event.id}
-              message={textContent}
-              details={formatFailureDetails({
-                event,
-                errorCode: outputError.code,
-                errorFields: outputError.fields,
-                rawMessage,
-              })}
-            />
-          );
+          return <ChatErrorAlert key={event.id} message={textContent} />;
         }
         const toolCalls = isUser
           ? []
