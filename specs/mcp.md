@@ -231,10 +231,13 @@ client_secret=<client_secret>
 {
   "access_token": "<jwt>",
   "token_type": "Bearer",
-  "expires_in": 3600,
+  "expires_in": 900,
   "refresh_token": "<opaque>"
 }
 ```
+
+`expires_in` mirrors the actual JWT lifetime (`AUTH_JWT_ACCESS_TOKEN_LIFETIME`,
+default 900 seconds). It is not a separate MCP-specific constant.
 
 ### Access Tokens
 
@@ -252,7 +255,7 @@ Standard JWTs signed with `AUTH_JWT_SECRET` via `JwtService::generate_access_tok
 }
 ```
 
-MCP OAuth tokens are indistinguishable from regular access tokens at the JWT level. They are validated by the existing `BuiltinAuthBackend.validate_token()` path. The MCP-specific lifetime (1 hour) and refresh token are managed by the OAuth flow, not by JWT claims.
+MCP OAuth tokens are indistinguishable from regular access tokens at the JWT level. They are validated by the existing `BuiltinAuthBackend.validate_token()` path. The access-token lifetime is the configured JWT access-token lifetime; MCP refresh tokens are opaque, stored hashed, and rotated by the OAuth flow.
 
 ### Database Schema
 

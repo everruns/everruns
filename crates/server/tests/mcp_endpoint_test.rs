@@ -13,10 +13,12 @@
 mod test_harness;
 
 use axum::http::{Method, StatusCode};
-use everruns_core::DEFAULT_ORG_PUBLIC_ID;
 use everruns_core::capability_types::VirtualFileTree;
 use everruns_core::typed_id::SessionId;
+use everruns_core::{DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID};
+use everruns_server::storage::models::{CreateOAuthAuthorizationCodeRow, CreateUserRow};
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use test_harness::{TestServer, extract_cookie};
 
 // ============================================================================
@@ -192,6 +194,26 @@ fn unique_suffix() -> String {
         .as_millis();
     let counter = UNIQUE_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     format!("{millis}-{counter}")
+}
+
+fn hash_value(value: &str) -> String {
+    hex::encode(Sha256::digest(value.as_bytes()))
+}
+
+fn pkce_challenge(verifier: &str) -> String {
+    use base64::Engine;
+    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()))
+}
+
+fn jwt_lifetime_secs(token: &str) -> i64 {
+    use base64::Engine;
+    let payload = token.split('.').nth(1).expect("JWT must have payload");
+    let decoded = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(payload)
+        .expect("JWT payload must be base64url");
+    let claims: Value = serde_json::from_slice(&decoded).expect("JWT payload must be JSON");
+    claims["exp"].as_i64().expect("JWT must contain exp")
+        - claims["iat"].as_i64().expect("JWT must contain iat")
 }
 
 async fn create_agent_via_execute(
@@ -2497,6 +2519,94 @@ async fn register_oauth_client(server: &TestServer) -> (String, String) {
     (client_id, client_secret)
 }
 
+async fn create_oauth_test_user(server: &TestServer) -> uuid::Uuid {
+    let suffix = unique_suffix();
+    let user = server
+        .db
+        .create_user(CreateUserRow {
+            email: format!("mcp-oauth-{suffix}@example.com"),
+            name: "MCP OAuth Test User".to_string(),
+            avatar_url: None,
+            roles: vec!["user".to_string()],
+            password_hash: None,
+            email_verified: true,
+            auth_provider: None,
+            auth_provider_id: None,
+            external_id: None,
+        })
+        .await
+        .expect("failed to create OAuth test user");
+    server
+        .db
+        .add_organization_member(DEFAULT_ORG_ID, user.id, "member")
+        .await
+        .expect("failed to add OAuth test user to default org");
+    user.id
+}
+
+async fn issue_mcp_oauth_token_pair(
+    server: &TestServer,
+    client_id: &str,
+    client_secret: &str,
+) -> Value {
+    let user_id = create_oauth_test_user(server).await;
+    let suffix = unique_suffix();
+    let code = format!("oauth-code-{suffix}");
+    let verifier = format!("oauth-verifier-{suffix}");
+    let redirect_uri = "http://localhost:9999/callback";
+
+    server
+        .db
+        .create_oauth_authorization_code(CreateOAuthAuthorizationCodeRow {
+            code_hash: hash_value(&code),
+            client_id: client_id.to_string(),
+            user_id,
+            org_id: DEFAULT_ORG_ID,
+            redirect_uri: redirect_uri.to_string(),
+            code_challenge: pkce_challenge(&verifier),
+            code_challenge_method: "S256".to_string(),
+            scope: "mcp".to_string(),
+            expires_at: chrono::Utc::now() + chrono::Duration::minutes(5),
+        })
+        .await
+        .expect("failed to create OAuth authorization code");
+
+    server
+        .post(
+            "/oauth/token",
+            json!({
+                "grant_type": "authorization_code",
+                "code": code,
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "redirect_uri": redirect_uri,
+                "code_verifier": verifier,
+            }),
+        )
+        .await
+        .assert_success()
+        .json()
+}
+
+async fn refresh_mcp_oauth_token(
+    server: &TestServer,
+    client_id: &str,
+    client_secret: &str,
+    refresh_token: &str,
+) -> test_harness::TestResponse {
+    server
+        .post(
+            "/oauth/token",
+            json!({
+                "grant_type": "refresh_token",
+                "refresh_token": refresh_token,
+                "client_id": client_id,
+                "client_secret": client_secret,
+            }),
+        )
+        .await
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_oauth_token_json_invalid_grant_type() {
     let server = TestServer::new().await;
@@ -2558,6 +2668,96 @@ async fn test_oauth_token_json_missing_code() {
             .unwrap_or("")
             .contains("code"),
     );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_oauth_token_expires_in_matches_jwt_lifetime() {
+    let server = TestServer::in_memory().await;
+    let (client_id, client_secret) = register_oauth_client(&server).await;
+    let token: Value = issue_mcp_oauth_token_pair(&server, &client_id, &client_secret).await;
+
+    let access_token = token["access_token"]
+        .as_str()
+        .expect("access_token must be present");
+    let expires_in = token["expires_in"]
+        .as_i64()
+        .expect("expires_in must be present");
+
+    assert_eq!(expires_in, jwt_lifetime_secs(access_token));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_oauth_refresh_token_rotates_and_rejects_reuse() {
+    let server = TestServer::in_memory().await;
+    let (client_id, client_secret) = register_oauth_client(&server).await;
+    let initial: Value = issue_mcp_oauth_token_pair(&server, &client_id, &client_secret).await;
+    let old_refresh = initial["refresh_token"]
+        .as_str()
+        .expect("initial refresh_token must be present")
+        .to_string();
+
+    let refreshed: Value =
+        refresh_mcp_oauth_token(&server, &client_id, &client_secret, &old_refresh)
+            .await
+            .assert_success()
+            .json();
+    let new_refresh = refreshed["refresh_token"]
+        .as_str()
+        .expect("refreshed refresh_token must be present")
+        .to_string();
+    assert_ne!(new_refresh, old_refresh);
+    assert_eq!(
+        refreshed["expires_in"].as_i64().unwrap(),
+        jwt_lifetime_secs(refreshed["access_token"].as_str().unwrap())
+    );
+
+    let reuse = refresh_mcp_oauth_token(&server, &client_id, &client_secret, &old_refresh).await;
+    assert_eq!(reuse.status(), StatusCode::BAD_REQUEST);
+    let body: Value = reuse.json();
+    assert_eq!(body["error"], "invalid_grant");
+
+    refresh_mcp_oauth_token(&server, &client_id, &client_secret, &new_refresh)
+        .await
+        .assert_success();
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_oauth_refresh_token_concurrent_retries_are_single_use() {
+    let server = TestServer::in_memory().await;
+    let (client_id, client_secret) = register_oauth_client(&server).await;
+    let initial: Value = issue_mcp_oauth_token_pair(&server, &client_id, &client_secret).await;
+    let refresh = initial["refresh_token"]
+        .as_str()
+        .expect("initial refresh_token must be present")
+        .to_string();
+
+    let (first, second) = tokio::join!(
+        refresh_mcp_oauth_token(&server, &client_id, &client_secret, &refresh),
+        refresh_mcp_oauth_token(&server, &client_id, &client_secret, &refresh),
+    );
+
+    let statuses = [first.status(), second.status()];
+    assert_eq!(
+        statuses.iter().filter(|status| status.is_success()).count(),
+        1,
+        "exactly one concurrent refresh should succeed: {statuses:?}",
+    );
+    assert_eq!(
+        statuses
+            .iter()
+            .filter(|status| **status == StatusCode::BAD_REQUEST)
+            .count(),
+        1,
+        "exactly one concurrent refresh should fail as invalid_grant: {statuses:?}",
+    );
+
+    let failed = if first.status().is_success() {
+        second
+    } else {
+        first
+    };
+    let body: Value = failed.json();
+    assert_eq!(body["error"], "invalid_grant");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
