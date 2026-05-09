@@ -16,6 +16,8 @@ import { useLlmModels, useUpdateLlmModel } from "@/hooks/use-llm-providers";
 import { useQueryClient } from "@tanstack/react-query";
 
 interface ModelPickerProps {
+  /** Optional ID for the select trigger */
+  id?: string;
   /** Current selected model ID (empty string or "none" for no selection) */
   value: string;
   /** Called when model selection changes */
@@ -37,6 +39,7 @@ interface ModelPickerProps {
  * - Optionally shows favorite toggle buttons
  */
 export function ModelPicker({
+  id,
   value,
   onChange,
   placeholder = "Select a model",
@@ -70,7 +73,7 @@ export function ModelPicker({
       onValueChange={(val) => onChange(val === "none" ? "" : val)}
       disabled={disabled || isLoading}
     >
-      <SelectTrigger className={cn("w-full", className)}>
+      <SelectTrigger id={id} className={cn("w-full", className)}>
         <SelectValue>
           {(() => {
             if (isLoading) return "Loading...";

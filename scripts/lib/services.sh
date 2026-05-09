@@ -178,7 +178,9 @@ signal_port_bound_services() {
 # require_command is defined in common.sh (sourced above)
 
 ui_dev_args=()
-if [ -L "${PROJECT_ROOT:-$(pwd)}/apps/ui/node_modules" ]; then
+# Keep local/worktree dev on webpack by default. Next's default dev engine can
+# serve stale route state across generated cache changes in these worktrees.
+if [ "${UI_DEV_ENGINE:-webpack}" = "webpack" ] || [ -L "${PROJECT_ROOT:-$(pwd)}/apps/ui/node_modules" ]; then
   ui_dev_args+=(--webpack)
 fi
 if [ -n "${UI_DEV_ARGS:-}" ]; then
@@ -294,6 +296,7 @@ case "$cmd" in
     # Enable dev mode
     export DEV_MODE=true
     export DEPLOYMENT_GRADE=dev
+    export AUTH_MODE=${AUTH_MODE:-none}
     export API_PORT WORKER_GRPC_PORT CADDY_ADMIN_PORT UI_PORT PROXY_PORT VALKEY_PORT
     export ADDR=${ADDR:-$API_ADDR_DEFAULT}
     export WORKER_GRPC_ADDR=${WORKER_GRPC_ADDR:-$WORKER_GRPC_ADDR_DEFAULT}
