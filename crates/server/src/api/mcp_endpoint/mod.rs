@@ -1230,8 +1230,6 @@ async fn tool_discover(
             "name": entry.name,
             "category": entry.category,
             "description": entry.description,
-            "method": entry.method,
-            "path": entry.path,
             "read_only": entry.read_only,
             "output_shape": entry.output_shape,
         });

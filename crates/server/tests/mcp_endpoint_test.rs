@@ -1001,6 +1001,15 @@ async fn test_mcp_discover_agents() {
         .iter()
         .find(|op| op["name"] == "list_agents")
         .expect("list_agents operation");
+    let list_agents_object = list_agents.as_object().expect("operation object");
+    assert!(
+        !list_agents_object.contains_key("method"),
+        "discover should not expose HTTP methods"
+    );
+    assert!(
+        !list_agents_object.contains_key("path"),
+        "discover should not expose HTTP paths"
+    );
     assert_eq!(list_agents["output_shape"], "paginated");
     assert_eq!(
         list_agents["output_schema"]["properties"]["data"]["type"],
@@ -1130,6 +1139,47 @@ async fn test_mcp_discover_all() {
     assert!(
         !first_operation.contains_key("output_schema"),
         "discover --all should omit output schemas by default"
+    );
+    assert!(
+        !first_operation.contains_key("method"),
+        "discover --all should not expose HTTP methods"
+    );
+    assert!(
+        !first_operation.contains_key("path"),
+        "discover --all should not expose HTTP paths"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_discover_session_database_schema_omits_http_metadata() {
+    let server = TestServer::in_memory().await;
+    let resp = mcp_tool_call(
+        &server,
+        "discover",
+        json!({ "query": "session database schema" }),
+    )
+    .await;
+
+    assert!(
+        !tool_is_error(&resp),
+        "discover failed: {}",
+        tool_text(&resp)
+    );
+    let payload = tool_json(&resp);
+    let operation = payload["operations"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|op| op["name"] == "get_session_database_schema")
+        .expect("get_session_database_schema operation");
+    let operation = operation.as_object().expect("operation object");
+    assert!(
+        !operation.contains_key("method"),
+        "discover should not expose HTTP methods"
+    );
+    assert!(
+        !operation.contains_key("path"),
+        "discover should not expose HTTP paths"
     );
 }
 
