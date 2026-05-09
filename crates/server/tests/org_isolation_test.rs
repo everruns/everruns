@@ -181,7 +181,6 @@ async fn test_llm_provider_positive_own_org() {
         )
         .await
         .unwrap();
-
     // Positive: own org can get, list, update, delete
     assert!(
         db.get_llm_provider(ORG1, provider.id.uuid())
@@ -296,7 +295,6 @@ async fn test_llm_model_positive_own_org() {
         )
         .await
         .unwrap();
-
     let model = db
         .create_llm_model(
             ORG1,
@@ -373,6 +371,19 @@ async fn test_llm_model_negative_cross_org() {
         )
         .await
         .unwrap();
+    let foreign_provider = db
+        .create_llm_provider(
+            org2,
+            CreateLlmProviderRow {
+                name: "Foreign Provider".to_string(),
+                provider_type: "openai".to_string(),
+                base_url: None,
+                api_key_encrypted: None,
+                settings: None,
+            },
+        )
+        .await
+        .unwrap();
 
     let model = db
         .create_llm_model(
@@ -426,6 +437,19 @@ async fn test_llm_model_negative_cross_org() {
         .unwrap()
         .is_none()
     );
+    assert!(
+        db.update_llm_model(
+            ORG1,
+            model.id.uuid(),
+            UpdateLlmModel {
+                provider_id: Some(foreign_provider.id),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap()
+        .is_none()
+    );
     assert!(!db.delete_llm_model(org2, model.id.uuid()).await.unwrap());
 
     // Verify original is untouched
@@ -435,6 +459,7 @@ async fn test_llm_model_negative_cross_org() {
         .unwrap()
         .unwrap();
     assert_eq!(original.display_name, "GPT-4");
+    assert_eq!(original.provider_id, provider.id);
 }
 
 #[tokio::test]

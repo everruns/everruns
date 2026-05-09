@@ -904,6 +904,7 @@ pub struct CreateLlmModelRow {
 
 #[derive(Debug, Clone, Default)]
 pub struct UpdateLlmModel {
+    pub provider_id: Option<ProviderId>,
     pub model_id: Option<String>,
     pub display_name: Option<String>,
     pub capabilities: Option<Vec<String>>,

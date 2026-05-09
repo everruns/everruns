@@ -20427,6 +20427,14 @@
             ],
             "description": "The model identifier used by the provider's API.",
             "example": "gpt-4o-mini"
+          },
+          "provider_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Provider that owns this model.",
+            "example": "provider_019df670b5af7db7a5685a4ad18a544a"
           }
         }
       },

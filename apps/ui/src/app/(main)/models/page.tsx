@@ -76,6 +76,12 @@ export default function ModelsPage() {
     }
   };
 
+  const handleUpdateModel = async (modelId: string, data: Parameters<typeof updateLlmModel>[1]) => {
+    await updateLlmModel(modelId, data);
+    await queryClient.invalidateQueries({ queryKey: queryKeys.llmModels.all });
+    await queryClient.invalidateQueries({ queryKey: queryKeys.llmProviders.all });
+  };
+
   const handleSetDefaultModel = async (modelId: string) => {
     await updateOrg.mutateAsync({ default_model_id: modelId || undefined });
   };
@@ -138,7 +144,9 @@ export default function ModelsPage() {
                       <ModelRow
                         key={model.id}
                         model={model}
+                        providers={providers}
                         onDelete={handleDeleteModel}
+                        onUpdate={handleUpdateModel}
                         onToggleEnabled={handleToggleEnabled}
                         isTogglingEnabled={togglingModelId === model.id}
                       />
@@ -164,7 +172,9 @@ export default function ModelsPage() {
                       <ModelRow
                         key={model.id}
                         model={model}
+                        providers={providers}
                         onDelete={handleDeleteModel}
+                        onUpdate={handleUpdateModel}
                         onToggleEnabled={handleToggleEnabled}
                         isTogglingEnabled={togglingModelId === model.id}
                       />

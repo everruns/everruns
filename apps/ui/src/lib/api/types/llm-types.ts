@@ -182,6 +182,7 @@ export interface CreateLlmModelRequest {
 }
 
 export interface UpdateLlmModelRequest {
+  provider_id?: string;
   model_id?: string;
   display_name?: string;
   capabilities?: string[];

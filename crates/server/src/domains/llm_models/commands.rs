@@ -1,7 +1,7 @@
 use super::queries as q;
 use super::{LLM_MODEL_MANAGE, LLM_MODEL_VIEW};
 use crate::domains::common::*;
-use everruns_core::{LlmModel, LlmModelSource, LlmModelWithProvider, Policy};
+use everruns_core::{LlmModel, LlmModelSource, LlmModelWithProvider, Policy, ProviderId};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -185,6 +185,7 @@ inventory::submit! { CommandDescriptor::of::<GetModel>() }
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateModel {
     pub id: String,
+    pub provider_id: Option<String>,
     pub model_id: Option<String>,
     pub display_name: Option<String>,
     pub capabilities: Option<Vec<String>>,
@@ -215,11 +216,17 @@ impl Command for UpdateModel {
 
     async fn execute(self, ctx: &Ctx) -> Result<LlmModel, CommandError> {
         let model_id = q::parse_model_id(&self.id)?;
+        let provider_id = self
+            .provider_id
+            .as_deref()
+            .map(q::parse_provider_id)
+            .transpose()?;
         q::service(ctx)
             .update(
                 &ctx.caller,
                 model_id,
                 crate::api::llm_models::UpdateLlmModelRequest {
+                    provider_id: provider_id.map(|id| ProviderId::from_uuid(id).to_string()),
                     model_id: self.model_id,
                     display_name: self.display_name,
                     capabilities: self.capabilities,
