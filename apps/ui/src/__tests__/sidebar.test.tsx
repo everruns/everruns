@@ -69,7 +69,6 @@ jest.mock("@/components/layout/notification-bell", () => ({
 jest.mock("@/providers/feature-flags-provider", () => ({
   useFeatureFlags: () => ({
     global_chat: true,
-    apps: true,
     notifications: true,
     mcp_endpoint: true,
   }),

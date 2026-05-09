@@ -12,7 +12,6 @@ import { ArchiveFilter } from "@/components/archive-filter";
 import { CopyButton } from "@/components/ui/copy-button";
 import Link from "next/link";
 import type { App, AppChannel, ScheduleChannelConfig } from "@/lib/api/types";
-import { ExperimentalPageBadge } from "@/components/ui/experimental-badge";
 import { getEntityNameClassName, getEntityStatusBadgeVariant } from "@/lib/entity-lifecycle";
 import { getChannelTypeDisplayName } from "@/lib/app-channels";
 
@@ -24,10 +23,7 @@ export default function AppsPage() {
   return (
     <div className="container mx-auto p-6">
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold flex items-center gap-3">
-          Apps
-          <ExperimentalPageBadge />
-        </h1>
+        <h1 className="text-2xl font-bold flex items-center gap-3">Apps</h1>
         <div className="flex items-center gap-2">
           <ArchiveFilter showArchived={showArchived} onShowArchivedChange={setShowArchived} />
           <Link href="/apps/new">
