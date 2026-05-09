@@ -84,6 +84,23 @@ impl Database {
         .fetch_one(&self.pool)
         .await?;
 
+        sqlx::query(
+            r#"
+            INSERT INTO reporting_outbox (
+                org_id, source_type, source_id, source_version, reason, status, next_attempt_at
+            )
+            SELECT s.org_id, 'event', $1, $1, 'event_projection', 'pending', NOW()
+            FROM sessions s
+            WHERE s.id = $2
+            ON CONFLICT (org_id, source_type, source_id, source_version, reason)
+            DO NOTHING
+            "#,
+        )
+        .bind(row.id.uuid().to_string())
+        .bind(row.session_id.uuid())
+        .execute(&self.pool)
+        .await?;
+
         Ok(row)
     }
 

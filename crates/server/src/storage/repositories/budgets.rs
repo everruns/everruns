@@ -392,6 +392,21 @@ impl Database {
         .fetch_one(&mut *tx)
         .await?;
 
+        sqlx::query(
+            r#"
+            INSERT INTO reporting_outbox (
+                org_id, source_type, source_id, source_version, reason, status, next_attempt_at
+            )
+            VALUES ($1, 'usage_ledger', $2, $2, 'budget_posting_projection', 'pending', NOW())
+            ON CONFLICT (org_id, source_type, source_id, source_version, reason)
+            DO NOTHING
+            "#,
+        )
+        .bind(entry.org_id)
+        .bind(entry.id.to_string())
+        .execute(&mut *tx)
+        .await?;
+
         tx.commit().await?;
         Ok((entry, updated_budget))
     }

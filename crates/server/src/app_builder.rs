@@ -971,6 +971,7 @@ impl ServerAppBuilder {
             api::knowledge_bases::AppState::new(db.clone(), auth_state.clone());
         let payments_state =
             api::payments::AppState::new(db.clone(), encryption.clone(), auth_state.clone());
+        let reporting_state = api::reporting::AppState::new(db.clone(), auth_state.clone());
         let audit_logs_state = api::audit_logs::AppState::new(
             db.clone(),
             capability_service.clone(),
@@ -1100,6 +1101,7 @@ impl ServerAppBuilder {
             .merge(api::memory_stores::routes(memory_stores_state))
             .merge(api::knowledge_bases::routes(knowledge_bases_state))
             .merge(api::payments::routes(payments_state))
+            .merge(api::reporting::routes(reporting_state))
             .merge(api::user_connections::routes(user_connections_state))
             .merge(api::session_schedules::routes(session_schedules_state))
             .merge(api::audit_logs::routes(audit_logs_state))

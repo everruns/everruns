@@ -198,6 +198,7 @@ pub struct Ctx {
     pub llm_provider_service: Option<Arc<crate::domains::llm_providers::LlmProviderService>>,
     pub model_sync_service: Option<Arc<crate::services::ModelSyncService>>,
     pub eval_service: Option<Arc<crate::domains::evals::EvalService>>,
+    pub reporting_service: Option<Arc<crate::domains::reporting::ReportingService>>,
     pub sqldb_store: Option<Arc<dyn everruns_core::session_sqldb::SessionSqlDbStore>>,
     pub workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
     pub runner: Option<Arc<dyn everruns_worker::AgentRunner>>,
@@ -246,6 +247,7 @@ impl Ctx {
             llm_provider_service: None,
             model_sync_service: None,
             eval_service: None,
+            reporting_service: None,
             sqldb_store: None,
             workflow_store: None,
             runner: None,
@@ -371,6 +373,14 @@ impl Ctx {
 
     pub fn with_eval_service(mut self, service: Arc<crate::domains::evals::EvalService>) -> Self {
         self.eval_service = Some(service);
+        self
+    }
+
+    pub fn with_reporting_service(
+        mut self,
+        service: Arc<crate::domains::reporting::ReportingService>,
+    ) -> Self {
+        self.reporting_service = Some(service);
         self
     }
 

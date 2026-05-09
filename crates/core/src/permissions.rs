@@ -50,6 +50,12 @@ pub enum Permission {
     OrgApiKeysManage,
     /// View audit logs (read-only)
     OrgAuditLogsView,
+    /// View semantic reports (read-only)
+    OrgReportsView,
+    /// Manage saved reports and reporting definitions
+    OrgReportsManage,
+    /// Run reporting administrative operations
+    OrgReportsAdmin,
 }
 
 impl Permission {
@@ -73,6 +79,9 @@ impl Permission {
             Permission::OrgMembersManage => "org:members:manage",
             Permission::OrgApiKeysManage => "org:api-keys:manage",
             Permission::OrgAuditLogsView => "org:audit-logs:view",
+            Permission::OrgReportsView => "org:reports:view",
+            Permission::OrgReportsManage => "org:reports:manage",
+            Permission::OrgReportsAdmin => "org:reports:admin",
         }
     }
 
@@ -95,6 +104,9 @@ impl Permission {
         Permission::OrgMembersManage,
         Permission::OrgApiKeysManage,
         Permission::OrgAuditLogsView,
+        Permission::OrgReportsView,
+        Permission::OrgReportsManage,
+        Permission::OrgReportsAdmin,
     ];
 }
 
@@ -127,6 +139,9 @@ const OWNER_PERMISSIONS: &[Permission] = &[
     Permission::OrgMembersManage,
     Permission::OrgApiKeysManage,
     Permission::OrgAuditLogsView,
+    Permission::OrgReportsView,
+    Permission::OrgReportsManage,
+    Permission::OrgReportsAdmin,
 ];
 
 /// Permissions granted to Admin role.
@@ -143,6 +158,8 @@ const ADMIN_PERMISSIONS: &[Permission] = &[
     Permission::OrgMembersManage,
     Permission::OrgApiKeysManage,
     Permission::OrgAuditLogsView,
+    Permission::OrgReportsView,
+    Permission::OrgReportsManage,
 ];
 
 /// Permissions granted to Member role.
@@ -154,6 +171,7 @@ const MEMBER_PERMISSIONS: &[Permission] = &[
     Permission::OrgLlmProvidersView,
     Permission::OrgSettingsView,
     Permission::OrgMembersView,
+    Permission::OrgReportsView,
 ];
 
 /// Check whether a role grants a specific permission.
@@ -886,9 +904,21 @@ mod tests {
 
     #[test]
     fn role_permissions_returns_correct_sets() {
-        assert_eq!(role_permissions(OrgRole::Owner).len(), 17);
-        assert_eq!(role_permissions(OrgRole::Admin).len(), 12);
-        assert_eq!(role_permissions(OrgRole::Member).len(), 6);
+        assert_eq!(role_permissions(OrgRole::Owner).len(), 20);
+        assert_eq!(role_permissions(OrgRole::Admin).len(), 14);
+        assert_eq!(role_permissions(OrgRole::Member).len(), 7);
+        assert!(role_has_permission(
+            OrgRole::Owner,
+            &Permission::OrgReportsAdmin
+        ));
+        assert!(role_has_permission(
+            OrgRole::Admin,
+            &Permission::OrgReportsManage
+        ));
+        assert!(role_has_permission(
+            OrgRole::Member,
+            &Permission::OrgReportsView
+        ));
     }
 
     // -- Caller --

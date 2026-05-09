@@ -21,6 +21,7 @@ pub mod memory_store_backend;
 pub mod message_store;
 pub mod models;
 pub mod password;
+pub mod reporting;
 pub mod repositories;
 pub mod session_file_store;
 pub mod session_resource_store;
