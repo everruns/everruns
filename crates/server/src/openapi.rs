@@ -157,10 +157,11 @@ use utoipa::OpenApi;
         api::organizations::update_organization,
         // Workspace Volumes
         api::volumes::create_volume,
-        api::volumes::list_volumes,
-        api::volumes::get_volume,
-        api::volumes::update_volume,
-        api::volumes::delete_volume,
+            api::volumes::list_volumes,
+            api::volumes::get_volume,
+            api::volumes::update_volume,
+            api::volumes::sync_volume_now,
+            api::volumes::delete_volume,
         // Memory Stores
         api::memory_stores::list_memory_stores,
         api::memory_stores::create_memory_store,

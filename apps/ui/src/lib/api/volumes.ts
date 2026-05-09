@@ -45,6 +45,11 @@ export async function updateVolume(
   return response.data;
 }
 
+export async function syncVolumeNow(volumeId: string): Promise<Volume> {
+  const response = await api.post<Volume>(`/v1/volumes/${volumeId}/sync`);
+  return response.data;
+}
+
 export async function archiveVolume(volumeId: string): Promise<void> {
   await api.delete(`/v1/volumes/${volumeId}`);
 }

@@ -5,19 +5,33 @@ import type { Volume } from "@/lib/api/types";
 
 const mockUseVolume = jest.fn();
 const mockUseUpdateVolume = jest.fn();
+const mockUseSyncVolume = jest.fn();
 const mockUseArchiveVolume = jest.fn();
+const mockUseUserConnections = jest.fn();
 
 jest.mock("@/hooks", () => ({
   useVolume: (...args: unknown[]) => mockUseVolume(...args),
   useUpdateVolume: () => mockUseUpdateVolume(),
+  useSyncVolume: () => mockUseSyncVolume(),
   useArchiveVolume: () => mockUseArchiveVolume(),
+  useUserConnections: () => mockUseUserConnections(),
   usePageTitle: () => undefined,
+}));
+
+jest.mock("@/hooks/use-user-connections", () => ({
+  useUserConnections: () => mockUseUserConnections(),
 }));
 
 const volume: Volume = {
   id: "vol_019dfb261a407c6085dcdd602402c3f7",
   name: "Research",
   description: "Shared research files",
+  source_type: "manual",
+  source: { provider: "manual" },
+  is_readonly: false,
+  sync_status: "idle",
+  last_synced_at: null,
+  last_sync_error: null,
   status: "active",
   created_at: "2026-05-06T02:37:51.552849Z",
   updated_at: "2026-05-06T02:37:51.552849Z",
@@ -45,6 +59,14 @@ describe("VolumeDetailPage", () => {
     mockUseUpdateVolume.mockReturnValue({
       mutateAsync: jest.fn().mockResolvedValue({}),
       isPending: false,
+    });
+    mockUseSyncVolume.mockReturnValue({
+      mutate: jest.fn(),
+      isPending: false,
+    });
+    mockUseUserConnections.mockReturnValue({
+      data: [],
+      isLoading: false,
     });
     mockUseArchiveVolume.mockReturnValue({
       mutateAsync: jest.fn().mockResolvedValue({}),

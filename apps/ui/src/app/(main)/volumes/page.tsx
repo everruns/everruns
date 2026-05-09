@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import {
+  AlertCircle,
   Archive,
   FolderOpen,
   GitBranch,
@@ -10,6 +11,7 @@ import {
   HardDrive,
   Pencil,
   Plus,
+  RefreshCw,
   Search,
 } from "lucide-react";
 import { ArchiveFilter } from "@/components/archive-filter";
@@ -25,6 +27,7 @@ import {
   useArchiveVolume,
   useCreateVolume,
   usePageTitle,
+  useSyncVolume,
   useUpdateVolume,
   useVolumes,
 } from "@/hooks";
@@ -46,6 +49,7 @@ export default function VolumesPage() {
   const { data: volumes, isLoading, error } = useVolumes({ includeArchived: showArchived, search });
   const createVolume = useCreateVolume();
   const updateVolume = useUpdateVolume();
+  const syncVolume = useSyncVolume();
   const archiveVolume = useArchiveVolume();
 
   return (
@@ -87,6 +91,8 @@ export default function VolumesPage() {
                 volume={volume}
                 onEdit={setEditingVolume}
                 onArchive={setArchivingVolume}
+                onSync={(candidate) => syncVolume.mutate(candidate.id)}
+                isSyncing={syncVolume.isPending}
               />
             ))}
           </div>
@@ -130,12 +136,17 @@ function VolumeCard({
   volume,
   onEdit,
   onArchive,
+  onSync,
+  isSyncing,
 }: {
   volume: Volume;
   onEdit: (volume: Volume) => void;
   onArchive: (volume: Volume) => void;
+  onSync: (volume: Volume) => void;
+  isSyncing: boolean;
 }) {
   const isReadOnly = isReadOnlyStatus(volume.status);
+  const canSync = volume.source_type !== "manual" && volume.status === "active";
 
   return (
     <Card>
@@ -179,7 +190,7 @@ function VolumeCard({
           </div>
           <div>
             <div className="font-medium text-foreground">Sync</div>
-            <div>{volume.sync_status}</div>
+            <div>{formatSyncStatus(volume)}</div>
           </div>
           <div>
             <div className="font-medium text-foreground">Created</div>
@@ -190,7 +201,26 @@ function VolumeCard({
             <div>{formatRelativeTime(volume.updated_at)}</div>
           </div>
         </div>
+        {volume.last_sync_error && (
+          <div className="flex gap-2 text-xs text-destructive">
+            <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span className="line-clamp-2">{volume.last_sync_error}</span>
+          </div>
+        )}
         <div className="flex items-center justify-end gap-2">
+          {canSync && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onSync(volume)}
+              disabled={
+                isSyncing || volume.sync_status === "pending" || volume.sync_status === "syncing"
+              }
+            >
+              <RefreshCw className="h-4 w-4" />
+              Sync
+            </Button>
+          )}
           <Link href={`/volumes/${volume.id}`}>
             <Button variant="outline" size="sm">
               <FolderOpen className="h-4 w-4" />
@@ -211,6 +241,36 @@ function VolumeCard({
       </CardContent>
     </Card>
   );
+}
+
+function formatSyncStatus(volume: Volume) {
+  if (volume.source_type === "manual") {
+    return "Manual";
+  }
+  const interval = formatSyncInterval(volume);
+  if (volume.last_synced_at) {
+    return `${volume.sync_status} · ${formatRelativeTime(volume.last_synced_at)} · ${interval}`;
+  }
+  return `${volume.sync_status} · ${interval}`;
+}
+
+function formatSyncInterval(volume: Volume) {
+  const interval =
+    volume.source.provider === "github" || volume.source.provider === "git"
+      ? volume.source.sync_interval_secs
+      : null;
+  if (!interval) {
+    return "Manual only";
+  }
+  if (interval % 86400 === 0) {
+    const days = interval / 86400;
+    return days === 1 ? "Daily" : `Every ${days} days`;
+  }
+  if (interval % 3600 === 0) {
+    const hours = interval / 3600;
+    return hours === 1 ? "Hourly" : `Every ${hours} hours`;
+  }
+  return `Every ${Math.round(interval / 60)} minutes`;
 }
 
 function EmptyState({ hasSearch, onCreate }: { hasSearch: boolean; onCreate: () => void }) {

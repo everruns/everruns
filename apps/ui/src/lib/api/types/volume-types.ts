@@ -31,12 +31,14 @@ export type VolumeSource =
       repository: string;
       branch: string;
       root_folder?: string | null;
+      sync_interval_secs?: number | null;
     }
   | {
       provider: "git";
       url: string;
       branch: string;
       root_folder?: string | null;
+      sync_interval_secs?: number | null;
     };
 
 export type CreateVolumeSource =
@@ -45,12 +47,14 @@ export type CreateVolumeSource =
       repository: string;
       branch?: string;
       root_folder?: string;
+      sync_interval_secs?: number;
     }
   | {
       type: "git";
       url: string;
       branch?: string;
       root_folder?: string;
+      sync_interval_secs?: number;
     };
 
 export interface CreateVolumeRequest {
@@ -62,6 +66,7 @@ export interface CreateVolumeRequest {
 export interface UpdateVolumeRequest {
   name?: string;
   description?: string | null;
+  source?: CreateVolumeSource;
 }
 
 export interface ListVolumesParams {

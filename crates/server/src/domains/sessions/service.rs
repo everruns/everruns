@@ -16,21 +16,26 @@ use crate::org_init;
 use crate::services::PrincipalService;
 use crate::storage::{
     StorageBackend,
-    models::{CreateSessionRow, UpdateSession},
+    models::{CreateSessionRow, UpdateSession, VolumeFileRow},
 };
 use anyhow::Result;
 use everruns_core::session_sandbox::SESSION_SANDBOX_CAPABILITY_ID;
 use everruns_core::{
     AgentCapabilityConfig, AgentId, AgentVersionPolicy, Caller, CapabilityRegistry,
-    DeclarativeCapabilityDefinition, FeatureFlags, HarnessId, InitialFile, ModelId, MountPoint,
-    OrgRole, Permission, Policy, PrincipalId, Rule, Session, SessionId, SessionStatus,
-    SubagentStatus, TokenUsage,
-    capabilities::{RiskLevel, SystemPromptContext, collect_capabilities, compute_features},
+    DeclarativeCapabilityDefinition, FeatureFlags, HarnessId, InitialFile, ModelId, MountAccess,
+    MountEntry, MountPoint, MountSource, OrgRole, Permission, Policy, PrincipalId, Rule, Session,
+    SessionFile, SessionId, SessionStatus, SubagentStatus, TokenUsage,
+    capabilities::{
+        RiskLevel, SystemPromptContext, WORKSPACE_VOLUMES_CAPABILITY_ID,
+        collect_capabilities_with_configs, compute_features, resolve_capability_configs,
+    },
     is_declarative_capability, merge_capabilities, merge_initial_files,
     normalize_initial_file_path, parse_declarative_capability_id,
+    typed_id::VolumeId,
+    volume::{VolumeMountAccess, WorkspaceVolumesConfig},
 };
 use everruns_durable::UpdateField;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -573,19 +578,25 @@ impl SessionService {
         session_capabilities: &[AgentCapabilityConfig],
         session_id: Uuid,
     ) -> Result<Vec<MountPoint>> {
-        let capability_ids = self
-            .collect_session_capability_ids(org_id, harness_id, agent_id, session_capabilities)
+        let capability_configs = self
+            .collect_session_capability_configs(org_id, harness_id, agent_id, session_capabilities)
             .await?;
-        if capability_ids.is_empty() {
+        if capability_configs.is_empty() {
             return Ok(vec![]);
         }
 
         let ctx = SystemPromptContext::without_file_store(SessionId::from_uuid(session_id));
-        Ok(
-            collect_capabilities(&capability_ids, &self.capability_registry, &ctx)
+        let resolved_configs =
+            resolve_capability_configs(&capability_configs, &self.capability_registry)?;
+        let mut mounts =
+            collect_capabilities_with_configs(&resolved_configs, &self.capability_registry, &ctx)
                 .await
-                .mounts,
-        )
+                .mounts;
+        mounts.extend(
+            self.collect_workspace_volume_mounts(org_id, &resolved_configs)
+                .await?,
+        );
+        Ok(mounts)
     }
 
     async fn reconcile_capability_mounts(
@@ -1217,6 +1228,93 @@ impl SessionService {
         Ok(capability_ids)
     }
 
+    /// Collect merged capability configs for a session, preserving per-layer config.
+    async fn collect_session_capability_configs(
+        &self,
+        org_id: i64,
+        harness_id: Uuid,
+        agent_id: Option<Uuid>,
+        session_capabilities: &[AgentCapabilityConfig],
+    ) -> Result<Vec<AgentCapabilityConfig>> {
+        let mut capability_configs = self
+            .resolve_effective_harness(org_id, HarnessId::from_uuid(harness_id))
+            .await?
+            .map(|harness| harness.capabilities)
+            .unwrap_or_default();
+
+        if let Some(agent_id) = agent_id
+            && self
+                .db
+                .get_agent(org_id, AgentId::from_uuid(agent_id))
+                .await?
+                .is_some()
+        {
+            let agent_cap_rows = self.db.get_agent_capabilities(agent_id).await?;
+            let agent_capabilities = agent_cap_rows
+                .into_iter()
+                .map(|row| AgentCapabilityConfig::with_config(row.capability_id, row.config))
+                .collect::<Vec<_>>();
+            capability_configs = merge_capabilities(&capability_configs, &agent_capabilities);
+        }
+
+        Ok(merge_capabilities(
+            &capability_configs,
+            session_capabilities,
+        ))
+    }
+
+    async fn collect_workspace_volume_mounts(
+        &self,
+        org_id: i64,
+        capability_configs: &[AgentCapabilityConfig],
+    ) -> Result<Vec<MountPoint>> {
+        let Some(config) = capability_configs
+            .iter()
+            .find(|config| config.capability_id() == WORKSPACE_VOLUMES_CAPABILITY_ID)
+        else {
+            return Ok(vec![]);
+        };
+        let volume_config: WorkspaceVolumesConfig = serde_json::from_value(config.config.clone())
+            .map_err(|error| {
+            BadRequestError::new(format!("Invalid workspace volume config: {error}"))
+        })?;
+        let mut mounts = Vec::with_capacity(volume_config.mounts.len());
+
+        for mount in volume_config.mounts {
+            let volume_id = VolumeId::parse(&mount.volume)
+                .map_err(|_| BadRequestError::new("Invalid workspace volume ID"))?;
+            let volume = self
+                .db
+                .get_volume(org_id, volume_id)
+                .await?
+                .filter(|volume| volume.status == "active")
+                .ok_or_else(|| ResourceNotFoundError::new("Volume"))?;
+
+            if volume.is_readonly && mount.mode == VolumeMountAccess::ReadWrite {
+                return Err(BadRequestError::new(format!(
+                    "Volume {} is read-only and cannot be mounted readwrite",
+                    mount.volume
+                ))
+                .into());
+            }
+
+            let access = if volume.is_readonly || mount.mode == VolumeMountAccess::ReadOnly {
+                MountAccess::ReadOnly
+            } else {
+                MountAccess::ReadWrite
+            };
+            let files = self.db.list_all_volume_files(volume.id).await?;
+            mounts.push(MountPoint::new(
+                mount.path,
+                access,
+                MountSource::directory(volume_files_to_mount_entries(files)),
+                WORKSPACE_VOLUMES_CAPABILITY_ID,
+            ));
+        }
+
+        Ok(mounts)
+    }
+
     async fn require_admin_for_high_risk_session_capabilities(
         &self,
         caller: &Caller,
@@ -1443,19 +1541,90 @@ fn sanitize_session_capabilities(
         .collect()
 }
 
+fn volume_files_to_mount_entries(mut files: Vec<VolumeFileRow>) -> HashMap<String, MountEntry> {
+    files.sort_by(|left, right| left.path.cmp(&right.path));
+    let mut entries = HashMap::new();
+
+    for file in files {
+        let path = file.path.trim_matches('/');
+        if path.is_empty() {
+            continue;
+        }
+        let segments = path
+            .split('/')
+            .filter(|segment| !segment.is_empty())
+            .collect::<Vec<_>>();
+        if file.is_directory {
+            insert_mount_directory(&mut entries, &segments);
+            continue;
+        }
+
+        let bytes = file.content.unwrap_or_default();
+        let (content, encoding) = SessionFile::encode_content(&bytes);
+        insert_mount_file(&mut entries, &segments, content, encoding);
+    }
+
+    entries
+}
+
+fn insert_mount_directory(entries: &mut HashMap<String, MountEntry>, segments: &[&str]) {
+    let Some((name, rest)) = segments.split_first() else {
+        return;
+    };
+    let entry = entries
+        .entry((*name).to_string())
+        .or_insert_with(|| MountEntry::directory(HashMap::new()));
+    if !entry.source.is_directory() {
+        *entry = MountEntry::directory(HashMap::new());
+    }
+    if let MountSource::InlineDirectory { entries } = &mut entry.source {
+        insert_mount_directory(entries, rest);
+    }
+}
+
+fn insert_mount_file(
+    entries: &mut HashMap<String, MountEntry>,
+    segments: &[&str],
+    content: String,
+    encoding: String,
+) {
+    let Some((name, rest)) = segments.split_first() else {
+        return;
+    };
+    if rest.is_empty() {
+        entries.insert(
+            (*name).to_string(),
+            MountEntry::new(MountSource::InlineFile { content, encoding }),
+        );
+        return;
+    }
+
+    let entry = entries
+        .entry((*name).to_string())
+        .or_insert_with(|| MountEntry::directory(HashMap::new()));
+    if !entry.source.is_directory() {
+        *entry = MountEntry::directory(HashMap::new());
+    }
+    if let MountSource::InlineDirectory { entries } = &mut entry.source {
+        insert_mount_file(entries, rest, content, encoding);
+    }
+}
+
 // normalize_initial_file_path is imported from everruns_core::config_layer
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::domains::common::{Command, Ctx};
+    use crate::domains::volumes::CreateVolume;
+    use crate::domains::volumes::types::{CreateVolumeSourceRequest, GitVolumeSourceRequest};
     use crate::domains::{
         agents::types::CreateAgentRequest, harnesses::types::CreateHarnessRequest,
     };
     use crate::services::{CapabilityService, PrincipalService};
     use crate::storage::{
         CreateHarnessRow, CreateLlmModelRow, CreateLlmProviderRow, CreateOrganizationRow,
-        StorageBackend,
+        CreateVolumeFileRow, StorageBackend,
     };
     use everruns_core::capabilities::Capability;
     use everruns_core::{Caller, DEFAULT_ORG_ID, InitialFile, OrgRole};
@@ -2441,6 +2610,160 @@ mod tests {
                 .unwrap()
                 .is_none(),
             "foreign harness/agent capabilities should not mount files"
+        );
+    }
+
+    #[tokio::test]
+    async fn workspace_volume_mount_materializes_source_volume_readonly() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let session_service = SessionService::new(db.clone());
+        let file_service = SessionFileService::new(db.clone());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+        let ctx = test_ctx(caller.clone(), db.clone());
+
+        let volume = CreateVolume {
+            name: "Repo Volume".to_string(),
+            description: None,
+            source: Some(CreateVolumeSourceRequest::Git(GitVolumeSourceRequest {
+                url: "https://example.com/org/repo.git".to_string(),
+                branch: None,
+                root_folder: None,
+                sync_interval_secs: None,
+            })),
+        }
+        .execute(&ctx)
+        .await
+        .unwrap();
+        let claimed = db
+            .claim_next_volume_sync()
+            .await
+            .unwrap()
+            .expect("volume should be pending sync");
+        db.complete_volume_sync(
+            claimed.id,
+            claimed.updated_at,
+            vec![CreateVolumeFileRow {
+                path: "/README.md".to_string(),
+                content: Some(b"hello from volume".to_vec()),
+                is_directory: false,
+                content_hash: None,
+            }],
+        )
+        .await
+        .unwrap();
+
+        let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+            name: "volume-harness".to_string(),
+            display_name: Some("Volume Harness".to_string()),
+            description: None,
+            system_prompt: "Harness prompt".to_string(),
+            parent_harness_id: None,
+            default_model_id: None,
+            tags: vec![],
+            capabilities: vec![AgentCapabilityConfig::with_config(
+                WORKSPACE_VOLUMES_CAPABILITY_ID,
+                serde_json::json!({
+                    "mounts": [{
+                        "volume": volume.id.to_string(),
+                        "path": "/workspace/repo",
+                        "mode": "readonly"
+                    }]
+                }),
+            )],
+            initial_files: vec![],
+            mcp_servers: Default::default(),
+            network_access: None,
+        })
+        .execute(&ctx)
+        .await
+        .unwrap();
+
+        let session = session_service
+            .create(
+                &caller,
+                harness.id.uuid(),
+                None,
+                None,
+                build_create_request(harness.id, None, None),
+            )
+            .await
+            .unwrap();
+        let file = file_service
+            .read_file(session.id.uuid(), "/workspace/repo/README.md")
+            .await
+            .unwrap()
+            .expect("mounted file should exist");
+
+        let content = SessionFile::decode_content(
+            file.content.as_deref().expect("mounted file has content"),
+            &file.encoding,
+        )
+        .unwrap();
+        assert_eq!(content, b"hello from volume");
+        assert!(file.is_readonly);
+    }
+
+    #[tokio::test]
+    async fn workspace_volume_mount_rejects_readwrite_source_volume() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let session_service = SessionService::new(db.clone());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+        let ctx = test_ctx(caller.clone(), db.clone());
+
+        let volume = CreateVolume {
+            name: "Read-only Repo".to_string(),
+            description: None,
+            source: Some(CreateVolumeSourceRequest::Git(GitVolumeSourceRequest {
+                url: "https://example.com/org/repo.git".to_string(),
+                branch: None,
+                root_folder: None,
+                sync_interval_secs: None,
+            })),
+        }
+        .execute(&ctx)
+        .await
+        .unwrap();
+        let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+            name: "readwrite-volume-harness".to_string(),
+            display_name: Some("Readwrite Volume Harness".to_string()),
+            description: None,
+            system_prompt: "Harness prompt".to_string(),
+            parent_harness_id: None,
+            default_model_id: None,
+            tags: vec![],
+            capabilities: vec![AgentCapabilityConfig::with_config(
+                WORKSPACE_VOLUMES_CAPABILITY_ID,
+                serde_json::json!({
+                    "mounts": [{
+                        "volume": volume.id.to_string(),
+                        "path": "/workspace/repo",
+                        "mode": "readwrite"
+                    }]
+                }),
+            )],
+            initial_files: vec![],
+            mcp_servers: Default::default(),
+            network_access: None,
+        })
+        .execute(&ctx)
+        .await
+        .unwrap();
+
+        let err = session_service
+            .create(
+                &caller,
+                harness.id.uuid(),
+                None,
+                None,
+                build_create_request(harness.id, None, None),
+            )
+            .await
+            .unwrap_err();
+
+        assert!(
+            err.to_string()
+                .contains("is read-only and cannot be mounted readwrite"),
+            "unexpected error: {err}",
         );
     }
 

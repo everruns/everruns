@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,6 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { useUserConnections } from "@/hooks/use-user-connections";
 import type { CreateVolumeRequest, UpdateVolumeRequest, Volume } from "@/lib/api/types";
 
 type VolumeFormMode = "create" | "edit";
@@ -49,8 +51,11 @@ export function VolumeFormDialog({
   const [gitUrl, setGitUrl] = useState("");
   const [branch, setBranch] = useState("");
   const [rootFolder, setRootFolder] = useState("");
+  const [syncIntervalSecs, setSyncIntervalSecs] = useState("0");
   const [fieldError, setFieldError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  const { data: connections = [] } = useUserConnections();
+  const githubConnection = connections.find((connection) => connection.provider === "github");
 
   useEffect(() => {
     if (!open) {
@@ -58,11 +63,30 @@ export function VolumeFormDialog({
     }
     setName(mode === "edit" ? (volume?.name ?? "") : "");
     setDescription(mode === "edit" ? (volume?.description ?? "") : "");
-    setSourceKind("manual");
+    setSourceKind(
+      volume?.source.provider === "git"
+        ? "git"
+        : volume?.source.provider === "github"
+          ? "github"
+          : "manual",
+    );
     setRepository("");
     setGitUrl("");
     setBranch("");
     setRootFolder("");
+    setSyncIntervalSecs("0");
+    if (mode === "edit" && volume?.source.provider === "github") {
+      setRepository(volume.source.repository);
+      setBranch(volume.source.branch);
+      setRootFolder(volume.source.root_folder ?? "");
+      setSyncIntervalSecs(String(volume.source.sync_interval_secs ?? 0));
+    }
+    if (mode === "edit" && volume?.source.provider === "git") {
+      setGitUrl(volume.source.url);
+      setBranch(volume.source.branch);
+      setRootFolder(volume.source.root_folder ?? "");
+      setSyncIntervalSecs(String(volume.source.sync_interval_secs ?? 0));
+    }
     setFieldError(null);
     setFormError(null);
   }, [mode, open, volume]);
@@ -87,6 +111,7 @@ export function VolumeFormDialog({
           gitUrl,
           branch,
           rootFolder,
+          syncIntervalSecs,
         });
         await onSubmit({
           name: trimmedName,
@@ -94,9 +119,21 @@ export function VolumeFormDialog({
           ...(source ? { source } : {}),
         });
       } else {
+        const source =
+          volume?.source.provider === "manual"
+            ? undefined
+            : buildCreateSource({
+                sourceKind,
+                repository,
+                gitUrl,
+                branch,
+                rootFolder,
+                syncIntervalSecs,
+              });
         await onSubmit({
           name: trimmedName,
           description: trimmedDescription || null,
+          ...(source && volume && !sourceMatchesVolume(volume, source) ? { source } : {}),
         });
       }
       onOpenChange(false);
@@ -107,6 +144,7 @@ export function VolumeFormDialog({
 
   const title = mode === "create" ? "New Volume" : "Edit Volume";
   const submitLabel = mode === "create" ? "Create Volume" : "Save Changes";
+  const showSourceFields = mode === "create" || volume?.source.provider !== "manual";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -141,7 +179,7 @@ export function VolumeFormDialog({
               rows={3}
             />
           </div>
-          {mode === "create" && (
+          {showSourceFields && (
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="volume-source">Source</Label>
@@ -153,22 +191,51 @@ export function VolumeFormDialog({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="manual">Manual</SelectItem>
+                    {mode === "create" && <SelectItem value="manual">Manual</SelectItem>}
                     <SelectItem value="github">GitHub</SelectItem>
                     <SelectItem value="git">Git URL</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               {sourceKind === "github" && (
-                <div className="space-y-2">
-                  <Label htmlFor="volume-repository">Repository</Label>
-                  <Input
-                    id="volume-repository"
-                    value={repository}
-                    onChange={(event) => setRepository(event.target.value)}
-                    placeholder="owner/repo"
-                    required
-                  />
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="volume-repository">Repository</Label>
+                    <Input
+                      id="volume-repository"
+                      value={repository}
+                      onChange={(event) => setRepository(event.target.value)}
+                      placeholder="owner/repo"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="volume-github-connection">Connection</Label>
+                    <Select value={githubConnection ? "github" : "none"} disabled>
+                      <SelectTrigger
+                        id="volume-github-connection"
+                        className="w-full"
+                        aria-label="GitHub connection"
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="github">
+                          {githubConnection?.provider_username ?? "GitHub connected"}
+                        </SelectItem>
+                        <SelectItem value="none">No GitHub connection</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {!githubConnection && (
+                      <p className="text-xs text-muted-foreground">
+                        Private repositories need a{" "}
+                        <Link href="/settings/connections" className="underline">
+                          GitHub connection
+                        </Link>
+                        .
+                      </p>
+                    )}
+                  </div>
                 </div>
               )}
               {sourceKind === "git" && (
@@ -184,7 +251,7 @@ export function VolumeFormDialog({
                 </div>
               )}
               {sourceKind !== "manual" && (
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-4 sm:grid-cols-3">
                   <div className="space-y-2">
                     <Label htmlFor="volume-branch">Branch</Label>
                     <Input
@@ -202,6 +269,26 @@ export function VolumeFormDialog({
                       onChange={(event) => setRootFolder(event.target.value)}
                       placeholder="docs"
                     />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="volume-sync-interval">Resync</Label>
+                    <Select value={syncIntervalSecs} onValueChange={setSyncIntervalSecs}>
+                      <SelectTrigger
+                        id="volume-sync-interval"
+                        className="w-full"
+                        aria-label="Resync interval"
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="0">Manual only</SelectItem>
+                        <SelectItem value="300">Every 5 minutes</SelectItem>
+                        <SelectItem value="900">Every 15 minutes</SelectItem>
+                        <SelectItem value="3600">Hourly</SelectItem>
+                        <SelectItem value="86400">Daily</SelectItem>
+                        <SelectItem value="604800">Weekly</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
               )}
@@ -233,18 +320,22 @@ function buildCreateSource({
   gitUrl,
   branch,
   rootFolder,
+  syncIntervalSecs,
 }: {
   sourceKind: CreateSourceKind;
   repository: string;
   gitUrl: string;
   branch: string;
   rootFolder: string;
+  syncIntervalSecs: string;
 }): CreateVolumeRequest["source"] {
   const trimmedBranch = branch.trim();
   const trimmedRootFolder = rootFolder.trim();
+  const parsedSyncInterval = Number.parseInt(syncIntervalSecs, 10);
   const optionalPathFields = {
     ...(trimmedBranch ? { branch: trimmedBranch } : {}),
     ...(trimmedRootFolder ? { root_folder: trimmedRootFolder } : {}),
+    ...(parsedSyncInterval > 0 ? { sync_interval_secs: parsedSyncInterval } : {}),
   };
   if (sourceKind === "github") {
     return {
@@ -261,4 +352,33 @@ function buildCreateSource({
     };
   }
   return undefined;
+}
+
+function sourceMatchesVolume(volume: Volume, source: NonNullable<CreateVolumeRequest["source"]>) {
+  if (source.type !== volume.source.provider) {
+    return false;
+  }
+  const expectedBranch = source.branch ?? "main";
+  const expectedRootFolder = source.root_folder ?? null;
+  const expectedSyncInterval = source.sync_interval_secs ?? null;
+
+  if (source.type === "github" && volume.source.provider === "github") {
+    return (
+      source.repository === volume.source.repository &&
+      expectedBranch === volume.source.branch &&
+      expectedRootFolder === (volume.source.root_folder ?? null) &&
+      expectedSyncInterval === (volume.source.sync_interval_secs ?? null)
+    );
+  }
+
+  if (source.type === "git" && volume.source.provider === "git") {
+    return (
+      source.url === volume.source.url &&
+      expectedBranch === volume.source.branch &&
+      expectedRootFolder === (volume.source.root_folder ?? null) &&
+      expectedSyncInterval === (volume.source.sync_interval_secs ?? null)
+    );
+  }
+
+  return false;
 }

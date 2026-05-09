@@ -8533,6 +8533,57 @@
           }
         }
       }
+    },
+    "/v1/volumes/{volume_id}/sync": {
+      "post": {
+        "tags": [
+          "volumes"
+        ],
+        "operationId": "sync_volume_now",
+        "parameters": [
+          {
+            "name": "volume_id",
+            "in": "path",
+            "description": "Volume ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Volume sync queued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VolumeResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid sync request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Volume not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -11626,6 +11677,16 @@
               "string",
               "null"
             ]
+          },
+          "sync_interval_secs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Automatic resync interval in seconds. Omit or set 0 for manual-only; scheduled sync accepts 300 through 604800.",
+            "maximum": 604800,
+            "minimum": 0
           }
         }
       },
@@ -11647,6 +11708,16 @@
               "string",
               "null"
             ]
+          },
+          "sync_interval_secs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Automatic resync interval in seconds. Omit or set 0 for manual-only; scheduled sync accepts 300 through 604800.",
+            "maximum": 604800,
+            "minimum": 0
           }
         }
       },
@@ -11688,6 +11759,16 @@
               "null"
             ]
           },
+          "sync_interval_secs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Automatic resync interval in seconds. Omit or set 0 for manual-only; scheduled sync accepts 300 through 604800.",
+            "maximum": 604800,
+            "minimum": 0
+          },
           "url": {
             "type": "string"
           }
@@ -11708,6 +11789,16 @@
               "string",
               "null"
             ]
+          },
+          "sync_interval_secs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Automatic resync interval in seconds. Omit or set 0 for manual-only; scheduled sync accepts 300 through 604800.",
+            "maximum": 604800,
+            "minimum": 0
           },
           "url": {
             "type": "string"
@@ -21253,6 +21344,16 @@
             "type": [
               "string",
               "null"
+            ]
+          },
+          "source": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CreateVolumeSourceRequest"
+              }
             ]
           }
         }

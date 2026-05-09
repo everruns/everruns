@@ -145,8 +145,14 @@ impl InMemoryDatabase {
         if let Some(description) = input.description {
             volume.description = description;
         }
+        if let Some(source_type) = input.source_type {
+            volume.source_type = source_type;
+        }
         if let Some(source_config) = input.source_config {
             volume.source_config = source_config;
+        }
+        if let Some(is_readonly) = input.is_readonly {
+            volume.is_readonly = is_readonly;
         }
         if let Some(sync_status) = input.sync_status {
             volume.sync_status = sync_status;
@@ -193,7 +199,8 @@ impl InMemoryDatabase {
                     && volume.source_type != "manual"
                     && (volume.sync_status == "pending"
                         || (volume.sync_status == "syncing"
-                            && volume.updated_at < Self::now() - Duration::minutes(15)))
+                            && volume.updated_at < Self::now() - Duration::minutes(15))
+                        || is_due_for_scheduled_sync(volume))
             })
             .min_by_key(|volume| volume.updated_at)
         else {
@@ -288,4 +295,20 @@ impl InMemoryDatabase {
         result.sort_by_key(|file| file.path.clone());
         Ok(result)
     }
+}
+
+fn is_due_for_scheduled_sync(volume: &VolumeRow) -> bool {
+    if volume.sync_status != "synced" && volume.sync_status != "failed" {
+        return false;
+    }
+    let Some(interval_secs) = volume
+        .source_config
+        .get("sync_interval_secs")
+        .and_then(|value| value.as_i64())
+        .filter(|value| *value > 0)
+    else {
+        return false;
+    };
+    let anchor = volume.last_synced_at.unwrap_or(volume.updated_at);
+    anchor < InMemoryDatabase::now() - Duration::seconds(interval_secs)
 }

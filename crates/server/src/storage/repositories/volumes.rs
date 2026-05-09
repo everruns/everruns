@@ -127,10 +127,12 @@ impl Database {
                 name = COALESCE($3, name),
                 description = CASE WHEN $4 THEN $5 ELSE description END,
                 status = COALESCE($6, status),
-                source_config = COALESCE($7, source_config),
-                sync_status = COALESCE($8, sync_status),
-                last_synced_at = CASE WHEN $9 THEN $10 ELSE last_synced_at END,
-                last_sync_error = CASE WHEN $11 THEN $12 ELSE last_sync_error END,
+                source_type = COALESCE($7, source_type),
+                source_config = COALESCE($8, source_config),
+                is_readonly = COALESCE($9, is_readonly),
+                sync_status = COALESCE($10, sync_status),
+                last_synced_at = CASE WHEN $11 THEN $12 ELSE last_synced_at END,
+                last_sync_error = CASE WHEN $13 THEN $14 ELSE last_sync_error END,
                 archived_at = CASE
                     WHEN $6 = 'archived' THEN COALESCE(archived_at, NOW())
                     WHEN $6 = 'active' THEN NULL
@@ -151,7 +153,9 @@ impl Database {
         .bind(input.description.is_some())
         .bind(input.description.flatten())
         .bind(&input.status)
+        .bind(&input.source_type)
         .bind(&input.source_config)
+        .bind(input.is_readonly)
         .bind(&input.sync_status)
         .bind(input.last_synced_at.is_some())
         .bind(input.last_synced_at.flatten())
@@ -192,6 +196,11 @@ impl Database {
                   AND (
                     sync_status = 'pending'
                     OR (sync_status = 'syncing' AND updated_at < NOW() - INTERVAL '15 minutes')
+                    OR (
+                        sync_status IN ('synced', 'failed')
+                        AND COALESCE((source_config->>'sync_interval_secs')::int, 0) > 0
+                        AND COALESCE(last_synced_at, updated_at) < NOW() - make_interval(secs => COALESCE((source_config->>'sync_interval_secs')::int, 0))
+                    )
                   )
                 ORDER BY updated_at ASC
                 FOR UPDATE SKIP LOCKED
