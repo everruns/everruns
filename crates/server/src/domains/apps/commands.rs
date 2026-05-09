@@ -2102,9 +2102,15 @@ pub struct RegenerateA2aApiKeyCmd {
     pub channel_id: String,
 }
 
+/// Output of [`RegenerateA2aApiKeyCmd`] — includes the newly generated
+/// plaintext API key (returned **once**, never persisted) plus the updated
+/// [`AppChannel`].
 #[derive(Debug, serde::Serialize, ToSchema)]
 pub struct RegenerateA2aApiKeyOutput {
+    /// New plaintext API key. Persist this — it cannot be recovered later.
+    /// The previous key is invalidated immediately.
     pub api_key: String,
+    /// The updated A2A channel.
     pub channel: AppChannel,
 }
 

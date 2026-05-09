@@ -1134,7 +1134,7 @@
         "tags": [
           "apps"
         ],
-        "summary": "POST /v1/apps/{app_id}/a2a-channels/{channel_id}/regenerate-key\nRegenerate an A2A channel API key. Returns the new plaintext key once.",
+        "summary": "Regenerate an A2A channel API key. Returns the new plaintext key exactly once and invalidates the previous key.",
         "operationId": "regenerate_a2a_key",
         "parameters": [
           {
@@ -1163,6 +1163,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/RegenerateA2aApiKeyOutput"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid app/channel ID or channel is not an A2A channel",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
@@ -18524,16 +18534,19 @@
       },
       "RegenerateA2aApiKeyOutput": {
         "type": "object",
+        "description": "Output of [`RegenerateA2aApiKeyCmd`] — includes the newly generated\nplaintext API key (returned **once**, never persisted) plus the updated\n[`AppChannel`].",
         "required": [
           "api_key",
           "channel"
         ],
         "properties": {
           "api_key": {
-            "type": "string"
+            "type": "string",
+            "description": "New plaintext API key. Persist this — it cannot be recovered later.\nThe previous key is invalidated immediately."
           },
           "channel": {
-            "$ref": "#/components/schemas/AppChannel"
+            "$ref": "#/components/schemas/AppChannel",
+            "description": "The updated A2A channel."
           }
         }
       },

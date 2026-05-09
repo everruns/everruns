@@ -397,8 +397,7 @@ pub async fn add_a2a_channel(
     Ok((StatusCode::CREATED, Json(output)))
 }
 
-/// POST /v1/apps/{app_id}/a2a-channels/{channel_id}/regenerate-key
-/// Regenerate an A2A channel API key. Returns the new plaintext key once.
+/// Regenerate an A2A channel API key. Returns the new plaintext key exactly once and invalidates the previous key.
 #[utoipa::path(
     post,
     path = "/v1/apps/{app_id}/a2a-channels/{channel_id}/regenerate-key",
@@ -408,6 +407,7 @@ pub async fn add_a2a_channel(
     ),
     responses(
         (status = 200, description = "API key rotated. The `api_key` field is the new plaintext key returned exactly once; the previous key is invalidated immediately.", body = RegenerateA2aApiKeyOutput),
+        (status = 400, description = "Invalid app/channel ID or channel is not an A2A channel", body = ErrorResponse),
         (status = 401, description = "Unauthorized", body = ErrorResponse),
         (status = 403, description = "Forbidden", body = ErrorResponse),
         (status = 404, description = "App or A2A channel not found", body = ErrorResponse),
