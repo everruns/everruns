@@ -1047,6 +1047,169 @@
         }
       }
     },
+    "/v1/apps/{app_id}/a2a-channels": {
+      "post": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "POST /v1/apps/{app_id}/a2a-channels - Add an A2A channel (returns plaintext key once).",
+        "operationId": "add_a2a_channel",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "description": "App ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddA2aChannelHttpRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "A2A channel created. The `api_key` field is the plaintext key returned exactly once and never recoverable later.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AddA2aChannelOutput"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Validation error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "App not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/apps/{app_id}/a2a-channels/{channel_id}/regenerate-key": {
+      "post": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "Regenerate an A2A channel API key. Returns the new plaintext key exactly once and invalidates the previous key.",
+        "operationId": "regenerate_a2a_key",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "description": "App ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "channel_id",
+            "in": "path",
+            "description": "A2A channel ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "API key rotated. The `api_key` field is the new plaintext key returned exactly once; the previous key is invalidated immediately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegenerateA2aApiKeyOutput"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid app/channel ID or channel is not an A2A channel",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "App or A2A channel not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/apps/{app_id}/a2a/{channel_id}": {
       "post": {
         "tags": [
@@ -8654,6 +8817,56 @@
           }
         }
       },
+      "AddA2aChannelHttpRequest": {
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "properties": {
+          "agent_card_description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "agent_card_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "enabled": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "session_mode": {
+            "$ref": "#/components/schemas/InvocationSessionMode"
+          }
+        }
+      },
+      "AddA2aChannelOutput": {
+        "type": "object",
+        "description": "Output of [`AddA2aChannelCmd`] — includes the plaintext API key (returned\n**once**, never persisted) plus the resulting [`AppChannel`].",
+        "required": [
+          "api_key",
+          "channel"
+        ],
+        "properties": {
+          "api_key": {
+            "type": "string",
+            "description": "Plaintext API key. Persist this — it cannot be recovered later."
+          },
+          "channel": {
+            "$ref": "#/components/schemas/AppChannel",
+            "description": "The created A2A channel."
+          }
+        }
+      },
       "Agent": {
         "type": "object",
         "description": "Agent configuration for agentic loop.\nAn agent defines the behavior and capabilities of an AI assistant.",
@@ -8992,6 +9205,44 @@
           }
         }
       },
+      "AppChannel": {
+        "type": "object",
+        "description": "A single distribution channel attached to an App.\nEach channel has its own type, config, and lifecycle status.",
+        "required": [
+          "id",
+          "channel_type",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "channel_config": {
+            "description": "Channel-specific configuration (validated per channel type)."
+          },
+          "channel_type": {
+            "$ref": "#/components/schemas/ChannelType",
+            "description": "Channel type (e.g. slack)."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when this channel was created."
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether this channel is enabled."
+          },
+          "id": {
+            "type": "string",
+            "description": "External identifier (appchan_<32-hex>). Shown as \"id\" in API.",
+            "example": "appchan_01933b5a000070008000000000000001"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when this channel was last updated."
+          }
+        }
+      },
       "BTreeMap": {
         "type": "object",
         "additionalProperties": {
@@ -9268,6 +9519,17 @@
             "description": "Tool definitions provided by this capability"
           }
         }
+      },
+      "ChannelType": {
+        "type": "string",
+        "description": "Supported channel types for app distribution.",
+        "enum": [
+          "slack",
+          "ag_ui",
+          "schedule",
+          "webhook",
+          "a2a"
+        ]
       },
       "ClientSideTool": {
         "type": "object",
@@ -12312,6 +12574,14 @@
             "description": "The user message"
           }
         }
+      },
+      "InvocationSessionMode": {
+        "type": "string",
+        "description": "How app-triggered invocations route into sessions.",
+        "enum": [
+          "shared_session",
+          "session_per_invocation"
+        ]
       },
       "KeyValueInfo": {
         "type": "object",
@@ -18259,6 +18529,24 @@
           "value": {
             "$ref": "#/components/schemas/ReasoningEffort",
             "description": "The API value (e.g., \"low\", \"medium\")"
+          }
+        }
+      },
+      "RegenerateA2aApiKeyOutput": {
+        "type": "object",
+        "description": "Output of [`RegenerateA2aApiKeyCmd`] — includes the newly generated\nplaintext API key (returned **once**, never persisted) plus the updated\n[`AppChannel`].",
+        "required": [
+          "api_key",
+          "channel"
+        ],
+        "properties": {
+          "api_key": {
+            "type": "string",
+            "description": "New plaintext API key. Persist this — it cannot be recovered later.\nThe previous key is invalidated immediately."
+          },
+          "channel": {
+            "$ref": "#/components/schemas/AppChannel",
+            "description": "The updated A2A channel."
           }
         }
       },

@@ -362,6 +362,22 @@ pub struct AddA2aChannelHttpRequest {
 }
 
 /// POST /v1/apps/{app_id}/a2a-channels - Add an A2A channel (returns plaintext key once).
+#[utoipa::path(
+    post,
+    path = "/v1/apps/{app_id}/a2a-channels",
+    params(
+        ("app_id" = String, Path, description = "App ID")
+    ),
+    request_body = AddA2aChannelHttpRequest,
+    responses(
+        (status = 201, description = "A2A channel created. The `api_key` field is the plaintext key returned exactly once and never recoverable later.", body = AddA2aChannelOutput),
+        (status = 400, description = "Validation error", body = ErrorResponse),
+        (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
+        (status = 404, description = "App not found", body = ErrorResponse),
+    ),
+    tag = "apps"
+)]
 pub async fn add_a2a_channel(
     org: ResolvedOrg,
     State(state): State<AppState>,
@@ -381,8 +397,23 @@ pub async fn add_a2a_channel(
     Ok((StatusCode::CREATED, Json(output)))
 }
 
-/// POST /v1/apps/{app_id}/channels/{channel_id}/regenerate-key
-/// Regenerate an A2A channel API key. Returns the new plaintext key once.
+/// Regenerate an A2A channel API key. Returns the new plaintext key exactly once and invalidates the previous key.
+#[utoipa::path(
+    post,
+    path = "/v1/apps/{app_id}/a2a-channels/{channel_id}/regenerate-key",
+    params(
+        ("app_id" = String, Path, description = "App ID"),
+        ("channel_id" = String, Path, description = "A2A channel ID")
+    ),
+    responses(
+        (status = 200, description = "API key rotated. The `api_key` field is the new plaintext key returned exactly once; the previous key is invalidated immediately.", body = RegenerateA2aApiKeyOutput),
+        (status = 400, description = "Invalid app/channel ID or channel is not an A2A channel", body = ErrorResponse),
+        (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
+        (status = 404, description = "App or A2A channel not found", body = ErrorResponse),
+    ),
+    tag = "apps"
+)]
 pub async fn regenerate_a2a_key(
     org: ResolvedOrg,
     State(state): State<AppState>,
