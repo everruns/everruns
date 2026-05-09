@@ -31,6 +31,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { CapabilitySelector } from "@/components/agents/capability-selector";
+import { normalizeCapabilityConfigs } from "@/components/agents/capability-config";
 import { AgentPreview } from "@/components/agents/agent-preview";
 import { EntityDeleteErrorNotice } from "@/components/entity-delete-error-notice";
 import { InitialFilesEditor } from "@/components/initial-files-editor";
@@ -118,7 +119,7 @@ export default function EditAgentPage({ params }: { params: Promise<{ agentId: s
   // Capabilities state - now included directly in agent response
   // Use full AgentCapabilityConfig objects to preserve per-agent config
   const initialCapabilities = useMemo(() => {
-    return agent?.capabilities ?? [];
+    return normalizeCapabilityConfigs(agent?.capabilities);
   }, [agent?.capabilities]);
 
   const [localCapabilities, setLocalCapabilities] = useState<AgentCapabilityConfig[] | null>(null);

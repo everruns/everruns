@@ -8,6 +8,7 @@ import { ChevronUp, ChevronDown, X, Plug, Lock, Settings } from "lucide-react";
 import type { Capability, CapabilityId, AgentCapabilityConfig } from "@/lib/api/types";
 import { getCapabilityIcon } from "@/lib/capability-icons";
 import { cn } from "@/lib/utils";
+import { capabilityConfigRecord } from "./capability-config";
 import { CapabilitySettingsEditor, hasCapabilitySettings } from "./capability-settings-editor";
 
 interface SelectedCapabilityListProps {
@@ -62,7 +63,8 @@ export function SelectedCapabilityList({
         const IconComponent = getCapabilityIcon(cap.icon);
         const hasSettings = hasCapabilitySettings(cap);
         const isSettingsExpanded = expandedSettings.has(capConfig.ref);
-        const hasConfigValues = Object.keys(capConfig.config).length > 0;
+        const config = capabilityConfigRecord(capConfig.config);
+        const hasConfigValues = Object.keys(config).length > 0;
         const dependents = getDependents(capConfig.ref);
         const isRequired = dependents.length > 0;
 
@@ -182,7 +184,7 @@ export function SelectedCapabilityList({
                   <div className="px-2 pb-2 border-t border-border/50 mx-2 pt-2">
                     <CapabilitySettingsEditor
                       capability={cap}
-                      config={capConfig.config}
+                      config={config}
                       onChange={(newConfig) => onConfigChange(capConfig.ref, newConfig)}
                       disabled={disabled}
                     />

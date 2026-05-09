@@ -32,6 +32,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { CapabilitySelector } from "@/components/agents/capability-selector";
+import { normalizeCapabilityConfigs } from "@/components/agents/capability-config";
 import { EntityDeleteErrorNotice } from "@/components/entity-delete-error-notice";
 import { HarnessSelect } from "@/components/harness/harness-select";
 import { HarnessPreview } from "@/components/harnesses/harness-preview";
@@ -122,7 +123,7 @@ export default function EditHarnessPage({ params }: { params: Promise<{ harnessI
   }, []);
 
   const initialCapabilities = useMemo(() => {
-    return harness?.capabilities ?? [];
+    return normalizeCapabilityConfigs(harness?.capabilities);
   }, [harness?.capabilities]);
 
   const [localCapabilities, setLocalCapabilities] = useState<AgentCapabilityConfig[] | null>(null);
