@@ -80,17 +80,32 @@ impl EmailAddress {
     }
 
     fn validate(&self, field: &str) -> EmailResult<()> {
-        if self.email.trim().is_empty() {
+        let email = self.email.trim();
+        if email.is_empty() {
             return Err(EmailError::invalid(format!("{field} email is empty")));
         }
-        if self.email.contains(['\r', '\n']) {
+        if self.email != email {
+            return Err(EmailError::invalid(format!(
+                "{field} email must not include leading or trailing whitespace"
+            )));
+        }
+        if email.contains(['\r', '\n']) {
             return Err(EmailError::invalid(format!(
                 "{field} email contains a newline"
             )));
         }
-        if !self.email.contains('@') {
+        if email.contains([' ', '\t', ',', ';', '<', '>', '"', '\'', '(', ')', '[', ']']) {
             return Err(EmailError::invalid(format!(
-                "{field} email must contain an @ sign"
+                "{field} email must be a single mailbox address"
+            )));
+        }
+        let mut parts = email.split('@');
+        let local = parts.next().unwrap_or_default();
+        let domain = parts.next().unwrap_or_default();
+        let has_extra_parts = parts.next().is_some();
+        if local.is_empty() || domain.is_empty() || has_extra_parts {
+            return Err(EmailError::invalid(format!(
+                "{field} email must be a single mailbox address"
             )));
         }
         if let Some(name) = &self.name
@@ -429,5 +444,56 @@ mod tests {
 
         assert!(matches!(error, EmailError::InvalidRequest(_)));
         assert!(error.to_string().contains("control characters"));
+    }
+
+    #[tokio::test]
+    async fn rejects_multi_recipient_in_single_to_field() {
+        let sender = NoopEmailSender;
+        let error = sender
+            .send_email(EmailMessage::generic(
+                "victim@example.com, attacker@example.com",
+                "Hi",
+                "hello",
+                "<p>hello</p>",
+            ))
+            .await
+            .unwrap_err();
+
+        assert!(matches!(error, EmailError::InvalidRequest(_)));
+        assert!(error.to_string().contains("single mailbox"));
+    }
+
+    #[tokio::test]
+    async fn rejects_structured_mailbox_syntax_in_raw_email_field() {
+        let sender = NoopEmailSender;
+        let error = sender
+            .send_email(EmailMessage::generic(
+                "Victim <victim@example.com>",
+                "Hi",
+                "hello",
+                "<p>hello</p>",
+            ))
+            .await
+            .unwrap_err();
+
+        assert!(matches!(error, EmailError::InvalidRequest(_)));
+        assert!(error.to_string().contains("single mailbox"));
+    }
+
+    #[tokio::test]
+    async fn rejects_email_with_surrounding_whitespace() {
+        let sender = NoopEmailSender;
+        let error = sender
+            .send_email(EmailMessage::generic(
+                " user@example.com ",
+                "Hi",
+                "hello",
+                "<p>hello</p>",
+            ))
+            .await
+            .unwrap_err();
+
+        assert!(matches!(error, EmailError::InvalidRequest(_)));
+        assert!(error.to_string().contains("leading or trailing whitespace"));
     }
 }
