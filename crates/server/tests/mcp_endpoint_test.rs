@@ -1559,7 +1559,7 @@ async fn test_mcp_execute_app_commands_support_schedule_and_webhook_channels() {
         "execute",
         json!({
             "commands": format!(
-                "add_schedule_app_channel --app_id {app_id} --cron_expression '0 * * * * * *' --timezone UTC --session_mode shared_session --message 'run checks'"
+                "add_schedule_app_channel --app_id {app_id} --cron_expression '0 * * * *' --timezone UTC --session_mode shared_session --message 'run checks'"
             )
         }),
     )
@@ -1570,6 +1570,10 @@ async fn test_mcp_execute_app_commands_support_schedule_and_webhook_channels() {
         tool_text(&add_schedule_resp)
     );
     assert_eq!(tool_json(&add_schedule_resp)["channel_type"], "schedule");
+    assert_eq!(
+        tool_json(&add_schedule_resp)["channel_config"]["cron_expression"],
+        "0 0 * * * * *"
+    );
 
     let add_webhook_resp = mcp_tool_call(
         &server,
