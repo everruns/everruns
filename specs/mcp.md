@@ -231,10 +231,12 @@ client_secret=<client_secret>
 {
   "access_token": "<jwt>",
   "token_type": "Bearer",
-  "expires_in": 3600,
+  "expires_in": 900,
   "refresh_token": "<opaque>"
 }
 ```
+
+`expires_in` is the configured JWT access-token lifetime in seconds — see `AUTH_JWT_ACCESS_TOKEN_LIFETIME` (default 900). The OAuth response always reports the same value used for the JWT `exp` claim, so MCP clients caching by `expires_in` cannot outlive the token. Override the env var to widen the window for long-running MCP sessions.
 
 ### Access Tokens
 

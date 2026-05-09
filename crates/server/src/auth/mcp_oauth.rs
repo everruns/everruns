@@ -39,8 +39,9 @@ use utoipa::ToSchema;
 /// Authorization code TTL (5 minutes)
 const AUTH_CODE_TTL_SECS: i64 = 300;
 
-/// MCP access token lifetime (1 hour)
-const MCP_ACCESS_TOKEN_LIFETIME_SECS: i64 = 3600;
+// MCP access token lifetime is derived from `JwtService::access_token_lifetime_secs()`
+// so the OAuth `expires_in` always matches the actual JWT `exp - iat`. A separate
+// constant here would silently drift from the JWT contract — see EVE-460.
 
 /// MCP refresh token lifetime (30 days)
 const MCP_REFRESH_TOKEN_LIFETIME_SECS: i64 = 30 * 24 * 3600;
@@ -865,7 +866,7 @@ async fn handle_authorization_code_grant(
     Ok(Json(OAuthTokenResponse {
         access_token,
         token_type: "Bearer".to_string(),
-        expires_in: MCP_ACCESS_TOKEN_LIFETIME_SECS,
+        expires_in: state.jwt_service.access_token_lifetime_secs(),
         refresh_token: Some(refresh_token_raw),
     }))
 }
@@ -994,7 +995,7 @@ async fn handle_refresh_token_grant(
     Ok(Json(OAuthTokenResponse {
         access_token,
         token_type: "Bearer".to_string(),
-        expires_in: MCP_ACCESS_TOKEN_LIFETIME_SECS,
+        expires_in: state.jwt_service.access_token_lifetime_secs(),
         refresh_token: Some(new_refresh_token),
     }))
 }
@@ -1096,5 +1097,48 @@ mod tests {
         let verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk";
         let challenge = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
         assert!(verify_pkce_s256(verifier, challenge));
+    }
+
+    /// Regression for EVE-460: the `expires_in` value reported by the MCP
+    /// OAuth token endpoint must match the actual JWT `exp - iat` so a client
+    /// caching by `expires_in` cannot outlive the access token. This test
+    /// fixes the lifetime to a non-default value to catch any drift between
+    /// `JwtService::access_token_lifetime_secs()` (the new `expires_in`
+    /// source) and the encoded JWT's exp claim.
+    #[test]
+    fn mcp_expires_in_matches_jwt_exp_minus_iat() {
+        use crate::auth::config::JwtConfig;
+        use crate::auth::jwt::JwtService;
+        use std::time::Duration as StdDuration;
+
+        let lifetime_secs: i64 = 1234;
+        let cfg = JwtConfig {
+            secret: "test-secret".to_string(),
+            access_token_lifetime: StdDuration::from_secs(lifetime_secs as u64),
+            refresh_token_lifetime: StdDuration::from_secs(60),
+        };
+        let svc = JwtService::new(cfg);
+
+        assert_eq!(
+            svc.access_token_lifetime_secs(),
+            lifetime_secs,
+            "accessor must echo configured lifetime"
+        );
+
+        let token = svc
+            .generate_access_token(
+                uuid::Uuid::nil(),
+                "user@example.com",
+                "user",
+                &["user".to_string()],
+            )
+            .expect("token generation");
+        let claims = svc.validate_access_token(&token).expect("token validation");
+
+        assert_eq!(
+            claims.exp - claims.iat,
+            svc.access_token_lifetime_secs(),
+            "JWT exp-iat must equal the lifetime reported via expires_in"
+        );
     }
 }

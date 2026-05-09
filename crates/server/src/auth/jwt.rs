@@ -181,6 +181,13 @@ impl JwtService {
     pub fn refresh_token_lifetime_secs(&self) -> i64 {
         self.config.refresh_token_lifetime.as_secs() as i64
     }
+
+    /// Get access token lifetime in seconds. Matches the value used for the
+    /// JWT `exp` claim, so OAuth `expires_in` can be derived from the same
+    /// source instead of a separate hardcoded constant.
+    pub fn access_token_lifetime_secs(&self) -> i64 {
+        self.config.access_token_lifetime.as_secs() as i64
+    }
 }
 
 /// Hash a token for database storage (using SHA-256)
