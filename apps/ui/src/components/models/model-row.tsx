@@ -13,13 +13,15 @@ import {
   Info,
   ChevronDown,
   ChevronUp,
+  Pencil,
   ToggleLeft,
   ToggleRight,
   Trash2,
 } from "lucide-react";
 import { ProviderIcon } from "@/components/providers/provider-icon";
+import { EditModelDialog } from "@/components/models/edit-model-dialog";
 import { formatTokens } from "@/lib/formatting";
-import type { LlmModelWithProvider } from "@/lib/api/types";
+import type { LlmModelWithProvider, LlmProvider, UpdateLlmModelRequest } from "@/lib/api/types";
 
 function formatCost(cost: number): string {
   if (cost >= 100) {
@@ -58,16 +60,21 @@ function formatReleaseDate(value: string): string {
 
 export function ModelRow({
   model,
+  providers,
   onDelete,
+  onUpdate,
   onToggleEnabled,
   isTogglingEnabled,
 }: {
   model: LlmModelWithProvider;
+  providers: LlmProvider[];
   onDelete: (id: string) => void;
+  onUpdate: (id: string, data: UpdateLlmModelRequest) => Promise<void>;
   onToggleEnabled: (id: string, enabled: boolean) => void;
   isTogglingEnabled: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const profile = model.profile;
 
   return (
@@ -109,6 +116,21 @@ export function ModelRow({
                     Released {formatReleaseDate(profile.release_date)}
                   </span>
                 </>
+              )}
+              {profile && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setExpanded(!expanded)}
+                  className="ml-2 h-6 px-1.5 align-baseline text-muted-foreground"
+                  title={expanded ? "Collapse profile details" : "Expand profile details"}
+                >
+                  {expanded ? (
+                    <ChevronUp className="h-3.5 w-3.5" />
+                  ) : (
+                    <ChevronDown className="h-3.5 w-3.5" />
+                  )}
+                </Button>
               )}
             </div>
           </div>
@@ -155,10 +177,9 @@ export function ModelRow({
               <TooltipTrigger asChild>
                 <span
                   role="img"
-                  tabIndex={0}
                   aria-label={model.healthy ? "Model healthy" : "Model not ready"}
                   className={
-                    "inline-block h-2.5 w-2.5 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 " +
+                    "inline-block h-2.5 w-2.5 rounded-full " +
                     (model.healthy ? "bg-green-500" : "bg-gray-300")
                   }
                 />
@@ -195,16 +216,15 @@ export function ModelRow({
               </>
             )}
           </Button>
-          {profile && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setExpanded(!expanded)}
-              title={expanded ? "Collapse" : "Expand profile details"}
-            >
-              {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-            </Button>
-          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setEditOpen(true)}
+            aria-label={`Edit ${model.display_name}`}
+            title="Edit model"
+          >
+            <Pencil className="h-4 w-4" />
+          </Button>
           <Button
             variant="ghost"
             size="sm"
@@ -289,6 +309,13 @@ export function ModelRow({
           </div>
         </div>
       )}
+      <EditModelDialog
+        model={model}
+        providers={providers}
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        onSubmit={onUpdate}
+      />
     </div>
   );
 }

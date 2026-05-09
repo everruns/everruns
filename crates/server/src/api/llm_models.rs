@@ -110,6 +110,10 @@ fn default_true() -> bool {
 /// Request to update an LLM model. Only provided fields will be updated.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateLlmModelRequest {
+    /// Provider that owns this model.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "provider_019df670b5af7db7a5685a4ad18a544a")]
+    pub provider_id: Option<String>,
     /// The model identifier used by the provider's API.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "gpt-4o-mini")]
@@ -269,6 +273,7 @@ pub async fn update_model(
         .dispatcher(&org)
         .run_with_urls(UpdateModel {
             id,
+            provider_id: req.provider_id,
             model_id: req.model_id,
             display_name: req.display_name,
             capabilities: req.capabilities,

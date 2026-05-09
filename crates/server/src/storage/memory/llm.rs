@@ -459,12 +459,27 @@ impl InMemoryDatabase {
         input: UpdateLlmModel,
     ) -> Result<Option<LlmModelRow>> {
         let id = ModelId::from_uuid(id);
+        if let Some(provider_id) = input.provider_id {
+            let providers = self.llm_providers.read();
+            if providers
+                .get(&provider_id)
+                .is_none_or(|provider| provider.org_id != org_id)
+            {
+                return Ok(None);
+            }
+        }
         let mut models = self.llm_models.write();
         // Check existence and org ownership
         if models.get(&id).is_none_or(|m| m.org_id != org_id) {
             return Ok(None);
         }
         let model = models.get_mut(&id).unwrap();
+        if let Some(provider_id) = input.provider_id {
+            model.provider_id = provider_id;
+        }
+        if let Some(model_id) = input.model_id {
+            model.model_id = model_id;
+        }
         if let Some(display_name) = input.display_name {
             model.display_name = display_name;
         }
@@ -476,6 +491,12 @@ impl InMemoryDatabase {
         }
         if let Some(enabled) = input.enabled {
             model.enabled = enabled;
+        }
+        if let Some(last_seen_at) = input.last_seen_at {
+            model.last_seen_at = Some(last_seen_at);
+        }
+        if let Some(provider_metadata) = input.provider_metadata {
+            model.provider_metadata = Some(provider_metadata);
         }
         model.updated_at = Self::now();
         Ok(Some(model.clone()))

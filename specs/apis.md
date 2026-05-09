@@ -340,7 +340,7 @@ When `limit` is provided:
 | POST | `/v1/llm-providers/{id}/models` | Create model for provider |
 | GET | `/v1/llm-models` | List all models |
 | GET | `/v1/llm-models/{id}` | Get model |
-| PATCH | `/v1/llm-models/{id}` | Update model |
+| PATCH | `/v1/llm-models/{id}` | Update model, including provider assignment |
 | DELETE | `/v1/llm-models/{id}` | Delete model |
 
 #### Model Sync

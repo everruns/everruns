@@ -392,20 +392,29 @@ impl Database {
             r#"
             UPDATE llm_models
             SET
-                model_id = COALESCE($3, model_id),
-                display_name = COALESCE($4, display_name),
-                capabilities = COALESCE($5, capabilities),
-                is_favorite = COALESCE($6, is_favorite),
-                enabled = COALESCE($7, enabled),
-                last_seen_at = COALESCE($8, last_seen_at),
-                provider_metadata = COALESCE($9, provider_metadata),
+                provider_id = COALESCE($3, provider_id),
+                model_id = COALESCE($4, model_id),
+                display_name = COALESCE($5, display_name),
+                capabilities = COALESCE($6, capabilities),
+                is_favorite = COALESCE($7, is_favorite),
+                enabled = COALESCE($8, enabled),
+                last_seen_at = COALESCE($9, last_seen_at),
+                provider_metadata = COALESCE($10, provider_metadata),
                 updated_at = NOW()
             WHERE org_id = $1 AND id = $2
+              AND (
+                  $3::uuid IS NULL
+                  OR EXISTS (
+                      SELECT 1 FROM llm_providers p
+                      WHERE p.org_id = $1 AND p.id = $3
+                  )
+              )
             RETURNING id, org_id, provider_id, model_id, display_name, capabilities, is_favorite, enabled, source, last_seen_at, provider_metadata, created_at, updated_at
             "#,
         )
         .bind(org_id)
         .bind(id)
+        .bind(input.provider_id)
         .bind(&input.model_id)
         .bind(&input.display_name)
         .bind(&capabilities_json)

@@ -12,7 +12,7 @@ use crate::storage::{
 use anyhow::Result;
 use everruns_core::{
     Caller, LlmModel, LlmModelProfile, LlmModelSource, LlmModelWithProvider, LlmProviderType,
-    Permission, Policy, Rule, get_model_profile,
+    Permission, Policy, ProviderId, Rule, get_model_profile,
 };
 use std::sync::Arc;
 use tracing::error;
@@ -230,7 +230,26 @@ impl LlmModelService {
         id: Uuid,
         req: UpdateLlmModelRequest,
     ) -> Result<Option<LlmModel>> {
+        let provider_id = match req.provider_id.as_deref() {
+            Some(provider_id) => Some(
+                provider_id
+                    .parse::<ProviderId>()
+                    .map(|id| id.uuid())
+                    .map_err(|err| anyhow::anyhow!("Invalid provider ID: {err}"))?,
+            ),
+            None => None,
+        };
+        let provider_id = if let Some(provider_id) = provider_id {
+            Some(
+                self.validate_provider_id(caller.org_id, provider_id)
+                    .await?,
+            )
+        } else {
+            None
+        };
+
         let input = UpdateLlmModel {
+            provider_id: provider_id.map(Into::into),
             model_id: req.model_id,
             display_name: req.display_name,
             capabilities: req.capabilities,
@@ -478,6 +497,70 @@ mod tests {
 
         let err = service
             .create(&caller, other_provider_id.uuid(), build_create_request())
+            .await
+            .unwrap_err();
+
+        assert_eq!(err.to_string(), "Provider not found");
+    }
+
+    #[tokio::test]
+    async fn update_can_move_model_to_another_provider_in_same_org() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let service = LlmModelService::new(db.clone());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+        let first_provider_id = create_provider(&db, DEFAULT_ORG_ID).await;
+        let second_provider_id = create_provider(&db, DEFAULT_ORG_ID).await;
+        let model = service
+            .create(&caller, first_provider_id.uuid(), build_create_request())
+            .await
+            .unwrap();
+
+        let updated = service
+            .update(
+                &caller,
+                model.id.uuid(),
+                UpdateLlmModelRequest {
+                    provider_id: Some(second_provider_id.to_string()),
+                    model_id: None,
+                    display_name: None,
+                    capabilities: None,
+                    enabled: None,
+                    is_favorite: None,
+                },
+            )
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(updated.provider_id, second_provider_id);
+    }
+
+    #[tokio::test]
+    async fn update_rejects_provider_from_another_org() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let service = LlmModelService::new(db.clone());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+        let provider_id = create_provider(&db, DEFAULT_ORG_ID).await;
+        let other_org_id = create_second_org(&db).await;
+        let other_provider_id = create_provider(&db, other_org_id).await;
+        let model = service
+            .create(&caller, provider_id.uuid(), build_create_request())
+            .await
+            .unwrap();
+
+        let err = service
+            .update(
+                &caller,
+                model.id.uuid(),
+                UpdateLlmModelRequest {
+                    provider_id: Some(other_provider_id.to_string()),
+                    model_id: None,
+                    display_name: None,
+                    capabilities: None,
+                    enabled: None,
+                    is_favorite: None,
+                },
+            )
             .await
             .unwrap_err();
 
