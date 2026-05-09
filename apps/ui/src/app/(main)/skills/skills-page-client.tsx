@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Button } from "@/components/ui/button";
+import Link from "next/link";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -21,62 +22,27 @@ import {
   useSkills,
   useCreateSkill,
   useDestroySkill,
-  useSkillContent,
   useSkillsUsage,
   useUpdateSkill,
   useUploadSkill,
 } from "@/hooks/use-skills";
 import { usePolicies } from "@/hooks/use-policies";
-import {
-  Plus,
-  BookOpen,
-  Trash2,
-  Upload,
-  FileText,
-  Archive,
-  Box,
-  Bot,
-  Eye,
-  Layers,
-  Search,
-} from "lucide-react";
+import { Plus, BookOpen, Trash2, Upload, FileText, Archive, Box, Eye, Search } from "lucide-react";
 import type { Skill, SkillUsage } from "@/lib/api/types";
 import { getEntityNameClassName, getEntityStatusBadgeVariant } from "@/lib/entity-lifecycle";
 import { ArchiveFilter } from "@/components/archive-filter";
-import { InlineStreamdownMessage } from "@/components/chat/streamdown-message";
-
-function SkillUsageRow({ usage }: { usage: SkillUsage | undefined }) {
-  const agents = usage?.agents ?? 0;
-  const harnesses = usage?.harnesses ?? 0;
-  if (agents === 0 && harnesses === 0) {
-    return <div className="text-xs text-muted-foreground">Not in use</div>;
-  }
-  return (
-    <div className="flex items-center gap-3 text-xs text-muted-foreground">
-      <span className="inline-flex items-center gap-1" aria-label={`${agents} agents`}>
-        <Bot className="h-3.5 w-3.5" />
-        {agents} {agents === 1 ? "agent" : "agents"}
-      </span>
-      <span className="inline-flex items-center gap-1" aria-label={`${harnesses} harnesses`}>
-        <Layers className="h-3.5 w-3.5" />
-        {harnesses} {harnesses === 1 ? "harness" : "harnesses"}
-      </span>
-    </div>
-  );
-}
+import { SkillUsageRow } from "@/components/skills/skill-usage-row";
 
 function SkillCard({
   skill,
   usage,
   canDestroy,
   onDelete,
-  onView,
 }: {
   skill: Skill;
   usage: SkillUsage | undefined;
   canDestroy: boolean;
   onDelete: (skill: Skill) => void;
-  onView: (skill: Skill) => void;
 }) {
   const updateSkill = useUpdateSkill(skill.id);
   const isArchived = skill.status === "archived";
@@ -117,10 +83,13 @@ function SkillCard({
           <SkillUsageRow usage={usage} />
         </div>
         <div className="flex items-center justify-end gap-2 mt-4">
-          <Button variant="outline" size="sm" onClick={() => onView(skill)}>
+          <Link
+            href={`/skills/${skill.id}`}
+            className={buttonVariants({ variant: "outline", size: "sm" })}
+          >
             <Eye className="h-4 w-4 mr-1" />
             View
-          </Button>
+          </Link>
           {!isArchived && !isDeleted && (
             <Button
               variant="outline"
@@ -141,140 +110,6 @@ function SkillCard({
         </div>
       </CardContent>
     </Card>
-  );
-}
-
-/**
- * Parses YAML frontmatter and markdown body from a reconstructed SKILL.md.
- * Falls back to treating the whole text as the body if no fenced frontmatter
- * block is present.
- */
-function splitFrontmatter(skillMd: string): { frontmatter: string; body: string } {
-  const match = skillMd.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
-  if (!match) return { frontmatter: "", body: skillMd };
-  return { frontmatter: match[1] ?? "", body: (match[2] ?? "").trimStart() };
-}
-
-function SkillDetailDialog({
-  skill,
-  usage,
-  onOpenChange,
-}: {
-  skill: Skill | null;
-  usage: SkillUsage | undefined;
-  onOpenChange: (open: boolean) => void;
-}) {
-  const open = skill !== null;
-  const { data: content, isLoading, error } = useSkillContent(skill?.id ?? "");
-  const split = useMemo(
-    () => (content ? splitFrontmatter(content.skill_md) : { frontmatter: "", body: "" }),
-    [content],
-  );
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            {skill?.source_type === "archive" ? (
-              <Archive className="h-5 w-5 text-primary" />
-            ) : (
-              <FileText className="h-5 w-5 text-primary" />
-            )}
-            {skill?.name}
-          </DialogTitle>
-          <DialogDescription>{skill?.description}</DialogDescription>
-        </DialogHeader>
-        {skill && (
-          <div className="space-y-6">
-            <section className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-              <div>
-                <Label className="text-muted-foreground">Status</Label>
-                <div>
-                  <Badge variant={getEntityStatusBadgeVariant(skill.status)}>{skill.status}</Badge>
-                </div>
-              </div>
-              <div>
-                <Label className="text-muted-foreground">Source</Label>
-                <div>{skill.source_type}</div>
-              </div>
-              <div>
-                <Label className="text-muted-foreground">Version</Label>
-                <div>{skill.version}</div>
-              </div>
-              <div>
-                <Label className="text-muted-foreground">License</Label>
-                <div>{skill.license ?? "—"}</div>
-              </div>
-              <div>
-                <Label className="text-muted-foreground">Compatibility</Label>
-                <div>{skill.compatibility ?? "—"}</div>
-              </div>
-              <div>
-                <Label className="text-muted-foreground">Allowed tools</Label>
-                <div>{skill.allowed_tools ?? "—"}</div>
-              </div>
-              <div className="col-span-2">
-                <Label className="text-muted-foreground">Used by</Label>
-                <SkillUsageRow usage={usage} />
-              </div>
-            </section>
-
-            <section>
-              <Label className="text-muted-foreground">Frontmatter</Label>
-              {isLoading && <Skeleton className="h-24 w-full mt-1" />}
-              {error && (
-                <p className="text-sm text-destructive mt-1">Failed to load skill content.</p>
-              )}
-              {content && (
-                <pre className="mt-1 p-3 bg-muted text-xs font-mono whitespace-pre-wrap break-all overflow-x-auto">
-                  {split.frontmatter || "(no frontmatter)"}
-                </pre>
-              )}
-            </section>
-
-            <section>
-              <Label className="text-muted-foreground">SKILL.md</Label>
-              {isLoading && <Skeleton className="h-32 w-full mt-1" />}
-              {content && (
-                <div className="mt-1 p-3 bg-muted text-sm overflow-x-auto">
-                  {split.body.trim() ? (
-                    <InlineStreamdownMessage>{split.body}</InlineStreamdownMessage>
-                  ) : (
-                    <span className="text-muted-foreground">(empty)</span>
-                  )}
-                </div>
-              )}
-            </section>
-
-            {content && content.files.length > 0 && (
-              <section>
-                <Label className="text-muted-foreground">
-                  Bundled files ({content.files.length})
-                </Label>
-                <div className="mt-1 space-y-2">
-                  {content.files.map((file) => (
-                    <details key={file.path} className="border bg-muted/40">
-                      <summary className="cursor-pointer px-3 py-2 text-sm font-mono">
-                        {file.path}
-                      </summary>
-                      <pre className="px-3 py-2 text-xs font-mono whitespace-pre-wrap break-all border-t bg-background overflow-x-auto">
-                        {file.content}
-                      </pre>
-                    </details>
-                  ))}
-                </div>
-              </section>
-            )}
-          </div>
-        )}
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Close
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }
 
@@ -424,7 +259,6 @@ export default function SkillsPageClient() {
   const [addSkillOpen, setAddSkillOpen] = useState(false);
   const [uploadSkillOpen, setUploadSkillOpen] = useState(false);
   const [pendingDeleteSkill, setPendingDeleteSkill] = useState<Skill | null>(null);
-  const [viewingSkill, setViewingSkill] = useState<Skill | null>(null);
 
   const filteredSkills = useMemo(() => {
     if (!skills) return skills;
@@ -513,18 +347,12 @@ export default function SkillsPageClient() {
                 usage={usage?.[skill.id]}
                 canDestroy={canDestroy}
                 onDelete={setPendingDeleteSkill}
-                onView={setViewingSkill}
               />
             ))}
           </div>
         )}
       </QueryStateWrapper>
 
-      <SkillDetailDialog
-        skill={viewingSkill}
-        usage={viewingSkill ? usage?.[viewingSkill.id] : undefined}
-        onOpenChange={(open) => !open && setViewingSkill(null)}
-      />
       <AddSkillDialog open={addSkillOpen} onOpenChange={setAddSkillOpen} />
       <UploadSkillDialog open={uploadSkillOpen} onOpenChange={setUploadSkillOpen} />
       <Dialog
