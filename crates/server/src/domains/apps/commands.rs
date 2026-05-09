@@ -408,6 +408,20 @@ fn build_schedule_target_input(app: &App, channel: &AppChannel) -> Value {
     })
 }
 
+/// Metadata stamped onto the user message that an app channel injects into a
+/// session. `_app_id` is the canonical "system metadata" key shared with the
+/// AG-UI (`crates/server/src/api/ag_ui.rs`) and Slack
+/// (`crates/server/src/api/slack_events.rs`) ingress paths; the rest of the
+/// keys (`app_channel_id`, `app_channel_type`, `source`) are specific to the
+/// schedule / webhook / A2A invocation channels documented in
+/// `specs/app-invocation-channels.md` and are not emitted by AG-UI or Slack.
+///
+/// `_app_id` is the system-id consumed by `is_ag_ui_app_image` for AG-UI
+/// image authorization and by the matching system-id assertions in the
+/// channel ingress unit tests. The audit-log payload emitted by
+/// `emit_app_invocation_audit_event` uses a bare `app_id` field on its own
+/// `AuditEvent` struct for human-readable filtering; that is intentional and
+/// lives separately from this metadata bag.
 fn app_invocation_message_metadata(
     app: &App,
     channel: &AppChannel,
@@ -417,10 +431,6 @@ fn app_invocation_message_metadata(
         (
             "source".to_string(),
             Value::String(format!("app_{}", source.as_str())),
-        ),
-        (
-            "app_id".to_string(),
-            Value::String(app.public_id.to_string()),
         ),
         (
             "_app_id".to_string(),
@@ -2697,5 +2707,9 @@ mod tests {
             metadata.get("app_channel_id"),
             Some(&Value::String(channel.public_id.to_string()))
         );
+        // The bare `app_id` key was previously emitted alongside `_app_id`
+        // but had no consumer; the metadata bag uses the same `_app_id`
+        // convention as the AG-UI and Slack ingress paths.
+        assert!(!metadata.contains_key("app_id"));
     }
 }
