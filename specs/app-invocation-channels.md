@@ -79,8 +79,8 @@ To make `shared_session` work and to keep ownership accountable, app-channel ses
 
 This invariant has security and routing consequences:
 
-- `find_app_session_by_tags_and_owner` matches on `org_id` + `owner_principal_id` + the full tag set. Reuse never crosses orgs and never hops to a session owned by a different principal, even if the tags would otherwise match.
-- The user-stamped `app:` and `app_channel:` tag prefixes are reserved at session create time. `SessionService::create` rejects them from non-internal callers, so an org member cannot pre-seed a personal session that an app-channel invocation would later adopt or attach to a sibling app's budget.
+- `find_app_session_by_tags_and_owner` keys the lookup on `org_id` + `app_id` + `owner_principal_id` and requires the candidate session's `tags` to **contain** every routing tag passed in (Postgres `tags @> $tags`, not strict equality). Reuse therefore never crosses orgs, never hops apps, and never adopts a session owned by a different principal, even if the surface tags overlap. App-channel sessions also carry the internal `__internal:app_invocation` routing tag so unrelated user sessions cannot satisfy the lookup.
+- The internal-only tag prefixes — `__internal:`, `app:`, `app_channel:`, `slack:app:`, and `ag_ui:app:` — are reserved at session create/update time. `SessionService::create` and `update` reject them from non-internal callers (see the matching error in `crates/server/src/domains/sessions/service.rs`), so an org member cannot pre-seed a personal session that an app-channel invocation would later adopt or attach to a sibling app's budget.
 - Per-invocation sessions inherit the same owner override even though they are not subject to reuse — this keeps audit, budgets, and policy evaluation consistent across both `InvocationSessionMode` values.
 
 Cross-references:
