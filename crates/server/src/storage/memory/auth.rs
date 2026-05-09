@@ -351,6 +351,19 @@ impl InMemoryDatabase {
             .cloned())
     }
 
+    pub async fn consume_oauth_refresh_token_by_hash(
+        &self,
+        token_hash: &str,
+    ) -> Result<Option<OAuthRefreshTokenRow>> {
+        let now = Self::now();
+        let mut tokens = self.oauth_refresh_tokens.write();
+        let id = tokens
+            .iter()
+            .find(|(_, t)| t.token_hash == token_hash && t.expires_at > now)
+            .map(|(id, _)| *id);
+        Ok(id.and_then(|id| tokens.remove(&id)))
+    }
+
     pub async fn delete_oauth_refresh_token(&self, id: Uuid) -> Result<bool> {
         Ok(self.oauth_refresh_tokens.write().remove(&id).is_some())
     }

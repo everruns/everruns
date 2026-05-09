@@ -425,6 +425,28 @@ impl Database {
         Ok(row)
     }
 
+    /// Atomically consume an MCP OAuth refresh token by hash if it is still
+    /// valid. Mirrors the regular auth refresh-token consume path so refresh
+    /// token rotation remains single-use under concurrent client retries.
+    pub async fn consume_oauth_refresh_token_by_hash(
+        &self,
+        token_hash: &str,
+    ) -> Result<Option<OAuthRefreshTokenRow>> {
+        let row = sqlx::query_as::<_, OAuthRefreshTokenRow>(
+            r#"
+            DELETE FROM oauth_refresh_tokens
+            WHERE token_hash = $1
+              AND expires_at > NOW()
+            RETURNING id, token_hash, client_id, user_id, org_id, scope, expires_at, created_at
+            "#,
+        )
+        .bind(token_hash)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
     pub async fn delete_oauth_refresh_token(&self, id: Uuid) -> Result<bool> {
         let result = sqlx::query("DELETE FROM oauth_refresh_tokens WHERE id = $1")
             .bind(id)

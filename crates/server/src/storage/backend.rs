@@ -336,6 +336,13 @@ impl StorageBackend {
         dispatch!(self, get_oauth_refresh_token_by_hash, token_hash)
     }
 
+    pub async fn consume_oauth_refresh_token_by_hash(
+        &self,
+        token_hash: &str,
+    ) -> Result<Option<OAuthRefreshTokenRow>> {
+        dispatch!(self, consume_oauth_refresh_token_by_hash, token_hash)
+    }
+
     pub async fn delete_oauth_refresh_token(&self, id: Uuid) -> Result<bool> {
         dispatch!(self, delete_oauth_refresh_token, id)
     }

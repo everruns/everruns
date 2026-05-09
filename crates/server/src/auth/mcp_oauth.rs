@@ -39,9 +39,6 @@ use utoipa::ToSchema;
 /// Authorization code TTL (5 minutes)
 const AUTH_CODE_TTL_SECS: i64 = 300;
 
-/// MCP access token lifetime (1 hour)
-const MCP_ACCESS_TOKEN_LIFETIME_SECS: i64 = 3600;
-
 /// MCP refresh token lifetime (30 days)
 const MCP_REFRESH_TOKEN_LIFETIME_SECS: i64 = 30 * 24 * 3600;
 const OAUTH_AUTHORIZE_CSRF_COOKIE: &str = "mcp_oauth_authorize_csrf";
@@ -865,7 +862,7 @@ async fn handle_authorization_code_grant(
     Ok(Json(OAuthTokenResponse {
         access_token,
         token_type: "Bearer".to_string(),
-        expires_in: MCP_ACCESS_TOKEN_LIFETIME_SECS,
+        expires_in: state.jwt_service.access_token_lifetime_secs(),
         refresh_token: Some(refresh_token_raw),
     }))
 }
@@ -934,9 +931,6 @@ async fn handle_refresh_token_grant(
         });
     }
 
-    // Delete old refresh token (rotation)
-    let _ = state.db.delete_oauth_refresh_token(stored_token.id).await;
-
     // Fetch user
     let user = state
         .db
@@ -966,6 +960,32 @@ async fn handle_refresh_token_grant(
     let new_refresh_token = generate_random_hex();
     let new_refresh_token_hash = hash_value(&new_refresh_token);
 
+    // Atomically consume the old refresh token before issuing the replacement.
+    // The earlier lookup lets us validate client/user and build the response
+    // without burning the token on unrelated transient failures; this consume
+    // is the single-use gate that closes concurrent refresh races.
+    let consumed_token = state
+        .db
+        .consume_oauth_refresh_token_by_hash(&token_hash)
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to consume OAuth refresh token: {}", e);
+            OAuthErrorResponse {
+                error: "server_error".to_string(),
+                error_description: None,
+            }
+        })?
+        .ok_or_else(|| OAuthErrorResponse {
+            error: "invalid_grant".to_string(),
+            error_description: Some("Invalid or expired refresh token".to_string()),
+        })?;
+    if consumed_token.client_id != client_id {
+        return Err(OAuthErrorResponse {
+            error: "invalid_grant".to_string(),
+            error_description: Some("client_id mismatch".to_string()),
+        });
+    }
+
     state
         .db
         .create_oauth_refresh_token(CreateOAuthRefreshTokenRow {
@@ -994,7 +1014,7 @@ async fn handle_refresh_token_grant(
     Ok(Json(OAuthTokenResponse {
         access_token,
         token_type: "Bearer".to_string(),
-        expires_in: MCP_ACCESS_TOKEN_LIFETIME_SECS,
+        expires_in: state.jwt_service.access_token_lifetime_secs(),
         refresh_token: Some(new_refresh_token),
     }))
 }
