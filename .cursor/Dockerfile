@@ -14,6 +14,8 @@ ENV CARGO_INCREMENTAL=0
 # Valkey: build from the GitHub release tarball so we ship real `valkey-server`
 # / `valkey-cli` (licensing) without relying on `download.valkey.io` (often
 # blocks automated downloads with HTTP 403) or mixing prebuilt glibc versions.
+# Verify the release tarball SHA-256 before extraction to prevent silent
+# supply-chain swaps in transit or at the source URL.
 #
 # The universal devcontainer image ships a Yarn APT source that can break
 # `apt-get update` (missing/rotated key). Yarn is provided via other tooling in
@@ -35,9 +37,11 @@ RUN set -eux; \
       netcat-openbsd \
       jq; \
     VALKEY_VERSION="8.1.7"; \
+    VALKEY_SHA256="15c984f3fa7ee5b45a79cf9641e4871bf999acb65654940304e1c0807f58f7bc"; \
     curl -fsSL --retry 3 --retry-delay 2 \
       "https://github.com/valkey-io/valkey/archive/refs/tags/${VALKEY_VERSION}.tar.gz" \
       -o /tmp/valkey.tgz; \
+    echo "${VALKEY_SHA256}  /tmp/valkey.tgz" | sha256sum -c - >/dev/null; \
     tar -xzf /tmp/valkey.tgz -C /tmp; \
     make -C "/tmp/valkey-${VALKEY_VERSION}" MALLOC=libc -j"$(nproc)"; \
     make -C "/tmp/valkey-${VALKEY_VERSION}" MALLOC=libc install PREFIX=/usr/local; \
