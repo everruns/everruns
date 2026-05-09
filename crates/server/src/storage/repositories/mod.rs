@@ -22,6 +22,7 @@ mod notifications;
 mod organizations;
 mod payments;
 mod principals;
+mod reporting;
 mod schedules;
 mod session_files;
 mod session_git;

@@ -217,6 +217,10 @@ use utoipa::OpenApi;
         api::payments::update_payment_policy,
         api::payments::disable_payment_policy,
         api::payments::list_payment_attempts,
+        // Reporting
+        api::reporting::get_catalog,
+        api::reporting::run_query,
+        api::reporting::run_projector,
     ),
     components(
         schemas(
@@ -359,6 +363,19 @@ use utoipa::OpenApi;
             domains::payments::types::UpdatePaymentAccountRequest,
             domains::payments::types::CreatePaymentPolicyRequest,
             domains::payments::types::UpdatePaymentPolicyRequest,
+            everruns_core::reporting::DatasetCatalog,
+            everruns_core::reporting::DatasetCatalogEntry,
+            everruns_core::reporting::ReportColumn,
+            everruns_core::reporting::ReportColumnKind,
+            everruns_core::reporting::ReportFilter,
+            everruns_core::reporting::ReportFilterOp,
+            everruns_core::reporting::ReportOrderBy,
+            everruns_core::reporting::ReportOrderDirection,
+            everruns_core::reporting::ReportQuery,
+            everruns_core::reporting::ReportResult,
+            everruns_core::reporting::ReportTimeRange,
+            api::reporting::ProjectorRunQuery,
+            domains::reporting::types::ProjectorRunResult,
         )
     ),
     tags(
@@ -386,6 +403,7 @@ use utoipa::OpenApi;
         (name = "harnesses", description = "Harness management endpoints"),
         (name = "skills", description = "Skills registry endpoints"),
         (name = "payments", description = "Machine payment wallet, policy, and attempt endpoints"),
+        (name = "reporting", description = "Org-scoped semantic reporting endpoints"),
     ),
     info(
         title = "Everruns API",

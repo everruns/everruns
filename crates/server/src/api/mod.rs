@@ -39,6 +39,7 @@ pub mod organizations;
 pub mod payments;
 pub mod prometheus;
 pub mod public;
+pub mod reporting;
 pub mod resolver;
 pub mod schedules;
 pub mod session_databases;

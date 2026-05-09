@@ -473,13 +473,14 @@ impl Database {
         finish_reason: Option<String>,
         created_at: chrono::DateTime<chrono::Utc>,
     ) -> Result<()> {
-        sqlx::query(
+        let (id,): (uuid::Uuid,) = sqlx::query_as(
             r#"
             INSERT INTO llm_generations (
                 org_id, session_id, turn_id, event_id, model, provider,
                 input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
                 duration_ms, finish_reason, created_at
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+            RETURNING id
             "#,
         )
         .bind(org_id)
@@ -495,7 +496,16 @@ impl Database {
         .bind(duration_ms)
         .bind(&finish_reason)
         .bind(created_at)
-        .execute(&self.pool)
+        .fetch_one(&self.pool)
+        .await?;
+
+        self.enqueue_reporting_outbox(
+            org_id,
+            "llm_generation",
+            &id.to_string(),
+            Some(&id.to_string()),
+            "llm_generation_projection",
+        )
         .await?;
 
         Ok(())
@@ -509,15 +519,17 @@ impl Database {
         cache_read_tokens: i64,
         cache_creation_tokens: i64,
     ) -> Result<()> {
-        sqlx::query(
+        let row: (i64, uuid::Uuid, chrono::DateTime<chrono::Utc>) = sqlx::query_as(
             r#"
             UPDATE sessions
             SET
                 total_input_tokens = total_input_tokens + $2,
                 total_output_tokens = total_output_tokens + $3,
                 total_cache_read_tokens = total_cache_read_tokens + $4,
-                total_cache_creation_tokens = total_cache_creation_tokens + $5
+                total_cache_creation_tokens = total_cache_creation_tokens + $5,
+                updated_at = NOW()
             WHERE id = $1
+            RETURNING org_id, id, updated_at
             "#,
         )
         .bind(session_id)
@@ -525,7 +537,16 @@ impl Database {
         .bind(output_tokens)
         .bind(cache_read_tokens)
         .bind(cache_creation_tokens)
-        .execute(&self.pool)
+        .fetch_one(&self.pool)
+        .await?;
+
+        self.enqueue_reporting_outbox(
+            row.0,
+            "session",
+            &row.1.to_string(),
+            Some(&row.2.to_rfc3339()),
+            "session_snapshot",
+        )
         .await?;
 
         Ok(())

@@ -73,6 +73,7 @@ pub mod network_access;
 pub mod organization;
 pub mod payment;
 pub mod principal;
+pub mod reporting;
 pub mod session;
 pub mod session_file;
 pub mod session_resource;

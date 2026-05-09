@@ -5346,6 +5346,127 @@
         }
       }
     },
+    "/v1/reports/catalog": {
+      "get": {
+        "tags": [
+          "reporting"
+        ],
+        "operationId": "get_catalog",
+        "responses": {
+          "200": {
+            "description": "Reporting semantic catalog",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatasetCatalog"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/reports/projector/run": {
+      "post": {
+        "tags": [
+          "reporting"
+        ],
+        "operationId": "run_projector",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Reporting projector run result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectorRunResult"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/reports/query": {
+      "post": {
+        "tags": [
+          "reporting"
+        ],
+        "operationId": "run_query",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportQuery"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Reporting query result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid semantic query",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/sessions": {
       "get": {
         "tags": [
@@ -10576,6 +10697,52 @@
             "format": "int64"
           },
           "updated_at": {
+            "type": "string"
+          }
+        }
+      },
+      "DatasetCatalog": {
+        "type": "object",
+        "required": [
+          "datasets"
+        ],
+        "properties": {
+          "datasets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DatasetCatalogEntry"
+            }
+          }
+        }
+      },
+      "DatasetCatalogEntry": {
+        "type": "object",
+        "required": [
+          "name",
+          "dimensions",
+          "measures",
+          "filter_fields"
+        ],
+        "properties": {
+          "dimensions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "filter_fields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "measures": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "name": {
             "type": "string"
           }
         }
@@ -17744,6 +17911,37 @@
           }
         }
       },
+      "ProjectorRunQuery": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "ProjectorRunResult": {
+        "type": "object",
+        "required": [
+          "claimed",
+          "completed",
+          "failed"
+        ],
+        "properties": {
+          "claimed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "completed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "failed": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
       "PromptCacheStrategy": {
         "type": "string",
         "description": "Strategy for prompt caching.",
@@ -17970,6 +18168,176 @@
           "value": {
             "$ref": "#/components/schemas/ReasoningEffort",
             "description": "The API value (e.g., \"low\", \"medium\")"
+          }
+        }
+      },
+      "ReportColumn": {
+        "type": "object",
+        "required": [
+          "name",
+          "kind"
+        ],
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/ReportColumnKind"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "ReportColumnKind": {
+        "type": "string",
+        "enum": [
+          "dimension",
+          "measure"
+        ]
+      },
+      "ReportFilter": {
+        "type": "object",
+        "required": [
+          "field",
+          "op",
+          "value"
+        ],
+        "properties": {
+          "field": {
+            "type": "string"
+          },
+          "op": {
+            "$ref": "#/components/schemas/ReportFilterOp"
+          },
+          "value": {}
+        }
+      },
+      "ReportFilterOp": {
+        "type": "string",
+        "enum": [
+          "eq",
+          "neq",
+          "in",
+          "gt",
+          "gte",
+          "lt",
+          "lte"
+        ]
+      },
+      "ReportOrderBy": {
+        "type": "object",
+        "properties": {
+          "dimension": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "direction": {
+            "$ref": "#/components/schemas/ReportOrderDirection"
+          },
+          "measure": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "ReportOrderDirection": {
+        "type": "string",
+        "enum": [
+          "asc",
+          "desc"
+        ]
+      },
+      "ReportQuery": {
+        "type": "object",
+        "required": [
+          "dataset",
+          "time_range"
+        ],
+        "properties": {
+          "dataset": {
+            "type": "string"
+          },
+          "dimensions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "filters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReportFilter"
+            }
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "measures": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "order_by": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReportOrderBy"
+            }
+          },
+          "time_range": {
+            "$ref": "#/components/schemas/ReportTimeRange"
+          }
+        }
+      },
+      "ReportResult": {
+        "type": "object",
+        "required": [
+          "as_of",
+          "columns",
+          "rows"
+        ],
+        "properties": {
+          "as_of": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "columns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReportColumn"
+            }
+          },
+          "freshness_lag_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "rows": {
+            "type": "array",
+            "items": {}
+          }
+        }
+      },
+      "ReportTimeRange": {
+        "type": "object",
+        "required": [
+          "from",
+          "to"
+        ],
+        "properties": {
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },
@@ -23455,6 +23823,10 @@
     {
       "name": "payments",
       "description": "Machine payment wallet, policy, and attempt endpoints"
+    },
+    {
+      "name": "reporting",
+      "description": "Org-scoped semantic reporting endpoints"
     }
   ]
 }
