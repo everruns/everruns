@@ -6,6 +6,7 @@ import {
   createVolume,
   getVolume,
   listVolumes,
+  syncVolumeNow,
   updateVolume,
 } from "@/lib/api/volumes";
 import type {
@@ -82,6 +83,18 @@ export function useUpdateVolume() {
   return useMutation({
     mutationFn: ({ volumeId, data }: { volumeId: string; data: UpdateVolumeRequest }) =>
       updateVolume(volumeId, data),
+    onSuccess: (volume) => {
+      syncVolumeCache(queryClient, volume);
+      invalidateVolumeQueries(queryClient, volume.id);
+    },
+  });
+}
+
+export function useSyncVolume() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (volumeId: string) => syncVolumeNow(volumeId),
     onSuccess: (volume) => {
       syncVolumeCache(queryClient, volume);
       invalidateVolumeQueries(queryClient, volume.id);

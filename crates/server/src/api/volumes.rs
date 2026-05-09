@@ -6,7 +6,7 @@ pub use crate::domains::volumes::types::{
     CreateVolumeRequest, ListVolumesQuery, UpdateVolumeRequest, VolumeResponse,
 };
 use crate::domains::volumes::{
-    CreateVolume, DeleteVolume, GetVolume, ListVolumes, UpdateVolumeCmd,
+    CreateVolume, DeleteVolume, GetVolume, ListVolumes, SyncVolumeNow, UpdateVolumeCmd,
 };
 use crate::storage::StorageBackend;
 use axum::{
@@ -50,6 +50,7 @@ pub fn routes(state: AppState) -> Router {
             "/v1/volumes/{volume_id}",
             get(get_volume).patch(update_volume).delete(delete_volume),
         )
+        .route("/v1/volumes/{volume_id}/sync", post(sync_volume_now))
         .with_state(state)
 }
 
@@ -132,6 +133,27 @@ pub async fn update_volume(
         UpdateVolumeCmd { volume_id, request }
             .run(&state.ctx(&org))
             .await?,
+    ))
+}
+
+#[utoipa::path(
+    post,
+    path = "/v1/volumes/{volume_id}/sync",
+    params(("volume_id" = String, Path, description = "Volume ID")),
+    responses(
+        (status = 200, description = "Volume sync queued", body = VolumeResponse),
+        (status = 400, description = "Invalid sync request", body = ErrorResponse),
+        (status = 404, description = "Volume not found", body = ErrorResponse)
+    ),
+    tag = "volumes"
+)]
+pub async fn sync_volume_now(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(volume_id): Path<String>,
+) -> ApiResult<VolumeResponse> {
+    Ok(Json(
+        SyncVolumeNow { volume_id }.run(&state.ctx(&org)).await?,
     ))
 }
 

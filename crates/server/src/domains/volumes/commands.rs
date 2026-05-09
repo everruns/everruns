@@ -13,6 +13,8 @@ use serde_json::{Value, json};
 use utoipa::ToSchema;
 
 const DEFAULT_GIT_BRANCH: &str = "main";
+const MIN_SYNC_INTERVAL_SECS: u32 = 300;
+const MAX_SYNC_INTERVAL_SECS: u32 = 7 * 24 * 60 * 60;
 
 fn validate_name(name: &str) -> Result<String, CommandError> {
     let trimmed = name.trim();
@@ -65,6 +67,21 @@ fn normalize_root_folder(value: Option<String>) -> Result<Option<String>, Comman
         ));
     }
     Ok(Some(trimmed.to_string()))
+}
+
+fn validate_sync_interval(value: Option<u32>) -> Result<Option<u32>, CommandError> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    if value == 0 {
+        return Ok(None);
+    }
+    if !(MIN_SYNC_INTERVAL_SECS..=MAX_SYNC_INTERVAL_SECS).contains(&value) {
+        return Err(CommandError::bad_request(format!(
+            "sync_interval_secs must be between {MIN_SYNC_INTERVAL_SECS} and {MAX_SYNC_INTERVAL_SECS}"
+        )));
+    }
+    Ok(Some(value))
 }
 
 fn normalize_github_repository(repository: &str) -> Result<String, CommandError> {
@@ -141,11 +158,13 @@ fn github_source_config(request: GitHubVolumeSourceRequest) -> Result<Value, Com
     let branch = validate_optional_ref(request.branch, "branch")?
         .unwrap_or_else(|| DEFAULT_GIT_BRANCH.to_string());
     let root_folder = normalize_root_folder(request.root_folder)?;
+    let sync_interval_secs = validate_sync_interval(request.sync_interval_secs)?;
     Ok(json!({
         "provider": "github",
         "repository": repository,
         "branch": branch,
         "root_folder": root_folder,
+        "sync_interval_secs": sync_interval_secs,
     }))
 }
 
@@ -154,11 +173,13 @@ fn git_source_config(request: GitVolumeSourceRequest) -> Result<Value, CommandEr
     let branch = validate_optional_ref(request.branch, "branch")?
         .unwrap_or_else(|| DEFAULT_GIT_BRANCH.to_string());
     let root_folder = normalize_root_folder(request.root_folder)?;
+    let sync_interval_secs = validate_sync_interval(request.sync_interval_secs)?;
     Ok(json!({
         "provider": "git",
         "url": url,
         "branch": branch,
         "root_folder": root_folder,
+        "sync_interval_secs": sync_interval_secs,
     }))
 }
 
@@ -396,6 +417,11 @@ impl Command for UpdateVolumeCmd {
             .as_deref()
             .map(validate_name)
             .transpose()?;
+        let source_update = self
+            .request
+            .source
+            .map(|source| create_volume_source(Some(source)))
+            .transpose()?;
         let row = ctx
             .db
             .update_volume(
@@ -409,10 +435,20 @@ impl Command for UpdateVolumeCmd {
                         UpdateField::Unchanged => None,
                     },
                     status: None,
-                    source_config: None,
-                    sync_status: None,
-                    last_synced_at: None,
-                    last_sync_error: None,
+                    source_type: source_update
+                        .as_ref()
+                        .map(|(source_type, _, _, _)| source_type.clone()),
+                    source_config: source_update
+                        .as_ref()
+                        .map(|(_, source_config, _, _)| source_config.clone()),
+                    is_readonly: source_update
+                        .as_ref()
+                        .map(|(_, _, is_readonly, _)| *is_readonly),
+                    sync_status: source_update
+                        .as_ref()
+                        .map(|(_, _, _, sync_status)| sync_status.clone()),
+                    last_synced_at: source_update.as_ref().map(|_| None),
+                    last_sync_error: source_update.as_ref().map(|_| None),
                 },
             )
             .await
@@ -423,6 +459,70 @@ impl Command for UpdateVolumeCmd {
 }
 
 inventory::submit! { CommandDescriptor::of::<UpdateVolumeCmd>() }
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct SyncVolumeNow {
+    pub volume_id: String,
+}
+
+impl Command for SyncVolumeNow {
+    type Output = VolumeResponse;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "sync_volume_now",
+            category: "volumes",
+            description: "Queue an immediate sync for a source-backed workspace volume.",
+            method: "POST",
+            path: "/v1/volumes/{volume_id}/sync",
+        }
+    }
+
+    fn policy() -> Option<&'static Policy> {
+        Some(&VOLUME_MANAGE)
+    }
+
+    fn output_schema() -> serde_json::Value {
+        output_schema_for::<VolumeResponse>()
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<VolumeResponse, CommandError> {
+        let id = parse_volume_id(&self.volume_id)?;
+        let existing = ctx
+            .db
+            .get_volume(ctx.org_id(), id)
+            .await
+            .map_err(classify_anyhow)?
+            .ok_or_else(|| CommandError::not_found("Volume"))?;
+        if existing.source_type == "manual" {
+            return Err(CommandError::bad_request(
+                "manual volumes do not have a source to sync",
+            ));
+        }
+        if existing.status != "active" {
+            return Err(CommandError::bad_request(
+                "only active source-backed volumes can be synced",
+            ));
+        }
+        let row = ctx
+            .db
+            .update_volume(
+                ctx.org_id(),
+                existing.id,
+                UpdateVolume {
+                    sync_status: Some("pending".to_string()),
+                    last_sync_error: Some(None),
+                    ..Default::default()
+                },
+            )
+            .await
+            .map_err(classify_anyhow)?
+            .ok_or_else(|| CommandError::not_found("Volume"))?;
+        volume_response(row).map_err(classify_anyhow)
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<SyncVolumeNow>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct DeleteVolume {
@@ -475,6 +575,7 @@ mod tests {
     use super::*;
     use crate::domains::common::Ctx;
     use crate::storage::StorageBackend;
+    use chrono::{Duration, Utc};
     use everruns_core::{Caller, DEFAULT_ORG_ID, OrgRole};
     use std::sync::Arc;
 
@@ -543,6 +644,7 @@ mod tests {
             request: UpdateVolumeRequest {
                 name: Some("Team Files".into()),
                 description: UpdateField::Set("Shared files".into()),
+                source: None,
             },
         }
         .run(&ctx)
@@ -556,6 +658,7 @@ mod tests {
             request: UpdateVolumeRequest {
                 name: None,
                 description: UpdateField::Clear,
+                source: None,
             },
         }
         .run(&ctx)
@@ -650,6 +753,7 @@ mod tests {
                     repository: "https://github.com/everruns/everruns.git".into(),
                     branch: Some("docs".into()),
                     root_folder: Some("/specs/".into()),
+                    sync_interval_secs: Some(3600),
                 },
             )),
         }
@@ -665,9 +769,161 @@ mod tests {
                 assert_eq!(source.repository, "everruns/everruns");
                 assert_eq!(source.branch, "docs");
                 assert_eq!(source.root_folder.as_deref(), Some("specs"));
+                assert_eq!(source.sync_interval_secs, Some(3600));
             }
             other => panic!("expected github source, got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn update_source_backed_volume_requeues_sync() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = ctx_with_db(DEFAULT_ORG_ID, db.clone());
+
+        let created = CreateVolume {
+            name: "Repo Docs".into(),
+            description: None,
+            source: Some(CreateVolumeSourceRequest::Github(
+                GitHubVolumeSourceRequest {
+                    repository: "everruns/everruns".into(),
+                    branch: Some("main".into()),
+                    root_folder: None,
+                    sync_interval_secs: None,
+                },
+            )),
+        }
+        .run(&ctx)
+        .await
+        .expect("create github volume");
+        let claimed = db
+            .claim_next_volume_sync()
+            .await
+            .expect("claim sync")
+            .expect("syncable volume");
+        db.complete_volume_sync(claimed.id, claimed.updated_at, Vec::new())
+            .await
+            .expect("complete sync");
+
+        let updated = UpdateVolumeCmd {
+            volume_id: created.id.to_string(),
+            request: UpdateVolumeRequest {
+                name: None,
+                description: UpdateField::Unchanged,
+                source: Some(CreateVolumeSourceRequest::Git(GitVolumeSourceRequest {
+                    url: "https://example.com/org/repo.git".into(),
+                    branch: Some("release".into()),
+                    root_folder: Some("docs".into()),
+                    sync_interval_secs: Some(900),
+                })),
+            },
+        }
+        .run(&ctx)
+        .await
+        .expect("update source");
+
+        assert_eq!(updated.source_type, "git");
+        assert_eq!(updated.sync_status, "pending");
+        assert_eq!(updated.last_synced_at, None);
+        match updated.source {
+            VolumeSourceResponse::Git(source) => {
+                assert_eq!(source.branch, "release");
+                assert_eq!(source.root_folder.as_deref(), Some("docs"));
+                assert_eq!(source.sync_interval_secs, Some(900));
+            }
+            other => panic!("expected git source, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn sync_volume_now_requeues_source_volume() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = ctx_with_db(DEFAULT_ORG_ID, db.clone());
+
+        let manual = CreateVolume {
+            name: "Manual".into(),
+            description: None,
+            source: None,
+        }
+        .run(&ctx)
+        .await
+        .expect("create manual volume");
+        let manual_err = SyncVolumeNow {
+            volume_id: manual.id.to_string(),
+        }
+        .run(&ctx)
+        .await
+        .expect_err("manual volume cannot sync");
+        assert!(matches!(manual_err, CommandError::BadRequest(_)));
+
+        let created = CreateVolume {
+            name: "Repo".into(),
+            description: None,
+            source: Some(CreateVolumeSourceRequest::Git(GitVolumeSourceRequest {
+                url: "https://example.com/org/repo.git".into(),
+                branch: None,
+                root_folder: None,
+                sync_interval_secs: None,
+            })),
+        }
+        .run(&ctx)
+        .await
+        .expect("create git volume");
+        let claimed = db
+            .claim_next_volume_sync()
+            .await
+            .expect("claim sync")
+            .expect("syncable volume");
+        db.complete_volume_sync(claimed.id, claimed.updated_at, Vec::new())
+            .await
+            .expect("complete sync");
+
+        let queued = SyncVolumeNow {
+            volume_id: created.id.to_string(),
+        }
+        .run(&ctx)
+        .await
+        .expect("queue sync");
+        assert_eq!(queued.sync_status, "pending");
+        assert_eq!(queued.last_sync_error, None);
+    }
+
+    #[tokio::test]
+    async fn due_sync_interval_claims_source_volume() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = ctx_with_db(DEFAULT_ORG_ID, db.clone());
+
+        let created = CreateVolume {
+            name: "Scheduled Repo".into(),
+            description: None,
+            source: Some(CreateVolumeSourceRequest::Git(GitVolumeSourceRequest {
+                url: "https://example.com/org/repo.git".into(),
+                branch: None,
+                root_folder: None,
+                sync_interval_secs: Some(300),
+            })),
+        }
+        .run(&ctx)
+        .await
+        .expect("create git volume");
+        db.update_volume(
+            DEFAULT_ORG_ID,
+            created.internal_id,
+            UpdateVolume {
+                sync_status: Some("synced".to_string()),
+                last_synced_at: Some(Some(Utc::now() - Duration::seconds(301))),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("mark old sync");
+
+        let claimed = db
+            .claim_next_volume_sync()
+            .await
+            .expect("claim scheduled sync")
+            .expect("due volume should be claimed");
+        assert_eq!(claimed.id, created.internal_id);
+        assert_eq!(claimed.sync_status, "syncing");
     }
 
     #[tokio::test]
@@ -687,6 +943,7 @@ mod tests {
                     url: url.into(),
                     branch: None,
                     root_folder: None,
+                    sync_interval_secs: None,
                 })),
             }
             .run(&ctx)

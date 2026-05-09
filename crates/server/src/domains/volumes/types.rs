@@ -50,6 +50,8 @@ pub struct UpdateVolumeRequest {
     #[serde(default, deserialize_with = "deserialize_nullable_update_field")]
     #[schema(value_type = Option<String>, nullable = true)]
     pub description: UpdateField<String>,
+    #[serde(default)]
+    pub source: Option<CreateVolumeSourceRequest>,
 }
 
 #[derive(Debug, Clone, Deserialize, IntoParams, ToSchema)]
@@ -84,6 +86,10 @@ pub struct GitHubVolumeSourceResponse {
     pub branch: String,
     #[serde(default)]
     pub root_folder: Option<String>,
+    /// Automatic resync interval in seconds. Omit or set 0 for manual-only; scheduled sync accepts 300 through 604800.
+    #[serde(default)]
+    #[schema(maximum = 604800, minimum = 0)]
+    pub sync_interval_secs: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -92,6 +98,10 @@ pub struct GitVolumeSourceResponse {
     pub branch: String,
     #[serde(default)]
     pub root_folder: Option<String>,
+    /// Automatic resync interval in seconds. Omit or set 0 for manual-only; scheduled sync accepts 300 through 604800.
+    #[serde(default)]
+    #[schema(maximum = 604800, minimum = 0)]
+    pub sync_interval_secs: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize, ToSchema)]
@@ -101,6 +111,10 @@ pub struct GitHubVolumeSourceRequest {
     pub branch: Option<String>,
     #[serde(default)]
     pub root_folder: Option<String>,
+    /// Automatic resync interval in seconds. Omit or set 0 for manual-only; scheduled sync accepts 300 through 604800.
+    #[serde(default)]
+    #[schema(maximum = 604800, minimum = 0)]
+    pub sync_interval_secs: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize, ToSchema)]
@@ -110,6 +124,10 @@ pub struct GitVolumeSourceRequest {
     pub branch: Option<String>,
     #[serde(default)]
     pub root_folder: Option<String>,
+    /// Automatic resync interval in seconds. Omit or set 0 for manual-only; scheduled sync accepts 300 through 604800.
+    #[serde(default)]
+    #[schema(maximum = 604800, minimum = 0)]
+    pub sync_interval_secs: Option<u32>,
 }
 
 fn volume_source_response(row: &VolumeRow) -> anyhow::Result<VolumeSourceResponse> {

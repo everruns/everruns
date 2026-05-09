@@ -6,14 +6,22 @@ import type { Volume } from "@/lib/api/types";
 const mockUseVolumes = jest.fn();
 const mockUseCreateVolume = jest.fn();
 const mockUseUpdateVolume = jest.fn();
+const mockUseSyncVolume = jest.fn();
 const mockUseArchiveVolume = jest.fn();
+const mockUseUserConnections = jest.fn();
 
 jest.mock("@/hooks", () => ({
   useVolumes: (...args: unknown[]) => mockUseVolumes(...args),
   useCreateVolume: () => mockUseCreateVolume(),
   useUpdateVolume: () => mockUseUpdateVolume(),
+  useSyncVolume: () => mockUseSyncVolume(),
   useArchiveVolume: () => mockUseArchiveVolume(),
+  useUserConnections: () => mockUseUserConnections(),
   usePageTitle: () => undefined,
+}));
+
+jest.mock("@/hooks/use-user-connections", () => ({
+  useUserConnections: () => mockUseUserConnections(),
 }));
 
 jest.mock("@/components/ui/select", () => {
@@ -106,6 +114,14 @@ describe("VolumesPage", () => {
     mockUseUpdateVolume.mockReturnValue({
       mutateAsync: jest.fn().mockResolvedValue({}),
       isPending: false,
+    });
+    mockUseSyncVolume.mockReturnValue({
+      mutate: jest.fn(),
+      isPending: false,
+    });
+    mockUseUserConnections.mockReturnValue({
+      data: [],
+      isLoading: false,
     });
     mockUseArchiveVolume.mockReturnValue({
       mutateAsync: jest.fn().mockResolvedValue({}),
@@ -217,6 +233,46 @@ describe("VolumesPage", () => {
       expect(mutateAsync).toHaveBeenCalledWith({
         volumeId: "vol_019dfb261a407c6085dcdd602402c3f7",
         data: { name: "Research Hub", description: null },
+      }),
+    );
+  });
+
+  it("does not resubmit unchanged source config on metadata-only edits", async () => {
+    const mutateAsync = jest.fn().mockResolvedValue({});
+    mockUseUpdateVolume.mockReturnValue({ mutateAsync, isPending: false });
+    mockUseVolumes.mockReturnValue({
+      data: [
+        {
+          ...volumes[0],
+          source_type: "github",
+          source: {
+            provider: "github",
+            repository: "everruns/everruns",
+            branch: "main",
+            root_folder: "specs",
+            sync_interval_secs: 900,
+          },
+          is_readonly: true,
+          sync_status: "synced",
+          last_synced_at: "2026-05-06T03:37:51.552849Z",
+        },
+      ],
+      isLoading: false,
+      error: null,
+    });
+    render(<VolumesPage />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Name"), {
+      target: { value: "Research Hub" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save Changes" }));
+
+    await waitFor(() =>
+      expect(mutateAsync).toHaveBeenCalledWith({
+        volumeId: "vol_019dfb261a407c6085dcdd602402c3f7",
+        data: { name: "Research Hub", description: "Shared research files" },
       }),
     );
   });
