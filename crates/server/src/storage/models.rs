@@ -1039,6 +1039,27 @@ pub struct UpdateVolume {
     pub last_sync_error: Option<Option<String>>,
 }
 
+#[derive(Debug, Clone, FromRow, serde::Serialize)]
+pub struct VolumeFileRow {
+    pub id: Uuid,
+    pub volume_id: Uuid,
+    pub path: String,
+    pub content: Option<Vec<u8>>,
+    pub is_directory: bool,
+    pub size_bytes: i64,
+    pub content_hash: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateVolumeFileRow {
+    pub path: String,
+    pub content: Option<Vec<u8>>,
+    pub is_directory: bool,
+    pub content_hash: Option<String>,
+}
+
 // ============================================
 // Memory Store models (org-scoped persistent memories — see specs/memory.md)
 // ============================================

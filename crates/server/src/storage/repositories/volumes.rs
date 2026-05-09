@@ -178,4 +178,136 @@ impl Database {
 
         Ok(result.rows_affected() > 0)
     }
+
+    pub async fn claim_next_volume_sync(&self) -> Result<Option<VolumeRow>> {
+        let row = sqlx::query_as::<_, VolumeRow>(
+            r#"
+            UPDATE volumes
+            SET sync_status = 'syncing', last_sync_error = NULL, updated_at = NOW()
+            WHERE id = (
+                SELECT id
+                FROM volumes
+                WHERE status = 'active'
+                  AND source_type != 'manual'
+                  AND (
+                    sync_status = 'pending'
+                    OR (sync_status = 'syncing' AND updated_at < NOW() - INTERVAL '15 minutes')
+                  )
+                ORDER BY updated_at ASC
+                FOR UPDATE SKIP LOCKED
+                LIMIT 1
+            )
+            RETURNING id, org_id, public_id, name, description, source_type, source_config, is_readonly, sync_status, last_synced_at, last_sync_error, owner_principal_id, resolved_owner_user_id, status, created_at, updated_at, archived_at, deleted_at
+            "#,
+        )
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    pub async fn complete_volume_sync(
+        &self,
+        volume_id: Uuid,
+        claimed_at: chrono::DateTime<chrono::Utc>,
+        files: Vec<CreateVolumeFileRow>,
+    ) -> Result<Option<VolumeRow>> {
+        let mut tx = self.pool.begin().await?;
+
+        let volume = sqlx::query_as::<_, VolumeRow>(
+            r#"
+            UPDATE volumes
+            SET sync_status = 'synced',
+                last_synced_at = NOW(),
+                last_sync_error = NULL,
+                updated_at = NOW()
+            WHERE id = $1
+              AND updated_at = $2
+              AND sync_status = 'syncing'
+              AND status = 'active'
+              AND source_type != 'manual'
+            RETURNING id, org_id, public_id, name, description, source_type, source_config, is_readonly, sync_status, last_synced_at, last_sync_error, owner_principal_id, resolved_owner_user_id, status, created_at, updated_at, archived_at, deleted_at
+            "#,
+        )
+        .bind(volume_id)
+        .bind(claimed_at)
+        .fetch_optional(&mut *tx)
+        .await?;
+
+        if volume.is_none() {
+            tx.commit().await?;
+            return Ok(None);
+        }
+
+        sqlx::query("DELETE FROM volume_files WHERE volume_id = $1")
+            .bind(volume_id)
+            .execute(&mut *tx)
+            .await?;
+
+        for file in files {
+            let size_bytes = file.content.as_ref().map(|c| c.len() as i64).unwrap_or(0);
+            sqlx::query(
+                r#"
+                INSERT INTO volume_files (volume_id, path, content, is_directory, size_bytes, content_hash)
+                VALUES ($1, $2, $3, $4, $5, $6)
+                "#,
+            )
+            .bind(volume_id)
+            .bind(&file.path)
+            .bind(&file.content)
+            .bind(file.is_directory)
+            .bind(size_bytes)
+            .bind(&file.content_hash)
+            .execute(&mut *tx)
+            .await?;
+        }
+
+        tx.commit().await?;
+        Ok(volume)
+    }
+
+    pub async fn fail_volume_sync(
+        &self,
+        volume_id: Uuid,
+        claimed_at: chrono::DateTime<chrono::Utc>,
+        error: &str,
+    ) -> Result<Option<VolumeRow>> {
+        let row = sqlx::query_as::<_, VolumeRow>(
+            r#"
+            UPDATE volumes
+            SET sync_status = 'failed',
+                last_sync_error = $2,
+                updated_at = NOW()
+            WHERE id = $1
+              AND updated_at = $3
+              AND sync_status = 'syncing'
+              AND status = 'active'
+              AND source_type != 'manual'
+            RETURNING id, org_id, public_id, name, description, source_type, source_config, is_readonly, sync_status, last_synced_at, last_sync_error, owner_principal_id, resolved_owner_user_id, status, created_at, updated_at, archived_at, deleted_at
+            "#,
+        )
+        .bind(volume_id)
+        .bind(error)
+        .bind(claimed_at)
+        .fetch_optional(&self.pool)
+        .await?;
+
+        Ok(row)
+    }
+
+    pub async fn list_all_volume_files(&self, volume_id: Uuid) -> Result<Vec<VolumeFileRow>> {
+        let rows = sqlx::query_as::<_, VolumeFileRow>(
+            r#"
+            SELECT id, volume_id, path, content, is_directory, size_bytes, content_hash, created_at, updated_at
+            FROM volume_files
+            WHERE volume_id = $1
+            ORDER BY path ASC
+            "#,
+        )
+        .bind(volume_id)
+        .fetch_all(&self.pool)
+        .await?;
+
+        Ok(rows)
+    }
 }

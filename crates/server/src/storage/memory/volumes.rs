@@ -3,6 +3,7 @@
 use super::super::models::*;
 use super::{InMemoryDatabase, matches_search_tokens};
 use anyhow::{Result, bail};
+use chrono::{DateTime, Duration, Utc};
 use uuid::Uuid;
 
 impl InMemoryDatabase {
@@ -181,5 +182,110 @@ impl InMemoryDatabase {
         volume.archived_at = Some(Self::now());
         volume.updated_at = Self::now();
         Ok(true)
+    }
+
+    pub async fn claim_next_volume_sync(&self) -> Result<Option<VolumeRow>> {
+        let mut volumes = self.volumes.write();
+        let Some(volume) = volumes
+            .values_mut()
+            .filter(|volume| {
+                volume.status == "active"
+                    && volume.source_type != "manual"
+                    && (volume.sync_status == "pending"
+                        || (volume.sync_status == "syncing"
+                            && volume.updated_at < Self::now() - Duration::minutes(15)))
+            })
+            .min_by_key(|volume| volume.updated_at)
+        else {
+            return Ok(None);
+        };
+
+        volume.sync_status = "syncing".to_string();
+        volume.last_sync_error = None;
+        volume.updated_at = Self::now();
+        Ok(Some(volume.clone()))
+    }
+
+    pub async fn complete_volume_sync(
+        &self,
+        volume_id: Uuid,
+        claimed_at: DateTime<Utc>,
+        files: Vec<CreateVolumeFileRow>,
+    ) -> Result<Option<VolumeRow>> {
+        let now = Self::now();
+        let mut volumes = self.volumes.write();
+        let Some(volume) = volumes.get_mut(&volume_id) else {
+            return Ok(None);
+        };
+        if volume.status != "active"
+            || volume.source_type == "manual"
+            || volume.sync_status != "syncing"
+            || volume.updated_at != claimed_at
+        {
+            return Ok(None);
+        }
+
+        let mut volume_files = self.volume_files.write();
+        volume_files.retain(|_, file| file.volume_id != volume_id);
+        for file in files {
+            let id = Uuid::now_v7();
+            let size_bytes = file.content.as_ref().map(|c| c.len() as i64).unwrap_or(0);
+            volume_files.insert(
+                id,
+                VolumeFileRow {
+                    id,
+                    volume_id,
+                    path: file.path,
+                    content: file.content,
+                    is_directory: file.is_directory,
+                    size_bytes,
+                    content_hash: file.content_hash,
+                    created_at: now,
+                    updated_at: now,
+                },
+            );
+        }
+
+        volume.sync_status = "synced".to_string();
+        volume.last_synced_at = Some(now);
+        volume.last_sync_error = None;
+        volume.updated_at = now;
+        Ok(Some(volume.clone()))
+    }
+
+    pub async fn fail_volume_sync(
+        &self,
+        volume_id: Uuid,
+        claimed_at: DateTime<Utc>,
+        error: &str,
+    ) -> Result<Option<VolumeRow>> {
+        let mut volumes = self.volumes.write();
+        let Some(volume) = volumes.get_mut(&volume_id) else {
+            return Ok(None);
+        };
+        if volume.status != "active"
+            || volume.source_type == "manual"
+            || volume.sync_status != "syncing"
+            || volume.updated_at != claimed_at
+        {
+            return Ok(None);
+        }
+
+        volume.sync_status = "failed".to_string();
+        volume.last_sync_error = Some(error.to_string());
+        volume.updated_at = Self::now();
+        Ok(Some(volume.clone()))
+    }
+
+    pub async fn list_all_volume_files(&self, volume_id: Uuid) -> Result<Vec<VolumeFileRow>> {
+        let mut result: Vec<_> = self
+            .volume_files
+            .read()
+            .values()
+            .filter(|file| file.volume_id == volume_id)
+            .cloned()
+            .collect();
+        result.sort_by_key(|file| file.path.clone());
+        Ok(result)
     }
 }

@@ -66,6 +66,7 @@ moka.workspace = true
 zip = { version = "2", default-features = false, features = ["deflate"] }
 urlencoding = "2"
 git2.workspace = true
+tempfile.workspace = true
 mime_guess = "2"
 tokio-tungstenite.workspace = true
 futures-util.workspace = true

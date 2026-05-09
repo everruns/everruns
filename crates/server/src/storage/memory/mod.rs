@@ -153,6 +153,7 @@ pub struct InMemoryDatabase {
     payment_attempts: RwLock<HashMap<Uuid, PaymentAttemptRow>>,
     // Workspace volumes
     volumes: RwLock<HashMap<Uuid, VolumeRow>>,
+    volume_files: RwLock<HashMap<Uuid, VolumeFileRow>>,
     // Memory stores and memories (org-scoped agent memory)
     memory_stores: RwLock<HashMap<Uuid, MemoryStoreDbRow>>,
     memories: RwLock<HashMap<Uuid, MemoryDbRow>>,
@@ -236,6 +237,7 @@ impl Default for InMemoryDatabase {
             payment_policies: RwLock::new(HashMap::new()),
             payment_attempts: RwLock::new(HashMap::new()),
             volumes: RwLock::new(HashMap::new()),
+            volume_files: RwLock::new(HashMap::new()),
             memory_stores: RwLock::new(HashMap::new()),
             memories: RwLock::new(HashMap::new()),
             knowledge_bases: RwLock::new(HashMap::new()),
