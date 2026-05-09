@@ -11,8 +11,10 @@ export type AgUiToolVisibility = "none" | "generic" | "narrated";
 export type AgentVersionPolicy = "default" | "latest" | "pinned";
 
 export interface SlackChannelConfig {
-  signing_secret: string;
-  bot_token: string;
+  signing_secret?: string;
+  signing_secret_configured?: boolean;
+  bot_token?: string;
+  bot_token_configured?: boolean;
   channel_id?: string;
   team_id?: string;
   session_strategy: SessionStrategy;
@@ -32,6 +34,7 @@ export interface AgUiChannelConfig {
    * must send it as `Authorization: Bearer <token>` or `X-Everruns-AG-UI-Token`.
    */
   token?: string;
+  token_configured?: boolean;
   /**
    * How long an AG-UI thread can be resumed (in seconds) after the underlying
    * session was created. After this elapses the same `thread_id` cannot reuse
@@ -62,7 +65,8 @@ export interface ScheduleChannelConfig {
 }
 
 export interface WebhookChannelConfig {
-  token: string;
+  token?: string;
+  token_configured?: boolean;
   session_mode?: InvocationSessionMode;
   message: string;
 }
@@ -71,12 +75,12 @@ export interface WebhookChannelConfig {
  * A2A (Agent2Agent) channel configuration.
  *
  * The plaintext API key is **never** returned by the API after creation /
- * regeneration — only the SHA-256 hash and a non-secret display prefix are
- * persisted and surfaced. Use `addA2aChannel` / `regenerateA2aChannelKey` to
- * obtain the plaintext (which is shown exactly once).
+ * regeneration. Reads only surface the non-secret display prefix; use
+ * `addA2aChannel` / `regenerateA2aChannelKey` to obtain the plaintext (which is
+ * shown exactly once).
  */
 export interface A2aChannelConfig {
-  api_key_hash: string;
+  api_key_hash?: string;
   api_key_prefix: string;
   session_mode?: InvocationSessionMode;
   message: string;

@@ -256,6 +256,26 @@ query { "commands": "list_agents | jq -r '.data[].id' | while read id; do\n  get
 execute { "commands": "create_mcp_server --name \"jira\" --url \"https://mcp.example.com/jira\" --auth_mode oauth" }
 ```
 
+**Work with app invocation channels.**
+
+Use app-channel commands for app schedules. Do not use durable schedule
+commands for app schedules; those infrastructure builtins are intentionally not
+exposed through MCP scripting.
+
+```bash
+query { "commands": "list_app_channels app_01933b5a00007000800000000000001 | jq '.[] | {id, channel_type, enabled, channel_config}'" }
+```
+
+Schedule channels accept either 5-field cron (`*/10 * * * *`) or 7-field cron
+(`0 */10 * * * * *`). The server stores 7-field cron.
+
+```bash
+execute { "commands": "CID=$(add_schedule_app_channel --app_id \"$APP_ID\" --cron_expression '*/10 * * * *' --timezone UTC --session_mode shared_session --message 'Run the scheduled check' | jq -r .id)\npublish_app \"$APP_ID\"\ntrigger_app_schedule_channel --app_id \"$APP_ID\" --channel_id \"$CID\"" }
+```
+
+Channel secret fields are write-only. Reads return non-secret fields and
+`*_configured` booleans instead of plaintext tokens or signing secrets.
+
 **Look up an org by id.**
 
 `get_org` accepts the `org_...` entity id as a positional arg.

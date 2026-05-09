@@ -42,8 +42,9 @@ impl Command for CreateSchedule {
     async fn execute(self, ctx: &Ctx) -> Result<ScheduleResponse, CommandError> {
         q::ensure_platform_user(ctx)?;
         let store = q::store(ctx)?;
-        let req = self.0;
+        let mut req = self.0;
         let target_type = q::parse_target_type(&req.target.target_type)?;
+        req.cron_expression = q::normalize_cron_expression(&req.cron_expression)?;
         let next_trigger_at = if req.enabled {
             q::calculate_next_trigger(&req.cron_expression)?
         } else {
@@ -209,7 +210,11 @@ impl Command for UpdateScheduleCmd {
     async fn execute(self, ctx: &Ctx) -> Result<ScheduleResponse, CommandError> {
         q::ensure_platform_user(ctx)?;
         let store = q::store(ctx)?;
-        let req = self.req;
+        let mut req = self.req;
+        req.cron_expression = req
+            .cron_expression
+            .map(|cron| q::normalize_cron_expression(&cron))
+            .transpose()?;
         let target_type = q::optional_target_type(
             req.target
                 .as_ref()

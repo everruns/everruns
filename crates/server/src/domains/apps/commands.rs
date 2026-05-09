@@ -148,18 +148,28 @@ fn durable_store(ctx: &Ctx) -> Result<&Arc<dyn WorkflowEventStore + Send + Sync>
     })
 }
 
-fn normalize_cron_expression(cron_expression: &str) -> String {
-    let fields: Vec<&str> = cron_expression.split_whitespace().collect();
-    if fields.len() == 5 {
-        format!("0 {} *", fields.join(" "))
-    } else {
-        cron_expression.trim().to_string()
-    }
+fn normalize_cron_expression(cron_expression: &str) -> Result<String, CommandError> {
+    let fields = cron_expression.split_whitespace().collect::<Vec<_>>();
+    let normalized = match fields.len() {
+        5 => format!("0 {} *", fields.join(" ")),
+        7 => fields.join(" "),
+        _ => {
+            return Err(CommandError::bad_request(
+                "Cron expression must be either 5 fields (min hour day month weekday) or 7 fields (sec min hour day month weekday year)",
+            ));
+        }
+    };
+    cron::Schedule::from_str(&normalized).map_err(|e| {
+        CommandError::bad_request(format!(
+            "Invalid schedule cron expression '{cron_expression}': {e}"
+        ))
+    })?;
+    Ok(normalized)
 }
 
 fn normalize_and_validate_channel_config(
     channel_type: ChannelType,
-    channel_config: Value,
+    mut channel_config: Value,
 ) -> Result<Value, CommandError> {
     match channel_type {
         ChannelType::Slack => {
@@ -223,21 +233,10 @@ fn normalize_and_validate_channel_config(
                     "Schedule channel config requires a non-empty message",
                 ));
             }
-            let cron_expression = normalize_cron_expression(&config.cron_expression);
-            cron::Schedule::from_str(&cron_expression).map_err(|e| {
-                CommandError::bad_request(format!(
-                    "Invalid schedule cron expression '{}': {e}",
-                    cron_expression
-                ))
-            })?;
-            let mut channel_config = channel_config;
-            if let Some(object) = channel_config.as_object_mut() {
-                object.insert(
-                    "cron_expression".to_string(),
-                    Value::String(cron_expression),
-                );
+            let normalized = normalize_cron_expression(&config.cron_expression)?;
+            if let Some(map) = channel_config.as_object_mut() {
+                map.insert("cron_expression".to_string(), Value::String(normalized));
             }
-            return Ok(channel_config);
         }
         ChannelType::Webhook => {
             let config: WebhookChannelConfig = serde_json::from_value(channel_config.clone())
@@ -284,10 +283,108 @@ fn normalize_and_validate_channel_config(
 fn calculate_schedule_next_trigger(
     cron_expression: &str,
 ) -> Result<Option<DateTime<Utc>>, CommandError> {
-    let schedule = cron::Schedule::from_str(cron_expression).map_err(|e| {
+    let normalized = normalize_cron_expression(cron_expression)?;
+    let schedule = cron::Schedule::from_str(&normalized).map_err(|e| {
         CommandError::bad_request(format!("Invalid cron expression '{cron_expression}': {e}"))
     })?;
     Ok(schedule.upcoming(Utc).next())
+}
+
+fn redact_channel_config(channel_type: &ChannelType, config: &mut Value) {
+    let Some(map) = config.as_object_mut() else {
+        return;
+    };
+    match channel_type {
+        ChannelType::Slack => {
+            if map.remove("signing_secret").is_some() {
+                map.insert("signing_secret_configured".to_string(), Value::Bool(true));
+            }
+            if map.remove("bot_token").is_some() {
+                map.insert("bot_token_configured".to_string(), Value::Bool(true));
+            }
+        }
+        ChannelType::AgUi => {
+            if map.remove("token").is_some() {
+                map.insert("token_configured".to_string(), Value::Bool(true));
+            }
+        }
+        ChannelType::Webhook => {
+            if map.remove("token").is_some() {
+                map.insert("token_configured".to_string(), Value::Bool(true));
+            }
+        }
+        ChannelType::A2a => {
+            map.remove("api_key_hash");
+        }
+        ChannelType::Schedule => {}
+    }
+}
+
+fn redact_channel_for_response(mut channel: AppChannel) -> AppChannel {
+    redact_channel_config(&channel.channel_type, &mut channel.channel_config);
+    channel
+}
+
+fn redact_app_for_response(mut app: App) -> App {
+    app.channels = app
+        .channels
+        .into_iter()
+        .map(redact_channel_for_response)
+        .collect();
+    app
+}
+
+fn merge_preserved_secret_fields(
+    channel_type: ChannelType,
+    final_channel_config: &mut Value,
+    existing_decrypted: &Value,
+) {
+    let (Some(out), Some(existing)) = (
+        final_channel_config.as_object_mut(),
+        existing_decrypted.as_object(),
+    ) else {
+        return;
+    };
+
+    match channel_type {
+        ChannelType::Slack => {
+            for key in ["signing_secret", "bot_token"] {
+                let should_preserve = out
+                    .get(key)
+                    .and_then(Value::as_str)
+                    .map(str::trim)
+                    .is_none_or(str::is_empty);
+                if should_preserve && let Some(existing_value) = existing.get(key) {
+                    out.insert(key.to_string(), existing_value.clone());
+                }
+            }
+        }
+        ChannelType::AgUi => {
+            if !out.contains_key("token")
+                && let Some(existing_value) = existing.get("token")
+            {
+                out.insert("token".to_string(), existing_value.clone());
+            }
+        }
+        ChannelType::Webhook => {
+            let should_preserve = out
+                .get("token")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .is_none_or(str::is_empty);
+            if should_preserve && let Some(existing_value) = existing.get("token") {
+                out.insert("token".to_string(), existing_value.clone());
+            }
+        }
+        ChannelType::A2a => {
+            for key in ["api_key_hash", "api_key_prefix"] {
+                if let Some(existing_value) = existing.get(key) {
+                    out.insert(key.to_string(), existing_value.clone());
+                }
+            }
+        }
+        ChannelType::Schedule => {}
+    }
 }
 
 fn schedule_binding_name(channel_id: AppChannelId) -> String {
@@ -423,9 +520,10 @@ async fn sync_schedule_binding_for_channel(
     let config = channel
         .schedule_config()
         .ok_or_else(|| CommandError::bad_request("Invalid schedule channel configuration"))?;
+    let cron_expression = normalize_cron_expression(&config.cron_expression)?;
     let enabled = app.status == AppStatus::Published && channel.enabled;
     let next_trigger_at = if enabled {
-        UpdateField::from_option(calculate_schedule_next_trigger(&config.cron_expression)?)
+        UpdateField::from_option(calculate_schedule_next_trigger(&cron_expression)?)
     } else {
         UpdateField::Clear
     };
@@ -439,7 +537,7 @@ async fn sync_schedule_binding_for_channel(
                     "App schedule channel {} for {}",
                     channel.public_id, app.name
                 )),
-                cron_expression: Some(config.cron_expression.clone()),
+                cron_expression: Some(cron_expression.clone()),
                 timezone: Some(config.timezone.clone()),
                 target_type: Some(ScheduleTargetType::Activity),
                 target_name: Some(SCHEDULE_CHANNEL_ACTIVITY.to_string()),
@@ -462,7 +560,7 @@ async fn sync_schedule_binding_for_channel(
                                 "App schedule channel {} for {}",
                                 channel.public_id, app.name
                             )),
-                            cron_expression: config.cron_expression.clone(),
+                            cron_expression: cron_expression.clone(),
                             timezone: config.timezone.clone(),
                             target_type: ScheduleTargetType::Activity,
                             target_name: SCHEDULE_CHANNEL_ACTIVITY.to_string(),
@@ -473,7 +571,7 @@ async fn sync_schedule_binding_for_channel(
                             max_catch_up: Some(1),
                             retry_policy: None,
                             next_trigger_at: if enabled {
-                                calculate_schedule_next_trigger(&config.cron_expression)?
+                                calculate_schedule_next_trigger(&cron_expression)?
                             } else {
                                 None
                             },
@@ -494,7 +592,7 @@ async fn sync_schedule_binding_for_channel(
                         "App schedule channel {} for {}",
                         channel.public_id, app.name
                     )),
-                    cron_expression: config.cron_expression.clone(),
+                    cron_expression: cron_expression.clone(),
                     timezone: config.timezone.clone(),
                     target_type: ScheduleTargetType::Activity,
                     target_name: SCHEDULE_CHANNEL_ACTIVITY.to_string(),
@@ -505,7 +603,7 @@ async fn sync_schedule_binding_for_channel(
                     max_catch_up: Some(1),
                     retry_policy: None,
                     next_trigger_at: if enabled {
-                        calculate_schedule_next_trigger(&config.cron_expression)?
+                        calculate_schedule_next_trigger(&cron_expression)?
                     } else {
                         None
                     },
@@ -1213,7 +1311,7 @@ impl Command for CreateApp {
             sync_schedule_binding_for_channel(ctx, &app, channel_row).await?;
         }
 
-        Ok(app)
+        Ok(redact_app_for_response(app))
     }
 }
 
@@ -1255,9 +1353,12 @@ impl Command for ListApps {
             .list_apps(ctx.org_id(), self.search.as_deref(), self.include_archived)
             .await
             .map_err(classify_anyhow)?;
-        q::load_apps_list(&ctx.db, encryption, rows, ctx.org_id())
+        Ok(q::load_apps_list(&ctx.db, encryption, rows, ctx.org_id())
             .await
-            .map_err(classify_anyhow)
+            .map_err(classify_anyhow)?
+            .into_iter()
+            .map(redact_app_for_response)
+            .collect())
     }
 }
 
@@ -1304,11 +1405,71 @@ impl Command for GetApp {
         q::get_by_public_id(&ctx.db, encryption, ctx.org_id(), &app_id.to_string())
             .await
             .map_err(classify_anyhow)?
+            .map(redact_app_for_response)
             .ok_or_else(|| CommandError::not_found("App"))
     }
 }
 
 inventory::submit! { CommandDescriptor::of::<GetApp>() }
+
+// ============================================================================
+// ListAppChannels
+// ============================================================================
+
+/// List channels attached to an app.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct ListAppChannels {
+    pub app_id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub channel_type: Option<ChannelType>,
+}
+
+impl Command for ListAppChannels {
+    type Output = Vec<AppChannel>;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "list_app_channels",
+            category: "apps",
+            description: "List channels attached to an app. Secret fields are redacted.",
+            method: "GET",
+            path: "/v1/apps/{id}/channels",
+        }
+    }
+
+    fn policy() -> Option<&'static Policy> {
+        Some(&APP_VIEW)
+    }
+
+    fn positional_arg() -> Option<&'static str> {
+        Some("app_id")
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<Vec<AppChannel>, CommandError> {
+        let app_id: AppId = self
+            .app_id
+            .parse()
+            .map_err(|e| CommandError::bad_request(format!("Invalid app ID: {e}")))?;
+
+        let encryption = ctx.encryption.as_ref();
+        let app = q::get_by_public_id(&ctx.db, encryption, ctx.org_id(), &app_id.to_string())
+            .await
+            .map_err(classify_anyhow)?
+            .ok_or_else(|| CommandError::not_found("App"))?;
+        Ok(app
+            .channels
+            .into_iter()
+            .filter(|channel| {
+                self.channel_type
+                    .as_ref()
+                    .is_none_or(|channel_type| &channel.channel_type == channel_type)
+            })
+            .map(redact_channel_for_response)
+            .collect())
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<ListAppChannels>() }
 
 // ============================================================================
 // UpdateApp
@@ -1514,7 +1675,7 @@ impl Command for UpdateAppCmd {
         if req.status.is_some() {
             sync_all_schedule_bindings(ctx, &app).await?;
         }
-        Ok(app)
+        Ok(redact_app_for_response(app))
     }
 }
 
@@ -1720,7 +1881,7 @@ impl Command for PublishApp {
             .ok_or_else(|| CommandError::not_found("App"))?;
         let app = q::row_to_app(&ctx.db, encryption, row, ctx.org_id()).await;
         sync_all_schedule_bindings(ctx, &app).await?;
-        Ok(app)
+        Ok(redact_app_for_response(app))
     }
 }
 
@@ -1784,7 +1945,7 @@ impl Command for UnpublishApp {
             .ok_or_else(|| CommandError::not_found("App"))?;
         let app = q::row_to_app(&ctx.db, encryption, row, ctx.org_id()).await;
         sync_all_schedule_bindings(ctx, &app).await?;
-        Ok(app)
+        Ok(redact_app_for_response(app))
     }
 }
 
@@ -1870,7 +2031,9 @@ impl Command for AddChannel {
         let app = q::row_to_app(&ctx.db, encryption, app, ctx.org_id()).await;
         sync_schedule_binding_for_channel(ctx, &app, &row).await?;
 
-        Ok(q::channel_row_to_channel(encryption, row))
+        Ok(redact_channel_for_response(q::channel_row_to_channel(
+            encryption, row,
+        )))
     }
 }
 
@@ -1884,6 +2047,8 @@ inventory::submit! { CommandDescriptor::of::<AddChannel>() }
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct AddScheduleChannelCmd {
     pub app_id: String,
+    /// Cron expression. Accepts 5 fields (`*/10 * * * *`) or 7 fields
+    /// (`0 */10 * * * * *`); 5-field input is stored as 7-field cron.
     pub cron_expression: String,
     pub timezone: Option<String>,
     #[serde(default)]
@@ -1902,7 +2067,7 @@ impl Command for AddScheduleChannelCmd {
         CommandMeta {
             name: "add_schedule_app_channel",
             category: "apps",
-            description: "Add a schedule invocation channel to an app using flat args.",
+            description: "Add a schedule invocation channel to an app using flat args. cron_expression accepts 5-field or 7-field cron; 5-field input is normalized to 7-field cron.",
             method: "POST",
             path: "/v1/apps/{id}/channels",
         }
@@ -1932,6 +2097,70 @@ impl Command for AddScheduleChannelCmd {
 }
 
 inventory::submit! { CommandDescriptor::of::<AddScheduleChannelCmd>() }
+
+// ============================================================================
+// TriggerAppScheduleChannel
+// ============================================================================
+
+#[derive(Debug, serde::Serialize, ToSchema)]
+pub struct TriggerAppScheduleChannelOutput {
+    pub session_id: SessionId,
+    pub created_session: bool,
+}
+
+/// Manually trigger an app schedule channel, primarily for testing.
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct TriggerAppScheduleChannelCmd {
+    pub app_id: String,
+    pub channel_id: String,
+}
+
+impl Command for TriggerAppScheduleChannelCmd {
+    type Output = TriggerAppScheduleChannelOutput;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "trigger_app_schedule_channel",
+            category: "apps",
+            description: "Manually trigger an app schedule channel. Use app_id and channel_id from list_app_channels.",
+            method: "POST",
+            path: "/v1/apps/{id}/channels/{channel_id}/trigger",
+        }
+    }
+
+    fn policy() -> Option<&'static Policy> {
+        Some(&APP_MANAGE)
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<TriggerAppScheduleChannelOutput, CommandError> {
+        let session_service = ctx.session_service.as_ref().ok_or_else(|| {
+            CommandError::Internal(anyhow::anyhow!("Session service not available"))
+        })?;
+        let message_service = ctx.message_service.as_ref().ok_or_else(|| {
+            CommandError::Internal(anyhow::anyhow!("Message service not available"))
+        })?;
+        let app_id: AppId = self
+            .app_id
+            .parse()
+            .map_err(|e| CommandError::bad_request(format!("Invalid app ID: {e}")))?;
+        let result = invoke_scheduled_app_channel(
+            &ctx.db,
+            ctx.encryption.as_ref(),
+            session_service,
+            message_service,
+            ctx.org_id(),
+            &app_id.to_string(),
+            &self.channel_id,
+        )
+        .await?;
+        Ok(TriggerAppScheduleChannelOutput {
+            session_id: result.session_id,
+            created_session: result.created_session,
+        })
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<TriggerAppScheduleChannelCmd>() }
 
 // ============================================================================
 // AddWebhookChannel
@@ -2199,7 +2428,7 @@ impl Command for RegenerateA2aApiKeyCmd {
 
         Ok(RegenerateA2aApiKeyOutput {
             api_key: plaintext,
-            channel: q::channel_row_to_channel(encryption, row),
+            channel: redact_channel_for_response(q::channel_row_to_channel(encryption, row)),
         })
     }
 }
@@ -2286,23 +2515,13 @@ impl Command for UpdateChannelCmd {
             .channel_config
             .clone()
             .unwrap_or_else(|| existing_decrypted.clone());
-        // A2A: server preserves the secret key material across PATCH. Clients
-        // updating non-secret fields (message, session_mode, agent card)
-        // should not need to round-trip the api_key_hash and api_key_prefix —
-        // and must not be able to overwrite them with bogus values. Use the
-        // dedicated regenerate-key endpoint to rotate the key.
-        if final_channel_type == ChannelType::A2a
-            && let (Some(out), Some(existing)) = (
-                final_channel_config.as_object_mut(),
-                existing_decrypted.as_object(),
-            )
-        {
-            for key in ["api_key_hash", "api_key_prefix"] {
-                if let Some(existing_value) = existing.get(key) {
-                    out.insert(key.to_string(), existing_value.clone());
-                }
-            }
-        }
+        // Secret-bearing channel fields are write-only. Preserve existing
+        // secret material when a PATCH only sends user-editable fields.
+        merge_preserved_secret_fields(
+            final_channel_type.clone(),
+            &mut final_channel_config,
+            &existing_decrypted,
+        );
         if final_channel_type == ChannelType::Schedule {
             let _ = durable_store(ctx)?;
         }
@@ -2339,7 +2558,9 @@ impl Command for UpdateChannelCmd {
         let app = q::row_to_app(&ctx.db, encryption, app, ctx.org_id()).await;
         sync_schedule_binding_for_channel(ctx, &app, &row).await?;
 
-        Ok(q::channel_row_to_channel(encryption, row))
+        Ok(redact_channel_for_response(q::channel_row_to_channel(
+            encryption, row,
+        )))
     }
 }
 

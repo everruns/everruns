@@ -28,11 +28,21 @@ fn excluded_from_read_only_query(name: &str) -> bool {
     matches!(name, "preview_agent" | "preview_harness")
 }
 
+fn exposed_to_scripting(meta: &crate::domains::common::CommandMeta) -> bool {
+    // Durable control-plane APIs are infrastructure internals. App schedule
+    // channels expose their own user-facing commands instead.
+    !meta.path.starts_with("/v1/durable/")
+}
+
 static INVENTORY_TOOL_DEFS: LazyLock<HashMap<&'static str, ToolDef>> = LazyLock::new(|| {
     inventory::iter::<crate::domains::common::CommandDescriptor>
         .into_iter()
-        .map(|desc| {
+        .filter_map(|desc| {
             let meta = (desc.meta)();
+            exposed_to_scripting(&meta).then_some((desc, meta))
+        })
+        .map(|desc| {
+            let (desc, meta) = desc;
             let schema = bashkit_inventory_schema((desc.param_schema)());
             let def = ToolDef::new(meta.name, meta.description)
                 .with_schema(schema)
@@ -91,6 +101,9 @@ pub fn build_toolset(ctx: CatalogContext, mode: ToolsetMode) -> ScriptingToolSet
         // THREAT[TM-MCP-002]: MCP `query` must not expose mutating server
         // tools. Read-only classification is backed by inventory tests.
         let meta = (desc.meta)();
+        if !exposed_to_scripting(&meta) {
+            continue;
+        }
         if mode == ToolsetMode::ReadOnly
             && (!(desc.read_only)() || excluded_from_read_only_query(meta.name))
         {

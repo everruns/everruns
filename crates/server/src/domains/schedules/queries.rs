@@ -55,9 +55,26 @@ pub fn parse_execution_status(value: &str) -> Result<ScheduleExecutionStatus, Co
 pub fn calculate_next_trigger(
     cron_expression: &str,
 ) -> Result<Option<DateTime<Utc>>, CommandError> {
-    let schedule = cron::Schedule::from_str(cron_expression)
+    let normalized = normalize_cron_expression(cron_expression)?;
+    let schedule = cron::Schedule::from_str(&normalized)
         .map_err(|e| CommandError::bad_request(format!("Invalid cron expression: {e}")))?;
     Ok(schedule.upcoming(Utc).next())
+}
+
+pub fn normalize_cron_expression(cron_expression: &str) -> Result<String, CommandError> {
+    let fields = cron_expression.split_whitespace().collect::<Vec<_>>();
+    let normalized = match fields.len() {
+        5 => format!("0 {} *", fields.join(" ")),
+        7 => fields.join(" "),
+        _ => {
+            return Err(CommandError::bad_request(
+                "Cron expression must be either 5 fields (min hour day month weekday) or 7 fields (sec min hour day month weekday year)",
+            ));
+        }
+    };
+    cron::Schedule::from_str(&normalized)
+        .map_err(|e| CommandError::bad_request(format!("Invalid cron expression: {e}")))?;
+    Ok(normalized)
 }
 
 pub fn map_store_error(error: StoreError) -> CommandError {

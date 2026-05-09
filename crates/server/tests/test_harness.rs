@@ -432,6 +432,10 @@ impl TestServer {
             Some(durable_store.clone()),
             capability_service.clone(),
             auth_state.clone(),
+        )
+        .with_invocation_services(
+            messages_state.session_service.clone(),
+            messages_state.message_service.clone(),
         );
         let slack_state = api::slack_events::SlackState::new(
             db.clone(),

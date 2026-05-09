@@ -46,6 +46,43 @@ async fn test_create_schedule() {
 }
 
 #[tokio::test]
+async fn test_schedule_accepts_five_field_cron_on_create_and_update() {
+    let server = TestServer::new().await;
+
+    let created: Value = server
+        .post(
+            "/v1/durable/schedules",
+            json!({
+                "name": "five-field-cron",
+                "cron_expression": "*/15 * * * *",
+                "target": {
+                    "type": "workflow",
+                    "name": "test-workflow"
+                }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    assert_eq!(created["cron_expression"], "0 */15 * * * * *");
+
+    let id = created["id"].as_str().unwrap();
+    let updated: Value = server
+        .patch(
+            &format!("/v1/durable/schedules/{}", id),
+            json!({
+                "cron_expression": "5 6 * * *"
+            }),
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+
+    assert_eq!(updated["cron_expression"], "0 5 6 * * * *");
+}
+
+#[tokio::test]
 async fn test_create_schedule_invalid_cron() {
     let server = TestServer::new().await;
 
