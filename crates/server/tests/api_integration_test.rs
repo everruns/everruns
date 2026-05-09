@@ -4026,6 +4026,14 @@ async fn test_create_app_schedule_and_webhook_channels_persist_in_postgres() {
 
     assert_eq!(stored_webhook_app["channels"].as_array().unwrap().len(), 1);
     assert_eq!(stored_webhook_app["channels"][0]["channel_type"], "webhook");
+    assert!(
+        stored_webhook_app["channels"][0]["channel_config"]["token"].is_null(),
+        "webhook token must not be returned"
+    );
+    assert_eq!(
+        stored_webhook_app["channels"][0]["channel_config"]["token_configured"],
+        true
+    );
     assert_eq!(
         stored_webhook_app["channels"][0]["channel_config"]["session_mode"],
         "session_per_invocation"

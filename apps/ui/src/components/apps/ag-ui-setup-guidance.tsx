@@ -13,6 +13,7 @@ interface AgUiSetupGuidanceProps {
   sessionExpirationSeconds: number;
   rateLimitPerMinute?: number;
   token?: string;
+  tokenConfigured?: boolean;
   toolVisibility?: AgUiToolVisibility;
   genericToolText?: string;
   onConfigure?: () => void;
@@ -44,12 +45,13 @@ export function AgUiSetupGuidance({
   sessionExpirationSeconds,
   rateLimitPerMinute,
   token,
+  tokenConfigured,
   toolVisibility = "generic",
   genericToolText,
   onConfigure,
 }: AgUiSetupGuidanceProps) {
   const hasRateLimit = !!rateLimitPerMinute && rateLimitPerMinute > 0;
-  const hasToken = !!token;
+  const hasToken = !!token || !!tokenConfigured;
   const accessBadge = hasToken ? "Token Protected" : anonymousEnabled ? "Anonymous" : "Restricted";
   return (
     <div className="space-y-4">
@@ -82,11 +84,13 @@ export function AgUiSetupGuidance({
 
       <div>
         <p className="text-sm font-medium">Token</p>
-        {hasToken ? (
+        {token ? (
           <div className="mt-2 flex items-center gap-2 bg-muted p-3">
             <code className="flex-1 truncate text-sm">{token}</code>
             <CopyButton value={token} />
           </div>
+        ) : hasToken ? (
+          <p className="text-sm text-muted-foreground">Channel token configured</p>
         ) : (
           <p className="text-sm text-muted-foreground">No channel token required</p>
         )}

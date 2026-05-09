@@ -64,7 +64,11 @@ See `crates/server/migrations/002_durable_execution.sql` for the full schema. Tr
 
 ### Cron Expression Format
 
-Cron expressions follow the durable scheduler's current parser format. In practice this codebase uses 7-field expressions in APIs and tests. Examples: `0 * * * * * *` (every minute), `0 */30 * * * * *` (every 30 minutes).
+Cron expressions accepted by platform APIs may be either 5-field
+(`*/10 * * * *`) or 7-field (`0 */10 * * * * *`). The durable scheduler stores
+and evaluates the 7-field form (`sec min hour day month weekday year`), so
+5-field input is normalized by prefixing seconds (`0`) and suffixing year (`*`).
+Examples: `0 * * * * * *` (every minute), `0 */30 * * * * *` (every 30 minutes).
 
 ## Timezone Semantics
 

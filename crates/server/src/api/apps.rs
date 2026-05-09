@@ -10,6 +10,8 @@ use crate::domains::apps::{
     APP_DANGEROUS, APP_MANAGE, APP_VIEW, AddA2aChannelCmd, AddA2aChannelOutput,
     RegenerateA2aApiKeyCmd, RegenerateA2aApiKeyOutput,
 };
+use crate::domains::messages::MessageService;
+use crate::domains::sessions::SessionService;
 use crate::services::CapabilityService;
 use crate::storage::{EncryptionService, StorageBackend};
 use axum::{
@@ -36,6 +38,8 @@ pub struct AppState {
     pub workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
     pub capability_service: Arc<CapabilityService>,
     pub auth: AuthState,
+    pub session_service: Option<Arc<SessionService>>,
+    pub message_service: Option<Arc<MessageService>>,
 }
 
 impl AppState {
@@ -52,19 +56,38 @@ impl AppState {
             workflow_store,
             capability_service,
             auth,
+            session_service: None,
+            message_service: None,
         }
+    }
+
+    pub fn with_invocation_services(
+        mut self,
+        session_service: Arc<SessionService>,
+        message_service: Arc<MessageService>,
+    ) -> Self {
+        self.session_service = Some(session_service);
+        self.message_service = Some(message_service);
+        self
     }
 
     /// Build a domain Ctx from this AppState for the given org.
     pub fn ctx(&self, org: &ResolvedOrg) -> crate::domains::common::Ctx {
-        crate::domains::common::Ctx::new(
+        let mut ctx = crate::domains::common::Ctx::new(
             Caller::from(org),
             self.db.clone(),
             self.capability_service.clone(),
             self.encryption.clone(),
             self.auth.permission_resolver.clone(),
         )
-        .with_workflow_store(self.workflow_store.clone())
+        .with_workflow_store(self.workflow_store.clone());
+        if let Some(session_service) = &self.session_service {
+            ctx = ctx.with_session_service(session_service.clone());
+        }
+        if let Some(message_service) = &self.message_service {
+            ctx = ctx.with_message_service(message_service.clone());
+        }
+        ctx
     }
 }
 
@@ -84,7 +107,14 @@ pub fn routes(state: AppState) -> Router {
         .route("/v1/apps/{app_id}/publish", post(publish_app))
         .route("/v1/apps/{app_id}/unpublish", post(unpublish_app))
         // Channel sub-routes
-        .route("/v1/apps/{app_id}/channels", post(add_channel))
+        .route(
+            "/v1/apps/{app_id}/channels",
+            get(list_channels).post(add_channel),
+        )
+        .route(
+            "/v1/apps/{app_id}/channels/{channel_id}/trigger",
+            post(trigger_channel),
+        )
         .route(
             "/v1/apps/{app_id}/channels/{channel_id}",
             axum::routing::patch(update_channel).delete(delete_channel),
@@ -309,6 +339,21 @@ pub async fn unpublish_app(
 // Channel sub-routes
 // ============================================
 
+/// GET /v1/apps/{app_id}/channels - List channels on an app
+pub async fn list_channels(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(app_id): Path<String>,
+) -> ApiResult<ListResponse<AppChannel>> {
+    let channels = crate::domains::apps::ListAppChannels {
+        app_id,
+        channel_type: None,
+    }
+    .run(&state.ctx(&org))
+    .await?;
+    Ok(Json(ListResponse::new(channels)))
+}
+
 /// POST /v1/apps/{app_id}/channels - Add a channel to an app
 pub async fn add_channel(
     org: ResolvedOrg,
@@ -320,6 +365,18 @@ pub async fn add_channel(
         .run(&state.ctx(&org))
         .await?;
     Ok((StatusCode::CREATED, Json(channel)))
+}
+
+/// POST /v1/apps/{app_id}/channels/{channel_id}/trigger - Trigger an app schedule channel
+pub async fn trigger_channel(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path((app_id, channel_id)): Path<(String, String)>,
+) -> ApiResult<crate::domains::apps::TriggerAppScheduleChannelOutput> {
+    let output = crate::domains::apps::TriggerAppScheduleChannelCmd { app_id, channel_id }
+        .run(&state.ctx(&org))
+        .await?;
+    Ok(Json(output))
 }
 
 /// PATCH /v1/apps/{app_id}/channels/{channel_id} - Update a channel

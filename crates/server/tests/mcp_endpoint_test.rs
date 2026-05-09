@@ -1631,7 +1631,7 @@ async fn test_mcp_execute_app_commands_support_schedule_and_webhook_channels() {
         "execute",
         json!({
             "commands": format!(
-                "add_schedule_app_channel --app_id {app_id} --cron_expression '0 * * * *' --timezone UTC --session_mode shared_session --message 'run checks'"
+                "add_schedule_app_channel --app_id {app_id} --cron_expression '*/10 * * * *' --timezone UTC --session_mode shared_session --message 'run checks'"
             )
         }),
     )
@@ -1641,11 +1641,15 @@ async fn test_mcp_execute_app_commands_support_schedule_and_webhook_channels() {
         "add_app_channel schedule failed: {}",
         tool_text(&add_schedule_resp)
     );
-    assert_eq!(tool_json(&add_schedule_resp)["channel_type"], "schedule");
+    let schedule_channel = tool_json(&add_schedule_resp);
+    assert_eq!(schedule_channel["channel_type"], "schedule");
     assert_eq!(
-        tool_json(&add_schedule_resp)["channel_config"]["cron_expression"],
-        "0 0 * * * * *"
+        schedule_channel["channel_config"]["cron_expression"],
+        "0 */10 * * * * *"
     );
+    let schedule_channel_id = schedule_channel["id"]
+        .as_str()
+        .expect("schedule channel id");
 
     let add_webhook_resp = mcp_tool_call(
         &server,
@@ -1663,6 +1667,31 @@ async fn test_mcp_execute_app_commands_support_schedule_and_webhook_channels() {
         tool_text(&add_webhook_resp)
     );
     assert_eq!(tool_json(&add_webhook_resp)["channel_type"], "webhook");
+
+    let list_channels_resp = mcp_tool_call(
+        &server,
+        "execute",
+        json!({ "commands": format!("list_app_channels {app_id}") }),
+    )
+    .await;
+    assert!(
+        !tool_is_error(&list_channels_resp),
+        "list_app_channels failed: {}",
+        tool_text(&list_channels_resp)
+    );
+    let channels = tool_json(&list_channels_resp);
+    let serialized_channels = serde_json::to_string(&channels).unwrap();
+    assert!(
+        !serialized_channels.contains("secret-1"),
+        "channel listing leaked webhook token: {serialized_channels}"
+    );
+    assert!(
+        channels
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|channel| channel["channel_config"]["token_configured"] == true)
+    );
 
     let get_resp = mcp_tool_call(
         &server,
@@ -1684,6 +1713,45 @@ async fn test_mcp_execute_app_commands_support_schedule_and_webhook_channels() {
         .collect::<Vec<_>>();
     assert!(channel_types.contains(&"schedule"));
     assert!(channel_types.contains(&"webhook"));
+    let serialized_app = serde_json::to_string(&fetched_app).unwrap();
+    assert!(
+        !serialized_app.contains("secret-1"),
+        "get_app leaked webhook token: {serialized_app}"
+    );
+
+    let publish_resp = mcp_tool_call(
+        &server,
+        "execute",
+        json!({ "commands": format!("publish_app {app_id}") }),
+    )
+    .await;
+    assert!(
+        !tool_is_error(&publish_resp),
+        "publish_app failed: {}",
+        tool_text(&publish_resp)
+    );
+
+    let trigger_resp = mcp_tool_call(
+        &server,
+        "execute",
+        json!({
+            "commands": format!(
+                "trigger_app_schedule_channel --app_id {app_id} --channel_id {schedule_channel_id}"
+            )
+        }),
+    )
+    .await;
+    assert!(
+        !tool_is_error(&trigger_resp),
+        "trigger_app_schedule_channel failed: {}",
+        tool_text(&trigger_resp)
+    );
+    assert!(
+        tool_json(&trigger_resp)["session_id"]
+            .as_str()
+            .unwrap()
+            .starts_with("session_")
+    );
 }
 
 // Contract matrix for recent MCP execute regressions:
@@ -2262,6 +2330,14 @@ async fn test_mcp_execute_discover_all() {
     let stdout = result["stdout"].as_str().unwrap();
     assert!(stdout.contains("agents"), "Should list agents category");
     assert!(stdout.contains("sessions"), "Should list sessions category");
+    assert!(
+        !stdout.contains("list_schedules"),
+        "durable schedule tools should not be exposed through MCP execute"
+    );
+    assert!(
+        !stdout.contains("/v1/durable/"),
+        "durable control-plane tools should not be exposed through MCP execute"
+    );
 }
 
 // ============================================================================

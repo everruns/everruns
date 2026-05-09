@@ -127,11 +127,16 @@ config or syncing the backing durable schedule.
 
 Behavior:
 
+- accepted cron input is either 5-field (`*/10 * * * *`) or 7-field
+  (`0 */10 * * * * *`); 5-field input is normalized to the durable
+  scheduler's 7-field representation when stored
 - create/update/delete stays in the app domain
 - the app domain creates or updates the backing durable schedule
 - publish state and channel `enabled` control whether the durable binding is enabled
 - deleting the app channel deletes the durable binding
 - unpublishing disables the binding without deleting it
+- `POST /v1/apps/{app_id}/channels/{channel_id}/trigger` manually invokes a
+  schedule channel for testing without exposing the backing durable schedule ID
 
 The durable scheduler only knows how to fire `invoke_scheduled_app_channel`. All app-specific resolution happens in the app domain at execution time.
 
@@ -159,9 +164,16 @@ Behavior:
 Invocation channels must be reachable through all app-management surfaces:
 
 - HTTP app APIs
-- MCP/bash command catalog (`create_app`, `add_app_channel`, `update_app_channel`, etc.)
+- MCP/bash command catalog (`create_app`, `list_app_channels`,
+  `add_app_channel`, `trigger_app_schedule_channel`, etc.). Generic durable
+  schedule commands are intentionally not exposed through MCP scripting; app
+  schedule channels own their lifecycle.
 - `platform_management` capability (`read_apps`, `manage_apps`, `manage_app_channels`)
 - Apps UI
+
+Secrets in channel configs are write-only in user-facing responses. App and
+channel reads return only non-secret fields plus `*_configured` booleans where
+callers need to know whether a secret exists.
 
 ## Testing
 

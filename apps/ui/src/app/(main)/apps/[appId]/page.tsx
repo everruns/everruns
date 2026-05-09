@@ -124,13 +124,30 @@ type ChannelSummary = {
   healthVariant: "default" | "secondary" | "destructive" | "outline";
 };
 
+function hasSlackCredentials(config?: SlackChannelConfig): boolean {
+  return (
+    !!(
+      (config?.signing_secret && config.signing_secret.trim()) ||
+      config?.signing_secret_configured
+    ) && !!((config?.bot_token && config.bot_token.trim()) || config?.bot_token_configured)
+  );
+}
+
+function hasToken(config?: AgUiChannelConfig | WebhookChannelConfig): boolean {
+  return !!((config?.token && config.token.trim()) || config?.token_configured);
+}
+
+function hasA2aKey(config?: A2aChannelConfig): boolean {
+  return !!(config?.api_key_hash || config?.api_key_prefix);
+}
+
 function getChannelSummary(channel: AppChannel, isPublished: boolean): ChannelSummary {
   const publishedPrefix = isPublished ? "" : "Draft: ";
 
   switch (channel.channel_type) {
     case "slack": {
       const config = channel.channel_config as SlackChannelConfig;
-      const hasCredentials = !!config?.signing_secret && !!config?.bot_token;
+      const hasCredentials = hasSlackCredentials(config);
       const target = config?.channel_id ?? config?.team_id ?? "Workspace events";
       if (!hasCredentials) {
         return {
@@ -166,7 +183,7 @@ function getChannelSummary(channel: AppChannel, isPublished: boolean): ChannelSu
     case "ag_ui": {
       const config = channel.channel_config as AgUiChannelConfig;
       return {
-        target: config?.token ? "Token-protected endpoint" : "Public client endpoint",
+        target: hasToken(config) ? "Token-protected endpoint" : "Public client endpoint",
         group: "Client surfaces",
         health: isPublished ? "Ready" : "Draft",
         healthVariant: isPublished ? "default" : "secondary",
@@ -186,7 +203,7 @@ function getChannelSummary(channel: AppChannel, isPublished: boolean): ChannelSu
     }
     case "webhook": {
       const config = channel.channel_config as WebhookChannelConfig;
-      const configured = !!config?.token && !!config?.message;
+      const configured = hasToken(config) && !!config?.message;
       return {
         target: "Authenticated HTTP endpoint",
         group: "Programmatic ingress",
@@ -196,7 +213,7 @@ function getChannelSummary(channel: AppChannel, isPublished: boolean): ChannelSu
     }
     case "a2a": {
       const config = channel.channel_config as A2aChannelConfig;
-      const configured = !!config?.api_key_hash && !!config?.message;
+      const configured = hasA2aKey(config) && !!config?.message;
       return {
         target: config?.agent_card_name || "Agent endpoint",
         group: "Programmatic ingress",
@@ -415,7 +432,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
       switch (channel.channel_type) {
         case "slack": {
           const config = channel.channel_config as SlackChannelConfig;
-          return !!config?.signing_secret && !!config?.bot_token;
+          return hasSlackCredentials(config);
         }
         case "ag_ui":
           return true;
@@ -425,11 +442,11 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
         }
         case "webhook": {
           const config = channel.channel_config as WebhookChannelConfig;
-          return !!config?.token && !!config?.message;
+          return hasToken(config) && !!config?.message;
         }
         case "a2a": {
           const config = channel.channel_config as A2aChannelConfig;
-          return !!config?.api_key_hash && !!config?.message;
+          return hasA2aKey(config) && !!config?.message;
         }
       }
     }) ?? false;
@@ -1178,6 +1195,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
             }
             rateLimitPerMinute={config?.rate_limit_per_minute}
             token={config?.token}
+            tokenConfigured={hasToken(config)}
             toolVisibility={config?.tool_visibility ?? "generic"}
             genericToolText={config?.generic_tool_text ?? DEFAULT_AG_UI_GENERIC_TOOL_TEXT}
             onConfigure={() => startEditChannel(channel)}
@@ -1215,7 +1233,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
             endpointUrl={endpointUrl}
             sessionMode={config?.session_mode ?? "shared_session"}
             message={config?.message ?? ""}
-            tokenConfigured={!!config?.token}
+            tokenConfigured={hasToken(config)}
             isPublished={isPublished}
             onConfigure={() => startEditChannel(channel)}
           />
@@ -1249,7 +1267,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
     }
 
     const config = channel.channel_config as SlackChannelConfig;
-    const chHasConfig = config?.signing_secret && config?.bot_token;
+    const chHasConfig = hasSlackCredentials(config);
     const chWebhookVerified = !!config?.webhook_verified_at;
     const chFirstMsg = !!config?.first_message_received_at;
 
@@ -1343,7 +1361,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
       const config = channel.channel_config as AgUiChannelConfig;
       return (
         <div className="grid gap-4 md:grid-cols-2">
-          <ChannelFact label="Access" value={config?.token ? "Token protected" : "No token"} />
+          <ChannelFact label="Access" value={hasToken(config) ? "Token protected" : "No token"} />
           <ChannelFact
             label="Thread expiration"
             value={`${(config?.session_expiration_seconds ?? DEFAULT_AG_UI_SESSION_EXPIRATION_SECONDS) / 3600}h`}
@@ -1366,7 +1384,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
 
     if (channel.channel_type === "slack") {
       const config = channel.channel_config as SlackChannelConfig;
-      const hasCredentials = !!config?.signing_secret && !!config?.bot_token;
+      const hasCredentials = hasSlackCredentials(config);
       return (
         <div className="grid gap-4 md:grid-cols-2">
           <ChannelFact label="Credentials" value={hasCredentials ? "Configured" : "Missing"} />
@@ -1411,7 +1429,10 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
       return (
         <div className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2">
-            <ChannelFact label="Authentication" value={config?.token ? "Token set" : "Missing"} />
+            <ChannelFact
+              label="Authentication"
+              value={hasToken(config) ? "Token set" : "Missing"}
+            />
             <ChannelFact
               label="Session mode"
               value={getInvocationSessionModeDisplayName(config?.session_mode ?? "shared_session")}
