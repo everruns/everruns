@@ -6,6 +6,7 @@ use super::types::{
 use super::{VOLUME_MANAGE, VOLUME_VIEW};
 use crate::domains::common::*;
 use everruns_core::Policy;
+use everruns_core::url_validation::validate_safe_url;
 use everruns_core::typed_id::VolumeId;
 use everruns_durable::UpdateField;
 use serde::Deserialize;
@@ -107,33 +108,24 @@ fn validate_git_url(url: &str) -> Result<String, CommandError> {
         ));
     }
     if let Ok(parsed) = url::Url::parse(trimmed) {
-        match parsed.scheme() {
-            "https" | "ssh" | "git" => {}
-            _ => {
-                return Err(CommandError::bad_request(
-                    "Git URL must use https, ssh, or git scheme",
-                ));
-            }
+        if parsed.scheme() != "https" {
+            return Err(CommandError::bad_request(
+                "Git URL must use https scheme",
+            ));
         }
-        if parsed.password().is_some()
-            || !(parsed.username().is_empty()
-                || parsed.scheme() == "ssh" && parsed.username() == "git")
-        {
+        if parsed.password().is_some() || !parsed.username().is_empty() {
             return Err(CommandError::bad_request(
                 "Git URL must not include inline credentials",
             ));
         }
-        if parsed.host_str().is_none() {
-            return Err(CommandError::bad_request("Git URL must include a host"));
+        if validate_safe_url(trimmed).is_err() {
+            return Err(CommandError::bad_request(
+                "Git URL must target a public non-local host",
+            ));
         }
         return Ok(trimmed.to_string());
     }
-    if trimmed.starts_with("git@") && trimmed.contains(':') {
-        return Ok(trimmed.to_string());
-    }
-    Err(CommandError::bad_request(
-        "Git URL must be an absolute URL or git@host:owner/repo.git",
-    ))
+    Err(CommandError::bad_request("Git URL must be an absolute https URL"))
 }
 
 fn github_source_config(request: GitHubVolumeSourceRequest) -> Result<Value, CommandError> {
@@ -692,6 +684,36 @@ mod tests {
             .run(&ctx)
             .await
             .expect_err("secret-bearing URL should fail");
+
+            assert!(matches!(err, CommandError::BadRequest(_)));
+        }
+    }
+
+    #[tokio::test]
+    async fn git_volume_rejects_non_public_hosts_and_non_https_schemes() {
+        let ctx = ctx_for_org(DEFAULT_ORG_ID);
+
+        for url in [
+            "https://127.0.0.1/repo.git",
+            "https://10.0.0.5/repo.git",
+            "https://169.254.169.254/repo.git",
+            "https://localhost/repo.git",
+            "ssh://git@example.com/org/repo.git",
+            "git://example.com/org/repo.git",
+            "git@example.com:org/repo.git",
+        ] {
+            let err = CreateVolume {
+                name: format!("Unsafe Host Repo {url}"),
+                description: None,
+                source: Some(CreateVolumeSourceRequest::Git(GitVolumeSourceRequest {
+                    url: url.into(),
+                    branch: None,
+                    root_folder: None,
+                })),
+            }
+            .run(&ctx)
+            .await
+            .expect_err("unsafe git URL should fail");
 
             assert!(matches!(err, CommandError::BadRequest(_)));
         }
