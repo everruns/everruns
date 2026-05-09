@@ -148,10 +148,19 @@ fn durable_store(ctx: &Ctx) -> Result<&Arc<dyn WorkflowEventStore + Send + Sync>
     })
 }
 
-fn validate_channel_config(
+fn normalize_cron_expression(cron_expression: &str) -> String {
+    let fields: Vec<&str> = cron_expression.split_whitespace().collect();
+    if fields.len() == 5 {
+        format!("0 {} *", fields.join(" "))
+    } else {
+        cron_expression.trim().to_string()
+    }
+}
+
+fn normalize_and_validate_channel_config(
     channel_type: ChannelType,
-    channel_config: &Value,
-) -> Result<(), CommandError> {
+    channel_config: Value,
+) -> Result<Value, CommandError> {
     match channel_type {
         ChannelType::Slack => {
             let config: SlackChannelConfig = serde_json::from_value(channel_config.clone())
@@ -214,12 +223,21 @@ fn validate_channel_config(
                     "Schedule channel config requires a non-empty message",
                 ));
             }
-            cron::Schedule::from_str(&config.cron_expression).map_err(|e| {
+            let cron_expression = normalize_cron_expression(&config.cron_expression);
+            cron::Schedule::from_str(&cron_expression).map_err(|e| {
                 CommandError::bad_request(format!(
                     "Invalid schedule cron expression '{}': {e}",
-                    config.cron_expression
+                    cron_expression
                 ))
             })?;
+            let mut channel_config = channel_config;
+            if let Some(object) = channel_config.as_object_mut() {
+                object.insert(
+                    "cron_expression".to_string(),
+                    Value::String(cron_expression),
+                );
+            }
+            return Ok(channel_config);
         }
         ChannelType::Webhook => {
             let config: WebhookChannelConfig = serde_json::from_value(channel_config.clone())
@@ -260,7 +278,7 @@ fn validate_channel_config(
         }
     }
 
-    Ok(())
+    Ok(channel_config)
 }
 
 fn calculate_schedule_next_trigger(
@@ -1084,13 +1102,13 @@ impl Command for CreateApp {
             ));
         }
 
-        let channel_config = channel_config.unwrap_or_default();
+        let mut channel_config = channel_config.unwrap_or_default();
 
         if let Some(channel_type) = channel_type.clone() {
             if channel_type == ChannelType::Schedule {
                 let _ = durable_store(ctx)?;
             }
-            validate_channel_config(channel_type, &channel_config)?;
+            channel_config = normalize_and_validate_channel_config(channel_type, channel_config)?;
         }
 
         // Validate references
@@ -1797,8 +1815,10 @@ impl Command for AddChannel {
             let _ = durable_store(ctx)?;
         }
 
-        let channel_config = self.req.channel_config.unwrap_or_default();
-        validate_channel_config(self.req.channel_type.clone(), &channel_config)?;
+        let channel_config = normalize_and_validate_channel_config(
+            self.req.channel_type.clone(),
+            self.req.channel_config.unwrap_or_default(),
+        )?;
         let (stored_plaintext, encrypted) =
             q::prepare_channel_config(encryption, &channel_config).map_err(classify_anyhow)?;
 
@@ -2124,7 +2144,8 @@ impl Command for RegenerateA2aApiKeyCmd {
                 "Existing A2A channel configuration is not a JSON object",
             ));
         }
-        validate_channel_config(ChannelType::A2a, &existing_config)?;
+        let existing_config =
+            normalize_and_validate_channel_config(ChannelType::A2a, existing_config)?;
 
         let (stored, encrypted) =
             q::prepare_channel_config(encryption, &existing_config).map_err(classify_anyhow)?;
@@ -2251,13 +2272,16 @@ impl Command for UpdateChannelCmd {
         if final_channel_type == ChannelType::Schedule {
             let _ = durable_store(ctx)?;
         }
-        validate_channel_config(final_channel_type, &final_channel_config)?;
+        let normalized_channel_config =
+            normalize_and_validate_channel_config(final_channel_type, final_channel_config)?;
 
-        let (channel_config, channel_config_encrypted) = if self.req.channel_config.is_some() {
+        let config_changed = self.req.channel_config.is_some();
+        let (channel_config, channel_config_encrypted) = if config_changed {
             // Persist the merged config (so A2A preserves the existing
             // api_key_hash / prefix when the client omits them).
-            let (stored, encrypted) = q::prepare_channel_config(encryption, &final_channel_config)
-                .map_err(classify_anyhow)?;
+            let (stored, encrypted) =
+                q::prepare_channel_config(encryption, &normalized_channel_config)
+                    .map_err(classify_anyhow)?;
             (Some(stored), encrypted)
         } else {
             (None, None)

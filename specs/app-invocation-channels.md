@@ -100,6 +100,11 @@ Config fields:
 - `session_mode`
 - `message`
 
+`cron_expression` accepts standard 5-field cron input and the durable
+scheduler's 7-field format. App channel creation/update normalizes 5-field
+input to the canonical 7-field durable expression before storing the channel
+config or syncing the backing durable schedule.
+
 Behavior:
 
 - create/update/delete stays in the app domain

@@ -123,16 +123,22 @@ async fn schedule_channel_binds_to_durable_schedule_and_invokes_shared_session()
         "schedule-checker",
         "schedule",
         json!({
-            "cron_expression": "0 * * * * * *",
+            "cron_expression": "0 * * * *",
             "timezone": "UTC",
             "session_mode": "shared_session",
             "message": "scheduled {{app.name}} {{invocation.source}}",
+            "extra": "preserved",
         }),
     )
     .await;
 
     let app_id = app["id"].as_str().unwrap();
     let channel_id = app["channels"][0]["id"].as_str().unwrap();
+    assert_eq!(
+        app["channels"][0]["channel_config"]["cron_expression"],
+        "0 0 * * * * *"
+    );
+    assert_eq!(app["channels"][0]["channel_config"]["extra"], "preserved");
 
     let draft_schedule = find_schedule(&server, app_id, channel_id)
         .await
@@ -143,7 +149,7 @@ async fn schedule_channel_binds_to_durable_schedule_and_invokes_shared_session()
         "invoke_scheduled_app_channel"
     );
     assert_eq!(draft_schedule["enabled"], false);
-    assert_eq!(draft_schedule["cron_expression"], "0 * * * * * *");
+    assert_eq!(draft_schedule["cron_expression"], "0 0 * * * * *");
 
     publish_app(&server, app_id).await;
 
@@ -200,10 +206,11 @@ async fn schedule_channel_binds_to_durable_schedule_and_invokes_shared_session()
             &format!("/v1/apps/{app_id}/channels/{channel_id}"),
             json!({
                 "channel_config": {
-                    "cron_expression": "0 15 * * * * *",
+                    "cron_expression": "15 * * * *",
                     "timezone": "America/Chicago",
                     "session_mode": "shared_session",
                     "message": "updated {{app.id}}",
+                    "extra": "still-preserved",
                 }
             }),
         )
@@ -215,6 +222,20 @@ async fn schedule_channel_binds_to_durable_schedule_and_invokes_shared_session()
         .expect("updated schedule binding");
     assert_eq!(updated_schedule["cron_expression"], "0 15 * * * * *");
     assert_eq!(updated_schedule["timezone"], "America/Chicago");
+
+    let updated_app: Value = server
+        .get(&format!("/v1/apps/{app_id}"))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(
+        updated_app["channels"][0]["channel_config"]["cron_expression"],
+        "0 15 * * * * *"
+    );
+    assert_eq!(
+        updated_app["channels"][0]["channel_config"]["extra"],
+        "still-preserved"
+    );
 
     server
         .delete(&format!("/v1/apps/{app_id}/channels/{channel_id}"))
