@@ -141,7 +141,7 @@ impl JwtService {
             access_token,
             refresh_token,
             token_type: "Bearer".to_string(),
-            expires_in: self.config.access_token_lifetime.as_secs() as i64,
+            expires_in: self.access_token_lifetime_secs(),
         };
 
         Ok((token_pair, jti))

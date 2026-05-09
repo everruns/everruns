@@ -254,7 +254,7 @@ Standard JWTs signed with `AUTH_JWT_SECRET` via `JwtService::generate_access_tok
 }
 ```
 
-MCP OAuth tokens are indistinguishable from regular access tokens at the JWT level. They are validated by the existing `BuiltinAuthBackend.validate_token()` path. The MCP-specific lifetime (1 hour) and refresh token are managed by the OAuth flow, not by JWT claims.
+MCP OAuth tokens are indistinguishable from regular access tokens at the JWT level. They are validated by the existing `BuiltinAuthBackend.validate_token()` path. The access-token lifetime is the JWT `exp - iat`, sourced from `AUTH_JWT_ACCESS_TOKEN_LIFETIME` (default 900s); the OAuth `expires_in` field reports the same value. MCP refresh tokens are managed by the OAuth flow, not by JWT claims.
 
 ### Database Schema
 
