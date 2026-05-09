@@ -20,8 +20,6 @@ use crate::deployment::DeploymentGrade;
 pub struct FeatureFlags {
     /// Global chat (per-user singleton chat session). Experimental.
     pub global_chat: bool,
-    /// Apps (agent deployment to distribution channels). Experimental.
-    pub apps: bool,
     /// In-app notifications (bell, toasts, notification SSE). Experimental.
     pub notifications: bool,
     /// MCP endpoint (POST /mcp — Everruns as an MCP server). Experimental.
@@ -43,7 +41,6 @@ impl FeatureFlags {
     pub fn from_env(grade: &DeploymentGrade) -> Self {
         Self {
             global_chat: experimental_flag("FEATURE_GLOBAL_CHAT", grade),
-            apps: experimental_flag("FEATURE_APPS", grade),
             notifications: experimental_flag("FEATURE_NOTIFICATIONS", grade),
             mcp_endpoint: experimental_flag("FEATURE_MCP_ENDPOINT", grade),
             evals: experimental_flag("FEATURE_EVALS", grade),
@@ -63,7 +60,6 @@ impl FeatureFlags {
     pub fn is_enabled(&self, flag: &str) -> bool {
         match flag {
             "global_chat" => self.global_chat,
-            "apps" => self.apps,
             "notifications" => self.notifications,
             "mcp_endpoint" => self.mcp_endpoint,
             "evals" => self.evals,
@@ -79,7 +75,6 @@ impl FeatureFlags {
     pub fn all_enabled() -> Self {
         Self {
             global_chat: true,
-            apps: true,
             notifications: true,
             mcp_endpoint: true,
             evals: true,
@@ -166,7 +161,6 @@ mod tests {
     fn test_default_flags() {
         let flags = FeatureFlags::default();
         assert!(!flags.global_chat);
-        assert!(!flags.apps);
         assert!(!flags.notifications);
     }
 
@@ -177,11 +171,9 @@ mod tests {
     fn test_experimental_enabled_in_dev() {
         let _lock = lock_env();
         unsafe { std::env::remove_var("FEATURE_GLOBAL_CHAT") };
-        unsafe { std::env::remove_var("FEATURE_APPS") };
         unsafe { std::env::remove_var("FEATURE_EVALS") };
         let flags = FeatureFlags::from_env(&DeploymentGrade::Dev);
         assert!(flags.global_chat);
-        assert!(flags.apps);
         assert!(flags.evals);
     }
 
@@ -189,11 +181,9 @@ mod tests {
     fn test_experimental_disabled_in_prod() {
         let _lock = lock_env();
         unsafe { std::env::remove_var("FEATURE_GLOBAL_CHAT") };
-        unsafe { std::env::remove_var("FEATURE_APPS") };
         unsafe { std::env::remove_var("FEATURE_EVALS") };
         let flags = FeatureFlags::from_env(&DeploymentGrade::Prod);
         assert!(!flags.global_chat);
-        assert!(!flags.apps);
         assert!(!flags.evals);
     }
 
@@ -219,7 +209,6 @@ mod tests {
     fn test_is_enabled_dynamic() {
         let flags = FeatureFlags {
             global_chat: true,
-            apps: true,
             notifications: true,
             mcp_endpoint: true,
             evals: true,
@@ -228,7 +217,6 @@ mod tests {
             voice: true,
         };
         assert!(flags.is_enabled("global_chat"));
-        assert!(flags.is_enabled("apps"));
         assert!(flags.is_enabled("notifications"));
         assert!(flags.is_enabled("mcp_endpoint"));
         assert!(flags.is_enabled("evals"));
@@ -242,7 +230,6 @@ mod tests {
     fn test_serialization() {
         let flags = FeatureFlags {
             global_chat: true,
-            apps: true,
             notifications: true,
             mcp_endpoint: true,
             evals: true,

@@ -8,7 +8,6 @@ export type AuthMode = "none" | "admin" | "full" | "external";
 
 export interface FeatureFlags {
   global_chat: boolean;
-  apps: boolean;
   notifications: boolean;
   mcp_endpoint: boolean;
   evals: boolean;

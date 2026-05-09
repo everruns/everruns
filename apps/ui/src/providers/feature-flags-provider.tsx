@@ -13,7 +13,6 @@ import type { FeatureFlags } from "@/lib/api/types";
 
 const DEFAULT_FLAGS: FeatureFlags = {
   global_chat: false,
-  apps: false,
   notifications: false,
   mcp_endpoint: false,
   evals: false,
