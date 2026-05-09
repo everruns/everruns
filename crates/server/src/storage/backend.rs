@@ -784,6 +784,32 @@ impl StorageBackend {
         dispatch!(self, archive_volume, org_id, id)
     }
 
+    pub async fn claim_next_volume_sync(&self) -> Result<Option<VolumeRow>> {
+        dispatch!(self, claim_next_volume_sync)
+    }
+
+    pub async fn complete_volume_sync(
+        &self,
+        volume_id: Uuid,
+        claimed_at: DateTime<Utc>,
+        files: Vec<CreateVolumeFileRow>,
+    ) -> Result<Option<VolumeRow>> {
+        dispatch!(self, complete_volume_sync, volume_id, claimed_at, files)
+    }
+
+    pub async fn fail_volume_sync(
+        &self,
+        volume_id: Uuid,
+        claimed_at: DateTime<Utc>,
+        error: &str,
+    ) -> Result<Option<VolumeRow>> {
+        dispatch!(self, fail_volume_sync, volume_id, claimed_at, error)
+    }
+
+    pub async fn list_all_volume_files(&self, volume_id: Uuid) -> Result<Vec<VolumeFileRow>> {
+        dispatch!(self, list_all_volume_files, volume_id)
+    }
+
     // ============================================
     // Memory Stores
     // ============================================

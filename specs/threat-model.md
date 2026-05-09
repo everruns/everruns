@@ -915,6 +915,7 @@ When a bash script calls `bash` or `sh` or uses `eval`, bashkit re-invokes its o
 | TM-DOS-010 | AG-UI SSE connection exhaustion | Medium | AG-UI app streams reuse the shared `SseConnectionTracker`, enforcing the same global/per-org/per-session limits as other SSE endpoints. App owners can also configure a per-app, per-IP request cap via `AgUiChannelConfig.rate_limit_per_minute`: in-memory backend is a per-minute governor quota; when `VALKEY_URL` is set it becomes a Valkey sliding-window counter shared across instances and fail-closed on Valkey errors | MITIGATED |
 | TM-DOS-010 | Rate limit bypass via Valkey failure | Low | Fail-open design: if Valkey is down, requests are allowed without rate limiting | **ACCEPTED** |
 | TM-DOS-011 | Authenticated API key sprawl | Low | No server-side per-user API key quota; API key creation requires an authenticated user session and keys remain user-owned/revocable. Operators must monitor and clean up excessive key creation if they need stricter controls. | **ACCEPTED** |
+| TM-DOS-012 | Source-backed Volume repository storage abuse | Medium | Volume source sync performs shallow clones without tags, skips symlinks, excludes `.git`, and enforces configurable file-count, per-file byte, and total byte limits before replacing `volume_files`. Failed sync keeps the previous readable snapshot. | MITIGATED |
 
 ### Mitigation Details
 

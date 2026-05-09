@@ -1677,6 +1677,25 @@ impl ServerAppBuilder {
             std::time::Duration::from_secs(15),
         );
 
+        // -- Source-backed workspace volume sync (both prod and dev) --
+        let volume_connection_resolver = encryption.as_ref().map(|enc| {
+            let github_app_minter = auth_config.github_connection.as_ref().map(|config| {
+                crate::storage::GitHubAppTokenMinter::new(
+                    config.app_id.clone(),
+                    config.private_key.clone(),
+                )
+            });
+            Arc::new(crate::storage::DbConnectionResolver::new(
+                db.as_ref().clone(),
+                enc.as_ref().clone(),
+                github_app_minter,
+            )) as Arc<dyn everruns_core::traits::UserConnectionResolver>
+        });
+        crate::domains::volumes::source_sync::spawn_volume_source_sync_task(
+            db.clone(),
+            volume_connection_resolver,
+        );
+
         // -- Custom background tasks --
         for task_fn in self.background_tasks {
             let ctx = server_context.clone();
