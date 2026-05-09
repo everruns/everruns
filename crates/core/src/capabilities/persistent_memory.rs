@@ -79,7 +79,7 @@ impl Capability for MemoryCapability {
         // surfaces a clear error instead of silently routing memory ops to the
         // org default store. This preserves store-level isolation.
         MemoryConfig::from_json(config).map(|_| ()).map_err(|e| {
-            format!("Invalid memory capability config: {e}. Expected: {{ \"store\"?: \"mem_store_…\", \"passive_recall_count\"?: u32 }}.")
+            format!("Invalid memory capability config: {e}. Expected: {{ \"store\"?: \"mst_…\" | \"default\", \"passive_recall_count\"?: u32 }}.")
         })
     }
 
@@ -166,9 +166,23 @@ async fn resolve_store_id(
         .as_ref()
         .ok_or_else(|| ToolExecutionResult::tool_error("Memory store not available"))?;
 
-    if let Some(ref store_str) = config.store {
-        let store_id = store_str.parse::<MemoryStoreId>().map_err(|_| {
-            ToolExecutionResult::tool_error(format!("Invalid store ID: {store_str}"))
+    let configured_store = config
+        .store
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty() && !s.eq_ignore_ascii_case("default"));
+
+    if let Some(store_str) = configured_store {
+        // Backward compatibility: older configs used "mem_store_" IDs.
+        let normalized_store = if let Some(suffix) = store_str.strip_prefix("mem_store_") {
+            format!("mst_{suffix}")
+        } else {
+            store_str.to_string()
+        };
+        let store_id = normalized_store.parse::<MemoryStoreId>().map_err(|_| {
+            ToolExecutionResult::tool_error(format!(
+                "Invalid store ID: {store_str}. Expected mst_<32-hex> or \"default\""
+            ))
         })?;
         // Verify the store exists and belongs to this org
         let org_id = context
@@ -1003,6 +1017,46 @@ mod tests {
 
         // Wrong type surfaces a serde error instead of silently defaulting.
         assert!(MemoryConfig::from_json(&json!({"passive_recall_count": "ten"})).is_err());
+    }
+
+    #[tokio::test]
+    async fn test_remember_with_default_store_alias() {
+        let (ctx, _, _) = test_context();
+        let tool = RememberTool::new(MemoryConfig {
+            store: Some("default".to_string()),
+            passive_recall_count: 5,
+        });
+        let result = tool
+            .execute_with_context(json!({"content": "uses default alias"}), &ctx)
+            .await;
+
+        match result {
+            ToolExecutionResult::Success(v) => assert!(v["created"].as_bool().unwrap()),
+            other => panic!("expected success, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_remember_with_legacy_mem_store_prefix() {
+        let (ctx, backend, org_id) = test_context();
+        let default_store = backend.get_or_create_default_store(org_id).await.unwrap();
+        let legacy_id = default_store
+            .id
+            .to_string()
+            .replacen("mst_", "mem_store_", 1);
+        let tool = RememberTool::new(MemoryConfig {
+            store: Some(legacy_id),
+            passive_recall_count: 5,
+        });
+
+        let result = tool
+            .execute_with_context(json!({"content": "legacy id support"}), &ctx)
+            .await;
+
+        match result {
+            ToolExecutionResult::Success(v) => assert!(v["created"].as_bool().unwrap()),
+            other => panic!("expected success, got {other:?}"),
+        }
     }
 
     #[test]
