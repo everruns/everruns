@@ -312,17 +312,19 @@ fn build_schedule_target_input(app: &App, channel: &AppChannel) -> Value {
 }
 
 /// Metadata stamped onto the user message that an app channel injects into a
-/// session. The `_app_id` / `app_channel_id` / `app_channel_type` keys mirror
-/// the convention used by the AG-UI (`crates/server/src/api/ag_ui.rs`) and
-/// Slack (`crates/server/src/api/slack_events.rs`) ingress paths so all three
-/// channel kinds expose the same shape to message-metadata consumers.
+/// session. `_app_id` is the canonical "system metadata" key shared with the
+/// AG-UI (`crates/server/src/api/ag_ui.rs`) and Slack
+/// (`crates/server/src/api/slack_events.rs`) ingress paths; the rest of the
+/// keys (`app_channel_id`, `app_channel_type`, `source`) are specific to the
+/// schedule / webhook / A2A invocation channels documented in
+/// `specs/app-invocation-channels.md` and are not emitted by AG-UI or Slack.
 ///
-/// `_app_id` (leading underscore) is the canonical "system metadata" key —
-/// app-channel image authorization in `is_ag_ui_app_image` and the matching
-/// system-id assertions in the channel ingress unit tests both read it. The
-/// audit-log payload emitted by `emit_app_invocation_audit_event` uses a bare
-/// `app_id` field for human-readable filtering; that is intentional and lives
-/// on a separate audit struct, not on this metadata bag.
+/// `_app_id` is the system-id consumed by `is_ag_ui_app_image` for AG-UI
+/// image authorization and by the matching system-id assertions in the
+/// channel ingress unit tests. The audit-log payload emitted by
+/// `emit_app_invocation_audit_event` uses a bare `app_id` field on its own
+/// `AuditEvent` struct for human-readable filtering; that is intentional and
+/// lives separately from this metadata bag.
 fn app_invocation_message_metadata(
     app: &App,
     channel: &AppChannel,
