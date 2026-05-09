@@ -543,6 +543,23 @@ async fn sync_all_schedule_bindings(ctx: &Ctx, app: &App) -> Result<(), CommandE
     Ok(())
 }
 
+async fn require_app_channel_before_publish(
+    ctx: &Ctx,
+    app_internal_id: Uuid,
+) -> Result<(), CommandError> {
+    let has_channels = ctx
+        .db
+        .app_has_channels(app_internal_id)
+        .await
+        .map_err(classify_anyhow)?;
+    if !has_channels {
+        return Err(CommandError::bad_request(
+            "App must have at least one channel before publishing",
+        ));
+    }
+    Ok(())
+}
+
 async fn remove_schedule_binding_for_channel(
     ctx: &Ctx,
     channel_row: &crate::storage::models::AppChannelRow,
@@ -1351,6 +1368,11 @@ impl Command for UpdateAppCmd {
                 "Archived or deleted apps cannot be edited",
             ));
         }
+        if matches!(req.status, Some(AppStatus::Published | AppStatus::Draft)) {
+            return Err(CommandError::bad_request(
+                "Use publish/unpublish endpoints to change app publish status",
+            ));
+        }
 
         // Validate optional references
         let harness_id = if let Some(hid) = req.harness_id {
@@ -1676,6 +1698,12 @@ impl Command for PublishApp {
             .await
             .map_err(classify_anyhow)?
             .ok_or_else(|| CommandError::not_found("App"))?;
+        if existing.status != "draft" {
+            return Err(CommandError::bad_request(
+                "App must be draft before publishing",
+            ));
+        }
+        require_app_channel_before_publish(ctx, existing.id).await?;
 
         let input = UpdateApp {
             status: Some("published".to_string()),

@@ -51,6 +51,23 @@ impl Database {
         Ok(rows)
     }
 
+    pub async fn app_has_channels(&self, app_id: Uuid) -> Result<bool> {
+        let exists = sqlx::query_scalar::<_, bool>(
+            r#"
+            SELECT EXISTS (
+                SELECT 1
+                FROM app_channels
+                WHERE app_id = $1
+            )
+            "#,
+        )
+        .bind(app_id)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(exists)
+    }
+
     pub async fn get_app_channel_by_public_id(
         &self,
         public_id: &str,
