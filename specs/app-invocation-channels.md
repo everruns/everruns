@@ -68,6 +68,26 @@ Per-invocation sessions add:
 
 - `app_invocation:{uuid}`
 
+## Session Ownership
+
+App-channel ingress (`webhook`, `schedule`, `ag_ui`, `slack`, A2A) typically runs as `Caller::internal(org)`, whose default principal is the system principal. Without an override, sessions created from an app channel would be owned by `system-owner`, and `shared_session` reuse — which keys on `app.owner_principal_id` — would never match.
+
+To make `shared_session` work and to keep ownership accountable, app-channel sessions adopt the App row's owner instead of the caller's:
+
+- `session.owner_principal_id = app.owner_principal_id`
+- `session.resolved_owner_user_id = app.resolved_owner_user_id`
+
+This invariant has security and routing consequences:
+
+- `find_app_session_by_tags_and_owner` keys the lookup on `org_id` + `app_id` + `owner_principal_id` and requires the candidate session's `tags` to **contain** every routing tag passed in (Postgres `tags @> $tags`, not strict equality). Reuse therefore never crosses orgs, never hops apps, and never adopts a session owned by a different principal, even if the surface tags overlap. App-channel sessions also carry the internal `__internal:app_invocation` routing tag so unrelated user sessions cannot satisfy the lookup.
+- The internal-only tag prefixes — `__internal:`, `app:`, `app_channel:`, `slack:app:`, and `ag_ui:app:` — are reserved at session create/update time. `SessionService::create` and `update` reject them from non-internal callers (see the matching error in `crates/server/src/domains/sessions/service.rs`), so an org member cannot pre-seed a personal session that an app-channel invocation would later adopt or attach to a sibling app's budget.
+- Per-invocation sessions inherit the same owner override even though they are not subject to reuse — this keeps audit, budgets, and policy evaluation consistent across both `InvocationSessionMode` values.
+
+Cross-references:
+
+- `SessionService::create_from_app` in `crates/server/src/domains/sessions/service.rs` for the override implementation.
+- `specs/threat-model.md` TM-AUTHZ-006 (anonymous webhook reaching draft/disabled channels), TM-AUTHZ-009 (tag spoofing into app budgets), and TM-A2A-007 (cross-org session reuse via tag spoofing).
+
 ## Message Templates
 
 Both invocation channels store a required `message` string. It is rendered at trigger time with `{{path.to.value}}` interpolation.
