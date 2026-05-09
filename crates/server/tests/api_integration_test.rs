@@ -4037,6 +4037,122 @@ async fn test_create_app_schedule_and_webhook_channels_persist_in_postgres() {
 }
 
 #[tokio::test]
+async fn test_publish_app_without_channels_returns_bad_request() {
+    let server = TestServer::new().await;
+
+    let app: Value = server
+        .post(
+            "/v1/apps",
+            json!({
+                "name": "Channel-less App",
+                "harness_id": server.seed_generic_harness_id
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let response: Value = server
+        .post(
+            &format!("/v1/apps/{}/publish", app["id"].as_str().unwrap()),
+            json!({}),
+        )
+        .await
+        .assert_status(StatusCode::BAD_REQUEST)
+        .json();
+
+    assert!(
+        response["error"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("at least one channel"),
+        "unexpected response: {response:?}"
+    );
+}
+
+#[tokio::test]
+async fn test_update_app_to_published_returns_bad_request() {
+    let server = TestServer::new().await;
+
+    let app: Value = server
+        .post(
+            "/v1/apps",
+            json!({
+                "name": "Patch Published App",
+                "harness_id": server.seed_generic_harness_id
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    let response: Value = server
+        .patch(
+            &format!("/v1/apps/{}", app["id"].as_str().unwrap()),
+            json!({ "status": "published" }),
+        )
+        .await
+        .assert_status(StatusCode::BAD_REQUEST)
+        .json();
+
+    assert!(
+        response["error"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("publish/unpublish endpoints"),
+        "unexpected response: {response:?}"
+    );
+}
+
+#[tokio::test]
+async fn test_publish_archived_app_returns_bad_request() {
+    let server = TestServer::new().await;
+
+    let app: Value = server
+        .post(
+            "/v1/apps",
+            json!({
+                "name": "Archived Publish App",
+                "harness_id": server.seed_generic_harness_id,
+                "channel_type": "webhook",
+                "channel_config": {
+                    "token": "secret-token",
+                    "session_mode": "session_per_invocation",
+                    "message": "check webhook"
+                }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+
+    server
+        .patch(
+            &format!("/v1/apps/{}", app["id"].as_str().unwrap()),
+            json!({ "status": "archived" }),
+        )
+        .await
+        .assert_status(StatusCode::OK);
+
+    let response: Value = server
+        .post(
+            &format!("/v1/apps/{}/publish", app["id"].as_str().unwrap()),
+            json!({}),
+        )
+        .await
+        .assert_status(StatusCode::BAD_REQUEST)
+        .json();
+
+    assert!(
+        response["error"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("draft before publishing"),
+        "unexpected response: {response:?}"
+    );
+}
+
+#[tokio::test]
 async fn test_update_app_missing_harness_returns_not_found() {
     let server = TestServer::new().await;
 

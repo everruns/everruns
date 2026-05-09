@@ -2673,6 +2673,10 @@ impl StorageBackend {
         dispatch!(self, list_app_channels, app_id)
     }
 
+    pub async fn app_has_channels(&self, app_id: Uuid) -> Result<bool> {
+        dispatch!(self, app_has_channels, app_id)
+    }
+
     pub async fn get_app_channel_by_public_id(
         &self,
         public_id: &str,
