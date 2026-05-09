@@ -2,6 +2,7 @@
 
 use super::super::models::*;
 use super::InMemoryDatabase;
+use crate::errors::BadRequestError;
 use anyhow::{Result, bail};
 use uuid::Uuid;
 
@@ -117,13 +118,14 @@ impl InMemoryDatabase {
         let now = Self::now();
         let mut stores = self.memory_stores.write();
 
-        let target_id = stores
+        let target = stores
             .values()
-            .find(|s| s.org_id == org_id && s.public_id == public_id)
-            .map(|s| s.id);
-        let Some(target_id) = target_id else {
+            .find(|s| s.org_id == org_id && s.public_id == public_id);
+        let Some(target) = target else {
             return Ok(None);
         };
+        let target_id = target.id;
+        let target_is_default = target.is_default;
 
         // Validate case-insensitive name uniqueness within the org. The
         // Postgres backend gets this for free from the unique partial index;
@@ -135,6 +137,15 @@ impl InMemoryDatabase {
             if collision {
                 bail!("memory store name already exists");
             }
+        }
+
+        if matches!(input.is_default, Some(false)) && target_is_default {
+            return Err(BadRequestError::new(
+                "Cannot unset is_default on the only default memory store. \
+                 Promote another store instead — setting is_default=true on \
+                 it will demote this one atomically.",
+            )
+            .into());
         }
 
         // Promote: demote the previous default first.

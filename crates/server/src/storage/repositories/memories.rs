@@ -3,6 +3,7 @@
 
 use super::super::models::*;
 use super::{Database, build_search_sql};
+use crate::errors::BadRequestError;
 use anyhow::Result;
 use uuid::Uuid;
 
@@ -147,6 +148,21 @@ impl Database {
             tx.rollback().await?;
             return Ok(None);
         };
+
+        // Demoting this row when it is currently default would leave the org
+        // without a default store in races where this row became default after
+        // command-layer prevalidation. Use a typed error so API handlers map
+        // it to 400 Bad Request via `domains::common::classify_anyhow`
+        // instead of falling through to a generic 500.
+        if matches!(input.is_default, Some(false)) && existing.is_default {
+            tx.rollback().await?;
+            return Err(BadRequestError::new(
+                "Cannot unset is_default on the only default memory store. \
+                 Promote another store instead — setting is_default=true on \
+                 it will demote this one atomically.",
+            )
+            .into());
+        }
 
         // Promote: demote any other default in this org first.
         if matches!(input.is_default, Some(true)) && !existing.is_default {
