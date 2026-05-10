@@ -369,6 +369,13 @@ able to drain an app's quota or LLM budget while it is unattended.
   The same primitive backs the AG-UI channel; namespace strings (`agui`
   vs `a2a`) keep Valkey keys disjoint and separate `ChannelRateLimiter`
   instances keep in-memory buckets disjoint.
+- Scope: A2A passes `app_id:channel_id` (not just `app_id`) so an app that
+  exposes multiple A2A channels with different `rate_limit_per_minute`
+  settings keeps independent buckets. Sharing an `app_id`-only key would
+  let an attacker alternate between channels with different limits to
+  flush the cached limiter (replace-on-limit-change) and bypass the
+  stricter cap. AG-UI keeps the `app_id` scope because there is at most
+  one AG-UI channel per app.
 - 429 response: HTTP 429 with `ErrorResponse` body (`{"error": "A2A rate
   limit exceeded for this app channel"}`); Agent Card discovery is
   intentionally not rate-limited.

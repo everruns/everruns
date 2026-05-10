@@ -288,9 +288,16 @@ async fn authenticate_request(
         && limit > 0
     {
         let client_ip = extract_client_ip_from_parts(peer_addr, headers);
+        // Scope must include the channel id — apps can expose multiple A2A
+        // channels with independent `rate_limit_per_minute` settings, and
+        // sharing a single `app_id`-keyed bucket would let an attacker
+        // alternate between channels with different limits to flush the
+        // cached limiter and bypass throttling (TM-A2A-013, Copilot review
+        // on PR #1800).
+        let scope = format!("{}:{}", app.public_id, channel_id_typed);
         if state
             .rate_limiter
-            .check(&app.public_id.to_string(), client_ip, limit)
+            .check(&scope, client_ip, limit)
             .await
             .is_err()
         {

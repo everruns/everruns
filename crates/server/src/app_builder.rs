@@ -433,9 +433,11 @@ impl ServerAppBuilder {
             "Authentication configured"
         );
 
-        // Reused later by the AG-UI per-app rate limiter so distributed
-        // deployments share counters across instances.
-        let valkey_for_agui = valkey_client.clone();
+        // Reused later by the per-channel public-ingress rate limiters
+        // (AG-UI, A2A) so distributed deployments share counters across
+        // instances. Each kind gets its own `ChannelRateLimiter` keyed on a
+        // distinct namespace.
+        let valkey_for_channel_rate_limits = valkey_client.clone();
 
         let auth_backend = match self.auth_factory {
             Some(factory) => factory(db.clone(), platform_definition.clone()),
@@ -878,13 +880,13 @@ impl ServerAppBuilder {
             notifications_enabled,
             event_delivery.clone(),
         );
-        let ag_ui_rate_limiter = match valkey_for_agui.clone() {
+        let ag_ui_rate_limiter = match valkey_for_channel_rate_limits.clone() {
             Some(client) => {
                 api::channel_rate_limit::ChannelRateLimiter::with_valkey("agui", client)
             }
             None => api::channel_rate_limit::ChannelRateLimiter::in_memory("agui"),
         };
-        let a2a_rate_limiter = match valkey_for_agui.clone() {
+        let a2a_rate_limiter = match valkey_for_channel_rate_limits.clone() {
             Some(client) => api::channel_rate_limit::ChannelRateLimiter::with_valkey("a2a", client),
             None => api::channel_rate_limit::ChannelRateLimiter::in_memory("a2a"),
         };

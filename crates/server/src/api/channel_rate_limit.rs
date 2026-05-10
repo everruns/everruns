@@ -6,14 +6,17 @@
 // across requests.
 // Decision: Two backends mirror `auth::rate_limit::ApiRateLimiter` —
 //   in-memory (governor) for single-instance/dev, Valkey for distributed.
-// Decision: In-memory limiters are stored per `app_id` and remember the
+// Decision: In-memory limiters are stored per opaque `scope` (caller
+//   composes it: AG-UI passes the app id; A2A passes `app_id:channel_id`
+//   so multiple A2A channels on the same app keep independent buckets and
+//   cannot reset each other's state by alternating limits) and remember the
 //   active `limit` next to the limiter. When the configured limit changes
 //   we replace the entry in place rather than inserting a new bucket,
 //   which previously allowed an attacker who could cycle
 //   `rate_limit_per_minute` to grow the cache without bound (TM-DOS-010,
 //   TM-A2A-013).
 // Decision: Channel kind is captured as a `namespace` so distinct channels
-//   land in distinct Valkey keys (`rl:{namespace}:{app_id}:{ip}`) and never
+//   land in distinct Valkey keys (`rl:{namespace}:{scope}:{ip}`) and never
 //   share buckets, even when both are enabled on the same app.
 
 use std::collections::HashMap;
@@ -72,9 +75,12 @@ impl ChannelRateLimiter {
         }
     }
 
-    /// Check the per-app, per-IP limit. `limit` is requests per minute. A
-    /// `limit` of zero is treated as "no per-app limit" and always allows.
-    pub async fn check(&self, app_id: &str, ip: IpAddr, limit: u32) -> Result<(), RateLimitError> {
+    /// Check the per-scope, per-IP limit. `scope` is an opaque caller-chosen
+    /// identifier — typically the app public id for kinds with one channel
+    /// per app (AG-UI), or `app_id:channel_id` for kinds that allow multiple
+    /// channels per app (A2A). `limit` is requests per minute; a `limit` of
+    /// zero is treated as "no per-channel limit" and always allows.
+    pub async fn check(&self, scope: &str, ip: IpAddr, limit: u32) -> Result<(), RateLimitError> {
         if limit == 0 {
             return Ok(());
         }
@@ -83,20 +89,20 @@ impl ChannelRateLimiter {
                 // parking_lot::RwLock does not poison; this stays panic-free
                 // even if a writer panics holding the lock.
                 let limiter = {
-                    if let Some(existing) = cache.read().get(app_id)
+                    if let Some(existing) = cache.read().get(scope)
                         && existing.limit == limit
                     {
                         existing.limiter.clone()
                     } else {
                         let mut write = cache.write();
-                        match write.get(app_id) {
+                        match write.get(scope) {
                             Some(existing) if existing.limit == limit => existing.limiter.clone(),
                             _ => {
                                 let limiter = Arc::new(RateLimiter::keyed(Quota::per_minute(
                                     NonZeroU32::new(limit).expect("limit > 0 checked above"),
                                 )));
                                 write.insert(
-                                    app_id.to_string(),
+                                    scope.to_string(),
                                     CachedLimiter {
                                         limit,
                                         limiter: limiter.clone(),
@@ -112,26 +118,26 @@ impl ChannelRateLimiter {
                     Err(_) => {
                         tracing::warn!(
                             namespace = %self.namespace,
-                            app_id = %app_id,
+                            scope = %scope,
                             ip = %ip,
                             limit,
-                            "Per-app channel rate limit exceeded (in-memory)"
+                            "Per-channel rate limit exceeded (in-memory)"
                         );
                         Err(RateLimitError)
                     }
                 }
             }
             Backend::Valkey(client) => {
-                let key = format!("rl:{}:{app_id}:{ip}", self.namespace);
+                let key = format!("rl:{}:{scope}:{ip}", self.namespace);
                 match client.check_rate_limit(&key, limit, WINDOW_SECS).await {
                     Ok(_remaining) => Ok(()),
                     Err(()) => {
                         tracing::warn!(
                             namespace = %self.namespace,
-                            app_id = %app_id,
+                            scope = %scope,
                             ip = %ip,
                             limit,
-                            "Per-app channel rate limit exceeded (valkey)"
+                            "Per-channel rate limit exceeded (valkey)"
                         );
                         Err(RateLimitError)
                     }
