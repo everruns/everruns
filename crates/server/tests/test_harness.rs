@@ -459,6 +459,7 @@ impl TestServer {
             feature_flags.notifications,
             event_delivery.clone(),
             sse_tracker.clone(),
+            api::channel_rate_limit::ChannelRateLimiter::in_memory("a2a"),
         );
         let ag_ui_state = api::ag_ui::AgUiState::new(
             db.clone(),
@@ -467,7 +468,7 @@ impl TestServer {
             feature_flags.notifications,
             event_delivery.clone(),
             sse_tracker.clone(),
-            api::ag_ui_rate_limit::AgUiRateLimiter::in_memory(),
+            api::channel_rate_limit::ChannelRateLimiter::in_memory("agui"),
         );
         let mcp_endpoint_state = api::mcp_endpoint::AppState::new(
             db.clone(),

@@ -64,7 +64,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::api::ag_ui_rate_limit::AgUiRateLimiter;
+use crate::api::channel_rate_limit::ChannelRateLimiter;
 use crate::api::common::ErrorResponse;
 use crate::api::images::{
     ImageUploadResponse, generate_thumbnail, is_valid_content_type, validate_image_bytes,
@@ -97,7 +97,7 @@ pub struct AgUiState {
     pub message_service: Arc<MessageService>,
     pub event_service: Arc<EventService>,
     pub sse_tracker: Arc<SseConnectionTracker>,
-    pub rate_limiter: AgUiRateLimiter,
+    pub rate_limiter: ChannelRateLimiter,
 }
 
 impl AgUiState {
@@ -108,7 +108,7 @@ impl AgUiState {
         notifications_enabled: bool,
         event_delivery: crate::event_delivery::EventDelivery,
         sse_tracker: Arc<SseConnectionTracker>,
-        rate_limiter: AgUiRateLimiter,
+        rate_limiter: ChannelRateLimiter,
     ) -> Self {
         Self {
             session_service: Arc::new(SessionService::new(db.clone())),

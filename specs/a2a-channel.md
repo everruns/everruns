@@ -66,6 +66,11 @@ pub struct A2aChannelConfig {
     pub agent_card_name: Option<String>,
     /// Optional human-readable description surfaced in the Agent Card.
     pub agent_card_description: Option<String>,
+    /// Optional per-IP rate limit applied to this app's A2A endpoint, in
+    /// requests per minute. `None` or `Some(0)` disables the per-channel
+    /// limit; the global API limit still applies. Mirrors
+    /// `AgUiChannelConfig::rate_limit_per_minute`.
+    pub rate_limit_per_minute: Option<u32>,
 }
 ```
 
@@ -344,7 +349,34 @@ Coverage required:
 7. Validation: empty text parts rejected; non-`message/send` methods
    rejected; malformed envelopes rejected.
 
+## Rate Limiting
+
+Per-channel rate limiting bounds unattended agent-to-agent traffic that the
+global API limit alone does not — a runaway counterparty agent should not be
+able to drain an app's quota or LLM budget while it is unattended.
+
+- Field: `A2aChannelConfig::rate_limit_per_minute: Option<u32>`. `None` or
+  `Some(0)` disables the per-channel cap; positive values cap requests
+  per minute, per source IP, per app.
+- Server validates the field at write time: cap at `1_000_000` to prevent a
+  typo from silently disabling the limiter.
+- The check runs **after** API key verification so an unauthenticated
+  caller cannot grow the limiter cache or learn whether a channel exists
+  from rate-limit signals.
+- Implementation: shared `ChannelRateLimiter` primitive
+  (`crates/server/src/api/channel_rate_limit.rs`) with two backends —
+  in-memory (governor) for single-instance/dev, Valkey for distributed.
+  The same primitive backs the AG-UI channel; namespace strings (`agui`
+  vs `a2a`) keep Valkey keys disjoint and separate `ChannelRateLimiter`
+  instances keep in-memory buckets disjoint.
+- 429 response: HTTP 429 with `ErrorResponse` body (`{"error": "A2A rate
+  limit exceeded for this app channel"}`); Agent Card discovery is
+  intentionally not rate-limited.
+
+Threat coverage: TM-A2A-013 (DoS via runaway A2A client) is mitigated by
+this control. See `specs/threat-model.md` for the full entry.
+
 ## Threat Model
 
 See `specs/threat-model.md` (TM-A2A-* category) for inbound-auth, key
-storage, replay, and method-gate threats.
+storage, replay, method-gate, and runaway-traffic threats.

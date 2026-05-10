@@ -16,8 +16,8 @@ use std::convert::Infallible;
 use std::sync::Arc;
 
 use axum::{
-    Json, Router,
-    extract::{Path, State},
+    Extension, Json, Router,
+    extract::{ConnectInfo, Path, State},
     http::{HeaderMap, StatusCode},
     response::{
         IntoResponse, Response,
@@ -31,8 +31,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
+use crate::api::channel_rate_limit::ChannelRateLimiter;
 use crate::api::common::ErrorResponse;
 use crate::api::sse::SseConnectionTracker;
+use crate::auth::rate_limit::extract_client_ip_from_parts;
 use crate::domains::apps::{
     A2aInvocationRequest, hash_a2a_api_key, invoke_a2a_app_channel,
     invoke_a2a_app_channel_with_hook, queries as app_queries,
@@ -62,6 +64,7 @@ pub struct AppA2aState {
     pub message_service: Arc<MessageService>,
     pub event_delivery: EventDelivery,
     pub sse_tracker: Arc<SseConnectionTracker>,
+    pub rate_limiter: ChannelRateLimiter,
 }
 
 impl AppA2aState {
@@ -72,6 +75,7 @@ impl AppA2aState {
         notifications_enabled: bool,
         event_delivery: EventDelivery,
         sse_tracker: Arc<SseConnectionTracker>,
+        rate_limiter: ChannelRateLimiter,
     ) -> Self {
         Self {
             session_service: Arc::new(SessionService::new(db.clone())),
@@ -85,6 +89,7 @@ impl AppA2aState {
             encryption,
             event_delivery,
             sse_tracker,
+            rate_limiter,
         }
     }
 }
@@ -160,7 +165,7 @@ fn rpc_error(id: Value, code: i32, message: impl Into<String>) -> Json<JsonRpcRe
         (status = 401, description = "Missing or invalid API key", body = ErrorResponse),
         (status = 403, description = "App is not published or channel disabled", body = ErrorResponse),
         (status = 404, description = "App or channel not found", body = ErrorResponse),
-        (status = 429, description = "SSE connection limit reached for the org/session", body = ErrorResponse),
+        (status = 429, description = "Per-channel A2A rate limit exceeded, or SSE connection limit reached for the org/session", body = ErrorResponse),
     ),
     tag = "apps"
 )]
@@ -168,6 +173,7 @@ pub async fn invoke_a2a(
     State(state): State<AppA2aState>,
     Path((app_id, channel_id)): Path<(String, String)>,
     req_id: Option<axum::Extension<RequestId>>,
+    connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
     headers: HeaderMap,
     Json(envelope): Json<Value>,
 ) -> Response {
@@ -185,7 +191,8 @@ pub async fn invoke_a2a(
     };
     let rpc_id = parsed.id.clone().unwrap_or(Value::Null);
 
-    let auth = match authenticate_request(&state, &app_id, &channel_id, &headers).await {
+    let peer_addr = connect_info.map(|Extension(ConnectInfo(addr))| addr);
+    let auth = match authenticate_request(&state, &app_id, &channel_id, &headers, peer_addr).await {
         Ok(auth) => auth,
         Err(err) => return err.into_response(),
     };
@@ -232,6 +239,7 @@ async fn authenticate_request(
     app_id: &str,
     channel_id: &str,
     headers: &HeaderMap,
+    peer_addr: Option<std::net::SocketAddr>,
 ) -> Result<AuthorizedA2a, (StatusCode, Json<ErrorResponse>)> {
     let app = app_queries::get_by_public_id_unscoped(&state.db, state.encryption.as_ref(), app_id)
         .await
@@ -267,6 +275,29 @@ async fn authenticate_request(
     let provided_hash = hash_a2a_api_key(&provided_key);
     if !constant_time_eq(provided_hash.as_bytes(), config.api_key_hash.as_bytes()) {
         return Err(unauthorized());
+    }
+
+    // THREAT[TM-A2A-013]: Unattended A2A traffic must respect a configurable
+    // per-app, per-IP cap in addition to the global API limit. App owners
+    // tune `rate_limit_per_minute` on the A2A channel to bound LLM/budget
+    // burn from a runaway counterparty agent. The check runs after the
+    // API key comparison so an unauthenticated caller cannot grow the
+    // limiter cache or learn whether a channel exists from rate-limit
+    // signals.
+    if let Some(limit) = config.rate_limit_per_minute
+        && limit > 0
+    {
+        let client_ip = extract_client_ip_from_parts(peer_addr, headers);
+        if state
+            .rate_limiter
+            .check(&app.public_id.to_string(), client_ip, limit)
+            .await
+            .is_err()
+        {
+            return Err(too_many_requests(
+                "A2A rate limit exceeded for this app channel",
+            ));
+        }
     }
 
     Ok(AuthorizedA2a {
@@ -1061,6 +1092,15 @@ fn not_found() -> (StatusCode, Json<ErrorResponse>) {
         StatusCode::NOT_FOUND,
         Json(ErrorResponse {
             error: "App channel not found".to_string(),
+        }),
+    )
+}
+
+fn too_many_requests(message: &str) -> (StatusCode, Json<ErrorResponse>) {
+    (
+        StatusCode::TOO_MANY_REQUESTS,
+        Json(ErrorResponse {
+            error: message.to_string(),
         }),
     )
 }
