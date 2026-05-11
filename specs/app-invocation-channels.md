@@ -13,6 +13,11 @@ This spec is intentionally separate from:
 
 - session-local scheduling concerns
 - `specs/scheduled-tasks.md`, which defines the generic durable scheduler
+- `specs/app-endpoint-auth.md`, which defines the shared inbound authentication
+  framework that webhook and A2A channels opt into when they need
+  enterprise-grade schemes (OIDC/JWT, OAuth2 introspection, HTTP Basic, mTLS).
+  Webhook channels with no explicit auth policy keep using the channel-local
+  `token` field described below.
 
 The durable scheduler is infrastructure. App invocation channels are one product consumer of that infrastructure.
 

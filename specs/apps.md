@@ -6,6 +6,8 @@ An App is a deployable unit that binds a Harness and optional Agent to one or mo
 
 See [app-invocation-channels.md](app-invocation-channels.md) for the dedicated spec covering schedule/webhook behavior, session routing, templates, and durable bindings.
 
+Authentication for App-published endpoints (AG-UI, A2A, webhook, and future channels) is described by the shared framework in [app-endpoint-auth.md](app-endpoint-auth.md). Channels keep their existing legacy auth fields for backward compatibility and adopt the shared model when an explicit policy is configured.
+
 ## Concepts
 
 ### App
