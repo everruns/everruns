@@ -1311,10 +1311,10 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
             sessionMode={config?.session_mode ?? "shared_session"}
             message={config?.message ?? ""}
             appName={app.name}
-            appDescription={app.description}
             agentCardName={config?.agent_card_name}
             agentCardDescription={config?.agent_card_description}
             isPublished={isPublished}
+            channelEnabled={channel.enabled}
             onConfigure={() => startEditChannel(channel)}
             onRotateKey={isReadOnly ? undefined : () => rotateA2aMutation.mutate(channel.id)}
             isRotating={rotateA2aMutation.isPending && rotatingA2aChannelId === channel.id}

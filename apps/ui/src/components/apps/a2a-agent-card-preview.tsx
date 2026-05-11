@@ -3,7 +3,31 @@ import { getInvocationSessionModeDisplayName } from "@/lib/app-channels";
 import type { InvocationSessionMode } from "@/lib/api/types";
 import { Bot, FileJson } from "lucide-react";
 
+type JsonObject = Record<string, unknown>;
+
+export interface A2aAgentCard {
+  [key: string]: unknown;
+  name: string;
+  description?: string;
+  url: string;
+  protocolVersion: string;
+  version?: string;
+  preferredTransport: string;
+  capabilities: Record<string, unknown>;
+  defaultInputModes?: string[];
+  defaultOutputModes?: string[];
+  skills?: Array<{
+    id?: string;
+    name?: string;
+    description?: string;
+    tags?: string[];
+  }>;
+  securitySchemes?: JsonObject;
+  security?: unknown;
+}
+
 interface A2aAgentCardPreviewProps {
+  card?: A2aAgentCard;
   appName: string;
   appDescription?: string | null;
   endpointUrl?: string;
@@ -15,6 +39,29 @@ interface A2aAgentCardPreviewProps {
 export const A2A_AGENT_CARD_PROTOCOL_VERSION = "0.3.0";
 export const A2A_AGENT_CARD_VERSION = "0.1";
 
+function redactSecretLikeValues(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(redactSecretLikeValues);
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as JsonObject)
+        .filter(([key]) => key !== "api_key" && key !== "api_key_hash" && key !== "apiKeyHash")
+        .map(([key, nested]) => [key, redactSecretLikeValues(nested)]),
+    );
+  }
+  if (typeof value === "string") {
+    if (/^evra2a_[a-f0-9]{16,}$/i.test(value) || /^[a-f0-9]{64}$/i.test(value)) {
+      return "[redacted]";
+    }
+  }
+  return value;
+}
+
+export function sanitizeA2aAgentCardForDisplay(card: A2aAgentCard): A2aAgentCard {
+  return redactSecretLikeValues(card) as A2aAgentCard;
+}
+
 export function buildA2aAgentCardPreview({
   appName,
   appDescription,
@@ -22,7 +69,7 @@ export function buildA2aAgentCardPreview({
   agentCardName,
   agentCardDescription,
   sessionMode,
-}: A2aAgentCardPreviewProps) {
+}: Omit<A2aAgentCardPreviewProps, "card">): A2aAgentCard {
   const description = agentCardDescription?.trim() || appDescription?.trim() || "";
 
   return {
@@ -55,8 +102,10 @@ export function buildA2aAgentCardPreview({
 }
 
 export function A2aAgentCardPreview(props: A2aAgentCardPreviewProps) {
-  const card = buildA2aAgentCardPreview(props);
+  const card = sanitizeA2aAgentCardForDisplay(props.card ?? buildA2aAgentCardPreview(props));
   const previewJson = JSON.stringify(card, null, 2);
+  const capabilityEntries = Object.entries(card.capabilities ?? {});
+  const securitySchemeNames = Object.keys(card.securitySchemes ?? {});
 
   return (
     <div className="rounded-md border bg-muted/20 p-3">
@@ -77,14 +126,77 @@ export function A2aAgentCardPreview(props: A2aAgentCardPreviewProps) {
 
       <div className="mt-3 grid gap-3 text-sm md:grid-cols-2">
         <div>
+          <p className="font-medium">Name</p>
+          <p className="text-muted-foreground">{card.name}</p>
+        </div>
+        <div>
+          <p className="font-medium">Description</p>
+          <p className="text-muted-foreground">{card.description || "Not set"}</p>
+        </div>
+        <div>
+          <p className="font-medium">Protocol</p>
+          <p className="text-muted-foreground">{card.protocolVersion}</p>
+        </div>
+        <div>
+          <p className="font-medium">Transport</p>
+          <p className="text-muted-foreground">{card.preferredTransport}</p>
+        </div>
+        <div>
+          <p className="font-medium">Authentication</p>
+          <p className="text-muted-foreground">
+            {securitySchemeNames.length ? securitySchemeNames.join(", ") : "Not advertised"}
+          </p>
+        </div>
+        <div>
           <p className="font-medium">Session mode</p>
           <p className="text-muted-foreground">
             {getInvocationSessionModeDisplayName(props.sessionMode)}
           </p>
         </div>
-        <div>
-          <p className="font-medium">Authentication</p>
-          <p className="text-muted-foreground">Bearer API key</p>
+      </div>
+
+      <div className="mt-3">
+        <p className="text-sm font-medium">Capabilities</p>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {capabilityEntries.length ? (
+            capabilityEntries.map(([key, value]) => (
+              <Badge key={key} variant={value ? "default" : "secondary"}>
+                {key}: {String(value)}
+              </Badge>
+            ))
+          ) : (
+            <p className="text-sm text-muted-foreground">None advertised</p>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-3">
+        <p className="text-sm font-medium">Skills</p>
+        <div className="mt-2 space-y-2">
+          {card.skills?.length ? (
+            card.skills.map((skill, index) => (
+              <div key={`${skill.id ?? "skill"}-${index}`} className="rounded-md border p-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-medium">{skill.name || skill.id || "Skill"}</span>
+                  {skill.id && <Badge variant="outline">{skill.id}</Badge>}
+                </div>
+                {skill.description && (
+                  <p className="mt-1 text-sm text-muted-foreground">{skill.description}</p>
+                )}
+                {!!skill.tags?.length && (
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {skill.tags.map((tag) => (
+                      <Badge key={tag} variant="secondary">
+                        {tag}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))
+          ) : (
+            <p className="text-sm text-muted-foreground">None advertised</p>
+          )}
         </div>
       </div>
 

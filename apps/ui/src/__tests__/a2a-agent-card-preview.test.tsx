@@ -48,6 +48,35 @@ describe("A2aAgentCardPreview", () => {
     expect(JSON.stringify(card)).not.toContain("secret");
   });
 
+  it("redacts secret-shaped fields before rendering", () => {
+    render(
+      <A2aAgentCardPreview
+        appName="Inbox Triage"
+        sessionMode="shared_session"
+        card={{
+          name: "Inbox Triage",
+          description: "Reviews inbox items",
+          url: "https://example.com/a2a",
+          protocolVersion: A2A_AGENT_CARD_PROTOCOL_VERSION,
+          version: A2A_AGENT_CARD_VERSION,
+          preferredTransport: "JSONRPC",
+          capabilities: { streaming: false },
+          skills: [{ id: "default", name: "Inbox Triage" }],
+          securitySchemes: { apiKey: { type: "http", scheme: "bearer" } },
+          api_key: "evra2a_0123456789abcdef0123456789abcdef",
+          api_key_hash: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        }}
+      />,
+    );
+
+    const rendered = screen.getByLabelText("Agent Card JSON preview").textContent ?? "";
+    expect(rendered).toContain("apiKey");
+    expect(rendered).not.toContain("api_key");
+    expect(rendered).not.toContain("api_key_hash");
+    expect(rendered).not.toContain("0123456789abcdef0123456789abcdef");
+    expect(rendered).not.toContain("evra2a_0123456789abcdef");
+  });
+
   it("renders the inline JSON preview", () => {
     render(
       <A2aAgentCardPreview

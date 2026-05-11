@@ -1,7 +1,10 @@
+"use client";
+
+import { useCallback, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/ui/copy-button";
-import { A2aAgentCardPreview } from "@/components/apps/a2a-agent-card-preview";
+import { A2aAgentCard, A2aAgentCardPreview } from "@/components/apps/a2a-agent-card-preview";
 import { getInvocationSessionModeDisplayName } from "@/lib/app-channels";
 import type { InvocationSessionMode } from "@/lib/api/types";
 import { Bot, Globe, KeyRound, RefreshCw } from "lucide-react";
@@ -13,10 +16,10 @@ interface A2aSetupGuidanceProps {
   sessionMode: InvocationSessionMode;
   message: string;
   appName: string;
-  appDescription?: string | null;
   agentCardName?: string;
   agentCardDescription?: string;
   isPublished: boolean;
+  channelEnabled: boolean;
   onConfigure?: () => void;
   onRotateKey?: () => void;
   isRotating?: boolean;
@@ -29,14 +32,50 @@ export function A2aSetupGuidance({
   sessionMode,
   message,
   appName,
-  appDescription,
   agentCardName,
   agentCardDescription,
   isPublished,
+  channelEnabled,
   onConfigure,
   onRotateKey,
   isRotating,
 }: A2aSetupGuidanceProps) {
+  const [agentCard, setAgentCard] = useState<A2aAgentCard | null>(null);
+  const [agentCardError, setAgentCardError] = useState<string | null>(null);
+  const [agentCardLoading, setAgentCardLoading] = useState(false);
+  const canFetchAgentCard = isPublished && channelEnabled;
+
+  const fetchAgentCard = useCallback(async () => {
+    if (!canFetchAgentCard) return;
+    setAgentCardLoading(true);
+    setAgentCardError(null);
+    try {
+      const response = await fetch(agentCardUrl, {
+        headers: { Accept: "application/json" },
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      setAgentCard((await response.json()) as A2aAgentCard);
+    } catch (error) {
+      setAgentCard(null);
+      setAgentCardError(error instanceof Error ? error.message : "Unable to fetch Agent Card");
+    } finally {
+      setAgentCardLoading(false);
+    }
+  }, [agentCardUrl, canFetchAgentCard]);
+
+  useEffect(() => {
+    if (!canFetchAgentCard) {
+      setAgentCard(null);
+      setAgentCardError(null);
+      setAgentCardLoading(false);
+      return;
+    }
+    fetchAgentCard();
+  }, [canFetchAgentCard, fetchAgentCard]);
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
@@ -118,14 +157,40 @@ export function A2aSetupGuidance({
         </div>
       )}
 
-      <A2aAgentCardPreview
-        appName={appName}
-        appDescription={appDescription}
-        endpointUrl={endpointUrl}
-        agentCardName={agentCardName}
-        agentCardDescription={agentCardDescription}
-        sessionMode={sessionMode}
-      />
+      <div>
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <p className="text-sm font-medium">Discovered Agent Card</p>
+          {canFetchAgentCard && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={fetchAgentCard}
+              disabled={agentCardLoading}
+            >
+              <RefreshCw className="mr-1 h-3 w-3" />
+              {agentCardLoading ? "Refreshing" : "Refresh"}
+            </Button>
+          )}
+        </div>
+        {!canFetchAgentCard ? (
+          <div className="rounded-md border p-3 text-sm text-muted-foreground">
+            Publish the app and enable this channel to fetch the public Agent Card. Until then,
+            discovery returns 404.
+          </div>
+        ) : agentCard ? (
+          <A2aAgentCardPreview card={agentCard} appName={appName} sessionMode={sessionMode} />
+        ) : (
+          <div className="rounded-md border p-3 text-sm text-muted-foreground">
+            {agentCardLoading ? "Loading Agent Card..." : "Could not load Agent Card."}
+            {agentCardError && <span className="ml-1">({agentCardError})</span>}
+            <div className="mt-2 flex items-center gap-2 bg-muted p-2">
+              <code className="flex-1 truncate text-xs">{agentCardUrl}</code>
+              <CopyButton value={agentCardUrl} />
+            </div>
+          </div>
+        )}
+      </div>
 
       <div>
         <p className="text-sm font-medium">Invocation Message</p>
