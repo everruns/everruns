@@ -120,31 +120,6 @@ Need to run Everruns harnesses in-process? Use the embedded runtime crate (`ever
 
 A CLI (`everruns-cli`) is also available for scripting against a deployment — see [`specs/cli.md`](specs/cli.md).
 
-## Repository layout
-
-```
-everruns/
-├── apps/
-│   ├── ui/                 # Next.js dashboard
-│   └── docs/               # Astro Starlight documentation
-├── crates/
-│   ├── server/             # Control plane: HTTP API + gRPC + storage
-│   ├── worker/             # Durable worker (gRPC client)
-│   ├── core/               # Shared abstractions, atoms, capabilities
-│   ├── runtime/            # Public in-process embedded runtime
-│   ├── durable/            # PostgreSQL-backed durable engine
-│   ├── openai/ anthropic/ gemini/   # LLM provider drivers
-│   ├── openui/ a2ui/       # Generative UI renderers
-│   ├── cli/                # Everruns CLI
-│   └── ...                 # macros, config, container-sandbox, session-sqldb, internal-protocol
-├── integrations/           # Docker, Daytona, E2B, Deno, Browserless,
-│                           # Brave, DuckDuckGo, Parallel, Cursor, Sprites, Pi
-├── plugins/everruns-dev/   # Claude Code / Codex / Cursor plugin
-├── examples/               # docker-compose, sample agents, skills, notebooks
-├── specs/                  # ~100 feature specifications (durable memory)
-└── test_cases/             # Manual test cases
-```
-
 ## Documentation
 
 - [Getting Started](https://docs.everruns.com/getting-started/introduction/) — concepts and first agent
