@@ -307,6 +307,11 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
   const [editA2aAgentCardName, setEditA2aAgentCardName] = useState("");
   const [editA2aAgentCardDescription, setEditA2aAgentCardDescription] = useState("");
   const [editA2aRateLimitPerMinute, setEditA2aRateLimitPerMinute] = useState<string>("");
+  // Plaintext A2A signing secret. Empty string means "leave unchanged"
+  // (server-side merge preserves the existing value); any non-empty value
+  // is sent to set/rotate the secret. Reads only ever surface the
+  // `signing_secret_configured` flag, never the plaintext.
+  const [editA2aSigningSecret, setEditA2aSigningSecret] = useState<string>("");
 
   // A2A: plaintext API key shown exactly once (after create or rotate). Cleared
   // when the operator dismisses the dialog.
@@ -538,6 +543,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
     setEditA2aAgentCardName("");
     setEditA2aAgentCardDescription("");
     setEditA2aRateLimitPerMinute("");
+    setEditA2aSigningSecret("");
   };
 
   const buildChannelConfig = (channelType: ChannelType): ChannelConfigInput => {
@@ -574,12 +580,14 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
         };
       case "a2a": {
         // Edits only touch non-secret fields. The server preserves the
-        // existing `api_key_hash` and `api_key_prefix` across PATCH, so the
-        // client must NOT send them. Use the dedicated rotate-key button to
-        // issue a new key.
+        // existing `api_key_hash`, `api_key_prefix`, and `signing_secret`
+        // across PATCH, so the client must NOT send them unless it
+        // intends to rotate. Use the dedicated rotate-key button for the
+        // API key; setting `signing_secret` here (non-empty) updates it.
         const trimmedA2aRate = editA2aRateLimitPerMinute.trim();
         const parsedA2aRate =
           trimmedA2aRate === "" ? undefined : Number.parseInt(trimmedA2aRate, 10);
+        const newSigningSecret = editA2aSigningSecret.trim();
         return {
           session_mode: editInvocationSessionMode,
           message: editChannelMessage,
@@ -588,6 +596,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
           ...(parsedA2aRate !== undefined && Number.isFinite(parsedA2aRate) && parsedA2aRate > 0
             ? { rate_limit_per_minute: parsedA2aRate }
             : {}),
+          ...(newSigningSecret ? { signing_secret: newSigningSecret } : {}),
         } as unknown as A2aChannelConfig;
       }
       case "slack":
@@ -688,6 +697,10 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
           ? String(config.rate_limit_per_minute)
           : "",
       );
+      // Plaintext signing secret is never returned by the API; start the
+      // edit form with an empty input. Leaving it empty preserves any
+      // existing secret; typing a new value rotates / sets it.
+      setEditA2aSigningSecret("");
     }
     setEditingChannelId(channel.id);
   };
@@ -764,6 +777,13 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
 
   const renderChannelForm = (isSaving: boolean, formId: string = "default") => {
     const formChannelType = editingChannelId ? editingChannelType : addChannelType;
+    const editingChannel = editingChannelId
+      ? app?.channels?.find((c) => c.id === editingChannelId)
+      : undefined;
+    const editingA2aSigningConfigured =
+      editingChannel?.channel_type === "a2a" &&
+      ((editingChannel.channel_config as A2aChannelConfig | undefined)?.signing_secret_configured ??
+        false);
 
     return (
       <div className="space-y-4">
@@ -1193,6 +1213,32 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
               <p className="mt-1 text-xs text-muted-foreground">
                 Caps unattended A2A traffic per source IP. Leave empty (or set to 0) to disable —
                 the global API limit still applies.
+              </p>
+            </div>
+            <div>
+              <Label htmlFor={`a2a_signing_secret_${formId}`}>
+                Request-signing secret (optional)
+                {editingA2aSigningConfigured && (
+                  <span className="ml-2 text-xs text-muted-foreground">(configured)</span>
+                )}
+              </Label>
+              <Input
+                id={`a2a_signing_secret_${formId}`}
+                type="password"
+                autoComplete="new-password"
+                value={editA2aSigningSecret}
+                onChange={(e) => setEditA2aSigningSecret(e.target.value)}
+                placeholder={
+                  editingA2aSigningConfigured
+                    ? "Leave empty to keep the existing secret"
+                    : "Set to opt this channel into HMAC request signing"
+                }
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                When set, every A2A request must additionally carry{" "}
+                <code>X-Everruns-A2A-Timestamp</code> and <code>X-Everruns-A2A-Signature</code>{" "}
+                headers (HMAC-SHA256 over <code>v0:&#123;timestamp&#125;:&#123;body&#125;</code>). A
+                5-minute window plus signature dedup blocks captured-request replay.
               </p>
             </div>
           </>

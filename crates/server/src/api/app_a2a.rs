@@ -17,6 +17,7 @@ use std::sync::Arc;
 
 use axum::{
     Extension, Json, Router,
+    body::Bytes,
     extract::{ConnectInfo, Path, State},
     http::{HeaderMap, StatusCode},
     response::{
@@ -31,6 +32,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
+use crate::api::a2a_signing::{
+    A2A_SIGNATURE_HEADER, A2A_TIMESTAMP_HEADER, A2aReplayStore, SignatureCheckError,
+    now_unix_seconds, verify_signature,
+};
 use crate::api::channel_rate_limit::ChannelRateLimiter;
 use crate::api::common::ErrorResponse;
 use crate::api::sse::SseConnectionTracker;
@@ -65,9 +70,11 @@ pub struct AppA2aState {
     pub event_delivery: EventDelivery,
     pub sse_tracker: Arc<SseConnectionTracker>,
     pub rate_limiter: ChannelRateLimiter,
+    pub replay_store: A2aReplayStore,
 }
 
 impl AppA2aState {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         db: Arc<StorageBackend>,
         encryption: Option<Arc<EncryptionService>>,
@@ -76,6 +83,7 @@ impl AppA2aState {
         event_delivery: EventDelivery,
         sse_tracker: Arc<SseConnectionTracker>,
         rate_limiter: ChannelRateLimiter,
+        replay_store: A2aReplayStore,
     ) -> Self {
         Self {
             session_service: Arc::new(SessionService::new(db.clone())),
@@ -90,6 +98,7 @@ impl AppA2aState {
             event_delivery,
             sse_tracker,
             rate_limiter,
+            replay_store,
         }
     }
 }
@@ -175,10 +184,23 @@ pub async fn invoke_a2a(
     req_id: Option<axum::Extension<RequestId>>,
     connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
     headers: HeaderMap,
-    Json(envelope): Json<Value>,
+    body: Bytes,
 ) -> Response {
     // Parse JSON-RPC envelope first so we can return structured errors with the
-    // original `id` echoed back.
+    // original `id` echoed back. The raw body bytes are also kept around so
+    // the optional HMAC signing check (TM-A2A-010) can verify against the
+    // bytes the client actually sent — re-serializing through serde would
+    // change whitespace and break the signature.
+    let envelope: Value = match serde_json::from_slice(&body) {
+        Ok(value) => value,
+        Err(err) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                rpc_error(Value::Null, -32600, format!("Invalid Request: {err}")),
+            )
+                .into_response();
+        }
+    };
     let parsed: JsonRpcRequest = match serde_json::from_value(envelope) {
         Ok(parsed) => parsed,
         Err(err) => {
@@ -192,7 +214,9 @@ pub async fn invoke_a2a(
     let rpc_id = parsed.id.clone().unwrap_or(Value::Null);
 
     let peer_addr = connect_info.map(|Extension(ConnectInfo(addr))| addr);
-    let auth = match authenticate_request(&state, &app_id, &channel_id, &headers, peer_addr).await {
+    let auth = match authenticate_request(&state, &app_id, &channel_id, &headers, peer_addr, &body)
+        .await
+    {
         Ok(auth) => auth,
         Err(err) => return err.into_response(),
     };
@@ -240,6 +264,7 @@ async fn authenticate_request(
     channel_id: &str,
     headers: &HeaderMap,
     peer_addr: Option<std::net::SocketAddr>,
+    body: &[u8],
 ) -> Result<AuthorizedA2a, (StatusCode, Json<ErrorResponse>)> {
     let app = app_queries::get_by_public_id_unscoped(&state.db, state.encryption.as_ref(), app_id)
         .await
@@ -275,6 +300,58 @@ async fn authenticate_request(
     let provided_hash = hash_a2a_api_key(&provided_key);
     if !constant_time_eq(provided_hash.as_bytes(), config.api_key_hash.as_bytes()) {
         return Err(unauthorized());
+    }
+
+    // THREAT[TM-A2A-010]: Optional Slack-style HMAC signing — when the
+    // channel has a `signing_secret` configured, every request must carry
+    // a `(timestamp, signature)` header pair signed against the raw body
+    // with that secret. The 5-minute timestamp window plus the
+    // signature-keyed dedup store bound the replay surface to the window
+    // even if an `Authorization: Bearer` is captured. Channels without a
+    // `signing_secret` keep the existing API-key-only behavior.
+    //
+    // The check runs after the API key compare so unauthenticated callers
+    // cannot use signing failures to probe channel existence or grow the
+    // replay store. Missing-header / mismatch / replay all collapse to a
+    // single 401 response so a remote attacker cannot distinguish the
+    // failure modes.
+    if let Some(signing_secret) = config.signing_secret.as_deref()
+        && !signing_secret.is_empty()
+    {
+        let timestamp_header = headers
+            .get(A2A_TIMESTAMP_HEADER)
+            .and_then(|v| v.to_str().ok());
+        let signature_header = headers
+            .get(A2A_SIGNATURE_HEADER)
+            .and_then(|v| v.to_str().ok());
+        let signature = match verify_signature(
+            timestamp_header,
+            signature_header,
+            body,
+            signing_secret,
+            now_unix_seconds(),
+        ) {
+            Ok(sig) => sig,
+            Err(err) => {
+                tracing::warn!(
+                    app_id = %app.public_id,
+                    channel_id = %channel_id_typed,
+                    reason = err.as_log_reason(),
+                    "A2A signed-request verification failed"
+                );
+                return Err(unauthorized());
+            }
+        };
+        let scope = format!("{}:{}", app.public_id, channel_id_typed);
+        if !state.replay_store.try_record(&scope, &signature).await {
+            tracing::warn!(
+                app_id = %app.public_id,
+                channel_id = %channel_id_typed,
+                reason = SignatureCheckError::Replay.as_log_reason(),
+                "A2A signed-request replay rejected"
+            );
+            return Err(unauthorized());
+        }
     }
 
     // THREAT[TM-A2A-013]: Unattended A2A traffic must respect a configurable
@@ -1038,12 +1115,50 @@ pub async fn agent_card(
                 "tags": ["everruns", "a2a"],
             }
         ],
-        "securitySchemes": {
-            "apiKey": { "type": "http", "scheme": "bearer" }
-        },
-        "security": [{ "apiKey": [] }],
+        // Per A2A protocol the card advertises supported security schemes.
+        // The standard `apiKey` (HTTP bearer) scheme is always present;
+        // when the operator opts the channel into Slack-style HMAC signing
+        // (TM-A2A-010), the card additionally advertises a vendor extension
+        // (`everrunsHmacSignature`) so other agents that recognise it know
+        // to compute the timestamp + signature headers.
+        "securitySchemes": a2a_security_schemes(config.signing_secret.as_deref()),
+        "security": a2a_security_requirement(config.signing_secret.as_deref()),
     });
     Ok(Json(card))
+}
+
+fn a2a_security_schemes(signing_secret: Option<&str>) -> Value {
+    let mut schemes = json!({
+        "apiKey": { "type": "http", "scheme": "bearer" }
+    });
+    if signing_secret.is_some_and(|s| !s.is_empty()) {
+        let map = schemes.as_object_mut().expect("object literal");
+        map.insert(
+            "everrunsHmacSignature".to_string(),
+            json!({
+                // Custom vendor extension: protocol-clients that recognise
+                // it know to send the `X-Everruns-A2A-Timestamp` and
+                // `X-Everruns-A2A-Signature` headers in addition to the
+                // bearer API key.
+                "type": "apiKey",
+                "in": "header",
+                "name": "X-Everruns-A2A-Signature",
+                "description": "HMAC-SHA256 of `v0:{timestamp}:{body}` with the channel's shared signing secret. Send the unix-second timestamp in the X-Everruns-A2A-Timestamp header. 5-minute window; replay-protected via signature dedup."
+            }),
+        );
+    }
+    schemes
+}
+
+fn a2a_security_requirement(signing_secret: Option<&str>) -> Value {
+    if signing_secret.is_some_and(|s| !s.is_empty()) {
+        // Both schemes are required when signing is enabled — neither alone
+        // is sufficient. The bearer key authenticates the caller; the HMAC
+        // proves freshness of this specific request.
+        json!([{ "apiKey": [], "everrunsHmacSignature": [] }])
+    } else {
+        json!([{ "apiKey": [] }])
+    }
 }
 
 fn extract_a2a_api_key(headers: &HeaderMap) -> Option<String> {

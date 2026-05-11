@@ -890,6 +890,10 @@ impl ServerAppBuilder {
             Some(client) => api::channel_rate_limit::ChannelRateLimiter::with_valkey("a2a", client),
             None => api::channel_rate_limit::ChannelRateLimiter::in_memory("a2a"),
         };
+        let a2a_replay_store = match valkey_for_channel_rate_limits.clone() {
+            Some(client) => api::a2a_signing::A2aReplayStore::with_valkey(client),
+            None => api::a2a_signing::A2aReplayStore::in_memory(),
+        };
         let app_a2a_state = api::app_a2a::AppA2aState::new(
             db.clone(),
             encryption.clone(),
@@ -898,6 +902,7 @@ impl ServerAppBuilder {
             event_delivery.clone(),
             sse_tracker.clone(),
             a2a_rate_limiter,
+            a2a_replay_store,
         );
         let ag_ui_state = api::ag_ui::AgUiState::new(
             db.clone(),

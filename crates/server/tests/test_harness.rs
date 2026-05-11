@@ -460,6 +460,7 @@ impl TestServer {
             event_delivery.clone(),
             sse_tracker.clone(),
             api::channel_rate_limit::ChannelRateLimiter::in_memory("a2a"),
+            api::a2a_signing::A2aReplayStore::in_memory(),
         );
         let ag_ui_state = api::ag_ui::AgUiState::new(
             db.clone(),

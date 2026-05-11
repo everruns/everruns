@@ -574,6 +574,15 @@ pub struct A2aChannelConfig {
     /// app. Mirrors `AgUiChannelConfig::rate_limit_per_minute`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rate_limit_per_minute: Option<u32>,
+    /// Optional shared HMAC signing secret. When set, requests must include
+    /// `X-Everruns-A2A-Timestamp` + `X-Everruns-A2A-Signature` headers and
+    /// the server verifies an HMAC-SHA256 signature over `v0:{timestamp}:
+    /// {body}` (Slack-style) plus a 5-minute timestamp window plus a
+    /// signature-keyed dedup so a captured request cannot be replayed
+    /// while the API key is still valid (TM-A2A-010). When `None`, the
+    /// channel keeps the existing API-key-only behavior.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signing_secret: Option<String>,
 }
 
 #[cfg(test)]
@@ -978,6 +987,7 @@ mod tests {
         assert!(config.agent_card_name.is_none());
         assert!(config.agent_card_description.is_none());
         assert!(config.rate_limit_per_minute.is_none());
+        assert!(config.signing_secret.is_none());
     }
 
     #[test]
@@ -990,6 +1000,7 @@ mod tests {
             agent_card_name: Some("Inbox triage".into()),
             agent_card_description: Some("Triages github events".into()),
             rate_limit_per_minute: Some(120),
+            signing_secret: Some("sek".into()),
         };
         let json = serde_json::to_string(&config).unwrap();
         let parsed: A2aChannelConfig = serde_json::from_str(&json).unwrap();
@@ -1000,6 +1011,7 @@ mod tests {
         );
         assert_eq!(parsed.agent_card_name.as_deref(), Some("Inbox triage"));
         assert_eq!(parsed.rate_limit_per_minute, Some(120));
+        assert_eq!(parsed.signing_secret.as_deref(), Some("sek"));
     }
 
     #[test]
@@ -1012,11 +1024,13 @@ mod tests {
             agent_card_name: None,
             agent_card_description: None,
             rate_limit_per_minute: None,
+            signing_secret: None,
         };
         let json = serde_json::to_value(&config).unwrap();
         assert!(json.get("agent_card_name").is_none());
         assert!(json.get("agent_card_description").is_none());
         assert!(json.get("rate_limit_per_minute").is_none());
+        assert!(json.get("signing_secret").is_none());
     }
 
     #[test]

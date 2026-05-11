@@ -5,9 +5,26 @@ mod test_harness;
 use axum::http::{Method, StatusCode};
 use everruns_core::DEFAULT_ORG_ID;
 use everruns_server::storage::models::{AuditLogQuery, AuditLogRow};
+use hmac::{Hmac, Mac};
 use serde_json::{Value, json};
+use sha2::Sha256;
 use test_harness::TestServer;
 use tokio::time::{Duration, sleep};
+
+/// Compute the Slack-style A2A request signature for tests.
+fn a2a_sign(secret: &str, ts_secs: i64, body: &[u8]) -> String {
+    let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).unwrap();
+    mac.update(format!("v0:{ts_secs}:").as_bytes());
+    mac.update(body);
+    format!("v0={}", hex::encode(mac.finalize().into_bytes()))
+}
+
+fn a2a_now_secs() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64
+}
 
 async fn create_app_with_a2a(server: &TestServer, name: &str, message: &str) -> (Value, String) {
     create_app_with_a2a_mode(server, name, message, "shared_session").await
@@ -1308,4 +1325,417 @@ async fn a2a_rate_limit_rejects_absurd_values() {
         )
         .await
         .assert_status(StatusCode::BAD_REQUEST);
+}
+
+// ---------------------------------------------------------------------------
+// A2A request replay protection (TM-A2A-010)
+//
+// `signing_secret` is opt-in. When set, every request must carry a
+// timestamp + HMAC-SHA256 signature over `v0:{ts}:{body}`. The server
+// verifies the headers, enforces a 5-minute window, and dedups against
+// the signature itself so an attacker who captures one request cannot
+// replay it within the window.
+// ---------------------------------------------------------------------------
+
+const A2A_SIGNING_SECRET: &str = "shared-a2a-signing-secret-1234567890";
+
+async fn enable_a2a_signing(server: &TestServer, app_id: &str, channel_id: &str, secret: &str) {
+    server
+        .patch(
+            &format!("/v1/apps/{app_id}/channels/{channel_id}"),
+            json!({
+                "channel_config": {
+                    "session_mode": "shared_session",
+                    "message": "from a2a: {{a2a.text}}",
+                    "signing_secret": secret
+                }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::OK);
+}
+
+#[tokio::test]
+async fn a2a_signed_channel_accepts_valid_signature() {
+    let server = TestServer::in_memory().await;
+    let (app, api_key) = create_app_with_a2a(&server, "a2a-signed", "from a2a: {{a2a.text}}").await;
+    let app_id = app["id"].as_str().unwrap();
+    let channel_id = app["channels"][0]["id"].as_str().unwrap();
+    publish_app(&server, app_id).await;
+    enable_a2a_signing(&server, app_id, channel_id, A2A_SIGNING_SECRET).await;
+
+    let body = serde_json::to_vec(&json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "message/send",
+        "params": {
+            "message": { "role": "user", "parts": [{ "kind": "text", "text": "hi" }] }
+        }
+    }))
+    .unwrap();
+    let ts = a2a_now_secs();
+    let sig = a2a_sign(A2A_SIGNING_SECRET, ts, &body);
+
+    server
+        .request_raw(
+            Method::POST,
+            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            vec![
+                ("content-type", "application/json"),
+                ("authorization", &format!("Bearer {api_key}")),
+                ("x-everruns-a2a-timestamp", &ts.to_string()),
+                ("x-everruns-a2a-signature", &sig),
+            ],
+            body,
+        )
+        .await
+        .assert_status(StatusCode::OK);
+}
+
+#[tokio::test]
+async fn a2a_signed_channel_rejects_missing_signature_headers() {
+    let server = TestServer::in_memory().await;
+    let (app, api_key) =
+        create_app_with_a2a(&server, "a2a-signed-missing", "from a2a: {{a2a.text}}").await;
+    let app_id = app["id"].as_str().unwrap();
+    let channel_id = app["channels"][0]["id"].as_str().unwrap();
+    publish_app(&server, app_id).await;
+    enable_a2a_signing(&server, app_id, channel_id, A2A_SIGNING_SECRET).await;
+
+    let body = serde_json::to_vec(&json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "message/send",
+        "params": {
+            "message": { "role": "user", "parts": [{ "kind": "text", "text": "hi" }] }
+        }
+    }))
+    .unwrap();
+
+    // No signing headers at all — the signed channel must reject with 401
+    // because authentication-equivalent freshness proof is missing.
+    server
+        .request_raw(
+            Method::POST,
+            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            vec![
+                ("content-type", "application/json"),
+                ("authorization", &format!("Bearer {api_key}")),
+            ],
+            body,
+        )
+        .await
+        .assert_status(StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn a2a_signed_channel_rejects_bad_signature() {
+    let server = TestServer::in_memory().await;
+    let (app, api_key) =
+        create_app_with_a2a(&server, "a2a-signed-badsig", "from a2a: {{a2a.text}}").await;
+    let app_id = app["id"].as_str().unwrap();
+    let channel_id = app["channels"][0]["id"].as_str().unwrap();
+    publish_app(&server, app_id).await;
+    enable_a2a_signing(&server, app_id, channel_id, A2A_SIGNING_SECRET).await;
+
+    let body = serde_json::to_vec(&json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "message/send",
+        "params": {
+            "message": { "role": "user", "parts": [{ "kind": "text", "text": "hi" }] }
+        }
+    }))
+    .unwrap();
+    let ts = a2a_now_secs();
+    let sig = a2a_sign("not-the-secret", ts, &body);
+
+    server
+        .request_raw(
+            Method::POST,
+            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            vec![
+                ("content-type", "application/json"),
+                ("authorization", &format!("Bearer {api_key}")),
+                ("x-everruns-a2a-timestamp", &ts.to_string()),
+                ("x-everruns-a2a-signature", &sig),
+            ],
+            body,
+        )
+        .await
+        .assert_status(StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn a2a_signed_channel_rejects_stale_timestamp() {
+    let server = TestServer::in_memory().await;
+    let (app, api_key) =
+        create_app_with_a2a(&server, "a2a-signed-stale", "from a2a: {{a2a.text}}").await;
+    let app_id = app["id"].as_str().unwrap();
+    let channel_id = app["channels"][0]["id"].as_str().unwrap();
+    publish_app(&server, app_id).await;
+    enable_a2a_signing(&server, app_id, channel_id, A2A_SIGNING_SECRET).await;
+
+    let body = serde_json::to_vec(&json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "message/send",
+        "params": {
+            "message": { "role": "user", "parts": [{ "kind": "text", "text": "hi" }] }
+        }
+    }))
+    .unwrap();
+    // 6 minutes in the past — outside the 5-minute window. Signature is
+    // valid for that timestamp; the window check rejects it anyway.
+    let ts = a2a_now_secs() - 360;
+    let sig = a2a_sign(A2A_SIGNING_SECRET, ts, &body);
+
+    server
+        .request_raw(
+            Method::POST,
+            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            vec![
+                ("content-type", "application/json"),
+                ("authorization", &format!("Bearer {api_key}")),
+                ("x-everruns-a2a-timestamp", &ts.to_string()),
+                ("x-everruns-a2a-signature", &sig),
+            ],
+            body,
+        )
+        .await
+        .assert_status(StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn a2a_signed_channel_rejects_replay_within_window() {
+    // TM-A2A-010 dedup: a captured request that survives the timestamp
+    // window check is rejected because its (deterministic) signature is
+    // already in the per-channel replay store.
+    let server = TestServer::in_memory().await;
+    let (app, api_key) =
+        create_app_with_a2a(&server, "a2a-signed-replay", "from a2a: {{a2a.text}}").await;
+    let app_id = app["id"].as_str().unwrap();
+    let channel_id = app["channels"][0]["id"].as_str().unwrap();
+    publish_app(&server, app_id).await;
+    enable_a2a_signing(&server, app_id, channel_id, A2A_SIGNING_SECRET).await;
+
+    let body = serde_json::to_vec(&json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "message/send",
+        "params": {
+            "message": { "role": "user", "parts": [{ "kind": "text", "text": "hi" }] }
+        }
+    }))
+    .unwrap();
+    let ts = a2a_now_secs();
+    let sig = a2a_sign(A2A_SIGNING_SECRET, ts, &body);
+
+    // First sighting succeeds.
+    server
+        .request_raw(
+            Method::POST,
+            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            vec![
+                ("content-type", "application/json"),
+                ("authorization", &format!("Bearer {api_key}")),
+                ("x-everruns-a2a-timestamp", &ts.to_string()),
+                ("x-everruns-a2a-signature", &sig),
+            ],
+            body.clone(),
+        )
+        .await
+        .assert_status(StatusCode::OK);
+
+    // Replaying the exact same envelope + signature within the window is
+    // rejected as a replay.
+    server
+        .request_raw(
+            Method::POST,
+            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            vec![
+                ("content-type", "application/json"),
+                ("authorization", &format!("Bearer {api_key}")),
+                ("x-everruns-a2a-timestamp", &ts.to_string()),
+                ("x-everruns-a2a-signature", &sig),
+            ],
+            body,
+        )
+        .await
+        .assert_status(StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn a2a_unsigned_channel_keeps_api_key_only_behavior() {
+    // Backward compatibility: channels without a `signing_secret` must
+    // continue to accept plain bearer-only requests with no signing
+    // headers. Existing deployments can opt in later without breaking
+    // already-deployed clients.
+    let server = TestServer::in_memory().await;
+    let (app, api_key) =
+        create_app_with_a2a(&server, "a2a-unsigned", "from a2a: {{a2a.text}}").await;
+    let app_id = app["id"].as_str().unwrap();
+    let channel_id = app["channels"][0]["id"].as_str().unwrap();
+    publish_app(&server, app_id).await;
+
+    let body = serde_json::to_vec(&json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "message/send",
+        "params": {
+            "message": { "role": "user", "parts": [{ "kind": "text", "text": "hi" }] }
+        }
+    }))
+    .unwrap();
+
+    server
+        .request_raw(
+            Method::POST,
+            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            vec![
+                ("content-type", "application/json"),
+                ("authorization", &format!("Bearer {api_key}")),
+            ],
+            body,
+        )
+        .await
+        .assert_status(StatusCode::OK);
+}
+
+#[tokio::test]
+async fn a2a_agent_card_advertises_signing_scheme_when_enabled() {
+    let server = TestServer::in_memory().await;
+    let (app, _api_key) =
+        create_app_with_a2a(&server, "a2a-card-signed", "from a2a: {{a2a.text}}").await;
+    let app_id = app["id"].as_str().unwrap();
+    let channel_id = app["channels"][0]["id"].as_str().unwrap();
+    publish_app(&server, app_id).await;
+    enable_a2a_signing(&server, app_id, channel_id, A2A_SIGNING_SECRET).await;
+
+    let card: Value = server
+        .get(&format!(
+            "/v1/apps/{app_id}/a2a/{channel_id}/.well-known/agent-card.json"
+        ))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+
+    let schemes = card["securitySchemes"].as_object().unwrap();
+    assert!(
+        schemes.contains_key("apiKey"),
+        "apiKey scheme must always be advertised"
+    );
+    assert!(
+        schemes.contains_key("everrunsHmacSignature"),
+        "signing scheme must be advertised when signing_secret is configured"
+    );
+
+    // Card never echoes the secret.
+    let serialized = serde_json::to_string(&card).unwrap();
+    assert!(!serialized.contains(A2A_SIGNING_SECRET));
+    assert!(!serialized.contains("signing_secret"));
+}
+
+#[tokio::test]
+async fn a2a_channel_read_redacts_signing_secret_with_configured_flag() {
+    // The plaintext signing secret must never be returned by the API. After
+    // configuring it via PATCH, a subsequent GET surfaces only a
+    // `signing_secret_configured: true` flag.
+    let server = TestServer::in_memory().await;
+    let (app, _api_key) =
+        create_app_with_a2a(&server, "a2a-redact", "from a2a: {{a2a.text}}").await;
+    let app_id = app["id"].as_str().unwrap();
+    let channel_id = app["channels"][0]["id"].as_str().unwrap();
+    enable_a2a_signing(&server, app_id, channel_id, A2A_SIGNING_SECRET).await;
+
+    let app_after: Value = server
+        .get(&format!("/v1/apps/{app_id}"))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    let channel = app_after["channels"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["id"].as_str() == Some(channel_id))
+        .unwrap();
+    let cfg = channel["channel_config"].as_object().unwrap();
+    assert!(
+        !cfg.contains_key("signing_secret"),
+        "plaintext signing_secret must be redacted on read"
+    );
+    assert_eq!(cfg["signing_secret_configured"], json!(true));
+    let serialized = serde_json::to_string(&app_after).unwrap();
+    assert!(!serialized.contains(A2A_SIGNING_SECRET));
+}
+
+#[tokio::test]
+async fn a2a_patch_preserves_signing_secret_when_omitted() {
+    // PATCHing a signed channel without resending `signing_secret` must
+    // keep the channel's signing requirement intact — otherwise editing
+    // an unrelated field would silently turn off replay protection.
+    let server = TestServer::in_memory().await;
+    let (app, api_key) =
+        create_app_with_a2a(&server, "a2a-patch-keep", "from a2a: {{a2a.text}}").await;
+    let app_id = app["id"].as_str().unwrap();
+    let channel_id = app["channels"][0]["id"].as_str().unwrap();
+    publish_app(&server, app_id).await;
+    enable_a2a_signing(&server, app_id, channel_id, A2A_SIGNING_SECRET).await;
+
+    // Edit an unrelated field (the agent card name) without sending the
+    // signing secret. Channel must remain in signed mode.
+    server
+        .patch(
+            &format!("/v1/apps/{app_id}/channels/{channel_id}"),
+            json!({
+                "channel_config": {
+                    "session_mode": "shared_session",
+                    "message": "from a2a: {{a2a.text}}",
+                    "agent_card_name": "Renamed Agent"
+                }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::OK);
+
+    // Unsigned request must still 401 because signing is preserved.
+    let body = serde_json::to_vec(&json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "message/send",
+        "params": {
+            "message": { "role": "user", "parts": [{ "kind": "text", "text": "hi" }] }
+        }
+    }))
+    .unwrap();
+    server
+        .request_raw(
+            Method::POST,
+            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            vec![
+                ("content-type", "application/json"),
+                ("authorization", &format!("Bearer {api_key}")),
+            ],
+            body.clone(),
+        )
+        .await
+        .assert_status(StatusCode::UNAUTHORIZED);
+
+    // A correctly-signed request still works against the preserved secret.
+    let ts = a2a_now_secs();
+    let sig = a2a_sign(A2A_SIGNING_SECRET, ts, &body);
+    server
+        .request_raw(
+            Method::POST,
+            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            vec![
+                ("content-type", "application/json"),
+                ("authorization", &format!("Bearer {api_key}")),
+                ("x-everruns-a2a-timestamp", &ts.to_string()),
+                ("x-everruns-a2a-signature", &sig),
+            ],
+            body,
+        )
+        .await
+        .assert_status(StatusCode::OK);
 }

@@ -92,6 +92,16 @@ export interface A2aChannelConfig {
    * the global API limit still applies.
    */
   rate_limit_per_minute?: number;
+  /**
+   * Optional shared HMAC signing secret. Plaintext is **write-only** and
+   * only sent on a PATCH that intends to rotate / set the secret;
+   * subsequent reads expose only the `signing_secret_configured` flag.
+   * When set, A2A requests must additionally carry timestamp + signature
+   * headers (TM-A2A-010).
+   */
+  signing_secret?: string;
+  /** Read-only flag indicating whether a signing secret is configured. */
+  signing_secret_configured?: boolean;
 }
 
 export interface AppChannel {
