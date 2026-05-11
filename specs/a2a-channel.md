@@ -8,8 +8,11 @@ the `webhook` channel: app-scoped ingress that injects a rendered user message
 into an app-owned session, with a published-app + enabled-channel gate.
 
 This first cut implements the **API key** authentication scheme from the A2A
-security model. Other schemes (HTTP Basic, OAuth2, OIDC, mTLS) are out of
-scope for this iteration.
+security model. Other schemes (HTTP Basic, OAuth2, OIDC, mTLS) are described
+by the shared App-endpoint auth framework in
+[`specs/app-endpoint-auth.md`](app-endpoint-auth.md); A2A channels adopt
+that framework by attaching an `auth_policy` and the Agent Card emits
+`securitySchemes` derived from the effective policy.
 
 A2A is a separate `ChannelType` so an app can advertise itself as an agent to
 other agents without conflating it with bare HTTP webhook ingress.

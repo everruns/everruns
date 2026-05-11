@@ -155,6 +155,7 @@ Always make sure you are working on top of latest main from remote.
 - `specs/messaging-integrations.md` - Messaging integrations (channel abstractions, parity requirements, platform adapters)
 - `specs/a2a-channel.md` - A2A (Agent2Agent) inbound channel for App invocation via JSON-RPC + API key auth
 - `specs/a2a-capability.md` - A2A outbound delegation capability (Everruns agent calling external A2A agents)
+- `specs/app-endpoint-auth.md` - Shared inbound auth framework for App-published endpoints (AG-UI, A2A, webhook) with OIDC/JWT, OAuth2 introspection, HTTP Basic, mTLS
 
 ### Test Cases
 
