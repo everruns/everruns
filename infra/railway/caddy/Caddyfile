@@ -1,0 +1,37 @@
+# Railway ingress for the Everruns template.
+#
+# The public Caddy service is the only internet-facing service. It preserves
+# the production route contract from specs/production-deployment.md while
+# forwarding to server and UI over Railway private networking.
+
+:{$PORT:8080} {
+	handle /api/* {
+		reverse_proxy {$SERVER_HOST}:9000 {
+			flush_interval -1
+		}
+	}
+
+	handle /oauth/* {
+		reverse_proxy {$SERVER_HOST}:9000
+	}
+
+	handle /mcp {
+		reverse_proxy {$SERVER_HOST}:9000
+	}
+
+	handle /.well-known/* {
+		reverse_proxy {$SERVER_HOST}:9000
+	}
+
+	handle /api-doc/* {
+		reverse_proxy {$SERVER_HOST}:9000
+	}
+
+	handle /health {
+		reverse_proxy {$SERVER_HOST}:9000
+	}
+
+	handle {
+		reverse_proxy {$UI_HOST}:9100
+	}
+}
