@@ -9520,6 +9520,76 @@
           }
         }
       },
+      "CapabilityUsageData": {
+        "type": "object",
+        "description": "Data for capability.usage events.",
+        "required": [
+          "records"
+        ],
+        "properties": {
+          "records": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CapabilityUsageRecord"
+            }
+          }
+        }
+      },
+      "CapabilityUsageKind": {
+        "type": "string",
+        "description": "Reporting-only capability usage kinds.",
+        "enum": [
+          "configured",
+          "resolved",
+          "exposed",
+          "invoked",
+          "effect_ran"
+        ]
+      },
+      "CapabilityUsageRecord": {
+        "type": "object",
+        "description": "Single capability usage record. This intentionally carries only stable IDs\nand small snapshots; prompts, messages, tool arguments, and results are not\nallowed in reporting facts.",
+        "required": [
+          "capability_id",
+          "usage_kind"
+        ],
+        "properties": {
+          "capability_id": {
+            "type": "string"
+          },
+          "capability_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "duration_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "tool_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "usage_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "usage_kind": {
+            "$ref": "#/components/schemas/CapabilityUsageKind"
+          }
+        }
+      },
       "ChannelType": {
         "type": "string",
         "description": "Supported channel types for app distribution.",
@@ -11342,6 +11412,9 @@
           },
           {
             "$ref": "#/components/schemas/ReasonCompletedData"
+          },
+          {
+            "$ref": "#/components/schemas/CapabilityUsageData"
           },
           {
             "$ref": "#/components/schemas/ActStartedData"
@@ -20318,6 +20391,20 @@
           "status"
         ],
         "properties": {
+          "capability_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Capability that contributed the tool definition, when known."
+          },
+          "capability_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable capability name snapshot, when known."
+          },
           "display_name": {
             "type": [
               "string",
@@ -20456,6 +20543,20 @@
         "type": "object",
         "description": "Semantic hints describing a tool's behavioral properties.\n\nFollows the MCP tool annotations convention (readOnlyHint, destructiveHint,\nidempotentHint, openWorldHint) plus everruns-specific hints. All fields are\noptional booleans — `None` means \"unknown/unspecified\". Consumers should\ntreat `None` as the conservative default (e.g., assume not readonly, assume\nnot idempotent).\n\nThese hints are informational — they do not enforce policy. Use `ToolPolicy`\nfor execution gating (auto vs requires_approval).",
         "properties": {
+          "capability_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Capability that contributed this tool definition.\n\nReporting uses this attribution only as metadata. It must never contain\ntool arguments, results, prompts, or any other sensitive payload."
+          },
+          "capability_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable capability name snapshot for reporting."
+          },
           "destructive": {
             "type": [
               "boolean",

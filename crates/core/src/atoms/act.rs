@@ -825,6 +825,10 @@ where
             tool_def.and_then(|d| d.display_name()),
             locale,
         );
+        let capability_attribution = tool_def.and_then(|def| {
+            def.capability_attribution()
+                .map(|(id, name)| (id.to_string(), name.map(str::to_string)))
+        });
 
         // Emit tool.started event (child of act.started)
         if let Err(e) = self
@@ -1020,6 +1024,12 @@ where
                         Some(tool_duration_ms),
                     )
                     .with_display_name(display_name.clone())
+                    .with_capability_attribution(
+                        capability_attribution.as_ref().map(|(id, _)| id.clone()),
+                        capability_attribution
+                            .as_ref()
+                            .and_then(|(_, name)| name.clone()),
+                    )
                     .with_narration(Some(self.render_tool_narration(
                         Some(tool_def),
                         &tool_call,
@@ -1035,6 +1045,12 @@ where
                         Some(tool_duration_ms),
                     )
                     .with_display_name(display_name.clone())
+                    .with_capability_attribution(
+                        capability_attribution.as_ref().map(|(id, _)| id.clone()),
+                        capability_attribution
+                            .as_ref()
+                            .and_then(|(_, name)| name.clone()),
+                    )
                     .with_narration(Some(self.render_tool_narration(
                         Some(tool_def),
                         &tool_call,
@@ -1095,6 +1111,12 @@ where
                             Some(tool_duration_ms),
                         )
                         .with_display_name(display_name.clone())
+                        .with_capability_attribution(
+                            capability_attribution.as_ref().map(|(id, _)| id.clone()),
+                            capability_attribution
+                                .as_ref()
+                                .and_then(|(_, name)| name.clone()),
+                        )
                         .with_narration(Some(self.render_tool_narration(
                             Some(tool_def),
                             &tool_call,

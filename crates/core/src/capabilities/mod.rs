@@ -1597,7 +1597,8 @@ pub async fn collect_capabilities_with_configs(
                 let def = match (def.category(), cap_category) {
                     (None, Some(cat)) => def.with_category(cat),
                     _ => def,
-                };
+                }
+                .with_capability_attribution(cap_id, capability.name());
                 tool_definitions.push(def);
             }
 

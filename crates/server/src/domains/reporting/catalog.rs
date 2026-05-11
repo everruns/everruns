@@ -324,6 +324,69 @@ const BUDGET_DIMS: &[FieldSpec] = &[
     },
 ];
 
+const CAPABILITY_USAGE_DIMS: &[FieldSpec] = &[
+    FieldSpec {
+        name: "session",
+        sql: "session_id",
+    },
+    FieldSpec {
+        name: "turn",
+        sql: "turn_id",
+    },
+    FieldSpec {
+        name: "user",
+        sql: "user_id",
+    },
+    FieldSpec {
+        name: "principal",
+        sql: "principal_id",
+    },
+    FieldSpec {
+        name: "agent",
+        sql: "agent_id",
+    },
+    FieldSpec {
+        name: "agent_name",
+        sql: "agent_name_snapshot",
+    },
+    FieldSpec {
+        name: "harness",
+        sql: "harness_id",
+    },
+    FieldSpec {
+        name: "harness_name",
+        sql: "harness_name_snapshot",
+    },
+    FieldSpec {
+        name: "app",
+        sql: "app_id",
+    },
+    FieldSpec {
+        name: "blueprint",
+        sql: "blueprint_id",
+    },
+    FieldSpec {
+        name: "day",
+        sql: "time_bucket_day",
+    },
+    FieldSpec {
+        name: "capability",
+        sql: "capability_id",
+    },
+    FieldSpec {
+        name: "capability_name",
+        sql: "capability_name_snapshot",
+    },
+    FieldSpec {
+        name: "capability_usage_kind",
+        sql: "capability_usage_kind",
+    },
+    FieldSpec {
+        name: "tool",
+        sql: "tool_name",
+    },
+];
+
 const LLM_MEASURES: &[MeasureSpec] = &[
     MeasureSpec {
         name: "input_tokens",
@@ -495,6 +558,21 @@ const BUDGET_MEASURES: &[MeasureSpec] = &[
     },
 ];
 
+const CAPABILITY_USAGE_MEASURES: &[MeasureSpec] = &[
+    MeasureSpec {
+        name: "usage_count",
+        sql: "COALESCE(SUM(usage_count), 0)",
+    },
+    MeasureSpec {
+        name: "duration_ms",
+        sql: "COALESCE(SUM(duration_ms), 0)",
+    },
+    MeasureSpec {
+        name: "avg_duration_ms",
+        sql: "COALESCE(AVG(NULLIF(duration_ms, 0)), 0)",
+    },
+];
+
 const DATASETS: &[DatasetSpec] = &[
     DatasetSpec {
         name: "llm_generations",
@@ -530,6 +608,13 @@ const DATASETS: &[DatasetSpec] = &[
         dimensions: BUDGET_DIMS,
         measures: BUDGET_MEASURES,
         filters: BUDGET_DIMS,
+    },
+    DatasetSpec {
+        name: "capability_usage",
+        table: "fact_capability_usage",
+        dimensions: CAPABILITY_USAGE_DIMS,
+        measures: CAPABILITY_USAGE_MEASURES,
+        filters: CAPABILITY_USAGE_DIMS,
     },
 ];
 
@@ -723,6 +808,26 @@ mod tests {
         assert!(names.contains(&"turns"));
         assert!(names.contains(&"sessions"));
         assert!(names.contains(&"budget_postings"));
+        assert!(names.contains(&"capability_usage"));
+    }
+
+    #[test]
+    fn capability_usage_keeps_kinds_and_tools_separate() {
+        let catalog = catalog();
+        let dataset = catalog
+            .datasets
+            .iter()
+            .find(|dataset| dataset.name == "capability_usage")
+            .expect("capability usage dataset");
+
+        assert!(dataset.dimensions.contains(&"capability".to_string()));
+        assert!(
+            dataset
+                .dimensions
+                .contains(&"capability_usage_kind".to_string())
+        );
+        assert!(dataset.dimensions.contains(&"tool".to_string()));
+        assert!(dataset.measures.contains(&"usage_count".to_string()));
     }
 
     #[test]

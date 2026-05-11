@@ -201,7 +201,10 @@ pub async fn build_scoped_mcp_tool_definitions(
                     continue;
                 }
             };
-        let capability = McpCapability::new(Uuid::nil(), name.clone(), None, tools);
+        let capability_id = session_id
+            .map(|id| scoped_mcp_server_uuid(id.uuid(), name))
+            .unwrap_or_else(Uuid::nil);
+        let capability = McpCapability::new(capability_id, name.clone(), None, tools);
         definitions.extend(capability.tool_definitions());
     }
 

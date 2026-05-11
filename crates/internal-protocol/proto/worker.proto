@@ -316,6 +316,8 @@ message McpToolDef {
     string name = 1;  // Prefixed: mcp_{server_name}_{tool_name}
     string description = 2;
     google.protobuf.Struct parameters = 3;  // JSON Schema
+    string capability_id = 4;  // Virtual capability that contributed this tool
+    string capability_name = 5;
 }
 
 // ============================================================================

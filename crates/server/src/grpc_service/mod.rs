@@ -789,6 +789,8 @@ impl WorkerServiceImpl {
                     name: prefixed_name,
                     description,
                     parameters: Some(parameters),
+                    capability_id: cap.capability_id().to_string(),
+                    capability_name: server.name.clone(),
                 });
             }
         }
