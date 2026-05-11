@@ -9,6 +9,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.8.30] - 2026-05-11
+
+### Highlights
+
+- **Shared App endpoint auth framework** - App-published endpoints (AG-UI, A2A, webhook) now share a unified inbound auth framework with OIDC/JWT, OAuth2 introspection, HTTP Basic, and mTLS ([#1810](https://github.com/everruns/everruns/pull/1810)).
+- **App channel management redesign** - Apps now ship redesigned channel management with publish guards and aligned schedule channel tools.
+- **Async reporting foundation** - New async reporting subsystem with capability usage analytics, saved reports, and exports.
+- **Source-backed volume sync** - Source-backed volumes can now sync their files and expose source sync controls so agents can reason about and refresh provenance.
+- **A2A capability** - Outbound A2A agent card preview in the UI plus per-channel rate limiting at parity with AG-UI ([#1800](https://github.com/everruns/everruns/pull/1800)).
+- **Session feature flags in CLI** - CLI now supports per-session feature flag overrides ([#1802](https://github.com/everruns/everruns/pull/1802)).
+
+### What's Changed
+
+- feat(deploy): add Railway template ingress scaffold by [@chaliy](https://github.com/chaliy)
+- feat(apps): add endpoint auth for app channels by [@chaliy](https://github.com/chaliy)
+- fix(migrations): restore sequential numbering by [@chaliy](https://github.com/chaliy)
+- feat(apps): redesign app channel management by [@chaliy](https://github.com/chaliy)
+- feat(reporting): add saved reports and exports by [@chaliy](https://github.com/chaliy)
+- feat(reporting): add capability usage analytics by [@chaliy](https://github.com/chaliy)
+- docs(specs): add shared App endpoint auth framework ([#1810](https://github.com/everruns/everruns/pull/1810)) by [@chaliy](https://github.com/chaliy)
+- feat(cli): support session feature flags ([#1802](https://github.com/everruns/everruns/pull/1802)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): fetch A2A agent card preview by [@chaliy](https://github.com/chaliy)
+- feat(ui): preview A2A agent cards by [@chaliy](https://github.com/chaliy)
+- feat(settings): add organization settings groups by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump everruns-sdk to 0.1.9 by [@chaliy](https://github.com/chaliy)
+- feat(a2a): per-channel rate limit (parity with AG-UI) ([#1800](https://github.com/everruns/everruns/pull/1800)) by [@chaliy](https://github.com/chaliy)
+- fix(memory): enforce default-store invariant in storage update ([#1775](https://github.com/everruns/everruns/pull/1775)) by [@chaliy](https://github.com/chaliy)
+- chore(apps): drop unused bare app_id from invocation message metadata ([#1797](https://github.com/everruns/everruns/pull/1797)) by [@chaliy](https://github.com/chaliy)
+- fix(apps): align schedule channel tools by [@chaliy](https://github.com/chaliy)
+- fix(core): harden email recipient validation ([#1780](https://github.com/everruns/everruns/pull/1780)) by [@chaliy](https://github.com/chaliy)
+- fix(volumes): block internal git source URLs ([#1781](https://github.com/everruns/everruns/pull/1781)) by [@chaliy](https://github.com/chaliy)
+- feat(api): add utoipa annotations to A2A admin endpoints ([#1795](https://github.com/everruns/everruns/pull/1795)) by [@chaliy](https://github.com/chaliy)
+- fix(mcp): harden oauth refresh rotation ([#1788](https://github.com/everruns/everruns/pull/1788)) by [@chaliy](https://github.com/chaliy)
+- fix(cursor): verify Valkey tarball integrity ([#1778](https://github.com/everruns/everruns/pull/1778)) by [@chaliy](https://github.com/chaliy)
+- docs(specs): document app-channel session ownership invariant ([#1794](https://github.com/everruns/everruns/pull/1794)) by [@chaliy](https://github.com/chaliy)
+- fix(apps): require channel before publish by [@chaliy](https://github.com/chaliy)
+- feat(volumes): add source sync controls by [@chaliy](https://github.com/chaliy)
+- feat(models): allow editing model provider by [@chaliy](https://github.com/chaliy)
+- fix(apps): remove experimental gate by [@chaliy](https://github.com/chaliy)
+- feat(reporting): build async reporting foundation by [@chaliy](https://github.com/chaliy)
+- fix(ui): handle legacy capability configs by [@chaliy](https://github.com/chaliy)
+- feat(ui): add full-page skill view by [@chaliy](https://github.com/chaliy)
+- fix(memory): resolve configured/default persistent memory store (EVE-459) ([#1783](https://github.com/everruns/everruns/pull/1783)) by [@chaliy](https://github.com/chaliy)
+- fix(mcp): hide HTTP metadata from discovery by [@chaliy](https://github.com/chaliy)
+- fix(apps): accept five-field schedule cron by [@chaliy](https://github.com/chaliy)
+- feat(volumes): sync source-backed volume files by [@chaliy](https://github.com/chaliy)
+- chore(skills): refresh agent-browser skill (observability dashboard) ([#1777](https://github.com/everruns/everruns/pull/1777)) by [@chaliy](https://github.com/chaliy)
+
 ## [0.8.29] - 2026-05-08
 
 ### Highlights
