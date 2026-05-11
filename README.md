@@ -5,57 +5,84 @@
 [![CI](https://github.com/everruns/everruns/actions/workflows/ci.yml/badge.svg)](https://github.com/everruns/everruns/actions/workflows/ci.yml)
 [![Repo: Agent Friendly](https://img.shields.io/badge/Repo-Agent%20Friendly-blue)](AGENTS.md)
 
-> **Note:** This repository is **under active development**. Expect rapid changes, experimental features, and unconventional approaches as we explore ideas quickly.
+> **Note:** Everruns is under active development. Expect rapid changes and experimental features.
 
-Headless durable agentic harness engine. Run durable AI agents reliably and scalably.
+**Everruns is an open-source platform for building, deploying, and operating durable AI agents.**
 
-## Overview
+Define agents and their tools, compose them into reusable harnesses, then ship them to real users through Slack, web chat, scheduled jobs, webhooks, A2A, MCP, or a plain HTTP API — backed by a Rust + PostgreSQL durable execution engine that survives restarts and scales horizontally.
 
-Everruns is a service that runs AI agents in the most reliable way possible. Each step and tool call in an agent run is persisted using a PostgreSQL-backed durable execution engine.
+## What's inside
 
-### Key Features
+### Build agents
 
-- **Durable execution**: Agent sessions survive restarts via PostgreSQL-backed workflows
-- **Streaming events**: Real-time SSE streaming of agent responses and tool calls
-- **Management UI**: Dashboard for agents, sessions, and chat
-- **Extensible capabilities**: Add tools and behaviors to agents via modular capabilities
-- **Multi-provider support**: OpenAI, Anthropic, and more
-- **[Open Responses](https://www.openresponses.org/)**: Vendor-neutral API for multi-provider LLM interfaces
+- **Harnesses, Agents, Capabilities, Skills** — modular configuration that composes into a runtime agent. Built-in harness types for general chat, data analysis, and coding (sandbox or Daytona-backed).
+- **Agent versioning, blueprints, and identities** — iterate safely on production agents and run unattended workloads under virtual principals.
+- **Capabilities library** — web fetch, bash sandbox, session filesystem, session SQL DB, memory, knowledge bases, MCP, voice, and more.
+- **Skills registry** — agentskills.io-format skills with discovery, search, and usage tracking.
+- **Generative UI** — agents can return rich cards via [OpenUI](https://github.com/openuidev/openui), [A2UI](https://github.com/google/a2ui), and inline `ui://everruns/...` MCP App resources.
 
-## Quick Start
+### Connect any model and any tool
 
-Deploy Everruns with Docker Compose:
+- **LLM providers**: OpenAI (Responses + Chat Completions), Azure OpenAI, Anthropic, Gemini, plus `llmsim` for tests. Model resolution is layered: message → session → agent → system default.
+- **MCP client** — register remote MCP servers as virtual capabilities. Tools are auto-discovered, namespaced, and executed over HTTP JSON-RPC.
+- **MCP server** — every Everruns deployment exposes its own MCP endpoint with OAuth 2.1 auth, so agents elsewhere can call yours.
+- **Integrations**: Docker, Daytona, E2B, Deno, Browserless, Brave Search, DuckDuckGo, Parallel, Sprites, Pi, Cursor — auto-registered via the `inventory` plugin system.
+- **Client-side tools** for SDK/API consumers that want to run tools locally.
+
+### Ship agents to real channels
+
+Define an **App** that binds a Harness + Agent to one or more **channels**:
+
+- `slack` — Slack app with thread/channel/user routing
+- `ag_ui` — embeddable web chat (AG-UI)
+- `a2a` — Agent2Agent inbound JSON-RPC + outbound delegation
+- `webhook` — HTTP-triggered invocations
+- `schedule` — cron-based scheduled tasks
+- Voice — realtime voice sessions with hardened tool authorization
+
+### Run reliably at scale
+
+- **Durable execution engine** — PostgreSQL-backed workflows; agent sessions survive restarts, worker crashes, and network partitions.
+- **Control-plane / worker split** — workers talk to the control-plane over gRPC only; no DB credentials on workers.
+- **Streaming events** — SSE with NATS JetStream (production) or in-memory broadcast (dev) for ephemeral deltas, PostgreSQL for durable events.
+- **Multi-tenant** — organizations, fine-grained permissions, audit logging, envelope encryption (AES-256-GCM) for secrets.
+- **Infinity context** — automatic compaction keeps conversations going past any model's context window.
+- **Observability** — OpenTelemetry GenAI semantic conventions, Prometheus `/metrics`, optional Braintrust.
+- **Budgeting, usage tracking, reporting** — token meters, budgets with soft enforcement, and async analytical projections (StarRocks or DuckDB-over-object-storage).
+- **Evals** — user-facing behavioral evals plus a SWE-bench Lite harness.
+
+## Quick start
+
+Deploy the full stack with Docker Compose:
 
 ```bash
-# Download docker-compose file
 mkdir everruns && cd everruns
 curl -o docker-compose.yaml https://raw.githubusercontent.com/everruns/everruns/main/examples/docker-compose-full.yaml
 
-# Generate encryption key for secrets
+# Generate an encryption key for secrets-at-rest
 python3 -c "import os, base64; print('kek-v1:' + base64.b64encode(os.urandom(32)).decode())"
 
-# Create .env with your key
-echo "SECRETS_ENCRYPTION_KEY=kek-v1:<your-key>" > .env
+cat > .env <<'EOF'
+SECRETS_ENCRYPTION_KEY=kek-v1:<your-generated-key>
+WORKER_GRPC_AUTH_TOKEN=<a-random-token>
+DEFAULT_OPENAI_API_KEY=sk-...            # optional
+DEFAULT_ANTHROPIC_API_KEY=sk-ant-...     # optional
+DEFAULT_GEMINI_API_KEY=...               # optional
+EOF
 
-# Start services
 docker compose up -d
 ```
 
-Access the platform:
-- **Web UI**: http://localhost:9300
-- **API**: http://localhost:9300/api/...
-The published example compose file defaults to `9300` for the app entry point. If you need to avoid host-port conflicts, override with `EXAMPLE_PROXY_PORT` before `docker compose up`.
+Then open:
 
-For detailed setup instructions, see the [Docker Compose Quickstart](https://docs.everruns.com/getting-started/docker-compose/).
+- Web UI: <http://localhost:9300>
+- API: <http://localhost:9300/api/v1/...>
+- MCP endpoint: <http://localhost:9300/mcp>
+- Metrics: <http://localhost:8428/vmui> (VictoriaMetrics)
 
-## Documentation
+See the [Docker Compose Quickstart](https://docs.everruns.com/getting-started/docker-compose/) for the full guide.
 
-- [Getting Started](https://docs.everruns.com/getting-started/introduction/) - Introduction and key concepts
-- [Docker Compose Quickstart](https://docs.everruns.com/getting-started/docker-compose/) - Full deployment guide
-- [API Reference](https://docs.everruns.com/api/) - Complete API documentation
-- [Capabilities](https://docs.everruns.com/features/capabilities/) - Extend agent functionality
-
-## API Example
+## API example
 
 ```bash
 # Create an agent
@@ -63,31 +90,72 @@ curl -X POST http://localhost:9300/api/v1/agents \
   -H "Content-Type: application/json" \
   -d '{"name": "Assistant", "system_prompt": "You are a helpful assistant."}'
 
-# Create a session (agent_id in request body)
+# Start a session
 curl -X POST http://localhost:9300/api/v1/sessions \
   -H "Content-Type: application/json" \
   -d '{"agent_id": "{agent_id}"}'
 
-# Send a message
-curl -X POST http://localhost:9300/api/v1/sessions/{session_id}/messages \
+# Send a message (response streams as SSE)
+curl -N -X POST http://localhost:9300/api/v1/sessions/{session_id}/messages \
   -H "Content-Type: application/json" \
   -d '{"message": {"content": [{"type": "text", "text": "Hello!"}]}}'
 ```
 
-## Use from Claude Code
+Everruns implements the [Open Responses](https://www.openresponses.org/) spec — a vendor-neutral API for multi-provider LLM interfaces with native tool calls and semantic streaming.
 
-This repo is also a [Claude Code plugin marketplace](https://code.claude.com/docs/en/plugin-marketplaces) that ships the `everruns-dev` plugin. Connect Claude Code to the Everruns dev platform over MCP:
+## Use from Claude Code, Codex, or Cursor
+
+This repository is a [Claude Code plugin marketplace](https://code.claude.com/docs/en/plugin-marketplaces) shipping the `everruns-dev` plugin, which also supports Codex and Cursor as hosts:
 
 ```text
 /plugin marketplace add everruns/everruns
 /plugin install everruns-dev@everruns-dev
 ```
 
-Then run `/everruns-dev:whoami` and complete the OAuth flow on first use. See [`plugins/everruns-dev/README.md`](./plugins/everruns-dev/README.md) for full install options (local clone, Codex, custom deployments).
+Run `/everruns-dev:whoami` and complete the OAuth flow on first use. See [`plugins/everruns-dev/README.md`](./plugins/everruns-dev/README.md) for Codex, Cursor, local clone, and custom deployment options.
+
+## Embed in your own app
+
+Need to run Everruns harnesses in-process? Use the embedded runtime crate (`everruns-runtime`) with `InProcessRuntimeBuilder` for in-memory sessions, filesystem, and storage. See [`specs/runtime.md`](specs/runtime.md) and [`specs/embedding.md`](specs/embedding.md).
+
+A CLI (`everruns-cli`) is also available for scripting against a deployment — see [`specs/cli.md`](specs/cli.md).
+
+## Repository layout
+
+```
+everruns/
+├── apps/
+│   ├── ui/                 # Next.js dashboard
+│   └── docs/               # Astro Starlight documentation
+├── crates/
+│   ├── server/             # Control plane: HTTP API + gRPC + storage
+│   ├── worker/             # Durable worker (gRPC client)
+│   ├── core/               # Shared abstractions, atoms, capabilities
+│   ├── runtime/            # Public in-process embedded runtime
+│   ├── durable/            # PostgreSQL-backed durable engine
+│   ├── openai/ anthropic/ gemini/   # LLM provider drivers
+│   ├── openui/ a2ui/       # Generative UI renderers
+│   ├── cli/                # Everruns CLI
+│   └── ...                 # macros, config, container-sandbox, session-sqldb, internal-protocol
+├── integrations/           # Docker, Daytona, E2B, Deno, Browserless,
+│                           # Brave, DuckDuckGo, Parallel, Cursor, Sprites, Pi
+├── plugins/everruns-dev/   # Claude Code / Codex / Cursor plugin
+├── examples/               # docker-compose, sample agents, skills, notebooks
+├── specs/                  # ~100 feature specifications (durable memory)
+└── test_cases/             # Manual test cases
+```
+
+## Documentation
+
+- [Getting Started](https://docs.everruns.com/getting-started/introduction/) — concepts and first agent
+- [Docker Compose Quickstart](https://docs.everruns.com/getting-started/docker-compose/)
+- [API Reference](https://docs.everruns.com/api/) — OpenAPI 3.0
+- [Capabilities](https://docs.everruns.com/features/capabilities/)
+- [Specs index](specs/) — architecture, models, APIs, threat model, and every feature in detail
 
 ## Contributing
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for local development setup and guidelines.
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for local development setup and [AGENTS.md](./AGENTS.md) for the conventions used by both human and AI contributors.
 
 ## License
 
