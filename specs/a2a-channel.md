@@ -7,12 +7,11 @@ endpoint so other agents can invoke the app over JSON-RPC. It is a sibling of
 the `webhook` channel: app-scoped ingress that injects a rendered user message
 into an app-owned session, with a published-app + enabled-channel gate.
 
-This first cut implements the **API key** authentication scheme from the A2A
-security model. Other schemes (HTTP Basic, OAuth2, OIDC, mTLS) are described
-by the shared App-endpoint auth framework in
-[`specs/app-endpoint-auth.md`](app-endpoint-auth.md); A2A channels adopt
-that framework by attaching an `auth_policy` and the Agent Card emits
-`securitySchemes` derived from the effective policy.
+The first cut implemented the **API key** authentication scheme from the A2A
+security model. A2A channels now also adopt the shared App endpoint auth model
+documented in [`specs/apps.md`](apps.md): each channel may keep the generated
+bearer API key or attach inline `channel_config.auth` for HTTP Basic,
+Google/OIDC JWT bearer, OAuth2 introspection, or mTLS.
 
 A2A is a separate `ChannelType` so an app can advertise itself as an agent to
 other agents without conflating it with bare HTTP webhook ingress.
@@ -37,8 +36,7 @@ References:
 1. The full A2A method surface — this iteration supports `message/send`,
    `message/stream`, `tasks/get`, and `tasks/cancel`. `tasks/resubscribe`,
    push notifications, and authenticated extensions remain out of scope.
-2. Authentication schemes beyond API key (HTTP, OAuth2, OIDC, mTLS).
-3. Persistent per-task identity beyond the session lifecycle. Tasks are
+2. Persistent per-task identity beyond the session lifecycle. Tasks are
    identified by the underlying session id (`task_id == contextId`); a
    shared session reuses the same task id across follow-up messages.
 
@@ -74,6 +72,9 @@ pub struct A2aChannelConfig {
     /// limit; the global API limit still applies. Mirrors
     /// `AgUiChannelConfig::rate_limit_per_minute`.
     pub rate_limit_per_minute: Option<u32>,
+    /// Optional inline endpoint auth config. When absent, the generated
+    /// API-key bearer scheme remains the effective auth policy.
+    pub auth: Option<AppEndpointAuthConfig>,
 }
 ```
 
@@ -99,6 +100,11 @@ API key generation:
 - Content-Type: `application/json`
 - Auth: `Authorization: Bearer <api_key>` (the `apiKey` scheme in the Agent
   Card uses `bearer` for unification with the standard HTTP header).
+- If `auth` is configured, the endpoint uses that shared App endpoint auth
+  policy instead. `auth.mode = api_key` keeps generated-key behavior;
+  `google_oidc`, `oidc`, and `oauth2_introspection` use bearer tokens;
+  `http_basic` uses HTTP Basic; `mtls` uses the configured trusted reverse
+  proxy identity header.
 - Body: A2A JSON-RPC 2.0 envelope. Only `message/send` is honored:
 
 ```json
@@ -259,15 +265,16 @@ A2A channels; otherwise `404`. Card shape:
       "tags": ["everruns", "a2a"]
     }
   ],
-  "securitySchemes": {
-    "apiKey": { "type": "http", "scheme": "bearer" }
-  },
-  "security": [{ "apiKey": [] }]
+  "securitySchemes": { "...": "derived from channel_config.auth" },
+  "security": [{ "...": [] }]
 }
 ```
 
-The Agent Card never includes the API key, the key hash, or the channel
-internal id.
+The Agent Card derives `securitySchemes` from the effective channel auth policy:
+legacy/default API key emits HTTP bearer; HTTP Basic emits `http/basic`; Google
+and generic OIDC emit `openIdConnect`; OAuth2 introspection emits `oauth2`;
+mTLS emits `mutualTLS`. The card never includes credentials, hashes, trusted
+header values, or the channel internal id.
 
 ## Session Routing
 

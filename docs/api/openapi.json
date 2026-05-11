@@ -9272,6 +9272,16 @@
               "null"
             ]
           },
+          "auth": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AppEndpointAuthConfig"
+              }
+            ]
+          },
           "enabled": {
             "type": [
               "boolean",
@@ -9677,6 +9687,225 @@
             "type": "string",
             "format": "date-time",
             "description": "Timestamp when this channel was last updated."
+          }
+        }
+      },
+      "AppEndpointAuthConfig": {
+        "type": "object",
+        "description": "Inline auth config for one App endpoint/channel.",
+        "required": [
+          "mode"
+        ],
+        "properties": {
+          "mode": {
+            "$ref": "#/components/schemas/AppEndpointAuthMode"
+          },
+          "provider": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AppEndpointAuthProviderConfig"
+              }
+            ]
+          },
+          "requirements": {
+            "$ref": "#/components/schemas/AppEndpointAuthRequirements"
+          }
+        }
+      },
+      "AppEndpointAuthMode": {
+        "type": "string",
+        "description": "App-published endpoint authentication mode.\n\nStored inline on `app_channels.channel_config.auth` so users can protect a\nsingle App/channel without first creating org-level identity-provider state.",
+        "enum": [
+          "anonymous",
+          "shared_secret",
+          "api_key",
+          "google_oidc",
+          "oidc",
+          "o_auth2_introspection",
+          "http_basic",
+          "mtls"
+        ]
+      },
+      "AppEndpointAuthProviderConfig": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "client_id",
+              "type"
+            ],
+            "properties": {
+              "allowed_domains": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "client_id": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "google_oidc"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "issuer",
+              "type"
+            ],
+            "properties": {
+              "issuer": {
+                "type": "string"
+              },
+              "jwks_url": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "oidc"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "introspection_url",
+              "type"
+            ],
+            "properties": {
+              "client_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "client_secret": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "introspection_url": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "o_auth2_introspection"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "username",
+              "type"
+            ],
+            "properties": {
+              "password": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "password_hash": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "http_basic"
+                ]
+              },
+              "username": {
+                "type": "string"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "header_name",
+              "type"
+            ],
+            "properties": {
+              "allowed_values": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "header_name": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "mtls"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "OIDC/OAuth/basic/mTLS provider details for one App endpoint."
+      },
+      "AppEndpointAuthRequirements": {
+        "type": "object",
+        "description": "Claim and credential requirements common to App endpoint auth providers.",
+        "properties": {
+          "audiences": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "claims": {
+            "type": "object",
+            "additionalProperties": {},
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "domains": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "subjects": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       },

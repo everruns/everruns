@@ -415,6 +415,8 @@ pub struct AddA2aChannelHttpRequest {
     pub message: String,
     pub agent_card_name: Option<String>,
     pub agent_card_description: Option<String>,
+    #[serde(default)]
+    pub auth: Option<everruns_core::AppEndpointAuthConfig>,
     pub enabled: Option<bool>,
 }
 
@@ -447,6 +449,7 @@ pub async fn add_a2a_channel(
         message: req.message,
         agent_card_name: req.agent_card_name,
         agent_card_description: req.agent_card_description,
+        auth: req.auth,
         enabled: req.enabled,
     }
     .run(&state.ctx(&org))

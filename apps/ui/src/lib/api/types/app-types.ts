@@ -9,6 +9,49 @@ export type SlackReplyMode = "all_messages" | "report_progress_only";
 export type InvocationSessionMode = "shared_session" | "session_per_invocation";
 export type AgUiToolVisibility = "none" | "generic" | "narrated";
 export type AgentVersionPolicy = "default" | "latest" | "pinned";
+export type AppEndpointAuthMode =
+  | "anonymous"
+  | "shared_secret"
+  | "api_key"
+  | "google_oidc"
+  | "oidc"
+  | "oauth2_introspection"
+  | "http_basic"
+  | "mtls";
+
+export interface AppEndpointAuthRequirements {
+  audiences?: string[];
+  scopes?: string[];
+  claims?: Record<string, unknown>;
+  subjects?: string[];
+  groups?: string[];
+  domains?: string[];
+}
+
+export type AppEndpointAuthProviderConfig =
+  | { type: "google_oidc"; client_id: string; allowed_domains?: string[] }
+  | { type: "oidc"; issuer: string; jwks_url?: string }
+  | {
+      type: "oauth2_introspection";
+      introspection_url: string;
+      client_id?: string;
+      client_secret?: string;
+      client_secret_configured?: boolean;
+    }
+  | {
+      type: "http_basic";
+      username: string;
+      password?: string;
+      password_hash?: string;
+      password_configured?: boolean;
+    }
+  | { type: "mtls"; header_name: string; allowed_values: string[] };
+
+export interface AppEndpointAuthConfig {
+  mode: AppEndpointAuthMode;
+  provider?: AppEndpointAuthProviderConfig;
+  requirements?: AppEndpointAuthRequirements;
+}
 
 export interface SlackChannelConfig {
   signing_secret?: string;
@@ -55,6 +98,7 @@ export interface AgUiChannelConfig {
   tool_visibility?: AgUiToolVisibility;
   /** Text shown while tools are running when tool_visibility is "generic". */
   generic_tool_text?: string;
+  auth?: AppEndpointAuthConfig;
 }
 
 export interface ScheduleChannelConfig {
@@ -92,6 +136,7 @@ export interface A2aChannelConfig {
    * the global API limit still applies.
    */
   rate_limit_per_minute?: number;
+  auth?: AppEndpointAuthConfig;
 }
 
 export interface AppChannel {

@@ -38,7 +38,7 @@ pub enum AppStatus {
 }
 
 /// How an App resolves the Agent version it runs.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum AgentVersionPolicy {
@@ -94,7 +94,7 @@ impl From<&str> for AppStatus {
 }
 
 /// Supported channel types for app distribution.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum ChannelType {
@@ -440,6 +440,89 @@ pub enum AgUiToolVisibility {
     Narrated,
 }
 
+/// App-published endpoint authentication mode.
+///
+/// Stored inline on `app_channels.channel_config.auth` so users can protect a
+/// single App/channel without first creating org-level identity-provider state.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum AppEndpointAuthMode {
+    Anonymous,
+    SharedSecret,
+    ApiKey,
+    GoogleOidc,
+    Oidc,
+    OAuth2Introspection,
+    HttpBasic,
+    Mtls,
+}
+
+/// OIDC/OAuth/basic/mTLS provider details for one App endpoint.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum AppEndpointAuthProviderConfig {
+    GoogleOidc {
+        client_id: String,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        allowed_domains: Vec<String>,
+    },
+    Oidc {
+        issuer: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        jwks_url: Option<String>,
+    },
+    OAuth2Introspection {
+        introspection_url: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        client_id: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        client_secret: Option<String>,
+    },
+    HttpBasic {
+        username: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        password: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        password_hash: Option<String>,
+    },
+    Mtls {
+        header_name: String,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        allowed_values: Vec<String>,
+    },
+}
+
+/// Claim and credential requirements common to App endpoint auth providers.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct AppEndpointAuthRequirements {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub audiences: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub scopes: Vec<String>,
+    #[serde(default, skip_serializing_if = "serde_json::Map::is_empty")]
+    pub claims: serde_json::Map<String, serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub subjects: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub groups: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub domains: Vec<String>,
+}
+
+/// Inline auth config for one App endpoint/channel.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct AppEndpointAuthConfig {
+    pub mode: AppEndpointAuthMode,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<AppEndpointAuthProviderConfig>,
+    #[serde(default)]
+    pub requirements: AppEndpointAuthRequirements,
+}
+
 /// Typed AG-UI channel configuration.
 ///
 /// Parsed from the `channel_config` JSON field on App.
@@ -475,6 +558,10 @@ pub struct AgUiChannelConfig {
         skip_serializing_if = "is_default_ag_ui_generic_tool_text"
     )]
     pub generic_tool_text: String,
+    /// Optional inline auth config for this public endpoint. When omitted,
+    /// legacy `anonymous` + `token` behavior applies.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auth: Option<AppEndpointAuthConfig>,
 }
 
 fn default_session_expiration_seconds() -> u32 {
@@ -574,6 +661,10 @@ pub struct A2aChannelConfig {
     /// app. Mirrors `AgUiChannelConfig::rate_limit_per_minute`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rate_limit_per_minute: Option<u32>,
+    /// Optional inline auth config for this A2A endpoint. When omitted,
+    /// legacy per-channel API-key behavior applies.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub auth: Option<AppEndpointAuthConfig>,
 }
 
 #[cfg(test)]
@@ -761,6 +852,7 @@ mod tests {
         );
         assert!(config.rate_limit_per_minute.is_none());
         assert!(config.token.is_none());
+        assert!(config.auth.is_none());
         assert_eq!(config.tool_visibility, AgUiToolVisibility::Generic);
         assert_eq!(config.generic_tool_text, DEFAULT_AG_UI_GENERIC_TOOL_TEXT);
     }
@@ -774,6 +866,7 @@ mod tests {
             rate_limit_per_minute: Some(120),
             tool_visibility: AgUiToolVisibility::None,
             generic_tool_text: "Please wait".to_string(),
+            auth: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         let parsed: AgUiChannelConfig = serde_json::from_str(&json).unwrap();
@@ -801,6 +894,7 @@ mod tests {
             rate_limit_per_minute: None,
             tool_visibility: AgUiToolVisibility::Generic,
             generic_tool_text: DEFAULT_AG_UI_GENERIC_TOOL_TEXT.to_string(),
+            auth: None,
         };
         let json = serde_json::to_value(&config).unwrap();
         assert!(json.get("rate_limit_per_minute").is_none());
@@ -978,6 +1072,7 @@ mod tests {
         assert!(config.agent_card_name.is_none());
         assert!(config.agent_card_description.is_none());
         assert!(config.rate_limit_per_minute.is_none());
+        assert!(config.auth.is_none());
     }
 
     #[test]
@@ -990,6 +1085,7 @@ mod tests {
             agent_card_name: Some("Inbox triage".into()),
             agent_card_description: Some("Triages github events".into()),
             rate_limit_per_minute: Some(120),
+            auth: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         let parsed: A2aChannelConfig = serde_json::from_str(&json).unwrap();
@@ -1012,6 +1108,7 @@ mod tests {
             agent_card_name: None,
             agent_card_description: None,
             rate_limit_per_minute: None,
+            auth: None,
         };
         let json = serde_json::to_value(&config).unwrap();
         assert!(json.get("agent_card_name").is_none());

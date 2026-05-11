@@ -6,7 +6,7 @@ An App is a deployable unit that binds a Harness and optional Agent to one or mo
 
 See [app-invocation-channels.md](app-invocation-channels.md) for the dedicated spec covering schedule/webhook behavior, session routing, templates, and durable bindings.
 
-Authentication for App-published endpoints (AG-UI, A2A, webhook, and future channels) is described by the shared framework in [app-endpoint-auth.md](app-endpoint-auth.md). Channels keep their existing legacy auth fields for backward compatibility and adopt the shared model when an explicit policy is configured.
+Authentication for App-published endpoints is described by the shared framework in [app-endpoint-auth.md](app-endpoint-auth.md). AG-UI and A2A keep their existing legacy auth fields for backward compatibility and adopt the shared model when inline `channel_config.auth` is configured.
 
 ## Concepts
 
@@ -54,6 +54,17 @@ Channel config is stored as JSONB and validated at the application layer per cha
 {
   "anonymous": true,
   "token": "optional-shared-secret",
+  "auth": {
+    "mode": "google_oidc",
+    "provider": {
+      "type": "google_oidc",
+      "client_id": "1234567890-abc.apps.googleusercontent.com",
+      "allowed_domains": ["example.com"]
+    },
+    "requirements": {
+      "audiences": ["1234567890-abc.apps.googleusercontent.com"]
+    }
+  },
   "session_expiration_seconds": 21600,
   "rate_limit_per_minute": 60,
   "tool_visibility": "generic",
@@ -73,6 +84,13 @@ AG-UI uses an app-scoped anonymous ingress for the initial rollout:
   attaches only images uploaded through the same app's public AG-UI route.
 - Anonymous access is currently required when the channel is enabled
 - If `token` is set, requests must include either `Authorization: Bearer <token>` or `X-Everruns-AG-UI-Token: <token>`.
+- If `auth` is set, it replaces the legacy anonymous/token gate with the
+  shared App endpoint auth verifier. Supported inline modes are `anonymous`,
+  `shared_secret`, `api_key`, `google_oidc`, `oidc`,
+  `oauth2_introspection`, `http_basic`, and `mtls`. Google/OIDC and OAuth2
+  modes use `Authorization: Bearer <token>`; HTTP Basic uses the standard
+  `Authorization: Basic ...` header; mTLS uses a deployment-owned trusted
+  reverse-proxy identity header.
 - Session routing is per `threadId`, with sessions tagged by app and thread
 - Request body validation (see threat `TM-LLM-020`):
   - `messages[*].role` must be `user` or `assistant`. `system`, `developer`, and `tool` are rejected with `400 invalid_request` and the offending role is not echoed back.
@@ -84,6 +102,62 @@ AG-UI uses an app-scoped anonymous ingress for the initial rollout:
   thread. Defaults to `21600` (6 hours). Set to `0` to disable expiration.
 - `rate_limit_per_minute` is an optional per-IP, per-app cap. `0` or absent disables the per-app cap and only the global API limit applies. Values above 1,000,000 are rejected at write time. Counters are shared across instances when `VALKEY_URL` is set; otherwise enforcement is per-instance.
 - Public tool activity is controlled by `tool_visibility`: `none` suppresses tool activity entirely, `generic` emits only `generic_tool_text` as transient activity, and `narrated` emits backend-authored narration. Public AG-UI streams never expose raw tool names, arguments, results, or internal tool call IDs.
+
+### App Endpoint Auth
+
+App-published HTTP endpoints can carry an inline auth config at
+`app_channels.channel_config.auth` when their handler is wired into the shared
+verifier. The primary product flow is channel-local: create an Agent, create an
+App/channel, then configure auth directly on that channel. There is
+intentionally no required org-level provider setup in the first iteration. The
+runtime types stay provider-shaped so a later UI can add optional reuse actions
+such as "save as reusable provider" without changing the endpoint verifier.
+
+Model:
+
+```json
+{
+  "mode": "oidc",
+  "provider": {
+    "type": "oidc",
+    "issuer": "https://auth.example.com",
+    "jwks_url": "https://auth.example.com/.well-known/jwks.json"
+  },
+  "requirements": {
+    "audiences": ["api://support-agent"],
+    "scopes": ["invoke:agent"],
+    "domains": ["example.com"],
+    "groups": ["support"]
+  }
+}
+```
+
+Provider modes:
+
+- `google_oidc` validates Google-issued ID tokens with the configured client
+  ID as audience and optional hosted-domain checks.
+- `oidc` validates JWT bearer tokens against OIDC discovery/JWKS, requiring
+  issuer, audience, expiration, and honoring `nbf`.
+- `oauth2_introspection` validates opaque bearer tokens through the configured
+  introspection endpoint, then applies the same scope/claim requirements.
+- `http_basic` stores only a password hash in channel config responses;
+  plaintext passwords are write-only and normalized before storage.
+- `mtls` validates a configured trusted identity header set by a reverse proxy
+  after client certificate verification. Public edges must strip that header
+  from inbound requests before setting it.
+
+Legacy configs remain valid:
+
+- AG-UI without `auth` uses `anonymous` plus optional `token`.
+- A2A without `auth` uses the generated per-channel API key.
+- Webhook uses its existing token field until its handler is wired into the
+  shared verifier. The API rejects webhook `auth` configs so operators do not
+  configure a policy that is not enforced.
+
+Auth checks run after published-app/enabled-channel resolution and before any
+session lookup, image upload, task polling, cancellation, or message dispatch.
+Failures are deliberately generic so callers cannot distinguish provider
+misconfiguration from credential probing beyond 401/403 class.
 
 `schedule` and `webhook` are app invocation channels, not interactive messaging adapters:
 
