@@ -414,6 +414,7 @@ impl TestServer {
             platform_definition.connection_providers().clone(),
             mcp_service,
         );
+        let reporting_state = api::reporting::AppState::new(db.clone(), auth_state.clone());
 
         let agent_identities_state = api::agent_identities::AppState::new(
             db.clone(),
@@ -516,6 +517,7 @@ impl TestServer {
             .merge(api::session_schedules::routes(session_schedules_state))
             .merge(api::feature_flags::routes(feature_flags_state))
             .merge(api::user_connections::routes(user_connections_state))
+            .merge(api::reporting::routes(reporting_state))
             .merge(api::ag_ui::routes(ag_ui_state))
             .merge(api::slack_events::routes(slack_state))
             .merge(api::app_webhooks::routes(app_webhooks_state))
