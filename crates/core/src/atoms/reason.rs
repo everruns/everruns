@@ -2134,7 +2134,7 @@ mod tests {
             deferrable: crate::tool_types::DeferrablePolicy::default(),
             hints: crate::tool_types::ToolHints::default(),
         })
-        .with_capability_attribution("cap:demo", "Demo Capability");
+        .with_capability_attribution("cap:demo", Some("Demo Capability"));
 
         let records = capability_usage_snapshot_records(
             &registry,

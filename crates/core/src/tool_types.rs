@@ -217,18 +217,18 @@ impl ToolDefinition {
     pub fn with_capability_attribution(
         mut self,
         capability_id: impl Into<String>,
-        capability_name: impl Into<String>,
+        capability_name: Option<impl Into<String>>,
     ) -> Self {
         let capability_id = capability_id.into();
-        let capability_name = capability_name.into();
+        let capability_name = capability_name.map(Into::into);
         match &mut self {
             ToolDefinition::Builtin(b) => {
                 b.hints.capability_id = Some(capability_id);
-                b.hints.capability_name = Some(capability_name);
+                b.hints.capability_name = capability_name;
             }
             ToolDefinition::ClientSide(c) => {
                 c.hints.capability_id = Some(capability_id);
-                c.hints.capability_name = Some(capability_name);
+                c.hints.capability_name = capability_name;
             }
         }
         self
@@ -410,10 +410,10 @@ impl ToolHints {
     pub fn with_capability_attribution(
         mut self,
         capability_id: impl Into<String>,
-        capability_name: impl Into<String>,
+        capability_name: Option<impl Into<String>>,
     ) -> Self {
         self.capability_id = Some(capability_id.into());
-        self.capability_name = Some(capability_name.into());
+        self.capability_name = capability_name.map(Into::into);
         self
     }
 

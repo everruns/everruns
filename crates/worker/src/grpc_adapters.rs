@@ -1859,11 +1859,7 @@ fn proto_mcp_tool_def_to_tool_definition(
     if !proto_tool.capability_id.is_empty() {
         hints = hints.with_capability_attribution(
             proto_tool.capability_id.clone(),
-            if proto_tool.capability_name.is_empty() {
-                proto_tool.capability_id.clone()
-            } else {
-                proto_tool.capability_name.clone()
-            },
+            (!proto_tool.capability_name.is_empty()).then_some(proto_tool.capability_name.clone()),
         );
     }
 

@@ -114,7 +114,7 @@ impl McpCapability {
             deferrable: DeferrablePolicy::default(),
             hints,
         })
-        .with_capability_attribution(self.capability_id(), self.server_name.clone())
+        .with_capability_attribution(self.capability_id(), Some(self.server_name.clone()))
     }
 }
 

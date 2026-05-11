@@ -1789,7 +1789,7 @@ impl DirectWorkerAdapters {
                         hints: everruns_core::tool_types::ToolHints::default()
                             .with_open_world(true),
                     })
-                    .with_capability_attribution(cap_id.clone(), server_name.clone()),
+                    .with_capability_attribution(cap_id.clone(), Some(server_name.clone())),
                 );
             }
         }
