@@ -1,7 +1,8 @@
 # Railway Template
 
-This directory contains the repo-backed pieces for the Everruns Railway
-template. Railway does not run Docker Compose directly, so the template maps
+This directory documents the Everruns Railway template shape and keeps a
+maintainable Caddy ingress config for future repo-backed deployments. Railway
+does not run Docker Compose directly, so the live template maps
 `examples/docker-compose-full.yaml` into individual Railway services.
 
 ## Service Shape
@@ -14,12 +15,17 @@ template. Railway does not run Docker Compose directly, so the template maps
 | `server` | Docker image `ghcr.io/everruns/everruns-server:latest` | No | HTTP API on `9000`, worker gRPC on `9001`. |
 | `worker` | Docker image `ghcr.io/everruns/everruns-worker:latest` | No | Scale replicas as needed. |
 | `ui` | Docker image `ghcr.io/everruns/everruns-ui:latest` | No | Next.js server on `9100`. |
-| `caddy` | GitHub repo root `railway/caddy` | Yes | Single public ingress. |
+| `caddy` | Docker image `caddy:2-alpine` | Yes | Single public ingress. |
 
 ## Caddy Service
 
-Create the Caddy service from this repository with root directory
-`/railway/caddy`. Enable public HTTP networking only on this service.
+The published template uses Docker image `caddy:2-alpine` and writes the
+Caddyfile from its Railway start command. Keep public HTTP networking enabled
+only on this service.
+
+The files in `railway/caddy/` are the source-of-truth version of that ingress
+config. They can replace the inline start command after this directory is
+available on the default branch.
 
 Variables:
 
