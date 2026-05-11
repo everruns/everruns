@@ -121,6 +121,20 @@ draft → published → draft → archived → deleted
 - `archived`: Read-only, hidden from lists by default, not assignable, not executable
 - `deleted`: Tombstone state for historical references only; normal detail API returns `404`
 
+## UI
+
+The App detail page has two implementations during the redesign rollout:
+
+- `apps.detailV2=false`: legacy configuration/detail page.
+- `apps.detailV2=true`: channels-first operations page.
+
+The channels-first page folds App configuration into the header, renders a Health / Invocations 24h / Success rate / Activity stat strip, lists channels as expandable rows, and shows a live activity rail. Channel creation and editing are full-page routes, not dialogs:
+
+- `/apps/{app_id}/channels/new`
+- `/apps/{app_id}/channels/{channel_id}`
+
+Schedule labels in rows, headers, breadcrumbs, summaries, and other read-only UI must render a human-readable cron description plus timezone. Raw cron expressions are only shown inside the editable Cron input.
+
 ## Data Model
 
 See `crates/core/src/app.rs` for the complete `App` and `AppChannel` definitions.
@@ -147,6 +161,7 @@ All endpoints under `/v1/apps`. See `crates/server/src/api/apps.rs`.
 | POST | `/v1/apps/{app_id}/channels` | Add a channel |
 | PATCH | `/v1/apps/{app_id}/channels/{channel_id}` | Update a channel |
 | DELETE | `/v1/apps/{app_id}/channels/{channel_id}` | Remove a channel |
+| POST | `/v1/apps/{app_id}/channels/{channel_id}/trigger` | Manually trigger a schedule channel |
 | POST | `/v1/apps/{app_id}/webhooks/{channel_id}` | Trigger a webhook channel |
 
 ## ID Schema
