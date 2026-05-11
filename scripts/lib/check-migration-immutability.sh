@@ -31,10 +31,10 @@ if ! violations="$(
 fi
 
 if [ -n "$violations" ]; then
-  # Approved repair for a merged duplicate migration version: main contained
-  # both 027_app_budgets.sql and 027_session_stats_indexes.sql, which breaks
-  # SQLx on fresh databases. Keep this exception scoped to the exact rename.
+  # Approved repairs for merged duplicate migration versions. Keep each
+  # exception scoped to the exact rename that restores sequential ordering.
   violations="$(printf '%s\n' "$violations" | grep -v $'^R100\tcrates/server/migrations/027_session_stats_indexes.sql\tcrates/server/migrations/028_session_stats_indexes.sql$' || true)"
+  violations="$(printf '%s\n' "$violations" | grep -v $'^R100\tcrates/server/migrations/041_reporting_saved_reports_exports.sql\tcrates/server/migrations/042_reporting_saved_reports_exports.sql$' || true)"
 fi
 
 if [ -n "$violations" ]; then
