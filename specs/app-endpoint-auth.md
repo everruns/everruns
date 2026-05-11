@@ -179,11 +179,20 @@ Composition rules at launch:
 
 Per request, the verifier computes the effective policy:
 
-1. If `app_channels.auth_policy` is set, use it.
-2. Else if `apps.default_auth_policy` is set, use it.
+1. If `app_channels.auth_policy_id` resolves to an active policy, use it.
+2. Else if `apps.default_auth_policy_id` resolves to an active policy,
+   use it.
 3. Else fall back to the channel's legacy auth fields (AG-UI `token`,
    webhook `token`, A2A `api_key_hash`), wrapped in synthesized
    policies internally. This preserves zero-config behavior.
+
+The columns are nullable foreign keys into `app_endpoint_auth_policies`
+(see **Migration** below); the policy object is read by ID, never
+embedded inline on the channel or app row, so policy updates do not
+require rewriting every referencing row. API request/response field
+names mirror the column names (`auth_policy_id` on channel patch,
+`default_auth_policy_id` on app patch); the resolved policy object is
+inlined under `auth_policy` in read responses for convenience.
 
 Steps 1–2 always win over the legacy fields, so once a channel adopts
 the new model the legacy fields are inert. This is intentional: there
@@ -213,15 +222,28 @@ set. Channel handlers consume it for audit, budget tagging, and template
 context but never for credential parsing.
 
 `AppEndpointAuthError` is intentionally non-enumerating to external
-callers — the public response is always one of `unauthorized`,
-`forbidden` (channel disabled / app unpublished), or `provider_outage`.
-Internal logs carry the granular reason.
+callers for the **auth-scheme outcome**: every credential-validation
+failure collapses to `unauthorized` regardless of which check failed
+(wrong issuer, wrong audience, expired token, missing scope, etc.).
+`forbidden` covers `channel disabled / app unpublished` and
+`provider_outage` covers the case in **Operational Behavior on
+Provider Outage** below. Resource-not-found responses keep the
+per-channel HTTP contract (A2A returns HTTP 404 for "App or channel
+not found" per `specs/a2a-channel.md`; AG-UI returns its existing
+response shape) because the verifier runs **after** the
+published-app + enabled-channel gate that owns those responses.
+Internal logs carry the granular reason for every failure path.
 
 ## Decision: Separate Registry from User Connections
 
-User-connection providers (`crates/server/src/domains/connections/`) are
-**outbound** OAuth grants tied to one user at a time and used to call
-external APIs on that user's behalf. App endpoint auth providers are
+User-connection providers (the `ConnectionProvider` registry in
+`crates/core/src/connection_provider.rs`, resolved at runtime by
+`DbConnectionResolver` / `UserConnectionResolver` in
+`crates/server/src/storage/connection_resolver.rs`, and exposed by the
+`/v1/user/connections/*` API in
+`crates/server/src/api/user_connections.rs`) are **outbound** OAuth
+grants tied to one user at a time and used to call external APIs on
+that user's behalf. App endpoint auth providers are
 **inbound** resource-server validators used to authenticate callers
 reaching us. Mixing them would:
 
@@ -274,9 +296,16 @@ introduces non-trivial identity reconciliation: whose subject ID wins
 for audit, which scopes count toward budgets, what error message to
 return when only one half is present. There is no current concrete
 deployment requirement for AND composition, so the launch shape
-supports only OR. The data model leaves a `composition_mode: Or | And`
-field reserved but defaulted to `Or` so a future iteration is a pure
-addition.
+supports only OR.
+
+Forward-compatibility is preserved by versioning the stored policy: the
+`app_endpoint_auth_policies` row carries a `schema_version` column
+(launch value `1`, OR-only). A future version may add a
+`composition_mode: Or | And` field with `Or` as the default for
+existing rows; readers branch on `schema_version` so this is an
+additive change and not a breaking migration. The launch struct does
+not include `composition_mode` — it ships when AND is implemented, not
+before.
 
 ## Migration
 
@@ -358,8 +387,12 @@ without expanding `WebhookChannelConfig`.
 
 ## API
 
-CRUD endpoints under `/v1/orgs/{org_id}/app-endpoint-auth-providers`
-(provider config) and on App / channel update routes (policy binding).
+CRUD endpoints live under `/v1/app-endpoint-auth-providers` (provider
+config) and on App / channel update routes (policy binding). Org
+context is resolved from the caller's session / API key via the
+standard `X-Org-Id` mechanism (see `specs/authentication.md`), the
+same as every other org-scoped resource on the platform — there is no
+`{org_id}` path segment.
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -407,9 +440,19 @@ namespace is `aeauth:` so it does not collide with other caches.
 
 ## Operational Behavior on Provider Outage
 
-If the provider's discovery / JWKS / introspection endpoint is
-unreachable past `discovery_cache_ttl_secs` × 2, the verifier returns
-`provider_outage` (HTTP 503) instead of falsely accepting or rejecting.
+If the provider's remote endpoint is unreachable past the **relevant
+cache TTL × 2**, the verifier returns `provider_outage` (HTTP 503)
+instead of falsely accepting or rejecting. The applicable TTL per
+provider kind:
+
+- `OidcJwtBearer`: `discovery_cache_ttl_secs` for the OIDC discovery
+  document; `jwks_cache_ttl_secs` for the JWKS endpoint. Either being
+  unreachable past its own `ttl × 2` window trips the outage state.
+- `OAuth2Introspection`: `cache_ttl_secs` for the introspection
+  endpoint.
+- `HttpBasic`, `Mtls`, `SharedSecret`, `ApiKey`: no remote dependency,
+  so `provider_outage` does not apply.
+
 This fails closed — an outage cannot become an authentication bypass —
 and gives operators a clear signal distinct from credential failures.
 
@@ -452,16 +495,27 @@ audit log itself non-enumerating for operators.
 
 ## Threat Model
 
-A new threat category `TM-AEAUTH` covers the inbound App-endpoint auth
-surface. Initial threats and mitigations live in `specs/threat-model.md`
-under "App Endpoint Auth (TM-AEAUTH)":
+A new threat category `TM-AEAUTH` will cover the inbound App-endpoint
+auth surface. The entries below enumerate the design-time threat
+analysis. They will be added to `specs/threat-model.md` alongside the
+first implementation PR that introduces verifiable mitigations in code
+(per the threat-model convention that every entry links to the
+mitigating code path). The category is reserved as
+**"App Endpoint Auth (TM-AEAUTH)"**:
 
 - `TM-AEAUTH-001` — JWT signature algorithm confusion / `alg=none`.
   Mitigation: algorithm allowlist enforced before signature verify;
   `none` and HS\* are rejected by default; allowed set is per provider.
 - `TM-AEAUTH-002` — JWKS poisoning via crafted `kid`. Mitigation:
-  bounded forced-refresh rate; refreshed JWKS replaces the cache only
-  when the document validates against the issuer's signing key.
+  forced refreshes are rate-limited per provider; the refresh fetch
+  uses the JWKS URI **discovered from the validated OIDC discovery
+  document over HTTPS** (not a caller-supplied URL); the refreshed
+  document is parsed strictly (only JWKs with supported `kty` / `alg`
+  values retained) before replacing the cache; and a forced refresh
+  that fails to surface a key matching the requesting `kid` still
+  returns `unauthorized` rather than retrying unbounded. Trust in the
+  JWKS itself flows from TLS to the issuer plus the discovery
+  linkage, not from a separate JWKS signature.
 - `TM-AEAUTH-003` — `iss` / `aud` mismatch / cross-tenant token
   reuse. Mitigation: `iss` validated against provider config; `aud`
   validated against policy `required_audiences`; tokens that don't
@@ -526,9 +580,17 @@ Coverage required across provider kinds:
    regress existing valid sessions.
 7. **Provider disabled**: requests fail closed (not silently
    anonymous).
-8. **Non-enumerating errors**: every failure mode returns the same
-   public response shape regardless of which scheme failed and
-   regardless of whether the app / channel exists.
+8. **Non-enumerating errors**: every **post-resolution** auth failure
+   returns the same public response shape regardless of which scheme
+   failed (e.g. wrong issuer vs. wrong audience vs. wrong scope all
+   collapse to one `unauthorized` body). Resource-existence errors
+   keep the per-channel contract documented elsewhere — A2A continues
+   to return HTTP 404 for "App or channel not found"
+   (`specs/a2a-channel.md`), AG-UI continues to return its existing
+   response shape for unpublished apps. Non-enumeration is scoped to
+   the auth-scheme outcome after the published-app + enabled-channel
+   gate has already resolved the resource; this preserves the gate
+   ordering documented in `TM-A2A-004` and `TM-AUTHZ-006`.
 9. **A2A Agent Card**: shape changes correctly when policy switches
    between provider kinds; never echoes secrets or private issuer
    URLs.
