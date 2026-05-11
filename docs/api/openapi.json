@@ -5509,6 +5509,36 @@
         }
       }
     },
+    "/v1/reports/admin/diagnostics": {
+      "get": {
+        "tags": [
+          "reporting"
+        ],
+        "operationId": "get_diagnostics",
+        "responses": {
+          "200": {
+            "description": "Reporting diagnostics",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportingDiagnostics"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/reports/catalog": {
       "get": {
         "tags": [
@@ -5619,6 +5649,413 @@
           },
           "403": {
             "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/reports/query/export": {
+      "post": {
+        "tags": [
+          "reporting"
+        ],
+        "operationId": "export_query",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportReportQueryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Exported report content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportExport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid semantic query",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/reports/saved": {
+      "get": {
+        "tags": [
+          "reporting"
+        ],
+        "operationId": "list_saved_reports",
+        "responses": {
+          "200": {
+            "description": "Saved reports",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListResponse_SavedReport"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "reporting"
+        ],
+        "operationId": "create_saved_report",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSavedReportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Saved report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid saved report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/reports/saved/{report_id}": {
+      "get": {
+        "tags": [
+          "reporting"
+        ],
+        "operationId": "get_saved_report",
+        "parameters": [
+          {
+            "name": "report_id",
+            "in": "path",
+            "description": "Saved report ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Saved report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedReport"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Saved report not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "reporting"
+        ],
+        "operationId": "delete_saved_report",
+        "parameters": [
+          {
+            "name": "report_id",
+            "in": "path",
+            "description": "Saved report ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Saved report deleted"
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Saved report not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "reporting"
+        ],
+        "operationId": "update_saved_report",
+        "parameters": [
+          {
+            "name": "report_id",
+            "in": "path",
+            "description": "Saved report ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSavedReportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Saved report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid saved report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Saved report not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/reports/saved/{report_id}/export": {
+      "post": {
+        "tags": [
+          "reporting"
+        ],
+        "operationId": "export_saved_report",
+        "parameters": [
+          {
+            "name": "report_id",
+            "in": "path",
+            "description": "Saved report ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportSavedReportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Exported report content",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportExport"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Saved report not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/reports/saved/{report_id}/run": {
+      "post": {
+        "tags": [
+          "reporting"
+        ],
+        "operationId": "run_saved_report",
+        "parameters": [
+          {
+            "name": "report_id",
+            "in": "path",
+            "description": "Saved report ID",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Reporting query result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportResult"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Saved report not found",
             "content": {
               "application/json": {
                 "schema": {
@@ -10703,6 +11140,37 @@
           }
         }
       },
+      "CreateSavedReportRequest": {
+        "type": "object",
+        "required": [
+          "name",
+          "query"
+        ],
+        "properties": {
+          "dashboard": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SavedReportDashboardMetadata"
+              }
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "query": {
+            "$ref": "#/components/schemas/ReportQuery"
+          }
+        }
+      },
       "CreateScheduleRequest": {
         "type": "object",
         "description": "Create schedule request",
@@ -11057,6 +11525,31 @@
           },
           "name": {
             "type": "string"
+          }
+        }
+      },
+      "DatasetProjectorLag": {
+        "type": "object",
+        "required": [
+          "dataset"
+        ],
+        "properties": {
+          "dataset": {
+            "type": "string"
+          },
+          "freshness_lag_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "latest_projected_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
           }
         }
       },
@@ -11526,6 +12019,28 @@
           "FinalAnswer"
         ]
       },
+      "ExportReportQueryRequest": {
+        "type": "object",
+        "required": [
+          "query"
+        ],
+        "properties": {
+          "format": {
+            "$ref": "#/components/schemas/ReportExportFormat"
+          },
+          "query": {
+            "$ref": "#/components/schemas/ReportQuery"
+          }
+        }
+      },
+      "ExportSavedReportRequest": {
+        "type": "object",
+        "properties": {
+          "format": {
+            "$ref": "#/components/schemas/ReportExportFormat"
+          }
+        }
+      },
       "ExternalActor": {
         "type": "object",
         "description": "External actor identity for messages originating from external channels\n(Slack, Discord, Teams, etc.).\n\nChannel adapters populate this to identify the sender without coupling\ncore logic to any specific channel. The ReasonAtom uses this to prefix\nuser messages so the LLM knows who is speaking.",
@@ -11561,6 +12076,47 @@
           "source": {
             "type": "string",
             "description": "Source channel identifier (e.g. \"slack\", \"discord\")"
+          }
+        }
+      },
+      "FailedReportingOutboxRow": {
+        "type": "object",
+        "required": [
+          "id",
+          "org_id",
+          "source_type",
+          "source_id",
+          "attempts",
+          "updated_at"
+        ],
+        "properties": {
+          "attempts": {
+            "type": "integer",
+            "format": "int32"
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "last_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "org_id": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "source_id": {
+            "type": "string"
+          },
+          "source_type": {
+            "type": "string"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
           }
         }
       },
@@ -14085,6 +14641,65 @@
                   "type": "string",
                   "format": "date-time",
                   "description": "When the organization was last updated"
+                }
+              }
+            },
+            "description": "Array of items returned by the list operation."
+          }
+        }
+      },
+      "ListResponse_SavedReport": {
+        "type": "object",
+        "description": "Response wrapper for list endpoints.\nAll list endpoints return responses wrapped in a `data` field.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "name",
+                "query",
+                "created_at",
+                "updated_at"
+              ],
+              "properties": {
+                "created_at": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "dashboard": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SavedReportDashboardMetadata"
+                    }
+                  ]
+                },
+                "description": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "query": {
+                  "$ref": "#/components/schemas/ReportQuery"
+                },
+                "updated_at": {
+                  "type": "string",
+                  "format": "date-time"
                 }
               }
             },
@@ -18572,6 +19187,48 @@
           "measure"
         ]
       },
+      "ReportExport": {
+        "type": "object",
+        "required": [
+          "format",
+          "filename",
+          "content_type",
+          "content",
+          "as_of"
+        ],
+        "properties": {
+          "as_of": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "content": {
+            "type": "string"
+          },
+          "content_type": {
+            "type": "string"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "format": {
+            "$ref": "#/components/schemas/ReportExportFormat"
+          },
+          "freshness_lag_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "ReportExportFormat": {
+        "type": "string",
+        "enum": [
+          "csv",
+          "json"
+        ]
+      },
       "ReportFilter": {
         "type": "object",
         "required": [
@@ -18720,6 +19377,70 @@
           }
         }
       },
+      "ReportingDiagnostics": {
+        "type": "object",
+        "required": [
+          "generated_at",
+          "projector_lag",
+          "outbox"
+        ],
+        "properties": {
+          "generated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "outbox": {
+            "$ref": "#/components/schemas/ReportingOutboxDiagnostics"
+          },
+          "projector_lag": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DatasetProjectorLag"
+            }
+          }
+        }
+      },
+      "ReportingOutboxDiagnostics": {
+        "type": "object",
+        "required": [
+          "pending",
+          "processing",
+          "failed",
+          "completed",
+          "failed_rows"
+        ],
+        "properties": {
+          "completed": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "failed": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "failed_rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FailedReportingOutboxRow"
+            }
+          },
+          "oldest_pending_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "pending": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "processing": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
       "ResourceConfigResponse": {
         "type": "object",
         "description": "Response type for per-resource config endpoints.\n\nEvery resource exposes `GET /v1/{resource}/config` returning this type.\nUI uses it to gate controls (create/edit/delete buttons, admin panels).",
@@ -18857,6 +19578,82 @@
             "type": "boolean"
           },
           "summary": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "SavedReport": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "query",
+          "created_at",
+          "updated_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "dashboard": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SavedReportDashboardMetadata"
+              }
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "query": {
+            "$ref": "#/components/schemas/ReportQuery"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "SavedReportDashboardMetadata": {
+        "type": "object",
+        "properties": {
+          "chart_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "position": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32"
+          },
+          "section": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "title": {
             "type": [
               "string",
               "null"
@@ -21476,6 +22273,36 @@
               "string",
               "null"
             ]
+          }
+        }
+      },
+      "UpdateSavedReportRequest": {
+        "type": "object",
+        "properties": {
+          "dashboard": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/SavedReportDashboardMetadata"
+              }
+            ]
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "query": {
+            "$ref": "#/components/schemas/ReportQuery"
           }
         }
       },

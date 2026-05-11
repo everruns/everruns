@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use axum::{
     Json, Router,
-    extract::{Query, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     routing::{get, post},
 };
@@ -10,14 +10,20 @@ use everruns_core::Caller;
 use everruns_core::reporting::{DatasetCatalog, ReportQuery, ReportResult};
 use serde::Deserialize;
 use utoipa::{IntoParams, ToSchema};
+use uuid::Uuid;
 
-use super::common::{ErrorResponse, impl_auth_state};
+use super::common::{ErrorResponse, ListResponse, impl_auth_state};
 use super::dispatch::impl_dispatchable;
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
-use crate::domains::reporting::types::ProjectorRunResult;
+use crate::domains::reporting::types::{
+    CreateSavedReportRequest, ExportReportQueryRequest, ExportSavedReportRequest,
+    ProjectorRunResult, ReportExport, ReportingDiagnostics, SavedReport, UpdateSavedReportRequest,
+};
 use crate::domains::reporting::{
-    GetReportCatalog, ReportingService, RunReportQuery, RunReportingProjector,
+    CreateSavedReport, DeleteSavedReport, ExportReportQuery, ExportSavedReport, GetReportCatalog,
+    GetReportingDiagnostics, GetSavedReport, ListSavedReports, ReportingService, RunReportQuery,
+    RunReportingProjector, RunSavedReport, UpdateSavedReport,
 };
 use crate::storage::StorageBackend;
 
@@ -68,6 +74,23 @@ pub fn routes(state: AppState) -> Router {
     Router::new()
         .route("/v1/reports/catalog", get(get_catalog))
         .route("/v1/reports/query", post(run_query))
+        .route("/v1/reports/query/export", post(export_query))
+        .route(
+            "/v1/reports/saved",
+            get(list_saved_reports).post(create_saved_report),
+        )
+        .route(
+            "/v1/reports/saved/{report_id}",
+            get(get_saved_report)
+                .patch(update_saved_report)
+                .delete(delete_saved_report),
+        )
+        .route("/v1/reports/saved/{report_id}/run", post(run_saved_report))
+        .route(
+            "/v1/reports/saved/{report_id}/export",
+            post(export_saved_report),
+        )
+        .route("/v1/reports/admin/diagnostics", get(get_diagnostics))
         .route("/v1/reports/projector/run", post(run_projector))
         .with_state(state)
 }
@@ -105,6 +128,198 @@ pub async fn run_query(
     Json(query): Json<ReportQuery>,
 ) -> Result<Json<ReportResult>, ApiError> {
     Ok(Json(RunReportQuery(query).run(&state.ctx(&org)).await?))
+}
+
+#[utoipa::path(
+    post,
+    path = "/v1/reports/query/export",
+    request_body = ExportReportQueryRequest,
+    responses(
+        (status = 200, description = "Exported report content", body = ReportExport),
+        (status = 400, description = "Invalid semantic query", body = ErrorResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse)
+    ),
+    tag = "reporting"
+)]
+pub async fn export_query(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Json(request): Json<ExportReportQueryRequest>,
+) -> Result<Json<ReportExport>, ApiError> {
+    Ok(Json(
+        ExportReportQuery(request).run(&state.ctx(&org)).await?,
+    ))
+}
+
+#[utoipa::path(
+    get,
+    path = "/v1/reports/saved",
+    responses(
+        (status = 200, description = "Saved reports", body = ListResponse<SavedReport>),
+        (status = 403, description = "Forbidden", body = ErrorResponse)
+    ),
+    tag = "reporting"
+)]
+pub async fn list_saved_reports(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+) -> Result<Json<ListResponse<SavedReport>>, ApiError> {
+    Ok(Json(ListResponse::new(
+        ListSavedReports.run(&state.ctx(&org)).await?,
+    )))
+}
+
+#[utoipa::path(
+    post,
+    path = "/v1/reports/saved",
+    request_body = CreateSavedReportRequest,
+    responses(
+        (status = 201, description = "Saved report", body = SavedReport),
+        (status = 400, description = "Invalid saved report", body = ErrorResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse)
+    ),
+    tag = "reporting"
+)]
+pub async fn create_saved_report(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Json(request): Json<CreateSavedReportRequest>,
+) -> Result<(StatusCode, Json<SavedReport>), ApiError> {
+    Ok((
+        StatusCode::CREATED,
+        Json(CreateSavedReport(request).run(&state.ctx(&org)).await?),
+    ))
+}
+
+#[utoipa::path(
+    get,
+    path = "/v1/reports/saved/{report_id}",
+    params(("report_id" = Uuid, Path, description = "Saved report ID")),
+    responses(
+        (status = 200, description = "Saved report", body = SavedReport),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
+        (status = 404, description = "Saved report not found", body = ErrorResponse)
+    ),
+    tag = "reporting"
+)]
+pub async fn get_saved_report(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(report_id): Path<Uuid>,
+) -> Result<Json<SavedReport>, ApiError> {
+    Ok(Json(
+        GetSavedReport { report_id }.run(&state.ctx(&org)).await?,
+    ))
+}
+
+#[utoipa::path(
+    patch,
+    path = "/v1/reports/saved/{report_id}",
+    params(("report_id" = Uuid, Path, description = "Saved report ID")),
+    request_body = UpdateSavedReportRequest,
+    responses(
+        (status = 200, description = "Saved report", body = SavedReport),
+        (status = 400, description = "Invalid saved report", body = ErrorResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
+        (status = 404, description = "Saved report not found", body = ErrorResponse)
+    ),
+    tag = "reporting"
+)]
+pub async fn update_saved_report(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(report_id): Path<Uuid>,
+    Json(request): Json<UpdateSavedReportRequest>,
+) -> Result<Json<SavedReport>, ApiError> {
+    Ok(Json(
+        UpdateSavedReport { report_id, request }
+            .run(&state.ctx(&org))
+            .await?,
+    ))
+}
+
+#[utoipa::path(
+    delete,
+    path = "/v1/reports/saved/{report_id}",
+    params(("report_id" = Uuid, Path, description = "Saved report ID")),
+    responses(
+        (status = 204, description = "Saved report deleted"),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
+        (status = 404, description = "Saved report not found", body = ErrorResponse)
+    ),
+    tag = "reporting"
+)]
+pub async fn delete_saved_report(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(report_id): Path<Uuid>,
+) -> Result<StatusCode, ApiError> {
+    DeleteSavedReport { report_id }
+        .run(&state.ctx(&org))
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[utoipa::path(
+    post,
+    path = "/v1/reports/saved/{report_id}/run",
+    params(("report_id" = Uuid, Path, description = "Saved report ID")),
+    responses(
+        (status = 200, description = "Reporting query result", body = ReportResult),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
+        (status = 404, description = "Saved report not found", body = ErrorResponse)
+    ),
+    tag = "reporting"
+)]
+pub async fn run_saved_report(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(report_id): Path<Uuid>,
+) -> Result<Json<ReportResult>, ApiError> {
+    Ok(Json(
+        RunSavedReport { report_id }.run(&state.ctx(&org)).await?,
+    ))
+}
+
+#[utoipa::path(
+    post,
+    path = "/v1/reports/saved/{report_id}/export",
+    params(("report_id" = Uuid, Path, description = "Saved report ID")),
+    request_body = ExportSavedReportRequest,
+    responses(
+        (status = 200, description = "Exported report content", body = ReportExport),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
+        (status = 404, description = "Saved report not found", body = ErrorResponse)
+    ),
+    tag = "reporting"
+)]
+pub async fn export_saved_report(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(report_id): Path<Uuid>,
+    Json(request): Json<ExportSavedReportRequest>,
+) -> Result<Json<ReportExport>, ApiError> {
+    Ok(Json(
+        ExportSavedReport { report_id, request }
+            .run(&state.ctx(&org))
+            .await?,
+    ))
+}
+
+#[utoipa::path(
+    get,
+    path = "/v1/reports/admin/diagnostics",
+    responses(
+        (status = 200, description = "Reporting diagnostics", body = ReportingDiagnostics),
+        (status = 403, description = "Forbidden", body = ErrorResponse)
+    ),
+    tag = "reporting"
+)]
+pub async fn get_diagnostics(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+) -> Result<Json<ReportingDiagnostics>, ApiError> {
+    Ok(Json(GetReportingDiagnostics.run(&state.ctx(&org)).await?))
 }
 
 #[utoipa::path(

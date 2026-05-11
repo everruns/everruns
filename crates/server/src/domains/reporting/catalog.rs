@@ -559,6 +559,10 @@ pub fn catalog() -> DatasetCatalog {
     }
 }
 
+pub fn datasets() -> &'static [DatasetSpec] {
+    DATASETS
+}
+
 pub fn dataset(name: &str) -> Option<&'static DatasetSpec> {
     DATASETS.iter().find(|dataset| dataset.name == name)
 }
