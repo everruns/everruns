@@ -22,6 +22,20 @@ Everruns is a service that runs AI agents in the most reliable way possible. Eac
 - **Multi-provider support**: OpenAI, Anthropic, and more
 - **[Open Responses](https://www.openresponses.org/)**: Vendor-neutral API for multi-provider LLM interfaces
 
+## Try it in the cloud
+
+One-click deploy a sandbox instance on Railway:
+
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template?template=https%3A%2F%2Fgithub.com%2Feverruns%2Feverruns)
+
+Railway provisions Postgres, Valkey, and NATS as managed plugins and runs the server, workers, UI, and reverse proxy from the published `ghcr.io/everruns/*` images. On first launch you will be asked for:
+
+- `SECRETS_ENCRYPTION_KEY` — generate with `python3 -c "import os, base64; print('kek-v1:' + base64.b64encode(os.urandom(32)).decode())"`
+- `WORKER_GRPC_AUTH_TOKEN` — any random string (e.g. `openssl rand -hex 32`)
+- One of `DEFAULT_OPENAI_API_KEY` / `DEFAULT_ANTHROPIC_API_KEY` / `DEFAULT_GEMINI_API_KEY` (optional — can also be set in the UI later)
+
+Expect ~3 minutes for the stack to come up. For local-first or production-grade deploys, prefer the Docker Compose flow below.
+
 ## Quick Start
 
 Deploy Everruns with Docker Compose:

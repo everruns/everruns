@@ -5,6 +5,20 @@ description: Step-by-step guide to deploying the complete Everruns platform with
 
 Deploy the complete Everruns platform using Docker Compose. This guide sets up the control plane, workers, UI, and database in a single command.
 
+## Cloud one-click deploy (Railway)
+
+If you just want to try Everruns without installing Docker locally, deploy a sandbox instance on Railway:
+
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template?template=https%3A%2F%2Fgithub.com%2Feverruns%2Feverruns)
+
+Railway provisions Postgres, Valkey, and NATS as managed plugins and runs the server, workers, UI, and reverse proxy from the published `ghcr.io/everruns/*` images. On first launch Railway prompts for:
+
+- `SECRETS_ENCRYPTION_KEY` — generate with `python3 -c "import os, base64; print('kek-v1:' + base64.b64encode(os.urandom(32)).decode())"`
+- `WORKER_GRPC_AUTH_TOKEN` — any random string (e.g. `openssl rand -hex 32`)
+- One of `DEFAULT_OPENAI_API_KEY` / `DEFAULT_ANTHROPIC_API_KEY` / `DEFAULT_GEMINI_API_KEY` (optional — can also be set in the UI later)
+
+Expect ~3 minutes for the stack to come up. For production deployments, prefer the Docker Compose flow below — it gives you full control over volumes, networking, and resource limits.
+
 ## Prerequisites
 
 - Docker Engine 20.10+
