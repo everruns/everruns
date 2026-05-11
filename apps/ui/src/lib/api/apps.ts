@@ -7,6 +7,8 @@ import type {
   AddChannelRequest,
   App,
   AppChannel,
+  AppRunBucket,
+  AppRunEvent,
   CreateAppRequest,
   InvocationSessionMode,
   UpdateAppRequest,
@@ -67,6 +69,30 @@ export async function updateChannel(
 
 export async function deleteChannel(appId: string, channelId: string): Promise<void> {
   await api.delete(`/v1/apps/${appId}/channels/${channelId}`);
+}
+
+export async function triggerChannel(
+  appId: string,
+  channelId: string,
+): Promise<{ session_id: string; created_session: boolean }> {
+  const response = await api.post<{ session_id: string; created_session: boolean }>(
+    `/v1/apps/${appId}/channels/${channelId}/trigger`,
+    {},
+  );
+  return response.data;
+}
+
+export async function listAppRuns(
+  appId: string,
+): Promise<{ data: AppRunEvent[]; buckets?: AppRunBucket[] }> {
+  try {
+    const response = await api.get<{ data: AppRunEvent[]; buckets?: AppRunBucket[] }>(
+      `/v1/apps/${appId}/runs?window=24h&groupBy=hour`,
+    );
+    return response.data;
+  } catch {
+    return { data: [] };
+  }
 }
 
 /**

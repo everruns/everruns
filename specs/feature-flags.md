@@ -44,6 +44,7 @@ Planned flag:
 Current API-visible experimental flags include:
 
 - `agent_versions`: gates immutable Agent snapshots, forks, rollback, version diffs, and App version binding. See `specs/agent-versions.md`.
+- `apps.detailV2`: gates the channels-first App detail page and full-page channel New/Edit routes. Env var: `FEATURE_APPS_DETAIL_V2`.
 
 ## Architecture
 

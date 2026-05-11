@@ -105,8 +105,28 @@ export interface AppChannel {
     | A2aChannelConfig
     | Record<string, unknown>;
   enabled: boolean;
+  next_run_at?: string | null;
+  last_invoked_at?: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface AppRunEvent {
+  id: string;
+  app_id: string;
+  channel_id: string;
+  channel_type: ChannelType;
+  channel_name?: string | null;
+  status: "pending" | "running" | "completed" | "failed" | "skipped";
+  created_at: string;
+  completed_at?: string | null;
+}
+
+export interface AppRunBucket {
+  hour: string;
+  ok: number;
+  err: number;
+  running?: number;
 }
 
 export interface App {

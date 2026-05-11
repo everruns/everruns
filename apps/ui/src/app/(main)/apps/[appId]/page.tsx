@@ -71,6 +71,7 @@ import { A2aAgentCardPreview } from "@/components/apps/a2a-agent-card-preview";
 import { A2aSetupGuidance } from "@/components/apps/a2a-setup-guidance";
 import { AgUiSetupGuidance } from "@/components/apps/ag-ui-setup-guidance";
 import { AppBudgetsCard } from "@/components/apps/app-budgets-card";
+import { AppDetailV2 } from "@/components/apps/app-detail-v2";
 import { ScheduleSetupGuidance } from "@/components/apps/schedule-setup-guidance";
 import { SlackSetupGuidance } from "@/components/apps/slack-setup-guidance";
 import { WebhookSetupGuidance } from "@/components/apps/webhook-setup-guidance";
@@ -245,7 +246,7 @@ function ChannelMessagePreview({ message }: { message: string }) {
   );
 }
 
-export default function AppDetailPage({ params }: { params: Promise<{ appId: string }> }) {
+function AppDetailPageLegacy({ params }: { params: Promise<{ appId: string }> }) {
   const { appId } = use(params);
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -1748,8 +1749,8 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
                       }}
                       aria-pressed={selected}
                       className={cn(
-                        "w-full rounded-md border p-3 text-left transition-colors hover:bg-muted/50",
-                        selected ? "border-primary bg-muted" : "border-border",
+                        "w-full rounded-md border border-border p-3 text-left transition-colors outline-none hover:bg-muted/50 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50",
+                        selected && "bg-muted",
                       )}
                     >
                       <div className="flex items-start justify-between gap-3">
@@ -2050,4 +2051,15 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
       </Dialog>
     </div>
   );
+}
+
+export default function AppDetailPage({ params }: { params: Promise<{ appId: string }> }) {
+  const detailV2Enabled = useFeatureFlag("apps.detailV2");
+  const { appId } = use(params);
+
+  if (detailV2Enabled) {
+    return <AppDetailV2 appId={appId} />;
+  }
+
+  return <AppDetailPageLegacy params={Promise.resolve({ appId })} />;
 }
