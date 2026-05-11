@@ -67,6 +67,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { CopyButton } from "@/components/ui/copy-button";
+import { A2aAgentCardPreview } from "@/components/apps/a2a-agent-card-preview";
 import { A2aSetupGuidance } from "@/components/apps/a2a-setup-guidance";
 import { AgUiSetupGuidance } from "@/components/apps/ag-ui-setup-guidance";
 import { AppBudgetsCard } from "@/components/apps/app-budgets-card";
@@ -764,6 +765,9 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
 
   const renderChannelForm = (isSaving: boolean, formId: string = "default") => {
     const formChannelType = editingChannelId ? editingChannelType : addChannelType;
+    const a2aEndpointPreviewUrl = editingChannelId
+      ? `${typeof window !== "undefined" ? window.location.origin : ""}/api/v1/apps/${appId}/a2a/${editingChannelId}`
+      : undefined;
 
     return (
       <div className="space-y-4">
@@ -1176,6 +1180,14 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
                 placeholder="What other agents should know about this app."
               />
             </div>
+            <A2aAgentCardPreview
+              appName={app?.name ?? "App"}
+              appDescription={app?.description}
+              endpointUrl={a2aEndpointPreviewUrl}
+              agentCardName={editA2aAgentCardName}
+              agentCardDescription={editA2aAgentCardDescription}
+              sessionMode={editInvocationSessionMode}
+            />
             <div>
               <Label htmlFor={`a2a_rate_limit_${formId}`}>
                 Per-IP rate limit (requests/minute, optional)
@@ -1298,6 +1310,8 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
             apiKeyPrefix={config?.api_key_prefix ?? ""}
             sessionMode={config?.session_mode ?? "shared_session"}
             message={config?.message ?? ""}
+            appName={app.name}
+            appDescription={app.description}
             agentCardName={config?.agent_card_name}
             agentCardDescription={config?.agent_card_description}
             isPublished={isPublished}

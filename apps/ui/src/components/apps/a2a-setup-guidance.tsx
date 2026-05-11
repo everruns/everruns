@@ -1,6 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CopyButton } from "@/components/ui/copy-button";
+import { A2aAgentCardPreview } from "@/components/apps/a2a-agent-card-preview";
 import { getInvocationSessionModeDisplayName } from "@/lib/app-channels";
 import type { InvocationSessionMode } from "@/lib/api/types";
 import { Bot, Globe, KeyRound, RefreshCw } from "lucide-react";
@@ -11,6 +12,8 @@ interface A2aSetupGuidanceProps {
   apiKeyPrefix: string;
   sessionMode: InvocationSessionMode;
   message: string;
+  appName: string;
+  appDescription?: string | null;
   agentCardName?: string;
   agentCardDescription?: string;
   isPublished: boolean;
@@ -25,6 +28,8 @@ export function A2aSetupGuidance({
   apiKeyPrefix,
   sessionMode,
   message,
+  appName,
+  appDescription,
   agentCardName,
   agentCardDescription,
   isPublished,
@@ -112,6 +117,15 @@ export function A2aSetupGuidance({
           )}
         </div>
       )}
+
+      <A2aAgentCardPreview
+        appName={appName}
+        appDescription={appDescription}
+        endpointUrl={endpointUrl}
+        agentCardName={agentCardName}
+        agentCardDescription={agentCardDescription}
+        sessionMode={sessionMode}
+      />
 
       <div>
         <p className="text-sm font-medium">Invocation Message</p>
