@@ -95,10 +95,13 @@ curl -X POST http://localhost:9300/api/v1/sessions \
   -H "Content-Type: application/json" \
   -d '{"agent_id": "{agent_id}"}'
 
-# Send a message (response streams as SSE)
-curl -N -X POST http://localhost:9300/api/v1/sessions/{session_id}/messages \
+# Send a message (returns 201 with the persisted message)
+curl -X POST http://localhost:9300/api/v1/sessions/{session_id}/messages \
   -H "Content-Type: application/json" \
   -d '{"message": {"content": [{"type": "text", "text": "Hello!"}]}}'
+
+# Stream the agent's response and tool calls as Server-Sent Events
+curl -N http://localhost:9300/api/v1/sessions/{session_id}/sse
 ```
 
 Everruns implements the [Open Responses](https://www.openresponses.org/) spec — a vendor-neutral API for multi-provider LLM interfaces with native tool calls and semantic streaming.
