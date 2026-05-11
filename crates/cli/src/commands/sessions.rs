@@ -3,11 +3,12 @@
 use crate::output::{OutputFormat, print_field, print_table_header, print_table_row};
 use anyhow::{Context, Result};
 use clap::Subcommand;
-use everruns_sdk::{CreateBudgetRequest, CreateSessionRequest, Everruns};
+use everruns_sdk::{CreateBudgetRequest, Everruns};
 use futures::StreamExt;
 use std::collections::HashMap;
 
 #[derive(Subcommand)]
+#[allow(clippy::large_enum_variant)]
 pub enum SessionsCommand {
     /// Create a new session
     Create {
@@ -23,9 +24,49 @@ pub enum SessionsCommand {
         #[arg(long)]
         title: Option<String>,
 
+        /// Session locale (BCP 47, e.g. uk-UA)
+        #[arg(long)]
+        locale: Option<String>,
+
         /// Model ID override (e.g. mod_xxx)
         #[arg(long)]
         model: Option<String>,
+
+        /// Resident agent identity ID for unattended/background execution
+        #[arg(long = "agent-identity")]
+        agent_identity: Option<String>,
+
+        /// Session-level system prompt override
+        #[arg(long = "system-prompt")]
+        system_prompt: Option<String>,
+
+        /// Session tag (repeatable)
+        #[arg(long = "tag", short = 't')]
+        tags: Vec<String>,
+
+        /// Session capability (repeatable). Format: REF or REF=JSON_CONFIG.
+        #[arg(long = "capability", value_name = "REF[=JSON]")]
+        capabilities: Vec<String>,
+
+        /// Session client hint (repeatable). Format: KEY=JSON_VALUE.
+        #[arg(long = "hint", value_name = "KEY=JSON")]
+        hints: Vec<String>,
+
+        /// Session client hints JSON object
+        #[arg(long = "hints-json", value_name = "JSON")]
+        hints_json: Option<String>,
+
+        /// Network allow pattern (repeatable)
+        #[arg(long = "network-allow", value_name = "PATTERN")]
+        network_allow: Vec<String>,
+
+        /// Network block pattern (repeatable)
+        #[arg(long = "network-block", value_name = "PATTERN")]
+        network_block: Vec<String>,
+
+        /// Maximum LLM iterations per turn
+        #[arg(long = "max-iterations")]
+        max_iterations: Option<usize>,
 
         /// Session-scoped secret (repeatable, format: KEY=VALUE)
         #[arg(long = "secret", value_name = "KEY=VALUE")]
@@ -75,6 +116,9 @@ pub enum SessionsCommand {
 pub async fn run(
     command: SessionsCommand,
     client: &Everruns,
+    api_url: &str,
+    api_key: &str,
+    org_id: Option<&str>,
     output: OutputFormat,
     quiet: bool,
 ) -> Result<()> {
@@ -83,19 +127,42 @@ pub async fn run(
             harness,
             agent,
             title,
+            locale,
             model,
+            agent_identity,
+            system_prompt,
+            tags,
+            capabilities,
+            hints,
+            hints_json,
+            network_allow,
+            network_block,
+            max_iterations,
             secrets,
             budget_limits,
             budget_soft_limits,
         } => {
             create(
                 client,
+                api_url,
+                api_key,
+                org_id,
                 output,
                 quiet,
                 harness,
                 agent,
                 title,
+                locale,
                 model,
+                agent_identity,
+                system_prompt,
+                tags,
+                capabilities,
+                hints,
+                hints_json,
+                network_allow,
+                network_block,
+                max_iterations,
                 secrets,
                 budget_limits,
                 budget_soft_limits,
@@ -115,50 +182,66 @@ pub async fn run(
 #[allow(clippy::too_many_arguments)]
 async fn create(
     client: &Everruns,
+    api_url: &str,
+    api_key: &str,
+    org_id: Option<&str>,
     output: OutputFormat,
     quiet: bool,
     harness: Option<String>,
     agent_id: Option<String>,
     title: Option<String>,
+    locale: Option<String>,
     model_id: Option<String>,
+    agent_identity_id: Option<String>,
+    system_prompt: Option<String>,
+    tags: Vec<String>,
+    raw_capabilities: Vec<String>,
+    raw_hints: Vec<String>,
+    raw_hints_json: Option<String>,
+    network_allow: Vec<String>,
+    network_block: Vec<String>,
+    max_iterations: Option<usize>,
     raw_secrets: Vec<String>,
     raw_budget_limits: Vec<String>,
     raw_budget_soft_limits: Vec<String>,
 ) -> Result<()> {
     let secrets = parse_secrets(&raw_secrets)?;
     let budget_specs = parse_budget_limits(&raw_budget_limits, &raw_budget_soft_limits)?;
+    let body = build_create_session_body(CreateSessionArgs {
+        harness,
+        agent_id,
+        title,
+        locale,
+        model_id,
+        agent_identity_id,
+        system_prompt,
+        tags,
+        raw_capabilities,
+        raw_hints,
+        raw_hints_json,
+        network_allow,
+        network_block,
+        max_iterations,
+    })?;
 
-    let mut req = CreateSessionRequest::new();
-    if let Some(h) = harness {
-        req = if h.starts_with("harness_") && h.len() == 40 {
-            req.harness_id(h)
-        } else {
-            req.harness_name(h)
-        };
-    }
-    if let Some(a) = agent_id {
-        req = req.agent_id(a);
-    }
-    if let Some(t) = title {
-        req = req.title(t);
-    }
-    if let Some(m) = model_id {
-        req = req.model_id(m);
-    }
-
-    let session = client.sessions().create_with_options(req).await?;
+    let session = create_session_raw(api_url, api_key, org_id, &body).await?;
+    let session_id = session
+        .get("id")
+        .and_then(|id| id.as_str())
+        .context("Create session response did not include id")?
+        .to_string();
 
     // Store secrets after session creation
     if !secrets.is_empty() {
         client
             .sessions()
-            .set_secrets(&session.id, &secrets)
+            .set_secrets(&session_id, &secrets)
             .await
             .with_context(|| {
                 format!(
                     "Failed to store {} secrets for session {}",
                     secrets.len(),
-                    session.id
+                    session_id
                 )
             })?;
     }
@@ -166,26 +249,42 @@ async fn create(
     // Create budgets after session creation
     let mut created_budgets = Vec::new();
     for spec in &budget_specs {
-        let mut req = CreateBudgetRequest::new("session", &session.id, &spec.currency, spec.limit);
+        let mut req = CreateBudgetRequest::new("session", &session_id, &spec.currency, spec.limit);
         if let Some(soft) = spec.soft_limit {
             req = req.soft_limit(soft);
         }
         let budget = client.budgets().create(req).await.with_context(|| {
-            format!("Session {} created but budget creation failed", session.id)
+            format!("Session {} created but budget creation failed", session_id)
         })?;
         created_budgets.push(serde_json::to_value(&budget)?);
     }
 
     if output.is_text() {
         if quiet {
-            println!("{}", session.id);
+            println!("{}", session_id);
         } else {
-            println!("Created session: {}", session.id);
-            if let Some(agent) = &session.agent_id {
+            println!("Created session: {}", session_id);
+            if let Some(agent) = session.get("agent_id").and_then(|v| v.as_str()) {
                 print_field("Agent", agent);
             }
-            let status = format!("{:?}", session.status).to_lowercase();
-            print_field("Status", &status);
+            if let Some(identity) = session.get("agent_identity_id").and_then(|v| v.as_str()) {
+                print_field("Identity", identity);
+            }
+            if let Some(status) = session.get("status").and_then(value_as_status) {
+                print_field("Status", &status);
+            }
+            if let Some(features) = session.get("features").and_then(|v| v.as_array())
+                && !features.is_empty()
+            {
+                let features = features
+                    .iter()
+                    .filter_map(|v| v.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                if !features.is_empty() {
+                    print_field("Features", &features);
+                }
+            }
             if !secrets.is_empty() {
                 print_field("Secrets", &format!("{} injected", secrets.len()));
             }
@@ -214,7 +313,7 @@ async fn create(
             }
         }
     } else {
-        let mut json = serde_json::to_value(&session)?;
+        let mut json = session;
         if !secrets.is_empty() {
             json["secrets_count"] = serde_json::json!(secrets.len());
         }
@@ -225,6 +324,195 @@ async fn create(
     }
 
     Ok(())
+}
+
+struct CreateSessionArgs {
+    harness: Option<String>,
+    agent_id: Option<String>,
+    title: Option<String>,
+    locale: Option<String>,
+    model_id: Option<String>,
+    agent_identity_id: Option<String>,
+    system_prompt: Option<String>,
+    tags: Vec<String>,
+    raw_capabilities: Vec<String>,
+    raw_hints: Vec<String>,
+    raw_hints_json: Option<String>,
+    network_allow: Vec<String>,
+    network_block: Vec<String>,
+    max_iterations: Option<usize>,
+}
+
+fn build_create_session_body(args: CreateSessionArgs) -> Result<serde_json::Value> {
+    let mut body = serde_json::Map::new();
+
+    if let Some(h) = args.harness {
+        if is_prefixed_id(&h, "harness") {
+            body.insert("harness_id".to_string(), serde_json::json!(h));
+        } else {
+            body.insert("harness_name".to_string(), serde_json::json!(h));
+        }
+    }
+    insert_opt_string(&mut body, "agent_id", args.agent_id);
+    insert_opt_string(&mut body, "agent_identity_id", args.agent_identity_id);
+    insert_opt_string(&mut body, "title", args.title);
+    insert_opt_string(&mut body, "locale", args.locale);
+    insert_opt_string(&mut body, "model_id", args.model_id);
+    insert_opt_string(&mut body, "system_prompt", args.system_prompt);
+
+    if !args.tags.is_empty() {
+        body.insert("tags".to_string(), serde_json::json!(args.tags));
+    }
+    if !args.raw_capabilities.is_empty() {
+        body.insert(
+            "capabilities".to_string(),
+            serde_json::Value::Array(parse_capabilities(&args.raw_capabilities)?),
+        );
+    }
+
+    let hints = parse_hints(args.raw_hints_json.as_deref(), &args.raw_hints)?;
+    if !hints.is_empty() {
+        body.insert("hints".to_string(), serde_json::Value::Object(hints));
+    }
+
+    if !args.network_allow.is_empty() || !args.network_block.is_empty() {
+        let mut network_access = serde_json::Map::new();
+        if !args.network_allow.is_empty() {
+            network_access.insert("allowed".to_string(), serde_json::json!(args.network_allow));
+        }
+        if !args.network_block.is_empty() {
+            network_access.insert("blocked".to_string(), serde_json::json!(args.network_block));
+        }
+        body.insert(
+            "network_access".to_string(),
+            serde_json::Value::Object(network_access),
+        );
+    }
+
+    if let Some(max_iterations) = args.max_iterations {
+        if max_iterations == 0 {
+            anyhow::bail!("--max-iterations must be greater than zero");
+        }
+        body.insert(
+            "max_iterations".to_string(),
+            serde_json::json!(max_iterations),
+        );
+    }
+
+    Ok(serde_json::Value::Object(body))
+}
+
+fn is_prefixed_id(value: &str, prefix: &str) -> bool {
+    let expected = format!("{prefix}_");
+    let Some(rest) = value.strip_prefix(&expected) else {
+        return false;
+    };
+    rest.len() == 32 && rest.chars().all(|c| matches!(c, '0'..='9' | 'a'..='f'))
+}
+
+fn insert_opt_string(
+    body: &mut serde_json::Map<String, serde_json::Value>,
+    key: &str,
+    value: Option<String>,
+) {
+    if let Some(value) = value {
+        body.insert(key.to_string(), serde_json::json!(value));
+    }
+}
+
+fn parse_capabilities(raw: &[String]) -> Result<Vec<serde_json::Value>> {
+    raw.iter()
+        .map(|entry| {
+            let (capability_ref, config) = if let Some((left, right)) = entry.split_once('=') {
+                if left.is_empty() {
+                    anyhow::bail!("Capability ref cannot be empty: {entry}");
+                }
+                let config = serde_json::from_str(right)
+                    .with_context(|| format!("Invalid capability JSON config: {entry}"))?;
+                (left, config)
+            } else {
+                if entry.is_empty() {
+                    anyhow::bail!("Capability ref cannot be empty");
+                }
+                (entry.as_str(), serde_json::json!({}))
+            };
+            Ok(serde_json::json!({
+                "ref": capability_ref,
+                "config": config,
+            }))
+        })
+        .collect()
+}
+
+fn parse_hints(
+    hints_json: Option<&str>,
+    raw_hints: &[String],
+) -> Result<serde_json::Map<String, serde_json::Value>> {
+    let mut hints = if let Some(raw) = hints_json {
+        let value: serde_json::Value =
+            serde_json::from_str(raw).context("Invalid --hints-json value")?;
+        value
+            .as_object()
+            .cloned()
+            .context("--hints-json must be a JSON object")?
+    } else {
+        serde_json::Map::new()
+    };
+
+    for entry in raw_hints {
+        let (key, value) = entry
+            .split_once('=')
+            .with_context(|| format!("Invalid hint format (expected KEY=JSON): {entry}"))?;
+        if key.is_empty() {
+            anyhow::bail!("Hint key cannot be empty: {entry}");
+        }
+        if hints.contains_key(key) {
+            anyhow::bail!("Duplicate hint key: {key}");
+        }
+        let value = serde_json::from_str(value)
+            .with_context(|| format!("Invalid JSON value for hint '{key}'"))?;
+        hints.insert(key.to_string(), value);
+    }
+
+    Ok(hints)
+}
+
+async fn create_session_raw(
+    api_url: &str,
+    api_key: &str,
+    org_id: Option<&str>,
+    body: &serde_json::Value,
+) -> Result<serde_json::Value> {
+    let http = reqwest::Client::new();
+    let mut req = http
+        .post(format!("{}/v1/sessions", api_url.trim_end_matches('/')))
+        .header("Authorization", format!("Bearer {}", api_key))
+        .header("Content-Type", "application/json")
+        .json(body);
+    let env_org = std::env::var("EVERRUNS_ORG_ID").ok();
+    if let Some(org) = org_id.or(env_org.as_deref()) {
+        req = req.header("X-Org-Id", org);
+    }
+
+    let resp = req.send().await.context("Failed to create session")?;
+    let status = resp.status();
+    if !status.is_success() {
+        let body = resp.text().await.unwrap_or_default();
+        anyhow::bail!("Create session failed ({}): {}", status, body);
+    }
+
+    resp.json()
+        .await
+        .context("Failed to parse create session response")
+}
+
+fn value_as_status(value: &serde_json::Value) -> Option<String> {
+    value.as_str().map(ToOwned::to_owned).or_else(|| {
+        value
+            .get("status")
+            .and_then(|v| v.as_str())
+            .map(ToOwned::to_owned)
+    })
 }
 
 /// Parsed budget specification from `--budget-limit` and `--budget-soft-limit`.
@@ -744,6 +1032,136 @@ mod tests {
     #[test]
     fn test_parse_budget_limits_non_numeric_fails() {
         assert!(parse_budget_limits(&["abc".into()], &[]).is_err());
+    }
+
+    #[test]
+    fn test_parse_capabilities_plain_and_configured() {
+        let parsed =
+            parse_capabilities(&["web_fetch".into(), "filesystem={\"readonly\":true}".into()])
+                .unwrap();
+        assert_eq!(parsed[0]["ref"], "web_fetch");
+        assert_eq!(parsed[0]["config"], serde_json::json!({}));
+        assert_eq!(parsed[1]["ref"], "filesystem");
+        assert_eq!(parsed[1]["config"], serde_json::json!({"readonly": true}));
+    }
+
+    #[test]
+    fn test_parse_capabilities_rejects_invalid_json() {
+        assert!(parse_capabilities(&["web_fetch={bad}".into()]).is_err());
+    }
+
+    #[test]
+    fn test_parse_hints_merges_json_and_flags() {
+        let parsed = parse_hints(
+            Some("{\"rich_media\":true}"),
+            &["setup_connection=true".into(), "max_items=3".into()],
+        )
+        .unwrap();
+        assert_eq!(parsed["rich_media"], serde_json::json!(true));
+        assert_eq!(parsed["setup_connection"], serde_json::json!(true));
+        assert_eq!(parsed["max_items"], serde_json::json!(3));
+    }
+
+    #[test]
+    fn test_parse_hints_rejects_duplicate() {
+        assert!(
+            parse_hints(
+                Some("{\"setup_connection\":false}"),
+                &["setup_connection=true".into()]
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn test_build_create_session_body_new_fields() {
+        let body = build_create_session_body(CreateSessionArgs {
+            harness: Some("generic".into()),
+            agent_id: Some("agent_abc".into()),
+            title: Some("Debug".into()),
+            locale: Some("uk-UA".into()),
+            model_id: Some("model_abc".into()),
+            agent_identity_id: Some("identity_abc".into()),
+            system_prompt: Some("Be concise".into()),
+            tags: vec!["bug".into()],
+            raw_capabilities: vec!["web_fetch={\"timeout\":10}".into()],
+            raw_hints: vec!["setup_connection=true".into()],
+            raw_hints_json: Some("{\"rich_media\":true}".into()),
+            network_allow: vec!["api.example.com".into()],
+            network_block: vec!["internal.example.com".into()],
+            max_iterations: Some(8),
+        })
+        .unwrap();
+
+        assert_eq!(body["harness_name"], "generic");
+        assert_eq!(body["agent_id"], "agent_abc");
+        assert_eq!(body["agent_identity_id"], "identity_abc");
+        assert_eq!(body["locale"], "uk-UA");
+        assert_eq!(body["system_prompt"], "Be concise");
+        assert_eq!(body["tags"], serde_json::json!(["bug"]));
+        assert_eq!(body["capabilities"][0]["ref"], "web_fetch");
+        assert_eq!(body["hints"]["setup_connection"], serde_json::json!(true));
+        assert_eq!(body["hints"]["rich_media"], serde_json::json!(true));
+        assert_eq!(
+            body["network_access"]["allowed"],
+            serde_json::json!(["api.example.com"])
+        );
+        assert_eq!(
+            body["network_access"]["blocked"],
+            serde_json::json!(["internal.example.com"])
+        );
+        assert_eq!(body["max_iterations"], 8);
+    }
+
+    #[test]
+    fn test_build_create_session_body_detects_harness_id_strictly() {
+        let body = build_create_session_body(CreateSessionArgs {
+            harness: Some("harness_00000000000000000000000000000001".into()),
+            agent_id: None,
+            title: None,
+            locale: None,
+            model_id: None,
+            agent_identity_id: None,
+            system_prompt: None,
+            tags: vec![],
+            raw_capabilities: vec![],
+            raw_hints: vec![],
+            raw_hints_json: None,
+            network_allow: vec![],
+            network_block: vec![],
+            max_iterations: None,
+        })
+        .unwrap();
+
+        assert_eq!(
+            body["harness_id"],
+            "harness_00000000000000000000000000000001"
+        );
+        assert!(body.get("harness_name").is_none());
+    }
+
+    #[test]
+    fn test_build_create_session_body_keeps_harness_prefix_names() {
+        let body = build_create_session_body(CreateSessionArgs {
+            harness: Some("harness_generic".into()),
+            agent_id: None,
+            title: None,
+            locale: None,
+            model_id: None,
+            agent_identity_id: None,
+            system_prompt: None,
+            tags: vec![],
+            raw_capabilities: vec![],
+            raw_hints: vec![],
+            raw_hints_json: None,
+            network_allow: vec![],
+            network_block: vec![],
+            max_iterations: None,
+        })
+        .unwrap();
+
+        assert_eq!(body["harness_name"], "harness_generic");
+        assert!(body.get("harness_id").is_none());
     }
 
     #[test]

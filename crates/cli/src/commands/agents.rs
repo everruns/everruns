@@ -133,6 +133,7 @@ pub async fn run(
     client: &Everruns,
     api_url: &str,
     api_key: &str,
+    org_id: Option<&str>,
     output: OutputFormat,
     quiet: bool,
 ) -> Result<()> {
@@ -165,6 +166,7 @@ pub async fn run(
                 import_from_file(
                     api_url,
                     api_key,
+                    org_id,
                     &path,
                     initial_files_dir.as_deref(),
                     writable,
@@ -220,6 +222,7 @@ pub async fn run(
                 import_from_file(
                     api_url,
                     api_key,
+                    org_id,
                     &path,
                     initial_files_dir.as_deref(),
                     writable,
@@ -257,9 +260,11 @@ pub async fn run(
 /// The CLI normalizes TOML into JSON before calling the server import API.
 /// When initial_files_dir is provided, files are globbed and injected into the
 /// payload as initial_files before sending.
+#[allow(clippy::too_many_arguments)]
 async fn import_from_file(
     api_url: &str,
     api_key: &str,
+    org_id: Option<&str>,
     path: &str,
     initial_files_dir: Option<&str>,
     writable: bool,
@@ -316,7 +321,8 @@ async fn import_from_file(
         .post(format!("{}/v1/agents/import", api_url))
         .header("Authorization", format!("Bearer {}", api_key))
         .header("Content-Type", content_type);
-    if let Ok(org) = std::env::var("EVERRUNS_ORG_ID") {
+    let env_org = std::env::var("EVERRUNS_ORG_ID").ok();
+    if let Some(org) = org_id.or(env_org.as_deref()) {
         req = req.header("X-Org-Id", org);
     }
     let resp = req
