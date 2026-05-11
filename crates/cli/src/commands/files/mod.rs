@@ -121,6 +121,7 @@ pub async fn run(
     command: FilesCommand,
     api_url: &str,
     api_key: &str,
+    org_id: Option<&str>,
     output: OutputFormat,
     quiet: bool,
 ) -> Result<()> {
@@ -139,6 +140,7 @@ pub async fn run(
             sync_cmd::run(
                 api_url,
                 api_key,
+                org_id,
                 quiet,
                 session,
                 local_dir,
@@ -159,7 +161,7 @@ pub async fn run(
             dry_run,
         } => {
             push::run(
-                api_url, api_key, output, quiet, session, local_dir, delete, dry_run,
+                api_url, api_key, org_id, output, quiet, session, local_dir, delete, dry_run,
             )
             .await
         }
@@ -170,7 +172,7 @@ pub async fn run(
             dry_run,
         } => {
             pull::run(
-                api_url, api_key, output, quiet, session, local_dir, delete, dry_run,
+                api_url, api_key, org_id, output, quiet, session, local_dir, delete, dry_run,
             )
             .await
         }
@@ -179,6 +181,11 @@ pub async fn run(
             path,
             recursive,
             long,
-        } => ls::run(api_url, api_key, output, session, path, recursive, long).await,
+        } => {
+            ls::run(
+                api_url, api_key, org_id, output, session, path, recursive, long,
+            )
+            .await
+        }
     }
 }

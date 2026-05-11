@@ -51,15 +51,29 @@ pub struct RemoteClient {
     base_url: String,
     session_id: String,
     api_key: String,
+    org_id: Option<String>,
 }
 
 impl RemoteClient {
+    #[cfg(test)]
     pub fn new(api_url: &str, api_key: &str, session_id: &str) -> Self {
+        Self::new_with_org(api_url, api_key, session_id, None)
+    }
+
+    pub fn new_with_org(
+        api_url: &str,
+        api_key: &str,
+        session_id: &str,
+        org_id: Option<&str>,
+    ) -> Self {
         Self {
             http: reqwest::Client::new(),
             base_url: api_url.trim_end_matches('/').to_string(),
             session_id: session_id.to_string(),
             api_key: api_key.to_string(),
+            org_id: org_id
+                .map(ToOwned::to_owned)
+                .or_else(|| std::env::var("EVERRUNS_ORG_ID").ok()),
         }
     }
 
@@ -75,6 +89,19 @@ impl RemoteClient {
         }
     }
 
+    fn apply_auth(&self, request: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        let request = request.header("Authorization", self.auth_header_value());
+        if let Some(org_id) = &self.org_id {
+            request.header("X-Org-Id", org_id)
+        } else {
+            request
+        }
+    }
+
+    fn auth_header_value(&self) -> String {
+        format!("Bearer {}", self.api_key)
+    }
+
     /// List files at a path. If recursive, lists the entire tree.
     pub async fn list(&self, path: &str, recursive: bool) -> Result<Vec<RemoteFileEntry>> {
         let mut url = self.fs_url(path);
@@ -84,9 +111,7 @@ impl RemoteClient {
         }
 
         let resp = self
-            .http
-            .get(&url)
-            .header("Authorization", &self.api_key)
+            .apply_auth(self.http.get(&url))
             .send()
             .await
             .context("Failed to list remote files")?;
@@ -120,9 +145,7 @@ impl RemoteClient {
     pub async fn read_file(&self, path: &str) -> Result<RemoteFileContent> {
         let url = self.fs_url(path);
         let resp = self
-            .http
-            .get(&url)
-            .header("Authorization", &self.api_key)
+            .apply_auth(self.http.get(&url))
             .send()
             .await
             .context("Failed to read remote file")?;
@@ -169,18 +192,14 @@ impl RemoteClient {
         });
 
         let resp = if create {
-            self.http
-                .post(&url)
-                .header("Authorization", &self.api_key)
+            self.apply_auth(self.http.post(&url))
                 .header("Content-Type", "application/json")
                 .json(&body)
                 .send()
                 .await
                 .context("Failed to create remote file")?
         } else {
-            self.http
-                .put(&url)
-                .header("Authorization", &self.api_key)
+            self.apply_auth(self.http.put(&url))
                 .header("Content-Type", "application/json")
                 .json(&body)
                 .send()
@@ -205,9 +224,7 @@ impl RemoteClient {
     async fn update_file(&self, path: &str, body: &serde_json::Value) -> Result<()> {
         let url = self.fs_url(path);
         let resp = self
-            .http
-            .put(&url)
-            .header("Authorization", &self.api_key)
+            .apply_auth(self.http.put(&url))
             .header("Content-Type", "application/json")
             .json(body)
             .send()
@@ -230,9 +247,7 @@ impl RemoteClient {
         }
 
         let resp = self
-            .http
-            .delete(&url)
-            .header("Authorization", &self.api_key)
+            .apply_auth(self.http.delete(&url))
             .send()
             .await
             .context("Failed to delete remote file")?;
@@ -344,6 +359,13 @@ mod tests {
     #[test]
     fn test_default_encoding() {
         assert_eq!(default_encoding(), "text");
+    }
+
+    #[test]
+    fn test_auth_header_uses_bearer_scheme() {
+        let client = RemoteClient::new("https://api.example.com", "evr_test", "session_abc");
+
+        assert_eq!(client.auth_header_value(), "Bearer evr_test");
     }
 
     #[test]

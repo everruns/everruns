@@ -262,7 +262,18 @@ everruns sessions create --agent agt_xxx
 
 # With title
 everruns sessions create --agent agt_xxx --title "Debug session"
+
+# With session-level features
+everruns sessions create \
+  --agent agt_xxx \
+  --agent-identity identity_xxx \
+  --capability 'web_fetch={"timeout":10}' \
+  --hint setup_connection=true \
+  --network-allow api.example.com \
+  --max-iterations 8
 ```
+
+Session creation also supports `--locale`, repeatable `--tag`, `--system-prompt`, `--hints-json`, repeatable `--network-block`, repeatable `--secret KEY=VALUE`, and budget flags.
 
 #### List Sessions
 

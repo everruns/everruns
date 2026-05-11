@@ -7,7 +7,7 @@
 **Crate:** `crates/cli/`
 
 **Global Flags:**
-- `-o, --output` — Output format: `text` (default), `json`
+- `-o, --output` — Output format: `text` (default), `json`, `yaml`
 - `-q, --quiet` — Suppress non-essential output
 - `--profile <name>` — Credential profile (default: `default`)
 
@@ -73,7 +73,12 @@ The hard-deny floor is checked on **every** path component, not just the root. S
 
 Session management.
 
-- `create [--harness <id>] [--agent <id>] [--title <t>] [--model <m>] [--budget-limit <[currency:]limit>] [--budget-soft-limit <[currency:]limit>]`
+- `create [--harness <id|name>] [--agent <id>] [--agent-identity <id>] [--title <t>] [--locale <tag>] [--model <m>] [--system-prompt <s>] [--tag <t>] [--capability <ref[=json]>] [--hint <key=json>] [--hints-json <json>] [--network-allow <pattern>] [--network-block <pattern>] [--max-iterations <n>] [--budget-limit <[currency:]limit>] [--budget-soft-limit <[currency:]limit>]`
+  - `--capability` is repeatable. Format: `REF` or `REF=JSON_CONFIG`. The CLI sends these as session-level capabilities additive to the agent and harness.
+  - `--hint` is repeatable. Format: `KEY=JSON_VALUE`. `--hints-json` accepts a JSON object. Duplicate hint keys are rejected.
+  - `--network-allow` and `--network-block` are repeatable network access patterns. See [`network-access.md`](network-access.md).
+  - `--agent-identity` sets the resident agent identity for unattended/background execution. See [`agent-identities.md`](agent-identities.md).
+  - `--max-iterations` must be greater than zero.
   - `--budget-limit` is repeatable. Format: `[CURRENCY:]LIMIT`. Currency defaults to `usd`. Multiple limits stack (most restrictive wins). Examples:
     - `--budget-limit 10` — $10 USD hard limit
     - `--budget-limit usd:10 --budget-soft-limit usd:8` — $10 hard, $8 soft pause
@@ -95,6 +100,7 @@ Send message and poll for response.
 
 List platform capabilities.
 
+- `capabilities [--status available|coming_soon|all]`
 - `list [--status available|coming_soon|all]`
 
 ### `everruns files`

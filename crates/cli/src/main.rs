@@ -26,7 +26,7 @@ pub struct Cli {
     pub api_url: Option<String>,
 
     /// Output format
-    #[arg(long, short, global = true, default_value = "text", value_parser = ["text", "json"])]
+    #[arg(long, short, global = true, default_value = "text", value_parser = ["text", "json", "yaml"])]
     pub output: String,
 
     /// Suppress non-essential output
@@ -76,6 +76,10 @@ pub enum Commands {
 
     /// Manage capabilities
     Capabilities {
+        /// Filter by status
+        #[arg(long, default_value = "available", value_parser = ["available", "coming_soon", "all"])]
+        status: String,
+
         #[command(subcommand)]
         command: Option<CapabilitiesCommand>,
     },
@@ -164,9 +168,14 @@ async fn main() -> anyhow::Result<()> {
     )?;
     let api_key = creds.api_key;
     let api_url = creds.api_url;
+    let org_id = creds.org_id;
 
     // Build SDK client
-    let client = Everruns::with_base_url(&api_key, &api_url)?;
+    let client = if let Some(org_id) = org_id.as_deref() {
+        Everruns::with_base_url_and_org_id(&api_key, &api_url, org_id)?
+    } else {
+        Everruns::with_base_url(&api_key, &api_url)?
+    };
 
     match cli.command {
         Commands::Agents { command } => {
@@ -175,6 +184,7 @@ async fn main() -> anyhow::Result<()> {
                 &client,
                 &api_url,
                 &api_key,
+                org_id.as_deref(),
                 output_format,
                 cli.quiet,
             )
@@ -191,18 +201,35 @@ async fn main() -> anyhow::Result<()> {
             )
             .await
         }
-        Commands::Capabilities { command } => {
+        Commands::Capabilities { status, command } => {
             let status = match &command {
                 Some(CapabilitiesCommand::List { status }) => status.clone(),
-                None => "available".to_string(),
+                None => status,
             };
             commands::capabilities::run(&client, output_format, &status).await
         }
         Commands::Sessions { command } => {
-            commands::sessions::run(command, &client, output_format, cli.quiet).await
+            commands::sessions::run(
+                command,
+                &client,
+                &api_url,
+                &api_key,
+                org_id.as_deref(),
+                output_format,
+                cli.quiet,
+            )
+            .await
         }
         Commands::Files { command } => {
-            commands::files::run(command, &api_url, &api_key, output_format, cli.quiet).await
+            commands::files::run(
+                command,
+                &api_url,
+                &api_key,
+                org_id.as_deref(),
+                output_format,
+                cli.quiet,
+            )
+            .await
         }
         Commands::Chat {
             message,
@@ -223,7 +250,7 @@ async fn main() -> anyhow::Result<()> {
         }
         // Already handled above
         Commands::Login { .. } | Commands::Logout | Commands::Status | Commands::Orgs { .. } => {
-            unreachable!();
+            unreachable!()
         }
     }
 }
@@ -275,6 +302,16 @@ mod tests {
                 agent,
                 title,
                 model,
+                locale,
+                agent_identity,
+                system_prompt,
+                tags,
+                capabilities,
+                hints,
+                hints_json,
+                network_allow,
+                network_block,
+                max_iterations,
                 secrets,
                 budget_limits,
                 budget_soft_limits,
@@ -284,6 +321,16 @@ mod tests {
                 assert_eq!(agent, Some("agt_abc".to_string()));
                 assert_eq!(title, Some("Test Session".to_string()));
                 assert_eq!(model, None);
+                assert_eq!(locale, None);
+                assert_eq!(agent_identity, None);
+                assert_eq!(system_prompt, None);
+                assert!(tags.is_empty());
+                assert!(capabilities.is_empty());
+                assert!(hints.is_empty());
+                assert_eq!(hints_json, None);
+                assert!(network_allow.is_empty());
+                assert!(network_block.is_empty());
+                assert_eq!(max_iterations, None);
                 assert!(secrets.is_empty());
                 assert!(budget_limits.is_empty());
                 assert!(budget_soft_limits.is_empty());
@@ -355,6 +402,69 @@ mod tests {
     }
 
     #[test]
+    fn test_cli_parse_sessions_create_new_fields() {
+        let cli = Cli::try_parse_from([
+            "everruns",
+            "sessions",
+            "create",
+            "--agent",
+            "agent_abc",
+            "--agent-identity",
+            "identity_abc",
+            "--system-prompt",
+            "Be concise",
+            "--locale",
+            "uk-UA",
+            "--tag",
+            "debugging",
+            "--capability",
+            "web_fetch={\"timeout\":10}",
+            "--hint",
+            "setup_connection=true",
+            "--hints-json",
+            "{\"rich_media\":true}",
+            "--network-allow",
+            "api.example.com",
+            "--network-block",
+            "internal.example.com",
+            "--max-iterations",
+            "8",
+        ])
+        .unwrap();
+        if let Commands::Sessions { command } = cli.command {
+            if let commands::sessions::SessionsCommand::Create {
+                agent_identity,
+                system_prompt,
+                locale,
+                tags,
+                capabilities,
+                hints,
+                hints_json,
+                network_allow,
+                network_block,
+                max_iterations,
+                ..
+            } = command
+            {
+                assert_eq!(agent_identity, Some("identity_abc".to_string()));
+                assert_eq!(system_prompt, Some("Be concise".to_string()));
+                assert_eq!(locale, Some("uk-UA".to_string()));
+                assert_eq!(tags, vec!["debugging".to_string()]);
+                assert_eq!(capabilities, vec!["web_fetch={\"timeout\":10}".to_string()]);
+                assert_eq!(hints, vec!["setup_connection=true".to_string()]);
+                assert_eq!(hints_json, Some("{\"rich_media\":true}".to_string()));
+                assert_eq!(network_allow, vec!["api.example.com".to_string()]);
+                assert_eq!(network_block, vec!["internal.example.com".to_string()]);
+                assert_eq!(max_iterations, Some(8));
+            } else {
+                panic!("Expected Create command");
+            }
+        } else {
+            panic!("Expected Sessions command");
+        }
+    }
+
+    #[test]
     fn test_cli_parse_chat() {
         let cli = Cli::try_parse_from(["everruns", "chat", "--session", "ses_xyz", "Hello world"])
             .unwrap();
@@ -407,6 +517,9 @@ mod tests {
     fn test_cli_parse_output_format() {
         let cli = Cli::try_parse_from(["everruns", "-o", "json", "agents", "list"]).unwrap();
         assert_eq!(cli.output, "json");
+
+        let cli = Cli::try_parse_from(["everruns", "-o", "yaml", "agents", "list"]).unwrap();
+        assert_eq!(cli.output, "yaml");
     }
 
     #[test]
@@ -421,8 +534,20 @@ mod tests {
     #[test]
     fn test_cli_parse_capabilities_bare() {
         let cli = Cli::try_parse_from(["everruns", "capabilities"]).unwrap();
-        if let Commands::Capabilities { command } = cli.command {
+        if let Commands::Capabilities { command, status } = cli.command {
+            assert_eq!(status, "available");
             assert!(command.is_none()); // bare defaults to list with available
+        } else {
+            panic!("Expected Capabilities command");
+        }
+    }
+
+    #[test]
+    fn test_cli_parse_capabilities_bare_status() {
+        let cli = Cli::try_parse_from(["everruns", "capabilities", "--status", "all"]).unwrap();
+        if let Commands::Capabilities { command, status } = cli.command {
+            assert!(command.is_none());
+            assert_eq!(status, "all");
         } else {
             panic!("Expected Capabilities command");
         }
@@ -432,6 +557,7 @@ mod tests {
     fn test_cli_parse_capabilities_list() {
         let cli = Cli::try_parse_from(["everruns", "capabilities", "list"]).unwrap();
         if let Commands::Capabilities {
+            status: _,
             command: Some(CapabilitiesCommand::List { status }),
         } = cli.command
         {
@@ -446,6 +572,7 @@ mod tests {
         let cli =
             Cli::try_parse_from(["everruns", "capabilities", "list", "--status", "all"]).unwrap();
         if let Commands::Capabilities {
+            status: _,
             command: Some(CapabilitiesCommand::List { status }),
         } = cli.command
         {

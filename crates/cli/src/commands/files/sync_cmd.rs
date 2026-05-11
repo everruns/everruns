@@ -17,6 +17,7 @@ use std::time::Duration;
 pub async fn run(
     api_url: &str,
     api_key: &str,
+    org_id: Option<&str>,
     quiet: bool,
     session_id: String,
     local_dir: String,
@@ -29,7 +30,7 @@ pub async fn run(
     verbose: bool,
 ) -> Result<()> {
     let local_dir = PathBuf::from(&local_dir).canonicalize()?;
-    let client = RemoteClient::new(api_url, api_key, &session_id);
+    let client = RemoteClient::new_with_org(api_url, api_key, &session_id, org_id);
     let conflict_strategy = Conflict::parse(&conflict);
     let sd = state_dir(&local_dir);
     let mut state = SyncState::load(&sd, &session_id)?;

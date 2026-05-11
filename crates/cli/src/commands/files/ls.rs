@@ -4,16 +4,18 @@ use crate::commands::files::remote::RemoteClient;
 use crate::output::{OutputFormat, print_table_header, print_table_row};
 use anyhow::Result;
 
+#[allow(clippy::too_many_arguments)]
 pub async fn run(
     api_url: &str,
     api_key: &str,
+    org_id: Option<&str>,
     output: OutputFormat,
     session_id: String,
     path: String,
     recursive: bool,
     long: bool,
 ) -> Result<()> {
-    let client = RemoteClient::new(api_url, api_key, &session_id);
+    let client = RemoteClient::new_with_org(api_url, api_key, &session_id, org_id);
     let entries = client.list(&path, recursive).await?;
 
     if output.is_text() {
