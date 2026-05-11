@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "SWE-bench Lite evaluation harness for Everruns"
 requires-python = ">=3.10"
 dependencies = [
-    "everruns-sdk>=0.1.8",
+    "everruns-sdk>=0.1.9",
     "httpx>=0.27",
     "datasets>=2.19",
 ]
