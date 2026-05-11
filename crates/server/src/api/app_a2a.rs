@@ -31,6 +31,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
+use crate::api::app_endpoint_auth::{
+    AppEndpointAuthError, AppEndpointAuthVerifier, LegacyEndpointAuth,
+};
 use crate::api::channel_rate_limit::ChannelRateLimiter;
 use crate::api::common::ErrorResponse;
 use crate::api::sse::SseConnectionTracker;
@@ -65,6 +68,7 @@ pub struct AppA2aState {
     pub event_delivery: EventDelivery,
     pub sse_tracker: Arc<SseConnectionTracker>,
     pub rate_limiter: ChannelRateLimiter,
+    pub auth_verifier: AppEndpointAuthVerifier,
 }
 
 impl AppA2aState {
@@ -90,6 +94,7 @@ impl AppA2aState {
             event_delivery,
             sse_tracker,
             rate_limiter,
+            auth_verifier: AppEndpointAuthVerifier::new(),
         }
     }
 }
@@ -268,13 +273,25 @@ async fn authenticate_request(
         .a2a_config()
         .ok_or_else(|| bad_request("Invalid A2A channel configuration"))?;
 
-    // THREAT[TM-A2A-001]: API keys are stored as SHA-256 hashes; plaintext is
-    // never persisted. We hash the inbound key and compare against the stored
-    // hash before doing anything else.
-    let provided_key = extract_a2a_api_key(headers).ok_or_else(unauthorized)?;
-    let provided_hash = hash_a2a_api_key(&provided_key);
-    if !constant_time_eq(provided_hash.as_bytes(), config.api_key_hash.as_bytes()) {
-        return Err(unauthorized());
+    if let Some(auth) = config.auth.as_ref() {
+        if auth.mode == everruns_core::AppEndpointAuthMode::ApiKey {
+            verify_a2a_api_key(headers, &config.api_key_hash)?;
+        } else {
+            state
+                .auth_verifier
+                .verify(
+                    auth,
+                    headers,
+                    LegacyEndpointAuth {
+                        shared_secret: None,
+                        api_key: None,
+                    },
+                )
+                .await
+                .map_err(a2a_auth_error_response)?;
+        }
+    } else {
+        verify_a2a_api_key(headers, &config.api_key_hash)?;
     }
 
     // THREAT[TM-A2A-013]: Unattended A2A traffic must respect a configurable
@@ -313,6 +330,22 @@ async fn authenticate_request(
         channel_public_id: channel_id_typed,
         session_mode: config.session_mode,
     })
+}
+
+fn verify_a2a_api_key(
+    headers: &HeaderMap,
+    expected_hash: &str,
+) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
+    // THREAT[TM-A2A-001]: API keys are stored as SHA-256 hashes; plaintext is
+    // never persisted. We hash the inbound key and compare against the stored
+    // hash before doing anything else.
+    let provided_key = extract_a2a_api_key(headers).ok_or_else(unauthorized)?;
+    let provided_hash = hash_a2a_api_key(&provided_key);
+    if constant_time_eq(provided_hash.as_bytes(), expected_hash.as_bytes()) {
+        Ok(())
+    } else {
+        Err(unauthorized())
+    }
 }
 
 /// Verify that a session looked up by an A2A task id belongs to the same
@@ -1013,6 +1046,7 @@ pub async fn agent_card(
         .or_else(|| app.description.clone())
         .unwrap_or_default();
 
+    let (security_schemes, security) = a2a_security_for_config(&config);
     let card = json!({
         "name": name,
         "description": description,
@@ -1038,12 +1072,73 @@ pub async fn agent_card(
                 "tags": ["everruns", "a2a"],
             }
         ],
-        "securitySchemes": {
-            "apiKey": { "type": "http", "scheme": "bearer" }
-        },
-        "security": [{ "apiKey": [] }],
+        "securitySchemes": security_schemes,
+        "security": security,
     });
     Ok(Json(card))
+}
+
+fn a2a_security_for_config(config: &everruns_core::A2aChannelConfig) -> (Value, Value) {
+    let Some(auth) = config.auth.as_ref() else {
+        return (
+            json!({ "apiKey": { "type": "http", "scheme": "bearer" } }),
+            json!([{ "apiKey": [] }]),
+        );
+    };
+    match (&auth.mode, auth.provider.as_ref()) {
+        (everruns_core::AppEndpointAuthMode::HttpBasic, _) => (
+            json!({ "httpBasic": { "type": "http", "scheme": "basic" } }),
+            json!([{ "httpBasic": [] }]),
+        ),
+        (
+            everruns_core::AppEndpointAuthMode::GoogleOidc,
+            Some(everruns_core::AppEndpointAuthProviderConfig::GoogleOidc { .. }),
+        ) => (
+            json!({
+                "googleOidc": {
+                    "type": "openIdConnect",
+                    "openIdConnectUrl": "https://accounts.google.com/.well-known/openid-configuration"
+                }
+            }),
+            json!([{ "googleOidc": auth.requirements.scopes.clone() }]),
+        ),
+        (
+            everruns_core::AppEndpointAuthMode::Oidc,
+            Some(everruns_core::AppEndpointAuthProviderConfig::Oidc { issuer, .. }),
+        ) => {
+            let discovery = format!(
+                "{}/.well-known/openid-configuration",
+                issuer.trim_end_matches('/')
+            );
+            (
+                json!({
+                    "oidc": {
+                        "type": "openIdConnect",
+                        "openIdConnectUrl": discovery
+                    }
+                }),
+                json!([{ "oidc": auth.requirements.scopes.clone() }]),
+            )
+        }
+        (everruns_core::AppEndpointAuthMode::OAuth2Introspection, _) => (
+            json!({
+                "oauth2": {
+                    "type": "oauth2",
+                    "flows": {}
+                }
+            }),
+            json!([{ "oauth2": auth.requirements.scopes.clone() }]),
+        ),
+        (everruns_core::AppEndpointAuthMode::Mtls, _) => (
+            json!({ "mtls": { "type": "mutualTLS" } }),
+            json!([{ "mtls": [] }]),
+        ),
+        (everruns_core::AppEndpointAuthMode::Anonymous, _) => (json!({}), json!([])),
+        _ => (
+            json!({ "apiKey": { "type": "http", "scheme": "bearer" } }),
+            json!([{ "apiKey": [] }]),
+        ),
+    }
 }
 
 fn extract_a2a_api_key(headers: &HeaderMap) -> Option<String> {
@@ -1092,6 +1187,25 @@ fn unauthorized() -> (StatusCode, Json<ErrorResponse>) {
             error: "Invalid or missing A2A API key".to_string(),
         }),
     )
+}
+
+fn service_unavailable(message: impl Into<String>) -> (StatusCode, Json<ErrorResponse>) {
+    (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(ErrorResponse {
+            error: message.into(),
+        }),
+    )
+}
+
+fn a2a_auth_error_response(error: AppEndpointAuthError) -> (StatusCode, Json<ErrorResponse>) {
+    match error {
+        AppEndpointAuthError::Unauthorized => unauthorized(),
+        AppEndpointAuthError::Misconfigured => forbidden("A2A auth is misconfigured"),
+        AppEndpointAuthError::ProviderUnavailable => {
+            service_unavailable("A2A auth provider is unavailable")
+        }
+    }
 }
 
 fn not_found() -> (StatusCode, Json<ErrorResponse>) {

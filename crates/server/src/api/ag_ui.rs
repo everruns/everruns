@@ -64,6 +64,9 @@ use serde::Deserialize;
 use serde_json::Value;
 use uuid::Uuid;
 
+use crate::api::app_endpoint_auth::{
+    AppEndpointAuthError, AppEndpointAuthVerifier, LegacyEndpointAuth,
+};
 use crate::api::channel_rate_limit::ChannelRateLimiter;
 use crate::api::common::ErrorResponse;
 use crate::api::images::{
@@ -98,6 +101,7 @@ pub struct AgUiState {
     pub event_service: Arc<EventService>,
     pub sse_tracker: Arc<SseConnectionTracker>,
     pub rate_limiter: ChannelRateLimiter,
+    pub auth_verifier: AppEndpointAuthVerifier,
 }
 
 impl AgUiState {
@@ -121,6 +125,7 @@ impl AgUiState {
             event_service: Arc::new(EventService::new(db.clone(), event_delivery)),
             sse_tracker,
             rate_limiter,
+            auth_verifier: AppEndpointAuthVerifier::new(),
             encryption,
             db,
         }
@@ -173,15 +178,30 @@ async fn authorize_ag_ui_request(
     let channel_config = channel
         .ag_ui_config()
         .ok_or_else(|| bad_request("Invalid AG-UI channel configuration"))?;
-    if !channel_config.anonymous {
-        return Err(forbidden("Anonymous AG-UI access is disabled"));
-    }
-    if let Some(expected_token) = channel_config.token.as_deref()
-        && !expected_token.is_empty()
-    {
-        let provided_token = extract_ag_ui_token(headers).ok_or_else(unauthorized)?;
-        if !constant_time_eq(provided_token.as_bytes(), expected_token.as_bytes()) {
-            return Err(unauthorized());
+    if let Some(auth) = channel_config.auth.as_ref() {
+        state
+            .auth_verifier
+            .verify(
+                auth,
+                headers,
+                LegacyEndpointAuth {
+                    shared_secret: channel_config.token.as_deref(),
+                    api_key: None,
+                },
+            )
+            .await
+            .map_err(ag_ui_auth_error_response)?;
+    } else {
+        if !channel_config.anonymous {
+            return Err(forbidden("Anonymous AG-UI access is disabled"));
+        }
+        if let Some(expected_token) = channel_config.token.as_deref()
+            && !expected_token.is_empty()
+        {
+            let provided_token = extract_ag_ui_token(headers).ok_or_else(unauthorized)?;
+            if !constant_time_eq(provided_token.as_bytes(), expected_token.as_bytes()) {
+                return Err(unauthorized());
+            }
         }
     }
 
@@ -1373,6 +1393,26 @@ fn unauthorized() -> Response {
         }),
     )
         .into_response()
+}
+
+fn service_unavailable(message: &str) -> Response {
+    (
+        StatusCode::SERVICE_UNAVAILABLE,
+        Json(ErrorResponse {
+            error: message.to_string(),
+        }),
+    )
+        .into_response()
+}
+
+fn ag_ui_auth_error_response(error: AppEndpointAuthError) -> Response {
+    match error {
+        AppEndpointAuthError::Unauthorized => unauthorized(),
+        AppEndpointAuthError::Misconfigured => forbidden("AG-UI auth is misconfigured"),
+        AppEndpointAuthError::ProviderUnavailable => {
+            service_unavailable("AG-UI auth provider is unavailable")
+        }
+    }
 }
 
 fn not_found() -> Response {

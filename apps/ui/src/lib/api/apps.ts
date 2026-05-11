@@ -7,6 +7,7 @@ import type {
   AddChannelRequest,
   App,
   AppChannel,
+  AppEndpointAuthConfig,
   AppRunBucket,
   AppRunEvent,
   CreateAppRequest,
@@ -20,6 +21,7 @@ export interface AddA2aChannelRequest {
   message: string;
   agent_card_name?: string;
   agent_card_description?: string;
+  auth?: AppEndpointAuthConfig;
   enabled?: boolean;
 }
 

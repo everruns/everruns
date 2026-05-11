@@ -18,12 +18,14 @@ use crate::domains::sessions::SessionService;
 use crate::errors::ResourceNotFoundError;
 use crate::execution_metadata;
 use crate::services::PrincipalService;
+use crate::storage::password::hash_password;
 use chrono::{DateTime, Utc};
 use everruns_core::app::{InvocationSessionMode, ScheduleChannelConfig, WebhookChannelConfig};
 use everruns_core::typed_id::{AgentId, AppChannelId, AppId, HarnessId, SessionId};
 use everruns_core::{
     A2aChannelConfig, AgUiChannelConfig, AgUiToolVisibility, AgentAction, App, AppChannel,
-    AppStatus, AuditEvent, ChannelType, Policy, SlackChannelConfig,
+    AppEndpointAuthConfig, AppEndpointAuthMode, AppEndpointAuthProviderConfig, AppStatus,
+    AuditEvent, ChannelType, Policy, SlackChannelConfig,
 };
 use everruns_durable::{
     CreateScheduleRow, ScheduleTargetType, StoreError, UpdateField, UpdateSchedule,
@@ -172,6 +174,18 @@ fn normalize_and_validate_channel_config(
     mut channel_config: Value,
 ) -> Result<Value, CommandError> {
     match channel_type {
+        ChannelType::AgUi | ChannelType::A2a => {
+            normalize_inline_endpoint_auth(&channel_type, &mut channel_config)?;
+        }
+        ChannelType::Slack | ChannelType::Schedule | ChannelType::Webhook => {
+            if channel_config.get("auth").is_some() {
+                return Err(CommandError::bad_request(
+                    "App endpoint auth is only supported for AG-UI and A2A channels",
+                ));
+            }
+        }
+    }
+    match channel_type {
         ChannelType::Slack => {
             let config: SlackChannelConfig = serde_json::from_value(channel_config.clone())
                 .map_err(|e| {
@@ -290,6 +304,167 @@ fn normalize_and_validate_channel_config(
     Ok(channel_config)
 }
 
+fn hash_app_endpoint_basic_password(password: &str) -> Result<String, CommandError> {
+    hash_password(password).map_err(classify_anyhow)
+}
+
+fn normalize_inline_endpoint_auth(
+    channel_type: &ChannelType,
+    channel_config: &mut Value,
+) -> Result<(), CommandError> {
+    let Some(auth_value) = channel_config.get("auth") else {
+        return Ok(());
+    };
+    if auth_value.is_null() {
+        return Ok(());
+    }
+    let auth: AppEndpointAuthConfig = serde_json::from_value(auth_value.clone())
+        .map_err(|e| CommandError::bad_request(format!("Invalid app endpoint auth config: {e}")))?;
+    validate_endpoint_auth_config(channel_type, channel_config, &auth)?;
+
+    if let Some(provider) = channel_config
+        .get_mut("auth")
+        .and_then(|auth| auth.get_mut("provider"))
+        .and_then(Value::as_object_mut)
+        && provider.get("type").and_then(Value::as_str) == Some("http_basic")
+    {
+        let password = provider
+            .remove("password")
+            .and_then(|value| value.as_str().map(str::to_owned));
+        if let Some(password) = password {
+            if password.trim().is_empty() {
+                return Err(CommandError::bad_request(
+                    "HTTP Basic password must be non-empty when configured",
+                ));
+            }
+            provider.insert(
+                "password_hash".to_string(),
+                Value::String(hash_app_endpoint_basic_password(&password)?),
+            );
+        }
+    }
+    Ok(())
+}
+
+fn validate_endpoint_auth_config(
+    channel_type: &ChannelType,
+    channel_config: &Value,
+    auth: &AppEndpointAuthConfig,
+) -> Result<(), CommandError> {
+    match auth.mode {
+        AppEndpointAuthMode::Anonymous => Ok(()),
+        AppEndpointAuthMode::SharedSecret => {
+            if *channel_type != ChannelType::AgUi {
+                return Err(CommandError::bad_request(
+                    "Shared token auth is only supported for AG-UI channels",
+                ));
+            }
+            if channel_config
+                .get("token")
+                .and_then(Value::as_str)
+                .is_some_and(|token| !token.trim().is_empty())
+            {
+                Ok(())
+            } else {
+                Err(CommandError::bad_request(
+                    "Shared token auth requires a non-empty AG-UI token",
+                ))
+            }
+        }
+        AppEndpointAuthMode::ApiKey => {
+            if *channel_type != ChannelType::A2a {
+                return Err(CommandError::bad_request(
+                    "API key auth is only supported for A2A channels",
+                ));
+            }
+            let has_hash = channel_config
+                .get("api_key_hash")
+                .and_then(Value::as_str)
+                .is_some_and(|hash| !hash.trim().is_empty());
+            let has_prefix = channel_config
+                .get("api_key_prefix")
+                .and_then(Value::as_str)
+                .is_some_and(|prefix| !prefix.trim().is_empty());
+            if has_hash && has_prefix {
+                Ok(())
+            } else {
+                Err(CommandError::bad_request(
+                    "API key auth requires a configured A2A API key",
+                ))
+            }
+        }
+        AppEndpointAuthMode::GoogleOidc => match auth.provider.as_ref() {
+            Some(AppEndpointAuthProviderConfig::GoogleOidc { client_id, .. })
+                if !client_id.trim().is_empty() =>
+            {
+                Ok(())
+            }
+            _ => Err(CommandError::bad_request(
+                "Google auth requires provider.type=google_oidc and non-empty client_id",
+            )),
+        },
+        AppEndpointAuthMode::Oidc => match auth.provider.as_ref() {
+            Some(AppEndpointAuthProviderConfig::Oidc { issuer, jwks_url }) => {
+                if issuer.trim().is_empty() {
+                    return Err(CommandError::bad_request(
+                        "OIDC auth requires a non-empty issuer",
+                    ));
+                }
+                everruns_core::validate_safe_url(issuer)
+                    .map_err(|e| CommandError::bad_request(format!("Invalid OIDC issuer: {e}")))?;
+                if let Some(jwks_url) = jwks_url {
+                    everruns_core::validate_safe_url(jwks_url).map_err(|e| {
+                        CommandError::bad_request(format!("Invalid OIDC JWKS URL: {e}"))
+                    })?;
+                }
+                Ok(())
+            }
+            _ => Err(CommandError::bad_request(
+                "OIDC auth requires provider.type=oidc",
+            )),
+        },
+        AppEndpointAuthMode::OAuth2Introspection => match auth.provider.as_ref() {
+            Some(AppEndpointAuthProviderConfig::OAuth2Introspection {
+                introspection_url, ..
+            }) => {
+                everruns_core::validate_safe_url(introspection_url).map_err(|e| {
+                    CommandError::bad_request(format!("Invalid OAuth2 introspection URL: {e}"))
+                })?;
+                Ok(())
+            }
+            _ => Err(CommandError::bad_request(
+                "OAuth2 introspection auth requires provider.type=oauth2_introspection",
+            )),
+        },
+        AppEndpointAuthMode::HttpBasic => match auth.provider.as_ref() {
+            Some(AppEndpointAuthProviderConfig::HttpBasic {
+                username,
+                password,
+                password_hash,
+            }) if !username.trim().is_empty()
+                && (password.as_deref().is_some_and(|p| !p.trim().is_empty())
+                    || password_hash
+                        .as_deref()
+                        .is_some_and(|hash| !hash.trim().is_empty())) =>
+            {
+                Ok(())
+            }
+            _ => Err(CommandError::bad_request(
+                "HTTP Basic auth requires provider.type=http_basic, username, and password or password_hash",
+            )),
+        },
+        AppEndpointAuthMode::Mtls => match auth.provider.as_ref() {
+            Some(AppEndpointAuthProviderConfig::Mtls {
+                header_name,
+                allowed_values,
+            }) if !header_name.trim().is_empty() && !allowed_values.is_empty() => Ok(()),
+            _ => Err(CommandError::bad_request(
+                "mTLS auth requires provider.type=mtls, header_name, and allowed_values",
+            )),
+        },
+    }
+}
+
 fn calculate_schedule_next_trigger(
     cron_expression: &str,
 ) -> Result<Option<DateTime<Utc>>, CommandError> {
@@ -301,6 +476,7 @@ fn calculate_schedule_next_trigger(
 }
 
 fn redact_channel_config(channel_type: &ChannelType, config: &mut Value) {
+    redact_inline_endpoint_auth(config);
     let Some(map) = config.as_object_mut() else {
         return;
     };
@@ -327,6 +503,22 @@ fn redact_channel_config(channel_type: &ChannelType, config: &mut Value) {
             map.remove("api_key_hash");
         }
         ChannelType::Schedule => {}
+    }
+}
+
+fn redact_inline_endpoint_auth(config: &mut Value) {
+    let Some(provider) = config
+        .get_mut("auth")
+        .and_then(|auth| auth.get_mut("provider"))
+        .and_then(Value::as_object_mut)
+    else {
+        return;
+    };
+    if provider.remove("password").is_some() || provider.remove("password_hash").is_some() {
+        provider.insert("password_configured".to_string(), Value::Bool(true));
+    }
+    if provider.remove("client_secret").is_some() {
+        provider.insert("client_secret_configured".to_string(), Value::Bool(true));
     }
 }
 
@@ -394,6 +586,41 @@ fn merge_preserved_secret_fields(
             }
         }
         ChannelType::Schedule => {}
+    }
+    merge_preserved_endpoint_auth_secrets(final_channel_config, existing_decrypted);
+}
+
+fn merge_preserved_endpoint_auth_secrets(
+    final_channel_config: &mut Value,
+    existing_decrypted: &Value,
+) {
+    let (Some(out_provider), Some(existing_provider)) = (
+        final_channel_config
+            .get_mut("auth")
+            .and_then(|auth| auth.get_mut("provider"))
+            .and_then(Value::as_object_mut),
+        existing_decrypted
+            .get("auth")
+            .and_then(|auth| auth.get("provider"))
+            .and_then(Value::as_object),
+    ) else {
+        return;
+    };
+
+    let same_type = out_provider.get("type").and_then(Value::as_str)
+        == existing_provider.get("type").and_then(Value::as_str);
+    if !same_type {
+        return;
+    }
+    for key in ["password_hash", "client_secret"] {
+        let should_preserve = out_provider
+            .get(key)
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .is_none_or(str::is_empty);
+        if should_preserve && let Some(existing_value) = existing_provider.get(key) {
+            out_provider.insert(key.to_string(), existing_value.clone());
+        }
     }
 }
 
@@ -2285,6 +2512,8 @@ pub struct AddA2aChannelCmd {
     pub message: String,
     pub agent_card_name: Option<String>,
     pub agent_card_description: Option<String>,
+    #[serde(default)]
+    pub auth: Option<AppEndpointAuthConfig>,
     #[serde(default, deserialize_with = "deserialize_opt_bool_lenient")]
     pub enabled: Option<bool>,
 }
@@ -2319,6 +2548,11 @@ impl Command for AddA2aChannelCmd {
         }
         if let Some(desc) = self.agent_card_description {
             config["agent_card_description"] = Value::String(desc);
+        }
+        if let Some(auth) = self.auth {
+            config["auth"] = serde_json::to_value(auth).map_err(|e| {
+                CommandError::bad_request(format!("Invalid app endpoint auth config: {e}"))
+            })?;
         }
         let channel = AddChannel {
             app_id: self.app_id,

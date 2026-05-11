@@ -14,10 +14,9 @@ This spec is intentionally separate from:
 - session-local scheduling concerns
 - `specs/scheduled-tasks.md`, which defines the generic durable scheduler
 - `specs/app-endpoint-auth.md`, which defines the shared inbound authentication
-  framework that webhook and A2A channels opt into when they need
-  enterprise-grade schemes (OIDC/JWT, OAuth2 introspection, HTTP Basic, mTLS).
-  Webhook channels with no explicit auth policy keep using the channel-local
-  `token` field described below.
+  framework used by AG-UI and A2A and intended for future App-published
+  endpoints. Webhook channels keep using the channel-local `token` field
+  described below until their handler is explicitly wired into that verifier.
 
 The durable scheduler is infrastructure. App invocation channels are one product consumer of that infrastructure.
 
@@ -157,6 +156,10 @@ Ingress:
 
 - `POST /v1/apps/{app_id}/webhooks/{channel_id}`
 - auth via `Authorization: Bearer <token>` or `X-Everruns-Webhook-Token: <token>`
+- future webhook auth implementations should use the same
+  `channel_config.auth` verifier as AG-UI and A2A instead of adding
+  channel-local credential logic. Until that enforcement lands, webhook
+  channel configs must not include `auth`.
 
 Behavior:
 

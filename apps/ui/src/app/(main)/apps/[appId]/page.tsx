@@ -81,6 +81,8 @@ import type {
   AgUiChannelConfig,
   AgUiToolVisibility,
   AppChannel,
+  AppEndpointAuthConfig,
+  AppEndpointAuthMode,
   AgentVersionPolicy,
   ChannelType,
   InvocationSessionMode,
@@ -141,6 +143,52 @@ function hasToken(config?: AgUiChannelConfig | WebhookChannelConfig): boolean {
 
 function hasA2aKey(config?: A2aChannelConfig): boolean {
   return !!(config?.api_key_hash || config?.api_key_prefix);
+}
+
+function authLabel(config?: ChannelConfigInput, fallback: string = "Public") {
+  const auth = (config as { auth?: AppEndpointAuthConfig } | undefined)?.auth;
+  switch (auth?.mode) {
+    case "anonymous":
+      return "Public";
+    case "shared_secret":
+      return "Token";
+    case "api_key":
+      return "API key";
+    case "google_oidc":
+      return "Google";
+    case "oidc":
+      return "OIDC";
+    case "oauth2_introspection":
+      return "OAuth2";
+    case "http_basic":
+      return "HTTP Basic";
+    case "mtls":
+      return "mTLS";
+    default:
+      return fallback;
+  }
+}
+
+function splitList(value: string): string[] {
+  return value
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function authModeFromChannel(
+  channelType: ChannelType,
+  config?: ChannelConfigInput,
+): AppEndpointAuthMode {
+  const auth = (config as { auth?: AppEndpointAuthConfig } | undefined)?.auth;
+  if (auth?.mode) return auth.mode;
+  if (channelType === "a2a") return "api_key";
+  if (channelType === "ag_ui" || channelType === "webhook") {
+    return hasToken(config as AgUiChannelConfig | WebhookChannelConfig)
+      ? "shared_secret"
+      : "anonymous";
+  }
+  return "anonymous";
 }
 
 function getChannelSummary(channel: AppChannel, isPublished: boolean): ChannelSummary {
@@ -309,6 +357,20 @@ function AppDetailPageLegacy({ params }: { params: Promise<{ appId: string }> })
   const [editA2aAgentCardName, setEditA2aAgentCardName] = useState("");
   const [editA2aAgentCardDescription, setEditA2aAgentCardDescription] = useState("");
   const [editA2aRateLimitPerMinute, setEditA2aRateLimitPerMinute] = useState<string>("");
+  const [editAuthMode, setEditAuthMode] = useState<AppEndpointAuthMode>("anonymous");
+  const [editAuthGoogleClientId, setEditAuthGoogleClientId] = useState("");
+  const [editAuthOidcIssuer, setEditAuthOidcIssuer] = useState("");
+  const [editAuthIntrospectionUrl, setEditAuthIntrospectionUrl] = useState("");
+  const [editAuthOAuthClientId, setEditAuthOAuthClientId] = useState("");
+  const [editAuthOAuthClientSecret, setEditAuthOAuthClientSecret] = useState("");
+  const [editAuthAudiences, setEditAuthAudiences] = useState("");
+  const [editAuthScopes, setEditAuthScopes] = useState("");
+  const [editAuthDomains, setEditAuthDomains] = useState("");
+  const [editAuthBasicUsername, setEditAuthBasicUsername] = useState("");
+  const [editAuthBasicPassword, setEditAuthBasicPassword] = useState("");
+  const [editAuthBasicPasswordConfigured, setEditAuthBasicPasswordConfigured] = useState(false);
+  const [editAuthMtlsHeader, setEditAuthMtlsHeader] = useState("x-forwarded-client-cert-subject");
+  const [editAuthMtlsValues, setEditAuthMtlsValues] = useState("");
 
   // A2A: plaintext API key shown exactly once (after create or rotate). Cleared
   // when the operator dismisses the dialog.
@@ -375,6 +437,7 @@ function AppDetailPageLegacy({ params }: { params: Promise<{ appId: string }> })
       message: string;
       agentCardName?: string;
       agentCardDescription?: string;
+      auth?: AppEndpointAuthConfig;
       enabled: boolean;
     }) => {
       return apiAddA2aChannel(appId, {
@@ -382,6 +445,7 @@ function AppDetailPageLegacy({ params }: { params: Promise<{ appId: string }> })
         message: input.message,
         agent_card_name: input.agentCardName,
         agent_card_description: input.agentCardDescription,
+        auth: input.auth,
         enabled: input.enabled,
       });
     },
@@ -540,6 +604,87 @@ function AppDetailPageLegacy({ params }: { params: Promise<{ appId: string }> })
     setEditA2aAgentCardName("");
     setEditA2aAgentCardDescription("");
     setEditA2aRateLimitPerMinute("");
+    setEditAuthMode(channelType === "a2a" ? "api_key" : "anonymous");
+    setEditAuthGoogleClientId("");
+    setEditAuthOidcIssuer("");
+    setEditAuthIntrospectionUrl("");
+    setEditAuthOAuthClientId("");
+    setEditAuthOAuthClientSecret("");
+    setEditAuthAudiences("");
+    setEditAuthScopes("");
+    setEditAuthDomains("");
+    setEditAuthBasicUsername("");
+    setEditAuthBasicPassword("");
+    setEditAuthBasicPasswordConfigured(false);
+    setEditAuthMtlsHeader("x-forwarded-client-cert-subject");
+    setEditAuthMtlsValues("");
+  };
+
+  const buildEndpointAuthConfig = (): AppEndpointAuthConfig | undefined => {
+    if (editAuthMode === "anonymous") {
+      return { mode: "anonymous", requirements: {} };
+    }
+    if (editAuthMode === "shared_secret" || editAuthMode === "api_key") {
+      return undefined;
+    }
+    const requirements = {
+      ...(splitList(editAuthAudiences).length ? { audiences: splitList(editAuthAudiences) } : {}),
+      ...(splitList(editAuthScopes).length ? { scopes: splitList(editAuthScopes) } : {}),
+      ...(splitList(editAuthDomains).length ? { domains: splitList(editAuthDomains) } : {}),
+    };
+    if (editAuthMode === "google_oidc") {
+      return {
+        mode: "google_oidc",
+        provider: {
+          type: "google_oidc",
+          client_id: editAuthGoogleClientId.trim(),
+          allowed_domains: splitList(editAuthDomains),
+        },
+        requirements,
+      };
+    }
+    if (editAuthMode === "oidc") {
+      return {
+        mode: "oidc",
+        provider: { type: "oidc", issuer: editAuthOidcIssuer.trim() },
+        requirements,
+      };
+    }
+    if (editAuthMode === "oauth2_introspection") {
+      return {
+        mode: "oauth2_introspection",
+        provider: {
+          type: "oauth2_introspection",
+          introspection_url: editAuthIntrospectionUrl.trim(),
+          ...(editAuthOAuthClientId.trim() ? { client_id: editAuthOAuthClientId.trim() } : {}),
+          ...(editAuthOAuthClientSecret ? { client_secret: editAuthOAuthClientSecret } : {}),
+        },
+        requirements,
+      };
+    }
+    if (editAuthMode === "http_basic") {
+      return {
+        mode: "http_basic",
+        provider: {
+          type: "http_basic",
+          username: editAuthBasicUsername.trim(),
+          ...(editAuthBasicPassword ? { password: editAuthBasicPassword } : {}),
+        },
+        requirements: {},
+      };
+    }
+    if (editAuthMode === "mtls") {
+      return {
+        mode: "mtls",
+        provider: {
+          type: "mtls",
+          header_name: editAuthMtlsHeader.trim(),
+          allowed_values: splitList(editAuthMtlsValues),
+        },
+        requirements: {},
+      };
+    }
+    return undefined;
   };
 
   const buildChannelConfig = (channelType: ChannelType): ChannelConfigInput => {
@@ -551,8 +696,11 @@ function AppDetailPageLegacy({ params }: { params: Promise<{ appId: string }> })
         const trimmed = editAgUiRateLimitPerMinute.trim();
         const parsed = trimmed === "" ? undefined : Number.parseInt(trimmed, 10);
         return {
-          anonymous: true,
-          ...(editAgUiToken.trim() ? { token: editAgUiToken.trim() } : {}),
+          anonymous: editAuthMode === "anonymous" || editAuthMode === "shared_secret",
+          ...(editAuthMode === "shared_secret" && editAgUiToken.trim()
+            ? { token: editAgUiToken.trim() }
+            : {}),
+          ...(buildEndpointAuthConfig() ? { auth: buildEndpointAuthConfig() } : {}),
           session_expiration_seconds: Math.round(hours * 3600),
           tool_visibility: editAgUiToolVisibility,
           generic_tool_text: editAgUiGenericToolText.trim() || DEFAULT_AG_UI_GENERIC_TOOL_TEXT,
@@ -587,6 +735,7 @@ function AppDetailPageLegacy({ params }: { params: Promise<{ appId: string }> })
           message: editChannelMessage,
           agent_card_name: editA2aAgentCardName.trim() || undefined,
           agent_card_description: editA2aAgentCardDescription.trim() || undefined,
+          ...(buildEndpointAuthConfig() ? { auth: buildEndpointAuthConfig() } : {}),
           ...(parsedA2aRate !== undefined && Number.isFinite(parsedA2aRate) && parsedA2aRate > 0
             ? { rate_limit_per_minute: parsedA2aRate }
             : {}),
@@ -605,8 +754,25 @@ function AppDetailPageLegacy({ params }: { params: Promise<{ appId: string }> })
   };
 
   const isChannelConfigValid = (channelType: ChannelType) => {
+    const authValid =
+      editAuthMode === "anonymous" ||
+      editAuthMode === "shared_secret" ||
+      editAuthMode === "api_key" ||
+      (editAuthMode === "google_oidc" && !!editAuthGoogleClientId.trim()) ||
+      (editAuthMode === "oidc" && !!editAuthOidcIssuer.trim()) ||
+      (editAuthMode === "oauth2_introspection" && !!editAuthIntrospectionUrl.trim()) ||
+      (editAuthMode === "http_basic" &&
+        !!editAuthBasicUsername.trim() &&
+        (!!editAuthBasicPassword || editAuthBasicPasswordConfigured)) ||
+      (editAuthMode === "mtls" &&
+        !!editAuthMtlsHeader.trim() &&
+        splitList(editAuthMtlsValues).length > 0);
+    if (!authValid) return false;
     switch (channelType) {
       case "ag_ui": {
+        if (editAuthMode === "shared_secret" && !editAgUiToken.trim()) {
+          return false;
+        }
         if (!Number.isFinite(editAgUiExpirationHours) || editAgUiExpirationHours < 0) {
           return false;
         }
@@ -644,11 +810,48 @@ function AppDetailPageLegacy({ params }: { params: Promise<{ appId: string }> })
     }
   };
 
+  const loadEndpointAuthConfig = (channelType: ChannelType, config: ChannelConfigInput) => {
+    const auth = (config as { auth?: AppEndpointAuthConfig }).auth;
+    setEditAuthMode(authModeFromChannel(channelType, config));
+    setEditAuthAudiences(auth?.requirements?.audiences?.join(", ") ?? "");
+    setEditAuthScopes(auth?.requirements?.scopes?.join(", ") ?? "");
+    setEditAuthDomains(auth?.requirements?.domains?.join(", ") ?? "");
+    setEditAuthGoogleClientId("");
+    setEditAuthOidcIssuer("");
+    setEditAuthIntrospectionUrl("");
+    setEditAuthOAuthClientId("");
+    setEditAuthOAuthClientSecret("");
+    setEditAuthBasicUsername("");
+    setEditAuthBasicPassword("");
+    setEditAuthBasicPasswordConfigured(false);
+    setEditAuthMtlsHeader("x-forwarded-client-cert-subject");
+    setEditAuthMtlsValues("");
+    const provider = auth?.provider;
+    if (provider?.type === "google_oidc") {
+      setEditAuthGoogleClientId(provider.client_id ?? "");
+      setEditAuthDomains(
+        provider.allowed_domains?.join(", ") ?? auth?.requirements?.domains?.join(", ") ?? "",
+      );
+    } else if (provider?.type === "oidc") {
+      setEditAuthOidcIssuer(provider.issuer ?? "");
+    } else if (provider?.type === "oauth2_introspection") {
+      setEditAuthIntrospectionUrl(provider.introspection_url ?? "");
+      setEditAuthOAuthClientId(provider.client_id ?? "");
+    } else if (provider?.type === "http_basic") {
+      setEditAuthBasicUsername(provider.username ?? "");
+      setEditAuthBasicPasswordConfigured(provider.password_configured === true);
+    } else if (provider?.type === "mtls") {
+      setEditAuthMtlsHeader(provider.header_name ?? "x-forwarded-client-cert-subject");
+      setEditAuthMtlsValues(provider.allowed_values?.join(", ") ?? "");
+    }
+  };
+
   const startEditChannel = (channel: AppChannel) => {
     resetChannelForm(channel.channel_type);
     setEditChannelEnabled(channel.enabled);
     if (channel.channel_type === "ag_ui") {
       const config = channel.channel_config as AgUiChannelConfig;
+      loadEndpointAuthConfig(channel.channel_type, config);
       const expSeconds =
         config?.session_expiration_seconds ?? DEFAULT_AG_UI_SESSION_EXPIRATION_SECONDS;
       setEditAgUiExpirationHours(expSeconds / 3600);
@@ -681,6 +884,7 @@ function AppDetailPageLegacy({ params }: { params: Promise<{ appId: string }> })
       setEditChannelMessage(config?.message ?? "");
     } else if (channel.channel_type === "a2a") {
       const config = channel.channel_config as A2aChannelConfig;
+      loadEndpointAuthConfig(channel.channel_type, config);
       setEditInvocationSessionMode(config?.session_mode ?? "shared_session");
       setEditChannelMessage(config?.message ?? "");
       setEditA2aAgentCardName(config?.agent_card_name ?? "");
@@ -716,6 +920,7 @@ function AppDetailPageLegacy({ params }: { params: Promise<{ appId: string }> })
         message: editChannelMessage,
         agentCardName: editA2aAgentCardName.trim() || undefined,
         agentCardDescription: editA2aAgentCardDescription.trim() || undefined,
+        auth: buildEndpointAuthConfig(),
         enabled: editChannelEnabled,
       });
       return;
@@ -763,6 +968,191 @@ function AppDetailPageLegacy({ params }: { params: Promise<{ appId: string }> })
       />
     );
   }
+
+  const renderEndpointAuthFields = (channelType: ChannelType, formId: string) => {
+    if (!["ag_ui", "a2a"].includes(channelType)) return null;
+    return (
+      <div className="space-y-3 rounded-md border p-3">
+        <div className="space-y-1">
+          <p className="text-sm font-medium">Auth</p>
+          <p className="text-xs text-muted-foreground">
+            Protect this App endpoint without creating a separate org-level provider.
+          </p>
+        </div>
+        <div>
+          <Label htmlFor={`endpoint_auth_${formId}`}>Mode</Label>
+          <Select
+            value={editAuthMode}
+            onValueChange={(value) => setEditAuthMode(value as AppEndpointAuthMode)}
+          >
+            <SelectTrigger id={`endpoint_auth_${formId}`}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="anonymous">Public</SelectItem>
+              {channelType === "ag_ui" && (
+                <SelectItem value="shared_secret">Shared token</SelectItem>
+              )}
+              {channelType === "a2a" && <SelectItem value="api_key">API key</SelectItem>}
+              <SelectItem value="google_oidc">Google</SelectItem>
+              <SelectItem value="oidc">OIDC</SelectItem>
+              <SelectItem value="oauth2_introspection">OAuth2 introspection</SelectItem>
+              <SelectItem value="http_basic">HTTP Basic</SelectItem>
+              <SelectItem value="mtls">mTLS header</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        {editAuthMode === "google_oidc" && (
+          <>
+            <div>
+              <Label htmlFor={`google_client_id_${formId}`}>Google client ID</Label>
+              <Input
+                id={`google_client_id_${formId}`}
+                value={editAuthGoogleClientId}
+                onChange={(event) => setEditAuthGoogleClientId(event.target.value)}
+                placeholder="1234567890-abc.apps.googleusercontent.com"
+              />
+            </div>
+            <div>
+              <Label htmlFor={`google_domains_${formId}`}>Allowed domains</Label>
+              <Input
+                id={`google_domains_${formId}`}
+                value={editAuthDomains}
+                onChange={(event) => setEditAuthDomains(event.target.value)}
+                placeholder="example.com, example.org"
+              />
+            </div>
+          </>
+        )}
+        {editAuthMode === "oidc" && (
+          <>
+            <div>
+              <Label htmlFor={`oidc_issuer_${formId}`}>Issuer URL</Label>
+              <Input
+                id={`oidc_issuer_${formId}`}
+                value={editAuthOidcIssuer}
+                onChange={(event) => setEditAuthOidcIssuer(event.target.value)}
+                placeholder="https://auth.example.com"
+              />
+            </div>
+            <div>
+              <Label htmlFor={`oidc_audiences_${formId}`}>Audiences</Label>
+              <Input
+                id={`oidc_audiences_${formId}`}
+                value={editAuthAudiences}
+                onChange={(event) => setEditAuthAudiences(event.target.value)}
+                placeholder="api://everruns-app"
+              />
+            </div>
+          </>
+        )}
+        {(editAuthMode === "google_oidc" || editAuthMode === "oidc") && (
+          <div>
+            <Label htmlFor={`auth_scopes_${formId}`}>Required scopes</Label>
+            <Input
+              id={`auth_scopes_${formId}`}
+              value={editAuthScopes}
+              onChange={(event) => setEditAuthScopes(event.target.value)}
+              placeholder="read:app, invoke:agent"
+            />
+          </div>
+        )}
+        {editAuthMode === "oauth2_introspection" && (
+          <>
+            <div>
+              <Label htmlFor={`oauth2_introspection_url_${formId}`}>Introspection URL</Label>
+              <Input
+                id={`oauth2_introspection_url_${formId}`}
+                value={editAuthIntrospectionUrl}
+                onChange={(event) => setEditAuthIntrospectionUrl(event.target.value)}
+                placeholder="https://auth.example.com/oauth2/introspect"
+              />
+            </div>
+            <div>
+              <Label htmlFor={`oauth2_client_id_${formId}`}>Client ID</Label>
+              <Input
+                id={`oauth2_client_id_${formId}`}
+                value={editAuthOAuthClientId}
+                onChange={(event) => setEditAuthOAuthClientId(event.target.value)}
+                placeholder="optional"
+              />
+            </div>
+            <div>
+              <Label htmlFor={`oauth2_client_secret_${formId}`}>Client secret</Label>
+              <Input
+                id={`oauth2_client_secret_${formId}`}
+                type="password"
+                value={editAuthOAuthClientSecret}
+                onChange={(event) => setEditAuthOAuthClientSecret(event.target.value)}
+                placeholder="Leave blank to keep existing secret"
+              />
+            </div>
+            <div>
+              <Label htmlFor={`oauth2_scopes_${formId}`}>Required scopes</Label>
+              <Input
+                id={`oauth2_scopes_${formId}`}
+                value={editAuthScopes}
+                onChange={(event) => setEditAuthScopes(event.target.value)}
+                placeholder="invoke:agent, read:app"
+              />
+            </div>
+            <div>
+              <Label htmlFor={`oauth2_audiences_${formId}`}>Audiences</Label>
+              <Input
+                id={`oauth2_audiences_${formId}`}
+                value={editAuthAudiences}
+                onChange={(event) => setEditAuthAudiences(event.target.value)}
+                placeholder="api://everruns-app"
+              />
+            </div>
+          </>
+        )}
+        {editAuthMode === "http_basic" && (
+          <>
+            <div>
+              <Label htmlFor={`basic_username_${formId}`}>Username</Label>
+              <Input
+                id={`basic_username_${formId}`}
+                value={editAuthBasicUsername}
+                onChange={(event) => setEditAuthBasicUsername(event.target.value)}
+              />
+            </div>
+            <div>
+              <Label htmlFor={`basic_password_${formId}`}>Password</Label>
+              <Input
+                id={`basic_password_${formId}`}
+                type="password"
+                value={editAuthBasicPassword}
+                onChange={(event) => setEditAuthBasicPassword(event.target.value)}
+                placeholder={editingChannelId ? "Leave blank to keep existing password" : ""}
+              />
+            </div>
+          </>
+        )}
+        {editAuthMode === "mtls" && (
+          <>
+            <div>
+              <Label htmlFor={`mtls_header_${formId}`}>Verified client identity header</Label>
+              <Input
+                id={`mtls_header_${formId}`}
+                value={editAuthMtlsHeader}
+                onChange={(event) => setEditAuthMtlsHeader(event.target.value)}
+              />
+            </div>
+            <div>
+              <Label htmlFor={`mtls_values_${formId}`}>Allowed values</Label>
+              <Input
+                id={`mtls_values_${formId}`}
+                value={editAuthMtlsValues}
+                onChange={(event) => setEditAuthMtlsValues(event.target.value)}
+                placeholder="CN=client,O=Example"
+              />
+            </div>
+          </>
+        )}
+      </div>
+    );
+  };
 
   const renderChannelForm = (isSaving: boolean, formId: string = "default") => {
     const formChannelType = editingChannelId ? editingChannelType : addChannelType;
@@ -812,35 +1202,38 @@ function AppDetailPageLegacy({ params }: { params: Promise<{ appId: string }> })
         {formChannelType === "ag_ui" && (
           <>
             <div className="rounded-md border p-3 text-sm text-muted-foreground">
-              AG-UI requests are accepted anonymously for now. Publish the app, then point an AG-UI
-              client at the endpoint shown on this page.
+              Publish the app, then point an AG-UI client at the endpoint shown on this page.
             </div>
 
-            <div>
-              <Label htmlFor={`ag_ui_token_${formId}`}>Endpoint Token</Label>
-              <div className="flex gap-2">
-                <Input
-                  id={`ag_ui_token_${formId}`}
-                  value={editAgUiToken}
-                  onChange={(e) => setEditAgUiToken(e.target.value)}
-                  className="font-mono"
-                  placeholder="Generated bearer token"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  onClick={() => setEditAgUiToken(generateChannelToken())}
-                  aria-label="Regenerate AG-UI token"
-                >
-                  <RefreshCw className="h-4 w-4" />
-                </Button>
+            {renderEndpointAuthFields(formChannelType, formId)}
+
+            {editAuthMode === "shared_secret" && (
+              <div>
+                <Label htmlFor={`ag_ui_token_${formId}`}>Endpoint Token</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id={`ag_ui_token_${formId}`}
+                    value={editAgUiToken}
+                    onChange={(e) => setEditAgUiToken(e.target.value)}
+                    className="font-mono"
+                    placeholder="Generated bearer token"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setEditAgUiToken(generateChannelToken())}
+                    aria-label="Regenerate AG-UI token"
+                  >
+                    <RefreshCw className="h-4 w-4" />
+                  </Button>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  AG-UI clients must send this as `Authorization: Bearer &lt;token&gt;` or
+                  `X-Everruns-AG-UI-Token`.
+                </p>
               </div>
-              <p className="mt-1 text-xs text-muted-foreground">
-                AG-UI clients must send this as `Authorization: Bearer &lt;token&gt;` or
-                `X-Everruns-AG-UI-Token`. Leave blank to allow requests without a channel token.
-              </p>
-            </div>
+            )}
 
             <div>
               <Label htmlFor={`ag_ui_expiration_${formId}`}>Thread expiration (hours)</Label>
@@ -1129,6 +1522,7 @@ function AppDetailPageLegacy({ params }: { params: Promise<{ appId: string }> })
               is generated on save and shown once — store it before closing the dialog. Rotate it
               later from the channel card if it leaks.
             </div>
+            {renderEndpointAuthFields(formChannelType, formId)}
             <div>
               <Label htmlFor={`a2a_session_mode_${formId}`}>Invocation Session Mode</Label>
               <Select
@@ -1421,6 +1815,10 @@ function AppDetailPageLegacy({ params }: { params: Promise<{ appId: string }> })
         <div className="grid gap-4 md:grid-cols-2">
           <ChannelFact label="Access" value={hasToken(config) ? "Token protected" : "No token"} />
           <ChannelFact
+            label="Auth"
+            value={authLabel(config, hasToken(config) ? "Token" : "Public")}
+          />
+          <ChannelFact
             label="Thread expiration"
             value={`${(config?.session_expiration_seconds ?? DEFAULT_AG_UI_SESSION_EXPIRATION_SECONDS) / 3600}h`}
           />
@@ -1489,7 +1887,7 @@ function AppDetailPageLegacy({ params }: { params: Promise<{ appId: string }> })
           <div className="grid gap-4 md:grid-cols-2">
             <ChannelFact
               label="Authentication"
-              value={hasToken(config) ? "Token set" : "Missing"}
+              value={authLabel(config, hasToken(config) ? "Token" : "Missing")}
             />
             <ChannelFact
               label="Session mode"
@@ -1507,8 +1905,8 @@ function AppDetailPageLegacy({ params }: { params: Promise<{ appId: string }> })
       <div className="space-y-4">
         <div className="grid gap-4 md:grid-cols-2">
           <ChannelFact
-            label="API key"
-            value={config?.api_key_prefix ? `${config.api_key_prefix}...` : "Missing"}
+            label="Auth"
+            value={authLabel(config, config?.api_key_prefix ? "API key" : "Missing")}
           />
           <ChannelFact
             label="Session mode"
