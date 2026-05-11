@@ -13,6 +13,8 @@ import type { Harness } from "@/lib/api/types";
 import { getDisplayName } from "@/lib/entity-lifecycle";
 
 interface HarnessSelectProps {
+  /** Optional ID for the select trigger */
+  id?: string;
   /** Selected harness ID */
   value: string;
   /** Callback when selection changes */
@@ -36,6 +38,7 @@ interface HarnessSelectProps {
  * Handles the ID-to-name mapping automatically.
  */
 export function HarnessSelect({
+  id,
   value,
   onValueChange,
   placeholder = "Select harness",
@@ -71,7 +74,7 @@ export function HarnessSelect({
       onValueChange={(nextValue) => onValueChange(nextValue === noneValue ? "" : nextValue)}
       disabled={disabled}
     >
-      <SelectTrigger className={className}>
+      <SelectTrigger id={id} className={className}>
         <SelectValue placeholder={placeholder}>{displayValue}</SelectValue>
       </SelectTrigger>
       <SelectContent>

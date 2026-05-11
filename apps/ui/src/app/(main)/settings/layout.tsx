@@ -22,10 +22,10 @@ const settingsSections: NavSection[] = [
     label: "Organisation",
     items: [
       {
-        name: "Organisations",
-        href: "/settings/organisations",
+        name: "Organisation",
+        href: "/settings/organization",
         icon: Building2,
-        description: "Switch or create organisations",
+        description: "Manage organisation defaults and memberships",
       },
       {
         name: "LLM Providers",
@@ -84,16 +84,16 @@ export default function SettingsLayout({ children }: SettingsLayoutProps) {
       <div className="flex items-center justify-between border-b px-6 py-4">
         <h1 className="text-2xl font-bold">Settings</h1>
       </div>
-      <div className="flex min-h-0 flex-1 overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden lg:flex-row">
         {/* Settings Sidebar */}
-        <nav className="w-64 border-r bg-card p-4 overflow-y-auto">
+        <nav className="border-b bg-card p-3 lg:w-64 lg:border-b-0 lg:border-r lg:p-4 lg:overflow-y-auto">
           <div className="space-y-6">
             {settingsSections.map((section) => (
               <div key={section.label}>
                 <div className="px-3 pb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">
                   {section.label}
                 </div>
-                <div className="space-y-1">
+                <div className="grid gap-1 sm:grid-cols-2 lg:block lg:space-y-1">
                   {section.items.map((item) => {
                     const isActive = pathname === item.href;
                     return (
@@ -121,7 +121,7 @@ export default function SettingsLayout({ children }: SettingsLayoutProps) {
         </nav>
 
         {/* Settings Content */}
-        <div className="flex-1 overflow-y-auto p-6">{children}</div>
+        <div className="min-w-0 flex-1 overflow-y-auto p-4 sm:p-6">{children}</div>
       </div>
     </div>
   );
