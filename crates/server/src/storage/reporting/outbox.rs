@@ -215,6 +215,10 @@ impl PostgresReportingProjector {
         .await?;
         match event_type.as_ref().map(|row| row.0.as_str()) {
             Some("tool.completed") => self.project_tool_event(org_id, id).await,
+            Some("capability.usage") => self.project_capability_usage_event(org_id, id).await,
+            Some("output.message.replaced") => {
+                self.project_guardrail_effect_event(org_id, id).await
+            }
             Some("turn.completed" | "turn.failed" | "turn.cancelled") => {
                 self.project_turn_event(org_id, id).await
             }
@@ -291,6 +295,210 @@ impl PostgresReportingProjector {
                 error_count = EXCLUDED.error_count,
                 timeout_count = EXCLUDED.timeout_count,
                 cancelled_count = EXCLUDED.cancelled_count,
+                duration_ms = EXCLUDED.duration_ms,
+                projected_at = NOW()
+            "#,
+        )
+        .bind(id)
+        .bind(org_id)
+        .execute(&self.pool)
+        .await?;
+        self.project_tool_invoked_usage(org_id, id).await?;
+        Ok(())
+    }
+
+    async fn project_tool_invoked_usage(&self, org_id: i64, id: Uuid) -> Result<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO fact_capability_usage (
+                org_id, source_key, session_id, turn_id, user_id, principal_id, agent_id,
+                agent_name_snapshot, harness_id, harness_name_snapshot, app_id, blueprint_id,
+                created_at, time_bucket_day, capability_id, capability_name_snapshot,
+                capability_usage_kind, tool_name, usage_count, duration_ms, projected_at
+            )
+            SELECT
+                s.org_id,
+                'event:' || e.id::TEXT || ':invoked',
+                e.session_id,
+                COALESCE(e.context->>'turn_id', e.data->>'turn_id'),
+                s.resolved_owner_user_id,
+                s.owner_principal_id,
+                s.agent_id,
+                a.name,
+                s.harness_id,
+                h.name,
+                s.app_id,
+                s.blueprint_id,
+                e.ts,
+                (e.ts AT TIME ZONE 'UTC')::DATE,
+                e.data->>'capability_id',
+                e.data->>'capability_name',
+                'invoked',
+                e.data->>'tool_name',
+                1,
+                CASE WHEN COALESCE(e.data->>'duration_ms', '') ~ '^[0-9]+$'
+                     THEN (e.data->>'duration_ms')::BIGINT
+                     ELSE 0
+                END,
+                NOW()
+            FROM events e
+            JOIN sessions s ON s.id = e.session_id
+            LEFT JOIN agents a ON a.id = s.agent_id AND a.org_id = s.org_id
+            LEFT JOIN harnesses h ON h.id = s.harness_id AND h.org_id = s.org_id
+            WHERE e.id = $1 AND s.org_id = $2 AND e.data ? 'capability_id'
+            ON CONFLICT (org_id, source_key) DO UPDATE SET
+                turn_id = EXCLUDED.turn_id,
+                user_id = EXCLUDED.user_id,
+                principal_id = EXCLUDED.principal_id,
+                agent_id = EXCLUDED.agent_id,
+                agent_name_snapshot = EXCLUDED.agent_name_snapshot,
+                harness_id = EXCLUDED.harness_id,
+                harness_name_snapshot = EXCLUDED.harness_name_snapshot,
+                app_id = EXCLUDED.app_id,
+                blueprint_id = EXCLUDED.blueprint_id,
+                created_at = EXCLUDED.created_at,
+                time_bucket_day = EXCLUDED.time_bucket_day,
+                capability_id = EXCLUDED.capability_id,
+                capability_name_snapshot = EXCLUDED.capability_name_snapshot,
+                tool_name = EXCLUDED.tool_name,
+                usage_count = EXCLUDED.usage_count,
+                duration_ms = EXCLUDED.duration_ms,
+                projected_at = NOW()
+            "#,
+        )
+        .bind(id)
+        .bind(org_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    async fn project_capability_usage_event(&self, org_id: i64, id: Uuid) -> Result<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO fact_capability_usage (
+                org_id, source_key, session_id, turn_id, user_id, principal_id, agent_id,
+                agent_name_snapshot, harness_id, harness_name_snapshot, app_id, blueprint_id,
+                created_at, time_bucket_day, capability_id, capability_name_snapshot,
+                capability_usage_kind, tool_name, usage_count, duration_ms, projected_at
+            )
+            SELECT
+                s.org_id,
+                'event:' || e.id::TEXT || ':capability_usage:' || usage.ordinality::TEXT,
+                e.session_id,
+                COALESCE(e.context->>'turn_id', e.data->>'turn_id'),
+                s.resolved_owner_user_id,
+                s.owner_principal_id,
+                s.agent_id,
+                a.name,
+                s.harness_id,
+                h.name,
+                s.app_id,
+                s.blueprint_id,
+                e.ts,
+                (e.ts AT TIME ZONE 'UTC')::DATE,
+                usage.record->>'capability_id',
+                usage.record->>'capability_name',
+                usage.record->>'usage_kind',
+                usage.record->>'tool_name',
+                CASE WHEN COALESCE(usage.record->>'usage_count', '') ~ '^[0-9]+$'
+                     THEN (usage.record->>'usage_count')::BIGINT
+                     ELSE 1
+                END,
+                CASE WHEN COALESCE(usage.record->>'duration_ms', '') ~ '^[0-9]+$'
+                     THEN (usage.record->>'duration_ms')::BIGINT
+                     ELSE 0
+                END,
+                NOW()
+            FROM events e
+            JOIN sessions s ON s.id = e.session_id
+            LEFT JOIN agents a ON a.id = s.agent_id AND a.org_id = s.org_id
+            LEFT JOIN harnesses h ON h.id = s.harness_id AND h.org_id = s.org_id
+            CROSS JOIN LATERAL jsonb_array_elements(COALESCE(e.data->'records', '[]'::jsonb))
+                WITH ORDINALITY AS usage(record, ordinality)
+            WHERE e.id = $1
+              AND s.org_id = $2
+              AND usage.record ? 'capability_id'
+              AND usage.record ? 'usage_kind'
+            ON CONFLICT (org_id, source_key) DO UPDATE SET
+                turn_id = EXCLUDED.turn_id,
+                user_id = EXCLUDED.user_id,
+                principal_id = EXCLUDED.principal_id,
+                agent_id = EXCLUDED.agent_id,
+                agent_name_snapshot = EXCLUDED.agent_name_snapshot,
+                harness_id = EXCLUDED.harness_id,
+                harness_name_snapshot = EXCLUDED.harness_name_snapshot,
+                app_id = EXCLUDED.app_id,
+                blueprint_id = EXCLUDED.blueprint_id,
+                created_at = EXCLUDED.created_at,
+                time_bucket_day = EXCLUDED.time_bucket_day,
+                capability_id = EXCLUDED.capability_id,
+                capability_name_snapshot = EXCLUDED.capability_name_snapshot,
+                capability_usage_kind = EXCLUDED.capability_usage_kind,
+                tool_name = EXCLUDED.tool_name,
+                usage_count = EXCLUDED.usage_count,
+                duration_ms = EXCLUDED.duration_ms,
+                projected_at = NOW()
+            "#,
+        )
+        .bind(id)
+        .bind(org_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    async fn project_guardrail_effect_event(&self, org_id: i64, id: Uuid) -> Result<()> {
+        sqlx::query(
+            r#"
+            INSERT INTO fact_capability_usage (
+                org_id, source_key, session_id, turn_id, user_id, principal_id, agent_id,
+                agent_name_snapshot, harness_id, harness_name_snapshot, app_id, blueprint_id,
+                created_at, time_bucket_day, capability_id, capability_name_snapshot,
+                capability_usage_kind, tool_name, usage_count, duration_ms, projected_at
+            )
+            SELECT
+                s.org_id,
+                'event:' || e.id::TEXT || ':effect_ran',
+                e.session_id,
+                COALESCE(e.context->>'turn_id', e.data->>'turn_id'),
+                s.resolved_owner_user_id,
+                s.owner_principal_id,
+                s.agent_id,
+                a.name,
+                s.harness_id,
+                h.name,
+                s.app_id,
+                s.blueprint_id,
+                e.ts,
+                (e.ts AT TIME ZONE 'UTC')::DATE,
+                e.data->>'guardrail_capability_id',
+                e.data->>'guardrail_capability_id',
+                'effect_ran',
+                NULL,
+                1,
+                0,
+                NOW()
+            FROM events e
+            JOIN sessions s ON s.id = e.session_id
+            LEFT JOIN agents a ON a.id = s.agent_id AND a.org_id = s.org_id
+            LEFT JOIN harnesses h ON h.id = s.harness_id AND h.org_id = s.org_id
+            WHERE e.id = $1 AND s.org_id = $2 AND e.data ? 'guardrail_capability_id'
+            ON CONFLICT (org_id, source_key) DO UPDATE SET
+                turn_id = EXCLUDED.turn_id,
+                user_id = EXCLUDED.user_id,
+                principal_id = EXCLUDED.principal_id,
+                agent_id = EXCLUDED.agent_id,
+                agent_name_snapshot = EXCLUDED.agent_name_snapshot,
+                harness_id = EXCLUDED.harness_id,
+                harness_name_snapshot = EXCLUDED.harness_name_snapshot,
+                app_id = EXCLUDED.app_id,
+                blueprint_id = EXCLUDED.blueprint_id,
+                created_at = EXCLUDED.created_at,
+                time_bucket_day = EXCLUDED.time_bucket_day,
+                capability_id = EXCLUDED.capability_id,
+                capability_name_snapshot = EXCLUDED.capability_name_snapshot,
+                usage_count = EXCLUDED.usage_count,
                 duration_ms = EXCLUDED.duration_ms,
                 projected_at = NOW()
             "#,
@@ -496,6 +704,112 @@ impl PostgresReportingProjector {
                 cache_creation_tokens = EXCLUDED.cache_creation_tokens,
                 total_tokens = EXCLUDED.total_tokens,
                 tool_call_count = EXCLUDED.tool_call_count,
+                projected_at = NOW()
+            "#,
+        )
+        .bind(id)
+        .bind(org_id)
+        .execute(&self.pool)
+        .await?;
+        self.project_configured_capabilities(org_id, id).await?;
+        Ok(())
+    }
+
+    async fn project_configured_capabilities(&self, org_id: i64, id: Uuid) -> Result<()> {
+        sqlx::query(
+            r#"
+            DELETE FROM fact_capability_usage
+             WHERE org_id = $1
+               AND session_id = $2
+               AND capability_usage_kind = 'configured'
+               AND source_key LIKE ('session:' || $2::TEXT || ':configured:%')
+            "#,
+        )
+        .bind(org_id)
+        .bind(id)
+        .execute(&self.pool)
+        .await?;
+
+        sqlx::query(
+            r#"
+            WITH session_row AS (
+                SELECT s.*
+                  FROM sessions s
+                 WHERE s.id = $1 AND s.org_id = $2
+            ),
+            configured AS (
+                SELECT ac.capability_id, 'agent' AS source_scope
+                  FROM session_row s
+                  JOIN agent_capabilities ac ON ac.agent_id = s.agent_id
+                UNION ALL
+                SELECT hc.capability_id, 'harness' AS source_scope
+                  FROM session_row s
+                  JOIN harness_capabilities hc ON hc.harness_id = s.harness_id
+                UNION ALL
+                SELECT COALESCE(cap.value->>'ref', cap.value #>> '{}') AS capability_id,
+                       'session' AS source_scope
+                  FROM session_row s
+                  CROSS JOIN LATERAL jsonb_array_elements(
+                      CASE WHEN jsonb_typeof(s.capabilities) = 'array'
+                           THEN s.capabilities
+                           ELSE '[]'::jsonb
+                      END
+                  ) AS cap(value)
+            )
+            INSERT INTO fact_capability_usage (
+                org_id, source_key, session_id, turn_id, user_id, principal_id, agent_id,
+                agent_name_snapshot, harness_id, harness_name_snapshot, app_id, blueprint_id,
+                created_at, time_bucket_day, capability_id, capability_name_snapshot,
+                capability_usage_kind, tool_name, usage_count, duration_ms, projected_at
+            )
+            SELECT
+                s.org_id,
+                'session:' || s.id::TEXT || ':configured:' || configured.source_scope || ':' || configured.capability_id,
+                s.id,
+                NULL,
+                s.resolved_owner_user_id,
+                s.owner_principal_id,
+                s.agent_id,
+                a.name,
+                s.harness_id,
+                h.name,
+                s.app_id,
+                s.blueprint_id,
+                s.created_at,
+                (s.created_at AT TIME ZONE 'UTC')::DATE,
+                configured.capability_id,
+                COALESCE(mcp.name, skill.name, declarative.display_name, declarative.name, configured.capability_id),
+                'configured',
+                NULL,
+                1,
+                0,
+                NOW()
+            FROM session_row s
+            JOIN configured ON configured.capability_id IS NOT NULL AND configured.capability_id <> ''
+            LEFT JOIN agents a ON a.id = s.agent_id AND a.org_id = s.org_id
+            LEFT JOIN harnesses h ON h.id = s.harness_id AND h.org_id = s.org_id
+            LEFT JOIN mcp_servers mcp
+                ON configured.capability_id = ('mcp:' || mcp.id::TEXT)
+               AND mcp.org_id = s.org_id
+            LEFT JOIN skills skill
+                ON configured.capability_id = ('skill:' || skill.id::TEXT)
+               AND skill.org_id = s.org_id
+            LEFT JOIN declarative_capabilities declarative
+                ON configured.capability_id = ('declarative:' || declarative.name)
+               AND declarative.org_id = s.org_id
+            ON CONFLICT (org_id, source_key) DO UPDATE SET
+                user_id = EXCLUDED.user_id,
+                principal_id = EXCLUDED.principal_id,
+                agent_id = EXCLUDED.agent_id,
+                agent_name_snapshot = EXCLUDED.agent_name_snapshot,
+                harness_id = EXCLUDED.harness_id,
+                harness_name_snapshot = EXCLUDED.harness_name_snapshot,
+                app_id = EXCLUDED.app_id,
+                blueprint_id = EXCLUDED.blueprint_id,
+                created_at = EXCLUDED.created_at,
+                time_bucket_day = EXCLUDED.time_bucket_day,
+                capability_name_snapshot = EXCLUDED.capability_name_snapshot,
+                usage_count = EXCLUDED.usage_count,
                 projected_at = NOW()
             "#,
         )

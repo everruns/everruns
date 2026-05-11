@@ -1279,6 +1279,8 @@ mod tests {
             result: None,
             error: None,
             duration_ms: Some(100),
+            capability_id: None,
+            capability_name: None,
             narration: None,
         };
         listener
@@ -1304,6 +1306,8 @@ mod tests {
             result: None,
             error: Some("Connection timeout".to_string()),
             duration_ms: None,
+            capability_id: None,
+            capability_name: None,
             narration: None,
         };
         // Should not panic
@@ -1353,6 +1357,8 @@ mod tests {
                 result: None,
                 error: None,
                 duration_ms: Some(50),
+                capability_id: None,
+                capability_name: None,
                 narration: None,
             };
             listener
@@ -1675,6 +1681,8 @@ mod tests {
             result: None,
             error: None,
             duration_ms: Some(200),
+            capability_id: None,
+            capability_name: None,
             narration: None,
         };
         listener
@@ -2081,6 +2089,8 @@ mod tests {
                     result: None,
                     error: None,
                     duration_ms: Some(200),
+                    capability_id: None,
+                    capability_name: None,
                     narration: None,
                 }),
             ))

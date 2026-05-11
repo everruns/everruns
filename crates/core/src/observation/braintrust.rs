@@ -2705,6 +2705,8 @@ mod tests {
             result: None,
             error: None,
             duration_ms: Some(200),
+            capability_id: None,
+            capability_name: None,
             narration: None,
         };
         let event = Event::new(
@@ -2925,6 +2927,8 @@ mod tests {
             result: None,
             error: None,
             duration_ms: Some(75),
+            capability_id: None,
+            capability_name: None,
             narration: None,
         };
         let tool_event = Event::new(
@@ -3180,6 +3184,8 @@ mod tests {
             result: None,
             error: None,
             duration_ms: Some(100),
+            capability_id: None,
+            capability_name: None,
             narration: None,
         };
         let completed_event = Event::new(
@@ -3550,6 +3556,8 @@ mod tests {
             result: Some(vec![crate::ContentPart::text("sensitive tool output")]),
             error: None,
             duration_ms: Some(50),
+            capability_id: None,
+            capability_name: None,
             narration: None,
         };
         let event = Event::new(

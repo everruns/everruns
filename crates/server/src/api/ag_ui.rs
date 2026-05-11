@@ -1753,6 +1753,8 @@ mod tests {
                 result: Some(vec![ContentPart::text("skill_123")]),
                 error: None,
                 duration_ms: Some(10),
+                capability_id: None,
+                capability_name: None,
                 narration: None,
             },
         );
@@ -1842,6 +1844,8 @@ mod tests {
                 result: Some(vec![ContentPart::text("result")]),
                 error: None,
                 duration_ms: Some(10),
+                capability_id: None,
+                capability_name: None,
                 narration: None,
             },
         );
@@ -1939,6 +1943,8 @@ mod tests {
                 result: Some(vec![ContentPart::text("private result")]),
                 error: None,
                 duration_ms: Some(10),
+                capability_id: None,
+                capability_name: None,
                 narration: None,
             },
         );
@@ -2028,6 +2034,8 @@ mod tests {
                 result: Some(vec![ContentPart::text("result")]),
                 error: None,
                 duration_ms: Some(10),
+                capability_id: None,
+                capability_name: None,
                 narration: None,
             },
         );

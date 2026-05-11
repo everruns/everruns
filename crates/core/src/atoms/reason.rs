@@ -20,7 +20,7 @@ use async_trait::async_trait;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 use std::time::Instant;
 use uuid::Uuid;
@@ -29,11 +29,12 @@ use super::{Atom, AtomContext};
 use crate::capabilities::CapabilityRegistry;
 use crate::error::{AgentLoopError, Result};
 use crate::events::{
-    EventContext, EventRequest, LlmCompactionInfo, LlmGenerationData, LlmPromptCacheInfo,
-    LlmRequestOptions, LlmRetryInfo, LlmToolSearchInfo, OutputMessageCompletedData,
-    OutputMessageDeltaData, OutputMessageReplacedData, OutputMessageStartedData,
-    ReasonCompletedData, ReasonStartedData, ReasonThinkingCompletedData, ReasonThinkingDeltaData,
-    ReasonThinkingStartedData, TokenUsage, ToolDefinitionSummary,
+    CapabilityUsageData, CapabilityUsageKind, CapabilityUsageRecord, EventContext, EventRequest,
+    LlmCompactionInfo, LlmGenerationData, LlmPromptCacheInfo, LlmRequestOptions, LlmRetryInfo,
+    LlmToolSearchInfo, OutputMessageCompletedData, OutputMessageDeltaData,
+    OutputMessageReplacedData, OutputMessageStartedData, ReasonCompletedData, ReasonStartedData,
+    ReasonThinkingCompletedData, ReasonThinkingDeltaData, ReasonThinkingStartedData, TokenUsage,
+    ToolDefinitionSummary,
 };
 use crate::llm_driver_registry::{
     DriverRegistry, LlmCallConfigBuilder, LlmCompletionMetadata, LlmMessage, LlmMessageContent,
@@ -283,6 +284,65 @@ fn build_request_options(
     (!request_options.is_empty()).then_some(request_options)
 }
 
+fn capability_name_snapshot(registry: &CapabilityRegistry, capability_id: &str) -> Option<String> {
+    registry
+        .get(capability_id)
+        .map(|capability| capability.name().to_string())
+}
+
+fn capability_usage_snapshot_records(
+    registry: &CapabilityRegistry,
+    resolved_capability_configs: &[crate::AgentCapabilityConfig],
+    tool_definitions: &[ToolDefinition],
+) -> Vec<CapabilityUsageRecord> {
+    let mut records = Vec::new();
+    let mut seen = BTreeSet::new();
+
+    for config in resolved_capability_configs {
+        let capability_id = config.capability_id().to_string();
+        if seen.insert((
+            "resolved".to_string(),
+            capability_id.clone(),
+            None::<String>,
+        )) {
+            records.push(CapabilityUsageRecord {
+                capability_name: capability_name_snapshot(registry, &capability_id),
+                capability_id,
+                usage_kind: CapabilityUsageKind::Resolved,
+                tool_name: None,
+                usage_count: Some(1),
+                duration_ms: None,
+            });
+        }
+    }
+
+    for tool in tool_definitions {
+        let Some((capability_id, capability_name)) = tool.capability_attribution() else {
+            continue;
+        };
+        let capability_id = capability_id.to_string();
+        let tool_name = tool.name().to_string();
+        if seen.insert((
+            "exposed".to_string(),
+            capability_id.clone(),
+            Some(tool_name.clone()),
+        )) {
+            records.push(CapabilityUsageRecord {
+                capability_name: capability_name
+                    .map(str::to_string)
+                    .or_else(|| capability_name_snapshot(registry, &capability_id)),
+                capability_id,
+                usage_kind: CapabilityUsageKind::Exposed,
+                tool_name: Some(tool_name),
+                usage_count: Some(1),
+                duration_ms: None,
+            });
+        }
+    }
+
+    records
+}
+
 // ============================================================================
 // ReasonAtom
 // ============================================================================
@@ -398,6 +458,39 @@ impl ReasonAtom {
         assembled: AssembledTurnContext,
     ) -> Result<ReasonResult> {
         self.execute_inner(input, Some(assembled)).await
+    }
+
+    async fn emit_capability_usage_snapshot(
+        &self,
+        session_id: SessionId,
+        context: &AtomContext,
+        resolved_capability_configs: &[crate::AgentCapabilityConfig],
+        tool_definitions: &[ToolDefinition],
+    ) {
+        let records = capability_usage_snapshot_records(
+            &self.capability_registry,
+            resolved_capability_configs,
+            tool_definitions,
+        );
+        if records.is_empty() {
+            return;
+        }
+
+        if let Err(error) = self
+            .event_emitter
+            .emit(EventRequest::new(
+                session_id,
+                EventContext::from_atom_context(context),
+                CapabilityUsageData { records },
+            ))
+            .await
+        {
+            tracing::warn!(
+                session_id = %session_id,
+                error = %error,
+                "ReasonAtom: failed to emit capability.usage event"
+            );
+        }
     }
 
     async fn execute_inner(
@@ -663,6 +756,14 @@ impl ReasonAtom {
         let compaction_config = assembled.compaction_config;
         let resolved_capability_configs = assembled.resolved_capability_configs;
         let runtime_agent = assembled.runtime_agent;
+
+        self.emit_capability_usage_snapshot(
+            session_id,
+            context,
+            &resolved_capability_configs,
+            &runtime_agent.tools,
+        )
+        .await;
 
         // Collect streaming output guardrail providers contributed by enabled
         // capabilities. Each tuple carries the contributing capability id, a
@@ -2018,6 +2119,39 @@ mod tests {
         let json = r#"{"success":true,"text":"","has_tool_calls":false}"#;
         let result: ReasonResult = serde_json::from_str(json).unwrap();
         assert_eq!(result.max_iterations, 500);
+    }
+
+    #[test]
+    fn test_capability_usage_snapshot_keeps_resolved_and_exposed_separate() {
+        let registry = CapabilityRegistry::with_builtins();
+        let tool = ToolDefinition::Builtin(crate::tool_types::BuiltinTool {
+            name: "demo_tool".to_string(),
+            display_name: None,
+            description: "demo".to_string(),
+            parameters: json!({"type": "object"}),
+            policy: crate::tool_types::ToolPolicy::Auto,
+            category: None,
+            deferrable: crate::tool_types::DeferrablePolicy::default(),
+            hints: crate::tool_types::ToolHints::default(),
+        })
+        .with_capability_attribution("cap:demo", Some("Demo Capability"));
+
+        let records = capability_usage_snapshot_records(
+            &registry,
+            &[crate::AgentCapabilityConfig::new("current_time")],
+            &[tool],
+        );
+
+        assert!(records.iter().any(|record| {
+            matches!(record.usage_kind, CapabilityUsageKind::Resolved)
+                && record.capability_id == "current_time"
+                && record.tool_name.is_none()
+        }));
+        assert!(records.iter().any(|record| {
+            matches!(record.usage_kind, CapabilityUsageKind::Exposed)
+                && record.capability_id == "cap:demo"
+                && record.tool_name.as_deref() == Some("demo_tool")
+        }));
     }
 
     #[test]

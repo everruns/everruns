@@ -265,6 +265,15 @@ impl WorkerService for WorkerServiceImpl {
                             parameters: Some(everruns_internal_protocol::json_to_proto_struct(
                                 tool.parameters(),
                             )),
+                            capability_id: tool
+                                .capability_attribution()
+                                .map(|(id, _)| id.to_string())
+                                .unwrap_or_default(),
+                            capability_name: tool
+                                .capability_attribution()
+                                .and_then(|(_, name)| name)
+                                .unwrap_or_default()
+                                .to_string(),
                         })
                         .collect()
                 })

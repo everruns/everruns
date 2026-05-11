@@ -222,6 +222,7 @@ fn serialize_event_data(data: &everruns_core::EventData) -> serde_json::Value {
         EventData::TurnCancelled(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::ReasonStarted(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::ReasonCompleted(d) => serde_json::to_value(d).unwrap_or_default(),
+        EventData::CapabilityUsage(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::ActStarted(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::ActCompleted(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::ToolStarted(d) => serde_json::to_value(d).unwrap_or_default(),

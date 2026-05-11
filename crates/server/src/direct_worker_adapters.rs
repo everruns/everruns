@@ -1777,16 +1777,20 @@ impl DirectWorkerAdapters {
                     .description
                     .unwrap_or_else(|| format!("Tool from MCP server: {}", server_name));
 
-                mcp_tools.push(ToolDefinition::Builtin(BuiltinTool {
-                    name: prefixed_name,
-                    display_name: None,
-                    description,
-                    parameters: tool.input_schema,
-                    policy: ToolPolicy::Auto,
-                    category: None,
-                    deferrable: DeferrablePolicy::default(),
-                    hints: everruns_core::tool_types::ToolHints::default().with_open_world(true),
-                }));
+                mcp_tools.push(
+                    ToolDefinition::Builtin(BuiltinTool {
+                        name: prefixed_name,
+                        display_name: None,
+                        description,
+                        parameters: tool.input_schema,
+                        policy: ToolPolicy::Auto,
+                        category: None,
+                        deferrable: DeferrablePolicy::default(),
+                        hints: everruns_core::tool_types::ToolHints::default()
+                            .with_open_world(true),
+                    })
+                    .with_capability_attribution(cap_id.clone(), Some(server_name.clone())),
+                );
             }
         }
 

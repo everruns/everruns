@@ -187,6 +187,14 @@ impl ToolDefinition {
         }
     }
 
+    /// Get reporting attribution for the capability that contributed this tool.
+    pub fn capability_attribution(&self) -> Option<(&str, Option<&str>)> {
+        self.hints()
+            .capability_id
+            .as_deref()
+            .map(|id| (id, self.hints().capability_name.as_deref()))
+    }
+
     /// Set the category on this tool definition (builder pattern)
     pub fn with_category(mut self, category: impl Into<String>) -> Self {
         match &mut self {
@@ -201,6 +209,27 @@ impl ToolDefinition {
         match &mut self {
             ToolDefinition::Builtin(b) => b.hints = hints,
             ToolDefinition::ClientSide(c) => c.hints = hints,
+        }
+        self
+    }
+
+    /// Set reporting attribution on this tool definition (builder pattern).
+    pub fn with_capability_attribution(
+        mut self,
+        capability_id: impl Into<String>,
+        capability_name: Option<impl Into<String>>,
+    ) -> Self {
+        let capability_id = capability_id.into();
+        let capability_name = capability_name.map(Into::into);
+        match &mut self {
+            ToolDefinition::Builtin(b) => {
+                b.hints.capability_id = Some(capability_id);
+                b.hints.capability_name = capability_name;
+            }
+            ToolDefinition::ClientSide(c) => {
+                c.hints.capability_id = Some(capability_id);
+                c.hints.capability_name = capability_name;
+            }
         }
         self
     }
@@ -328,6 +357,17 @@ pub struct ToolHints {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub persist_output: Option<bool>,
 
+    /// Capability that contributed this tool definition.
+    ///
+    /// Reporting uses this attribution only as metadata. It must never contain
+    /// tool arguments, results, prompts, or any other sensitive payload.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capability_id: Option<String>,
+
+    /// Human-readable capability name snapshot for reporting.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capability_name: Option<String>,
+
     /// Entity noun for operation-based narration (e.g. "agent", "harness").
     /// When set, the narration system reads the `operation` argument and
     /// produces verb-based narration like "Created agent: Neon Cartographer"
@@ -363,6 +403,17 @@ impl ToolHints {
     /// Builder: set open_world hint.
     pub fn with_open_world(mut self, value: bool) -> Self {
         self.open_world = Some(value);
+        self
+    }
+
+    /// Builder: set reporting attribution.
+    pub fn with_capability_attribution(
+        mut self,
+        capability_id: impl Into<String>,
+        capability_name: Option<impl Into<String>>,
+    ) -> Self {
+        self.capability_id = Some(capability_id.into());
+        self.capability_name = capability_name.map(Into::into);
         self
     }
 

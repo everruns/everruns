@@ -114,6 +114,7 @@ impl McpCapability {
             deferrable: DeferrablePolicy::default(),
             hints,
         })
+        .with_capability_attribution(self.capability_id(), Some(self.server_name.clone()))
     }
 }
 
@@ -246,6 +247,13 @@ mod tests {
         };
         assert_eq!(builtin.name, "mcp_microsoft_learn__search");
         assert_eq!(builtin.description, "Search documentation");
+        assert_eq!(
+            defs[0].capability_attribution(),
+            Some((
+                "mcp:550e8400-e29b-41d4-a716-446655440000",
+                Some("microsoft-learn")
+            ))
+        );
     }
 
     #[test]

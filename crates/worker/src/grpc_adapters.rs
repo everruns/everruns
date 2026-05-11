@@ -1855,6 +1855,14 @@ fn proto_mcp_tool_def_to_tool_definition(
         .map(|s| proto_struct_to_json(&s))
         .unwrap_or_else(|| serde_json::json!({"type": "object"}));
 
+    let mut hints = everruns_core::tool_types::ToolHints::default().with_open_world(true);
+    if !proto_tool.capability_id.is_empty() {
+        hints = hints.with_capability_attribution(
+            proto_tool.capability_id.clone(),
+            (!proto_tool.capability_name.is_empty()).then_some(proto_tool.capability_name.clone()),
+        );
+    }
+
     ToolDefinition::Builtin(BuiltinTool {
         name: proto_tool.name,
         display_name: None,
@@ -1863,9 +1871,7 @@ fn proto_mcp_tool_def_to_tool_definition(
         policy: ToolPolicy::Auto, // MCP tools are auto-executed
         category: None,
         deferrable: DeferrablePolicy::default(),
-        // MCP tools are remote/networked; default open_world to true.
-        // Full annotation propagation requires extending the internal proto.
-        hints: everruns_core::tool_types::ToolHints::default().with_open_world(true),
+        hints,
     })
 }
 

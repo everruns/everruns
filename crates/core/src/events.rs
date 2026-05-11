@@ -57,6 +57,7 @@ pub const TURN_CANCELLED: &str = "turn.cancelled";
 // Atom lifecycle events
 pub const REASON_STARTED: &str = "reason.started";
 pub const REASON_COMPLETED: &str = "reason.completed";
+pub const CAPABILITY_USAGE: &str = "capability.usage";
 pub const ACT_STARTED: &str = "act.started";
 pub const ACT_COMPLETED: &str = "act.completed";
 pub const TOOL_STARTED: &str = "tool.started";
@@ -757,6 +758,43 @@ impl ReasonCompletedData {
     }
 }
 
+/// Reporting-only capability usage kinds.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub enum CapabilityUsageKind {
+    Configured,
+    Resolved,
+    Exposed,
+    Invoked,
+    EffectRan,
+}
+
+/// Single capability usage record. This intentionally carries only stable IDs
+/// and small snapshots; prompts, messages, tool arguments, and results are not
+/// allowed in reporting facts.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct CapabilityUsageRecord {
+    pub capability_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capability_name: Option<String>,
+    pub usage_kind: CapabilityUsageKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage_count: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
+}
+
+/// Data for capability.usage events.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct CapabilityUsageData {
+    pub records: Vec<CapabilityUsageRecord>,
+}
+
 /// Summary of a tool call (compact form without arguments)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
@@ -947,6 +985,15 @@ pub struct ToolCompletedData {
     /// Duration of the tool call in milliseconds
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration_ms: Option<u64>,
+
+    /// Capability that contributed the tool definition, when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capability_id: Option<String>,
+
+    /// Human-readable capability name snapshot, when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capability_name: Option<String>,
+
     /// Human-readable narration for timeline rendering
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub narration: Option<String>,
@@ -968,6 +1015,8 @@ impl ToolCompletedData {
             result: Some(result),
             error: None,
             duration_ms,
+            capability_id: None,
+            capability_name: None,
             narration: None,
         }
     }
@@ -988,6 +1037,8 @@ impl ToolCompletedData {
             result: None,
             error: Some(error),
             duration_ms,
+            capability_id: None,
+            capability_name: None,
             narration: None,
         }
     }
@@ -1001,6 +1052,17 @@ impl ToolCompletedData {
     /// Set narration on this event data
     pub fn with_narration(mut self, narration: Option<String>) -> Self {
         self.narration = narration;
+        self
+    }
+
+    /// Set reporting attribution on this event data.
+    pub fn with_capability_attribution(
+        mut self,
+        capability_id: Option<String>,
+        capability_name: Option<String>,
+    ) -> Self {
+        self.capability_id = capability_id;
+        self.capability_name = capability_name;
         self
     }
 }
@@ -1897,6 +1959,7 @@ pub struct VoiceSessionFailedData {
 /// - `turn.cancelled` → TurnCancelledData
 /// - `reason.started` → ReasonStartedData
 /// - `reason.completed` → ReasonCompletedData
+/// - `capability.usage` → CapabilityUsageData
 /// - `act.started` → ActStartedData
 /// - `act.completed` → ActCompletedData
 /// - `tool.started` → ToolStartedData
@@ -1948,6 +2011,7 @@ pub enum EventData {
     // Atom lifecycle events
     ReasonStarted(ReasonStartedData),
     ReasonCompleted(ReasonCompletedData),
+    CapabilityUsage(CapabilityUsageData),
     ActStarted(ActStartedData),
     ActCompleted(ActCompletedData),
     ToolStarted(ToolStartedData),
@@ -2034,6 +2098,7 @@ impl EventData {
             EventData::TurnCancelled(_) => TURN_CANCELLED,
             EventData::ReasonStarted(_) => REASON_STARTED,
             EventData::ReasonCompleted(_) => REASON_COMPLETED,
+            EventData::CapabilityUsage(_) => CAPABILITY_USAGE,
             EventData::ActStarted(_) => ACT_STARTED,
             EventData::ActCompleted(_) => ACT_COMPLETED,
             EventData::ToolStarted(_) => TOOL_STARTED,
@@ -2133,6 +2198,8 @@ pub fn deserialize_event_data(event_type: &str, data: serde_json::Value) -> Even
                 .map(EventData::ReasonStarted),
             REASON_COMPLETED => serde_json::from_value::<ReasonCompletedData>(data.clone())
                 .map(EventData::ReasonCompleted),
+            CAPABILITY_USAGE => serde_json::from_value::<CapabilityUsageData>(data.clone())
+                .map(EventData::CapabilityUsage),
             ACT_STARTED => {
                 serde_json::from_value::<ActStartedData>(data.clone()).map(EventData::ActStarted)
             }
@@ -2257,6 +2324,7 @@ impl_from_event_data! {
     TurnCancelledData => TurnCancelled,
     ReasonStartedData => ReasonStarted,
     ReasonCompletedData => ReasonCompleted,
+    CapabilityUsageData => CapabilityUsage,
     ActStartedData => ActStarted,
     ActCompletedData => ActCompleted,
     ToolStartedData => ToolStarted,
