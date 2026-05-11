@@ -47,8 +47,10 @@ pub const A2A_SIGNATURE_HEADER: &str = "x-everruns-a2a-signature";
 /// signing dance within this budget.
 pub const A2A_REPLAY_WINDOW_SECS: u64 = 300;
 
-/// Base64-encoded version-tag used in Slack-style signatures. Encoded as a
-/// constant so the same value is used in `v0:{ts}:{body}` and `v0={hex}`.
+/// Literal version tag used in Slack-style signatures. Held as a constant
+/// so the same string appears in the basestring (`v0:{ts}:{body}`) and the
+/// signature header (`v0={hex_hmac}`); the HMAC digest itself is
+/// hex-encoded, not base64.
 const SIG_VERSION: &str = "v0";
 
 /// Result of verifying an A2A signed request. The variants are deliberately

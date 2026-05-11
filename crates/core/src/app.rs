@@ -576,8 +576,9 @@ pub struct A2aChannelConfig {
     pub rate_limit_per_minute: Option<u32>,
     /// Optional shared HMAC signing secret. When set, requests must include
     /// `X-Everruns-A2A-Timestamp` + `X-Everruns-A2A-Signature` headers and
-    /// the server verifies an HMAC-SHA256 signature over `v0:{timestamp}:
-    /// {body}` (Slack-style) plus a 5-minute timestamp window plus a
+    /// the server verifies an HMAC-SHA256 signature over the exact
+    /// basestring `v0:{timestamp}:{body}` (Slack-style, no whitespace
+    /// between segments) plus a 5-minute timestamp window plus a
     /// signature-keyed dedup so a captured request cannot be replayed
     /// while the API key is still valid (TM-A2A-010). When `None`, the
     /// channel keeps the existing API-key-only behavior.
