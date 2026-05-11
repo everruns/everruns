@@ -567,6 +567,13 @@ pub struct A2aChannelConfig {
     /// Optional description surfaced in the Agent Card.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent_card_description: Option<String>,
+    /// Optional per-IP rate limit applied to this app's A2A endpoint, in
+    /// requests per minute. `None` or `Some(0)` disables the per-channel
+    /// limit (the global API limit still applies). Set a positive value to
+    /// enforce a stricter cap on unattended agent-to-agent traffic for this
+    /// app. Mirrors `AgUiChannelConfig::rate_limit_per_minute`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rate_limit_per_minute: Option<u32>,
 }
 
 #[cfg(test)]
@@ -970,6 +977,7 @@ mod tests {
         assert_eq!(config.session_mode, InvocationSessionMode::SharedSession);
         assert!(config.agent_card_name.is_none());
         assert!(config.agent_card_description.is_none());
+        assert!(config.rate_limit_per_minute.is_none());
     }
 
     #[test]
@@ -981,6 +989,7 @@ mod tests {
             message: "{{a2a.text}}".into(),
             agent_card_name: Some("Inbox triage".into()),
             agent_card_description: Some("Triages github events".into()),
+            rate_limit_per_minute: Some(120),
         };
         let json = serde_json::to_string(&config).unwrap();
         let parsed: A2aChannelConfig = serde_json::from_str(&json).unwrap();
@@ -990,6 +999,7 @@ mod tests {
             InvocationSessionMode::SessionPerInvocation
         );
         assert_eq!(parsed.agent_card_name.as_deref(), Some("Inbox triage"));
+        assert_eq!(parsed.rate_limit_per_minute, Some(120));
     }
 
     #[test]
@@ -1001,10 +1011,12 @@ mod tests {
             message: "m".into(),
             agent_card_name: None,
             agent_card_description: None,
+            rate_limit_per_minute: None,
         };
         let json = serde_json::to_value(&config).unwrap();
         assert!(json.get("agent_card_name").is_none());
         assert!(json.get("agent_card_description").is_none());
+        assert!(json.get("rate_limit_per_minute").is_none());
     }
 
     #[test]

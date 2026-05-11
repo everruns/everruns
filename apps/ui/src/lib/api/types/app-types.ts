@@ -86,6 +86,12 @@ export interface A2aChannelConfig {
   message: string;
   agent_card_name?: string;
   agent_card_description?: string;
+  /**
+   * Optional per-IP rate limit applied to this app's A2A endpoint, in
+   * requests per minute. `0` (or absent) disables the per-channel limit;
+   * the global API limit still applies.
+   */
+  rate_limit_per_minute?: number;
 }
 
 export interface AppChannel {

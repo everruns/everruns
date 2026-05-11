@@ -1280,7 +1280,7 @@
             }
           },
           "429": {
-            "description": "SSE connection limit reached for the org/session",
+            "description": "Per-channel A2A rate limit exceeded, or SSE connection limit reached for the org/session",
             "content": {
               "application/json": {
                 "schema": {

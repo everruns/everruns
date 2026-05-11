@@ -274,6 +274,16 @@ fn normalize_and_validate_channel_config(
                     "A2A channel config requires a non-empty message",
                 ));
             }
+            // Mirror the AG-UI cap so a typo in `rate_limit_per_minute` cannot
+            // silently disable the per-channel limit by overflowing reasonable
+            // expectations. `0` is allowed and means "no per-channel cap".
+            if let Some(limit) = config.rate_limit_per_minute
+                && limit > 1_000_000
+            {
+                return Err(CommandError::bad_request(
+                    "A2A rate_limit_per_minute must be at most 1,000,000",
+                ));
+            }
         }
     }
 

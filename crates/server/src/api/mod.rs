@@ -4,7 +4,6 @@
 // Each submodule handles a specific resource type with its own AppState.
 
 pub mod ag_ui;
-pub mod ag_ui_rate_limit;
 pub mod agent_examples;
 pub mod agent_identities;
 pub mod agent_identity_connections;
@@ -15,6 +14,7 @@ pub mod apps;
 pub mod audit_logs;
 pub mod budgets;
 pub mod capabilities;
+pub mod channel_rate_limit;
 pub mod commands;
 pub mod common;
 pub mod dispatch;

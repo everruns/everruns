@@ -306,6 +306,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
   );
   const [editA2aAgentCardName, setEditA2aAgentCardName] = useState("");
   const [editA2aAgentCardDescription, setEditA2aAgentCardDescription] = useState("");
+  const [editA2aRateLimitPerMinute, setEditA2aRateLimitPerMinute] = useState<string>("");
 
   // A2A: plaintext API key shown exactly once (after create or rotate). Cleared
   // when the operator dismisses the dialog.
@@ -536,6 +537,7 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
     setEditAgUiGenericToolText(DEFAULT_AG_UI_GENERIC_TOOL_TEXT);
     setEditA2aAgentCardName("");
     setEditA2aAgentCardDescription("");
+    setEditA2aRateLimitPerMinute("");
   };
 
   const buildChannelConfig = (channelType: ChannelType): ChannelConfigInput => {
@@ -570,17 +572,24 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
           session_mode: editInvocationSessionMode,
           message: editChannelMessage,
         };
-      case "a2a":
+      case "a2a": {
         // Edits only touch non-secret fields. The server preserves the
         // existing `api_key_hash` and `api_key_prefix` across PATCH, so the
         // client must NOT send them. Use the dedicated rotate-key button to
         // issue a new key.
+        const trimmedA2aRate = editA2aRateLimitPerMinute.trim();
+        const parsedA2aRate =
+          trimmedA2aRate === "" ? undefined : Number.parseInt(trimmedA2aRate, 10);
         return {
           session_mode: editInvocationSessionMode,
           message: editChannelMessage,
           agent_card_name: editA2aAgentCardName.trim() || undefined,
           agent_card_description: editA2aAgentCardDescription.trim() || undefined,
+          ...(parsedA2aRate !== undefined && Number.isFinite(parsedA2aRate) && parsedA2aRate > 0
+            ? { rate_limit_per_minute: parsedA2aRate }
+            : {}),
         } as unknown as A2aChannelConfig;
+      }
       case "slack":
         return {
           signing_secret: editSigningSecret,
@@ -616,8 +625,18 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
         return !!editScheduleCronExpression && !!editChannelMessage;
       case "webhook":
         return !!editWebhookToken && !!editChannelMessage;
-      case "a2a":
-        return !!editChannelMessage;
+      case "a2a": {
+        if (!editChannelMessage) return false;
+        const trimmedA2aRate = editA2aRateLimitPerMinute.trim();
+        if (trimmedA2aRate === "") return true;
+        const parsedA2aRate = Number.parseInt(trimmedA2aRate, 10);
+        return (
+          Number.isFinite(parsedA2aRate) &&
+          parsedA2aRate >= 0 &&
+          parsedA2aRate <= 1_000_000 &&
+          String(parsedA2aRate) === trimmedA2aRate
+        );
+      }
       case "slack":
         return !!editSigningSecret && !!editBotToken;
     }
@@ -664,6 +683,11 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
       setEditChannelMessage(config?.message ?? "");
       setEditA2aAgentCardName(config?.agent_card_name ?? "");
       setEditA2aAgentCardDescription(config?.agent_card_description ?? "");
+      setEditA2aRateLimitPerMinute(
+        config?.rate_limit_per_minute && config.rate_limit_per_minute > 0
+          ? String(config.rate_limit_per_minute)
+          : "",
+      );
     }
     setEditingChannelId(channel.id);
   };
@@ -1151,6 +1175,25 @@ export default function AppDetailPage({ params }: { params: Promise<{ appId: str
                 onChange={(e) => setEditA2aAgentCardDescription(e.target.value)}
                 placeholder="What other agents should know about this app."
               />
+            </div>
+            <div>
+              <Label htmlFor={`a2a_rate_limit_${formId}`}>
+                Per-IP rate limit (requests/minute, optional)
+              </Label>
+              <Input
+                id={`a2a_rate_limit_${formId}`}
+                type="number"
+                inputMode="numeric"
+                min={0}
+                max={1_000_000}
+                value={editA2aRateLimitPerMinute}
+                onChange={(e) => setEditA2aRateLimitPerMinute(e.target.value)}
+                placeholder="No per-channel limit"
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Caps unattended A2A traffic per source IP. Leave empty (or set to 0) to disable —
+                the global API limit still applies.
+              </p>
             </div>
           </>
         )}

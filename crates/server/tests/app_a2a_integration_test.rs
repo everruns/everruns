@@ -1034,3 +1034,278 @@ async fn a2a_regenerate_key_invalidates_previous_key() {
         .await
         .assert_status(StatusCode::OK);
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a2a_per_channel_rate_limit_returns_429() {
+    // TM-A2A-013: configurable per-app, per-IP cap on the A2A ingress endpoint
+    // protects an app's quota and LLM budget from a runaway counterparty agent
+    // even when the global API limit would still allow more traffic.
+    let server = TestServer::in_memory().await;
+    let (app, api_key) =
+        create_app_with_a2a(&server, "a2a-rate-limit", "from a2a: {{a2a.text}}").await;
+    let app_id = app["id"].as_str().unwrap();
+    let channel_id = app["channels"][0]["id"].as_str().unwrap();
+    publish_app(&server, app_id).await;
+
+    server
+        .patch(
+            &format!("/v1/apps/{app_id}/channels/{channel_id}"),
+            json!({
+                "channel_config": {
+                    "session_mode": "shared_session",
+                    "message": "from a2a: {{a2a.text}}",
+                    "rate_limit_per_minute": 2
+                }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::OK);
+
+    let body = serde_json::to_vec(&json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "message/send",
+        "params": {
+            "message": { "role": "user", "parts": [{ "kind": "text", "text": "hi" }] }
+        }
+    }))
+    .unwrap();
+
+    for _ in 0..2 {
+        server
+            .request_raw(
+                Method::POST,
+                &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+                vec![
+                    ("content-type", "application/json"),
+                    ("authorization", &format!("Bearer {api_key}")),
+                ],
+                body.clone(),
+            )
+            .await
+            .assert_status(StatusCode::OK);
+    }
+
+    server
+        .request_raw(
+            Method::POST,
+            &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+            vec![
+                ("content-type", "application/json"),
+                ("authorization", &format!("Bearer {api_key}")),
+            ],
+            body,
+        )
+        .await
+        .assert_status(StatusCode::TOO_MANY_REQUESTS);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a2a_rate_limit_zero_disables_per_channel_cap() {
+    let server = TestServer::in_memory().await;
+    let (app, api_key) =
+        create_app_with_a2a(&server, "a2a-rate-zero", "from a2a: {{a2a.text}}").await;
+    let app_id = app["id"].as_str().unwrap();
+    let channel_id = app["channels"][0]["id"].as_str().unwrap();
+    publish_app(&server, app_id).await;
+
+    server
+        .patch(
+            &format!("/v1/apps/{app_id}/channels/{channel_id}"),
+            json!({
+                "channel_config": {
+                    "session_mode": "shared_session",
+                    "message": "from a2a: {{a2a.text}}",
+                    "rate_limit_per_minute": 0
+                }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::OK);
+
+    let body = serde_json::to_vec(&json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "message/send",
+        "params": {
+            "message": { "role": "user", "parts": [{ "kind": "text", "text": "hi" }] }
+        }
+    }))
+    .unwrap();
+
+    // With rate_limit_per_minute=0 the per-channel cap is disabled; five back-
+    // to-back requests must each succeed (or at least never hit 429).
+    for _ in 0..5 {
+        let response = server
+            .request_raw(
+                Method::POST,
+                &format!("/v1/apps/{app_id}/a2a/{channel_id}"),
+                vec![
+                    ("content-type", "application/json"),
+                    ("authorization", &format!("Bearer {api_key}")),
+                ],
+                body.clone(),
+            )
+            .await;
+        assert_ne!(response.status(), StatusCode::TOO_MANY_REQUESTS);
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a2a_rate_limit_is_per_channel_not_per_app() {
+    // TM-A2A-013 regression: an app with two A2A channels that have
+    // different `rate_limit_per_minute` settings must keep independent
+    // buckets. If the limiter were keyed on `app_id` only, alternating
+    // requests across the two channels would replace the cached limiter
+    // (replace-on-limit-change) and effectively bypass the stricter cap.
+    let server = TestServer::in_memory().await;
+    let (app, api_key_a) =
+        create_app_with_a2a(&server, "a2a-multi-channel", "from a2a: {{a2a.text}}").await;
+    let app_id = app["id"].as_str().unwrap();
+    let channel_id_a = app["channels"][0]["id"].as_str().unwrap().to_string();
+
+    // Create a second A2A channel on the same app, with a much higher cap.
+    let second_channel_response: Value = server
+        .post(
+            &format!("/v1/apps/{app_id}/a2a-channels"),
+            json!({
+                "session_mode": "shared_session",
+                "message": "from a2a (b): {{a2a.text}}",
+                "agent_card_name": "Inbox triage (b)",
+                "agent_card_description": "Triages inbound A2A traffic (b)",
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let api_key_b = second_channel_response["api_key"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let app_after: Value = server
+        .get(&format!("/v1/apps/{app_id}"))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    let channels = app_after["channels"].as_array().unwrap();
+    let channel_id_b = channels
+        .iter()
+        .map(|c| c["id"].as_str().unwrap().to_string())
+        .find(|id| id != &channel_id_a)
+        .expect("second a2a channel id");
+
+    publish_app(&server, app_id).await;
+
+    // Channel A: rate_limit_per_minute = 2 (strict).
+    server
+        .patch(
+            &format!("/v1/apps/{app_id}/channels/{channel_id_a}"),
+            json!({
+                "channel_config": {
+                    "session_mode": "shared_session",
+                    "message": "from a2a: {{a2a.text}}",
+                    "rate_limit_per_minute": 2
+                }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::OK);
+
+    // Channel B: rate_limit_per_minute = 100 (permissive — different limit
+    // value, which is the trigger for the replace-on-limit-change strategy
+    // that previously flushed the per-IP buckets when both channels shared
+    // the same `app_id` cache key).
+    server
+        .patch(
+            &format!("/v1/apps/{app_id}/channels/{channel_id_b}"),
+            json!({
+                "channel_config": {
+                    "session_mode": "shared_session",
+                    "message": "from a2a (b): {{a2a.text}}",
+                    "rate_limit_per_minute": 100
+                }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::OK);
+
+    let body = serde_json::to_vec(&json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "message/send",
+        "params": {
+            "message": { "role": "user", "parts": [{ "kind": "text", "text": "hi" }] }
+        }
+    }))
+    .unwrap();
+
+    // Burn channel A's quota.
+    for _ in 0..2 {
+        server
+            .request_raw(
+                Method::POST,
+                &format!("/v1/apps/{app_id}/a2a/{channel_id_a}"),
+                vec![
+                    ("content-type", "application/json"),
+                    ("authorization", &format!("Bearer {api_key_a}")),
+                ],
+                body.clone(),
+            )
+            .await
+            .assert_status(StatusCode::OK);
+    }
+
+    // A request to channel B with its own (higher) limit must succeed and
+    // must NOT reset channel A's bucket.
+    server
+        .request_raw(
+            Method::POST,
+            &format!("/v1/apps/{app_id}/a2a/{channel_id_b}"),
+            vec![
+                ("content-type", "application/json"),
+                ("authorization", &format!("Bearer {api_key_b}")),
+            ],
+            body.clone(),
+        )
+        .await
+        .assert_status(StatusCode::OK);
+
+    // The next request on channel A must still be rate-limited — its bucket
+    // was not flushed by the channel B request.
+    server
+        .request_raw(
+            Method::POST,
+            &format!("/v1/apps/{app_id}/a2a/{channel_id_a}"),
+            vec![
+                ("content-type", "application/json"),
+                ("authorization", &format!("Bearer {api_key_a}")),
+            ],
+            body,
+        )
+        .await
+        .assert_status(StatusCode::TOO_MANY_REQUESTS);
+}
+
+#[tokio::test]
+async fn a2a_rate_limit_rejects_absurd_values() {
+    let server = TestServer::in_memory().await;
+    let (app, _api_key) = create_app_with_a2a(&server, "a2a-rate-bad", "{{a2a.text}}").await;
+    let app_id = app["id"].as_str().unwrap();
+    let channel_id = app["channels"][0]["id"].as_str().unwrap();
+
+    // Mirror the AG-UI cap so a typo can't silently disable the per-channel
+    // limit by overflowing reasonable expectations.
+    server
+        .patch(
+            &format!("/v1/apps/{app_id}/channels/{channel_id}"),
+            json!({
+                "channel_config": {
+                    "session_mode": "shared_session",
+                    "message": "{{a2a.text}}",
+                    "rate_limit_per_minute": 9_999_999_u32
+                }
+            }),
+        )
+        .await
+        .assert_status(StatusCode::BAD_REQUEST);
+}
