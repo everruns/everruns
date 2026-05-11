@@ -23,9 +23,9 @@ The published template uses Docker image `caddy:2-alpine` and writes the
 Caddyfile from its Railway start command. Keep public HTTP networking enabled
 only on this service.
 
-The files in `railway/caddy/` are the source-of-truth version of that ingress
-config. They can replace the inline start command after this directory is
-available on the default branch.
+The files in `infra/railway/caddy/` are the source-of-truth version of that
+ingress config. They can replace the inline start command after this directory
+is available on the default branch.
 
 Variables:
 
