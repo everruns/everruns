@@ -6,6 +6,7 @@ use anyhow::Result;
 use chrono::{DateTime, Utc};
 use everruns_core::message_filter::{MessageFilter, MessageQuery};
 use everruns_core::typed_id::{EventId, SessionId};
+use tracing::warn;
 use uuid::Uuid;
 
 /// Shared filter builder for `list_events_advanced` (and its `around_id` branch).
@@ -84,7 +85,12 @@ impl Database {
         .fetch_one(&self.pool)
         .await?;
 
-        sqlx::query(
+        // Reporting outbox enqueue is best-effort per specs/reporting.md:
+        // "If an outbox write fails after canonical state commits, a periodic
+        // reconciler must be able to discover and enqueue missing projection
+        // work from canonical tables." Never fail the canonical event write
+        // because the reporting projector queue is unavailable.
+        if let Err(e) = sqlx::query(
             r#"
             INSERT INTO reporting_outbox (
                 org_id, source_type, source_id, source_version, reason, status, next_attempt_at
@@ -99,7 +105,16 @@ impl Database {
         .bind(row.id.uuid().to_string())
         .bind(row.session_id.uuid())
         .execute(&self.pool)
-        .await?;
+        .await
+        {
+            warn!(
+                event_id = %row.id.uuid(),
+                session_id = %row.session_id.uuid(),
+                event_type = %row.event_type,
+                error = %e,
+                "reporting outbox enqueue failed; event persisted, projection will be reconciled"
+            );
+        }
 
         Ok(row)
     }

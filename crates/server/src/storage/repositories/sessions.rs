@@ -8,6 +8,7 @@ use chrono::{DateTime, Utc};
 use everruns_core::AgentIdentityId;
 use everruns_core::PrincipalId;
 use everruns_core::typed_id::{AgentId, HarnessId, SessionId};
+use tracing::warn;
 use uuid::Uuid;
 
 impl Database {
@@ -49,14 +50,26 @@ impl Database {
         .fetch_one(&self.pool)
         .await?;
 
-        self.enqueue_reporting_outbox(
-            row.org_id,
-            "session",
-            &row.id.uuid().to_string(),
-            Some(&row.updated_at.to_rfc3339()),
-            "session_snapshot",
-        )
-        .await?;
+        // Reporting outbox enqueue is best-effort (see specs/reporting.md).
+        // The canonical session row is durable; reporting facts will be
+        // reconciled from canonical state if the projector queue is down.
+        if let Err(e) = self
+            .enqueue_reporting_outbox(
+                row.org_id,
+                "session",
+                &row.id.uuid().to_string(),
+                Some(&row.updated_at.to_rfc3339()),
+                "session_snapshot",
+            )
+            .await
+        {
+            warn!(
+                session_id = %row.id.uuid(),
+                org_id = row.org_id,
+                error = %e,
+                "reporting outbox enqueue failed for session create; projection will be reconciled"
+            );
+        }
 
         Ok(row)
     }

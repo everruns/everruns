@@ -3,6 +3,7 @@
 use super::super::models::*;
 use super::Database;
 use anyhow::Result;
+use tracing::warn;
 
 use uuid::Uuid;
 
@@ -508,14 +509,26 @@ impl Database {
         .fetch_one(&self.pool)
         .await?;
 
-        self.enqueue_reporting_outbox(
-            org_id,
-            "llm_generation",
-            &id.to_string(),
-            Some(&id.to_string()),
-            "llm_generation_projection",
-        )
-        .await?;
+        // Reporting outbox enqueue is best-effort (see specs/reporting.md).
+        // The canonical llm_generations row is already durable; reporting
+        // facts will be reconciled from canonical state on failure.
+        if let Err(e) = self
+            .enqueue_reporting_outbox(
+                org_id,
+                "llm_generation",
+                &id.to_string(),
+                Some(&id.to_string()),
+                "llm_generation_projection",
+            )
+            .await
+        {
+            warn!(
+                generation_id = %id,
+                org_id,
+                error = %e,
+                "reporting outbox enqueue failed for llm_generation; projection will be reconciled"
+            );
+        }
 
         Ok(())
     }
@@ -549,14 +562,26 @@ impl Database {
         .fetch_one(&self.pool)
         .await?;
 
-        self.enqueue_reporting_outbox(
-            row.0,
-            "session",
-            &row.1.to_string(),
-            Some(&row.2.to_rfc3339()),
-            "session_snapshot",
-        )
-        .await?;
+        // Reporting outbox enqueue is best-effort (see specs/reporting.md).
+        // The canonical session totals are already committed; reporting facts
+        // will be reconciled from canonical state on failure.
+        if let Err(e) = self
+            .enqueue_reporting_outbox(
+                row.0,
+                "session",
+                &row.1.to_string(),
+                Some(&row.2.to_rfc3339()),
+                "session_snapshot",
+            )
+            .await
+        {
+            warn!(
+                session_id = %row.1,
+                org_id = row.0,
+                error = %e,
+                "reporting outbox enqueue failed for session snapshot; projection will be reconciled"
+            );
+        }
 
         Ok(())
     }
