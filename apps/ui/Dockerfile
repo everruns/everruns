@@ -5,7 +5,7 @@
 # user-mode emulation (SIGILL — V8 emits ARM64 instructions QEMU doesn't
 # support). The standalone output is platform-independent JS, so building
 # on amd64 and copying into the target-platform runtime image is safe.
-FROM --platform=linux/amd64 node:25-alpine AS builder
+FROM --platform=linux/amd64 node:26-alpine AS builder
 WORKDIR /app
 
 # Install dependencies
@@ -17,7 +17,7 @@ COPY . .
 RUN npm run build
 
 # Production image — uses the target platform (amd64 or arm64)
-FROM node:25-alpine AS ui
+FROM node:26-alpine AS ui
 WORKDIR /app
 
 ENV NODE_ENV=production
