@@ -510,8 +510,9 @@ impl Database {
         .await?;
 
         // Reporting outbox enqueue is best-effort (see specs/reporting.md).
-        // The canonical llm_generations row is already durable; reporting
-        // facts will be reconciled from canonical state on failure.
+        // The canonical llm_generations row is already durable; no reconciler
+        // exists yet (tracked separately), so on failure the corresponding
+        // fact will remain stale until reconciliation lands.
         if let Err(e) = self
             .enqueue_reporting_outbox(
                 org_id,
@@ -526,7 +527,7 @@ impl Database {
                 generation_id = %id,
                 org_id,
                 error = %e,
-                "reporting outbox enqueue failed for llm_generation; projection will be reconciled"
+                "reporting outbox enqueue failed for llm_generation; projection may remain stale until reconciliation lands"
             );
         }
 
@@ -563,8 +564,10 @@ impl Database {
         .await?;
 
         // Reporting outbox enqueue is best-effort (see specs/reporting.md).
-        // The canonical session totals are already committed; reporting facts
-        // will be reconciled from canonical state on failure.
+        // The canonical session totals are already committed; no reconciler
+        // exists yet (tracked separately), so on failure the corresponding
+        // fact will remain stale until reconciliation lands or the session
+        // totals are updated again and the next enqueue succeeds.
         if let Err(e) = self
             .enqueue_reporting_outbox(
                 row.0,
@@ -579,7 +582,7 @@ impl Database {
                 session_id = %row.1,
                 org_id = row.0,
                 error = %e,
-                "reporting outbox enqueue failed for session snapshot; projection will be reconciled"
+                "reporting outbox enqueue failed for session snapshot; projection may remain stale until reconciliation lands or the source row is updated again"
             );
         }
 

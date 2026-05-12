@@ -51,8 +51,10 @@ impl Database {
         .await?;
 
         // Reporting outbox enqueue is best-effort (see specs/reporting.md).
-        // The canonical session row is durable; reporting facts will be
-        // reconciled from canonical state if the projector queue is down.
+        // The canonical session row is durable; no reconciler exists yet
+        // (tracked separately), so on failure the corresponding fact will
+        // remain stale until reconciliation lands or the session row is
+        // updated again and the next enqueue succeeds.
         if let Err(e) = self
             .enqueue_reporting_outbox(
                 row.org_id,
@@ -67,7 +69,7 @@ impl Database {
                 session_id = %row.id.uuid(),
                 org_id = row.org_id,
                 error = %e,
-                "reporting outbox enqueue failed for session create; projection will be reconciled"
+                "reporting outbox enqueue failed for session create; projection may remain stale until reconciliation lands"
             );
         }
 

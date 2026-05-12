@@ -89,7 +89,10 @@ impl Database {
         // "If an outbox write fails after canonical state commits, a periodic
         // reconciler must be able to discover and enqueue missing projection
         // work from canonical tables." Never fail the canonical event write
-        // because the reporting projector queue is unavailable.
+        // because the reporting projector queue is unavailable. No reconciler
+        // job exists yet (tracked separately); until it lands, a failed
+        // enqueue means the corresponding fact will remain stale until the
+        // canonical row is touched again and the next enqueue succeeds.
         if let Err(e) = sqlx::query(
             r#"
             INSERT INTO reporting_outbox (
@@ -107,12 +110,23 @@ impl Database {
         .execute(&self.pool)
         .await
         {
+            // Look up org_id for log correlation. Failure to resolve is
+            // expected when sessions row is gone or pool is unhealthy; we
+            // still log the underlying error and don't propagate.
+            let org_id: Option<i64> =
+                sqlx::query_scalar::<_, i64>("SELECT org_id FROM sessions WHERE id = $1")
+                    .bind(row.session_id.uuid())
+                    .fetch_optional(&self.pool)
+                    .await
+                    .ok()
+                    .flatten();
             warn!(
                 event_id = %row.id.uuid(),
                 session_id = %row.session_id.uuid(),
+                org_id = ?org_id,
                 event_type = %row.event_type,
                 error = %e,
-                "reporting outbox enqueue failed; event persisted, projection will be reconciled"
+                "reporting outbox enqueue failed; event persisted, projection may remain stale until reconciliation lands or the source row is updated again"
             );
         }
 
