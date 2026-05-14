@@ -6,6 +6,7 @@ use anyhow::Result;
 use chrono::{DateTime, Utc};
 use everruns_core::message_filter::{MessageFilter, MessageQuery};
 use everruns_core::typed_id::{EventId, SessionId};
+use tracing::warn;
 use uuid::Uuid;
 
 /// Shared filter builder for `list_events_advanced` (and its `around_id` branch).
@@ -84,7 +85,15 @@ impl Database {
         .fetch_one(&self.pool)
         .await?;
 
-        sqlx::query(
+        // Reporting outbox enqueue is best-effort per specs/reporting.md:
+        // "If an outbox write fails after canonical state commits, a periodic
+        // reconciler must be able to discover and enqueue missing projection
+        // work from canonical tables." Never fail the canonical event write
+        // because the reporting projector queue is unavailable. No reconciler
+        // job exists yet (tracked separately); until it lands, a failed
+        // enqueue means the corresponding fact will remain stale until the
+        // canonical row is touched again and the next enqueue succeeds.
+        if let Err(e) = sqlx::query(
             r#"
             INSERT INTO reporting_outbox (
                 org_id, source_type, source_id, source_version, reason, status, next_attempt_at
@@ -99,7 +108,27 @@ impl Database {
         .bind(row.id.uuid().to_string())
         .bind(row.session_id.uuid())
         .execute(&self.pool)
-        .await?;
+        .await
+        {
+            // Look up org_id for log correlation. Failure to resolve is
+            // expected when sessions row is gone or pool is unhealthy; we
+            // still log the underlying error and don't propagate.
+            let org_id: Option<i64> =
+                sqlx::query_scalar::<_, i64>("SELECT org_id FROM sessions WHERE id = $1")
+                    .bind(row.session_id.uuid())
+                    .fetch_optional(&self.pool)
+                    .await
+                    .ok()
+                    .flatten();
+            warn!(
+                event_id = %row.id.uuid(),
+                session_id = %row.session_id.uuid(),
+                org_id = ?org_id,
+                event_type = %row.event_type,
+                error = %e,
+                "reporting outbox enqueue failed; event persisted, projection may remain stale until reconciliation lands or the source row is updated again"
+            );
+        }
 
         Ok(row)
     }
