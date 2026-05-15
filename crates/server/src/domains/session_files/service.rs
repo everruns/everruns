@@ -128,6 +128,7 @@ impl SessionFileService {
         let path = Self::normalize_path(&req.path);
         Self::validate_path(&path)?;
         self.ensure_path_not_virtual(session_id, &path)?;
+        self.ensure_parent_path_writable(session_id, &path).await?;
 
         // Decode content if provided
         let content = if let Some(ref content_str) = req.content {
@@ -178,6 +179,7 @@ impl SessionFileService {
         let path = Self::normalize_path(&req.path);
         Self::validate_path(&path)?;
         self.ensure_path_not_virtual(session_id, &path)?;
+        self.ensure_parent_path_writable(session_id, &path).await?;
 
         // Check if already exists
         if let Some(existing) = self.db.get_session_file(session_id, &path).await? {
@@ -273,6 +275,26 @@ impl SessionFileService {
                 }
             }
         }
+    }
+
+    /// Ensure no parent directory in the path is marked readonly.
+    async fn ensure_parent_path_writable(&self, session_id: Uuid, path: &str) -> Result<()> {
+        let mut current = FileInfo::parent_path(path);
+
+        while let Some(parent) = current {
+            if let Some(existing) = self.db.get_session_file(session_id, &parent).await?
+                && existing.is_directory
+                && existing.is_readonly
+            {
+                return Err(anyhow!(
+                    "Cannot create file or directory under readonly path: {}",
+                    parent
+                ));
+            }
+            current = FileInfo::parent_path(&parent);
+        }
+
+        Ok(())
     }
 
     /// Read a file
@@ -1380,5 +1402,80 @@ mod tests {
             err.to_string().contains("readonly"),
             "Expected readonly error, got: {err}"
         );
+    }
+
+    #[tokio::test]
+    async fn create_file_under_readonly_directory_rejected() {
+        let (svc, sid) = make_svc();
+
+        svc.create_directory(
+            sid,
+            CreateDirectoryInput {
+                path: "/workspace".to_string(),
+            },
+        )
+        .await
+        .unwrap();
+
+        svc.db
+            .create_session_file(CreateSessionFileRow {
+                session_id: SessionId::from_uuid(sid),
+                path: "/workspace/repo".to_string(),
+                content: None,
+                is_directory: true,
+                is_readonly: true,
+            })
+            .await
+            .unwrap();
+
+        let err = svc
+            .create_file(
+                sid,
+                CreateFileInput {
+                    path: "/workspace/repo/injected.md".to_string(),
+                    content: Some("bad".to_string()),
+                    encoding: None,
+                    is_readonly: None,
+                },
+            )
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("readonly"));
+    }
+
+    #[tokio::test]
+    async fn create_directory_under_readonly_directory_rejected() {
+        let (svc, sid) = make_svc();
+
+        svc.create_directory(
+            sid,
+            CreateDirectoryInput {
+                path: "/workspace".to_string(),
+            },
+        )
+        .await
+        .unwrap();
+
+        svc.db
+            .create_session_file(CreateSessionFileRow {
+                session_id: SessionId::from_uuid(sid),
+                path: "/workspace/repo".to_string(),
+                content: None,
+                is_directory: true,
+                is_readonly: true,
+            })
+            .await
+            .unwrap();
+
+        let err = svc
+            .create_directory(
+                sid,
+                CreateDirectoryInput {
+                    path: "/workspace/repo/new-subdir".to_string(),
+                },
+            )
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("readonly"));
     }
 }
