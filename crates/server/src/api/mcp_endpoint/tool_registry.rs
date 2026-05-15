@@ -618,8 +618,6 @@ fn discover_output_schema() -> Value {
             "name": { "type": "string" },
             "category": { "type": "string" },
             "description": { "type": "string" },
-            "method": { "type": "string" },
-            "path": { "type": "string" },
             "read_only": { "type": "boolean" },
             "positional_arg": { "type": "string" },
             "input_schema": { "type": "object", "additionalProperties": true },
@@ -629,7 +627,7 @@ fn discover_output_schema() -> Value {
                 "enum": ["array", "paginated", "unknown"]
             }
         },
-        "required": ["name", "category", "description", "method", "path", "read_only", "output_shape"]
+        "required": ["name", "category", "description", "read_only", "output_shape"]
     });
 
     json!({

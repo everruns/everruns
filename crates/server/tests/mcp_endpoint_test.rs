@@ -397,6 +397,22 @@ async fn test_mcp_tools_list() {
             .contains("pass this on each org-scoped call")
     );
     assert_eq!(discover["outputSchema"]["type"], "object");
+    let operation_properties =
+        &discover["outputSchema"]["properties"]["operations"]["items"]["properties"];
+    assert!(operation_properties["method"].is_null());
+    assert!(operation_properties["path"].is_null());
+    let operation_required =
+        discover["outputSchema"]["properties"]["operations"]["items"]["required"]
+            .as_array()
+            .expect("discover operations required must be array");
+    assert!(
+        !operation_required.iter().any(|field| field == "method"),
+        "discover output schema should not require method"
+    );
+    assert!(
+        !operation_required.iter().any(|field| field == "path"),
+        "discover output schema should not require path"
+    );
     assert!(discover.as_object().unwrap().get("_meta").is_none());
 
     let query = tools.iter().find(|tool| tool["name"] == "query").unwrap();
