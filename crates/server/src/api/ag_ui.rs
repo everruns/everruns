@@ -2230,8 +2230,9 @@ mod tests {
     #[tokio::test]
     async fn turn_failed_zero_credits_does_not_leak_quota_details() {
         // OpenAI surfaces "no credits" as 429 + insufficient_quota; classifier
-        // currently maps it to PROVIDER_RATE_LIMITED. Either way, the public
-        // channel must not echo the raw provider body.
+        // maps it to PROVIDER_MISCONFIGURED (operator must top up or rotate
+        // the key). Either way, the public channel must not echo the raw
+        // provider body.
         let mut state = test_stream_state().await;
         let raw_error = "OpenAI API error (429): {\"error\":{\"message\":\"You exceeded your current quota, please check your plan and billing details.\",\"type\":\"insufficient_quota\",\"code\":\"insufficient_quota\"}}";
         let event = turn_failed_event(
@@ -2239,7 +2240,7 @@ mod tests {
             TurnFailedData {
                 turn_id: TurnId::new(),
                 error: raw_error.to_string(),
-                error_code: Some(user_facing_error_codes::PROVIDER_RATE_LIMITED.to_string()),
+                error_code: Some(user_facing_error_codes::PROVIDER_MISCONFIGURED.to_string()),
                 error_fields: None,
             },
         );
