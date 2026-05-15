@@ -365,10 +365,14 @@ impl ReportingService {
         }
     }
 
-    pub async fn run_projector_once(&self, limit: i64) -> Result<ProjectorRunResult, CommandError> {
+    pub async fn run_projector_once(
+        &self,
+        org_id: i64,
+        limit: i64,
+    ) -> Result<ProjectorRunResult, CommandError> {
         match self.db.as_ref() {
             StorageBackend::Postgres(db) => PostgresReportingProjector::new(db.pool().clone())
-                .run_once(limit)
+                .run_once(org_id, limit)
                 .await
                 .map_err(classify_anyhow),
             StorageBackend::InMemory(_) => Ok(ProjectorRunResult {

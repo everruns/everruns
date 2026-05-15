@@ -421,7 +421,7 @@ impl Command for RunReportingProjector {
         let service = ctx.reporting_service.as_ref().ok_or_else(|| {
             CommandError::Internal(anyhow::anyhow!("Reporting service not configured"))
         })?;
-        service.run_projector_once(self.limit).await
+        service.run_projector_once(ctx.org_id(), self.limit).await
     }
 }
 
