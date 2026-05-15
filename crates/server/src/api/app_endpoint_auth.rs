@@ -6,6 +6,7 @@
 // AG-UI/A2A ingress behavior.
 
 use std::collections::HashSet;
+use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -19,6 +20,8 @@ use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, decode_header, jw
 use moka::future::Cache;
 use serde::Deserialize;
 use serde_json::Value;
+use tokio::net::lookup_host;
+use url::Host;
 
 use crate::storage::password::verify_password;
 
@@ -193,7 +196,9 @@ impl AppEndpointAuthVerifier {
         else {
             return Err(AppEndpointAuthError::Misconfigured);
         };
-        validate_safe_url(introspection_url).map_err(|_| AppEndpointAuthError::Misconfigured)?;
+        validate_resolved_safe_url(introspection_url)
+            .await
+            .map_err(|_| AppEndpointAuthError::Misconfigured)?;
         let mut req = self.http.post(introspection_url).form(&[("token", token)]);
         if let Some(client_id) = client_id.as_deref().filter(|id| !id.is_empty()) {
             req = if let Some(secret) = client_secret.as_deref() {
@@ -255,9 +260,13 @@ impl AppEndpointAuthVerifier {
         if let Some(discovery) = self.discovery_cache.get(&issuer).await {
             return Ok(discovery);
         }
-        validate_safe_url(&issuer).map_err(|_| AppEndpointAuthError::Misconfigured)?;
+        validate_resolved_safe_url(&issuer)
+            .await
+            .map_err(|_| AppEndpointAuthError::Misconfigured)?;
         let url = format!("{issuer}/.well-known/openid-configuration");
-        validate_safe_url(&url).map_err(|_| AppEndpointAuthError::Misconfigured)?;
+        validate_resolved_safe_url(&url)
+            .await
+            .map_err(|_| AppEndpointAuthError::Misconfigured)?;
         let discovery = self
             .http
             .get(&url)
@@ -269,7 +278,9 @@ impl AppEndpointAuthVerifier {
             .json::<OidcDiscovery>()
             .await
             .map_err(|_| AppEndpointAuthError::ProviderUnavailable)?;
-        validate_safe_url(&discovery.jwks_uri).map_err(|_| AppEndpointAuthError::Misconfigured)?;
+        validate_resolved_safe_url(&discovery.jwks_uri)
+            .await
+            .map_err(|_| AppEndpointAuthError::Misconfigured)?;
         self.discovery_cache.insert(issuer, discovery.clone()).await;
         Ok(discovery)
     }
@@ -278,7 +289,9 @@ impl AppEndpointAuthVerifier {
         if let Some(jwks) = self.jwks_cache.get(jwks_url).await {
             return Ok(jwks);
         }
-        validate_safe_url(jwks_url).map_err(|_| AppEndpointAuthError::Misconfigured)?;
+        validate_resolved_safe_url(jwks_url)
+            .await
+            .map_err(|_| AppEndpointAuthError::Misconfigured)?;
         let jwks = self
             .http
             .get(jwks_url)
@@ -318,6 +331,56 @@ struct OidcDiscovery {
 
 fn normalize_issuer(issuer: &str) -> String {
     issuer.trim().trim_end_matches('/').to_string()
+}
+
+async fn validate_resolved_safe_url(raw_url: &str) -> Result<(), ()> {
+    let url = validate_safe_url(raw_url).map_err(|_| ())?;
+    let host = url.host().ok_or(())?;
+    if matches!(host, Host::Ipv4(_) | Host::Ipv6(_)) {
+        return Ok(());
+    }
+    let port = url.port_or_known_default().ok_or(())?;
+    let host = host.to_string();
+    let resolved = lookup_host((host.as_str(), port)).await.map_err(|_| ())?;
+    let mut found = false;
+    for addr in resolved {
+        found = true;
+        if is_blocked_ip(addr.ip()) {
+            return Err(());
+        }
+    }
+    if !found {
+        return Err(());
+    }
+    Ok(())
+}
+
+fn is_blocked_ip(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => {
+            let octets = v4.octets();
+            octets[0] == 127
+                || v4.is_unspecified()
+                || octets[0] == 10
+                || (octets[0] == 172 && (16..=31).contains(&octets[1]))
+                || (octets[0] == 192 && octets[1] == 168)
+                || (octets[0] == 169 && octets[1] == 254)
+                || (octets[0] == 100 && (64..=127).contains(&octets[1]))
+                || (octets[0] == 192 && octets[1] == 0 && octets[2] == 2)
+                || (octets[0] == 198 && octets[1] == 51 && octets[2] == 100)
+                || (octets[0] == 203 && octets[1] == 0 && octets[2] == 113)
+        }
+        IpAddr::V6(v6) => {
+            let segments = v6.segments();
+            v6.is_loopback()
+                || v6.is_unspecified()
+                || segments[0] & 0xffc0 == 0xfe80
+                || segments[0] & 0xfe00 == 0xfc00
+                || v6
+                    .to_ipv4_mapped()
+                    .is_some_and(|v4| is_blocked_ip(IpAddr::V4(v4)))
+        }
+    }
 }
 
 fn is_public_key_algorithm(alg: Algorithm) -> bool {
@@ -556,5 +619,13 @@ mod tests {
             "tier": "prod"
         });
         assert!(validate_claim_requirements(&claims, &requirements).is_ok());
+    }
+
+    #[test]
+    fn blocks_private_ips_after_dns_resolution() {
+        assert!(is_blocked_ip(IpAddr::V4("127.0.0.1".parse().unwrap())));
+        assert!(is_blocked_ip(IpAddr::V4("10.0.0.1".parse().unwrap())));
+        assert!(is_blocked_ip(IpAddr::V6("::1".parse().unwrap())));
+        assert!(!is_blocked_ip(IpAddr::V4("8.8.8.8".parse().unwrap())));
     }
 }
