@@ -19,8 +19,14 @@
 //   same TTL. A captured request that survives the timestamp check will
 //   still be rejected within that window because its (deterministic)
 //   signature is already in the store. The signature is unique per
-//   `(timestamp, body, secret)`, so legitimate distinct requests never
-//   collide.
+//   `(timestamp, body, secret)`. Two legitimate requests with byte-identical
+//   bodies sent in the same unix second produce the same HMAC and the
+//   second one will be rejected as a replay — this mirrors the Slack
+//   precedent and is acceptable in practice because JSON-RPC clients
+//   already vary `id` per request, which makes the body distinct. Clients
+//   that may legitimately repeat identical bodies (e.g. unkeyed
+//   notifications) must include a per-request token in the body or bump
+//   the timestamp by at least one second between retries.
 // Decision: Two backends mirror the channel rate limiter — in-memory
 //   `HashMap` for single-instance/dev and Valkey `SET ... NX EX` for
 //   distributed deployments. The check runs after API key verification
@@ -110,7 +116,10 @@ pub fn verify_signature(
     let ts: i64 = timestamp
         .parse()
         .map_err(|_| SignatureCheckError::InvalidTimestamp)?;
-    if (now_secs - ts).unsigned_abs() > A2A_REPLAY_WINDOW_SECS {
+    // `abs_diff` is overflow-safe even for extreme parseable timestamps
+    // (e.g. `i64::MIN`) — those callers should still get a 401 rather than
+    // a debug-build panic.
+    if now_secs.abs_diff(ts) > A2A_REPLAY_WINDOW_SECS {
         return Err(SignatureCheckError::StaleTimestamp);
     }
 
@@ -211,9 +220,17 @@ impl A2aReplayStore {
                 {
                     return false;
                 }
-                // Opportunistic prune so the cache cannot grow without
-                // bound under load: at most one O(n) sweep per insert.
-                write.retain(|_, expires_at| *expires_at > now);
+                // Bound the cache growth without paying for an O(n) sweep on
+                // every insert. Under steady traffic the cache stays well
+                // below the threshold; under bursty load we sweep at most
+                // once per ~`PRUNE_THRESHOLD` inserts, amortising the
+                // pruning cost. The cap also gives the per-channel rate
+                // limiter a chance to reject excess traffic between
+                // sweeps.
+                const PRUNE_THRESHOLD: usize = 1024;
+                if write.len() >= PRUNE_THRESHOLD {
+                    write.retain(|_, expires_at| *expires_at > now);
+                }
                 write.insert(key, now + ttl);
                 true
             }

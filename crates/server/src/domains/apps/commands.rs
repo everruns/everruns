@@ -313,7 +313,7 @@ fn normalize_and_validate_channel_config(
                 }
                 if secret.len() > 4096 {
                     return Err(CommandError::bad_request(
-                        "A2A signing_secret must be at most 4096 characters",
+                        "A2A signing_secret must be at most 4096 bytes",
                     ));
                 }
             }
@@ -524,8 +524,16 @@ fn redact_channel_config(channel_type: &ChannelType, config: &mut Value) {
             // and only surfaces `signing_secret_configured: bool` so
             // operators can tell whether replay protection is on without
             // ever leaking the shared key. Mirrors the Slack /
-            // webhook-token redaction pattern (TM-A2A-010).
-            if map.remove("signing_secret").is_some() {
+            // webhook-token redaction pattern (TM-A2A-010). Only set the
+            // flag when the stored value is a non-empty string; a
+            // `null` / empty value means replay protection is **off**
+            // and must not be advertised as configured.
+            let removed = map.remove("signing_secret");
+            let is_configured = removed
+                .as_ref()
+                .and_then(Value::as_str)
+                .is_some_and(|s| !s.trim().is_empty());
+            if is_configured {
                 map.insert("signing_secret_configured".to_string(), Value::Bool(true));
             }
         }

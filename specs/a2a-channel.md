@@ -423,9 +423,19 @@ check covers:
 - **Signature**: constant-time HMAC-SHA256 comparison.
 - **Replay dedup**: the verified signature itself is recorded as a
   single-use nonce (scoped per `app_id:channel_id`) with a 5-minute TTL.
-  Two backends mirror the rate limiter — in-memory `HashMap` for
-  single-instance/dev (with on-insert TTL pruning) and Valkey
-  `SET ... NX EX` for distributed deployments.
+  Because the signature is deterministic over `(timestamp, body, secret)`,
+  two requests with byte-identical bodies sent in the same unix second
+  produce the same HMAC and the second is rejected as a replay. This
+  matches the Slack precedent and is benign in practice because JSON-RPC
+  clients vary `id` per request, which makes the body distinct. Clients
+  that may legitimately repeat identical payloads (e.g. unkeyed
+  notifications) must either include a per-request token in the body or
+  bump the timestamp by at least one second between retries. Two
+  backends mirror the rate limiter — in-memory `HashMap` for
+  single-instance/dev (with threshold-triggered TTL pruning) and Valkey
+  `SET ... NX EX` for distributed deployments. The per-channel rate
+  limiter runs **before** the nonce-record path, so rate-limited
+  traffic does not grow the replay store.
 - **Failure modes** (missing-header, stale, mismatch, replay) all
   collapse to a single 401 response so a remote attacker cannot
   distinguish them.

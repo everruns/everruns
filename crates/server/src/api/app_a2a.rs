@@ -332,7 +332,7 @@ async fn authenticate_request(
     // grow the replay store. Missing-header / mismatch / replay all
     // collapse to a single 401 response so a remote attacker cannot
     // distinguish the failure modes.
-    if let Some(signing_secret) = config.signing_secret.as_deref()
+    let pending_signature = if let Some(signing_secret) = config.signing_secret.as_deref()
         && !signing_secret.is_empty()
     {
         let timestamp_header = headers
@@ -359,17 +359,12 @@ async fn authenticate_request(
                 return Err(unauthorized());
             }
         };
-        let scope = format!("{}:{}", app.public_id, channel_id_typed);
-        if !state.replay_store.try_record(&scope, &signature).await {
-            tracing::warn!(
-                app_id = %app.public_id,
-                channel_id = %channel_id_typed,
-                reason = SignatureCheckError::Replay.as_log_reason(),
-                "A2A signed-request replay rejected"
-            );
-            return Err(unauthorized());
-        }
-    }
+        Some(signature)
+    } else {
+        None
+    };
+
+    let channel_scope = format!("{}:{}", app.public_id, channel_id_typed);
 
     // THREAT[TM-A2A-013]: Unattended A2A traffic must respect a configurable
     // per-app, per-IP cap in addition to the global API limit. App owners
@@ -377,7 +372,11 @@ async fn authenticate_request(
     // burn from a runaway counterparty agent. The check runs after the
     // API key comparison so an unauthenticated caller cannot grow the
     // limiter cache or learn whether a channel exists from rate-limit
-    // signals.
+    // signals. It also runs **before** the signing replay-store record so
+    // a rate-limited request does not consume a nonce slot — otherwise an
+    // authenticated client could grow / churn the replay store with
+    // unique signed traffic even while rate-limit responses bound the
+    // session pipeline.
     if let Some(limit) = config.rate_limit_per_minute
         && limit > 0
     {
@@ -388,10 +387,9 @@ async fn authenticate_request(
         // alternate between channels with different limits to flush the
         // cached limiter and bypass throttling (TM-A2A-013, Copilot review
         // on PR #1800).
-        let scope = format!("{}:{}", app.public_id, channel_id_typed);
         if state
             .rate_limiter
-            .check(&scope, client_ip, limit)
+            .check(&channel_scope, client_ip, limit)
             .await
             .is_err()
         {
@@ -399,6 +397,24 @@ async fn authenticate_request(
                 "A2A rate limit exceeded for this app channel",
             ));
         }
+    }
+
+    // Record the verified signature only after the rate limiter has
+    // accepted the request — otherwise rate-limited traffic would still
+    // burn replay-store slots.
+    if let Some(signature) = pending_signature
+        && !state
+            .replay_store
+            .try_record(&channel_scope, &signature)
+            .await
+    {
+        tracing::warn!(
+            app_id = %app.public_id,
+            channel_id = %channel_id_typed,
+            reason = SignatureCheckError::Replay.as_log_reason(),
+            "A2A signed-request replay rejected"
+        );
+        return Err(unauthorized());
     }
 
     Ok(AuthorizedA2a {
