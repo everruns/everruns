@@ -200,6 +200,20 @@ pub fn classify_runtime_error_message(
             .with_optional_field("model_id", context.model_id.clone());
     }
 
+    // OpenAI surfaces an exhausted-billing state as HTTP 429 + body
+    // `{"error":{"type":"insufficient_quota",...}}`. The "(429)" prefix would
+    // otherwise route it to PROVIDER_RATE_LIMITED ("wait a moment"), but the
+    // condition is non-transient and needs operator action (top up the
+    // account or rotate the key), so classify it as PROVIDER_MISCONFIGURED.
+    if lower.contains("insufficient_quota")
+        || lower.contains("insufficient quota")
+        || lower.contains("exceeded your current quota")
+    {
+        return UserFacingError::new(codes::PROVIDER_MISCONFIGURED)
+            .with_optional_field("provider", context.provider.clone())
+            .with_optional_field("model_id", context.model_id.clone());
+    }
+
     if lower.contains("(429)")
         || lower.contains("rate limit")
         || lower.contains("too many requests")
@@ -411,6 +425,38 @@ mod tests {
         assert_eq!(string_field(&error.fields, "provider"), Some("openai"));
         assert_eq!(string_field(&error.fields, "model_id"), Some("gpt-5"));
         assert_eq!(number_field(&error.fields, "retry_after"), Some(7.0));
+    }
+
+    #[test]
+    fn classify_openai_insufficient_quota_as_provider_misconfigured() {
+        // OpenAI's exhausted-billing 429 needs operator action (top up or
+        // rotate key), not the transient "rate limited, wait a moment" copy.
+        let error = classify_runtime_error_message(
+            "ReasonAtom execution failed: OpenAI API error (429): {\"error\":{\"message\":\"You exceeded your current quota, please check your plan and billing details.\",\"type\":\"insufficient_quota\",\"code\":\"insufficient_quota\"}}",
+            &UserFacingErrorContext::default()
+                .with_provider("openai")
+                .with_model_id("gpt-4.1-mini"),
+        );
+
+        assert_eq!(error.code, codes::PROVIDER_MISCONFIGURED);
+        assert_eq!(string_field(&error.fields, "provider"), Some("openai"));
+        assert_eq!(
+            string_field(&error.fields, "model_id"),
+            Some("gpt-4.1-mini")
+        );
+    }
+
+    #[test]
+    fn classify_insufficient_quota_without_status_prefix() {
+        // Even if upstream wrapping drops the "(429)" prefix, the explicit
+        // quota substring must still route to PROVIDER_MISCONFIGURED rather
+        // than the canned PROCESSING_ERROR fallback (EVE-472).
+        let error = classify_runtime_error_message(
+            "LLM error: insufficient_quota: You exceeded your current quota.",
+            &UserFacingErrorContext::default(),
+        );
+
+        assert_eq!(error.code, codes::PROVIDER_MISCONFIGURED);
     }
 
     #[test]
