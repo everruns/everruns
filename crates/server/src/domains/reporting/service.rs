@@ -545,11 +545,11 @@ fn csv_value(value: Option<&Value>) -> String {
 }
 
 fn escape_csv_cell(value: &str) -> String {
-    // SECURITY: Prevent spreadsheet formula execution when exported CSVs are
+    // THREAT[TM-API-019]: Prevent spreadsheet formula execution when exported CSVs are
     // opened by prefixing formula-like cells before RFC 4180 escaping.
     let mut value = if matches!(
         value.as_bytes().first(),
-        Some(b'=' | b'+' | b'-' | b'@' | b'\t' | b'\r')
+        Some(b'=' | b'+' | b'-' | b'@' | b'\t' | b'\r' | b'\n')
     ) {
         format!("'{value}")
     } else {
@@ -691,4 +691,36 @@ async fn dataset_lag(
         freshness_lag_ms: latest_projected_at
             .map(|latest| (Utc::now() - latest).num_milliseconds().max(0)),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::Utc;
+    use everruns_core::reporting::{ReportColumn, ReportColumnKind, ReportResult};
+    use serde_json::json;
+
+    use super::{escape_csv_cell, result_to_csv};
+
+    #[test]
+    fn escape_csv_cell_prefixes_formula_like_leading_chars() {
+        assert_eq!(escape_csv_cell("=1+1"), "\"'=1+1\"");
+        assert_eq!(escape_csv_cell("\t=1+1"), "\"'\t=1+1\"");
+        assert_eq!(escape_csv_cell("\r=1+1"), "\"'\r=1+1\"");
+        assert_eq!(escape_csv_cell("\n=1+1"), "\"'\n=1+1\"");
+    }
+
+    #[test]
+    fn result_to_csv_escapes_lf_prefixed_formula_cells() {
+        let result = ReportResult {
+            as_of: Utc::now(),
+            freshness_lag_ms: None,
+            columns: vec![ReportColumn {
+                name: "name".to_string(),
+                kind: ReportColumnKind::Dimension,
+            }],
+            rows: vec![json!({ "name": "\n=1+1" })],
+        };
+
+        assert_eq!(result_to_csv(&result), "\"name\"\n\"'\n=1+1\"\n");
+    }
 }
