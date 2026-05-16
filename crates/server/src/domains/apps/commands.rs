@@ -298,6 +298,25 @@ fn normalize_and_validate_channel_config(
                     "A2A rate_limit_per_minute must be at most 1,000,000",
                 ));
             }
+            // Whitespace-only `signing_secret` is almost certainly an
+            // accidental write — reject it so the channel does not silently
+            // start enforcing a signature with a useless key. `None` keeps
+            // the current API-key-only behavior; an explicit non-empty
+            // value opts the channel into HMAC replay protection
+            // (TM-A2A-010). Cap the length so a single channel write
+            // cannot bloat the encrypted column.
+            if let Some(secret) = config.signing_secret.as_deref() {
+                if secret.trim().is_empty() {
+                    return Err(CommandError::bad_request(
+                        "A2A signing_secret must be non-empty when configured",
+                    ));
+                }
+                if secret.len() > 4096 {
+                    return Err(CommandError::bad_request(
+                        "A2A signing_secret must be at most 4096 bytes",
+                    ));
+                }
+            }
         }
     }
 
@@ -501,6 +520,22 @@ fn redact_channel_config(channel_type: &ChannelType, config: &mut Value) {
         }
         ChannelType::A2a => {
             map.remove("api_key_hash");
+            // signing_secret is write-only — the API redacts it on read
+            // and only surfaces `signing_secret_configured: bool` so
+            // operators can tell whether replay protection is on without
+            // ever leaking the shared key. Mirrors the Slack /
+            // webhook-token redaction pattern (TM-A2A-010). Only set the
+            // flag when the stored value is a non-empty string; a
+            // `null` / empty value means replay protection is **off**
+            // and must not be advertised as configured.
+            let removed = map.remove("signing_secret");
+            let is_configured = removed
+                .as_ref()
+                .and_then(Value::as_str)
+                .is_some_and(|s| !s.trim().is_empty());
+            if is_configured {
+                map.insert("signing_secret_configured".to_string(), Value::Bool(true));
+            }
         }
         ChannelType::Schedule => {}
     }
@@ -583,6 +618,15 @@ fn merge_preserved_secret_fields(
                 if let Some(existing_value) = existing.get(key) {
                     out.insert(key.to_string(), existing_value.clone());
                 }
+            }
+            // signing_secret is write-only on the wire — preserve the
+            // existing value across PATCH so an operator editing the
+            // session-mode / message / rate-limit field does not also
+            // disable replay protection by omission (TM-A2A-010).
+            if !out.contains_key("signing_secret")
+                && let Some(existing_value) = existing.get("signing_secret")
+            {
+                out.insert("signing_secret".to_string(), existing_value.clone());
             }
         }
         ChannelType::Schedule => {}

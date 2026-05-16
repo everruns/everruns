@@ -17,6 +17,7 @@ use std::sync::Arc;
 
 use axum::{
     Extension, Json, Router,
+    body::Bytes,
     extract::{ConnectInfo, Path, State},
     http::{HeaderMap, StatusCode},
     response::{
@@ -31,6 +32,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
+use crate::api::a2a_signing::{
+    A2A_SIGNATURE_HEADER, A2A_TIMESTAMP_HEADER, A2aReplayStore, SignatureCheckError,
+    now_unix_seconds, verify_signature,
+};
 use crate::api::app_endpoint_auth::{
     AppEndpointAuthError, AppEndpointAuthVerifier, LegacyEndpointAuth,
 };
@@ -69,9 +74,11 @@ pub struct AppA2aState {
     pub sse_tracker: Arc<SseConnectionTracker>,
     pub rate_limiter: ChannelRateLimiter,
     pub auth_verifier: AppEndpointAuthVerifier,
+    pub replay_store: A2aReplayStore,
 }
 
 impl AppA2aState {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         db: Arc<StorageBackend>,
         encryption: Option<Arc<EncryptionService>>,
@@ -80,6 +87,7 @@ impl AppA2aState {
         event_delivery: EventDelivery,
         sse_tracker: Arc<SseConnectionTracker>,
         rate_limiter: ChannelRateLimiter,
+        replay_store: A2aReplayStore,
     ) -> Self {
         Self {
             session_service: Arc::new(SessionService::new(db.clone())),
@@ -95,6 +103,7 @@ impl AppA2aState {
             sse_tracker,
             rate_limiter,
             auth_verifier: AppEndpointAuthVerifier::new(),
+            replay_store,
         }
     }
 }
@@ -180,10 +189,23 @@ pub async fn invoke_a2a(
     req_id: Option<axum::Extension<RequestId>>,
     connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
     headers: HeaderMap,
-    Json(envelope): Json<Value>,
+    body: Bytes,
 ) -> Response {
     // Parse JSON-RPC envelope first so we can return structured errors with the
-    // original `id` echoed back.
+    // original `id` echoed back. The raw body bytes are also kept around so
+    // the optional HMAC signing check (TM-A2A-010) can verify against the
+    // bytes the client actually sent — re-serializing through serde would
+    // change whitespace and break the signature.
+    let envelope: Value = match serde_json::from_slice(&body) {
+        Ok(value) => value,
+        Err(err) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                rpc_error(Value::Null, -32600, format!("Invalid Request: {err}")),
+            )
+                .into_response();
+        }
+    };
     let parsed: JsonRpcRequest = match serde_json::from_value(envelope) {
         Ok(parsed) => parsed,
         Err(err) => {
@@ -197,7 +219,9 @@ pub async fn invoke_a2a(
     let rpc_id = parsed.id.clone().unwrap_or(Value::Null);
 
     let peer_addr = connect_info.map(|Extension(ConnectInfo(addr))| addr);
-    let auth = match authenticate_request(&state, &app_id, &channel_id, &headers, peer_addr).await {
+    let auth = match authenticate_request(&state, &app_id, &channel_id, &headers, peer_addr, &body)
+        .await
+    {
         Ok(auth) => auth,
         Err(err) => return err.into_response(),
     };
@@ -245,6 +269,7 @@ async fn authenticate_request(
     channel_id: &str,
     headers: &HeaderMap,
     peer_addr: Option<std::net::SocketAddr>,
+    body: &[u8],
 ) -> Result<AuthorizedA2a, (StatusCode, Json<ErrorResponse>)> {
     let app = app_queries::get_by_public_id_unscoped(&state.db, state.encryption.as_ref(), app_id)
         .await
@@ -294,13 +319,64 @@ async fn authenticate_request(
         verify_a2a_api_key(headers, &config.api_key_hash)?;
     }
 
+    // THREAT[TM-A2A-010]: Optional Slack-style HMAC signing — when the
+    // channel has a `signing_secret` configured, every request must carry
+    // a `(timestamp, signature)` header pair signed against the raw body
+    // with that secret. The 5-minute timestamp window plus the
+    // signature-keyed dedup store bound the replay surface to the window
+    // even if an `Authorization: Bearer` is captured. Channels without a
+    // `signing_secret` keep the existing API-key / endpoint-auth behavior.
+    //
+    // The check runs **after** primary authentication so an unauthenticated
+    // caller cannot use signing failures to probe channel existence or
+    // grow the replay store. Missing-header / mismatch / replay all
+    // collapse to a single 401 response so a remote attacker cannot
+    // distinguish the failure modes.
+    let pending_signature = if let Some(signing_secret) = config.signing_secret.as_deref()
+        && !signing_secret.is_empty()
+    {
+        let timestamp_header = headers
+            .get(A2A_TIMESTAMP_HEADER)
+            .and_then(|v| v.to_str().ok());
+        let signature_header = headers
+            .get(A2A_SIGNATURE_HEADER)
+            .and_then(|v| v.to_str().ok());
+        let signature = match verify_signature(
+            timestamp_header,
+            signature_header,
+            body,
+            signing_secret,
+            now_unix_seconds(),
+        ) {
+            Ok(sig) => sig,
+            Err(err) => {
+                tracing::warn!(
+                    app_id = %app.public_id,
+                    channel_id = %channel_id_typed,
+                    reason = err.as_log_reason(),
+                    "A2A signed-request verification failed"
+                );
+                return Err(unauthorized());
+            }
+        };
+        Some(signature)
+    } else {
+        None
+    };
+
+    let channel_scope = format!("{}:{}", app.public_id, channel_id_typed);
+
     // THREAT[TM-A2A-013]: Unattended A2A traffic must respect a configurable
     // per-app, per-IP cap in addition to the global API limit. App owners
     // tune `rate_limit_per_minute` on the A2A channel to bound LLM/budget
     // burn from a runaway counterparty agent. The check runs after the
     // API key comparison so an unauthenticated caller cannot grow the
     // limiter cache or learn whether a channel exists from rate-limit
-    // signals.
+    // signals. It also runs **before** the signing replay-store record so
+    // a rate-limited request does not consume a nonce slot — otherwise an
+    // authenticated client could grow / churn the replay store with
+    // unique signed traffic even while rate-limit responses bound the
+    // session pipeline.
     if let Some(limit) = config.rate_limit_per_minute
         && limit > 0
     {
@@ -311,10 +387,9 @@ async fn authenticate_request(
         // alternate between channels with different limits to flush the
         // cached limiter and bypass throttling (TM-A2A-013, Copilot review
         // on PR #1800).
-        let scope = format!("{}:{}", app.public_id, channel_id_typed);
         if state
             .rate_limiter
-            .check(&scope, client_ip, limit)
+            .check(&channel_scope, client_ip, limit)
             .await
             .is_err()
         {
@@ -322,6 +397,24 @@ async fn authenticate_request(
                 "A2A rate limit exceeded for this app channel",
             ));
         }
+    }
+
+    // Record the verified signature only after the rate limiter has
+    // accepted the request — otherwise rate-limited traffic would still
+    // burn replay-store slots.
+    if let Some(signature) = pending_signature
+        && !state
+            .replay_store
+            .try_record(&channel_scope, &signature)
+            .await
+    {
+        tracing::warn!(
+            app_id = %app.public_id,
+            channel_id = %channel_id_typed,
+            reason = SignatureCheckError::Replay.as_log_reason(),
+            "A2A signed-request replay rejected"
+        );
+        return Err(unauthorized());
     }
 
     Ok(AuthorizedA2a {
@@ -1079,6 +1172,39 @@ pub async fn agent_card(
 }
 
 fn a2a_security_for_config(config: &everruns_core::A2aChannelConfig) -> (Value, Value) {
+    let (mut schemes, mut requirements) = base_a2a_security(config);
+    // THREAT[TM-A2A-010]: When the channel opts into HMAC signing, advertise
+    // a vendor `everrunsHmacSignature` scheme alongside whichever primary
+    // scheme is in use so the calling A2A client knows it must sign on top
+    // of authentication.
+    if config
+        .signing_secret
+        .as_deref()
+        .is_some_and(|s| !s.is_empty())
+    {
+        if let Value::Object(map) = &mut schemes {
+            map.insert(
+                "everrunsHmacSignature".to_string(),
+                json!({
+                    "type": "apiKey",
+                    "in": "header",
+                    "name": A2A_SIGNATURE_HEADER,
+                    "description": "HMAC-SHA256 over v0:{timestamp}:{body}; pair with X-Everruns-A2A-Timestamp",
+                }),
+            );
+        }
+        if let Value::Array(arr) = &mut requirements {
+            if let Some(Value::Object(first)) = arr.first_mut() {
+                first.insert("everrunsHmacSignature".to_string(), json!([]));
+            } else {
+                arr.push(json!({ "everrunsHmacSignature": [] }));
+            }
+        }
+    }
+    (schemes, requirements)
+}
+
+fn base_a2a_security(config: &everruns_core::A2aChannelConfig) -> (Value, Value) {
     let Some(auth) = config.auth.as_ref() else {
         return (
             json!({ "apiKey": { "type": "http", "scheme": "bearer" } }),

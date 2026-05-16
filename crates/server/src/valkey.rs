@@ -5,10 +5,14 @@
 //   in-memory governor (per-instance). This preserves the zero-dependency dev experience.
 // Decision: Sliding window rate limiting via Lua script — atomic, O(1) per check, no races.
 // Decision: Prefer Valkey over Redis (Linux Foundation fork, no SSPL licensing concerns).
+// Decision: Single-shot dedup primitive (`try_record_nonce`) is exposed for
+//   replay-protection paths (e.g. A2A signing — TM-A2A-010). Implemented via
+//   SET key value NX EX ttl — atomic and O(1).
 
 use anyhow::{Context, Result};
-use fred::interfaces::LuaInterface;
+use fred::interfaces::{KeysInterface, LuaInterface};
 use fred::prelude::*;
+use fred::types::{Expiration, SetOptions};
 use std::sync::Arc;
 
 /// Lua script for sliding-window rate limiting using a sorted set.
@@ -118,6 +122,38 @@ impl ValkeyClient {
         } else {
             Err(())
         }
+    }
+
+    /// Atomically reserve a nonce. Returns `Ok(true)` if the key was newly
+    /// stored (first sighting), `Ok(false)` if the key already exists
+    /// (replay), or `Err(())` if the Valkey command itself failed (caller
+    /// chooses fail-open vs fail-closed).
+    ///
+    /// Uses `SET key 1 NX EX ttl_secs` — single round-trip, O(1).
+    pub async fn try_record_nonce(&self, key: &str, ttl_secs: u64) -> Result<bool, ()> {
+        let result: Option<String> = match self
+            .client
+            .set(
+                key,
+                "1",
+                Some(Expiration::EX(ttl_secs as i64)),
+                Some(SetOptions::NX),
+                false,
+            )
+            .await
+        {
+            Ok(value) => value,
+            Err(e) => {
+                tracing::error!(
+                    error = %e,
+                    key = %key,
+                    "Valkey nonce SET NX failed"
+                );
+                return Err(());
+            }
+        };
+
+        Ok(result.is_some())
     }
 }
 

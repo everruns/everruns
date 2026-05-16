@@ -393,6 +393,64 @@ able to drain an app's quota or LLM budget while it is unattended.
 Threat coverage: TM-A2A-013 (DoS via runaway A2A client) is mitigated by
 this control. See `specs/threat-model.md` for the full entry.
 
+## Replay Protection (opt-in)
+
+`A2aChannelConfig::signing_secret` opts a channel into Slack-style HMAC
+request signing. When set, every request must additionally carry a
+timestamp + signature header pair; otherwise the channel keeps the
+existing authentication-only behavior. This closes TM-A2A-010
+(captured-request replay until rotation) without breaking deployments
+that have not opted in. Signing is **orthogonal** to the inline endpoint
+auth (`channel_config.auth`) — it layers replay protection on top of
+whichever auth mode the channel uses (default API key, HTTP Basic, OIDC,
+OAuth2, or mTLS).
+
+Headers (sent by the client):
+
+- `X-Everruns-A2A-Timestamp` — unix-second timestamp of the request.
+- `X-Everruns-A2A-Signature` — `v0={hex}`, where `{hex}` is
+  `HMAC-SHA256(signing_secret, "v0:{timestamp}:{raw_body}")`.
+
+Verification is performed in `crates/server/src/api/a2a_signing.rs` and
+called from `app_a2a::authenticate_request` **after** primary
+authentication so unauthenticated callers cannot probe channel existence
+from signing-related signals or grow the in-memory replay store. The
+check covers:
+
+- **Timestamp window**: 300 seconds (5 minutes), symmetric (rejects both
+  too-old and too-future stamps so a fast client clock cannot bypass
+  replay).
+- **Signature**: constant-time HMAC-SHA256 comparison.
+- **Replay dedup**: the verified signature itself is recorded as a
+  single-use nonce (scoped per `app_id:channel_id`) with a 5-minute TTL.
+  Because the signature is deterministic over `(timestamp, body, secret)`,
+  two requests with byte-identical bodies sent in the same unix second
+  produce the same HMAC and the second is rejected as a replay. This
+  matches the Slack precedent and is benign in practice because JSON-RPC
+  clients vary `id` per request, which makes the body distinct. Clients
+  that may legitimately repeat identical payloads (e.g. unkeyed
+  notifications) must either include a per-request token in the body or
+  bump the timestamp by at least one second between retries. Two
+  backends mirror the rate limiter — in-memory `HashMap` for
+  single-instance/dev (with threshold-triggered TTL pruning) and Valkey
+  `SET ... NX EX` for distributed deployments. The per-channel rate
+  limiter runs **before** the nonce-record path, so rate-limited
+  traffic does not grow the replay store.
+- **Failure modes** (missing-header, stale, mismatch, replay) all
+  collapse to a single 401 response so a remote attacker cannot
+  distinguish them.
+
+The plaintext secret is **write-only**: stored encrypted at rest via
+the existing `channel_config` envelope encryption, redacted on read with
+a `signing_secret_configured: bool` flag, and preserved across PATCH so
+editing an unrelated field cannot accidentally turn off replay
+protection.
+
+The Agent Card advertises a vendor extension `everrunsHmacSignature` in
+`securitySchemes` when signing is enabled, so other agents that
+recognise it know to compute the signing headers in addition to the
+primary authentication scheme.
+
 ## Threat Model
 
 See `specs/threat-model.md` (TM-A2A-* category) for inbound-auth, key
