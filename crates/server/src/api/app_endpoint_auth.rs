@@ -6,7 +6,6 @@
 // AG-UI/A2A ingress behavior.
 
 use std::collections::HashSet;
-use std::net::IpAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -14,13 +13,14 @@ use axum::http::{HeaderMap, header::AUTHORIZATION};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use everruns_core::{
     AppEndpointAuthConfig, AppEndpointAuthMode, AppEndpointAuthProviderConfig,
-    AppEndpointAuthRequirements, validate_safe_url,
+    AppEndpointAuthRequirements, is_blocked_ip, validate_safe_url,
 };
 use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, decode_header, jwk::JwkSet};
 use moka::future::Cache;
 use serde::Deserialize;
 use serde_json::Value;
 use tokio::net::lookup_host;
+use tokio::time::timeout;
 use url::Host;
 
 use crate::storage::password::verify_password;
@@ -333,6 +333,10 @@ fn normalize_issuer(issuer: &str) -> String {
     issuer.trim().trim_end_matches('/').to_string()
 }
 
+// Cap DNS resolution to the same budget as the outbound HTTP request so a slow
+// or stuck resolver cannot stall auth verification past the overall timeout.
+const DNS_LOOKUP_TIMEOUT: Duration = Duration::from_secs(5);
+
 async fn validate_resolved_safe_url(raw_url: &str) -> Result<(), ()> {
     let url = validate_safe_url(raw_url).map_err(|_| ())?;
     let host = url.host().ok_or(())?;
@@ -341,7 +345,10 @@ async fn validate_resolved_safe_url(raw_url: &str) -> Result<(), ()> {
     }
     let port = url.port_or_known_default().ok_or(())?;
     let host = host.to_string();
-    let resolved = lookup_host((host.as_str(), port)).await.map_err(|_| ())?;
+    let resolved = timeout(DNS_LOOKUP_TIMEOUT, lookup_host((host.as_str(), port)))
+        .await
+        .map_err(|_| ())?
+        .map_err(|_| ())?;
     let mut found = false;
     for addr in resolved {
         found = true;
@@ -353,34 +360,6 @@ async fn validate_resolved_safe_url(raw_url: &str) -> Result<(), ()> {
         return Err(());
     }
     Ok(())
-}
-
-fn is_blocked_ip(ip: IpAddr) -> bool {
-    match ip {
-        IpAddr::V4(v4) => {
-            let octets = v4.octets();
-            octets[0] == 127
-                || v4.is_unspecified()
-                || octets[0] == 10
-                || (octets[0] == 172 && (16..=31).contains(&octets[1]))
-                || (octets[0] == 192 && octets[1] == 168)
-                || (octets[0] == 169 && octets[1] == 254)
-                || (octets[0] == 100 && (64..=127).contains(&octets[1]))
-                || (octets[0] == 192 && octets[1] == 0 && octets[2] == 2)
-                || (octets[0] == 198 && octets[1] == 51 && octets[2] == 100)
-                || (octets[0] == 203 && octets[1] == 0 && octets[2] == 113)
-        }
-        IpAddr::V6(v6) => {
-            let segments = v6.segments();
-            v6.is_loopback()
-                || v6.is_unspecified()
-                || segments[0] & 0xffc0 == 0xfe80
-                || segments[0] & 0xfe00 == 0xfc00
-                || v6
-                    .to_ipv4_mapped()
-                    .is_some_and(|v4| is_blocked_ip(IpAddr::V4(v4)))
-        }
-    }
 }
 
 fn is_public_key_algorithm(alg: Algorithm) -> bool {
@@ -621,11 +600,20 @@ mod tests {
         assert!(validate_claim_requirements(&claims, &requirements).is_ok());
     }
 
-    #[test]
-    fn blocks_private_ips_after_dns_resolution() {
-        assert!(is_blocked_ip(IpAddr::V4("127.0.0.1".parse().unwrap())));
-        assert!(is_blocked_ip(IpAddr::V4("10.0.0.1".parse().unwrap())));
-        assert!(is_blocked_ip(IpAddr::V6("::1".parse().unwrap())));
-        assert!(!is_blocked_ip(IpAddr::V4("8.8.8.8".parse().unwrap())));
+    #[tokio::test]
+    async fn validate_resolved_safe_url_rejects_literal_loopback() {
+        assert!(validate_resolved_safe_url("http://127.0.0.1/").await.is_err());
+        assert!(validate_resolved_safe_url("http://[::1]/").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn validate_resolved_safe_url_rejects_literal_private_ranges() {
+        assert!(validate_resolved_safe_url("http://10.0.0.1/").await.is_err());
+        assert!(validate_resolved_safe_url("http://192.168.1.1/").await.is_err());
+        assert!(
+            validate_resolved_safe_url("http://169.254.169.254/")
+                .await
+                .is_err()
+        );
     }
 }
