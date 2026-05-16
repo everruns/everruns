@@ -6,6 +6,7 @@
 // AG-UI/A2A ingress behavior.
 
 use std::collections::HashSet;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -13,18 +14,24 @@ use axum::http::{HeaderMap, header::AUTHORIZATION};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use everruns_core::{
     AppEndpointAuthConfig, AppEndpointAuthMode, AppEndpointAuthProviderConfig,
-    AppEndpointAuthRequirements, validate_safe_url,
+    AppEndpointAuthRequirements, is_blocked_ip, validate_safe_url,
 };
 use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, decode_header, jwk::JwkSet};
 use moka::future::Cache;
 use serde::Deserialize;
 use serde_json::Value;
+use tokio::net::lookup_host;
+use tokio::time::timeout;
+use url::Host;
 
 use crate::storage::password::verify_password;
 
 #[derive(Clone)]
 pub struct AppEndpointAuthVerifier {
-    http: reqwest::Client,
+    // Outbound HTTP clients are built per-request via `build_pinned_client` so
+    // each request can pin reqwest's DNS resolution to addresses we just
+    // validated, eliminating the rebinding TOCTOU window. The struct only
+    // carries the discovery/JWKS response caches across calls.
     discovery_cache: Cache<String, OidcDiscovery>,
     jwks_cache: Cache<String, Arc<JwkSet>>,
 }
@@ -38,11 +45,6 @@ impl Default for AppEndpointAuthVerifier {
 impl AppEndpointAuthVerifier {
     pub fn new() -> Self {
         Self {
-            http: reqwest::Client::builder()
-                .redirect(reqwest::redirect::Policy::none())
-                .timeout(Duration::from_secs(5))
-                .build()
-                .expect("app endpoint auth HTTP client builds"),
             discovery_cache: Cache::builder()
                 .time_to_live(Duration::from_secs(15 * 60))
                 .max_capacity(256)
@@ -193,8 +195,10 @@ impl AppEndpointAuthVerifier {
         else {
             return Err(AppEndpointAuthError::Misconfigured);
         };
-        validate_safe_url(introspection_url).map_err(|_| AppEndpointAuthError::Misconfigured)?;
-        let mut req = self.http.post(introspection_url).form(&[("token", token)]);
+        let client = build_pinned_client(introspection_url)
+            .await
+            .map_err(|_| AppEndpointAuthError::Misconfigured)?;
+        let mut req = client.post(introspection_url).form(&[("token", token)]);
         if let Some(client_id) = client_id.as_deref().filter(|id| !id.is_empty()) {
             req = if let Some(secret) = client_secret.as_deref() {
                 req.basic_auth(client_id, Some(secret))
@@ -255,11 +259,17 @@ impl AppEndpointAuthVerifier {
         if let Some(discovery) = self.discovery_cache.get(&issuer).await {
             return Ok(discovery);
         }
-        validate_safe_url(&issuer).map_err(|_| AppEndpointAuthError::Misconfigured)?;
+        // Validate the issuer URL itself even though we don't hit it directly:
+        // misconfigured private/loopback issuers should fail fast before we
+        // construct any derived URL.
+        resolve_and_validate(&issuer)
+            .await
+            .map_err(|_| AppEndpointAuthError::Misconfigured)?;
         let url = format!("{issuer}/.well-known/openid-configuration");
-        validate_safe_url(&url).map_err(|_| AppEndpointAuthError::Misconfigured)?;
-        let discovery = self
-            .http
+        let client = build_pinned_client(&url)
+            .await
+            .map_err(|_| AppEndpointAuthError::Misconfigured)?;
+        let discovery = client
             .get(&url)
             .send()
             .await
@@ -269,7 +279,10 @@ impl AppEndpointAuthVerifier {
             .json::<OidcDiscovery>()
             .await
             .map_err(|_| AppEndpointAuthError::ProviderUnavailable)?;
-        validate_safe_url(&discovery.jwks_uri).map_err(|_| AppEndpointAuthError::Misconfigured)?;
+        // Early-fail on a misconfigured jwks_uri before caching the discovery.
+        resolve_and_validate(&discovery.jwks_uri)
+            .await
+            .map_err(|_| AppEndpointAuthError::Misconfigured)?;
         self.discovery_cache.insert(issuer, discovery.clone()).await;
         Ok(discovery)
     }
@@ -278,9 +291,10 @@ impl AppEndpointAuthVerifier {
         if let Some(jwks) = self.jwks_cache.get(jwks_url).await {
             return Ok(jwks);
         }
-        validate_safe_url(jwks_url).map_err(|_| AppEndpointAuthError::Misconfigured)?;
-        let jwks = self
-            .http
+        let client = build_pinned_client(jwks_url)
+            .await
+            .map_err(|_| AppEndpointAuthError::Misconfigured)?;
+        let jwks = client
             .get(jwks_url)
             .send()
             .await
@@ -318,6 +332,72 @@ struct OidcDiscovery {
 
 fn normalize_issuer(issuer: &str) -> String {
     issuer.trim().trim_end_matches('/').to_string()
+}
+
+// Cap DNS resolution to the same budget as the outbound HTTP request so a slow
+// or stuck resolver cannot stall auth verification past the overall timeout.
+const DNS_LOOKUP_TIMEOUT: Duration = Duration::from_secs(5);
+const HTTP_REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// Result of resolving and validating an outbound auth-provider URL.
+///
+/// For hostnames we hold the pre-validated socket addresses so the actual HTTP
+/// request can pin DNS to those exact IPs (closing the TOCTOU window where a
+/// rebinding attacker could flip the DNS answer between validation and
+/// connect). For URLs that already use a literal IP, `addrs` is empty because
+/// [`validate_safe_url`] already classified the address.
+struct ResolvedTarget {
+    host: Option<String>,
+    addrs: Vec<SocketAddr>,
+}
+
+async fn resolve_and_validate(raw_url: &str) -> Result<ResolvedTarget, ()> {
+    let url = validate_safe_url(raw_url).map_err(|_| ())?;
+    let host = url.host().ok_or(())?;
+    if matches!(host, Host::Ipv4(_) | Host::Ipv6(_)) {
+        return Ok(ResolvedTarget {
+            host: None,
+            addrs: Vec::new(),
+        });
+    }
+    let port = url.port_or_known_default().ok_or(())?;
+    let host = host.to_string();
+    let resolved: Vec<SocketAddr> = timeout(DNS_LOOKUP_TIMEOUT, lookup_host((host.as_str(), port)))
+        .await
+        .map_err(|_| ())?
+        .map_err(|_| ())?
+        .collect();
+    if resolved.is_empty() {
+        return Err(());
+    }
+    for addr in &resolved {
+        if is_blocked_ip(addr.ip()) {
+            return Err(());
+        }
+    }
+    Ok(ResolvedTarget {
+        host: Some(host),
+        addrs: resolved,
+    })
+}
+
+/// Build a one-shot HTTP client whose DNS resolution is pinned to addresses we
+/// just validated. This eliminates the TOCTOU window where reqwest's own
+/// resolver could otherwise reach a different (and now-private) address than
+/// the one we checked.
+fn pinned_http_client(target: &ResolvedTarget) -> Result<reqwest::Client, ()> {
+    let mut builder = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(HTTP_REQUEST_TIMEOUT);
+    if let Some(host) = target.host.as_deref() {
+        builder = builder.resolve_to_addrs(host, &target.addrs);
+    }
+    builder.build().map_err(|_| ())
+}
+
+async fn build_pinned_client(raw_url: &str) -> Result<reqwest::Client, ()> {
+    let target = resolve_and_validate(raw_url).await?;
+    pinned_http_client(&target)
 }
 
 fn is_public_key_algorithm(alg: Algorithm) -> bool {
@@ -556,5 +636,22 @@ mod tests {
             "tier": "prod"
         });
         assert!(validate_claim_requirements(&claims, &requirements).is_ok());
+    }
+
+    #[tokio::test]
+    async fn resolve_and_validate_rejects_literal_loopback() {
+        assert!(resolve_and_validate("http://127.0.0.1/").await.is_err());
+        assert!(resolve_and_validate("http://[::1]/").await.is_err());
+    }
+
+    #[tokio::test]
+    async fn resolve_and_validate_rejects_literal_private_ranges() {
+        assert!(resolve_and_validate("http://10.0.0.1/").await.is_err());
+        assert!(resolve_and_validate("http://192.168.1.1/").await.is_err());
+        assert!(
+            resolve_and_validate("http://169.254.169.254/")
+                .await
+                .is_err()
+        );
     }
 }

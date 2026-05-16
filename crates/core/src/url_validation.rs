@@ -100,8 +100,13 @@ fn is_blocked_host(host: &str) -> bool {
     false
 }
 
-/// Check if an IP address is in a blocked range.
-fn is_blocked_ip(ip: IpAddr) -> bool {
+/// Check if an IP address is in a blocked range (loopback, private, link-local,
+/// CGNAT, documentation, IPv4-mapped IPv6 variants of any of those).
+///
+/// Use this for runtime DNS-pinned checks where the caller has already resolved
+/// a hostname to its actual address. Static URL/hostname checks should use
+/// [`validate_safe_url`] instead.
+pub fn is_blocked_ip(ip: IpAddr) -> bool {
     match ip {
         IpAddr::V4(v4) => is_blocked_ipv4(v4),
         IpAddr::V6(v6) => is_blocked_ipv6(v6),
