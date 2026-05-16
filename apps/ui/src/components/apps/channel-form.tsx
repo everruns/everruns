@@ -90,7 +90,7 @@ export function getDefaultChannelFormState(
     invocationSessionMode: "shared_session",
     channelMessage: "",
     webhookToken: "",
-    agUiToken: "",
+    agUiToken: kind === "ag_ui" && !channel ? generateChannelToken() : "",
     agUiExpirationHours: DEFAULT_AG_UI_SESSION_EXPIRATION_SECONDS / 3600,
     agUiRateLimitPerMinute: "",
     agUiToolVisibility: "generic",
