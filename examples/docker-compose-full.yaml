@@ -99,8 +99,6 @@ services:
       DEFAULT_ANTHROPIC_API_KEY: ${DEFAULT_ANTHROPIC_API_KEY:-}
       DEFAULT_GEMINI_API_KEY: ${DEFAULT_GEMINI_API_KEY:-}
       WORKER_GRPC_AUTH_TOKEN: ${WORKER_GRPC_AUTH_TOKEN:-}
-      ADDR: "0.0.0.0:9301"
-      RUST_LOG: info
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       postgres:
@@ -122,9 +120,8 @@ services:
   worker-1:
     image: ghcr.io/everruns/everruns-worker:${EVERRUNS_TAG:-latest}
     environment:
-      WORKER_GRPC_ADDRESS: server:9001
+      SERVER_GRPC_ADDRESS: server:9001
       WORKER_GRPC_AUTH_TOKEN: ${WORKER_GRPC_AUTH_TOKEN:-}
-      RUST_LOG: info
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       server:
@@ -134,9 +131,8 @@ services:
   worker-2:
     image: ghcr.io/everruns/everruns-worker:${EVERRUNS_TAG:-latest}
     environment:
-      WORKER_GRPC_ADDRESS: server:9001
+      SERVER_GRPC_ADDRESS: server:9001
       WORKER_GRPC_AUTH_TOKEN: ${WORKER_GRPC_AUTH_TOKEN:-}
-      RUST_LOG: info
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       server:
@@ -146,9 +142,8 @@ services:
   worker-3:
     image: ghcr.io/everruns/everruns-worker:${EVERRUNS_TAG:-latest}
     environment:
-      WORKER_GRPC_ADDRESS: server:9001
+      SERVER_GRPC_ADDRESS: server:9001
       WORKER_GRPC_AUTH_TOKEN: ${WORKER_GRPC_AUTH_TOKEN:-}
-      RUST_LOG: info
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
       server:
@@ -233,25 +228,25 @@ configs:
       # SDK reconnects transparently (no retry budget cost).
       :9300 {
         handle /api/* {
-          reverse_proxy server:9301 {
+          reverse_proxy server:9000 {
             # Disable response buffering for SSE streaming
             flush_interval -1
           }
         }
         handle /oauth/* {
-          reverse_proxy server:9301
+          reverse_proxy server:9000
         }
         handle /mcp {
-          reverse_proxy server:9301
+          reverse_proxy server:9000
         }
         handle /.well-known/* {
-          reverse_proxy server:9301
+          reverse_proxy server:9000
         }
         handle /api-doc/* {
-          reverse_proxy server:9301
+          reverse_proxy server:9000
         }
         handle /health {
-          reverse_proxy server:9301
+          reverse_proxy server:9000
         }
         handle {
           reverse_proxy ui:9305
@@ -268,7 +263,7 @@ configs:
         - job_name: everruns-server
           metrics_path: /metrics
           static_configs:
-            - targets: ["server:9301"]
+            - targets: ["server:9000"]
               labels:
                 service: everruns-server
 

@@ -16,7 +16,11 @@
 // before the server starts. See `specs/authentication.md` (External Mode
 // and OAuth Providers).
 
+use everruns_config::env_opt_string_any;
 use std::time::Duration;
+
+const DEFAULT_PUBLIC_APP_URL: &str = "http://localhost:9300";
+const DEFAULT_API_PREFIX: &str = "/api";
 
 /// Authentication mode
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -167,13 +171,24 @@ impl AuthConfig {
             .map(|s| AuthMode::parse(&s))
             .unwrap_or_default();
 
-        let base_url = std::env::var("AUTH_BASE_URL")
-            .or_else(|_| std::env::var("BASE_URL"))
-            .unwrap_or_else(|_| "http://localhost:9300/api".to_string());
+        let api_prefix =
+            std::env::var("API_PREFIX").unwrap_or_else(|_| DEFAULT_API_PREFIX.to_string());
+        let public_app_url = env_opt_string_any(&["PUBLIC_APP_URL", "APP_URL", "FRONTEND_URL"]);
+        let base_url = env_opt_string_any(&["AUTH_BASE_URL", "BASE_URL"])
+            .or_else(|| {
+                public_app_url
+                    .as_deref()
+                    .map(|url| auth_base_url_from_public_app_url(url, &api_prefix))
+            })
+            .unwrap_or_else(|| {
+                auth_base_url_from_public_app_url(DEFAULT_PUBLIC_APP_URL, &api_prefix)
+            });
 
-        // Frontend URL for post-auth redirects. In dev with Caddy proxy, same origin without /api.
-        let frontend_url =
-            std::env::var("FRONTEND_URL").unwrap_or_else(|_| "http://localhost:9300".to_string());
+        // Post-auth redirects land on the public app origin. In single-origin
+        // deployments this is the same host as AUTH_BASE_URL, without API_PREFIX.
+        let frontend_url = env_opt_string_any(&["FRONTEND_URL"])
+            .or(public_app_url.clone())
+            .unwrap_or_else(|| frontend_url_from_auth_base_url(&base_url, &api_prefix));
 
         // JWT configuration
         // TM-AUTH-002: Require AUTH_JWT_SECRET when authentication is enabled.
@@ -398,9 +413,67 @@ impl AuthConfig {
     }
 }
 
+fn normalize_api_prefix(api_prefix: &str) -> String {
+    let trimmed = api_prefix.trim().trim_matches('/');
+    if trimmed.is_empty() {
+        String::new()
+    } else {
+        format!("/{trimmed}")
+    }
+}
+
+fn auth_base_url_from_public_app_url(public_app_url: &str, api_prefix: &str) -> String {
+    let origin = public_app_url.trim_end_matches('/');
+    let api_prefix = normalize_api_prefix(api_prefix);
+    if api_prefix.is_empty() {
+        origin.to_string()
+    } else {
+        format!("{origin}{api_prefix}")
+    }
+}
+
+fn frontend_url_from_auth_base_url(auth_base_url: &str, api_prefix: &str) -> String {
+    let base_url = auth_base_url.trim_end_matches('/');
+    let api_prefix = normalize_api_prefix(api_prefix);
+
+    if !api_prefix.is_empty()
+        && let Some(root) = base_url.strip_suffix(&api_prefix)
+    {
+        let root = root.trim_end_matches('/');
+        if root.is_empty() {
+            DEFAULT_PUBLIC_APP_URL.to_string()
+        } else {
+            root.to_string()
+        }
+    } else if base_url.is_empty() {
+        DEFAULT_PUBLIC_APP_URL.to_string()
+    } else {
+        base_url.to_string()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    const AUTH_URL_ENV_VARS: &[&str] = &[
+        "API_PREFIX",
+        "APP_URL",
+        "AUTH_BASE_URL",
+        "BASE_URL",
+        "FRONTEND_URL",
+        "PUBLIC_APP_URL",
+    ];
+
+    fn clear_auth_url_env() {
+        for key in AUTH_URL_ENV_VARS {
+            // SAFETY: tests that mutate these process-wide env vars hold ENV_LOCK.
+            unsafe { std::env::remove_var(key) };
+        }
+    }
 
     #[test]
     fn test_auth_mode_parsing() {
@@ -422,6 +495,70 @@ mod tests {
         assert!(!config.is_enabled());
         assert!(!config.password_auth_enabled());
         assert!(!config.oauth_enabled());
+    }
+
+    #[test]
+    fn test_auth_base_url_from_public_app_url() {
+        assert_eq!(
+            auth_base_url_from_public_app_url("https://app.example.com/", "/api"),
+            "https://app.example.com/api"
+        );
+        assert_eq!(
+            auth_base_url_from_public_app_url("https://app.example.com", "custom-api"),
+            "https://app.example.com/custom-api"
+        );
+        assert_eq!(
+            auth_base_url_from_public_app_url("https://app.example.com", ""),
+            "https://app.example.com"
+        );
+    }
+
+    #[test]
+    fn test_frontend_url_from_auth_base_url() {
+        assert_eq!(
+            frontend_url_from_auth_base_url("https://app.example.com/api", "/api"),
+            "https://app.example.com"
+        );
+        assert_eq!(
+            frontend_url_from_auth_base_url("https://api.example.com", "/api"),
+            "https://api.example.com"
+        );
+        assert_eq!(
+            frontend_url_from_auth_base_url("", "/api"),
+            DEFAULT_PUBLIC_APP_URL
+        );
+        assert_eq!(
+            frontend_url_from_auth_base_url("/api", "/api"),
+            DEFAULT_PUBLIC_APP_URL
+        );
+    }
+
+    #[test]
+    fn test_from_env_derives_base_url_from_api_prefix_override() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_auth_url_env();
+        // SAFETY: this test holds ENV_LOCK.
+        unsafe { std::env::set_var("API_PREFIX", "/custom-api") };
+
+        let config = AuthConfig::from_env();
+
+        assert_eq!(config.base_url, "http://localhost:9300/custom-api");
+        assert_eq!(config.frontend_url, DEFAULT_PUBLIC_APP_URL);
+        clear_auth_url_env();
+    }
+
+    #[test]
+    fn test_from_env_preserves_empty_api_prefix() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_auth_url_env();
+        // SAFETY: this test holds ENV_LOCK.
+        unsafe { std::env::set_var("API_PREFIX", "") };
+
+        let config = AuthConfig::from_env();
+
+        assert_eq!(config.base_url, DEFAULT_PUBLIC_APP_URL);
+        assert_eq!(config.frontend_url, DEFAULT_PUBLIC_APP_URL);
+        clear_auth_url_env();
     }
 
     #[test]

@@ -3259,9 +3259,10 @@ impl everruns_core::platform_store::PlatformStore for GrpcOrgAdapter {
         // Called infrequently, value stable across runtime
         static BASE_URL: std::sync::OnceLock<String> = std::sync::OnceLock::new();
         BASE_URL.get_or_init(|| {
-            std::env::var("PUBLIC_APP_URL")
-                .or_else(|_| std::env::var("APP_URL"))
-                .unwrap_or_else(|_| "http://localhost:9300".to_string())
+            everruns_config::env_string_any(
+                &["PUBLIC_APP_URL", "FRONTEND_URL", "APP_URL"],
+                "http://localhost:9300",
+            )
         })
     }
 }

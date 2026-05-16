@@ -24,6 +24,13 @@ pub fn env_string(var: &str, default: &str) -> String {
     std::env::var(var).unwrap_or_else(|_| default.to_string())
 }
 
+/// Read the first non-empty env var from `vars`, or return `default`.
+pub fn env_string_any(vars: &[&str], default: &str) -> String {
+    vars.iter()
+        .find_map(|var| env_opt_string(var))
+        .unwrap_or_else(|| default.to_string())
+}
+
 /// Read an env var as a `bool` (`"true"` or `"1"`), or return `default`.
 pub fn env_bool(var: &str, default: bool) -> bool {
     std::env::var(var)
@@ -91,6 +98,11 @@ pub fn env_opt_string(var: &str) -> Option<String> {
     std::env::var(var).ok().filter(|s| !s.is_empty())
 }
 
+/// Read the first non-empty env var from `vars`.
+pub fn env_opt_string_any(vars: &[&str]) -> Option<String> {
+    vars.iter().find_map(|var| env_opt_string(var))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -142,6 +154,26 @@ mod tests {
     fn env_string_missing() {
         let key = unset("STR_M");
         assert_eq!(env_string(&key, "fallback"), "fallback");
+    }
+
+    #[test]
+    fn env_string_any_uses_first_non_empty_value() {
+        let first = unset("STR_ANY_FIRST");
+        let second = set("STR_ANY_SECOND", "");
+        let third = set("STR_ANY_THIRD", "value");
+
+        assert_eq!(
+            env_string_any(&[&first, &second, &third], "fallback"),
+            "value"
+        );
+    }
+
+    #[test]
+    fn env_string_any_falls_back_to_default() {
+        let first = unset("STR_ANY_MISSING_FIRST");
+        let second = set("STR_ANY_MISSING_SECOND", "");
+
+        assert_eq!(env_string_any(&[&first, &second], "fallback"), "fallback");
     }
 
     #[test]
@@ -263,5 +295,17 @@ mod tests {
     fn env_opt_string_missing() {
         let key = unset("OSTR_M");
         assert_eq!(env_opt_string(&key), None);
+    }
+
+    #[test]
+    fn env_opt_string_any_uses_first_non_empty_value() {
+        let first = unset("OSTR_ANY_FIRST");
+        let second = set("OSTR_ANY_SECOND", "");
+        let third = set("OSTR_ANY_THIRD", "value");
+
+        assert_eq!(
+            env_opt_string_any(&[&first, &second, &third]),
+            Some("value".to_string())
+        );
     }
 }

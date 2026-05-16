@@ -90,8 +90,29 @@ API_PREFIX=/api
 **Notes:**
 - `/health`, `/api-doc/openapi.json`, `/mcp`, `/.well-known/*`, `/oauth/*`, and `/cli/login-success` stay at the server root
 - REST API routes including auth (`/v1/auth/*`) are mounted under this prefix
-- OAuth callback URLs use `AUTH_BASE_URL`, which should already include the API prefix
+- OAuth callback URLs use `AUTH_BASE_URL`, which defaults to `PUBLIC_APP_URL` plus `API_PREFIX` when unset
 - Override only if you need a non-`/api` REST prefix behind a reverse proxy or gateway
+
+## PUBLIC_APP_URL
+
+Public browser origin for the Everruns app. In single-origin deployments, set this once and the server derives `FRONTEND_URL` and `AUTH_BASE_URL` from it.
+
+| Property | Value |
+|----------|-------|
+| **Required** | No |
+| **Default** | `http://localhost:9300` |
+
+**Example:**
+
+```bash
+PUBLIC_APP_URL=https://everruns.example.com
+```
+
+**Notes:**
+- `FRONTEND_URL` defaults to `PUBLIC_APP_URL`
+- `AUTH_BASE_URL` defaults to `PUBLIC_APP_URL` plus `API_PREFIX` (for example, `https://everruns.example.com/api`)
+- Set `FRONTEND_URL` only when browser redirects must land on a different origin
+- Set `AUTH_BASE_URL` only when OAuth callbacks use a different public API base
 
 ## CORS_ALLOWED_ORIGINS
 
@@ -117,6 +138,25 @@ CORS_ALLOWED_ORIGINS=https://app.example.com,https://admin.example.com
 - Not needed in production if using a reverse proxy on the same domain
 - If set, credentials are allowed (`Access-Control-Allow-Credentials: true`)
 - Wildcard (`*`) is not supported when using credentials
+
+## HTTP_ADDR
+
+Bind address for the server HTTP API.
+
+| Property | Value |
+|----------|-------|
+| **Required** | No |
+| **Default** | `0.0.0.0:9000` |
+
+**Example:**
+
+```bash
+HTTP_ADDR=0.0.0.0:9000
+```
+
+**Notes:**
+- `ADDR` is supported as a legacy alias
+- Container images already default to `0.0.0.0:9000`; most deployments do not need to set this
 
 ## VALKEY_URL
 
@@ -311,9 +351,9 @@ The UI makes all REST API requests (including SSE) to `/api/*` paths. The backen
 
 ## Worker gRPC Configuration
 
-### WORKER_GRPC_ADDRESS
+### SERVER_GRPC_ADDRESS
 
-Address of the control-plane gRPC server for worker communication.
+Address of the server gRPC endpoint for worker communication.
 
 | Property | Value |
 |----------|-------|
@@ -323,12 +363,13 @@ Address of the control-plane gRPC server for worker communication.
 **Example:**
 
 ```bash
-WORKER_GRPC_ADDRESS=127.0.0.1:9001
+SERVER_GRPC_ADDRESS=127.0.0.1:9001
 ```
 
 **Notes:**
-- Workers communicate with the control-plane via gRPC for all database operations
-- The control-plane exposes both HTTP (local dev default `9301`) and gRPC (default `9001`) interfaces
+- Workers communicate with the server via gRPC for all database operations
+- `WORKER_GRPC_ADDRESS` is supported as a legacy alias
+- The server exposes both HTTP (default `9000`) and gRPC (default `9001`) interfaces
 - Workers are stateless and do not connect directly to the database
 
 ### WORKER_GRPC_AUTH_TOKEN
@@ -351,9 +392,9 @@ WORKER_GRPC_AUTH_TOKEN=your-secret-token
 - When unset, gRPC auth is disabled (acceptable for local development only)
 - Server panics on startup if unset when not in dev mode
 
-### WORKER_GRPC_ADDR
+### SERVER_GRPC_BIND_ADDR
 
-Bind address for the server-side gRPC listener (control-plane only).
+Bind address for the server-side gRPC listener.
 
 | Property | Value |
 |----------|-------|
@@ -363,8 +404,11 @@ Bind address for the server-side gRPC listener (control-plane only).
 **Example:**
 
 ```bash
-WORKER_GRPC_ADDR=0.0.0.0:9001
+SERVER_GRPC_BIND_ADDR=0.0.0.0:9001
 ```
+
+**Notes:**
+- `WORKER_GRPC_ADDR` is supported as a legacy alias
 
 ### WORKER_GRPC_CONNECT_TIMEOUT
 
@@ -443,7 +487,7 @@ Override the expected server domain name for TLS certificate verification (worke
 | Property | Value |
 |----------|-------|
 | **Required** | No |
-| **Default** | Derived from `WORKER_GRPC_ADDRESS` hostname |
+| **Default** | Derived from `SERVER_GRPC_ADDRESS` hostname |
 
 **Example:**
 

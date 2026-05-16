@@ -1389,7 +1389,9 @@ impl ServerAppBuilder {
                 let grpc_token = grpc_service::require_grpc_auth_token();
                 let auth_interceptor = grpc_service::GrpcAuthInterceptor::new(Some(grpc_token));
                 let tls_config = grpc_service::grpc_server_tls_from_env();
-                let addr = grpc_addr.parse().expect("Invalid WORKER_GRPC_ADDR");
+                let addr = grpc_addr
+                    .parse()
+                    .expect("Invalid SERVER_GRPC_BIND_ADDR/WORKER_GRPC_ADDR");
                 tracing::info!("gRPC server listening on {}", addr);
 
                 let mut builder = tonic::transport::Server::builder();
