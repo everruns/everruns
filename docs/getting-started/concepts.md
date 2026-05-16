@@ -5,7 +5,7 @@ sidebar:
   label: Concepts
 ---
 
-This page describes the core entities in Everruns and how they relate to each other, organized into three layers: the high-level execution model, session internals, and settings.
+This page is the **concept cheat-sheet** — short definitions of every entity, organised into three layers (high-level execution model, session internals, and settings). For the design rationale behind each entity, read [Core concepts](/explanation/concepts/) under Explanation.
 
 ## High Level
 

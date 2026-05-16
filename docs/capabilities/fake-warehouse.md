@@ -27,26 +27,6 @@ Simulated warehouse management tools for testing and demonstrations. Provides in
 | `warehouse_process_return` | Process a return |
 | `warehouse_inventory_report` | Generate inventory report |
 
-## Use Cases
-
-- **Agent demos** — showcase multi-tool agent workflows with realistic domain operations
-- **Testing tool calling** — validate agent behavior with complex, stateful tool chains
-- **Prompt engineering** — develop and test system prompts for warehouse management agents
-
-## Example
-
-```
-User: Create an order for 50 widgets and ship it
-
-Agent:
-  → warehouse_create_order({ items: [{ sku: "WIDGET-001", quantity: 50 }], customer: "Acme Corp" })
-  ← { order_id: "ORD-001", status: "created" }
-  → warehouse_create_shipment({ order_id: "ORD-001", carrier: "FedEx" })
-  ← { shipment_id: "SHP-001", status: "pending" }
-  → warehouse_update_shipment_status({ shipment_id: "SHP-001", status: "shipped" })
-  → warehouse_create_invoice({ order_id: "ORD-001" })
-```
-
 ## See Also
 
 - [Fake AWS](/capabilities/fake-aws/) — simulated cloud infrastructure

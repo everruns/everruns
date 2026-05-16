@@ -193,3 +193,23 @@ impl UserConnectionResolver for DbConnectionResolver {
         }
     }
 }
+
+/// Resolver used when encryption is not configured (notably dev mode).
+///
+/// Returns `None` for every lookup. Without encryption we cannot decrypt
+/// stored connection tokens, so behaving as if no connections exist is the
+/// only safe option. Tools that need a connection should surface their own
+/// "not connected" guidance rather than panicking at the trait boundary.
+#[derive(Clone, Default)]
+pub struct NoopConnectionResolver;
+
+#[async_trait]
+impl UserConnectionResolver for NoopConnectionResolver {
+    async fn get_connection_token(
+        &self,
+        _session_id: SessionId,
+        _provider: &str,
+    ) -> Result<Option<String>> {
+        Ok(None)
+    }
+}

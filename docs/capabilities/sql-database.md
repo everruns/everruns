@@ -34,26 +34,6 @@ Run SELECT queries. Results limited to 1000 rows.
 
 Introspect the database schema — list tables, columns, and types.
 
-## Use Cases
-
-- **Data analysis** — import CSV/JSON data into tables and run analytical queries
-- **Structured storage** — store relational data that doesn't fit key/value patterns
-- **Reporting** — aggregate and summarize data with SQL
-- **Prototyping** — test database schemas and queries before implementing
-
-## Example
-
-```
-User: Track my reading list
-
-Agent:
-  → sql_execute("CREATE TABLE books (id INTEGER PRIMARY KEY, title TEXT, author TEXT, status TEXT DEFAULT 'unread')")
-  → sql_execute("INSERT INTO books (title, author) VALUES ('Designing Data-Intensive Applications', 'Martin Kleppmann')")
-  → sql_execute("INSERT INTO books (title, author, status) VALUES ('The Pragmatic Programmer', 'Hunt & Thomas', 'read')")
-  → sql_query("SELECT title, author, status FROM books ORDER BY title")
-  ← [{ "title": "Designing Data-Intensive Applications", "author": "Martin Kleppmann", "status": "unread" }, ...]
-```
-
 ## Notes
 
 - Database is session-scoped — destroyed when the session ends

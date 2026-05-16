@@ -26,26 +26,6 @@ Execute a shell command.
 
 Returns stdout, stderr, and exit code.
 
-## Use Cases
-
-- **Code execution** — run scripts, compile code, execute tests
-- **Data processing** — pipe commands, transform files with standard Unix tools
-- **Environment setup** — install packages, configure environments
-- **Build automation** — run build tools, linters, formatters
-
-## Example
-
-Agent runs a Python script and inspects the output:
-
-```
-User: Run the test suite
-
-Agent:
-  → bash("cd /workspace && python -m pytest tests/ -v")
-  ← stdout: "tests/test_api.py::test_health PASSED\ntests/test_api.py::test_create PASSED\n2 passed in 0.34s"
-  ← exit_code: 0
-```
-
 ## Notes
 
 - **Sandboxed** — no network access, no host filesystem access

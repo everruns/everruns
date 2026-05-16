@@ -1,13 +1,15 @@
 ---
-title: CLI for Agents and Sessions
-description: Use the Everruns command-line interface to create agents, manage sessions, stream real-time events, import configuration files, and automate platform workflows.
+title: CLI
+description: The everruns CLI manages agents, sessions, and conversations from the command line. Useful for scripting, automation, and quick checks without the UI.
 sidebar:
   label: CLI
 ---
 
-The `everruns` CLI provides a command-line interface for managing agents, sessions, and conversations. It's useful for scripting, automation, and quick interactions without using the web UI.
+The `everruns` CLI is a command-line client for the Everruns API. It covers the same surface as the SDK — agents, sessions, messages, capabilities — and is designed to compose well with shell pipelines.
 
-## Installation
+This page covers installation, configuration, and the command surface. For scripting patterns and `jq` examples, see [Automate with the CLI](/how-to/automate-with-the-cli/).
+
+## Install
 
 ### Homebrew (macOS / Linux)
 
@@ -18,13 +20,13 @@ brew install everruns
 
 ### Cargo
 
-Install from the Git repository:
+From the Git repository:
 
 ```bash
 cargo install --git https://github.com/everruns/everruns everruns-cli
 ```
 
-Or clone and build locally:
+Or clone and build:
 
 ```bash
 git clone https://github.com/everruns/everruns.git
@@ -38,354 +40,95 @@ cargo install --path crates/cli
 everruns --version
 ```
 
-## Configuration
+## Configure
 
-The CLI connects to the Everruns API. By default, it uses the hosted API at `https://app.everruns.com/api`.
-
-For local development, configure the API URL:
+The CLI defaults to the hosted API at `https://app.everruns.com/api`. Override for local or self-hosted deployments:
 
 ```bash
-# Via command-line flag
+# Per command
 everruns --api-url http://localhost:9300/api agents list
 
-# Via environment variable
+# Per shell
 export EVERRUNS_API_URL=http://localhost:9300/api
-everruns agents list
+export EVERRUNS_API_KEY=dev
 ```
 
-Default: `https://app.everruns.com/api`
+## Command surface
 
-## Commands
+| Group | Subcommands |
+|---|---|
+| `agents` | `create`, `list`, `get`, `update`, `delete` |
+| `sessions` | `create`, `list`, `get`, `cancel`, `delete` |
+| `capabilities` | (list — no subcommand) |
+| `chat` | Send a message and stream the response |
 
 ### Agents
 
-Manage agent configurations.
-
-#### Create Agent
-
 ```bash
-# Inline creation
+# Inline
 everruns agents create \
   --name "my-agent" \
   --system-prompt "You are a helpful assistant." \
   --tag production
 
-# From default TOML file in the current directory
-everruns agents create
-
-# From TOML file
+# From a file (TOML, YAML, JSON, or Markdown front matter)
 everruns agents create -f agent.toml
-
-# From YAML file
 everruns agents create -f agent.yaml
-
-# From JSON file
-everruns agents create -f agent.json
-
-# From Markdown with front matter
 everruns agents create -f agent.md
 ```
 
-If `./agent.toml` exists and you do not pass inline creation flags, `everruns agents create` will use it automatically. `everruns agents update` also uses it in file-based mode, but passing an explicit positional `<id>` disables implicit `agent.toml` selection.
-
-**TOML file format** (`agent.toml`):
-
-```toml
-name = "research-assistant"
-description = "Helps with research tasks"
-system_prompt = """
-You are a helpful research assistant.
-Always cite your sources.
-"""
-tags = ["research", "assistant"]
-
-[[capabilities]]
-ref = "current_time"
-
-[[capabilities]]
-ref = "web_fetch"
-```
-
-**YAML file format** (`agent.yaml`):
-
-```yaml
-name: "research-assistant"
-description: "Helps with research tasks"
-system_prompt: |
-  You are a helpful research assistant.
-  Always cite your sources.
-capabilities:
-  - ref: current_time
-    config: {}
-  - ref: web_fetch
-    config: {}
-tags:
-  - research
-  - assistant
-```
-
-For backward compatibility, you can also use the shorthand format:
-
-```yaml
-capabilities:
-  - current_time
-  - web_fetch
-```
-
-The full format with `ref` and `config` allows per-agent capability configuration:
-
-```yaml
-capabilities:
-  - ref: filesystem
-    config:
-      allowed_paths: ["/home/user/projects"]
-  - ref: web_browser
-    config: {}
-```
-
-**Markdown file format** (`agent.md`):
-
-```markdown
----
-name: "research-assistant"
-description: "Helps with research tasks"
-capabilities:
-  - ref: current_time
-    config: {}
-  - ref: web_fetch
-    config: {}
-tags:
-  - research
----
-You are a helpful research assistant.
-
-Always cite your sources and provide accurate information.
-```
-
-The markdown body becomes the system prompt. Both the full format (`ref` + `config`) and shorthand (just capability ID) are supported in markdown files.
-
-#### Initial Files
-
-You can seed an agent's sessions with starter files using either the `--initial-files-dir` flag or the `initial_files` frontmatter field.
-
-**Using `--initial-files-dir`:**
-
-```bash
-everruns agents create -f agent.md --initial-files-dir ./project-context
-```
-
-This recursively collects non-hidden text files from the directory. Files are read-only by default; add `--writable` to make them editable.
-
-**Using frontmatter `initial_files`:**
-
-List relative paths directly in the agent definition. Each entry is resolved relative to the agent file's parent directory:
-
-```markdown
----
-name: "a11y-audit"
-description: "Accessibility auditor for the platform UI"
-capabilities:
-  - ref: daytona
-initial_files:
-  - .
-  - .agents/*
----
-Run axe-core audits on specified pages...
-```
-
-Entries can be:
-- `.` — the entire directory (all non-hidden files, plus `.agents/`)
-- `.agents` or `.agents/*` — a specific subdirectory (glob suffixes like `/*` are stripped; the directory is walked recursively)
-- `README.md` — a single file
-
-The CLI expands these to full file contents before sending to the API. The same security rules apply: hidden files are skipped (except `.agents/`), symlinks outside the base directory are rejected, binary files are ignored, and explicitly listed hidden files (e.g. `.env`) are rejected.
-
-#### List Agents
+If `./agent.toml` exists and you don't pass inline flags, `everruns agents create` picks it up automatically. The file formats are documented in [Define agents as files](/how-to/define-agents-as-files/).
 
 ```bash
 everruns agents list
-```
-
-Output:
-
-```
-ID                                    NAME              STATUS
-agt_550e8400e29b41d4a716446655440000  research-bot      active
-agt_660e8400e29b41d4a716446655440001  joke-bot          active
-```
-
-#### Get Agent
-
-```bash
 everruns agents get agt_xxx
-```
-
-#### Delete Agent
-
-```bash
 everruns agents delete agt_xxx
-```
-
-### Capabilities
-
-List available capabilities that can be assigned to agents.
-
-```bash
-# List available capabilities
-everruns capabilities
-
-# List all including coming soon
-everruns capabilities --status all
-
-# List only coming soon
-everruns capabilities --status coming_soon
-```
-
-Output:
-
-```
-ID                    NAME               STATUS      CATEGORY
-current_time          Current Time       available   Utilities
-web_fetch             Web Fetch          available   Network
-session_file_system   File System        available   File Operations
-stateless_todo_list   Task Management    available   Productivity
 ```
 
 ### Sessions
 
-Manage conversation sessions for an agent.
-
-#### Create Session
-
 ```bash
 everruns sessions create --agent agt_xxx
-
-# With title
 everruns sessions create --agent agt_xxx --title "Debug session"
 
-# With session-level features
+# With session-level overrides
 everruns sessions create \
   --agent agt_xxx \
-  --agent-identity identity_xxx \
+  --harness generic \
   --capability 'web_fetch={"timeout":10}' \
   --hint setup_connection=true \
   --network-allow api.example.com \
   --max-iterations 8
 ```
 
-Session creation also supports `--locale`, repeatable `--tag`, `--system-prompt`, `--hints-json`, repeatable `--network-block`, repeatable `--secret KEY=VALUE`, and budget flags.
-
-#### List Sessions
+Also accepts: `--locale`, repeatable `--tag`, `--system-prompt`, `--hints-json`, repeatable `--network-block`, repeatable `--secret KEY=VALUE`, and budget flags.
 
 ```bash
 everruns sessions list
-```
-
-#### Get Session
-
-```bash
 everruns sessions get ses_xxx
 ```
 
 ### Chat
 
-Send a message and receive the agent's response.
-
 ```bash
 everruns chat "Tell me a joke!" --session ses_xxx
 ```
 
-Output:
+Options: `--timeout <seconds>` (default 300), `--no-stream` to queue without waiting.
 
-```
-You: Tell me a joke!
+## Output formats
 
-Agent: Why don't scientists trust atoms? Because they make up everything!
-```
-
-Options:
-
-- `--timeout <seconds>` - Max wait time for response (default: 300)
-- `--no-stream` - Send message and exit without waiting for response
-
-## Output Formats
-
-The CLI supports multiple output formats for scripting:
+Every command accepts `-o` / `--output`:
 
 ```bash
-# Default text format
-everruns agents list
-
-# JSON format
-everruns agents list --output json
-
-# YAML format
-everruns agents list --output yaml
+everruns agents list -o json
+everruns agents list -o yaml
 ```
 
-## Quiet Mode
+`--quiet` suppresses headers and prints only the essential identifier — useful for capturing IDs in shell variables.
 
-Suppress non-essential output:
+## See also
 
-```bash
-# Only output the created agent ID
-everruns agents create -f agent.toml --quiet
-# Output: agt_550e8400e29b41d4a716446655440000
-```
-
-## Examples
-
-### Complete Workflow
-
-```bash
-# 1. Create an agent and extract ID with jq
-AGENT_ID=$(everruns agents create \
-  --name "assistant" \
-  --system-prompt "You are a helpful assistant." \
-  -o json | jq -r '.id')
-
-# 2. Create a session
-SESSION_ID=$(everruns sessions create --agent $AGENT_ID -o json | jq -r '.id')
-
-# 3. Chat with the agent
-everruns chat "What time is it?" --session $SESSION_ID
-```
-
-### Using Agent Files
-
-```bash
-# Create agent.md
-cat > agent.md << 'EOF'
----
-name: "code-reviewer"
-description: "Reviews code and suggests improvements"
-capabilities:
-  - ref: current_time
-    config: {}
-  - ref: filesystem
-    config:
-      allowed_paths: ["/workspace"]
-tags:
-  - development
----
-You are an expert code reviewer.
-
-When reviewing code:
-1. Check for bugs and edge cases
-2. Suggest performance improvements
-3. Ensure code follows best practices
-EOF
-
-# Create the agent
-everruns agents create -f agent.md
-```
-
-### JSON Output for Scripting
-
-```bash
-# Get agent details as JSON and extract with jq
-everruns agents get agt_xxx --output json | jq '.tags'
-
-# List agents and filter
-everruns agents list --output json | jq '.data[] | select(.status == "active")'
-```
+- [Automate with the CLI](/how-to/automate-with-the-cli/) — `jq`, quiet mode, scripting patterns.
+- [Define agents as files](/how-to/define-agents-as-files/) — file formats for `-f`.
+- [SDK](/features/sdk/) — the programmatic equivalent.

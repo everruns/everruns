@@ -30,26 +30,6 @@ Simulated AWS infrastructure management tools for testing and demonstrations. Co
 | `aws_list_security_groups` | List security groups |
 | `aws_get_cloudwatch_metrics` | Get CloudWatch metrics |
 
-## Use Cases
-
-- **DevOps agent demos** — showcase agents managing cloud infrastructure
-- **Testing multi-service workflows** — validate agents coordinating across AWS services
-- **Training** — practice AWS operations without real cloud access or cost
-
-## Example
-
-```
-User: Set up a web server with a database
-
-Agent:
-  → aws_create_ec2_instance({ instance_type: "t3.medium", ami: "ami-web-server" })
-  ← { instance_id: "i-abc123", status: "running" }
-  → aws_create_rds_database({ engine: "postgres", instance_class: "db.t3.micro" })
-  ← { db_identifier: "db-xyz789", status: "available", endpoint: "db-xyz789.rds.amazonaws.com" }
-  → aws_create_s3_bucket({ bucket_name: "app-assets-prod" })
-  ← { bucket: "app-assets-prod", status: "created" }
-```
-
 ## See Also
 
 - [Fake Warehouse](/capabilities/fake-warehouse/) — simulated warehouse operations

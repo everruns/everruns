@@ -1,23 +1,25 @@
 ---
-title: SDKs for Agent Applications
-description: Build agent applications with official Everruns SDKs for Rust, Python, and TypeScript, including typed clients, async APIs, sessions, messages, and SSE streams.
+title: SDKs
+description: Official client libraries for Rust, Python, and TypeScript — typed clients, async APIs, SSE streaming with automatic reconnection.
 sidebar:
   label: SDK
 ---
 
 import { Tabs, TabItem } from '@astrojs/starlight/components';
 
-The Everruns SDK provides official client libraries for building AI agent applications. SDKs are available for Rust, Python, and TypeScript with a consistent API across all platforms.
+The Everruns SDKs are official client libraries for building agent applications. Rust, Python, and TypeScript with a consistent API across all three.
 
-## Features
+What the SDKs handle for you:
 
-- **Consistent API** across Rust, Python, and TypeScript
-- **Async/await patterns** throughout all SDKs
-- **SSE streaming** with automatic reconnection and heartbeat-based stale connection detection
-- **Typed models** generated from OpenAPI specifications
-- **Sub-client organization** (agents, sessions, messages, events)
+- **Consistent API** across languages
+- **Async/await patterns** throughout
+- **SSE streaming** with automatic reconnection, heartbeat-based stale detection, and `since_id` resumption
+- **Typed models** generated from the OpenAPI spec
+- **Sub-client organization** (`agents`, `sessions`, `messages`, `events`, `filesystem`, ...)
 
-## Installation
+For a hands-on lesson, see [Build your first agent](/tutorials/building-agents-using-sdk/) or the minimal [Run an Agent](/tutorials/run-an-agent/) notebook.
+
+## Install
 
 <Tabs syncKey="lang">
   <TabItem label="Rust">
@@ -43,191 +45,41 @@ The Everruns SDK provides official client libraries for building AI agent applic
   </TabItem>
 </Tabs>
 
-## Authentication
+## Authenticate
 
-All SDKs use the `EVERRUNS_API_KEY` environment variable by default. You can also pass the API key explicitly when initializing the client.
+All SDKs read `EVERRUNS_API_KEY` from the environment by default. You can also pass it explicitly.
 
 <Tabs syncKey="lang">
   <TabItem label="Rust">
     ```rust
     use everruns_sdk::Client;
 
-    // From environment variable
-    let client = Client::from_env()?;
-
-    // Explicit API key
-    let client = Client::new("your-api-key");
+    let client = Client::from_env()?;          // from env
+    let client = Client::new("your-api-key");  // explicit
     ```
   </TabItem>
   <TabItem label="Python">
     ```python
     from everruns_sdk import Client
 
-    # From environment variable
-    client = Client()
-
-    # Explicit API key
-    client = Client(api_key="your-api-key")
+    client = Client()                           # from env
+    client = Client(api_key="your-api-key")     # explicit
     ```
   </TabItem>
   <TabItem label="TypeScript">
     ```typescript
     import { Client } from "@everruns/sdk";
 
-    // From environment variable
-    const client = new Client();
-
-    // Explicit API key
-    const client = new Client({ apiKey: "your-api-key" });
+    const client = new Client();                                    // from env
+    const client = new Client({ apiKey: "your-api-key" });          // explicit
     ```
   </TabItem>
 </Tabs>
 
-## Quick Start
-
-### Create an Agent and Start a Session
-
-<Tabs syncKey="lang">
-  <TabItem label="Rust">
-    ```rust
-    use everruns_sdk::{Client, CreateAgentRequest, CreateSessionRequest, CreateMessageRequest};
-
-    #[tokio::main]
-    async fn main() -> Result<(), Box<dyn std::error::Error>> {
-        let client = Client::from_env()?;
-
-        // Create an agent
-        let agent = client.agents().create(CreateAgentRequest {
-            name: "my-assistant".to_string(),
-            system_prompt: "You are a helpful assistant.".to_string(),
-            ..Default::default()
-        }).await?;
-
-        // Create a session
-        let session = client.sessions().create(CreateSessionRequest {
-            agent_id: agent.id.clone(),
-            ..Default::default()
-        }).await?;
-
-        // Send a message
-        client.messages().create(CreateMessageRequest {
-            session_id: session.id.clone(),
-            content: "Hello! What can you help me with?".to_string(),
-        }).await?;
-
-        Ok(())
-    }
-    ```
-  </TabItem>
-  <TabItem label="Python">
-    ```python
-    import asyncio
-    from everruns_sdk import Client
-
-    async def main():
-        client = Client()
-
-        # Create an agent
-        agent = await client.agents.create(
-            name="my-assistant",
-            system_prompt="You are a helpful assistant."
-        )
-
-        # Create a session
-        session = await client.sessions.create(agent_id=agent.id)
-
-        # Send a message
-        await client.messages.create(
-            session_id=session.id,
-            content="Hello! What can you help me with?"
-        )
-
-    asyncio.run(main())
-    ```
-  </TabItem>
-  <TabItem label="TypeScript">
-    ```typescript
-    import { Client } from "@everruns/sdk";
-
-    const client = new Client();
-
-    // Create an agent
-    const agent = await client.agents.create({
-      name: "my-assistant",
-      systemPrompt: "You are a helpful assistant.",
-    });
-
-    // Create a session
-    const session = await client.sessions.create({
-      agentId: agent.id,
-    });
-
-    // Send a message
-    await client.messages.create({
-      sessionId: session.id,
-      content: "Hello! What can you help me with?",
-    });
-    ```
-  </TabItem>
-</Tabs>
-
-### Stream Events
-
-<Tabs syncKey="lang">
-  <TabItem label="Rust">
-    ```rust
-    use everruns_sdk::{Client, Event};
-    use futures::StreamExt;
-
-    let client = Client::from_env()?;
-    let mut stream = client.events().stream(&session.id).await?;
-
-    while let Some(event) = stream.next().await {
-        match event? {
-            Event::OutputMessageDelta { delta, .. } => {
-                print!("{}", delta);
-            }
-            Event::TurnCompleted { .. } => {
-                println!("\n--- Turn completed ---");
-                break;
-            }
-            _ => {}
-        }
-    }
-    ```
-  </TabItem>
-  <TabItem label="Python">
-    ```python
-    async for event in client.events.stream(session_id=session.id):
-        if event.type == "output.message.delta":
-            print(event.data.delta, end="", flush=True)
-        elif event.type == "turn.completed":
-            print("\n--- Turn completed ---")
-            break
-    ```
-  </TabItem>
-  <TabItem label="TypeScript">
-    ```typescript
-    const stream = client.events.stream({ sessionId: session.id });
-
-    for await (const event of stream) {
-      if (event.type === "output.message.delta") {
-        process.stdout.write(event.data.delta);
-      } else if (event.type === "turn.completed") {
-        console.log("\n--- Turn completed ---");
-        break;
-      }
-    }
-    ```
-  </TabItem>
-</Tabs>
-
-## API Coverage
-
-All SDKs provide access to the full Everruns API:
+## API coverage
 
 | Resource | Operations |
-|----------|------------|
+|---|---|
 | **Agents** | Create, list, get, update, upsert, archive, import, export, preview |
 | **Sessions** | Create, list, get, update, delete, cancel |
 | **Messages** | Create, list |
@@ -242,12 +94,10 @@ All SDKs provide access to the full Everruns API:
 | **Organizations** | Create, list, get, update |
 | **Scheduled Tasks** | Create, list, get, update, delete, pause, resume, trigger |
 
-## Error Handling
+## Error handling
 
-SDKs provide standardized error types for common API errors:
-
-| Error Type | Description |
-|------------|-------------|
+| Error type | Description |
+|---|---|
 | `AuthenticationError` | Invalid or missing API key |
 | `NotFoundError` | Resource not found |
 | `RateLimitError` | Rate limit exceeded |
@@ -295,31 +145,20 @@ SDKs provide standardized error types for common API errors:
   </TabItem>
 </Tabs>
 
-## Event Types
+## Do something
 
-The SDKs support all event types from the Everruns API:
+- [Build your first agent](/tutorials/building-agents-using-sdk/) — guided tutorial.
+- [Stream events with the SDK](/how-to/stream-events/) — common streaming patterns.
+- [Handle errors and cancel turns](/how-to/handle-errors-and-cancellation/) — graceful failure paths.
+- [Orchestrate multi-agent pipelines](/how-to/orchestrate-multi-agent-pipelines/) — chain agents together.
 
-| Category | Events |
-|----------|--------|
-| **Input** | `input.message` |
-| **Output** | `output.message.started`, `output.message.delta`, `output.message.completed` |
-| **Turn** | `turn.started`, `turn.completed`, `turn.failed`, `turn.cancelled` |
-| **Reasoning** | `reason.started`, `reason.completed` |
-| **Thinking** | `reason.thinking.started`, `reason.thinking.delta`, `reason.thinking.completed` |
-| **Act** | `act.started`, `act.completed` |
-| **Tool** | `tool.started`, `tool.completed`, `tool.call_requested` |
-| **LLM** | `llm.generation` |
-| **Session** | `session.started`, `session.activated`, `session.idled` |
+## See also
 
-See the [Events documentation](/features/events/) for detailed information about event streaming.
+- [API reference](/api/) — every endpoint, generated from OpenAPI.
+- [Event Reference](/event-reference/) — every event type.
+- [GitHub Repository](https://github.com/everruns/sdk) — source code and examples.
 
-## Resources
-
-- [GitHub Repository](https://github.com/everruns/sdk) - Source code and examples
-- [API Reference](/api/) - Full API documentation
-- [Events Documentation](/features/events/) - Event streaming details
-
-## Overview Video
+## Overview video
 
 <iframe
   width="100%"

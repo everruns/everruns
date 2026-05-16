@@ -1,160 +1,26 @@
 ---
 title: Events
-description: Real-time SSE event streaming for full session observability. Monitor agent execution, tool calls, token usage, and all lifecycle events as they happen.
+description: Real-time SSE streaming for full session observability. Event categories, structure, and the wire protocol.
 ---
 
-Events are the core communication protocol in Everruns. They provide real-time visibility into session execution via Server-Sent Events (SSE) streaming.
+Every action during a session — user input, LLM responses, tool calls, lifecycle transitions — emits an **event**. The event log is the source of truth for session state; the SSE stream is a live tail of that log.
 
-## Overview
+For *why* the platform is shaped this way, see [Events as the primary store](/explanation/events/). For the full catalog of event types and payloads, see the [Event Reference](/event-reference/).
 
-Every action during a session - from user messages to LLM responses to tool executions - emits events. This enables:
+## Event categories
 
-- **Real-time UI updates**: Stream agent responses as they're generated
-- **Observability**: Track every step of agent execution
-- **Debugging**: Full visibility into LLM calls, tool execution, and errors
-- **Integration**: Build custom UIs or monitoring tools on the event stream
-
-## Quick Start
-
-### SSE Streaming
-
-Subscribe to real-time events via Server-Sent Events:
-
-```bash
-curl -N "https://api.everruns.com/v1/sessions/{session_id}/sse" \
-  -H "Authorization: Bearer $API_KEY"
-```
-
-### Polling
-
-Alternatively, poll for events with pagination:
-
-```bash
-curl "https://api.everruns.com/v1/sessions/{session_id}/events?since_id={last_event_id}" \
-  -H "Authorization: Bearer $API_KEY"
-```
-
-## SSE Connection Management
-
-### Connection Lifecycle Events
-
-SSE streams include special lifecycle events for connection management:
-
-| Event | Description |
-|-------|-------------|
-| `connected` | Sent immediately when the stream is established |
-| `disconnecting` | Sent before the server gracefully closes the connection |
-
-### Heartbeat Comments
-
-All SSE streams send periodic heartbeat comments every 30 seconds to allow clients to detect stale connections:
-
-```
-: heartbeat
-```
-
-Heartbeat comments are standard SSE comments (lines starting with `:`) — they are **invisible to event parsers** and do not appear as events. They simply reset the TCP read timer so clients can distinguish between "connection alive but idle" and "connection dead."
-
-**For SDK/client developers:** Set a read timeout of 45 seconds (1.5x the 30s heartbeat interval). If no data (events or heartbeats) arrives within 45s, treat the connection as stale and reconnect with `since_id`. The server sends heartbeats during all phases: idle, model thinking, tool execution, and active streaming.
-
-### Connection Cycling
-
-To prevent stale connections through proxies and load balancers, SSE connections are automatically cycled:
-
-| Stream Type | Cycle Interval |
-|-------------|----------------|
-| Session events | 5 minutes |
-| Durable monitoring | 10 minutes |
-
-Before closing, the server sends a `disconnecting` event:
-
-```json
-{
-  "event": "disconnecting",
-  "data": "{\"reason\":\"connection_cycle\",\"retry_ms\":100}"
-}
-```
-
-Clients should reconnect immediately using the `since_id` of the last received event. This ensures no events are missed during the transition.
-
-### Retry Hints
-
-Each SSE event includes a `retry:` field that hints how long clients should wait before reconnecting if the connection is unexpectedly lost:
-
-| Situation | Retry Hint |
-|-----------|------------|
-| Active streaming (new events) | 100ms |
-| Idle (no new events) | Increases with backoff up to 500ms |
-| After `disconnecting` event | 100ms (immediate reconnect) |
-
-The EventSource API automatically uses this hint for reconnection timing.
-
-### Resuming Streams
-
-Use the `since_id` query parameter to resume from the last received event:
-
-```bash
-curl -N "https://api.everruns.com/v1/sessions/{session_id}/sse?since_id={last_event_id}" \
-  -H "Authorization: Bearer $API_KEY"
-```
-
-Event IDs are UUID v7 and serve as unique identifiers. Ordering is based on a dedicated sequence number, ensuring reliable event delivery with no duplicates or gaps on reconnection.
-
-### JavaScript Example
-
-```javascript
-function connectSSE(sessionId, lastEventId) {
-  const url = new URL(`/v1/sessions/${sessionId}/sse`, API_BASE);
-  if (lastEventId) {
-    url.searchParams.set('since_id', lastEventId);
-  }
-
-  const eventSource = new EventSource(url, { withCredentials: true });
-
-  eventSource.addEventListener('connected', () => {
-    console.log('SSE connected');
-  });
-
-  eventSource.addEventListener('disconnecting', (event) => {
-    const data = JSON.parse(event.data);
-    console.log('SSE disconnecting, reconnecting in', data.retry_ms, 'ms');
-    eventSource.close();
-    setTimeout(() => connectSSE(sessionId, lastEventId), data.retry_ms);
-  });
-
-  eventSource.addEventListener('input.message', (event) => {
-    const eventData = JSON.parse(event.data);
-    lastEventId = eventData.id;
-    // Handle event...
-  });
-
-  // Handle other event types...
-
-  eventSource.onerror = () => {
-    eventSource.close();
-    setTimeout(() => connectSSE(sessionId, lastEventId), 2000);
-  };
-}
-```
-
-## Event Categories
-
-Events are organized into categories based on what they represent:
-
-| Category | Events | Description |
-|----------|--------|-------------|
+| Category | Examples | Description |
+|---|---|---|
 | **Input** | `input.message` | User messages submitted to the session |
-| **Output** | `output.message.*` | Agent response lifecycle (started, delta, completed) |
-| **Turn** | `turn.*` | Turn lifecycle (started, completed, failed, cancelled) |
-| **Thinking** | `reason.thinking.*` | Extended thinking content (for Claude models) |
+| **Output** | `output.message.started`, `output.message.delta`, `output.message.completed` | Agent response lifecycle |
+| **Turn** | `turn.started`, `turn.completed`, `turn.failed`, `turn.cancelled` | Turn lifecycle |
+| **Thinking** | `reason.thinking.*` | Extended thinking content (Claude, GPT-5.x, o-series) |
 | **Atom** | `reason.*`, `act.*`, `tool.*` | Internal execution phases |
 | **LLM** | `llm.generation` | Full LLM API call details |
-| **Session** | `session.*` | Session state changes |
-| **Subagent** | `subagent.*` | Subagent lifecycle (spawned, completed, failed, cancelled) |
+| **Session** | `session.started`, `session.activated`, `session.idled` | Session state changes |
+| **Subagent** | `subagent.*` | Subagent lifecycle |
 
-## Event Structure
-
-Every event follows this schema:
+## Event structure
 
 ```json
 {
@@ -164,9 +30,9 @@ Every event follows this schema:
   "session_id": "session_01933b5a00007000800000000000002",
   "sequence": 42,
   "context": {
-    "turn_id": "turn_01933b5a00007000800000000000003",
-    "input_message_id": "message_01933b5a00007000800000000000004",
-    "trace_id": "turn_01933b5a00007000800000000000003",
+    "turn_id": "turn_...",
+    "input_message_id": "message_...",
+    "trace_id": "turn_...",
     "span_id": "abc123",
     "parent_span_id": "def456"
   },
@@ -174,36 +40,23 @@ Every event follows this schema:
 }
 ```
 
-### Core Fields
-
 | Field | Type | Description |
-|-------|------|-------------|
-| `id` | string | Unique event ID (UUIDv7 with `event_` prefix) |
+|---|---|---|
+| `id` | string | Unique event ID (UUIDv7) |
 | `type` | string | Event type in dot notation |
-| `ts` | string | ISO 8601 timestamp with millisecond precision |
+| `ts` | string | ISO 8601 with millisecond precision |
 | `session_id` | string | Session this event belongs to |
-| `sequence` | integer | Monotonic sequence within session (for ordering) |
-| `context` | object | Correlation context for tracing |
+| `sequence` | integer | Monotonic per-session sequence (ordering source of truth) |
+| `context` | object | Correlation IDs for tracing |
 | `data` | object | Event-specific payload |
 
-### Event Context
+Ordering is by `sequence`, not `ts`. Two events with the same wall-clock time still have a strict order.
 
-The context object provides correlation IDs for tracing:
+## Common patterns
 
-| Field | Description |
-|-------|-------------|
-| `turn_id` | Turn this event belongs to |
-| `input_message_id` | User message that triggered the turn |
-| `exec_id` | Atom execution identifier |
-| `trace_id` | OpenTelemetry-style trace ID |
-| `span_id` | This event's span ID |
-| `parent_span_id` | Parent span for hierarchy |
+### Started → completed → failed
 
-## Common Patterns
-
-### Started-Completed-Failed Pattern
-
-Long-running operations follow a lifecycle pattern:
+Long-running operations follow a lifecycle:
 
 ```
 turn.started → turn.completed
@@ -211,9 +64,9 @@ turn.started → turn.completed
             ↘ turn.cancelled
 ```
 
-This provides clear boundaries for UI state management and error handling.
+These boundaries are what your UI uses to manage state and surface errors.
 
-### Delta Pattern for Streaming
+### Delta streaming
 
 Streaming content uses delta events with accumulated state:
 
@@ -222,33 +75,34 @@ Streaming content uses delta events with accumulated state:
   "type": "output.message.delta",
   "data": {
     "turn_id": "turn_...",
-    "delta": "Hello",           // New content since last delta
-    "accumulated": "Hello"       // Total content so far
+    "delta": "Hello",
+    "accumulated": "Hello"
   }
 }
 ```
 
-Delta events are batched (~100ms) to reduce volume while maintaining real-time feel.
+Deltas are batched at ~100ms to reduce volume.
 
-## Forward Compatibility
+## Forward-compatibility
 
-Events follow semantic versioning. The contract is defined in `specs/events.md`.
+Events follow a defined contract. Consumers must tolerate evolution:
 
-### What Won't Break
+| Change | Allowed |
+|---|---|
+| New event types | yes |
+| New optional fields | yes |
+| New enum values | yes |
+| Removing or retyping fields | no |
 
-- Adding new event types
-- Adding optional fields to existing events
-- Adding new enum values
+Your deserializer should ignore unknown fields, ignore unknown event types, and treat optional fields as optional.
 
-### Consumer Guidelines
+## Consume the stream
 
-1. **Ignore unknown fields**: Your deserializer should not fail on unknown fields
-2. **Handle optional fields**: Check for presence before accessing
-3. **Don't rely on field ordering**: JSON field order is not guaranteed
+- [Stream events with the SDK](/how-to/stream-events/) — the convenient path (Python, Rust, TypeScript).
+- [Consume events via raw SSE](/how-to/consume-events-via-sse/) — protocol-level, when the SDK isn't available.
 
-All events in API responses are well-defined types. The server filters out any internal or unsupported events before transmission.
+## See also
 
-## Related Resources
-
-- [Event Reference](/event-reference/) - Complete reference for all event types
-- [specs/events.md](https://github.com/everruns/everruns/blob/main/specs/events.md) - Internal specification (includes contract & compatibility)
+- [Event Reference](/event-reference/) — complete event type catalog with payloads.
+- [Events as the primary store](/explanation/events/) — design rationale.
+- [`specs/events.md`](https://github.com/everruns/everruns/blob/main/specs/events.md) — internal spec with the full compatibility contract.

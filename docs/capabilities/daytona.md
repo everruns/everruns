@@ -99,13 +99,6 @@ Configure git credentials for push/pull/fetch.
 
 Daytona API key is resolved automatically from **Settings > Connections > Daytona**.
 
-## Use Cases
-
-- **Code execution** — run and test code in isolated Linux environments
-- **Multi-language projects** — use custom container images for any stack
-- **Repository analysis** — clone and explore repos in a sandbox
-- **Build and test** — compile, test, and package in clean environments
-
 ## Notes
 
 - Each sandbox is a full isolated Linux environment with network access

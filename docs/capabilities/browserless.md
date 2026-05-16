@@ -101,14 +101,6 @@ Multi-step browser interactions. Navigate to a URL, then perform a sequence of a
 
 Browserless API token is resolved automatically from **Settings > Connections > Browserless**.
 
-## Use Cases
-
-- **Accessibility testing** — read DOM, check ARIA attributes and heading structure
-- **Regression testing** — screenshot pages and compare visual state
-- **Login-protected testing** — use CDP sessions to authenticate and browse
-- **Web scraping** — extract structured data from any website
-- **Visual QA** — screenshot before/after interactions
-
 ## Notes
 
 - Stateless mode: each tool call uses a fresh browser (no cleanup needed)

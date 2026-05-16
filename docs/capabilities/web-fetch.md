@@ -27,25 +27,6 @@ Fetch a URL and return its content.
 
 Returns: content body, status code, metadata (size, content type, filename, last modified).
 
-## Use Cases
-
-- **Research** — fetch documentation, API references, or web articles
-- **Data collection** — retrieve JSON/CSV data from public APIs
-- **Content extraction** — convert web pages to clean markdown for processing
-- **Link verification** — check if URLs are reachable and inspect response metadata
-
-## Example
-
-```
-User: Summarize the Python 3.12 changelog
-
-Agent:
-  → web_fetch({ url: "https://docs.python.org/3/whatsnew/3.12.html", as_markdown: true })
-  ← (markdown content of the changelog page)
-
-  "Python 3.12 introduces several key changes: ..."
-```
-
 ## Notes
 
 - **Timeouts**: 1s for first byte, 30s for body. Partial content returned on body timeout.

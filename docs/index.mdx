@@ -1,36 +1,73 @@
 ---
 title: Everruns Documentation
-description: Everruns is a durable agentic harness engine built on Rust. Explore guides for deploying, configuring, and building AI agent applications with the REST API.
+description: Everruns is a durable agentic harness engine built on Rust. Find tutorials, how-to guides, reference, and conceptual explanation for deploying, configuring, and building AI agent applications.
 template: splash
 ---
 
 import { Card, CardGrid, LinkCard, Steps } from '@astrojs/starlight/components';
 
-Everruns is a **durable agentic harness engine** built on Rust. It provides APIs for managing agents, sessions, and long-running tasks with real-time event streaming via SSE.
+Everruns is a **durable agentic harness engine** built on Rust. It provides APIs for managing agents, sessions, and long-running tasks, with real-time SSE event streaming and PostgreSQL-backed durability.
 
-## Get Started
+## What kind of help do you need?
 
-<Steps>
-1. Read the [Introduction](/getting-started/introduction/) to understand core concepts
-2. Deploy with [Docker Compose](/getting-started/docker-compose/) in minutes
-3. Create your first agent via the [API](/api/) or [Management UI](/features/ui/)
-</Steps>
-
-## Develop
+The documentation is organised by what you're trying to do.
 
 <CardGrid>
   <LinkCard
-    title="Concepts"
-    description="Agents, sessions, turns, capabilities, and how they fit together."
-    href="/getting-started/concepts/"
+    title="Learn — Tutorials"
+    description="Hand-held lessons that take you from zero to a running agent. Start here if you're new."
+    href="/tutorials/run-an-agent/"
   />
   <LinkCard
-    title="Capabilities"
-    description="Modular tools that extend agent behavior — file system, bash, web fetch, and more."
-    href="/features/capabilities/"
+    title="Do — How-to guides"
+    description="Task-oriented recipes for common problems. Use these when you know what you want to build."
+    href="/how-to/"
   />
   <LinkCard
-    title="SDK"
+    title="Understand — Explanation"
+    description="Background and design rationale. Read these when reference docs aren't enough on their own."
+    href="/explanation/"
+  />
+  <LinkCard
+    title="Look up — Reference"
+    description="API endpoints, event types, capability catalog, CLI flags, environment variables. The dry stuff."
+    href="/api/"
+  />
+</CardGrid>
+
+## Getting started fast
+
+<Steps>
+1. [Deploy with Docker Compose](/getting-started/docker-compose/) — full platform in one command.
+2. Follow the [Build your first agent](/tutorials/building-agents-using-sdk/) tutorial.
+3. Browse [How-to guides](/how-to/) to do something specific.
+</Steps>
+
+## Popular destinations
+
+<CardGrid>
+  <LinkCard
+    title="Core concepts"
+    description="Harness, agent, session, capability, event — what they are and how they compose."
+    href="/explanation/concepts/"
+  />
+  <LinkCard
+    title="Capabilities catalog"
+    description="Every built-in capability with tools, parameters, and dependencies."
+    href="/capabilities/"
+  />
+  <LinkCard
+    title="Event reference"
+    description="Every event type in the Everruns event protocol, with payloads."
+    href="/event-reference/"
+  />
+  <LinkCard
+    title="REST API reference"
+    description="OpenAPI-generated reference for every endpoint."
+    href="/api/"
+  />
+  <LinkCard
+    title="SDKs"
     description="Official client libraries for Rust, Python, and TypeScript."
     href="/features/sdk/"
   />
@@ -40,63 +77,13 @@ Everruns is a **durable agentic harness engine** built on Rust. It provides APIs
     href="/features/cli/"
   />
   <LinkCard
-    title="Agent Skills"
-    description="Portable instruction packages that extend agents with specialized knowledge."
-    href="/features/skills/"
-  />
-  <LinkCard
-    title="Events & Streaming"
-    description="Real-time SSE event protocol for session observability."
-    href="/features/events/"
-  />
-  <LinkCard
-    title="API Reference"
-    description="Complete REST API reference generated from OpenAPI spec."
-    href="/api/"
-  />
-  <LinkCard
-    title="Event Reference"
-    description="All event types in the Everruns event protocol."
-    href="/event-reference/"
-  />
-</CardGrid>
-
-## Integrate
-
-<CardGrid>
-  <LinkCard
-    title="Daytona"
-    description="Cloud sandbox environments for secure, isolated code execution."
-    href="/integrations/daytona/"
-  />
-  <LinkCard
-    title="Braintrust"
-    description="LLM observability, evaluation, and trace visualization."
-    href="/observability/braintrust/"
-  />
-</CardGrid>
-
-## Operate
-
-<CardGrid>
-  <LinkCard
-    title="Docker Compose"
-    description="Deploy the full platform — control plane, workers, UI, and database."
-    href="/getting-started/docker-compose/"
-  />
-  <LinkCard
-    title="Environment Variables"
-    description="All configuration knobs for the control plane and workers."
-    href="/sre/environment-variables/"
-  />
-  <LinkCard
-    title="Admin Container"
-    description="Database migrations, key rotation, and other admin tasks."
-    href="/sre/admin-container/"
-  />
-  <LinkCard
     title="Architecture"
-    description="System components, data flow, and scaling model."
-    href="/getting-started/architecture/"
+    description="Control plane, workers, durable execution — and why."
+    href="/explanation/architecture/"
+  />
+  <LinkCard
+    title="Environment variables"
+    description="Every configuration knob for the control plane and workers."
+    href="/sre/environment-variables/"
   />
 </CardGrid>

@@ -36,36 +36,16 @@ Skills use progressive disclosure to keep context efficient:
 2. **Activation** (<5000 tokens) — `activate_skill` loads the full SKILL.md instructions
 3. **Resources** (on-demand) — bundled files accessible via [File System](/capabilities/file-system/) tools
 
-## Use Cases
-
-- **Project-specific workflows** — upload skills for your project's deployment, testing, or review processes
-- **Specialized knowledge** — domain-specific instructions (e.g., security review checklists)
-- **Reusable templates** — code generation patterns, documentation templates
-
-## Example
-
-Skills are uploaded to the session workspace:
+## Workspace layout
 
 ```
 /.agents/skills/
   deploy/
-    SKILL.md          # Deployment instructions
+    SKILL.md
     templates/
-      k8s-deploy.yaml # Kubernetes template
+      k8s-deploy.yaml
   code-review/
-    SKILL.md          # Review checklist and process
-```
-
-Agent discovers and uses them:
-
-```
-Agent:
-  → list_skills()
-  ← [{ name: "deploy", description: "Production deployment workflow" },
-     { name: "code-review", description: "Code review checklist" }]
-
-  → activate_skill({ name: "deploy" })
-  ← { instructions: "## Deployment Process\n1. Run tests...", files: ["templates/k8s-deploy.yaml"] }
+    SKILL.md
 ```
 
 ## Notes

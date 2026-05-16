@@ -169,15 +169,30 @@ export default defineConfig({
             },
             {
               label: "Tutorials",
-              link: "/tutorials/building-agents-using-sdk/",
+              link: "/tutorials/run-an-agent/",
               icon: "rocket",
               items: [
                 {
                   label: "Tutorials",
                   items: [
-                    { label: "Build an Agent Guide", slug: "tutorials/building-agents-using-sdk" },
                     { label: "Run an Agent", slug: "tutorials/run-an-agent" },
+                    { label: "Build your first agent", slug: "tutorials/building-agents-using-sdk" },
                   ],
+                },
+                {
+                  label: "How-to guides",
+                  autogenerate: { directory: "how-to" },
+                },
+              ],
+            },
+            {
+              label: "Explanation",
+              link: "/explanation/",
+              icon: "information",
+              items: [
+                {
+                  label: "Explanation",
+                  autogenerate: { directory: "explanation" },
                 },
               ],
             },
@@ -197,7 +212,7 @@ export default defineConfig({
               icon: "setting",
               items: [
                 {
-                  label: "SRE Guide",
+                  label: "How-to: Operate Everruns",
                   items: [
                     { label: "Environment Variables", slug: "sre/environment-variables" },
                     { label: "Admin Container", slug: "sre/admin-container" },

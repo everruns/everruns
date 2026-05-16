@@ -38,26 +38,6 @@ Cancel an active schedule.
 
 List all schedules for the current session.
 
-## Use Cases
-
-- **Periodic monitoring** — check system status every hour
-- **Reminders** — schedule a follow-up at a specific time
-- **Recurring reports** — generate daily summaries
-- **Delayed actions** — schedule a task for later execution
-
-## Example
-
-```
-User: Check the deployment status every 30 minutes
-
-Agent:
-  → create_schedule({
-      message: "Check deployment status and report any issues",
-      cron_expression: "*/30 * * * *"
-    })
-  ← { "schedule_id": "sch_01abc...", "cron_expression": "*/30 * * * *", "status": "active" }
-```
-
 ## Notes
 
 - Maximum 5 active schedules per session

@@ -42,39 +42,6 @@ Send a follow-up message to an existing subagent. Use this to steer a running su
 | `message` | string | yes | Message to send to the subagent. |
 | `cancel` | boolean | no | Gracefully stop the subagent after delivering the message. |
 
-## Use Cases
-
-- **Delegate verbose tasks** (test runs, large searches) to keep the main conversation clean and focused.
-- **Run independent tasks in parallel** — e.g., run tests and review code at the same time.
-- **Steer or redirect a running subagent** with new instructions via `message_subagent`.
-- **Resume a completed subagent** with follow-up questions to drill deeper into results.
-
-## Example
-
-A user asks the agent to analyze a codebase for quality issues:
-
-```
-User: Review the codebase — run the test suite and check for code style issues.
-
-Agent: I'll delegate these to two subagents running in parallel.
-
-→ spawn_subagent(name: "Test Runner", task: "Run the full test suite with `cargo test --all-features`. Report any failures with file paths and error messages.")
-
-→ spawn_subagent(name: "Code Reviewer", task: "Check all Rust source files for clippy warnings, formatting issues, and common anti-patterns. Summarize findings by crate.")
-
-Agent: Both subagents are running. Let me check on their progress.
-
-→ get_subagents(status_filter: "running")
-
-[After some time...]
-
-→ get_subagents(name_or_id: "Test Runner")
-
-Agent: Tests finished with 2 failures. Let me get more detail on the code review.
-
-→ message_subagent(name_or_id: "Code Reviewer", message: "Focus on the crates/core and crates/api crates specifically. Any unsafe code or missing error handling?")
-```
-
 ## Notes
 
 - **No nesting** — subagents cannot spawn other subagents.

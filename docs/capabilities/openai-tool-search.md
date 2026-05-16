@@ -75,20 +75,6 @@ When the capability is enabled but the model doesn't support tool_search, the fe
 
 Lower thresholds activate tool_search with fewer tools. Set to `1` to always activate when the capability is present.
 
-## Use Cases
-
-- **Many-tool agents** — agents with 15+ tools (e.g., file system + bash + database + web fetch + skills) benefit from reduced prompt tokens
-- **Cost optimization** — fewer input tokens per request when most tools aren't needed for a given turn
-- **Latency reduction** — smaller request payloads can reduce time-to-first-token
-
-## Example
-
-An agent with 20 tools and `openai_tool_search` enabled:
-
-**Without tool_search:** all 20 tool schemas sent in every request (~4,000 tokens)
-
-**With tool_search:** 20 tool names + descriptions sent (~800 tokens), full schemas loaded on-demand only for tools the model decides to call
-
 ## Limitations
 
 - **OpenAI-only** — tool_search is an OpenAI Responses API feature; other providers (Anthropic, Gemini) ignore this capability

@@ -59,12 +59,6 @@ Custom budget:
 | `context_budget_tokens` | integer | `100000` | Approximate token budget reserved for message history |
 | `min_recent_messages` | integer | `10` | Minimum recent messages to keep even when the budget is tight |
 
-## Use Cases
-
-- Long debugging or implementation sessions
-- Agents that need to preserve early requirements or credentials mentioned far back in the thread
-- Platform chat sessions that accumulate substantial history over time
-
 ## Limitations
 
 - Search is keyword-based, not semantic
