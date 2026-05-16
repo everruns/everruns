@@ -100,9 +100,9 @@ fn require_user_id(org: &ResolvedOrg) -> Result<uuid::Uuid, (StatusCode, Json<Er
     org.user_id.ok_or_else(|| {
         (
             StatusCode::UNAUTHORIZED,
-            Json(ErrorResponse {
-                error: "Notifications require an authenticated user".to_string(),
-            }),
+            Json(ErrorResponse::new(
+                "Notifications require an authenticated user".to_string(),
+            )),
         )
     })
 }
@@ -165,9 +165,7 @@ pub async fn stream_notifications_sse(
             tracing::warn!(org_id = org.org_id, user_id = %user_id, reason = %rejection, "Notification SSE rejected");
             (
                 StatusCode::TOO_MANY_REQUESTS,
-                Json(ErrorResponse {
-                    error: rejection.to_string(),
-                }),
+                Json(ErrorResponse::new(rejection.to_string())),
             )
         })?;
 

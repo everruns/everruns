@@ -9917,6 +9917,40 @@
           }
         }
       },
+      "AllowedAction": {
+        "type": "object",
+        "description": "Agent-actionable recovery hint attached to an error response.",
+        "required": [
+          "rel"
+        ],
+        "properties": {
+          "hint": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Short, agent-readable hint (e.g. \"Shorten 'name' to <= 200 chars.\")."
+          },
+          "href": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional absolute or relative URL the caller may invoke directly."
+          },
+          "operation_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "OpenAPI `operationId` the caller should invoke to recover."
+          },
+          "rel": {
+            "type": "string",
+            "description": "Link relation describing the action (e.g. `retry`, `get-existing`,\n`unarchive`, `retry-later`)."
+          }
+        }
+      },
       "AppChannel": {
         "type": "object",
         "description": "A single distribution channel attached to an App.\nEach channel has its own type, config, and lifecycle status.",
@@ -12345,14 +12379,65 @@
       },
       "ErrorResponse": {
         "type": "object",
-        "description": "Standard error response for API endpoints.",
+        "description": "Standard error response.\n\nWire shape is [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457):\nevery error response includes `title` and `status`, and may include\n`detail`, `code`, `allowed_actions`, `retry_after_seconds`, `instance`,\nand `type`. The content type is rewritten to `application/problem+json`\nby [`problem_json_content_type`].",
         "required": [
-          "error"
+          "title",
+          "status"
         ],
         "properties": {
-          "error": {
+          "allowed_actions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AllowedAction"
+            },
+            "description": "Recovery actions the caller can take next."
+          },
+          "code": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Stable, machine-readable error code (snake_case)."
+          },
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable explanation specific to this occurrence."
+          },
+          "instance": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Request URI for this occurrence."
+          },
+          "retry_after_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Seconds the caller should wait before retrying (429 / transient 503).",
+            "minimum": 0
+          },
+          "status": {
+            "type": "integer",
+            "format": "int32",
+            "description": "HTTP status code; mirrors the response status line.",
+            "minimum": 0
+          },
+          "title": {
             "type": "string",
-            "description": "Error message describing what went wrong."
+            "description": "Short, human-readable summary of the problem (e.g. \"Not Found\")."
+          },
+          "type": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "RFC 9457 problem type URI. Optional; identifies the problem class."
           }
         }
       },

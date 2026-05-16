@@ -127,18 +127,16 @@ pub async fn submit_tool_results(
     let session_id: SessionId = session_id.parse().map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("Invalid session ID: {}", e),
-            }),
+            Json(ErrorResponse::new(format!("Invalid session ID: {}", e))),
         )
     })?;
 
     if req.tool_results.is_empty() {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: "tool_results must not be empty".to_string(),
-            }),
+            Json(ErrorResponse::new(
+                "tool_results must not be empty".to_string(),
+            )),
         ));
     }
 
@@ -154,12 +152,10 @@ pub async fn submit_tool_results(
     if session.status != SessionStatus::WaitingForToolResults {
         return Err((
             StatusCode::CONFLICT,
-            Json(ErrorResponse {
-                error: format!(
-                    "Session is not waiting for tool results (current status: {})",
-                    session.status
-                ),
-            }),
+            Json(ErrorResponse::new(format!(
+                "Session is not waiting for tool results (current status: {})",
+                session.status
+            ))),
         ));
     }
 

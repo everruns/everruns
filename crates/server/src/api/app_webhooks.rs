@@ -121,9 +121,7 @@ pub async fn invoke_webhook(
         .map_err(|e| {
             (
                 StatusCode::BAD_REQUEST,
-                Json(ErrorResponse {
-                    error: format!("Invalid channel ID: {e}"),
-                }),
+                Json(ErrorResponse::new(format!("Invalid channel ID: {e}"))),
             )
         })?;
     let channel = app.channel_by_id(&channel_id_typed).ok_or_else(not_found)?;
@@ -207,36 +205,30 @@ fn flatten_headers(headers: &HeaderMap) -> HashMap<String, String> {
 fn bad_request(message: impl Into<String>) -> (StatusCode, Json<ErrorResponse>) {
     (
         StatusCode::BAD_REQUEST,
-        Json(ErrorResponse {
-            error: message.into(),
-        }),
+        Json(ErrorResponse::new(message.into())),
     )
 }
 
 fn forbidden(message: impl Into<String>) -> (StatusCode, Json<ErrorResponse>) {
     (
         StatusCode::FORBIDDEN,
-        Json(ErrorResponse {
-            error: message.into(),
-        }),
+        Json(ErrorResponse::new(message.into())),
     )
 }
 
 fn unauthorized() -> (StatusCode, Json<ErrorResponse>) {
     (
         StatusCode::UNAUTHORIZED,
-        Json(ErrorResponse {
-            error: "Invalid or missing webhook token".to_string(),
-        }),
+        Json(ErrorResponse::new(
+            "Invalid or missing webhook token".to_string(),
+        )),
     )
 }
 
 fn not_found() -> (StatusCode, Json<ErrorResponse>) {
     (
         StatusCode::NOT_FOUND,
-        Json(ErrorResponse {
-            error: "App channel not found".to_string(),
-        }),
+        Json(ErrorResponse::new("App channel not found".to_string())),
     )
 }
 
@@ -244,9 +236,7 @@ fn internal_error(error: anyhow::Error) -> (StatusCode, Json<ErrorResponse>) {
     tracing::error!(error = %error, "Failed to invoke app webhook");
     (
         StatusCode::INTERNAL_SERVER_ERROR,
-        Json(ErrorResponse {
-            error: "Internal server error".to_string(),
-        }),
+        Json(ErrorResponse::new("Internal server error".to_string())),
     )
 }
 
@@ -255,12 +245,12 @@ fn command_error_response(error: CommandError) -> (StatusCode, Json<ErrorRespons
         CommandError::BadRequest(message) => bad_request(message),
         CommandError::Unprocessable(message) => (
             StatusCode::UNPROCESSABLE_ENTITY,
-            Json(ErrorResponse { error: message }),
+            Json(ErrorResponse::new(message)),
         ),
         CommandError::Forbidden(message) => forbidden(message),
         CommandError::NotFound(_) => not_found(),
         CommandError::Conflict(message) => {
-            (StatusCode::CONFLICT, Json(ErrorResponse { error: message }))
+            (StatusCode::CONFLICT, Json(ErrorResponse::new(message)))
         }
         CommandError::Internal(error) => internal_error(error),
     }

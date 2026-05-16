@@ -683,11 +683,9 @@ impl SessionError {
                 max_seconds,
             } => (
                 StatusCode::GONE,
-                Json(ErrorResponse {
-                    error: format!(
+                Json(ErrorResponse::new(format!(
                         "AG-UI thread expired after {age_seconds}s (limit {max_seconds}s); start a new thread"
-                    ),
-                }),
+                    ))),
             )
                 .into_response(),
             SessionError::Internal(err) => internal_error(err),
@@ -1310,9 +1308,7 @@ fn internal_error(err: anyhow::Error) -> Response {
     tracing::error!(error = %err, "AG-UI route failed");
     (
         StatusCode::INTERNAL_SERVER_ERROR,
-        Json(ErrorResponse {
-            error: "Internal server error".to_string(),
-        }),
+        Json(ErrorResponse::new("Internal server error".to_string())),
     )
         .into_response()
 }
@@ -1368,9 +1364,7 @@ fn validate_input_messages(messages: &[AgUiMessage]) -> Result<(), Box<Response>
 fn bad_request(message: &str) -> Response {
     (
         StatusCode::BAD_REQUEST,
-        Json(ErrorResponse {
-            error: message.to_string(),
-        }),
+        Json(ErrorResponse::new(message.to_string())),
     )
         .into_response()
 }
@@ -1378,9 +1372,7 @@ fn bad_request(message: &str) -> Response {
 fn forbidden(message: &str) -> Response {
     (
         StatusCode::FORBIDDEN,
-        Json(ErrorResponse {
-            error: message.to_string(),
-        }),
+        Json(ErrorResponse::new(message.to_string())),
     )
         .into_response()
 }
@@ -1388,9 +1380,9 @@ fn forbidden(message: &str) -> Response {
 fn unauthorized() -> Response {
     (
         StatusCode::UNAUTHORIZED,
-        Json(ErrorResponse {
-            error: "Invalid or missing AG-UI token".to_string(),
-        }),
+        Json(ErrorResponse::new(
+            "Invalid or missing AG-UI token".to_string(),
+        )),
     )
         .into_response()
 }
@@ -1398,9 +1390,7 @@ fn unauthorized() -> Response {
 fn service_unavailable(message: &str) -> Response {
     (
         StatusCode::SERVICE_UNAVAILABLE,
-        Json(ErrorResponse {
-            error: message.to_string(),
-        }),
+        Json(ErrorResponse::new(message.to_string())),
     )
         .into_response()
 }
@@ -1418,9 +1408,7 @@ fn ag_ui_auth_error_response(error: AppEndpointAuthError) -> Response {
 fn not_found() -> Response {
     (
         StatusCode::NOT_FOUND,
-        Json(ErrorResponse {
-            error: "App not found".to_string(),
-        }),
+        Json(ErrorResponse::new("App not found".to_string())),
     )
         .into_response()
 }
@@ -1429,9 +1417,7 @@ fn too_many_requests(message: &str) -> Response {
     (
         StatusCode::TOO_MANY_REQUESTS,
         [("retry-after", "60")],
-        Json(ErrorResponse {
-            error: message.to_string(),
-        }),
+        Json(ErrorResponse::new(message.to_string())),
     )
         .into_response()
 }

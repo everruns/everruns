@@ -74,7 +74,6 @@ Always make sure you are working on top of latest main from remote.
 - `specs/migrations.md` - Database migration naming, squashing, ordering, and conflict resolution
 - `specs/models.md` - Data models (Agent, Session, Message, etc.)
 - `specs/apis.md` - HTTP API endpoints, error handling
-- `specs/ai-friendly-api.md` - AI-friendly API conventions (semantic operations, RFC 9457 errors, hypermedia, OpenAPI quality)
 - `specs/public-endpoints.md` - Public (unauthenticated) endpoints: error sanitization contract and stable public code set
 - `specs/events.md` - Event types, SSE streaming, contract and compatibility guarantees
 - `specs/execution-phases.md` - Execution phases (Commentary/FinalAnswer) for multi-step tool flows

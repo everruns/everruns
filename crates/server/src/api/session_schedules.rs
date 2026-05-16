@@ -194,9 +194,7 @@ pub async fn delete_schedule(
     } else {
         Err((
             StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: "Schedule not found".to_string(),
-            }),
+            Json(ErrorResponse::new("Schedule not found".to_string())),
         ))
     }
 }

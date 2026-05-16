@@ -896,9 +896,7 @@ async fn handle_message_stream(
         Err(rejection) => {
             return (
                 StatusCode::TOO_MANY_REQUESTS,
-                Json(ErrorResponse {
-                    error: rejection.to_string(),
-                }),
+                Json(ErrorResponse::new(rejection.to_string())),
             )
                 .into_response();
         }
@@ -1072,11 +1070,11 @@ fn command_error_response(
         crate::domains::common::CommandError::Forbidden(msg) => forbidden(msg),
         crate::domains::common::CommandError::NotFound(_) => not_found(),
         crate::domains::common::CommandError::Conflict(msg) => {
-            (StatusCode::CONFLICT, Json(ErrorResponse { error: msg }))
+            (StatusCode::CONFLICT, Json(ErrorResponse::new(msg)))
         }
         crate::domains::common::CommandError::Unprocessable(msg) => (
             StatusCode::UNPROCESSABLE_ENTITY,
-            Json(ErrorResponse { error: msg }),
+            Json(ErrorResponse::new(msg)),
         ),
         crate::domains::common::CommandError::Internal(error) => internal_error(error),
     }
@@ -1298,36 +1296,30 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 fn bad_request(message: impl Into<String>) -> (StatusCode, Json<ErrorResponse>) {
     (
         StatusCode::BAD_REQUEST,
-        Json(ErrorResponse {
-            error: message.into(),
-        }),
+        Json(ErrorResponse::new(message.into())),
     )
 }
 
 fn forbidden(message: impl Into<String>) -> (StatusCode, Json<ErrorResponse>) {
     (
         StatusCode::FORBIDDEN,
-        Json(ErrorResponse {
-            error: message.into(),
-        }),
+        Json(ErrorResponse::new(message.into())),
     )
 }
 
 fn unauthorized() -> (StatusCode, Json<ErrorResponse>) {
     (
         StatusCode::UNAUTHORIZED,
-        Json(ErrorResponse {
-            error: "Invalid or missing A2A API key".to_string(),
-        }),
+        Json(ErrorResponse::new(
+            "Invalid or missing A2A API key".to_string(),
+        )),
     )
 }
 
 fn service_unavailable(message: impl Into<String>) -> (StatusCode, Json<ErrorResponse>) {
     (
         StatusCode::SERVICE_UNAVAILABLE,
-        Json(ErrorResponse {
-            error: message.into(),
-        }),
+        Json(ErrorResponse::new(message.into())),
     )
 }
 
@@ -1344,18 +1336,14 @@ fn a2a_auth_error_response(error: AppEndpointAuthError) -> (StatusCode, Json<Err
 fn not_found() -> (StatusCode, Json<ErrorResponse>) {
     (
         StatusCode::NOT_FOUND,
-        Json(ErrorResponse {
-            error: "App channel not found".to_string(),
-        }),
+        Json(ErrorResponse::new("App channel not found".to_string())),
     )
 }
 
 fn too_many_requests(message: &str) -> (StatusCode, Json<ErrorResponse>) {
     (
         StatusCode::TOO_MANY_REQUESTS,
-        Json(ErrorResponse {
-            error: message.to_string(),
-        }),
+        Json(ErrorResponse::new(message.to_string())),
     )
 }
 
@@ -1363,9 +1351,7 @@ fn internal_error(error: anyhow::Error) -> (StatusCode, Json<ErrorResponse>) {
     tracing::error!(error = %error, "Failed to invoke app A2A");
     (
         StatusCode::INTERNAL_SERVER_ERROR,
-        Json(ErrorResponse {
-            error: "Internal server error".to_string(),
-        }),
+        Json(ErrorResponse::new("Internal server error".to_string())),
     )
 }
 

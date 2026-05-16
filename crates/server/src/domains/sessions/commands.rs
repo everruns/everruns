@@ -22,9 +22,17 @@ fn validation_error(
         axum::Json<crate::api::common::ErrorResponse>,
     ),
 ) -> CommandError {
+    let body = error.1.0;
+    let message = body.detail.unwrap_or_else(|| {
+        if body.title.is_empty() {
+            "Request failed".to_string()
+        } else {
+            body.title
+        }
+    });
     match error.0 {
-        axum::http::StatusCode::NOT_FOUND => CommandError::NotFound(error.1.0.error),
-        _ => CommandError::bad_request(error.1.0.error),
+        axum::http::StatusCode::NOT_FOUND => CommandError::NotFound(message),
+        _ => CommandError::bad_request(message),
     }
 }
 

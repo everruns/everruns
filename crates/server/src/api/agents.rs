@@ -319,12 +319,10 @@ pub(crate) fn require_admin_for_high_risk(
     if !high.is_empty() {
         return Err((
             StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                error: format!(
-                    "Admin role required to assign high-risk capabilities: {}",
-                    high.join(", ")
-                ),
-            }),
+            Json(ErrorResponse::new(format!(
+                "Admin role required to assign high-risk capabilities: {}",
+                high.join(", ")
+            ))),
         ));
     }
     Ok(())
@@ -854,9 +852,7 @@ pub async fn export_agent(
     let agent_id: AgentId = agent_id.parse().map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("Invalid agent ID: {}", e),
-            }),
+            Json(ErrorResponse::new(format!("Invalid agent ID: {}", e))),
         )
     })?;
 
@@ -952,9 +948,9 @@ async fn import_from_example(
     if !missing.is_empty() {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("Example requires unregistered capabilities: {missing:?}"),
-            }),
+            Json(ErrorResponse::new(format!(
+                "Example requires unregistered capabilities: {missing:?}"
+            ))),
         ));
     }
 
@@ -1363,7 +1359,13 @@ mod high_risk_admin_gate_tests {
         );
         let (status, body) = result.expect_err("member must not assign virtual_bash");
         assert_eq!(status, StatusCode::FORBIDDEN);
-        assert!(body.0.error.contains("virtual_bash"));
+        assert!(
+            body.0
+                .detail
+                .as_deref()
+                .unwrap_or("")
+                .contains("virtual_bash")
+        );
     }
 
     #[test]
@@ -1376,7 +1378,7 @@ mod high_risk_admin_gate_tests {
         );
         let (status, body) = result.expect_err("member must not assign web_fetch");
         assert_eq!(status, StatusCode::FORBIDDEN);
-        assert!(body.0.error.contains("web_fetch"));
+        assert!(body.0.detail.as_deref().unwrap_or("").contains("web_fetch"));
     }
 
     #[test]

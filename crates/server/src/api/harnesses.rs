@@ -208,9 +208,9 @@ pub async fn import_harness(
     if !missing.is_empty() {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("Example requires unregistered capabilities: {missing:?}"),
-            }),
+            Json(ErrorResponse::new(format!(
+                "Example requires unregistered capabilities: {missing:?}"
+            ))),
         ));
     }
 

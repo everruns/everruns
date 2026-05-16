@@ -64,9 +64,9 @@ impl ScheduleAppState {
         self.store.as_ref().ok_or_else(|| {
             (
                 StatusCode::SERVICE_UNAVAILABLE,
-                Json(ErrorResponse {
-                    error: "Durable execution store not available".to_string(),
-                }),
+                Json(ErrorResponse::new(
+                    "Durable execution store not available".to_string(),
+                )),
             )
         })
     }

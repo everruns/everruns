@@ -1194,6 +1194,13 @@ impl ServerAppBuilder {
             api::common::decorate_json_response_links(link_builder, req, next)
         }));
 
+        // RFC 9457: rewrite Content-Type on JSON error responses (4xx/5xx) to
+        // `application/problem+json`. Runs after link decoration, which only
+        // touches success responses.
+        let api_routes = api_routes.layer(axum::middleware::from_fn(
+            api::common::problem_json_content_type,
+        ));
+
         let api_routes = if crate::auth::rate_limit::ApiRateLimiter::is_disabled() {
             tracing::info!("API rate limiting disabled via RATE_LIMIT_API_REQUESTS_PER_MINUTE=0");
             api_routes

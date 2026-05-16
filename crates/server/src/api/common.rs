@@ -99,43 +99,178 @@ macro_rules! impl_auth_state {
 }
 pub(crate) use impl_auth_state;
 
-/// Standard error response for API endpoints.
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+/// Standard error response.
+///
+/// Wire shape is [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457):
+/// every error response includes `title` and `status`, and may include
+/// `detail`, `code`, `allowed_actions`, `retry_after_seconds`, `instance`,
+/// and `type`. The content type is rewritten to `application/problem+json`
+/// by [`problem_json_content_type`].
+#[derive(Debug, Clone, Default, Serialize, Deserialize, ToSchema)]
 pub struct ErrorResponse {
-    /// Error message describing what went wrong.
-    pub error: String,
+    /// RFC 9457 problem type URI. Optional; identifies the problem class.
+    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    pub type_uri: Option<String>,
+    /// Short, human-readable summary of the problem (e.g. "Not Found").
+    pub title: String,
+    /// HTTP status code; mirrors the response status line.
+    pub status: u16,
+    /// Human-readable explanation specific to this occurrence.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+    /// Request URI for this occurrence.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub instance: Option<String>,
+    /// Stable, machine-readable error code (snake_case).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
+    /// Recovery actions the caller can take next.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub allowed_actions: Vec<AllowedAction>,
+    /// Seconds the caller should wait before retrying (429 / transient 503).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retry_after_seconds: Option<u32>,
 }
 
-impl ErrorResponse {
-    pub fn new(error: impl Into<String>) -> Self {
+/// Agent-actionable recovery hint attached to an error response.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema, Default)]
+pub struct AllowedAction {
+    /// Link relation describing the action (e.g. `retry`, `get-existing`,
+    /// `unarchive`, `retry-later`).
+    pub rel: String,
+    /// OpenAPI `operationId` the caller should invoke to recover.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub operation_id: Option<String>,
+    /// Short, agent-readable hint (e.g. "Shorten 'name' to <= 200 chars.").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hint: Option<String>,
+    /// Optional absolute or relative URL the caller may invoke directly.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub href: Option<String>,
+}
+
+impl AllowedAction {
+    pub fn new(rel: impl Into<String>) -> Self {
         Self {
-            error: error.into(),
+            rel: rel.into(),
+            ..Self::default()
         }
     }
 
-    /// Convert to axum response tuple
-    pub fn into_response(self, status: StatusCode) -> (StatusCode, Json<Self>) {
+    pub fn with_operation_id(mut self, operation_id: impl Into<String>) -> Self {
+        self.operation_id = Some(operation_id.into());
+        self
+    }
+
+    pub fn with_hint(mut self, hint: impl Into<String>) -> Self {
+        self.hint = Some(hint.into());
+        self
+    }
+
+    pub fn with_href(mut self, href: impl Into<String>) -> Self {
+        self.href = Some(href.into());
+        self
+    }
+}
+
+impl ErrorResponse {
+    /// Construct an error whose `detail` is the supplied message.
+    ///
+    /// `title` is filled in from the HTTP reason phrase when this is later
+    /// passed through [`into_response`](Self::into_response). For full control,
+    /// build the struct directly or chain `.with_title(...)`.
+    pub fn new(detail: impl Into<String>) -> Self {
+        Self {
+            detail: Some(detail.into()),
+            ..Self::default()
+        }
+    }
+
+    /// Convert to axum response tuple, filling in `status` and (if missing)
+    /// `title` from the HTTP reason phrase.
+    pub fn into_response(mut self, status: StatusCode) -> (StatusCode, Json<Self>) {
+        self.status = status.as_u16();
+        if self.title.is_empty() {
+            self.title = status.canonical_reason().unwrap_or("Error").to_string();
+        }
         (status, Json(self))
     }
 
-    /// Create an internal server error response
+    /// Create an internal server error response.
     pub fn internal_error() -> (StatusCode, Json<Self>) {
-        Self::new("Internal server error").into_response(StatusCode::INTERNAL_SERVER_ERROR)
+        Self {
+            detail: Some("Internal server error".to_string()),
+            code: Some("internal_error".to_string()),
+            ..Self::default()
+        }
+        .into_response(StatusCode::INTERNAL_SERVER_ERROR)
     }
 
-    /// Create a not found error response
+    /// Create a not found error response.
     pub fn not_found(resource: &str) -> (StatusCode, Json<Self>) {
-        Self::new(format!("{} not found", resource)).into_response(StatusCode::NOT_FOUND)
+        Self {
+            detail: Some(format!("{} not found", resource)),
+            code: Some("not_found".to_string()),
+            ..Self::default()
+        }
+        .into_response(StatusCode::NOT_FOUND)
     }
 
-    /// Create a conflict error response (409)
+    /// Create a conflict error response (409).
     pub fn conflict(message: &str) -> (StatusCode, Json<Self>) {
-        Self::new(message).into_response(StatusCode::CONFLICT)
+        Self {
+            detail: Some(message.to_string()),
+            code: Some("conflict".to_string()),
+            ..Self::default()
+        }
+        .into_response(StatusCode::CONFLICT)
     }
 
-    /// Create a bad gateway error response (502)
+    /// Create a bad gateway error response (502).
     pub fn bad_gateway() -> (StatusCode, Json<Self>) {
-        Self::new("Bad gateway").into_response(StatusCode::BAD_GATEWAY)
+        Self {
+            detail: Some("Bad gateway".to_string()),
+            code: Some("bad_gateway".to_string()),
+            ..Self::default()
+        }
+        .into_response(StatusCode::BAD_GATEWAY)
+    }
+
+    // ---- Builders ---------------------------------------------------------
+
+    pub fn with_title(mut self, title: impl Into<String>) -> Self {
+        self.title = title.into();
+        self
+    }
+
+    pub fn with_detail(mut self, detail: impl Into<String>) -> Self {
+        self.detail = Some(detail.into());
+        self
+    }
+
+    pub fn with_code(mut self, code: impl Into<String>) -> Self {
+        self.code = Some(code.into());
+        self
+    }
+
+    pub fn with_type(mut self, type_uri: impl Into<String>) -> Self {
+        self.type_uri = Some(type_uri.into());
+        self
+    }
+
+    pub fn with_instance(mut self, instance: impl Into<String>) -> Self {
+        self.instance = Some(instance.into());
+        self
+    }
+
+    pub fn with_retry_after(mut self, seconds: u32) -> Self {
+        self.retry_after_seconds = Some(seconds);
+        self
+    }
+
+    pub fn with_action(mut self, action: AllowedAction) -> Self {
+        self.allowed_actions.push(action);
+        self
     }
 }
 
@@ -490,6 +625,38 @@ pub async fn decorate_json_response_links(
             Response::from_parts(parts, Body::from(bytes))
         }
     }
+}
+
+/// Rewrite the `Content-Type` of error responses (4xx / 5xx) carrying a
+/// `application/json` body to `application/problem+json`, per RFC 9457.
+///
+/// Bodies are not touched; only the header is updated. Non-JSON error bodies
+/// (HTML, plain text, SSE) pass through unchanged.
+pub async fn problem_json_content_type(req: Request, next: Next) -> Response {
+    let response = next.run(req).await;
+    let status = response.status();
+    if !status.is_client_error() && !status.is_server_error() {
+        return response;
+    }
+    let is_json = response
+        .headers()
+        .get(header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| {
+            value
+                .split(';')
+                .next()
+                .is_some_and(|mime| mime.trim().eq_ignore_ascii_case("application/json"))
+        });
+    if !is_json {
+        return response;
+    }
+    let (mut parts, body) = response.into_parts();
+    parts.headers.insert(
+        header::CONTENT_TYPE,
+        axum::http::HeaderValue::from_static("application/problem+json"),
+    );
+    Response::from_parts(parts, body)
 }
 
 fn response_within_link_decoration_limit(response: &Response) -> bool {
@@ -991,28 +1158,32 @@ mod tests {
     #[test]
     fn test_error_response_new() {
         let error = ErrorResponse::new("Test error");
-        assert_eq!(error.error, "Test error");
+        assert_eq!(error.detail.as_deref(), Some("Test error"));
     }
 
     #[test]
     fn test_error_response_into_response() {
         let (status, json) = ErrorResponse::new("Test").into_response(StatusCode::BAD_REQUEST);
         assert_eq!(status, StatusCode::BAD_REQUEST);
-        assert_eq!(json.0.error, "Test");
+        assert_eq!(json.0.detail.as_deref(), Some("Test"));
+        assert_eq!(json.0.title, "Bad Request");
+        assert_eq!(json.0.status, 400);
     }
 
     #[test]
     fn test_error_response_internal_error() {
         let (status, json) = ErrorResponse::internal_error();
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
-        assert_eq!(json.0.error, "Internal server error");
+        assert_eq!(json.0.detail.as_deref(), Some("Internal server error"));
+        assert_eq!(json.0.code.as_deref(), Some("internal_error"));
     }
 
     #[test]
     fn test_error_response_not_found() {
         let (status, json) = ErrorResponse::not_found("Agent");
         assert_eq!(status, StatusCode::NOT_FOUND);
-        assert_eq!(json.0.error, "Agent not found");
+        assert_eq!(json.0.detail.as_deref(), Some("Agent not found"));
+        assert_eq!(json.0.code.as_deref(), Some("not_found"));
     }
 
     #[test]
@@ -1027,7 +1198,7 @@ mod tests {
         let result: Result<i32, &str> = Err("db connection failed");
         let (status, json) = result.log_internal_error_json("get agent").unwrap_err();
         assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
-        assert_eq!(json.0.error, "Internal server error");
+        assert_eq!(json.0.detail.as_deref(), Some("Internal server error"));
     }
 
     #[test]
@@ -1047,7 +1218,7 @@ mod tests {
         let none: Option<i32> = None;
         let (status, json) = none.ok_or_not_found_json("Agent").unwrap_err();
         assert_eq!(status, StatusCode::NOT_FOUND);
-        assert_eq!(json.0.error, "Agent not found");
+        assert_eq!(json.0.detail.as_deref(), Some("Agent not found"));
     }
 
     #[test]
@@ -1218,5 +1389,110 @@ mod tests {
         let pagination = Pagination::default();
         assert_eq!(pagination.offset, 0);
         assert_eq!(pagination.limit, 0);
+    }
+
+    #[test]
+    fn problem_details_constructors_set_status_title_code() {
+        let cases = [
+            (
+                ErrorResponse::not_found("Agent"),
+                StatusCode::NOT_FOUND,
+                "Not Found",
+                "not_found",
+                "Agent not found",
+            ),
+            (
+                ErrorResponse::conflict("agent already exists"),
+                StatusCode::CONFLICT,
+                "Conflict",
+                "conflict",
+                "agent already exists",
+            ),
+            (
+                ErrorResponse::internal_error(),
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Internal Server Error",
+                "internal_error",
+                "Internal server error",
+            ),
+            (
+                ErrorResponse::bad_gateway(),
+                StatusCode::BAD_GATEWAY,
+                "Bad Gateway",
+                "bad_gateway",
+                "Bad gateway",
+            ),
+        ];
+        for (i, (response, expected_status, title, code, detail)) in cases.iter().enumerate() {
+            let (status, Json(body)) = response;
+            assert_eq!(status, expected_status, "case {i} status");
+            assert_eq!(body.title, *title, "case {i} title");
+            assert_eq!(
+                body.status,
+                expected_status.as_u16(),
+                "case {i} status code"
+            );
+            assert_eq!(body.code.as_deref(), Some(*code), "case {i} code");
+            assert_eq!(body.detail.as_deref(), Some(*detail), "case {i} detail");
+            assert!(body.allowed_actions.is_empty(), "case {i} actions");
+            assert!(body.retry_after_seconds.is_none(), "case {i} retry");
+        }
+    }
+
+    #[test]
+    fn problem_details_builders_add_extensions() {
+        let response = ErrorResponse::new("Shorten 'name'")
+            .with_title("Validation failed")
+            .with_code("agent_name_too_long")
+            .with_type("https://errors.everruns.com/validation/agent-name-too-long")
+            .with_instance("/v1/agents")
+            .with_action(
+                AllowedAction::new("retry")
+                    .with_operation_id("create_agent")
+                    .with_hint("Shorten 'name' to <= 200 chars."),
+            )
+            .into_response(StatusCode::UNPROCESSABLE_ENTITY);
+
+        let value = serde_json::to_value(&response.1.0).unwrap();
+        assert_eq!(value["title"], "Validation failed");
+        assert_eq!(value["status"], 422);
+        assert_eq!(value["detail"], "Shorten 'name'");
+        assert_eq!(value["code"], "agent_name_too_long");
+        assert_eq!(value["instance"], "/v1/agents");
+        assert_eq!(
+            value["type"],
+            "https://errors.everruns.com/validation/agent-name-too-long"
+        );
+        let actions = value["allowed_actions"].as_array().unwrap();
+        assert_eq!(actions.len(), 1);
+        assert_eq!(actions[0]["rel"], "retry");
+        assert_eq!(actions[0]["operation_id"], "create_agent");
+    }
+
+    #[test]
+    fn problem_details_omits_unset_optional_fields() {
+        let (_, body) = ErrorResponse::not_found("Agent");
+        let value = serde_json::to_value(&body.0).unwrap();
+        assert!(value.get("type").is_none());
+        assert!(value.get("instance").is_none());
+        assert!(value.get("retry_after_seconds").is_none());
+        assert!(value.get("allowed_actions").is_none());
+    }
+
+    #[test]
+    fn problem_details_rate_limit_carries_retry_after() {
+        let body = ErrorResponse::new("Too many requests.")
+            .with_code("rate_limited")
+            .with_retry_after(60)
+            .with_action(
+                AllowedAction::new("retry-later")
+                    .with_hint("Wait retry_after_seconds before retrying."),
+            )
+            .into_response(StatusCode::TOO_MANY_REQUESTS);
+        let value = serde_json::to_value(&body.1.0).unwrap();
+        assert_eq!(value["status"], 429);
+        assert_eq!(value["code"], "rate_limited");
+        assert_eq!(value["retry_after_seconds"], 60);
+        assert_eq!(value["allowed_actions"][0]["rel"], "retry-later");
     }
 }

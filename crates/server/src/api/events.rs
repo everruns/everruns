@@ -147,21 +147,19 @@ fn validate_event_type_list(
     if types.len() > MAX_EVENT_TYPE_FILTER_SIZE {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!(
-                    "{param_name}: too many values ({}, max {MAX_EVENT_TYPE_FILTER_SIZE})",
-                    types.len()
-                ),
-            }),
+            Json(ErrorResponse::new(format!(
+                "{param_name}: too many values ({}, max {MAX_EVENT_TYPE_FILTER_SIZE})",
+                types.len()
+            ))),
         ));
     }
     for t in types {
         if !VALID_EVENT_TYPES.contains(&t.as_str()) {
             return Err((
                 StatusCode::BAD_REQUEST,
-                Json(ErrorResponse {
-                    error: format!("{param_name}: unknown event type '{t}'"),
-                }),
+                Json(ErrorResponse::new(format!(
+                    "{param_name}: unknown event type '{t}'"
+                ))),
             ));
         }
     }
@@ -299,9 +297,7 @@ pub async fn stream_sse(
     let session_id: SessionId = session_id.parse().map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("Invalid session ID: {}", e),
-            }),
+            Json(ErrorResponse::new(format!("Invalid session ID: {}", e))),
         )
     })?;
 
@@ -314,17 +310,13 @@ pub async fn stream_sse(
             tracing::error!("Failed to get session: {}", e);
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Internal server error".to_string(),
-                }),
+                Json(ErrorResponse::new("Internal server error".to_string())),
             )
         })?
         .ok_or_else(|| {
             (
                 StatusCode::NOT_FOUND,
-                Json(ErrorResponse {
-                    error: "Session not found".to_string(),
-                }),
+                Json(ErrorResponse::new("Session not found".to_string())),
             )
         })?;
 
@@ -343,9 +335,7 @@ pub async fn stream_sse(
             );
             (
                 StatusCode::TOO_MANY_REQUESTS,
-                Json(ErrorResponse {
-                    error: rejection.to_string(),
-                }),
+                Json(ErrorResponse::new(rejection.to_string())),
             )
         })?;
 
@@ -1096,8 +1086,10 @@ mod tests {
         };
         let err = query.validate().unwrap_err();
         assert_eq!(err.0, StatusCode::BAD_REQUEST);
-        assert!(err.1.error.contains("bogus.type"));
-        assert!(err.1.error.contains("types"));
+        let body = err.1.0;
+        let detail = body.detail.as_deref().unwrap_or("");
+        assert!(detail.contains("bogus.type"));
+        assert!(detail.contains("types"));
     }
 
     #[test]
@@ -1112,8 +1104,10 @@ mod tests {
         };
         let err = query.validate().unwrap_err();
         assert_eq!(err.0, StatusCode::BAD_REQUEST);
-        assert!(err.1.error.contains("not.a.real.type"));
-        assert!(err.1.error.contains("exclude"));
+        let body = err.1.0;
+        let detail = body.detail.as_deref().unwrap_or("");
+        assert!(detail.contains("not.a.real.type"));
+        assert!(detail.contains("exclude"));
     }
 
     #[test]
@@ -1131,7 +1125,7 @@ mod tests {
         };
         let err = query.validate().unwrap_err();
         assert_eq!(err.0, StatusCode::BAD_REQUEST);
-        assert!(err.1.error.contains("too many"));
+        assert!(err.1.0.detail.as_deref().unwrap_or("").contains("too many"));
     }
 
     #[test]
@@ -1149,7 +1143,7 @@ mod tests {
         };
         let err = query.validate().unwrap_err();
         assert_eq!(err.0, StatusCode::BAD_REQUEST);
-        assert!(err.1.error.contains("too many"));
+        assert!(err.1.0.detail.as_deref().unwrap_or("").contains("too many"));
     }
 
     #[test]

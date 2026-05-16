@@ -4,6 +4,28 @@
 
 This document defines the HTTP API endpoints for Everruns v0.2.0 (M2).
 
+## AI-Friendly API
+
+The API is designed for both humans and LLM agents (hosted, OpenAPI tool
+callers, MCP, A2A). Six guidelines guide every endpoint:
+
+1. **Semantic operations** — business-intent endpoints with a stable
+   `operationId` on every `#[utoipa::path]`.
+2. **Self-sufficient OpenAPI** — every field carries `description` and
+   `example`; agents do "preflight thinking" from the spec.
+3. **Domain language** — concepts from [`concepts.md`](concepts.md) used
+   consistently in field names and descriptions.
+4. **Actionable errors** — [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457)
+   *Problem Details* with stable `code`, `allowed_actions`, and
+   `retry_after_seconds`.
+5. **Hypermedia** — `self_url` / `view_url` on every entity; `config`
+   endpoints advertise allowed actions; enums backed by list endpoints.
+6. **Human representations** — system IDs (`agent_…`, `sess_…`, see
+   [`id-schema.md`](id-schema.md)) kept distinct from display fields
+   (`name`, `title`, `display_name`).
+
+Background and rationale: ["Towards AI-Friendly Web APIs"](https://chaliy.name/blog/towards-ai-friendly-web-apis/).
+
 ## Requirements
 
 ### Routing Layout
@@ -568,20 +590,28 @@ Returns `409 Conflict` when a limit is exceeded.
 
 ### Error Responses
 
-Legacy shape (still emitted by existing endpoints):
+Errors follow [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457)
+served as `application/problem+json`:
 
 ```json
 {
-  "error": "Error message",
-  "status": 400
+  "type": "https://errors.everruns.com/validation/agent-name-too-long",
+  "title": "Validation failed",
+  "status": 422,
+  "detail": "Agent name exceeds the 200-character limit.",
+  "instance": "/v1/agents",
+  "code": "agent_name_too_long",
+  "allowed_actions": [
+    { "rel": "retry", "operation_id": "create_agent", "hint": "Shorten 'name' to <= 200 chars." }
+  ],
+  "retry_after_seconds": null
 }
 ```
 
-New endpoints emit [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457)
-served as `application/problem+json`, with a stable `code`, optional
-`allowed_actions`, and `retry_after_seconds` where applicable. See
-[`specs/ai-friendly-api.md`](ai-friendly-api.md) for the full contract,
-including the rules for agent-driven recovery and the migration plan.
+Required: `type`, `title`, `status`. Extensions: `code` (stable snake_case),
+`detail` (sanitized per [`public-endpoints.md`](public-endpoints.md)),
+`allowed_actions[]` (`{rel, operation_id, hint, href?}`),
+`retry_after_seconds` (on `429` / transient `503`), `instance` (request path).
 
 Standard HTTP status codes:
 - `400` - Bad Request (invalid input)
