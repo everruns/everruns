@@ -1619,21 +1619,29 @@ impl ServerAppBuilder {
                 .with_storage_store(session_storage_store)
                 .with_runner(runner.clone());
 
-                // Wire lazy connection resolver (requires encryption for token decryption)
-                if let Some(ref enc) = encryption {
-                    let github_app_minter = auth_config.github_connection.as_ref().map(|config| {
-                        crate::storage::GitHubAppTokenMinter::new(
-                            config.app_id.clone(),
-                            config.private_key.clone(),
-                        )
-                    });
-                    let resolver = Arc::new(crate::storage::DbConnectionResolver::new(
-                        db.as_ref().clone(),
-                        enc.as_ref().clone(),
-                        github_app_minter,
-                    ));
-                    adapters = adapters.with_connection_resolver(resolver);
-                }
+                // Wire lazy connection resolver (requires encryption for token decryption).
+                // Without encryption (e.g. DEV_MODE without SECRETS_ENCRYPTION_KEY) we cannot
+                // decrypt stored tokens, so install a no-op resolver instead of leaving the
+                // slot empty — `runtime_host::connection_resolver()` always calls into the
+                // adapter at runtime and would otherwise panic.
+                let connection_resolver: Arc<dyn everruns_core::traits::UserConnectionResolver> =
+                    if let Some(ref enc) = encryption {
+                        let github_app_minter =
+                            auth_config.github_connection.as_ref().map(|config| {
+                                crate::storage::GitHubAppTokenMinter::new(
+                                    config.app_id.clone(),
+                                    config.private_key.clone(),
+                                )
+                            });
+                        Arc::new(crate::storage::DbConnectionResolver::new(
+                            db.as_ref().clone(),
+                            enc.as_ref().clone(),
+                            github_app_minter,
+                        ))
+                    } else {
+                        Arc::new(crate::storage::NoopConnectionResolver)
+                    };
+                adapters = adapters.with_connection_resolver(connection_resolver);
 
                 let worker_config = TaskWorkerConfig::dev_mode();
                 tokio::spawn(async move {

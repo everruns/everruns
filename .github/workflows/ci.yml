@@ -81,7 +81,7 @@ jobs:
             docs_notebooks:
               - 'apps/docs/scripts/execute-notebooks.py'
               - 'apps/docs/scripts/render-notebooks.mjs'
-              - 'docs/tutorials/**/*.ipynb'
+              - 'docs/tutorials/**'
             docker:
               - 'docker/**'
               - 'crates/**'
