@@ -42,6 +42,14 @@ const scheduleChannel: AppChannel = {
 };
 
 describe("app channel redesign", () => {
+  it("generates a token by default for new AG-UI channels", () => {
+    const state = getDefaultChannelFormState("ag_ui");
+    const config = buildChannelConfig(state);
+
+    expect(state.agUiToken).toMatch(/^[A-Za-z0-9\-_]{16,}$/);
+    expect(config).toEqual(expect.objectContaining({ anonymous: true, token: state.agUiToken }));
+  });
+
   it("renders cron labels as human-readable text with timezone", () => {
     render(<CronLabel expr="0 30 * * * * *" tz="America/Chicago" />);
 
