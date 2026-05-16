@@ -568,12 +568,20 @@ Returns `409 Conflict` when a limit is exceeded.
 
 ### Error Responses
 
+Legacy shape (still emitted by existing endpoints):
+
 ```json
 {
   "error": "Error message",
   "status": 400
 }
 ```
+
+New endpoints emit [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457)
+served as `application/problem+json`, with a stable `code`, optional
+`allowed_actions`, and `retry_after_seconds` where applicable. See
+[`specs/ai-friendly-api.md`](ai-friendly-api.md) for the full contract,
+including the rules for agent-driven recovery and the migration plan.
 
 Standard HTTP status codes:
 - `400` - Bad Request (invalid input)
