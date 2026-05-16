@@ -40,7 +40,7 @@ Use for production deployments:
 
 ```bash
 export AUTH_MODE=full
-export AUTH_BASE_URL=https://your-domain.com
+export PUBLIC_APP_URL=https://your-domain.com
 export AUTH_JWT_SECRET=$(openssl rand -hex 32)
 
 # Optional: Configure OAuth
@@ -57,7 +57,8 @@ export AUTH_GITHUB_CLIENT_SECRET=your-github-client-secret
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `AUTH_MODE` | No | `none`, `admin`, or `full` (default: `none`) |
-| `AUTH_BASE_URL` | For OAuth | Base URL for callbacks (default: `http://localhost:9300/api`) |
+| `PUBLIC_APP_URL` | For OAuth | Public app origin used to derive auth callback URLs |
+| `AUTH_BASE_URL` | No | Override callback base URL when it differs from `PUBLIC_APP_URL` + `API_PREFIX` |
 | `AUTH_JWT_SECRET` | For admin/full | JWT signing secret (min 32 chars recommended) |
 
 ### Admin Mode Settings
@@ -172,9 +173,9 @@ DELETE FROM refresh_tokens WHERE user_id = 'user-uuid-here';
 
 ### OAuth Redirect Fails
 
-- Verify `AUTH_BASE_URL` matches the OAuth app configuration
-- Check that redirect URI in provider matches `{AUTH_BASE_URL}/v1/auth/callback/{provider}`
-- Ensure `AUTH_BASE_URL` already includes your REST API prefix (default: `/api`)
+- Verify `AUTH_BASE_URL` matches the OAuth app configuration, or that `PUBLIC_APP_URL` derives the expected `{PUBLIC_APP_URL}/api` base
+- Check that redirect URI in provider matches `{AUTH_BASE_URL}/v1/auth/callback/{provider}` or `{PUBLIC_APP_URL}/api/v1/auth/callback/{provider}`
+- If you set `AUTH_BASE_URL`, ensure it already includes your REST API prefix (default: `/api`)
 - Ensure client ID and secret are correct
 
 ### Password Login Returns Unauthorized

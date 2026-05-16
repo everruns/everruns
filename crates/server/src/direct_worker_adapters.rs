@@ -1918,9 +1918,10 @@ impl DirectPlatformStore {
     }
 
     fn base_url_from_env() -> String {
-        std::env::var("PUBLIC_APP_URL")
-            .or_else(|_| std::env::var("APP_URL"))
-            .unwrap_or_else(|_| "http://localhost:9300".to_string())
+        everruns_config::env_string_any(
+            &["PUBLIC_APP_URL", "FRONTEND_URL", "APP_URL"],
+            "http://localhost:9300",
+        )
     }
 
     fn capability_refs_to_configs(capabilities: &[String]) -> Vec<serde_json::Value> {

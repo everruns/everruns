@@ -62,9 +62,13 @@ check_example_ports() {
     echo "FAIL: example compose should not hardcode container_name" >&2
     exit 1
   fi
-  rg -q 'ADDR: "0.0.0.0:9301"' "$compose_file"
+  if rg -q 'ADDR: "0.0.0.0:9301"' "$compose_file"; then
+    echo "FAIL: example compose should use the server image HTTP_ADDR default" >&2
+    exit 1
+  fi
+  rg -q 'SERVER_GRPC_ADDRESS: server:9001' "$compose_file"
   rg -q 'PORT: "9305"' "$compose_file"
-  rg -q 'reverse_proxy server:9301' "$compose_file"
+  rg -q 'reverse_proxy server:9000' "$compose_file"
   rg -q 'reverse_proxy ui:9305' "$compose_file"
   rg -q '\$\{EXAMPLE_PROXY_PORT:-9300\}:9300' "$compose_file"
 }

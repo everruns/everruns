@@ -3833,9 +3833,10 @@ impl WorkerService for WorkerServiceImpl {
         &self,
         _request: Request<PlatformGetBaseUrlRequest>,
     ) -> Result<Response<PlatformGetBaseUrlResponse>, Status> {
-        let base_url = std::env::var("PUBLIC_APP_URL")
-            .or_else(|_| std::env::var("APP_URL"))
-            .unwrap_or_else(|_| "http://localhost:9300".to_string());
+        let base_url = everruns_config::env_string_any(
+            &["PUBLIC_APP_URL", "FRONTEND_URL", "APP_URL"],
+            "http://localhost:9300",
+        );
 
         Ok(Response::new(PlatformGetBaseUrlResponse { base_url }))
     }

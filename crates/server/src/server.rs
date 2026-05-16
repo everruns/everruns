@@ -4,9 +4,11 @@
 
 use axum::Router;
 use axum::http::HeaderValue;
-use everruns_config::{env_bool, env_list, env_or, env_string};
+use everruns_config::{env_bool, env_list, env_or, env_string_any};
 
 pub const DEFAULT_API_PREFIX: &str = "/api";
+pub const DEFAULT_HTTP_ADDR: &str = "0.0.0.0:9000";
+pub const DEFAULT_SERVER_GRPC_BIND_ADDR: &str = "0.0.0.0:9001";
 
 /// Configurable resource limits for orgs and members.
 ///
@@ -60,8 +62,11 @@ impl ServerConfig {
                 .into_iter()
                 .filter_map(|s| s.parse::<HeaderValue>().ok())
                 .collect(),
-            addr: env_string("ADDR", "0.0.0.0:9000"),
-            grpc_addr: env_string("WORKER_GRPC_ADDR", "0.0.0.0:9001"),
+            addr: env_string_any(&["HTTP_ADDR", "ADDR"], DEFAULT_HTTP_ADDR),
+            grpc_addr: env_string_any(
+                &["SERVER_GRPC_BIND_ADDR", "WORKER_GRPC_ADDR"],
+                DEFAULT_SERVER_GRPC_BIND_ADDR,
+            ),
         }
     }
 }

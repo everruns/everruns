@@ -4,6 +4,7 @@
 
 use anyhow::Result;
 use async_trait::async_trait;
+use everruns_config::env_string_any;
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use everruns_durable::{
     InMemoryWorkflowEventStore, PostgresWorkflowEventStore, WorkflowEvent, WorkflowEventStore,
@@ -616,8 +617,10 @@ impl DurableRunner {
     }
 
     pub async fn from_env() -> Result<Self> {
-        let grpc_address =
-            std::env::var("WORKER_GRPC_ADDRESS").unwrap_or_else(|_| "127.0.0.1:9001".to_string());
+        let grpc_address = env_string_any(
+            &["SERVER_GRPC_ADDRESS", "WORKER_GRPC_ADDRESS"],
+            "127.0.0.1:9001",
+        );
         Self::new(&grpc_address).await
     }
 

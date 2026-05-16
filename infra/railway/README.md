@@ -64,11 +64,7 @@ DATABASE_UNPOOLED_URL=${{ postgres.DATABASE_URL }}
 VALKEY_URL=${{ redis.REDIS_URL }}
 NATS_URL=nats://${{ nats.RAILWAY_PRIVATE_DOMAIN }}:4222
 
-ADDR=0.0.0.0:9000
-WORKER_GRPC_ADDR=0.0.0.0:9001
-API_PREFIX=/api
 DEPLOYMENT_GRADE=dev
-RUST_LOG=info
 
 AUTH_MODE=admin
 AUTH_ADMIN_EMAIL=<template input>
@@ -79,8 +75,6 @@ WORKER_GRPC_AUTH_TOKEN=${{ secret(32) }}
 SECRETS_ENCRYPTION_KEY=kek-v1:${{ secret(43, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+/") }}=
 
 PUBLIC_APP_URL=https://${{ caddy.RAILWAY_PUBLIC_DOMAIN }}
-FRONTEND_URL=https://${{ caddy.RAILWAY_PUBLIC_DOMAIN }}
-AUTH_BASE_URL=https://${{ caddy.RAILWAY_PUBLIC_DOMAIN }}/api
 ```
 
 Optional LLM defaults:
@@ -94,9 +88,8 @@ DEFAULT_GEMINI_API_KEY=<template input>
 ## Worker Variables
 
 ```env
-WORKER_GRPC_ADDRESS=${{ server.RAILWAY_PRIVATE_DOMAIN }}:9001
+SERVER_GRPC_ADDRESS=${{ server.RAILWAY_PRIVATE_DOMAIN }}:9001
 WORKER_GRPC_AUTH_TOKEN=${{ server.WORKER_GRPC_AUTH_TOKEN }}
-RUST_LOG=info
 ```
 
 ## UI Variables
