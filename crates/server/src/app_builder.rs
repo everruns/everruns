@@ -894,6 +894,12 @@ impl ServerAppBuilder {
             Some(client) => api::a2a_signing::A2aReplayStore::with_valkey(client),
             None => api::a2a_signing::A2aReplayStore::in_memory(),
         };
+        // FCP gets its own rate limiter namespace so the per-channel cap can
+        // never be shared with — or exhausted by — AG-UI/A2A traffic.
+        let fcp_rate_limiter = match valkey_for_channel_rate_limits.clone() {
+            Some(client) => api::channel_rate_limit::ChannelRateLimiter::with_valkey("fcp", client),
+            None => api::channel_rate_limit::ChannelRateLimiter::in_memory("fcp"),
+        };
         let app_a2a_state = api::app_a2a::AppA2aState::new(
             db.clone(),
             encryption.clone(),
@@ -912,6 +918,14 @@ impl ServerAppBuilder {
             event_delivery.clone(),
             sse_tracker.clone(),
             ag_ui_rate_limiter,
+        );
+        let fcp_state = api::fcp::FcpState::new(
+            db.clone(),
+            encryption.clone(),
+            runner.clone(),
+            notifications_enabled,
+            event_delivery.clone(),
+            fcp_rate_limiter,
         );
         let session_files_state = api::session_files::AppState::new(
             db.clone(),
@@ -1128,6 +1142,7 @@ impl ServerAppBuilder {
             .merge(api::app_webhooks::routes(app_webhooks_state))
             .merge(api::app_a2a::routes(app_a2a_state))
             .merge(api::ag_ui::routes(ag_ui_state))
+            .merge(api::fcp::routes(fcp_state))
             .merge(api::feature_flags::routes(feature_flags_state))
             .merge(api::budgets::routes(api::budgets::AppState::new(
                 db.clone(),

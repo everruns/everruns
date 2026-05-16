@@ -105,6 +105,10 @@ pub enum ChannelType {
     Webhook,
     /// Agent2Agent (A2A) protocol channel — JSON-RPC + API key.
     A2a,
+    /// Free Communication Protocol channel — text-first HTTP ingress with an
+    /// optional handshake. See `specs/fcp-channel.md` and the upstream FCP
+    /// specification.
+    Fcp,
 }
 
 impl std::fmt::Display for ChannelType {
@@ -115,6 +119,7 @@ impl std::fmt::Display for ChannelType {
             ChannelType::Schedule => write!(f, "schedule"),
             ChannelType::Webhook => write!(f, "webhook"),
             ChannelType::A2a => write!(f, "a2a"),
+            ChannelType::Fcp => write!(f, "fcp"),
         }
     }
 }
@@ -127,6 +132,7 @@ impl ChannelType {
             "schedule" => Some(ChannelType::Schedule),
             "webhook" => Some(ChannelType::Webhook),
             "a2a" => Some(ChannelType::A2a),
+            "fcp" => Some(ChannelType::Fcp),
             _ => None,
         }
     }
@@ -269,6 +275,15 @@ impl AppChannel {
         serde_json::from_value(self.channel_config.clone()).ok()
     }
 
+    /// Parse channel_config as FcpChannelConfig. Returns None if not an FCP
+    /// channel or if the config is invalid.
+    pub fn fcp_config(&self) -> Option<FcpChannelConfig> {
+        if self.channel_type != ChannelType::Fcp {
+            return None;
+        }
+        serde_json::from_value(self.channel_config.clone()).ok()
+    }
+
     /// Parse channel_config as A2aChannelConfig. Returns None if not an A2A
     /// channel or if the config is invalid.
     pub fn a2a_config(&self) -> Option<A2aChannelConfig> {
@@ -306,6 +321,13 @@ impl App {
         self.channels
             .iter()
             .find(|ch| ch.channel_type == ChannelType::Webhook && ch.enabled)
+    }
+
+    /// Find the first enabled FCP channel on this app.
+    pub fn fcp_channel(&self) -> Option<&AppChannel> {
+        self.channels
+            .iter()
+            .find(|ch| ch.channel_type == ChannelType::Fcp && ch.enabled)
     }
 
     /// Find the first enabled A2A channel on this app.
@@ -576,6 +598,68 @@ fn is_default_ag_ui_generic_tool_text(value: &str) -> bool {
     value == DEFAULT_AG_UI_GENERIC_TOOL_TEXT
 }
 
+/// Default FCP handshake body. Returned by `GET` when the channel config does
+/// not override `handshake`. Kept generic so an unconfigured FCP endpoint
+/// still satisfies the FCP `SHOULD` for handshake responses.
+pub const DEFAULT_FCP_HANDSHAKE: &str = "FCP endpoint.\n\nPOST plain text or `application/json` (`{\"message\": \"...\"}`) to\nthis URL to talk to the agent. Replies are returned as `text/markdown`.\n\nSession state, when supported, is carried by the `fcp_session` cookie.";
+
+/// Default response timeout for a blocking FCP POST, in seconds.
+pub const DEFAULT_FCP_RESPONSE_TIMEOUT_SECONDS: u32 = 120;
+
+/// Typed FCP channel configuration.
+///
+/// FCP is intentionally schema-free at the wire layer (see
+/// `specs/fcp-channel.md`). The fields here only control server-side
+/// behavior — handshake content, a single shared bearer token, session
+/// reuse, rate limiting — and never constrain the body the actor sends in.
+///
+/// FCP deliberately exposes a **smaller** auth surface than AG-UI/A2A: it
+/// supports anonymous access and a single shared bearer token, and nothing
+/// else. Inline OIDC/HTTP-Basic/mTLS verifier modes are intentionally
+/// **not** wired here so the FCP ingress path does not share authentication
+/// machinery with other channels or with the main API's user auth stack.
+/// Operators that need IdP-backed auth in front of an FCP endpoint should
+/// terminate that at the edge (reverse proxy, IAP, mTLS) rather than asking
+/// the FCP handler to grow another auth mode.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct FcpChannelConfig {
+    /// Whether anonymous access is allowed for this endpoint. When `false`
+    /// a non-empty `token` must authenticate every `POST`.
+    #[serde(default = "default_true")]
+    pub anonymous: bool,
+    /// Optional shared bearer token. When set, callers must send
+    /// `Authorization: Bearer <token>` (or the `X-Everruns-FCP-Token`
+    /// header). Validated by constant-time comparison inside the FCP
+    /// handler — never via the shared App endpoint auth verifier.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub token: Option<String>,
+    /// Markdown body returned for `GET` requests (the FCP handshake). When
+    /// omitted, a generic handshake derived from the app's name and
+    /// description is used.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub handshake: Option<String>,
+    /// How long (in seconds) the FCP session cookie keeps a session
+    /// resumable. `0` disables expiration. Defaults to 6 hours so a
+    /// long-running conversation expires on a sensible cadence.
+    #[serde(default = "default_session_expiration_seconds")]
+    pub session_expiration_seconds: u32,
+    /// Optional per-IP rate limit (requests per minute) for the FCP endpoint.
+    /// `None` or `Some(0)` disables the per-app limit; the global API limit
+    /// still applies. Counted in an FCP-specific limiter namespace so it
+    /// cannot be shared or exhausted by other channels.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rate_limit_per_minute: Option<u32>,
+    /// Maximum number of seconds the FCP endpoint waits for the agent to
+    /// produce a reply before returning a `504`. Defaults to 120 s.
+    #[serde(default = "default_fcp_response_timeout_seconds")]
+    pub response_timeout_seconds: u32,
+}
+
+fn default_fcp_response_timeout_seconds() -> u32 {
+    DEFAULT_FCP_RESPONSE_TIMEOUT_SECONDS
+}
+
 /// How app-triggered invocations route into sessions.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
@@ -716,6 +800,7 @@ mod tests {
         assert_eq!(ChannelType::Schedule.to_string(), "schedule");
         assert_eq!(ChannelType::Webhook.to_string(), "webhook");
         assert_eq!(ChannelType::A2a.to_string(), "a2a");
+        assert_eq!(ChannelType::Fcp.to_string(), "fcp");
     }
 
     #[test]
@@ -731,6 +816,7 @@ mod tests {
             Some(ChannelType::Webhook)
         );
         assert_eq!(ChannelType::from_str_opt("a2a"), Some(ChannelType::A2a));
+        assert_eq!(ChannelType::from_str_opt("fcp"), Some(ChannelType::Fcp));
         assert_eq!(ChannelType::from_str_opt("unknown"), None);
         assert_eq!(ChannelType::from_str_opt(""), None);
     }
@@ -1020,6 +1106,30 @@ mod tests {
         let ch = test_channel(ChannelType::AgUi, serde_json::json!({"anonymous": true}));
         let app = test_app(vec![ch]);
         assert!(app.ag_ui_channel().is_some());
+    }
+
+    #[test]
+    fn test_app_channel_fcp_config_defaults() {
+        let ch = test_channel(ChannelType::Fcp, serde_json::json!({}));
+        let config = ch.fcp_config().unwrap();
+        assert!(config.anonymous);
+        assert!(config.token.is_none());
+        assert!(config.handshake.is_none());
+        assert_eq!(
+            config.session_expiration_seconds,
+            DEFAULT_SESSION_EXPIRATION_SECONDS
+        );
+        assert_eq!(
+            config.response_timeout_seconds,
+            DEFAULT_FCP_RESPONSE_TIMEOUT_SECONDS
+        );
+    }
+
+    #[test]
+    fn test_app_fcp_channel_lookup() {
+        let ch = test_channel(ChannelType::Fcp, serde_json::json!({}));
+        let app = test_app(vec![ch]);
+        assert!(app.fcp_channel().is_some());
     }
 
     #[test]

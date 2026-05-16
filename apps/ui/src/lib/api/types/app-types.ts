@@ -3,7 +3,7 @@
 import type { PrincipalSummary } from "./common-types";
 
 export type AppStatus = "draft" | "published" | "archived" | "deleted";
-export type ChannelType = "slack" | "ag_ui" | "schedule" | "webhook" | "a2a";
+export type ChannelType = "slack" | "ag_ui" | "schedule" | "webhook" | "a2a" | "fcp";
 export type SessionStrategy = "per_thread" | "per_channel" | "per_user";
 export type SlackReplyMode = "all_messages" | "report_progress_only";
 export type InvocationSessionMode = "shared_session" | "session_per_invocation";
@@ -116,6 +116,31 @@ export interface WebhookChannelConfig {
 }
 
 /**
+ * FCP (Free Communication Protocol) channel configuration.
+ *
+ * Minimal text-first ingress. FCP intentionally runs its own auth stack —
+ * anonymous + an optional shared bearer token — and does not accept the
+ * inline `AppEndpointAuthConfig` modes used by AG-UI and A2A.
+ */
+export interface FcpChannelConfig {
+  anonymous?: boolean;
+  /**
+   * Optional shared bearer token. When set, clients must send
+   * `Authorization: Bearer <token>` or `X-Everruns-FCP-Token: <token>`.
+   */
+  token?: string;
+  token_configured?: boolean;
+  /** Markdown body returned on `GET` (the FCP handshake). */
+  handshake?: string;
+  /** Seconds the `fcp_session` cookie keeps a session resumable. 0 disables. */
+  session_expiration_seconds?: number;
+  /** Per-IP requests-per-minute cap. `0` or absent disables the per-app cap. */
+  rate_limit_per_minute?: number;
+  /** Max seconds to wait for the agent's reply before returning 504. */
+  response_timeout_seconds?: number;
+}
+
+/**
  * A2A (Agent2Agent) channel configuration.
  *
  * The plaintext API key is **never** returned by the API after creation /
@@ -158,6 +183,7 @@ export interface AppChannel {
     | ScheduleChannelConfig
     | WebhookChannelConfig
     | A2aChannelConfig
+    | FcpChannelConfig
     | Record<string, unknown>;
   enabled: boolean;
   next_run_at?: string | null;
@@ -221,6 +247,7 @@ export interface CreateAppRequest {
     | ScheduleChannelConfig
     | WebhookChannelConfig
     | A2aChannelConfig
+    | FcpChannelConfig
     | Record<string, unknown>;
 }
 
@@ -243,6 +270,7 @@ export interface AddChannelRequest {
     | ScheduleChannelConfig
     | WebhookChannelConfig
     | A2aChannelConfig
+    | FcpChannelConfig
     | Record<string, unknown>;
   enabled?: boolean;
 }
@@ -255,6 +283,7 @@ export interface UpdateChannelRequest {
     | ScheduleChannelConfig
     | WebhookChannelConfig
     | A2aChannelConfig
+    | FcpChannelConfig
     | Record<string, unknown>;
   enabled?: boolean;
 }

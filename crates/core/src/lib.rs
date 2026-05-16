@@ -317,8 +317,8 @@ pub use agent_identity::{AgentIdentity, AgentIdentityStatus};
 pub use app::{
     A2aChannelConfig, AgUiChannelConfig, AgUiToolVisibility, AgentVersionPolicy, App, AppChannel,
     AppEndpointAuthConfig, AppEndpointAuthMode, AppEndpointAuthProviderConfig,
-    AppEndpointAuthRequirements, AppStatus, ChannelType, SessionStrategy, SlackChannelConfig,
-    SlackReplyMode,
+    AppEndpointAuthRequirements, AppStatus, ChannelType, FcpChannelConfig, SessionStrategy,
+    SlackChannelConfig, SlackReplyMode,
 };
 pub use capability_dto::{AgentCapability, CapabilityInfo};
 pub use context_report::{

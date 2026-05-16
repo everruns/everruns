@@ -10264,7 +10264,8 @@
           "ag_ui",
           "schedule",
           "webhook",
-          "a2a"
+          "a2a",
+          "fcp"
         ]
       },
       "ClientSideTool": {

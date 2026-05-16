@@ -23,6 +23,7 @@ pub mod dispatch;
 pub mod durable;
 pub mod evals;
 pub mod events;
+pub mod fcp;
 pub mod feature_flags;
 pub mod harness_examples;
 pub mod harnesses;

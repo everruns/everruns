@@ -18,6 +18,8 @@ export function getChannelTypeDisplayName(channelType: ChannelType): string {
       return "Webhook";
     case "a2a":
       return "A2A (Agent2Agent)";
+    case "fcp":
+      return "FCP (Free Communication Protocol)";
   }
 }
 

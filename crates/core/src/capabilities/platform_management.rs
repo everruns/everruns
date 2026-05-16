@@ -1105,7 +1105,7 @@ impl Tool for ManageAppsTool {
                 },
                 "channel_type": {
                     "type": "string",
-                    "enum": ["slack", "ag_ui", "schedule", "webhook"],
+                    "enum": ["slack", "ag_ui", "schedule", "webhook", "a2a", "fcp"],
                     "description": "Optional initial channel type for create"
                 },
                 "channel_config": {
@@ -1453,7 +1453,7 @@ impl Tool for ManageAppChannelsTool {
                 },
                 "channel_type": {
                     "type": "string",
-                    "enum": ["slack", "ag_ui", "schedule", "webhook"],
+                    "enum": ["slack", "ag_ui", "schedule", "webhook", "a2a", "fcp"],
                     "description": "Channel type (required for add, optional for update)"
                 },
                 "channel_config": {

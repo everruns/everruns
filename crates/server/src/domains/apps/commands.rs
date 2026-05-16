@@ -25,7 +25,7 @@ use everruns_core::typed_id::{AgentId, AppChannelId, AppId, HarnessId, SessionId
 use everruns_core::{
     A2aChannelConfig, AgUiChannelConfig, AgUiToolVisibility, AgentAction, App, AppChannel,
     AppEndpointAuthConfig, AppEndpointAuthMode, AppEndpointAuthProviderConfig, AppStatus,
-    AuditEvent, ChannelType, Policy, SlackChannelConfig,
+    AuditEvent, ChannelType, FcpChannelConfig, Policy, SlackChannelConfig,
 };
 use everruns_durable::{
     CreateScheduleRow, ScheduleTargetType, StoreError, UpdateField, UpdateSchedule,
@@ -177,7 +177,10 @@ fn normalize_and_validate_channel_config(
         ChannelType::AgUi | ChannelType::A2a => {
             normalize_inline_endpoint_auth(&channel_type, &mut channel_config)?;
         }
-        ChannelType::Slack | ChannelType::Schedule | ChannelType::Webhook => {
+        ChannelType::Fcp | ChannelType::Slack | ChannelType::Schedule | ChannelType::Webhook => {
+            // FCP deliberately runs its own minimal auth stack (anonymous +
+            // shared bearer token) so it never shares verifier code with
+            // AG-UI/A2A. See `specs/fcp-channel.md`.
             if channel_config.get("auth").is_some() {
                 return Err(CommandError::bad_request(
                     "App endpoint auth is only supported for AG-UI and A2A channels",
@@ -316,6 +319,38 @@ fn normalize_and_validate_channel_config(
                         "A2A signing_secret must be at most 4096 bytes",
                     ));
                 }
+            }
+        }
+        ChannelType::Fcp => {
+            let config: FcpChannelConfig =
+                serde_json::from_value(channel_config.clone()).map_err(|e| {
+                    CommandError::bad_request(format!("Invalid FCP channel config: {e}"))
+                })?;
+            if let Some(token) = config.token.as_deref()
+                && token.trim().is_empty()
+            {
+                return Err(CommandError::bad_request(
+                    "FCP token must be non-empty when configured",
+                ));
+            }
+            if let Some(handshake) = config.handshake.as_deref()
+                && handshake.len() > 8 * 1024
+            {
+                return Err(CommandError::bad_request(
+                    "FCP handshake must be at most 8 KiB",
+                ));
+            }
+            if let Some(limit) = config.rate_limit_per_minute
+                && limit > 1_000_000
+            {
+                return Err(CommandError::bad_request(
+                    "FCP rate_limit_per_minute must be at most 1,000,000",
+                ));
+            }
+            if config.response_timeout_seconds == 0 || config.response_timeout_seconds > 600 {
+                return Err(CommandError::bad_request(
+                    "FCP response_timeout_seconds must be between 1 and 600",
+                ));
             }
         }
     }
@@ -537,6 +572,11 @@ fn redact_channel_config(channel_type: &ChannelType, config: &mut Value) {
                 map.insert("signing_secret_configured".to_string(), Value::Bool(true));
             }
         }
+        ChannelType::Fcp => {
+            if map.remove("token").is_some() {
+                map.insert("token_configured".to_string(), Value::Bool(true));
+            }
+        }
         ChannelType::Schedule => {}
     }
 }
@@ -627,6 +667,16 @@ fn merge_preserved_secret_fields(
                 && let Some(existing_value) = existing.get("signing_secret")
             {
                 out.insert("signing_secret".to_string(), existing_value.clone());
+            }
+        }
+        ChannelType::Fcp => {
+            let should_preserve = out
+                .get("token")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .is_none_or(str::is_empty);
+            if should_preserve && let Some(existing_value) = existing.get("token") {
+                out.insert("token".to_string(), existing_value.clone());
             }
         }
         ChannelType::Schedule => {}

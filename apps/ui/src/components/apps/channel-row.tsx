@@ -41,6 +41,8 @@ function iconFor(kind: ChannelType) {
       return Webhook;
     case "ag_ui":
       return Monitor;
+    case "fcp":
+      return Hash;
     case "slack":
       return Slack;
     default:
@@ -70,6 +72,7 @@ function channelName(channel: AppChannel): string {
   }
   if (channel.channel_type === "webhook") return "Webhook endpoint";
   if (channel.channel_type === "ag_ui") return "AG-UI endpoint";
+  if (channel.channel_type === "fcp") return "FCP endpoint";
   return getChannelTypeDisplayName(channel.channel_type);
 }
 
