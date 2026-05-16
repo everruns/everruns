@@ -1406,7 +1406,9 @@ mod tests {
 
     #[tokio::test]
     async fn create_file_under_readonly_directory_rejected() {
-        let (svc, sid) = make_svc();
+        let db = StorageBackend::in_memory();
+        let sid = Uuid::new_v4();
+        let svc = SessionFileService::new(Arc::new(db.clone()));
 
         svc.create_directory(
             sid,
@@ -1417,16 +1419,15 @@ mod tests {
         .await
         .unwrap();
 
-        svc.db
-            .create_session_file(CreateSessionFileRow {
-                session_id: SessionId::from_uuid(sid),
-                path: "/workspace/repo".to_string(),
-                content: None,
-                is_directory: true,
-                is_readonly: true,
-            })
-            .await
-            .unwrap();
+        db.create_session_file(CreateSessionFileRow {
+            session_id: SessionId::from_uuid(sid),
+            path: "/workspace/repo".to_string(),
+            content: None,
+            is_directory: true,
+            is_readonly: true,
+        })
+        .await
+        .unwrap();
 
         let err = svc
             .create_file(
@@ -1445,7 +1446,9 @@ mod tests {
 
     #[tokio::test]
     async fn create_directory_under_readonly_directory_rejected() {
-        let (svc, sid) = make_svc();
+        let db = StorageBackend::in_memory();
+        let sid = Uuid::new_v4();
+        let svc = SessionFileService::new(Arc::new(db.clone()));
 
         svc.create_directory(
             sid,
@@ -1456,16 +1459,15 @@ mod tests {
         .await
         .unwrap();
 
-        svc.db
-            .create_session_file(CreateSessionFileRow {
-                session_id: SessionId::from_uuid(sid),
-                path: "/workspace/repo".to_string(),
-                content: None,
-                is_directory: true,
-                is_readonly: true,
-            })
-            .await
-            .unwrap();
+        db.create_session_file(CreateSessionFileRow {
+            session_id: SessionId::from_uuid(sid),
+            path: "/workspace/repo".to_string(),
+            content: None,
+            is_directory: true,
+            is_readonly: true,
+        })
+        .await
+        .unwrap();
 
         let err = svc
             .create_directory(
