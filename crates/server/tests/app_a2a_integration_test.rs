@@ -12,9 +12,9 @@ use test_harness::TestServer;
 use tokio::time::{Duration, sleep};
 
 /// Compute the Slack-style A2A request signature for tests.
-fn a2a_sign(secret: &str, ts_secs: i64, body: &[u8]) -> String {
+fn a2a_sign(secret: &str, ts_secs: i64, channel_scope: &str, body: &[u8]) -> String {
     let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).unwrap();
-    mac.update(format!("v0:{ts_secs}:").as_bytes());
+    mac.update(format!("v0:{ts_secs}:{channel_scope}:").as_bytes());
     mac.update(body);
     format!("v0={}", hex::encode(mac.finalize().into_bytes()))
 }
@@ -1373,7 +1373,12 @@ async fn a2a_signed_channel_accepts_valid_signature() {
     }))
     .unwrap();
     let ts = a2a_now_secs();
-    let sig = a2a_sign(A2A_SIGNING_SECRET, ts, &body);
+    let sig = a2a_sign(
+        A2A_SIGNING_SECRET,
+        ts,
+        &format!("{app_id}:{channel_id}"),
+        &body,
+    );
 
     server
         .request_raw(
@@ -1447,7 +1452,12 @@ async fn a2a_signed_channel_rejects_bad_signature() {
     }))
     .unwrap();
     let ts = a2a_now_secs();
-    let sig = a2a_sign("not-the-secret", ts, &body);
+    let sig = a2a_sign(
+        "not-the-secret",
+        ts,
+        &format!("{app_id}:{channel_id}"),
+        &body,
+    );
 
     server
         .request_raw(
@@ -1487,7 +1497,12 @@ async fn a2a_signed_channel_rejects_stale_timestamp() {
     // 6 minutes in the past — outside the 5-minute window. Signature is
     // valid for that timestamp; the window check rejects it anyway.
     let ts = a2a_now_secs() - 360;
-    let sig = a2a_sign(A2A_SIGNING_SECRET, ts, &body);
+    let sig = a2a_sign(
+        A2A_SIGNING_SECRET,
+        ts,
+        &format!("{app_id}:{channel_id}"),
+        &body,
+    );
 
     server
         .request_raw(
@@ -1528,7 +1543,12 @@ async fn a2a_signed_channel_rejects_replay_within_window() {
     }))
     .unwrap();
     let ts = a2a_now_secs();
-    let sig = a2a_sign(A2A_SIGNING_SECRET, ts, &body);
+    let sig = a2a_sign(
+        A2A_SIGNING_SECRET,
+        ts,
+        &format!("{app_id}:{channel_id}"),
+        &body,
+    );
 
     // First sighting succeeds.
     server
@@ -1722,7 +1742,12 @@ async fn a2a_patch_preserves_signing_secret_when_omitted() {
 
     // A correctly-signed request still works against the preserved secret.
     let ts = a2a_now_secs();
-    let sig = a2a_sign(A2A_SIGNING_SECRET, ts, &body);
+    let sig = a2a_sign(
+        A2A_SIGNING_SECRET,
+        ts,
+        &format!("{app_id}:{channel_id}"),
+        &body,
+    );
     server
         .request_raw(
             Method::POST,

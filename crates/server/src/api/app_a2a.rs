@@ -332,6 +332,8 @@ async fn authenticate_request(
     // grow the replay store. Missing-header / mismatch / replay all
     // collapse to a single 401 response so a remote attacker cannot
     // distinguish the failure modes.
+    let channel_scope = format!("{}:{}", app.public_id, channel_id_typed);
+
     let pending_signature = if let Some(signing_secret) = config.signing_secret.as_deref()
         && !signing_secret.is_empty()
     {
@@ -344,6 +346,7 @@ async fn authenticate_request(
         let signature = match verify_signature(
             timestamp_header,
             signature_header,
+            &channel_scope,
             body,
             signing_secret,
             now_unix_seconds(),
@@ -363,8 +366,6 @@ async fn authenticate_request(
     } else {
         None
     };
-
-    let channel_scope = format!("{}:{}", app.public_id, channel_id_typed);
 
     // THREAT[TM-A2A-013]: Unattended A2A traffic must respect a configurable
     // per-app, per-IP cap in addition to the global API limit. App owners

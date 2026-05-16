@@ -104,6 +104,7 @@ impl SignatureCheckError {
 pub fn verify_signature(
     timestamp_header: Option<&str>,
     signature_header: Option<&str>,
+    channel_scope: &str,
     body: &[u8],
     signing_secret: &str,
     now_secs: i64,
@@ -123,10 +124,13 @@ pub fn verify_signature(
         return Err(SignatureCheckError::StaleTimestamp);
     }
 
-    let mut sig_basestring = Vec::with_capacity(SIG_VERSION.len() + 2 + 16 + body.len());
+    let mut sig_basestring =
+        Vec::with_capacity(SIG_VERSION.len() + 3 + 16 + channel_scope.len() + body.len());
     sig_basestring.extend_from_slice(SIG_VERSION.as_bytes());
     sig_basestring.push(b':');
     sig_basestring.extend_from_slice(timestamp.as_bytes());
+    sig_basestring.push(b':');
+    sig_basestring.extend_from_slice(channel_scope.as_bytes());
     sig_basestring.push(b':');
     sig_basestring.extend_from_slice(body);
 
@@ -261,9 +265,9 @@ pub fn now_unix_seconds() -> i64 {
 mod tests {
     use super::*;
 
-    fn sign(secret: &str, ts: i64, body: &[u8]) -> String {
+    fn sign(secret: &str, ts: i64, channel_scope: &str, body: &[u8]) -> String {
         let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).unwrap();
-        mac.update(format!("v0:{ts}:").as_bytes());
+        mac.update(format!("v0:{ts}:{channel_scope}:").as_bytes());
         mac.update(body);
         format!("v0={}", hex::encode(mac.finalize().into_bytes()))
     }
@@ -272,12 +276,14 @@ mod tests {
     fn verify_signature_accepts_valid_request() {
         let secret = "topsecret";
         let ts = 1_700_000_000_i64;
+        let channel_scope = "app1:ch1";
         let body = br#"{"jsonrpc":"2.0","method":"message/send"}"#;
-        let sig = sign(secret, ts, body);
+        let sig = sign(secret, ts, channel_scope, body);
 
         let result = verify_signature(
             Some(&ts.to_string()),
             Some(&sig),
+            channel_scope,
             body,
             secret,
             ts, // now == ts is well within the window
@@ -290,11 +296,11 @@ mod tests {
         let secret = "topsecret";
         let body = b"{}";
         assert_eq!(
-            verify_signature(None, Some("v0=abc"), body, secret, 0),
+            verify_signature(None, Some("v0=abc"), "app1:ch1", body, secret, 0),
             Err(SignatureCheckError::MissingHeader(A2A_TIMESTAMP_HEADER)),
         );
         assert_eq!(
-            verify_signature(Some("0"), None, body, secret, 0),
+            verify_signature(Some("0"), None, "app1:ch1", body, secret, 0),
             Err(SignatureCheckError::MissingHeader(A2A_SIGNATURE_HEADER)),
         );
     }
@@ -304,11 +310,18 @@ mod tests {
         let secret = "topsecret";
         let ts = 1_700_000_000_i64;
         let body = b"{}";
-        let sig = sign(secret, ts, body);
+        let sig = sign(secret, ts, "app1:ch1", body);
         // 6 minutes later
         let now = ts + 360;
         assert_eq!(
-            verify_signature(Some(&ts.to_string()), Some(&sig), body, secret, now),
+            verify_signature(
+                Some(&ts.to_string()),
+                Some(&sig),
+                "app1:ch1",
+                body,
+                secret,
+                now
+            ),
             Err(SignatureCheckError::StaleTimestamp),
         );
     }
@@ -320,10 +333,17 @@ mod tests {
         let secret = "topsecret";
         let ts = 1_700_000_000_i64;
         let body = b"{}";
-        let sig = sign(secret, ts, body);
+        let sig = sign(secret, ts, "app1:ch1", body);
         let now = ts - 360;
         assert_eq!(
-            verify_signature(Some(&ts.to_string()), Some(&sig), body, secret, now),
+            verify_signature(
+                Some(&ts.to_string()),
+                Some(&sig),
+                "app1:ch1",
+                body,
+                secret,
+                now
+            ),
             Err(SignatureCheckError::StaleTimestamp),
         );
     }
@@ -331,7 +351,14 @@ mod tests {
     #[test]
     fn verify_signature_rejects_invalid_timestamp_format() {
         assert_eq!(
-            verify_signature(Some("not-a-number"), Some("v0=abc"), b"{}", "s", 0),
+            verify_signature(
+                Some("not-a-number"),
+                Some("v0=abc"),
+                "app1:ch1",
+                b"{}",
+                "s",
+                0,
+            ),
             Err(SignatureCheckError::InvalidTimestamp),
         );
     }
@@ -341,9 +368,16 @@ mod tests {
         let ts = 1_700_000_000_i64;
         let body = b"{}";
         // Compute a signature with one secret, verify with another.
-        let bogus = sign("not-the-secret", ts, body);
+        let bogus = sign("not-the-secret", ts, "app1:ch1", body);
         assert_eq!(
-            verify_signature(Some(&ts.to_string()), Some(&bogus), body, "the-secret", ts),
+            verify_signature(
+                Some(&ts.to_string()),
+                Some(&bogus),
+                "app1:ch1",
+                body,
+                "the-secret",
+                ts,
+            ),
             Err(SignatureCheckError::SignatureMismatch),
         );
     }
@@ -353,10 +387,17 @@ mod tests {
         let secret = "topsecret";
         let ts = 1_700_000_000_i64;
         let original = br#"{"a":1}"#;
-        let sig = sign(secret, ts, original);
+        let sig = sign(secret, ts, "app1:ch1", original);
         let tampered = br#"{"a":2}"#;
         assert_eq!(
-            verify_signature(Some(&ts.to_string()), Some(&sig), tampered, secret, ts),
+            verify_signature(
+                Some(&ts.to_string()),
+                Some(&sig),
+                "app1:ch1",
+                tampered,
+                secret,
+                ts,
+            ),
             Err(SignatureCheckError::SignatureMismatch),
         );
     }
