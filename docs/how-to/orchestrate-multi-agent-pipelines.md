@@ -40,15 +40,22 @@ async def run_pipeline(client: Everruns, topic: str) -> str:
 
 
 async def collect_final_text(client: Everruns, session_id: str) -> str:
+    final_text: str | None = None
     async for event in client.events.stream(session_id):
         if event.type == "output.message.completed":
             message = event.data.get("message", {})
-            return "\n".join(
+            final_text = "\n".join(
                 p["text"] for p in message.get("content", []) if p.get("type") == "text"
             )
-        if event.type == "turn.failed":
+        elif event.type == "turn.failed":
             raise RuntimeError(event.data.get("error", "turn failed"))
-    return ""
+        elif event.type == "turn.cancelled":
+            raise RuntimeError("turn cancelled")
+        elif event.type == "turn.completed":
+            break
+    if not final_text:
+        raise RuntimeError("turn completed without producing a final message")
+    return final_text
 ```
 
 ## Cleanup

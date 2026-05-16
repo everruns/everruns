@@ -14,6 +14,7 @@ Each how-to here solves one concrete problem. They assume you already understand
 - [Define agents as files](/how-to/define-agents-as-files/) — version-controllable agent definitions in Markdown, TOML, or YAML.
 - [Use AGENTS.md for project instructions](/how-to/use-agents-md/) — inject project-level context into the system prompt.
 - [Customize a harness](/how-to/customize-a-harness/) — create your own harness as a starting point for many agents.
+- [Migrate between LLM providers](/how-to/migrate-providers/) — swap OpenAI ↔ Anthropic ↔ Gemini without rewriting agents.
 
 ## Running agents
 
@@ -32,5 +33,4 @@ Each how-to here solves one concrete problem. They assume you already understand
 
 - [Automate with the CLI](/how-to/automate-with-the-cli/) — scripting against the CLI with `jq`.
 - [Deploy with Docker Compose](/getting-started/docker-compose/) — bring up the full platform.
-- [Migrate between LLM providers](/how-to/migrate-providers/) — swap OpenAI ↔ Anthropic ↔ Gemini without rewriting agents.
 - [Enforce a budget](/how-to/enforce-a-budget/) — cap token spend per agent, session, or organization.

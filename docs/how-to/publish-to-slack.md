@@ -7,7 +7,7 @@ An **App** binds a Harness + Agent pair to an external channel and exposes a pub
 
 ## Prerequisites
 
-- An agent ID (`agt_...`) and harness ID (`harness_...`).
+- An agent ID (`agent_...`) and harness ID (`harness_...`).
 - A Slack app created in the Slack admin console with a signing secret and bot token. See [Slack Integration](/integrations/slack/) for the manifest and OAuth flow.
 
 ## Create the app
@@ -46,7 +46,7 @@ The app starts in `draft` state. It does not accept incoming messages until you 
 curl -X POST http://localhost:9300/api/v1/apps/$APP_ID/publish
 ```
 
-After publishing, Slack webhooks are accepted at the app's endpoint (configured in your Slack app manifest as `https://your-host/api/v1/apps/{app_id}/slack/events`).
+After publishing, Slack webhooks are accepted at the app's endpoint. Configure your Slack app manifest with `https://your-host/api/v1/apps/{app_id}/slack/events` (verify the current path in the [API reference](/api/) under the Slack events endpoint before updating Slack — if the platform's URL shape changes, the API reference is authoritative).
 
 ## Unpublish and rollback
 

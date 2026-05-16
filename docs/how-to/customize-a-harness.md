@@ -55,7 +55,7 @@ curl -X POST http://localhost:9300/api/v1/sessions \
   }'
 
 # Or via the CLI
-everruns sessions create --harness research-assistant --agent agt_...
+everruns sessions create --harness research-assistant --agent agent_...
 ```
 
 ## Inheritance

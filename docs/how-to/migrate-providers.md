@@ -73,7 +73,7 @@ await client.messages.create(
 Most behaviour ports across providers, but a few things differ:
 
 - **Extended thinking / reasoning effort.** Supported on Anthropic Claude, OpenAI GPT-5.x, and o-series. Other models silently ignore the `reasoning_effort` control.
-- **Execution phases on the wire.** OpenAI Responses API (GPT-5.4+) accepts `phase` annotations on replayed messages; other providers ignore them. Internal tracking continues regardless. See [Execution phases](/explanation/agentic-loop/#execution-phases).
+- **Execution phases on the wire.** OpenAI Responses API on the GPT-5.4 and GPT-5.5 families accepts `phase` annotations on replayed messages; other providers (and earlier OpenAI models) ignore them. Internal tracking continues regardless. The authoritative list is the `supports_phases` flag in `crates/core/src/llm_model_profiles.rs`. See [Execution phases](/explanation/agentic-loop/#execution-phases).
 - **Tool call format differences.** The platform handles translation, but very large tool schemas may compress better on one provider than another.
 - **Per-token cost.** USD budgets adjust automatically since they use per-model pricing. Token budgets are model-agnostic.
 

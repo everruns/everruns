@@ -57,18 +57,20 @@ async for event in client.events.stream(session.id):
 - **Backoff.** Network errors trigger exponential backoff with jitter.
 - **Typing.** Each event has `.type` and `.data` attributes parsed from SSE.
 
-## Filtering with `since_id`
+## Resuming with `since_id`
 
-To pick up where a previous stream left off:
+While a stream is open the SDK manages reconnection internally. You only need `since_id` when restarting your application and resuming from a previously recorded event ID:
 
 ```python
-last_id = None
-async for event in client.events.stream(session.id, since_id=last_id):
-    last_id = event.id
-    ...
+# Persisted somewhere — file, DB, etc.
+last_seen_id = load_cursor()
+
+async for event in client.events.stream(session.id, since_id=last_seen_id):
+    handle(event)
+    save_cursor(event.id)  # so the next restart can resume from here
 ```
 
-Pass `since_id` on the *initial* call when resuming after an application restart. While the stream is open, the SDK manages `since_id` internally.
+Inside the loop the SDK already remembers the last ID it yielded and reconnects with it on transient failures — `save_cursor` here is for *application restart* recovery, not per-iteration SDK state.
 
 ## See also
 

@@ -29,7 +29,7 @@ When an assistant message includes tool calls, the model hasn't given a final an
 
 Everruns labels each assistant message with an **execution phase**: `Commentary` (intermediate, before/between tool calls) or `FinalAnswer` (completed response). Two consumers care:
 
-- **The model.** Some providers (OpenAI Responses API on GPT-5.4+) accept and return phase annotations on replayed history. Without them, models can mistake earlier commentary for completed answers and stop early on long flows.
+- **The model.** Some providers (OpenAI Responses API on the GPT-5.4 and GPT-5.5 families) accept and return phase annotations on replayed history. Without them, models can mistake earlier commentary for completed answers and stop early on long flows.
 - **The UI.** Phase tells the chat surface whether to keep the "thinking" indicator on or render the message as a final response.
 
 Phases are derived from message state (presence of tool calls) and stored on the message. Providers that don't accept phases on the wire still get accurate internal tracking.
