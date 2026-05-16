@@ -1336,6 +1336,125 @@
         }
       }
     },
+    "/v1/apps/{app_id}/fcp": {
+      "get": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "`GET /v1/apps/{app_id}/fcp` — handshake. Always returns the same\ngeneric 404 body for unknown apps so the endpoint cannot be used to\nprobe which app ids are real.",
+        "operationId": "handshake",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "description": "App ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Markdown handshake describing the FCP endpoint and how to authenticate. Always `text/markdown`.",
+            "content": {
+              "text/markdown": {}
+            }
+          },
+          "404": {
+            "description": "No FCP endpoint at this URL. Single sanitized body covers unknown apps, unpublished apps, apps without an FCP channel, and disabled FCP channels — operator state is never disclosed.",
+            "content": {
+              "text/markdown": {}
+            }
+          },
+          "429": {
+            "description": "Per-app FCP rate limit exceeded. `Retry-After: 60` header is set.",
+            "content": {
+              "text/markdown": {}
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "`POST /v1/apps/{app_id}/fcp` — text-in, text-out.",
+        "operationId": "message",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "description": "App ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "Plain UTF-8 text, or `application/json` of shape `{\"message\": \"...\"}`. Maximum 256 KiB.",
+          "content": {
+            "text/plain": {
+              "schema": {
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Agent reply as Markdown. The `Set-Cookie: fcp_session=...` header is emitted so subsequent POSTs can resume the same conversation.",
+            "content": {
+              "text/markdown": {}
+            }
+          },
+          "400": {
+            "description": "Malformed body. Distinct messages for empty body, non-UTF-8 bytes, and JSON that did not parse into the expected shape — each Markdown body points back at the handshake.",
+            "content": {
+              "text/markdown": {}
+            }
+          },
+          "401": {
+            "description": "Token required but missing or wrong. Markdown body explains both accepted headers (`Authorization: Bearer` and `X-Everruns-FCP-Token`) and points at the handshake.",
+            "content": {
+              "text/markdown": {}
+            }
+          },
+          "404": {
+            "description": "Same generic 404 as the handshake — operator state is never disclosed.",
+            "content": {
+              "text/markdown": {}
+            }
+          },
+          "410": {
+            "description": "FCP session expired. Body tells the client to drop the `fcp_session` cookie and POST again.",
+            "content": {
+              "text/markdown": {}
+            }
+          },
+          "413": {
+            "description": "Body exceeds 256 KiB.",
+            "content": {
+              "text/markdown": {}
+            }
+          },
+          "429": {
+            "description": "Per-app FCP rate limit exceeded. `Retry-After: 60` header is set.",
+            "content": {
+              "text/markdown": {}
+            }
+          },
+          "504": {
+            "description": "Agent did not reply within the configured timeout. The same `fcp_session` cookie is set so the client can retry the same conversation.",
+            "content": {
+              "text/markdown": {}
+            }
+          }
+        }
+      }
+    },
     "/v1/apps/{app_id}/webhooks/{channel_id}": {
       "post": {
         "tags": [

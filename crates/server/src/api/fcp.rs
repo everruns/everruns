@@ -211,7 +211,33 @@ async fn check_rate_limit(
 /// `GET /v1/apps/{app_id}/fcp` — handshake. Always returns the same
 /// generic 404 body for unknown apps so the endpoint cannot be used to
 /// probe which app ids are real.
-async fn handshake(
+#[utoipa::path(
+    get,
+    path = "/v1/apps/{app_id}/fcp",
+    params(("app_id" = String, Path, description = "App ID")),
+    responses(
+        (
+            status = 200,
+            description = "Markdown handshake describing the FCP endpoint and how to authenticate. \
+                           Always `text/markdown`.",
+            content_type = "text/markdown",
+        ),
+        (
+            status = 404,
+            description = "No FCP endpoint at this URL. Single sanitized body covers \
+                           unknown apps, unpublished apps, apps without an FCP channel, \
+                           and disabled FCP channels — operator state is never disclosed.",
+            content_type = "text/markdown",
+        ),
+        (
+            status = 429,
+            description = "Per-app FCP rate limit exceeded. `Retry-After: 60` header is set.",
+            content_type = "text/markdown",
+        ),
+    ),
+    tag = "apps"
+)]
+pub async fn handshake(
     State(state): State<FcpState>,
     Path(app_id): Path<String>,
     connect_info: Option<Extension<ConnectInfo<std::net::SocketAddr>>>,
@@ -235,7 +261,69 @@ async fn handshake(
 }
 
 /// `POST /v1/apps/{app_id}/fcp` — text-in, text-out.
-async fn message(
+#[utoipa::path(
+    post,
+    path = "/v1/apps/{app_id}/fcp",
+    params(("app_id" = String, Path, description = "App ID")),
+    request_body(
+        content = String,
+        description = "Plain UTF-8 text, or `application/json` of shape `{\"message\": \"...\"}`. \
+                       Maximum 256 KiB.",
+        content_type = "text/plain",
+    ),
+    responses(
+        (
+            status = 200,
+            description = "Agent reply as Markdown. The `Set-Cookie: fcp_session=...` header is \
+                           emitted so subsequent POSTs can resume the same conversation.",
+            content_type = "text/markdown",
+        ),
+        (
+            status = 400,
+            description = "Malformed body. Distinct messages for empty body, non-UTF-8 bytes, \
+                           and JSON that did not parse into the expected shape — each Markdown \
+                           body points back at the handshake.",
+            content_type = "text/markdown",
+        ),
+        (
+            status = 401,
+            description = "Token required but missing or wrong. Markdown body explains both \
+                           accepted headers (`Authorization: Bearer` and `X-Everruns-FCP-Token`) \
+                           and points at the handshake.",
+            content_type = "text/markdown",
+        ),
+        (
+            status = 404,
+            description = "Same generic 404 as the handshake — operator state is never disclosed.",
+            content_type = "text/markdown",
+        ),
+        (
+            status = 410,
+            description = "FCP session expired. Body tells the client to drop the `fcp_session` \
+                           cookie and POST again.",
+            content_type = "text/markdown",
+        ),
+        (
+            status = 413,
+            description = "Body exceeds 256 KiB.",
+            content_type = "text/markdown",
+        ),
+        (
+            status = 429,
+            description = "Per-app FCP rate limit exceeded. `Retry-After: 60` header is set.",
+            content_type = "text/markdown",
+        ),
+        (
+            status = 504,
+            description = "Agent did not reply within the configured timeout. The same \
+                           `fcp_session` cookie is set so the client can retry the same \
+                           conversation.",
+            content_type = "text/markdown",
+        ),
+    ),
+    tag = "apps"
+)]
+pub async fn message(
     State(state): State<FcpState>,
     Path(app_id): Path<String>,
     req_id: Option<Extension<RequestId>>,
@@ -391,13 +479,16 @@ async fn message(
     })
     .await;
 
-    let response_text = match collected {
-        Ok(Ok(text)) => text,
-        Ok(Err(public_err)) => return turn_error_response(public_err),
-        Err(_elapsed) => return timeout_response(context.config.response_timeout_seconds),
+    let mut response = match collected {
+        Ok(Ok(text)) => markdown_response(StatusCode::OK, text),
+        Ok(Err(public_err)) => turn_error_response(public_err),
+        Err(_elapsed) => timeout_response(context.config.response_timeout_seconds),
     };
 
-    let mut response = markdown_response(StatusCode::OK, response_text);
+    // Set the session cookie on every response that resolved a session,
+    // including timeouts and provider errors. The session is already
+    // recorded; emitting the cookie lets the client retry against the
+    // same conversation rather than starting a fresh one.
     if let Some(cookie) =
         build_session_cookie(session_id, context.config.session_expiration_seconds)
         && let Ok(value) = HeaderValue::from_str(&cookie)
@@ -804,7 +895,9 @@ fn payload_too_large_response() -> Response {
     markdown_response(
         StatusCode::PAYLOAD_TOO_LARGE,
         format!(
-            "Body exceeds the {MAX_FCP_BODY_BYTES}-byte FCP limit.\n\nSend a shorter message. If you need to send long content, summarise it\nor break it into multiple `POST`s in the same session."
+            "Body exceeds the FCP body limit of {kib} KiB ({bytes} bytes).\n\nSend a shorter message. If you need to send long content, summarise it\nor break it into multiple `POST`s in the same session.",
+            kib = MAX_FCP_BODY_BYTES / 1024,
+            bytes = MAX_FCP_BODY_BYTES,
         ),
     )
 }

@@ -1127,6 +1127,41 @@ The handler dispatches strictly on `method == "message/send"`. Any other JSON-RP
 **TM-A2A-007 — Tag-spoof Hardening:**
 A2A reuses `find_app_session_by_tags_and_owner` (already mitigates the webhook variant TM-AUTHZ-006). Sessions matched for `shared_session` mode require the requesting app's `org_id` *and* `owner_principal_id` to line up, so a user-created session sharing the same surface tags is rejected.
 
+## 23. FCP Channel (TM-FCP)
+
+App-scoped Free Communication Protocol ingress. Text-first HTTP endpoint with a deliberately minimal auth stack (anonymous + optional shared bearer token) and a dedicated `ChannelRateLimiter` namespace. Mitigations live in `crates/server/src/api/fcp.rs` and `crates/server/src/domains/apps/commands.rs`. See `specs/fcp-channel.md`.
+
+| ID | Threat | Severity | Mitigation | Status |
+|----|--------|----------|------------|--------|
+| TM-FCP-001 | Anonymous FCP request reaches draft, disabled, or wrong-type app | High | `resolve_context` in `crates/server/src/api/fcp.rs` rejects any of (unknown app id, status != Published, no `fcp` channel, channel disabled) with the same generic 404 Markdown body. Caller cannot distinguish operator state, so the endpoint cannot be used as a probe oracle | MITIGATED |
+| TM-FCP-002 | Timing oracle on token compare | Medium | `constant_time_eq` (`crates/server/src/api/fcp.rs`) bit-mixes the entire byte slice before returning, mirroring the A2A and AG-UI implementations. Token validation runs only after the request reaches the FCP handler, so timing differences for unknown apps are absorbed by the upstream 404 path | MITIGATED |
+| TM-FCP-003 | Configured bearer token leaked in response body or logs | High | The 401 and handshake bodies are static templates that never interpolate the configured token. The token is redacted from `GET /v1/apps/{id}` reads (`redact_channel_config` in `crates/server/src/domains/apps/commands.rs` strips `token` and surfaces `token_configured: true`) and is held only in encrypted `channel_config` storage. Tracing does not log the token | MITIGATED |
+| TM-FCP-004 | Cross-channel auth verifier reuse expands FCP attack surface | Medium | FCP deliberately does NOT call `AppEndpointAuthVerifier`. `normalize_and_validate_channel_config` rejects `channel_config.auth` for `ChannelType::Fcp`, so OIDC/HTTP-Basic/mTLS verifier code paths cannot run for FCP requests. New auth modes require an explicit code change, not a config flag | MITIGATED |
+| TM-FCP-005 | Privileged message-role injection from public client | High | The wire format is opaque text or `{"message": "..."}` JSON. Only a `MessageRole::User` message is constructed by the handler (`crates/server/src/api/fcp.rs::message`); no path lets a caller forge `system`, `developer`, `assistant`, or `tool` roles into the LLM context | MITIGATED |
+| TM-FCP-006 | DoS via runaway FCP client | Medium | App owners can configure a per-app, per-IP cap via `FcpChannelConfig::rate_limit_per_minute`. Counted in a dedicated `ChannelRateLimiter::with_valkey("fcp", ...)` namespace so buckets cannot be shared with AG-UI/A2A. Server caps the field at `1_000_000`; `0`/`None` disables the per-app cap and falls back to the global API limit. Same fail-open behavior on Valkey outage as TM-DOS-010 | MITIGATED |
+| TM-FCP-007 | DoS via oversized body | Medium | `MAX_FCP_BODY_BYTES = 256 KiB`; the handler short-circuits to `413` with a sanitized Markdown body before doing any database, session, or runtime work. The limit is enforced after the size check on `axum::body::Bytes`, so the worst case is a single 256 KiB allocation | MITIGATED |
+| TM-FCP-008 | Cross-org session reuse via FCP cookie spoofing | High | Session reuse keys on `(app.org_id, app.internal_id, [fcp:app:<app_public_id>])` via `find_app_session_by_tags`. A `fcp_session` cookie pointing at a UUID that does not match the looked-up row is silently ignored and a fresh session is created. The session adopts `app.owner_principal_id`, which is the same invariant used by AG-UI/A2A and is verified by the matching unit tests | MITIGATED |
+| TM-FCP-009 | Stale-cookie strand or replay across operator config changes | Low | Unknown cookies fall through to fresh session creation rather than 4xxing the client. Expired sessions (after `session_expiration_seconds`) return `410 Gone` with a Markdown body instructing the client to drop the cookie and POST again | MITIGATED |
+| TM-FCP-010 | Indefinite hang on slow / unavailable agent | Medium | Every POST is wrapped in `tokio::time::timeout(response_timeout_seconds.max(1))`. On elapsed budget the handler returns `504` with a Markdown body that names the configured timeout, sets the same `fcp_session` cookie so the client can retry the same conversation, and releases the event subscription. Server validates the field at 1–600 s | MITIGATED |
+| TM-FCP-011 | Internal vocabulary or provider details leaked through error bodies | Medium | All `turn.failed` causes pass through `PublicError::from_internal_code` (`crates/server/src/api/public.rs`). The mapping returns one of four sanitized public messages (`InternalError`, `RateLimited`, `ServiceUnavailable`, `RequestTooLarge`) — provider names, stack traces, and internal codes never reach the wire. Tested in `crates/server/src/api/fcp.rs::tests::turn_error_response_body_is_sanitized` | MITIGATED |
+| TM-FCP-012 | Handshake (GET) used to probe operator existence | Low | The handshake is intentionally open per FCP SPEC, but `resolve_context` returns the same generic 404 body for unknown / draft / wrong-channel apps. The per-app rate limiter (when configured) also applies to GETs so a single client cannot hammer the handshake either | MITIGATED |
+
+### Mitigation Details
+
+**TM-FCP-003 — Token redaction across read paths:**
+```rust
+// crates/server/src/domains/apps/commands.rs
+ChannelType::Fcp => {
+    if map.remove("token").is_some() {
+        map.insert("token_configured".to_string(), Value::Bool(true));
+    }
+}
+```
+And on update, the preserved-secrets merger reinjects the existing encrypted token if the caller did not provide a new one, so PATCHing other fields does not clear the configured token by accident.
+
+**TM-FCP-008 — Session ownership invariant:**
+`SessionService::create_from_app` sets `session.owner_principal_id = app.owner_principal_id` and tags every session with `fcp:app:<app_public_id>`. The reuse path (`find_app_session_by_tags`) requires the `org_id`, `app.internal_id`, AND the routing tag to all match — so even an attacker who guesses a victim app's id and forges a cookie cannot adopt a session owned by a different org or app.
+
 ## Vulnerability Summary
 
 ### Open Threats (Require Action)

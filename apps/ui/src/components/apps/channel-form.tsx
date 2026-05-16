@@ -1,6 +1,14 @@
 "use client";
 
-import { Monitor, RefreshCw, Slack, Webhook, Hash, CalendarClock } from "lucide-react";
+import {
+  CalendarClock,
+  Hash,
+  MessageSquareText,
+  Monitor,
+  RefreshCw,
+  Slack,
+  Webhook,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -25,6 +33,7 @@ import type {
   App,
   AppChannel,
   ChannelType,
+  FcpChannelConfig,
   InvocationSessionMode,
   ScheduleChannelConfig,
   SessionStrategy,
@@ -42,7 +51,10 @@ import {
 import { generateChannelToken } from "@/lib/channel-tokens";
 import { cn } from "@/lib/utils";
 
-export const CHANNEL_FORM_KINDS: ChannelType[] = ["schedule", "webhook", "ag_ui", "slack"];
+export const CHANNEL_FORM_KINDS: ChannelType[] = ["schedule", "webhook", "ag_ui", "fcp", "slack"];
+
+const DEFAULT_FCP_EXPIRATION_HOURS = 6;
+const DEFAULT_FCP_RESPONSE_TIMEOUT_SECONDS = 120;
 
 export type ChannelFormSection = "all" | "schedule" | "invocation" | "session" | "runs";
 
@@ -65,6 +77,12 @@ export type ChannelFormState = {
   agUiRateLimitPerMinute: string;
   agUiToolVisibility: AgUiToolVisibility;
   agUiGenericToolText: string;
+  fcpToken: string;
+  fcpAnonymous: boolean;
+  fcpHandshake: string;
+  fcpExpirationHours: number;
+  fcpRateLimitPerMinute: string;
+  fcpResponseTimeoutSeconds: string;
 };
 
 function secretValue(value?: string, configured?: boolean): string {
@@ -95,6 +113,12 @@ export function getDefaultChannelFormState(
     agUiRateLimitPerMinute: "",
     agUiToolVisibility: "generic",
     agUiGenericToolText: DEFAULT_AG_UI_GENERIC_TOOL_TEXT,
+    fcpToken: "",
+    fcpAnonymous: true,
+    fcpHandshake: "",
+    fcpExpirationHours: DEFAULT_FCP_EXPIRATION_HOURS,
+    fcpRateLimitPerMinute: "",
+    fcpResponseTimeoutSeconds: String(DEFAULT_FCP_RESPONSE_TIMEOUT_SECONDS),
   };
 
   if (!channel) return base;
@@ -136,6 +160,28 @@ export function getDefaultChannelFormState(
           : "",
       agUiToolVisibility: config.tool_visibility || "generic",
       agUiGenericToolText: config.generic_tool_text || DEFAULT_AG_UI_GENERIC_TOOL_TEXT,
+    };
+  }
+  if (channel.channel_type === "fcp") {
+    const config = channel.channel_config as FcpChannelConfig;
+    return {
+      ...base,
+      kind: "fcp",
+      fcpToken: secretValue(config.token, config.token_configured),
+      fcpAnonymous: config.anonymous ?? true,
+      fcpHandshake: config.handshake ?? "",
+      fcpExpirationHours:
+        typeof config.session_expiration_seconds === "number"
+          ? config.session_expiration_seconds / 3600
+          : base.fcpExpirationHours,
+      fcpRateLimitPerMinute:
+        typeof config.rate_limit_per_minute === "number"
+          ? String(config.rate_limit_per_minute)
+          : "",
+      fcpResponseTimeoutSeconds:
+        typeof config.response_timeout_seconds === "number"
+          ? String(config.response_timeout_seconds)
+          : String(DEFAULT_FCP_RESPONSE_TIMEOUT_SECONDS),
     };
   }
   if (channel.channel_type === "slack") {
@@ -182,6 +228,23 @@ export function buildChannelConfig(state: ChannelFormState) {
         generic_tool_text: state.agUiGenericToolText.trim() || DEFAULT_AG_UI_GENERIC_TOOL_TEXT,
       };
     }
+    case "fcp": {
+      const rateLimit = Number.parseInt(state.fcpRateLimitPerMinute, 10);
+      const timeout = Number.parseInt(state.fcpResponseTimeoutSeconds, 10);
+      return {
+        anonymous: state.fcpAnonymous,
+        ...(state.fcpToken.trim() ? { token: state.fcpToken.trim() } : {}),
+        ...(state.fcpHandshake.trim() ? { handshake: state.fcpHandshake } : {}),
+        session_expiration_seconds: Math.max(0, Math.round(state.fcpExpirationHours * 3600)),
+        ...(Number.isFinite(rateLimit) && rateLimit > 0
+          ? { rate_limit_per_minute: rateLimit }
+          : {}),
+        response_timeout_seconds:
+          Number.isFinite(timeout) && timeout > 0 && timeout <= 600
+            ? timeout
+            : DEFAULT_FCP_RESPONSE_TIMEOUT_SECONDS,
+      };
+    }
     case "slack":
       return {
         ...(state.slackSigningSecret.trim()
@@ -207,6 +270,14 @@ export function isChannelFormValid(state: ChannelFormState): boolean {
   if (state.kind === "ag_ui") {
     return state.agUiToolVisibility !== "generic" || state.agUiGenericToolText.trim().length <= 120;
   }
+  if (state.kind === "fcp") {
+    // anonymous=false without a token is allowed by the server (operator
+    // may intend to fill it in later), but the UI nudges the user to set
+    // one — the form is still valid either way.
+    const timeout = Number.parseInt(state.fcpResponseTimeoutSeconds, 10);
+    if (!Number.isFinite(timeout) || timeout <= 0 || timeout > 600) return false;
+    return true;
+  }
   if (state.kind === "slack") return true;
   return false;
 }
@@ -219,6 +290,8 @@ function channelIcon(kind: ChannelType) {
       return Webhook;
     case "ag_ui":
       return Monitor;
+    case "fcp":
+      return MessageSquareText;
     case "slack":
       return Slack;
     default:
@@ -234,6 +307,8 @@ function channelDescription(kind: ChannelType): string {
       return "Authenticated HTTP endpoint. Bearer token or Everruns webhook token header.";
     case "ag_ui":
       return "Public client surface. Tool names, args, and results are never sent to AG-UI clients.";
+    case "fcp":
+      return "Free Communication Protocol. Text-in / text-out HTTP endpoint with a Markdown handshake.";
     case "slack":
       return "React to messages in Slack. Per-thread, channel, or user session strategies.";
     default:
@@ -466,6 +541,108 @@ export function ChannelForm({
         </div>
       )}
 
+      {state.kind === "fcp" && (section === "all" || section === "invocation") && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between border p-3">
+            <div>
+              <p className="text-sm font-medium">Anonymous access</p>
+              <p className="text-xs text-muted-foreground">
+                When off, every request must present the bearer token below. The FCP handshake (GET
+                on the endpoint URL) stays public so clients can discover how to authenticate.
+              </p>
+            </div>
+            <Switch
+              checked={state.fcpAnonymous}
+              onCheckedChange={(checked) => update("fcpAnonymous", checked)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="fcp_token">Bearer token</Label>
+            <div className="flex gap-2">
+              <Input
+                id="fcp_token"
+                value={state.fcpToken}
+                onChange={(event) => update("fcpToken", event.target.value)}
+                className="font-mono"
+                placeholder={
+                  mode === "edit" ? "Leave blank to keep existing token" : "Generated bearer token"
+                }
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={() => update("fcpToken", generateChannelToken())}
+                aria-label="Regenerate FCP token"
+              >
+                <RefreshCw className="size-4" />
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Verified with constant-time comparison; sent as Authorization: Bearer &lt;token&gt; or
+              X-Everruns-FCP-Token. Never echoed in responses.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="fcp_handshake">Custom handshake (Markdown)</Label>
+            <Textarea
+              id="fcp_handshake"
+              value={state.fcpHandshake}
+              onChange={(event) => update("fcpHandshake", event.target.value)}
+              placeholder="Leave blank to auto-generate from the app name and description."
+              rows={4}
+            />
+            <p className="text-xs text-muted-foreground">
+              Returned verbatim for GET on the endpoint URL. Use plain Markdown.
+            </p>
+          </div>
+          <FieldGrid>
+            <div className="space-y-2">
+              <Label htmlFor="fcp_expiration">Session expiration (hours)</Label>
+              <Input
+                id="fcp_expiration"
+                value={String(state.fcpExpirationHours)}
+                onChange={(event) => {
+                  const parsed = Number.parseFloat(event.target.value);
+                  update("fcpExpirationHours", Number.isFinite(parsed) ? parsed : 0);
+                }}
+                inputMode="numeric"
+                placeholder="6"
+              />
+              <p className="text-xs text-muted-foreground">
+                0 = never expire the fcp_session cookie.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="fcp_rate_limit">Rate limit / minute</Label>
+              <Input
+                id="fcp_rate_limit"
+                value={state.fcpRateLimitPerMinute}
+                onChange={(event) => update("fcpRateLimitPerMinute", event.target.value)}
+                inputMode="numeric"
+                placeholder="No per-channel cap"
+              />
+              <p className="text-xs text-muted-foreground">
+                FCP-only limiter namespace; cannot share buckets with other channels.
+              </p>
+            </div>
+          </FieldGrid>
+          <div className="space-y-2">
+            <Label htmlFor="fcp_response_timeout">Response timeout (seconds)</Label>
+            <Input
+              id="fcp_response_timeout"
+              value={state.fcpResponseTimeoutSeconds}
+              onChange={(event) => update("fcpResponseTimeoutSeconds", event.target.value)}
+              inputMode="numeric"
+              placeholder="120"
+            />
+            <p className="text-xs text-muted-foreground">
+              How long the endpoint waits for the agent before returning 504. Must be 1-600s.
+            </p>
+          </div>
+        </div>
+      )}
+
       {state.kind === "slack" && (section === "all" || section === "invocation") && (
         <div className="space-y-4">
           <FieldGrid>
@@ -580,7 +757,7 @@ export function ChannelFormSummary({ app, state }: { app?: App; state: ChannelFo
             </p>
           </div>
         )}
-        {(state.kind === "webhook" || state.kind === "ag_ui") && (
+        {(state.kind === "webhook" || state.kind === "ag_ui" || state.kind === "fcp") && (
           <div>
             <p className="text-xs font-medium uppercase text-muted-foreground">Activation</p>
             <p className="mt-1 text-sm text-muted-foreground">
