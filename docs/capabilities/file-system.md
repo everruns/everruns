@@ -78,27 +78,7 @@ Get file metadata (size, type, timestamps).
 |---|---|---|---|
 | `path` | string | yes | Path to stat |
 
-## Use Cases
-
-- **Code generation** — agent writes source files, configs, and scripts to the workspace
-- **Surgical refactors** — agent reads a file, then applies freshness-checked exact replacements
-- **Document processing** — read uploaded files, transform content, write results
-- **Project scaffolding** — create directory structures with boilerplate files
-- **Log analysis** — grep through log files for patterns and errors
-
-## Example
-
-Agent creates a Python project:
-
-```
-User: Create a Flask hello world app
-
-Agent:
-  → write_file("/workspace/app.py", "from flask import Flask\napp = Flask(__name__)\n\n@app.route('/')\ndef hello():\n    return 'Hello, World!'\n")
-  → write_file("/workspace/requirements.txt", "flask>=3.0\n")
-```
-
-Agent updates an existing file safely:
+## `edit_file` request example
 
 ```json
 {

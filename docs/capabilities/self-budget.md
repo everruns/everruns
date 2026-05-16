@@ -41,27 +41,6 @@ There is no `self_budget` tool. Usage data comes from `get_session_info`, which 
 
 The two capabilities are non-conflicting and can run together. The Generic harness includes both.
 
-## Use Cases
-
-- **User-set budget in prompt** — "Spend at most $3 on this investigation." The agent tracks usage via `get_session_info`, adapts scope, and reports progress.
-- **Coaching the agent to be frugal** — Even without an exact dollar target, the prompt guidance nudges the agent toward shorter outputs and fewer redundant tool calls.
-- **Budget-aware estimation** — The agent qualifies cost estimates ("roughly", "on the order of") rather than over-stating certainty.
-
-## Example
-
-```
-User: You have about $2 of compute for this task. Analyze the three largest
-      dependencies in package.json and tell me which one to remove.
-
-Agent: [calls get_session_info — current usage $0.14]
-Agent: Got it. I'll focus on the three largest dependencies and keep this tight.
-       [... scoped analysis ...]
-Agent: [calls get_session_info — current usage $1.62]
-Agent: Roughly $1.60 spent so far. Based on size and use count, `moment` is the
-       best removal candidate — replacement path is straightforward. I'll stop
-       here to stay under your $2 target.
-```
-
 ## Related
 
 - [Budgeting](/capabilities/budgeting/) — platform-enforced budgets with the `check_budget` tool

@@ -39,27 +39,6 @@ Manage encrypted secrets. Same interface as `kv_store` but values are encrypted 
 | `name` | string | conditional | Required for `set`, `get`, `delete` |
 | `value` | string | conditional | Required for `set` |
 
-## Use Cases
-
-- **API key management** — store third-party API keys securely during a session
-- **State persistence** — save intermediate results between conversation turns
-- **Configuration** — store user preferences or settings for the session
-- **Credential handling** — securely store tokens needed for multi-step workflows
-
-## Example
-
-```
-User: Store my GitHub token so you can use it later
-
-Agent:
-  → secret_store({ operation: "set", name: "github_token", value: "ghp_abc123..." })
-  ← "Secret 'github_token' stored successfully"
-
-  (later in conversation)
-  → secret_store({ operation: "get", name: "github_token" })
-  ← { "name": "github_token", "value": "ghp_abc123..." }
-```
-
 ## Notes
 
 - Data is session-scoped — no cross-session access

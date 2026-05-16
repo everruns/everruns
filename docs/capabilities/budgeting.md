@@ -35,24 +35,6 @@ When the `budgeting` capability is enabled:
 
 3. **Proactive checking** — The agent can call `check_budget` before starting expensive operations (large code generation, multi-step tool chains) to decide whether to proceed or ask the user.
 
-## Use Cases
-
-- **Cost-conscious sessions** — Agent adapts its behavior as budget depletes (shorter responses, fewer tool calls)
-- **Pre-flight checks** — Agent checks budget before launching a long multi-step workflow
-- **User communication** — Agent informs the user when budget is nearly exhausted so they can top up or reprioritize
-
-## Example
-
-```
-User: Analyze all 200 files in this repository
-
-Agent: [calls check_budget]
-Agent: I have $2.30 remaining on a $10 budget. Analyzing all 200 files
-       would likely exceed that. I'll focus on the 15 most critical files
-       (entry points, config, core modules) and provide a summary. Want me
-       to proceed, or would you like to increase the budget first?
-```
-
 ## Related
 
 - [Budgets](/advanced/budgets/) — full budgeting system documentation (limits, currencies, API, CLI)

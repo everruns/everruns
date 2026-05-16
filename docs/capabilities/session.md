@@ -30,22 +30,6 @@ Update the session title.
 |---|---|---|---|
 | `title` | string | yes | New session title |
 
-## Use Cases
-
-- **Auto-titling** — agent sets a descriptive title based on the conversation topic
-- **Context awareness** — agent reads its own session ID for logging or references
-
-## Example
-
-```
-User: Help me debug the login issue
-
-Agent:
-  → write_session_title("Debug: Login authentication failure")
-  → get_session_info()
-  ← { "session_id": "ses_01abc...", "title": "Debug: Login authentication failure", "agent_name": "DevOps Agent" }
-```
-
 ## See Also
 
 - [Storage](/capabilities/session-storage/) — persist data within the session

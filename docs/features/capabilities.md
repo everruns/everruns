@@ -1,215 +1,56 @@
 ---
 title: Capabilities
-description: Modular capabilities that extend agent behavior with tools, system prompts, and execution features. Add file access, web browsing, code execution, and more.
+description: Capabilities are the modular units that give an agent its tools, system prompt fragments, and session state. Conceptual overview with links to the full reference.
 ---
 
-Capabilities are modular functionality units that extend Agent behavior. A Capability can contribute additions to the system prompt, provide tools, and modify execution behavior. Users can enable multiple capabilities on an Agent to compose functionality.
+A **capability** is a self-contained unit that extends an agent. Each capability can contribute three kinds of thing:
 
-## Overview
+1. **Tools** — functions the agent can invoke during a turn.
+2. **System prompt additions** — text prepended to the agent's prompt that teaches the model when and how to use those tools.
+3. **Mount points** — files, directories, or session state the tools need to operate.
 
-When you assign capabilities to an agent, those capabilities enhance what the agent can do:
+Agents *compose* capabilities. Enable as many as you need; leave the rest disabled. The runtime resolves capabilities in topological order (dependencies first) and concatenates their system prompt fragments in the order you configured them on the agent.
 
-- **System Prompt Additions**: Some capabilities add instructions to the agent's system prompt
-- **Tools**: Capabilities can provide tools that the agent can use during conversations
-- **Behavior Modifications**: Future capabilities may modify how the agent processes requests
+## Why capabilities, not just tools
 
-## Available Capabilities
+A bare tool registration is a function with a JSON schema. Capabilities exist because real tools need more than that. To use `virtual_bash` effectively, the agent needs both the `bash` tool *and* the prompt fragment explaining the sandbox model *and* the session filesystem (a dependency). Capabilities bundle those concerns into one enable/disable unit.
 
-### AGENTS.md
+See [Why capabilities are first-class](/explanation/concepts/#why-capabilities-are-first-class) for the full rationale.
 
-**Status**: Available
+## Where capabilities come from
 
-Reads `AGENTS.md` from the session workspace and includes it in the system prompt. Content is re-read on every turn, so changes are picked up automatically.
+| Source | ID format | Example |
+|---|---|---|
+| Built-in | `snake_case` | `web_fetch`, `session_file_system` |
+| MCP server | `mcp:{uuid}` | `mcp:550e8400-...` |
+| Registry skill | `skill:{uuid}` | `skill:550e8400-...` |
+| Declarative | `declarative:{name}` | `declarative:research_pack` |
 
-- **No tools** — this capability only injects context into the system prompt
-- **File**: `/workspace/AGENTS.md` (plain Markdown, max 32 KiB)
-- **Use cases**: Project conventions, coding style, build instructions, architecture notes
-- See [AGENTS.md](/features/agent-instructions/) for full documentation
+All four kinds participate in the same merge, dependency resolution, and tool-name prefixing. The agent doesn't care where a tool came from.
 
-### Current Time
+## Where to attach them
 
-**Status**: Available
+Capabilities can be attached at three layers, and the layers stack additively:
 
-Adds a tool to get the current date and time in various formats and timezones.
+- **Harness** — defaults for every session that uses this harness.
+- **Agent** — capabilities for this specific role.
+- **Session** — extras for this one conversation.
 
-- **Tool**: `get_current_time`
-- **Formats**: ISO 8601, Unix timestamp, human-readable
-- **Use cases**: Agents that need to know the current time or date
+See [Why three configuration layers](/explanation/concepts/#why-three-configuration-layers-harness-agent-session) for how the merge works.
 
-### No-Op
+## Browse the catalog
 
-**Status**: Available
+The full list of built-in capabilities, organised by category, lives in the reference:
 
-A no-operation capability for testing and demonstration purposes. Does not add any functionality.
+- **[Capabilities reference](/capabilities/)** — every capability with ID, tools, parameters, and dependencies.
 
-- **Use cases**: Testing capability assignment workflow
+## Do something
 
-### Deep Research
+- [Equip an agent with tools](/how-to/equip-agents-with-tools/) — the practical recipe.
+- [Give an agent web access](/how-to/give-an-agent-web-access/) — narrower task with network policies.
+- [Customize a harness](/how-to/customize-a-harness/) — bundle capabilities at the harness layer.
 
-**Status**: Coming Soon
+## See also
 
-Enables deep research capabilities with a scratchpad for notes, web search tools, and structured thinking.
-
-- **System Prompt**: Adds research scratchpad instructions
-- **Use cases**: Research-focused agents
-
-### Sandboxed Execution
-
-**Status**: Coming Soon
-
-Enables sandboxed code execution environment for running code safely.
-
-- **System Prompt**: Adds code execution instructions
-- **Use cases**: Agents that need to run code
-
-### File System Access
-
-**Status**: Coming Soon
-
-Adds tools to access and manipulate files - read, write, grep, and more.
-
-- **System Prompt**: Adds file system access instructions
-- **Use cases**: Agents that need to work with files
-
-### Web Fetch
-
-**Status**: Available
-
-Enables fetching content from URLs and converting HTML to markdown or plain text.
-
-- **Tool**: `web_fetch`
-- **Features**:
-  - Fetch web content with configurable timeouts (1s for first byte, 30s for body)
-  - Convert HTML to markdown or plain text
-  - Extract metadata (size, filename, last modified)
-  - Returns metadata for binary content (images, PDFs) instead of failing
-- **Use cases**: Agents that need to retrieve information from the web
-
-### Agent Skills (Built-in Discovery)
-
-**Status**: Available
-
-Enables agents to discover and activate skills from the session filesystem. Skills are instruction packages (SKILL.md files) uploaded to `/.agents/skills/{name}/SKILL.md` in the session VFS.
-
-- **Tools**:
-  - `list_skills` - Scan `/.agents/skills/` for available skills
-  - `activate_skill` - Load a skill's full instructions by name
-- **Dependencies**: Automatically includes File System Access
-- **Features**:
-  - Progressive disclosure (names first, full instructions on activation)
-  - Path traversal protection on skill names
-  - Bundled file listing for skills with extra assets
-  - Invalid SKILL.md files reported but don't block discovery
-- **Use cases**: Project-specific skills uploaded to the session workspace, per-session skill discovery
-
-See [Agent Skills](/features/skills/) for workspace-based skills and [Skills Registry](/features/skills-registry/) for the API.
-
-### Docker Container (Experimental)
-
-**Status**: Available (Development only, integration plugin)
-
-:::caution
-This capability is experimental and only available in development environments. It may change significantly or be removed.
-:::
-
-Provides tools to run commands and manage files in a Docker container tied to the session. Registered as an external integration plugin via the `inventory` crate (`integrations/docker/`).
-
-- **Tools**:
-  - `docker_exec` - Execute shell commands in the container
-  - `docker_read_file` - Read files from the container filesystem
-  - `docker_write_file` - Write files to the container filesystem
-  - `docker_logs` - Get logs from the container
-  - `docker_stop` - Stop and remove the container
-- **Features**:
-  - Container is lazily started on first tool use
-  - Persists for session duration
-  - Session-isolated containers
-  - Configurable Docker image and working directory
-- **Configuration**:
-  - `image`: Docker image to use (default: `mcr.microsoft.com/devcontainers/python:3.11`)
-  - `working_dir`: Working directory inside container (default: `/workspace`)
-- **Use cases**: Agents that need to execute code or manage files in an isolated environment
-
-## Managing Capabilities
-
-### Via UI
-
-1. Navigate to the Agent detail page
-2. Find the **Capabilities** section in the sidebar
-3. Enable or disable capabilities using the checkboxes
-4. Reorder capabilities using the up/down arrows
-5. Click **Save** to apply changes
-
-The order of capabilities matters - capabilities are applied in the order shown, with earlier capabilities' system prompt additions appearing first.
-
-### Via API
-
-Create agent with capabilities:
-
-```bash
-curl -X POST http://localhost:9300/api/v1/agents \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "My Agent",
-    "system_prompt": "You are a helpful assistant.",
-    "capabilities": ["current_time", "web_fetch"]
-  }'
-```
-
-Update agent capabilities:
-
-```bash
-curl -X PATCH http://localhost:9300/api/v1/agents/{agent_id} \
-  -H "Content-Type: application/json" \
-  -d '{
-    "capabilities": ["current_time", "session_file_system"]
-  }'
-```
-
-Get agent (includes capabilities):
-
-```bash
-curl -X GET http://localhost:9300/api/v1/agents/{agent_id}
-```
-
-List all available capabilities:
-
-```bash
-curl -X GET http://localhost:9300/api/v1/capabilities
-```
-
-Create a declarative capability:
-
-```bash
-curl -X POST http://localhost:9300/api/v1/capabilities \
-  -H "Content-Type: application/json" \
-  -d '{
-    "definition": {
-      "name": "research_pack",
-      "display_name": "Research Pack",
-      "description": "Default research behavior and resources.",
-      "system_prompt": "Prefer primary sources and cite them clearly."
-    }
-  }'
-```
-
-Use it from agents or harnesses with `declarative:research_pack`, or with the
-plain `research_pack` name on write APIs; the server stores the canonical
-`declarative:research_pack` reference.
-
-## Capability Application Flow
-
-When a session runs, capabilities are applied as follows:
-
-1. The agent's assigned capabilities are fetched (ordered by position)
-2. Each capability's system prompt addition is collected
-3. Each capability's tools are collected
-4. The final system prompt = capability additions + agent's base prompt
-5. All capability tools are made available to the agent
-
-## Best Practices
-
-1. **Order Matters**: Place more important capabilities first - their instructions appear earlier in the system prompt
-2. **Minimal Capabilities**: Only enable capabilities the agent actually needs
-3. **Test Combinations**: Some capability combinations may produce unexpected behaviors
-4. **Check Status**: Coming Soon capabilities cannot be enabled yet
+- [MCP servers as virtual capabilities](https://github.com/everruns/everruns/blob/main/specs/mcp-servers.md) — internal spec on remote MCP integration.
+- [Concepts](/explanation/concepts/) — the entity model in full.

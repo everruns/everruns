@@ -24,27 +24,6 @@ Create or update the complete task list. Each call replaces the entire list.
 
 Task statuses: `pending`, `in_progress`, `completed`.
 
-## Use Cases
-
-- **Multi-step implementations** — track progress across a complex coding task
-- **User-requested lists** — manage a checklist of items the user provides
-- **Workflow tracking** — show progress on multi-file refactoring or migration tasks
-
-## Example
-
-```
-User: Refactor the auth module to use JWT
-
-Agent:
-  → write_todos([
-      { content: "Analyze current auth implementation", status: "in_progress", activeForm: "Analyzing current auth" },
-      { content: "Add JWT dependency", status: "pending", activeForm: "Adding JWT dependency" },
-      { content: "Implement token generation", status: "pending", activeForm: "Implementing token generation" },
-      { content: "Update middleware", status: "pending", activeForm: "Updating middleware" },
-      { content: "Run tests", status: "pending", activeForm: "Running tests" }
-    ])
-```
-
 ## Notes
 
 - **Stateless** — no database table; state lives in conversation history

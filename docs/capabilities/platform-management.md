@@ -136,43 +136,6 @@ Read the latest estimated context-token breakdown for a session. Returns total e
 |---|---|---|---|
 | `session_id` | string | yes | Session ID to inspect |
 
-## Use Cases
-
-- **Meta-agents** — an agent that creates and configures other agents
-- **Orchestration** — spawn sessions across multiple agents and collect results
-- **Self-configuration** — agent inspects available capabilities before setting up new agents
-- **Automated testing** — programmatically create sessions and verify agent responses
-
-## Example
-
-Agent creates a specialized sub-agent and interacts with it:
-
-```
-Agent:
-  → read_capabilities({ search: "file" })
-  ← { capabilities: [{ id: "session_file_system", name: "File System", ... }], count: 1 }
-
-  → manage_agents({
-      operation: "create",
-      name: "Code Reviewer",
-      system_prompt: "You review code for bugs and style issues.",
-      capabilities: ["session_file_system", "virtual_bash"]
-    })
-  ← { "agent_id": "agt_01xyz...", "ui_link": "/agents/agt_01xyz..." }
-
-  → manage_sessions({
-      operation: "create",
-      harness_id: "hrs_01abc...",
-      agent_id: "agt_01xyz..."
-    })
-  ← { "session_id": "ses_01def...", "ui_link": "/sessions/ses_01def.../chat" }
-
-  → session_send_message({
-      session_id: "ses_01def...",
-      content: "Review this Python function: def add(a, b): return a + b"
-    })
-```
-
 ## Notes
 
 - All tool results include `ui_link` fields for navigating to the web interface
