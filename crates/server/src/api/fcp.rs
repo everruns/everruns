@@ -468,10 +468,8 @@ pub async fn message(
                         .and_then(|d| d.error_code);
                     return Err(PublicError::from_internal_code(code.as_deref()));
                 }
-                TURN_CANCELLED => {
-                    if parse_event_data::<TurnCancelledData>(&event).is_ok() {
-                        return Err(PublicError::fallback());
-                    }
+                TURN_CANCELLED if parse_event_data::<TurnCancelledData>(&event).is_ok() => {
+                    return Err(PublicError::fallback());
                 }
                 _ => {}
             }
