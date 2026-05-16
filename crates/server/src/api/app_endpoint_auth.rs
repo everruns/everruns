@@ -602,14 +602,26 @@ mod tests {
 
     #[tokio::test]
     async fn validate_resolved_safe_url_rejects_literal_loopback() {
-        assert!(validate_resolved_safe_url("http://127.0.0.1/").await.is_err());
+        assert!(
+            validate_resolved_safe_url("http://127.0.0.1/")
+                .await
+                .is_err()
+        );
         assert!(validate_resolved_safe_url("http://[::1]/").await.is_err());
     }
 
     #[tokio::test]
     async fn validate_resolved_safe_url_rejects_literal_private_ranges() {
-        assert!(validate_resolved_safe_url("http://10.0.0.1/").await.is_err());
-        assert!(validate_resolved_safe_url("http://192.168.1.1/").await.is_err());
+        assert!(
+            validate_resolved_safe_url("http://10.0.0.1/")
+                .await
+                .is_err()
+        );
+        assert!(
+            validate_resolved_safe_url("http://192.168.1.1/")
+                .await
+                .is_err()
+        );
         assert!(
             validate_resolved_safe_url("http://169.254.169.254/")
                 .await
