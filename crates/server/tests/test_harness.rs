@@ -472,6 +472,14 @@ impl TestServer {
             sse_tracker.clone(),
             api::channel_rate_limit::ChannelRateLimiter::in_memory("agui"),
         );
+        let fcp_state = api::fcp::FcpState::new(
+            db.clone(),
+            encryption.clone(),
+            runner.clone(),
+            feature_flags.notifications,
+            event_delivery.clone(),
+            api::channel_rate_limit::ChannelRateLimiter::in_memory("fcp"),
+        );
         let mcp_endpoint_state = api::mcp_endpoint::AppState::new(
             db.clone(),
             runner.clone(),
@@ -520,6 +528,7 @@ impl TestServer {
             .merge(api::user_connections::routes(user_connections_state))
             .merge(api::reporting::routes(reporting_state))
             .merge(api::ag_ui::routes(ag_ui_state))
+            .merge(api::fcp::routes(fcp_state))
             .merge(api::slack_events::routes(slack_state))
             .merge(api::app_webhooks::routes(app_webhooks_state))
             .merge(api::app_a2a::routes(app_a2a_state))

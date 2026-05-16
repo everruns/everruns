@@ -70,6 +70,7 @@ import { CopyButton } from "@/components/ui/copy-button";
 import { A2aAgentCardPreview } from "@/components/apps/a2a-agent-card-preview";
 import { A2aSetupGuidance } from "@/components/apps/a2a-setup-guidance";
 import { AgUiSetupGuidance } from "@/components/apps/ag-ui-setup-guidance";
+import { FcpSetupGuidance } from "@/components/apps/fcp-setup-guidance";
 import { AppBudgetsCard } from "@/components/apps/app-budgets-card";
 import { AppDetailV2 } from "@/components/apps/app-detail-v2";
 import { ScheduleSetupGuidance } from "@/components/apps/schedule-setup-guidance";
@@ -85,6 +86,7 @@ import type {
   AppEndpointAuthMode,
   AgentVersionPolicy,
   ChannelType,
+  FcpChannelConfig,
   InvocationSessionMode,
   ScheduleChannelConfig,
   SessionStrategy,
@@ -119,7 +121,8 @@ type ChannelConfigInput =
   | AgUiChannelConfig
   | ScheduleChannelConfig
   | WebhookChannelConfig
-  | A2aChannelConfig;
+  | A2aChannelConfig
+  | FcpChannelConfig;
 
 type ChannelSummary = {
   target: string;
@@ -271,6 +274,22 @@ function getChannelSummary(channel: AppChannel, isPublished: boolean): ChannelSu
         healthVariant: configured && isPublished ? "default" : "secondary",
       };
     }
+    case "fcp": {
+      const config = channel.channel_config as FcpChannelConfig;
+      const tokenConfigured = !!config?.token || !!config?.token_configured;
+      const target = tokenConfigured
+        ? "Token-protected text endpoint"
+        : config?.anonymous === false
+          ? "Restricted (no token configured)"
+          : "Public text endpoint";
+      const misconfigured = config?.anonymous === false && !tokenConfigured;
+      return {
+        target,
+        group: "Client surfaces",
+        health: misconfigured ? "Misconfigured" : isPublished ? "Ready" : "Draft",
+        healthVariant: misconfigured ? "secondary" : isPublished ? "default" : "secondary",
+      };
+    }
   }
 }
 
@@ -357,6 +376,15 @@ function AppDetailPageLegacy({ params }: { params: Promise<{ appId: string }> })
   const [editA2aAgentCardName, setEditA2aAgentCardName] = useState("");
   const [editA2aAgentCardDescription, setEditA2aAgentCardDescription] = useState("");
   const [editA2aRateLimitPerMinute, setEditA2aRateLimitPerMinute] = useState<string>("");
+  // FCP channel form state — kept narrow because FCP intentionally has a
+  // small auth surface (anonymous + optional shared token) and no inline
+  // AppEndpointAuthConfig modes.
+  const [editFcpAnonymous, setEditFcpAnonymous] = useState(true);
+  const [editFcpToken, setEditFcpToken] = useState("");
+  const [editFcpHandshake, setEditFcpHandshake] = useState("");
+  const [editFcpExpirationHours, setEditFcpExpirationHours] = useState(6);
+  const [editFcpRateLimitPerMinute, setEditFcpRateLimitPerMinute] = useState<string>("");
+  const [editFcpResponseTimeoutSeconds, setEditFcpResponseTimeoutSeconds] = useState<string>("120");
   const [editAuthMode, setEditAuthMode] = useState<AppEndpointAuthMode>("anonymous");
   const [editAuthGoogleClientId, setEditAuthGoogleClientId] = useState("");
   const [editAuthOidcIssuer, setEditAuthOidcIssuer] = useState("");
@@ -515,6 +543,14 @@ function AppDetailPageLegacy({ params }: { params: Promise<{ appId: string }> })
           const config = channel.channel_config as A2aChannelConfig;
           return hasA2aKey(config) && !!config?.message;
         }
+        case "fcp": {
+          const config = channel.channel_config as FcpChannelConfig;
+          // FCP only requires a token when anonymous access is disabled.
+          if (config?.anonymous === false) {
+            return !!config?.token || !!config?.token_configured;
+          }
+          return true;
+        }
       }
     }) ?? false;
 
@@ -527,6 +563,10 @@ function AppDetailPageLegacy({ params }: { params: Promise<{ appId: string }> })
       ? `${window.location.origin}/api/v1/apps/${appId}/ag-ui`
       : `/api/v1/apps/${appId}/ag-ui`;
   const agUiImageUploadUrl = `${agUiEndpointUrl}/images`;
+  const fcpEndpointUrl =
+    typeof window !== "undefined"
+      ? `${window.location.origin}/api/v1/apps/${appId}/fcp`
+      : `/api/v1/apps/${appId}/fcp`;
 
   const isLocalhost =
     typeof window !== "undefined" &&
@@ -604,6 +644,12 @@ function AppDetailPageLegacy({ params }: { params: Promise<{ appId: string }> })
     setEditA2aAgentCardName("");
     setEditA2aAgentCardDescription("");
     setEditA2aRateLimitPerMinute("");
+    setEditFcpAnonymous(true);
+    setEditFcpToken("");
+    setEditFcpHandshake("");
+    setEditFcpExpirationHours(6);
+    setEditFcpRateLimitPerMinute("");
+    setEditFcpResponseTimeoutSeconds("120");
     setEditAuthMode(channelType === "a2a" ? "api_key" : "anonymous");
     setEditAuthGoogleClientId("");
     setEditAuthOidcIssuer("");
@@ -750,6 +796,28 @@ function AppDetailPageLegacy({ params }: { params: Promise<{ appId: string }> })
           ...(editChannelIdField ? { channel_id: editChannelIdField } : {}),
           ...(editTeamId ? { team_id: editTeamId } : {}),
         };
+      case "fcp": {
+        const hours = Number.isFinite(editFcpExpirationHours)
+          ? Math.max(0, editFcpExpirationHours)
+          : 6;
+        const trimmed = editFcpRateLimitPerMinute.trim();
+        const parsedRate = trimmed === "" ? undefined : Number.parseInt(trimmed, 10);
+        const timeoutTrim = editFcpResponseTimeoutSeconds.trim();
+        const parsedTimeout = timeoutTrim === "" ? 120 : Number.parseInt(timeoutTrim, 10);
+        return {
+          anonymous: editFcpAnonymous,
+          ...(editFcpToken.trim() ? { token: editFcpToken.trim() } : {}),
+          ...(editFcpHandshake.trim() ? { handshake: editFcpHandshake } : {}),
+          session_expiration_seconds: Math.round(hours * 3600),
+          ...(parsedRate !== undefined && Number.isFinite(parsedRate) && parsedRate > 0
+            ? { rate_limit_per_minute: parsedRate }
+            : {}),
+          response_timeout_seconds:
+            Number.isFinite(parsedTimeout) && parsedTimeout > 0 && parsedTimeout <= 600
+              ? parsedTimeout
+              : 120,
+        };
+      }
     }
   };
 
@@ -807,6 +875,26 @@ function AppDetailPageLegacy({ params }: { params: Promise<{ appId: string }> })
       }
       case "slack":
         return !!editSigningSecret && !!editBotToken;
+      case "fcp": {
+        if (!Number.isFinite(editFcpExpirationHours) || editFcpExpirationHours < 0) {
+          return false;
+        }
+        const trimmed = editFcpRateLimitPerMinute.trim();
+        if (trimmed !== "") {
+          const parsed = Number.parseInt(trimmed, 10);
+          if (!Number.isFinite(parsed) || parsed < 0 || parsed > 1_000_000) return false;
+          if (String(parsed) !== trimmed) return false;
+        }
+        const timeoutTrim = editFcpResponseTimeoutSeconds.trim();
+        if (timeoutTrim === "") return true;
+        const parsedTimeout = Number.parseInt(timeoutTrim, 10);
+        return (
+          Number.isFinite(parsedTimeout) &&
+          parsedTimeout > 0 &&
+          parsedTimeout <= 600 &&
+          String(parsedTimeout) === timeoutTrim
+        );
+      }
     }
   };
 
@@ -893,6 +981,26 @@ function AppDetailPageLegacy({ params }: { params: Promise<{ appId: string }> })
         config?.rate_limit_per_minute && config.rate_limit_per_minute > 0
           ? String(config.rate_limit_per_minute)
           : "",
+      );
+    } else if (channel.channel_type === "fcp") {
+      const config = channel.channel_config as FcpChannelConfig;
+      setEditFcpAnonymous(config?.anonymous ?? true);
+      setEditFcpToken(config?.token ?? "");
+      setEditFcpHandshake(config?.handshake ?? "");
+      const expSeconds =
+        typeof config?.session_expiration_seconds === "number"
+          ? config.session_expiration_seconds
+          : 6 * 60 * 60;
+      setEditFcpExpirationHours(expSeconds / 3600);
+      setEditFcpRateLimitPerMinute(
+        config?.rate_limit_per_minute && config.rate_limit_per_minute > 0
+          ? String(config.rate_limit_per_minute)
+          : "",
+      );
+      setEditFcpResponseTimeoutSeconds(
+        typeof config?.response_timeout_seconds === "number"
+          ? String(config.response_timeout_seconds)
+          : "120",
       );
     }
     setEditingChannelId(channel.id);
@@ -1184,6 +1292,7 @@ function AppDetailPageLegacy({ params }: { params: Promise<{ appId: string }> })
                 <SelectItem value="schedule">{getChannelTypeDisplayName("schedule")}</SelectItem>
                 <SelectItem value="webhook">{getChannelTypeDisplayName("webhook")}</SelectItem>
                 <SelectItem value="a2a">{getChannelTypeDisplayName("a2a")}</SelectItem>
+                <SelectItem value="fcp">{getChannelTypeDisplayName("fcp")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -1605,6 +1714,122 @@ function AppDetailPageLegacy({ params }: { params: Promise<{ appId: string }> })
           </>
         )}
 
+        {formChannelType === "fcp" && (
+          <>
+            <div className="rounded-md border p-3 text-sm text-muted-foreground">
+              FCP is a minimal text-first endpoint. POST plain text (or JSON{" "}
+              <code>&#123;&quot;message&quot;: &quot;...&quot;&#125;</code>) and receive the
+              agent&apos;s Markdown reply. The handshake is the GET on the endpoint URL — keep it
+              accurate so external clients can discover how to use this app.
+            </div>
+            <div className="flex items-center justify-between border p-3">
+              <div>
+                <Label htmlFor={`fcp_anonymous_${formId}`}>Anonymous access</Label>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  When off, every POST must present the bearer token below. The GET handshake stays
+                  open either way.
+                </p>
+              </div>
+              <Switch
+                id={`fcp_anonymous_${formId}`}
+                checked={editFcpAnonymous}
+                onCheckedChange={setEditFcpAnonymous}
+              />
+            </div>
+            <div>
+              <Label htmlFor={`fcp_token_${formId}`}>Bearer token (optional)</Label>
+              <div className="flex gap-2">
+                <Input
+                  id={`fcp_token_${formId}`}
+                  value={editFcpToken}
+                  onChange={(e) => setEditFcpToken(e.target.value)}
+                  className="font-mono"
+                  placeholder="Leave blank for anonymous access"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => setEditFcpToken(generateChannelToken())}
+                  aria-label="Regenerate FCP token"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                </Button>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Verified with constant-time comparison. Sent as Authorization: Bearer&nbsp;
+                &lt;token&gt; or X-Everruns-FCP-Token. Never echoed in responses.
+              </p>
+            </div>
+            <div>
+              <Label htmlFor={`fcp_handshake_${formId}`}>Custom handshake (Markdown)</Label>
+              <Textarea
+                id={`fcp_handshake_${formId}`}
+                value={editFcpHandshake}
+                onChange={(e) => setEditFcpHandshake(e.target.value)}
+                placeholder="Leave blank to auto-generate from the app name and description."
+                rows={4}
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Returned verbatim for GET on the endpoint URL. Should describe what this app does
+                and how to talk to it. Maximum 8 KiB.
+              </p>
+            </div>
+            <div>
+              <Label htmlFor={`fcp_expiration_${formId}`}>Session expiration (hours)</Label>
+              <Input
+                id={`fcp_expiration_${formId}`}
+                type="number"
+                inputMode="numeric"
+                min={0}
+                step={0.1}
+                value={editFcpExpirationHours}
+                onChange={(e) => setEditFcpExpirationHours(Number.parseFloat(e.target.value) || 0)}
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                0 = the fcp_session cookie never expires. Default is 6 hours.
+              </p>
+            </div>
+            <div>
+              <Label htmlFor={`fcp_rate_limit_${formId}`}>
+                Per-IP rate limit (requests/minute, optional)
+              </Label>
+              <Input
+                id={`fcp_rate_limit_${formId}`}
+                type="number"
+                inputMode="numeric"
+                min={0}
+                max={1_000_000}
+                value={editFcpRateLimitPerMinute}
+                onChange={(e) => setEditFcpRateLimitPerMinute(e.target.value)}
+                placeholder="No per-channel limit"
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Counted in an FCP-only limiter namespace — cannot be shared with any other channel.
+                Leave empty (or set to 0) to disable; the global API limit still applies.
+              </p>
+            </div>
+            <div>
+              <Label htmlFor={`fcp_response_timeout_${formId}`}>Response timeout (seconds)</Label>
+              <Input
+                id={`fcp_response_timeout_${formId}`}
+                type="number"
+                inputMode="numeric"
+                min={1}
+                max={600}
+                value={editFcpResponseTimeoutSeconds}
+                onChange={(e) => setEditFcpResponseTimeoutSeconds(e.target.value)}
+                placeholder="120"
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Maximum time the endpoint waits for the agent before returning 504. Must be 1-600s.
+                Default 120s. The session cookie is still set on timeout so the client can retry the
+                same conversation.
+              </p>
+            </div>
+          </>
+        )}
+
         <div className="flex gap-2 pt-2">
           <Button
             size="sm"
@@ -1664,6 +1889,30 @@ function AppDetailPageLegacy({ params }: { params: Promise<{ appId: string }> })
             sessionMode={config?.session_mode ?? "shared_session"}
             message={config?.message ?? ""}
             isPublished={isPublished}
+            onConfigure={() => startEditChannel(channel)}
+          />
+        </div>
+      );
+    }
+
+    if (channel.channel_type === "fcp") {
+      const config = channel.channel_config as FcpChannelConfig;
+      return (
+        <div key={channel.id} className="space-y-4">
+          <FcpSetupGuidance
+            endpointUrl={fcpEndpointUrl}
+            isPublished={isPublished}
+            anonymousEnabled={config?.anonymous ?? true}
+            sessionExpirationSeconds={
+              typeof config?.session_expiration_seconds === "number"
+                ? config.session_expiration_seconds
+                : 6 * 60 * 60
+            }
+            rateLimitPerMinute={config?.rate_limit_per_minute}
+            responseTimeoutSeconds={config?.response_timeout_seconds}
+            token={config?.token}
+            tokenConfigured={!!config?.token || !!config?.token_configured}
+            hasCustomHandshake={!!config?.handshake?.trim()}
             onConfigure={() => startEditChannel(channel)}
           />
         </div>
@@ -1900,6 +2149,50 @@ function AppDetailPageLegacy({ params }: { params: Promise<{ appId: string }> })
       );
     }
 
+    if (channel.channel_type === "fcp") {
+      const config = channel.channel_config as FcpChannelConfig;
+      const tokenConfigured = !!config?.token || !!config?.token_configured;
+      const expSeconds =
+        typeof config?.session_expiration_seconds === "number"
+          ? config.session_expiration_seconds
+          : 6 * 60 * 60;
+      return (
+        <div className="grid gap-4 md:grid-cols-2">
+          <ChannelFact
+            label="Access"
+            value={
+              tokenConfigured
+                ? "Token protected"
+                : config?.anonymous === false
+                  ? "Restricted (no token)"
+                  : "Anonymous"
+            }
+          />
+          <ChannelFact
+            label="Session expiration"
+            value={expSeconds === 0 ? "Never" : `${expSeconds / 3600}h`}
+          />
+          <ChannelFact
+            label="Rate limit"
+            value={
+              config?.rate_limit_per_minute
+                ? `${config.rate_limit_per_minute}/minute/IP`
+                : "Global limit only"
+            }
+          />
+          <ChannelFact
+            label="Response timeout"
+            value={`${config?.response_timeout_seconds ?? 120}s`}
+          />
+          <ChannelFact
+            label="Handshake"
+            value={config?.handshake?.trim() ? "Custom" : "Auto-generated"}
+          />
+          <ChannelFact label="Health" value={summary.health} />
+        </div>
+      );
+    }
+
     const config = channel.channel_config as A2aChannelConfig;
     return (
       <div className="space-y-4">
@@ -1930,7 +2223,9 @@ function AppDetailPageLegacy({ params }: { params: Promise<{ appId: string }> })
             ? `/api/v1/apps/${appId}/webhooks/${channel.id}`
             : channel.channel_type === "a2a"
               ? `/api/v1/apps/${appId}/a2a/${channel.id}`
-              : "";
+              : channel.channel_type === "fcp"
+                ? `/api/v1/apps/${appId}/fcp`
+                : "";
 
     if (!endpoint) {
       return null;

@@ -8,6 +8,8 @@ A **public endpoint** is an HTTP endpoint that accepts unauthenticated traffic a
 |---|---|---|---|
 | AG-UI | `POST /v1/apps/{app_id}/ag-ui` | `crates/server/src/api/ag_ui.rs` | Public, app-scoped SSE stream; optional channel token |
 | AG-UI image upload | `POST /v1/apps/{app_id}/ag-ui/images` | `crates/server/src/api/ag_ui.rs` | Public, app-scoped multipart image upload; optional channel token |
+| FCP handshake | `GET /v1/apps/{app_id}/fcp` | `crates/server/src/api/fcp.rs` | Public, app-scoped Markdown handshake (always-open per FCP SPEC) |
+| FCP message | `POST /v1/apps/{app_id}/fcp` | `crates/server/src/api/fcp.rs` | Public, app-scoped text-in / text-out; optional channel token; FCP-only rate limiter |
 | Slack events | `POST /v1/apps/{app_id}/slack/events` | `crates/server/src/api/slack_events.rs` | Anonymous Slack webhook (signature-verified) |
 | Slack manifest | `GET /v1/apps/{app_id}/slack/manifest` | `crates/server/src/api/slack_events.rs` | Anonymous YAML manifest fetch |
 

@@ -61,6 +61,8 @@ use utoipa::OpenApi;
         api::app_webhooks::invoke_webhook,
         api::app_a2a::invoke_a2a,
         api::app_a2a::agent_card,
+        api::fcp::handshake,
+        api::fcp::message,
         api::apps::add_a2a_channel,
         api::apps::regenerate_a2a_key,
         api::events::stream_sse,
