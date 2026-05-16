@@ -665,6 +665,18 @@ pub struct A2aChannelConfig {
     /// legacy per-channel API-key behavior applies.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub auth: Option<AppEndpointAuthConfig>,
+    /// Optional shared HMAC signing secret. When set, requests must include
+    /// `X-Everruns-A2A-Timestamp` + `X-Everruns-A2A-Signature` headers and
+    /// the server verifies an HMAC-SHA256 signature over the exact
+    /// basestring `v0:{timestamp}:{body}` (Slack-style, no whitespace
+    /// between segments) plus a 5-minute timestamp window plus a
+    /// signature-keyed dedup so a captured request cannot be replayed
+    /// while the API key is still valid (TM-A2A-010). When `None`, the
+    /// channel keeps the existing API-key-only behavior. Layered **on top
+    /// of** `auth` — independent concerns: `auth` selects who can call,
+    /// `signing_secret` adds replay protection on top.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub signing_secret: Option<String>,
 }
 
 #[cfg(test)]
@@ -1073,6 +1085,7 @@ mod tests {
         assert!(config.agent_card_description.is_none());
         assert!(config.rate_limit_per_minute.is_none());
         assert!(config.auth.is_none());
+        assert!(config.signing_secret.is_none());
     }
 
     #[test]
@@ -1086,6 +1099,7 @@ mod tests {
             agent_card_description: Some("Triages github events".into()),
             rate_limit_per_minute: Some(120),
             auth: None,
+            signing_secret: None,
         };
         let json = serde_json::to_string(&config).unwrap();
         let parsed: A2aChannelConfig = serde_json::from_str(&json).unwrap();
@@ -1109,11 +1123,13 @@ mod tests {
             agent_card_description: None,
             rate_limit_per_minute: None,
             auth: None,
+            signing_secret: None,
         };
         let json = serde_json::to_value(&config).unwrap();
         assert!(json.get("agent_card_name").is_none());
         assert!(json.get("agent_card_description").is_none());
         assert!(json.get("rate_limit_per_minute").is_none());
+        assert!(json.get("signing_secret").is_none());
     }
 
     #[test]
