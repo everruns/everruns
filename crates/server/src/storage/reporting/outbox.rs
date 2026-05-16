@@ -15,8 +15,8 @@ impl PostgresReportingProjector {
         Self { pool }
     }
 
-    pub async fn run_once(&self, limit: i64) -> Result<ProjectorRunResult> {
-        let rows = self.claim_pending(limit).await?;
+    pub async fn run_once(&self, org_id: i64, limit: i64) -> Result<ProjectorRunResult> {
+        let rows = self.claim_pending(org_id, limit).await?;
         let claimed = rows.len();
         let mut completed = 0;
         let mut failed = 0;
@@ -42,7 +42,7 @@ impl PostgresReportingProjector {
         })
     }
 
-    async fn claim_pending(&self, limit: i64) -> Result<Vec<ReportingOutboxRow>> {
+    async fn claim_pending(&self, org_id: i64, limit: i64) -> Result<Vec<ReportingOutboxRow>> {
         let rows = sqlx::query_as::<_, ReportingOutboxRow>(
             r#"
             UPDATE reporting_outbox
@@ -53,16 +53,18 @@ impl PostgresReportingProjector {
              WHERE id IN (
                 SELECT id
                   FROM reporting_outbox
-                 WHERE status IN ('pending', 'failed')
+                 WHERE org_id = $1
+                   AND status IN ('pending', 'failed')
                    AND next_attempt_at <= NOW()
                  ORDER BY created_at ASC
-                 LIMIT $1
+                 LIMIT $2
                  FOR UPDATE SKIP LOCKED
              )
          RETURNING id, org_id, source_type, source_id, source_version, reason, status,
                    attempts, next_attempt_at, last_error, created_at, updated_at
             "#,
         )
+        .bind(org_id)
         .bind(limit.clamp(1, 1_000))
         .fetch_all(&self.pool)
         .await?;
