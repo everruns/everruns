@@ -1059,7 +1059,7 @@ mod tests {
         use tokio_tungstenite::tungstenite::http;
 
         let resp = http::Response::builder().status(403).body(None).unwrap();
-        let err = tokio_tungstenite::tungstenite::Error::Http(resp);
+        let err = tokio_tungstenite::tungstenite::Error::Http(Box::new(resp));
         let msg = map_ws_connect_error(err);
         assert!(
             msg.contains("REST-mode tools"),
@@ -1073,7 +1073,7 @@ mod tests {
         use tokio_tungstenite::tungstenite::http;
 
         let resp = http::Response::builder().status(401).body(None).unwrap();
-        let err = tokio_tungstenite::tungstenite::Error::Http(resp);
+        let err = tokio_tungstenite::tungstenite::Error::Http(Box::new(resp));
         let msg = map_ws_connect_error(err);
         assert!(
             msg.contains("REST-mode tools"),

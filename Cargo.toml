@@ -122,7 +122,7 @@ webbrowser = "1"
 dirs = "6"
 
 # WebSocket (CDP sessions)
-tokio-tungstenite = { version = "0.26", features = ["rustls-tls-native-roots"] }
+tokio-tungstenite = { version = "0.29", features = ["rustls-tls-native-roots"] }
 futures-util = "0.3"
 
 # Everruns SDK
