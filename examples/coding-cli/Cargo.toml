@@ -1,0 +1,32 @@
+[package]
+name = "everruns-coding-cli"
+version = "0.1.0"
+edition = "2024"
+publish = false
+description = "A minimal terminal coding agent built on everruns-runtime"
+
+[[bin]]
+name = "ercli"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1.0"
+async-trait = "0.1"
+chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4.5", features = ["derive"] }
+crossterm = "0.28"
+ignore = "0.4"
+ratatui = "0.29"
+regex = "1.10"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+textwrap = "0.16"
+tokio = { version = "1.50", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1.11", features = ["v7", "serde"] }
+
+everruns-anthropic = { path = "../../crates/anthropic" }
+everruns-core = { path = "../../crates/core" }
+everruns-openai = { path = "../../crates/openai" }
+everruns-runtime = { path = "../../crates/runtime" }
