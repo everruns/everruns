@@ -9,24 +9,32 @@
 // Decision: Signing is **opt-in per channel** via
 //   `A2aChannelConfig::signing_secret`. Channels without a secret keep the
 //   existing API-key-only behavior so existing deployments do not break.
-// Decision: Signature base string follows Slack: `v0:{timestamp}:{body}`
-//   with HMAC-SHA256, hex-encoded, prefixed `v0=`. Timestamp window is
-//   300 seconds (5 minutes) absolute, mirroring Slack and the Slack
-//   ingress already in this codebase, which gives a forgiving but bounded
-//   replay window for clock skew.
+// Decision: Signature base string is Slack-derived but target-bound:
+//   `v0:{timestamp}:{channel_scope}:{body}` where `channel_scope` is
+//   `{app_id}:{channel_id}`. Slack signs only `v0:{timestamp}:{body}`; we
+//   add the channel scope because operators who reuse the same
+//   `signing_secret` across multiple A2A channels would otherwise be
+//   vulnerable to cross-channel replay (a captured request for channel A
+//   could be redirected to channel B since the replay store is keyed
+//   per-channel — the dedup would not catch it). Encoded with HMAC-SHA256,
+//   hex-encoded, prefixed `v0=`. Timestamp window is 300 seconds (5
+//   minutes) absolute, mirroring Slack and the Slack ingress already in
+//   this codebase, which gives a forgiving but bounded replay window for
+//   clock skew.
 // Decision: Replay defence-in-depth: in addition to the timestamp window,
 //   the **signature itself** is recorded as a single-use nonce with the
 //   same TTL. A captured request that survives the timestamp check will
 //   still be rejected within that window because its (deterministic)
 //   signature is already in the store. The signature is unique per
-//   `(timestamp, body, secret)`. Two legitimate requests with byte-identical
-//   bodies sent in the same unix second produce the same HMAC and the
-//   second one will be rejected as a replay — this mirrors the Slack
-//   precedent and is acceptable in practice because JSON-RPC clients
-//   already vary `id` per request, which makes the body distinct. Clients
-//   that may legitimately repeat identical bodies (e.g. unkeyed
-//   notifications) must include a per-request token in the body or bump
-//   the timestamp by at least one second between retries.
+//   `(timestamp, channel_scope, body, secret)`. Two legitimate requests
+//   with byte-identical bodies sent in the same unix second to the same
+//   channel produce the same HMAC and the second one will be rejected as
+//   a replay — this mirrors the Slack precedent and is acceptable in
+//   practice because JSON-RPC clients already vary `id` per request,
+//   which makes the body distinct. Clients that may legitimately repeat
+//   identical bodies (e.g. unkeyed notifications) must include a
+//   per-request token in the body or bump the timestamp by at least one
+//   second between retries.
 // Decision: Two backends mirror the channel rate limiter — in-memory
 //   `HashMap` for single-instance/dev and Valkey `SET ... NX EX` for
 //   distributed deployments. The check runs after API key verification
@@ -97,10 +105,18 @@ impl SignatureCheckError {
 
 /// Verify an A2A request signature against the configured shared secret.
 ///
+/// The expected basestring is `v0:{timestamp}:{channel_scope}:{body}` with
+/// each segment separated by a literal colon and no whitespace. The HMAC
+/// digest is hex-encoded and prefixed `v0=`. `channel_scope` is the
+/// caller-supplied target identifier — for the A2A endpoint this is
+/// `{app_id}:{channel_id}` so the same `signing_secret` reused across
+/// channels cannot let a captured request be replayed against a
+/// different channel target. The body slice must be the **raw request
+/// bytes** (not a re-serialized JSON value) so the signature matches
+/// what the client produced.
+///
 /// Returns `Ok(signature_string)` on success — the caller passes that into
-/// the nonce store. The body slice must be the **raw request bytes** (not
-/// a re-serialized JSON value) so the signature matches what the client
-/// produced.
+/// the nonce store.
 pub fn verify_signature(
     timestamp_header: Option<&str>,
     signature_header: Option<&str>,

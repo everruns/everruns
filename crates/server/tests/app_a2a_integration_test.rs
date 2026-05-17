@@ -11,7 +11,12 @@ use sha2::Sha256;
 use test_harness::TestServer;
 use tokio::time::{Duration, sleep};
 
-/// Compute the Slack-style A2A request signature for tests.
+/// Compute the A2A request signature for tests.
+///
+/// Basestring is `v0:{ts_secs}:{channel_scope}:{body}` (Slack-derived but
+/// scope-bound — see `crates/server/src/api/a2a_signing.rs` for the full
+/// rationale). `channel_scope` is the same `{app_id}:{channel_id}` value
+/// the server uses to bind the signature to the target endpoint.
 fn a2a_sign(secret: &str, ts_secs: i64, channel_scope: &str, body: &[u8]) -> String {
     let mut mac = Hmac::<Sha256>::new_from_slice(secret.as_bytes()).unwrap();
     mac.update(format!("v0:{ts_secs}:{channel_scope}:").as_bytes());
@@ -1577,6 +1582,111 @@ async fn a2a_signed_channel_rejects_replay_within_window() {
                 ("authorization", &format!("Bearer {api_key}")),
                 ("x-everruns-a2a-timestamp", &ts.to_string()),
                 ("x-everruns-a2a-signature", &sig),
+            ],
+            body,
+        )
+        .await
+        .assert_status(StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn a2a_signed_channel_rejects_cross_channel_replay() {
+    // TM-A2A-010 cross-channel binding: when operators reuse the same
+    // `signing_secret` across two A2A channels on the same app, a
+    // signature computed for channel A must NOT be accepted on channel B.
+    // The signed basestring includes `{app_id}:{channel_id}` so the
+    // signature is bound to its target; verification on a different
+    // channel must fail with 401.
+    let server = TestServer::in_memory().await;
+    let (app, api_key_a) =
+        create_app_with_a2a(&server, "a2a-cross-channel", "from a2a: {{a2a.text}}").await;
+    let app_id = app["id"].as_str().unwrap();
+    let channel_id_a = app["channels"][0]["id"].as_str().unwrap().to_string();
+
+    let second_channel_response: Value = server
+        .post(
+            &format!("/v1/apps/{app_id}/a2a-channels"),
+            json!({
+                "session_mode": "shared_session",
+                "message": "from a2a (b): {{a2a.text}}",
+                "agent_card_name": "Inbox triage (b)",
+                "agent_card_description": "Triages inbound A2A traffic (b)",
+            }),
+        )
+        .await
+        .assert_status(StatusCode::CREATED)
+        .json();
+    let api_key_b = second_channel_response["api_key"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let app_after: Value = server
+        .get(&format!("/v1/apps/{app_id}"))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    let channel_id_b = app_after["channels"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["id"].as_str().unwrap().to_string())
+        .find(|id| id != &channel_id_a)
+        .expect("second a2a channel id");
+
+    publish_app(&server, app_id).await;
+
+    // Both channels share the SAME signing secret — this is exactly the
+    // misconfiguration the scope binding is intended to defend against.
+    enable_a2a_signing(&server, app_id, &channel_id_a, A2A_SIGNING_SECRET).await;
+    enable_a2a_signing(&server, app_id, &channel_id_b, A2A_SIGNING_SECRET).await;
+
+    let body = serde_json::to_vec(&json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "message/send",
+        "params": {
+            "message": { "role": "user", "parts": [{ "kind": "text", "text": "hi" }] }
+        }
+    }))
+    .unwrap();
+    let ts = a2a_now_secs();
+    // Sign with channel A's scope.
+    let sig_for_a = a2a_sign(
+        A2A_SIGNING_SECRET,
+        ts,
+        &format!("{app_id}:{channel_id_a}"),
+        &body,
+    );
+
+    // Sanity check: the signature is accepted on channel A (its target).
+    server
+        .request_raw(
+            Method::POST,
+            &format!("/v1/apps/{app_id}/a2a/{channel_id_a}"),
+            vec![
+                ("content-type", "application/json"),
+                ("authorization", &format!("Bearer {api_key_a}")),
+                ("x-everruns-a2a-timestamp", &ts.to_string()),
+                ("x-everruns-a2a-signature", &sig_for_a),
+            ],
+            body.clone(),
+        )
+        .await
+        .assert_status(StatusCode::OK);
+
+    // The same signed envelope replayed against channel B with channel
+    // B's API key must be rejected, even though both channels share the
+    // signing secret and the timestamp is still fresh. Without the
+    // scope binding the per-channel replay store would not catch this.
+    server
+        .request_raw(
+            Method::POST,
+            &format!("/v1/apps/{app_id}/a2a/{channel_id_b}"),
+            vec![
+                ("content-type", "application/json"),
+                ("authorization", &format!("Bearer {api_key_b}")),
+                ("x-everruns-a2a-timestamp", &ts.to_string()),
+                ("x-everruns-a2a-signature", &sig_for_a),
             ],
             body,
         )

@@ -409,7 +409,12 @@ Headers (sent by the client):
 
 - `X-Everruns-A2A-Timestamp` — unix-second timestamp of the request.
 - `X-Everruns-A2A-Signature` — `v0={hex}`, where `{hex}` is
-  `HMAC-SHA256(signing_secret, "v0:{timestamp}:{raw_body}")`.
+  `HMAC-SHA256(signing_secret, "v0:{timestamp}:{channel_scope}:{raw_body}")`.
+  `channel_scope` is the literal string `{app_id}:{channel_id}` (the same
+  values that appear in the request path). Including the scope inside the
+  signed basestring binds the signature to its target endpoint and
+  prevents cross-channel replay when operators share the same
+  `signing_secret` across multiple A2A channels.
 
 Verification is performed in `crates/server/src/api/a2a_signing.rs` and
 called from `app_a2a::authenticate_request` **after** primary
@@ -423,8 +428,9 @@ check covers:
 - **Signature**: constant-time HMAC-SHA256 comparison.
 - **Replay dedup**: the verified signature itself is recorded as a
   single-use nonce (scoped per `app_id:channel_id`) with a 5-minute TTL.
-  Because the signature is deterministic over `(timestamp, body, secret)`,
-  two requests with byte-identical bodies sent in the same unix second
+  Because the signature is deterministic over
+  `(timestamp, channel_scope, body, secret)`, two requests with
+  byte-identical bodies sent in the same unix second to the same channel
   produce the same HMAC and the second is rejected as a replay. This
   matches the Slack precedent and is benign in practice because JSON-RPC
   clients vary `id` per request, which makes the body distinct. Clients
