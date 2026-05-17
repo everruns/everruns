@@ -266,12 +266,7 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
     fn schedule_store(&self, org_id: i64) -> Arc<dyn everruns_core::traits::SessionScheduleStore>;
 
     /// Get the org-scoped memory store for `remember`/`recall`/`forget` tools.
-    /// Returns `None` when the worker cannot reach a backing store (e.g. gRPC
-    /// workers without the corresponding RPC); callers fall through to a
-    /// non-disclosing tool error.
-    fn memory_store(&self, _org_id: i64) -> Option<Arc<dyn everruns_core::MemoryStoreBackend>> {
-        None
-    }
+    fn memory_store(&self, org_id: i64) -> Option<Arc<dyn everruns_core::MemoryStoreBackend>>;
 
     /// Get the budget checker for the current turn, if available.
     ///
