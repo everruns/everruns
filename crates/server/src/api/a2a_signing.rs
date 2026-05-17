@@ -399,6 +399,30 @@ mod tests {
     }
 
     #[test]
+    fn verify_signature_rejects_scope_mismatch() {
+        // Signature produced for one channel scope must not verify against a
+        // different one, even when secret/timestamp/body are identical. This
+        // is the core security property added by the scope-bound basestring
+        // (TM-A2A-010) — without it, operators reusing one `signing_secret`
+        // across multiple A2A channels are exposed to cross-channel replay.
+        let secret = "topsecret";
+        let ts = 1_700_000_000_i64;
+        let body = br#"{"jsonrpc":"2.0","method":"message/send"}"#;
+        let sig_for_ch1 = sign(secret, ts, "app1:ch1", body);
+        assert_eq!(
+            verify_signature(
+                Some(&ts.to_string()),
+                Some(&sig_for_ch1),
+                "app1:ch2",
+                body,
+                secret,
+                ts,
+            ),
+            Err(SignatureCheckError::SignatureMismatch),
+        );
+    }
+
+    #[test]
     fn verify_signature_rejects_tampered_body() {
         let secret = "topsecret";
         let ts = 1_700_000_000_i64;
