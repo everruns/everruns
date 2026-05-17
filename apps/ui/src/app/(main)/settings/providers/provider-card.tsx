@@ -1,12 +1,19 @@
 "use client";
 
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Key, Trash2, RefreshCw } from "lucide-react";
+import { Key, Trash2, RefreshCw, Boxes, ExternalLink } from "lucide-react";
 import { ProviderIcon, getProviderLabel } from "@/components/providers/provider-icon";
+import { formatCountLabel } from "@/lib/formatting";
 import type { LlmProvider } from "@/lib/api/types";
+
+type ProviderModelCounts = {
+  total: number;
+  enabled: number;
+};
 
 export function ProviderCard({
   provider,
@@ -14,15 +21,20 @@ export function ProviderCard({
   onSetApiKey,
   onSyncModels,
   isSyncing,
+  modelCounts,
+  modelsLoading,
 }: {
   provider: LlmProvider;
   onDelete: (id: string) => void;
   onSetApiKey: (provider: LlmProvider) => void;
   onSyncModels: (id: string) => void;
   isSyncing: boolean;
+  modelCounts: ProviderModelCounts;
+  modelsLoading: boolean;
 }) {
   // Only show sync button for providers without custom base URL (standard providers)
   const canSync = !provider.base_url && provider.api_key_set;
+  const modelsHref = `/models?provider=${encodeURIComponent(provider.id)}`;
 
   return (
     <Card>
@@ -30,7 +42,11 @@ export function ProviderCard({
         <div className="flex items-center gap-3">
           <ProviderIcon providerType={provider.provider_type} size="md" />
           <div>
-            <CardTitle className="text-lg">{provider.name}</CardTitle>
+            <CardTitle className="text-lg">
+              <Link href={`/settings/providers/${provider.id}`} className="hover:underline">
+                {provider.name}
+              </Link>
+            </CardTitle>
             <CardDescription className="text-sm">
               {getProviderLabel(provider.provider_type)}
             </CardDescription>
@@ -57,6 +73,26 @@ export function ProviderCard({
             <span className="text-muted-foreground">
               API Key: {provider.api_key_set ? "Configured" : "Not set"}
             </span>
+          </div>
+          <div className="flex items-start gap-2">
+            <Boxes className="h-4 w-4 text-muted-foreground mt-0.5" />
+            {modelsLoading ? (
+              <Skeleton className="h-4 w-40" />
+            ) : (
+              <div className="text-muted-foreground">
+                <span>
+                  {formatCountLabel(modelCounts.total, "model")} available, {modelCounts.enabled}{" "}
+                  enabled
+                </span>
+                <Link
+                  href={modelsHref}
+                  className="ml-2 inline-flex items-center gap-1 text-foreground hover:underline"
+                >
+                  View models
+                  <ExternalLink className="h-3 w-3" />
+                </Link>
+              </div>
+            )}
           </div>
         </div>
         <div className="flex items-center justify-end gap-2 mt-4">
@@ -105,6 +141,7 @@ export function ProviderCardSkeleton() {
       </CardHeader>
       <CardContent>
         <Skeleton className="h-4 w-full mb-4" />
+        <Skeleton className="h-4 w-2/3 mb-4" />
         <Skeleton className="h-8 w-24 ml-auto" />
       </CardContent>
     </Card>

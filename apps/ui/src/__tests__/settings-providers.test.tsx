@@ -3,6 +3,23 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactNode } from "react";
 import ProvidersPage from "@/app/(main)/settings/providers/page";
 
+jest.mock("next/link", () => ({
+  __esModule: true,
+  default: ({
+    children,
+    href,
+    className,
+  }: {
+    children: React.ReactNode;
+    href: string;
+    className?: string;
+  }) => (
+    <a href={href} className={className}>
+      {children}
+    </a>
+  ),
+}));
+
 // Mock the LLM providers hooks
 const mockProviders = [
   {
@@ -34,6 +51,8 @@ const mockModels = [
     display_name: "GPT-4",
     provider_id: "provider-1",
     provider_name: "OpenAI Production",
+    provider_type: "openai",
+    healthy: true,
     status: "active",
     enabled: true,
     capabilities: ["chat", "function_calling"],
@@ -53,6 +72,7 @@ const mockUseSyncProviderModels = jest.fn();
 
 jest.mock("@/hooks/use-llm-providers", () => ({
   useLlmProviders: () => mockUseLlmProviders(),
+  useLlmProvider: () => ({ data: null, isLoading: false, error: null }),
   useLlmModels: () => mockUseLlmModels(),
   useCreateLlmProvider: () => mockUseCreateLlmProvider(),
   useUpdateLlmProvider: () => mockUseUpdateLlmProvider(),
@@ -177,6 +197,21 @@ describe("ProvidersPage", () => {
 
     expect(screen.getByText("OpenAI Production")).toBeInTheDocument();
     expect(screen.getByText("Anthropic Dev")).toBeInTheDocument();
+  });
+
+  it("shows provider model counts and links to filtered models", () => {
+    render(<ProvidersPage />, { wrapper });
+
+    expect(screen.getByText("1 model available, 1 enabled")).toBeInTheDocument();
+    expect(screen.getByText("0 models available, 0 enabled")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /OpenAI Production/i })).toHaveAttribute(
+      "href",
+      "/settings/providers/provider-1",
+    );
+    expect(screen.getAllByRole("link", { name: /View models/i })[0]).toHaveAttribute(
+      "href",
+      "/models?provider=provider-1",
+    );
   });
 
   it("shows loading skeleton when providers are loading", () => {
