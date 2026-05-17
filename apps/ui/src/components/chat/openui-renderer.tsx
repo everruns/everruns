@@ -7,6 +7,13 @@
  * to parse and render OpenUI Lang DSL code into React components (charts, tables,
  * forms, cards, etc.).
  *
+ * Decision: dynamic-import @openuidev/react-lang and @openuidev/react-ui with
+ * { ssr: false }. Starting at @openuidev/react-ui 0.11 the genui-lib bundle
+ * references `document` at module load time, which crashes Next.js's
+ * server-side render path for client components. Loading them lazily on the
+ * client only avoids the SSR error without affecting end-user behavior — chat
+ * messages never render until the client mounts anyway.
+ *
  * Wraps the Renderer in an error boundary to catch "Objects are not valid as a
  * React child" errors that occur when the LLM generates malformed OpenUI code
  * (e.g. passing an element where a string prop is expected). The parser doesn't
@@ -17,10 +24,27 @@
  * @see https://github.com/thesysdev/openui
  */
 
-import { Renderer } from "@openuidev/react-lang";
-import { openuiLibrary } from "@openuidev/react-ui/genui-lib";
-import "@openuidev/react-ui/components.css";
+import dynamic from "next/dynamic";
 import { Component, type ErrorInfo, type ReactNode } from "react";
+// CSS is a static side-effect import; safe under SSR (Next emits the link tag
+// rather than executing module code). Only the JS bundle touches `document`.
+import "@openuidev/react-ui/components.css";
+
+const OpenUIRendererInner = dynamic(
+  () =>
+    Promise.all([import("@openuidev/react-lang"), import("@openuidev/react-ui/genui-lib")]).then(
+      ([lang, lib]) => {
+        const { Renderer } = lang;
+        const { openuiLibrary } = lib;
+        function ClientRenderer({ code, isStreaming }: { code: string; isStreaming: boolean }) {
+          return <Renderer response={code} library={openuiLibrary} isStreaming={isStreaming} />;
+        }
+        ClientRenderer.displayName = "OpenUIClientRenderer";
+        return ClientRenderer;
+      },
+    ),
+  { ssr: false },
+);
 
 interface OpenUIBlockProps {
   /** Raw OpenUI Lang code (without the ```openui fences) */
@@ -73,12 +97,6 @@ class OpenUIErrorBoundary extends Component<EBProps, EBState> {
 
 /**
  * Renders a single OpenUI Lang code block into interactive UI components.
- *
- * The Renderer component from @openuidev/react-lang handles:
- * - Parsing the OpenUI Lang DSL
- * - Resolving forward references (hoisting)
- * - Progressive rendering during streaming
- * - Error boundaries for malformed output
  */
 export function OpenUIBlock({ code, isStreaming = false }: OpenUIBlockProps) {
   if (!code.trim()) return null;
@@ -92,7 +110,7 @@ export function OpenUIBlock({ code, isStreaming = false }: OpenUIBlockProps) {
   return (
     <div className="openui-block my-2 overflow-hidden border border-border bg-card">
       <OpenUIErrorBoundary fallback={fallback}>
-        <Renderer response={code} library={openuiLibrary} isStreaming={isStreaming} />
+        <OpenUIRendererInner code={code} isStreaming={isStreaming} />
       </OpenUIErrorBoundary>
     </div>
   );
