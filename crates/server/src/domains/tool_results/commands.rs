@@ -10,6 +10,7 @@ use utoipa::ToSchema;
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SubmitToolResults {
+    /// Session's prefixed public identifier.
     pub session_id: String,
     pub tool_results: Vec<ClientToolResult>,
 }

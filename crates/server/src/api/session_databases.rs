@@ -36,10 +36,13 @@ pub struct CreateDatabaseRequest {
 /// Database info response.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct DatabaseInfoResponse {
+    /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
     pub size_bytes: i64,
     pub page_count: i32,
+    /// Timestamp when this resource was created (RFC 3339).
     pub created_at: String,
+    /// Timestamp when this resource was last updated (RFC 3339).
     pub updated_at: String,
 }
 

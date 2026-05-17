@@ -465,6 +465,7 @@ pub struct AddA2aChannelHttpRequest {
     pub agent_card_description: Option<String>,
     #[serde(default)]
     pub auth: Option<everruns_core::AppEndpointAuthConfig>,
+    /// Whether this resource is enabled.
     pub enabled: Option<bool>,
 }
 

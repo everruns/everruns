@@ -68,6 +68,7 @@ pub struct UpdateHarnessRequest {
     #[schema(example = "Updated Research Harness")]
     pub display_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Human-readable description. Safe to render in user-facing messages.
     pub description: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub system_prompt: Option<String>,
@@ -78,6 +79,7 @@ pub struct UpdateHarnessRequest {
     #[schema(value_type = Option<String>)]
     pub default_model_id: Option<ModelId>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Free-form tags attached to this resource.
     pub tags: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub capabilities: Option<Vec<AgentCapabilityConfig>>,
@@ -94,6 +96,7 @@ pub struct UpdateHarnessRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub network_access: Option<everruns_core::network_access::NetworkAccessList>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Current lifecycle status.
     pub status: Option<HarnessStatus>,
 }
 

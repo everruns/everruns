@@ -7,13 +7,16 @@ use utoipa::ToSchema;
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateMessage {
+    /// Session's prefixed public identifier.
     pub session_id: String,
     pub message: crate::api::messages::InputMessage,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub controls: Option<everruns_core::Controls>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// Free-form metadata attached to this resource.
     pub metadata: Option<std::collections::HashMap<String, serde_json::Value>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// Free-form tags attached to this resource.
     pub tags: Option<Vec<String>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub external_actor: Option<everruns_core::ExternalActor>,
@@ -84,8 +87,10 @@ inventory::submit! { CommandDescriptor::of::<CreateMessage>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ListMessages {
+    /// Session's prefixed public identifier.
     pub session_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// Maximum number of items returned in this page.
     pub limit: Option<i32>,
 }
 
@@ -130,6 +135,7 @@ pub struct ExportSessionJsonl {
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ExportSessionMessages {
+    /// Session's prefixed public identifier.
     pub session_id: String,
 }
 

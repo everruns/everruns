@@ -15,6 +15,7 @@ fn sqldb_store(
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ListSessionDatabases {
+    /// Session's prefixed public identifier.
     pub session_id: String,
 }
 
@@ -54,7 +55,9 @@ inventory::submit! { CommandDescriptor::of::<ListSessionDatabases>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateSessionDatabaseCmd {
+    /// Session's prefixed public identifier.
     pub session_id: String,
+    /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
 }
 
@@ -101,7 +104,9 @@ inventory::submit! { CommandDescriptor::of::<CreateSessionDatabaseCmd>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct GetSessionDatabase {
+    /// Session's prefixed public identifier.
     pub session_id: String,
+    /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
 }
 
@@ -140,7 +145,9 @@ pub struct DeleteSessionDatabaseResult {
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct DeleteSessionDatabase {
+    /// Session's prefixed public identifier.
     pub session_id: String,
+    /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
 }
 
@@ -180,7 +187,9 @@ inventory::submit! { CommandDescriptor::of::<DeleteSessionDatabase>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct GetSessionDatabaseSchema {
+    /// Session's prefixed public identifier.
     pub session_id: String,
+    /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
 }
 

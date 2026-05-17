@@ -7,8 +7,10 @@ use utoipa::ToSchema;
 #[derive(Debug, Default, Deserialize, ToSchema)]
 pub struct ListImages {
     #[serde(default, deserialize_with = "deserialize_opt_u32_lenient")]
+    /// Zero-based offset into the result set.
     pub offset: Option<u32>,
     #[serde(default, deserialize_with = "deserialize_opt_u32_lenient")]
+    /// Maximum number of items returned in this page.
     pub limit: Option<u32>,
 }
 
@@ -44,6 +46,7 @@ inventory::submit! { CommandDescriptor::of::<ListImages>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct GetImage {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: String,
 }
 

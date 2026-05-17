@@ -5146,6 +5146,7 @@
           {
             "name": "kind",
             "in": "query",
+            "description": "Discriminator selecting the variant of this resource.",
             "required": false,
             "schema": {
               "type": [
@@ -6385,6 +6386,7 @@
           {
             "name": "kind",
             "in": "query",
+            "description": "Discriminator selecting the variant of this resource.",
             "required": false,
             "schema": {
               "type": [
@@ -6421,6 +6423,7 @@
           {
             "name": "limit",
             "in": "query",
+            "description": "Maximum number of items returned in this page.",
             "required": false,
             "schema": {
               "type": [
@@ -7297,6 +7300,7 @@
           {
             "name": "limit",
             "in": "query",
+            "description": "Maximum number of items returned in this page.",
             "required": false,
             "schema": {
               "type": "integer",
@@ -11288,7 +11292,8 @@
             "type": [
               "boolean",
               "null"
-            ]
+            ],
+            "description": "Whether this resource is enabled."
           },
           "message": {
             "type": "string"
@@ -12577,7 +12582,8 @@
           },
           "updated_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this resource was last updated (RFC 3339)."
           }
         }
       },
@@ -12593,10 +12599,12 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/CircuitBreakerResponse"
-            }
+            },
+            "description": "Page of items returned by this query."
           },
           "total": {
             "type": "integer",
+            "description": "Total number of items matching the query, across all pages.",
             "minimum": 0
           }
         }
@@ -13482,10 +13490,12 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Human-readable description. Safe to render in user-facing messages."
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Human-readable name. Safe to render in user-facing messages."
           }
         }
       },
@@ -13504,7 +13514,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Discriminator selecting the variant of this resource."
           },
           "tags": {
             "type": [
@@ -13513,10 +13524,12 @@
             ],
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Free-form tags attached to this resource."
           },
           "title": {
-            "type": "string"
+            "type": "string",
+            "description": "Human-readable title. Safe to render in user-facing messages."
           }
         }
       },
@@ -13670,7 +13683,8 @@
             "type": "boolean"
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Human-readable name. Safe to render in user-facing messages."
           }
         }
       },
@@ -13757,7 +13771,9 @@
           "label": {
             "type": "string"
           },
-          "metadata": {},
+          "metadata": {
+            "description": "Free-form metadata attached to this resource."
+          },
           "owner_id": {
             "type": "string"
           },
@@ -13823,7 +13839,9 @@
             ],
             "format": "double"
           },
-          "metadata": {},
+          "metadata": {
+            "description": "Free-form metadata attached to this resource."
+          },
           "payment_account_id": {
             "type": "string"
           },
@@ -13870,10 +13888,12 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Human-readable description. Safe to render in user-facing messages."
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Human-readable name. Safe to render in user-facing messages."
           },
           "query": {
             "$ref": "#/components/schemas/ReportQuery"
@@ -14099,10 +14119,12 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Human-readable description. Safe to render in user-facing messages."
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Human-readable name. Safe to render in user-facing messages."
           },
           "source": {
             "oneOf": [
@@ -14175,10 +14197,12 @@
         ],
         "properties": {
           "created_at": {
-            "type": "string"
+            "type": "string",
+            "description": "Timestamp when this resource was created (RFC 3339)."
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Human-readable name. Safe to render in user-facing messages."
           },
           "page_count": {
             "type": "integer",
@@ -14189,7 +14213,8 @@
             "format": "int64"
           },
           "updated_at": {
-            "type": "string"
+            "type": "string",
+            "description": "Timestamp when this resource was last updated (RFC 3339)."
           }
         }
       },
@@ -14282,7 +14307,8 @@
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this resource was archived, if any (RFC 3339)."
           },
           "capability_id": {
             "type": "string",
@@ -14291,7 +14317,8 @@
           },
           "created_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this resource was created (RFC 3339)."
           },
           "definition": {
             "type": "object",
@@ -14302,7 +14329,8 @@
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this resource was soft-deleted, if any (RFC 3339)."
           },
           "description": {
             "type": "string",
@@ -14334,7 +14362,8 @@
           },
           "updated_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this resource was last updated (RFC 3339)."
           }
         }
       },
@@ -14439,7 +14468,8 @@
           },
           "id": {
             "type": "string",
-            "format": "uuid"
+            "format": "uuid",
+            "description": "Prefixed public identifier (see `specs/id-schema.md`)."
           },
           "input": {},
           "last_error": {
@@ -14454,7 +14484,8 @@
               "string",
               "null"
             ],
-            "format": "uuid"
+            "format": "uuid",
+            "description": "Durable workflow's identifier."
           }
         }
       },
@@ -14470,10 +14501,12 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/DlqEntryResponse"
-            }
+            },
+            "description": "Page of items returned by this query."
           },
           "total": {
             "type": "integer",
+            "description": "Total number of items matching the query, across all pages.",
             "minimum": 0
           }
         }
@@ -14538,7 +14571,8 @@
         "properties": {
           "task_id": {
             "type": "string",
-            "format": "uuid"
+            "format": "uuid",
+            "description": "Durable task's identifier."
           }
         }
       },
@@ -14873,7 +14907,8 @@
         "properties": {
           "count": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Count of items matching the query."
           },
           "event_type": {
             "type": "string"
@@ -15005,7 +15040,8 @@
         "properties": {
           "created_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this resource was created (RFC 3339)."
           },
           "expires_at": {
             "type": [
@@ -15015,7 +15051,8 @@
             "format": "date-time"
           },
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Prefixed public identifier (see `specs/id-schema.md`)."
           },
           "key_prefix": {
             "type": "string"
@@ -15028,7 +15065,8 @@
             "format": "date-time"
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Human-readable name. Safe to render in user-facing messages."
           },
           "scopes": {}
         }
@@ -15044,14 +15082,17 @@
         ],
         "properties": {
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Human-readable name. Safe to render in user-facing messages."
           },
           "org_id": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Owning organization's prefixed public identifier."
           },
           "public_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Prefixed public identifier (see `specs/id-schema.md`)."
           },
           "role": {
             "type": "string"
@@ -15084,7 +15125,8 @@
           },
           "created_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this resource was created (RFC 3339)."
           },
           "email": {
             "type": "string"
@@ -15093,14 +15135,17 @@
             "type": "boolean"
           },
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Prefixed public identifier (see `specs/id-schema.md`)."
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Human-readable name. Safe to render in user-facing messages."
           },
           "updated_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this resource was last updated (RFC 3339)."
           }
         }
       },
@@ -15159,7 +15204,8 @@
           },
           "id": {
             "type": "string",
-            "format": "uuid"
+            "format": "uuid",
+            "description": "Prefixed public identifier (see `specs/id-schema.md`)."
           },
           "last_error": {
             "type": [
@@ -15169,7 +15215,8 @@
           },
           "org_id": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Owning organization's prefixed public identifier."
           },
           "source_id": {
             "type": "string"
@@ -15179,7 +15226,8 @@
           },
           "updated_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this resource was last updated (RFC 3339)."
           }
         }
       },
@@ -15311,16 +15359,19 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Human-readable description. Safe to render in user-facing messages."
           },
           "display_name": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Human-readable display name. Safe to render in user-facing messages."
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Human-readable name. Safe to render in user-facing messages."
           }
         }
       },
@@ -15373,13 +15424,15 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Timestamp when this resource was created (RFC 3339)."
           },
           "display_name": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Human-readable display name. Safe to render in user-facing messages."
           },
           "exists": {
             "type": "boolean"
@@ -15403,7 +15456,8 @@
             ]
           },
           "metadata": {
-            "type": "object"
+            "type": "object",
+            "description": "Free-form metadata attached to this resource."
           },
           "provider": {
             "type": [
@@ -15425,7 +15479,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Timestamp when this resource was last updated (RFC 3339)."
           },
           "workspace_path": {
             "type": [
@@ -15514,7 +15569,8 @@
             "type": "string"
           },
           "status": {
-            "type": "string"
+            "type": "string",
+            "description": "Current lifecycle status."
           }
         }
       },
@@ -15620,7 +15676,8 @@
             "type": "boolean"
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Human-readable name. Safe to render in user-facing messages."
           },
           "target": {
             "type": "string"
@@ -16047,7 +16104,8 @@
             "minimum": 0
           },
           "status": {
-            "type": "string"
+            "type": "string",
+            "description": "Current lifecycle status."
           },
           "total_capacity": {
             "type": "integer",
@@ -16125,16 +16183,20 @@
           },
           "created_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this resource was created (RFC 3339)."
           },
           "filename": {
             "type": "string"
           },
           "id": {
             "type": "string",
+            "description": "Prefixed public identifier (see `specs/id-schema.md`).",
             "example": "img_01933b5a00007000800000000000001"
           },
-          "metadata": {},
+          "metadata": {
+            "description": "Free-form metadata attached to this resource."
+          },
           "size_bytes": {
             "type": "integer",
             "format": "int64"
@@ -16157,13 +16219,15 @@
           },
           "created_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this resource was created (RFC 3339)."
           },
           "filename": {
             "type": "string"
           },
           "id": {
             "type": "string",
+            "description": "Prefixed public identifier (see `specs/id-schema.md`).",
             "example": "img_01933b5a00007000800000000000001"
           },
           "size_bytes": {
@@ -16357,38 +16421,46 @@
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this resource was archived, if any (RFC 3339)."
           },
           "created_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this resource was created (RFC 3339)."
           },
           "deleted_at": {
             "type": [
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this resource was soft-deleted, if any (RFC 3339)."
           },
           "description": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Human-readable description. Safe to render in user-facing messages."
           },
           "id": {
             "type": "string",
+            "description": "Prefixed public identifier (see `specs/id-schema.md`).",
             "example": "kb_01933b5a000070008000000000000001"
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Human-readable name. Safe to render in user-facing messages."
           },
           "status": {
-            "type": "string"
+            "type": "string",
+            "description": "Current lifecycle status."
           },
           "updated_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this resource was last updated (RFC 3339)."
           }
         }
       },
@@ -16411,31 +16483,38 @@
           },
           "created_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this resource was created (RFC 3339)."
           },
           "id": {
             "type": "string",
+            "description": "Prefixed public identifier (see `specs/id-schema.md`).",
             "example": "kbe_01933b5a000070008000000000000001"
           },
           "kb_id": {
             "type": "string",
+            "description": "Knowledge base's prefixed public identifier.",
             "example": "kb_01933b5a000070008000000000000001"
           },
           "kind": {
-            "type": "string"
+            "type": "string",
+            "description": "Discriminator selecting the variant of this resource."
           },
           "tags": {
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Free-form tags attached to this resource."
           },
           "title": {
-            "type": "string"
+            "type": "string",
+            "description": "Human-readable title. Safe to render in user-facing messages."
           },
           "updated_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this resource was last updated (RFC 3339)."
           }
         }
       },
@@ -16622,7 +16701,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Discriminator selecting the variant of this resource."
           },
           "search": {
             "type": [
@@ -16645,13 +16725,15 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Discriminator selecting the variant of this resource."
           },
           "limit": {
             "type": [
               "integer",
               "null"
             ],
+            "description": "Maximum number of items returned in this page.",
             "minimum": 0
           },
           "query": {
@@ -16683,11 +16765,13 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/MemoryResponse"
-            }
+            },
+            "description": "Page of items returned by this query."
           },
           "total": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Total number of items matching the query, across all pages."
           }
         }
       },
@@ -17020,10 +17104,12 @@
               ],
               "properties": {
                 "created_at": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "Timestamp when this resource was created (RFC 3339)."
                 },
                 "name": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "Human-readable name. Safe to render in user-facing messages."
                 },
                 "page_count": {
                   "type": "integer",
@@ -17034,7 +17120,8 @@
                   "format": "int64"
                 },
                 "updated_at": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "Timestamp when this resource was last updated (RFC 3339)."
                 }
               }
             },
@@ -17417,38 +17504,46 @@
                     "string",
                     "null"
                   ],
-                  "format": "date-time"
+                  "format": "date-time",
+                  "description": "Timestamp when this resource was archived, if any (RFC 3339)."
                 },
                 "created_at": {
                   "type": "string",
-                  "format": "date-time"
+                  "format": "date-time",
+                  "description": "Timestamp when this resource was created (RFC 3339)."
                 },
                 "deleted_at": {
                   "type": [
                     "string",
                     "null"
                   ],
-                  "format": "date-time"
+                  "format": "date-time",
+                  "description": "Timestamp when this resource was soft-deleted, if any (RFC 3339)."
                 },
                 "description": {
                   "type": [
                     "string",
                     "null"
-                  ]
+                  ],
+                  "description": "Human-readable description. Safe to render in user-facing messages."
                 },
                 "id": {
                   "type": "string",
+                  "description": "Prefixed public identifier (see `specs/id-schema.md`).",
                   "example": "kb_01933b5a000070008000000000000001"
                 },
                 "name": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "Human-readable name. Safe to render in user-facing messages."
                 },
                 "status": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "Current lifecycle status."
                 },
                 "updated_at": {
                   "type": "string",
-                  "format": "date-time"
+                  "format": "date-time",
+                  "description": "Timestamp when this resource was last updated (RFC 3339)."
                 }
               }
             },
@@ -17484,31 +17579,38 @@
                 },
                 "created_at": {
                   "type": "string",
-                  "format": "date-time"
+                  "format": "date-time",
+                  "description": "Timestamp when this resource was created (RFC 3339)."
                 },
                 "id": {
                   "type": "string",
+                  "description": "Prefixed public identifier (see `specs/id-schema.md`).",
                   "example": "kbe_01933b5a000070008000000000000001"
                 },
                 "kb_id": {
                   "type": "string",
+                  "description": "Knowledge base's prefixed public identifier.",
                   "example": "kb_01933b5a000070008000000000000001"
                 },
                 "kind": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "Discriminator selecting the variant of this resource."
                 },
                 "tags": {
                   "type": "array",
                   "items": {
                     "type": "string"
-                  }
+                  },
+                  "description": "Free-form tags attached to this resource."
                 },
                 "title": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "Human-readable title. Safe to render in user-facing messages."
                 },
                 "updated_at": {
                   "type": "string",
-                  "format": "date-time"
+                  "format": "date-time",
+                  "description": "Timestamp when this resource was last updated (RFC 3339)."
                 }
               }
             },
@@ -17654,21 +17756,25 @@
                 },
                 "created_at": {
                   "type": "string",
-                  "format": "date-time"
+                  "format": "date-time",
+                  "description": "Timestamp when this resource was created (RFC 3339)."
                 },
                 "id": {
                   "type": "string",
+                  "description": "Prefixed public identifier (see `specs/id-schema.md`).",
                   "example": "mst_01933b5a000070008000000000000001"
                 },
                 "is_default": {
                   "type": "boolean"
                 },
                 "name": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "Human-readable name. Safe to render in user-facing messages."
                 },
                 "updated_at": {
                   "type": "string",
-                  "format": "date-time"
+                  "format": "date-time",
+                  "description": "Timestamp when this resource was last updated (RFC 3339)."
                 }
               }
             },
@@ -17717,7 +17823,8 @@
                 },
                 "created_at": {
                   "type": "string",
-                  "format": "date-time"
+                  "format": "date-time",
+                  "description": "Timestamp when this resource was created (RFC 3339)."
                 },
                 "external_actor": {
                   "oneOf": [
@@ -17849,7 +17956,8 @@
               "properties": {
                 "created_at": {
                   "type": "string",
-                  "format": "date-time"
+                  "format": "date-time",
+                  "description": "Timestamp when this resource was created (RFC 3339)."
                 },
                 "dashboard": {
                   "oneOf": [
@@ -17865,21 +17973,25 @@
                   "type": [
                     "string",
                     "null"
-                  ]
+                  ],
+                  "description": "Human-readable description. Safe to render in user-facing messages."
                 },
                 "id": {
                   "type": "string",
-                  "format": "uuid"
+                  "format": "uuid",
+                  "description": "Prefixed public identifier (see `specs/id-schema.md`)."
                 },
                 "name": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "Human-readable name. Safe to render in user-facing messages."
                 },
                 "query": {
                   "$ref": "#/components/schemas/ReportQuery"
                 },
                 "updated_at": {
                   "type": "string",
-                  "format": "date-time"
+                  "format": "date-time",
+                  "description": "Timestamp when this resource was last updated (RFC 3339)."
                 }
               }
             },
@@ -18062,16 +18174,19 @@
                 },
                 "created_at": {
                   "type": "string",
-                  "format": "date-time"
+                  "format": "date-time",
+                  "description": "Timestamp when this resource was created (RFC 3339)."
                 },
                 "email": {
                   "type": "string"
                 },
                 "id": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "Prefixed public identifier (see `specs/id-schema.md`)."
                 },
                 "name": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "Human-readable name. Safe to render in user-facing messages."
                 },
                 "roles": {
                   "type": "array",
@@ -18114,27 +18229,32 @@
                     "string",
                     "null"
                   ],
-                  "format": "date-time"
+                  "format": "date-time",
+                  "description": "Timestamp when this resource was archived, if any (RFC 3339)."
                 },
                 "created_at": {
                   "type": "string",
-                  "format": "date-time"
+                  "format": "date-time",
+                  "description": "Timestamp when this resource was created (RFC 3339)."
                 },
                 "deleted_at": {
                   "type": [
                     "string",
                     "null"
                   ],
-                  "format": "date-time"
+                  "format": "date-time",
+                  "description": "Timestamp when this resource was soft-deleted, if any (RFC 3339)."
                 },
                 "description": {
                   "type": [
                     "string",
                     "null"
-                  ]
+                  ],
+                  "description": "Human-readable description. Safe to render in user-facing messages."
                 },
                 "id": {
                   "type": "string",
+                  "description": "Prefixed public identifier (see `specs/id-schema.md`).",
                   "example": "vol_01933b5a000070008000000000000001"
                 },
                 "is_readonly": {
@@ -18154,7 +18274,8 @@
                   "format": "date-time"
                 },
                 "name": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "Human-readable name. Safe to render in user-facing messages."
                 },
                 "source": {
                   "$ref": "#/components/schemas/VolumeSourceResponse"
@@ -18163,14 +18284,16 @@
                   "type": "string"
                 },
                 "status": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "Current lifecycle status."
                 },
                 "sync_status": {
                   "type": "string"
                 },
                 "updated_at": {
                   "type": "string",
-                  "format": "date-time"
+                  "format": "date-time",
+                  "description": "Timestamp when this resource was last updated (RFC 3339)."
                 }
               }
             },
@@ -18391,7 +18514,8 @@
                         "string",
                         "null"
                       ],
-                      "format": "date-time"
+                      "format": "date-time",
+                      "description": "Timestamp when this resource was archived, if any (RFC 3339)."
                     },
                     "capability_id": {
                       "type": "string",
@@ -18400,7 +18524,8 @@
                     },
                     "created_at": {
                       "type": "string",
-                      "format": "date-time"
+                      "format": "date-time",
+                      "description": "Timestamp when this resource was created (RFC 3339)."
                     },
                     "definition": {
                       "type": "object",
@@ -18411,7 +18536,8 @@
                         "string",
                         "null"
                       ],
-                      "format": "date-time"
+                      "format": "date-time",
+                      "description": "Timestamp when this resource was soft-deleted, if any (RFC 3339)."
                     },
                     "description": {
                       "type": "string",
@@ -18443,7 +18569,8 @@
                     },
                     "updated_at": {
                       "type": "string",
-                      "format": "date-time"
+                      "format": "date-time",
+                      "description": "Timestamp when this resource was last updated (RFC 3339)."
                     }
                   }
                 },
@@ -20120,7 +20247,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Human-readable display name. Safe to render in user-facing messages."
           },
           "exists": {
             "type": "boolean"
@@ -20338,10 +20466,12 @@
           "content_parts": {},
           "created_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this resource was created (RFC 3339)."
           },
           "id": {
             "type": "string",
+            "description": "Prefixed public identifier (see `specs/id-schema.md`).",
             "example": "mem_01933b5a000070008000000000000001"
           },
           "importance": {
@@ -20349,7 +20479,8 @@
             "format": "int32"
           },
           "kind": {
-            "type": "string"
+            "type": "string",
+            "description": "Discriminator selecting the variant of this resource."
           },
           "store_id": {
             "type": "string",
@@ -20359,11 +20490,13 @@
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Free-form tags attached to this resource."
           },
           "updated_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this resource was last updated (RFC 3339)."
           }
         }
       },
@@ -20385,21 +20518,25 @@
           },
           "created_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this resource was created (RFC 3339)."
           },
           "id": {
             "type": "string",
+            "description": "Prefixed public identifier (see `specs/id-schema.md`).",
             "example": "mst_01933b5a000070008000000000000001"
           },
           "is_default": {
             "type": "boolean"
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Human-readable name. Safe to render in user-facing messages."
           },
           "updated_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this resource was last updated (RFC 3339)."
           }
         }
       },
@@ -22387,10 +22524,12 @@
             "type": "string"
           },
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Prefixed public identifier (see `specs/id-schema.md`)."
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Human-readable name. Safe to render in user-facing messages."
           }
         }
       },
@@ -22399,7 +22538,8 @@
         "properties": {
           "limit": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Maximum number of items returned in this page."
           }
         }
       },
@@ -23165,7 +23305,8 @@
         "properties": {
           "created_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this resource was created (RFC 3339)."
           },
           "dashboard": {
             "oneOf": [
@@ -23181,21 +23322,25 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Human-readable description. Safe to render in user-facing messages."
           },
           "id": {
             "type": "string",
-            "format": "uuid"
+            "format": "uuid",
+            "description": "Prefixed public identifier (see `specs/id-schema.md`)."
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Human-readable name. Safe to render in user-facing messages."
           },
           "query": {
             "$ref": "#/components/schemas/ReportQuery"
           },
           "updated_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this resource was last updated (RFC 3339)."
           }
         }
       },
@@ -23225,7 +23370,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Human-readable title. Safe to render in user-facing messages."
           }
         }
       },
@@ -23246,11 +23392,13 @@
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this resource completed, if any (RFC 3339)."
           },
           "created_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this resource was created (RFC 3339)."
           },
           "duration_ms": {
             "type": [
@@ -23263,40 +23411,48 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Human-readable error message, populated when this resource is in a failed state."
           },
           "id": {
             "type": "string",
-            "format": "uuid"
+            "format": "uuid",
+            "description": "Prefixed public identifier (see `specs/id-schema.md`)."
           },
           "schedule_id": {
             "type": "string",
-            "format": "uuid"
+            "format": "uuid",
+            "description": "Schedule's prefixed public identifier."
           },
           "scheduled_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this resource is scheduled to run (RFC 3339)."
           },
           "started_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this resource started, if any (RFC 3339)."
           },
           "status": {
-            "type": "string"
+            "type": "string",
+            "description": "Current lifecycle status."
           },
           "task_id": {
             "type": [
               "string",
               "null"
             ],
-            "format": "uuid"
+            "format": "uuid",
+            "description": "Durable task's identifier."
           },
           "workflow_id": {
             "type": [
               "string",
               "null"
             ],
-            "format": "uuid"
+            "format": "uuid",
+            "description": "Durable workflow's identifier."
           }
         }
       },
@@ -23312,10 +23468,12 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ScheduleExecutionResponse"
-            }
+            },
+            "description": "Page of items returned by this query."
           },
           "total": {
             "type": "integer",
+            "description": "Total number of items matching the query, across all pages.",
             "minimum": 0
           }
         }
@@ -23340,7 +23498,8 @@
           },
           "created_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this resource was created (RFC 3339)."
           },
           "cron_expression": {
             "type": "string"
@@ -23349,14 +23508,17 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Human-readable description. Safe to render in user-facing messages."
           },
           "enabled": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether this resource is enabled."
           },
           "id": {
             "type": "string",
-            "format": "uuid"
+            "format": "uuid",
+            "description": "Prefixed public identifier (see `specs/id-schema.md`)."
           },
           "last_triggered_at": {
             "type": [
@@ -23382,7 +23544,8 @@
             "minimum": 0
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Human-readable name. Safe to render in user-facing messages."
           },
           "next_trigger_at": {
             "type": [
@@ -23400,7 +23563,8 @@
           },
           "updated_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this resource was last updated (RFC 3339)."
           }
         }
       },
@@ -23482,7 +23646,8 @@
         "properties": {
           "input": {},
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Human-readable name. Safe to render in user-facing messages."
           },
           "type": {
             "type": "string"
@@ -23501,11 +23666,13 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ScheduleResponse"
-            }
+            },
+            "description": "Page of items returned by this query."
           },
           "total": {
             "type": "integer",
             "format": "int64",
+            "description": "Total number of items matching the query, across all pages.",
             "minimum": 0
           }
         }
@@ -24193,7 +24360,8 @@
         ],
         "properties": {
           "version_id": {
-            "$ref": "#/components/schemas/agentverId"
+            "$ref": "#/components/schemas/agentverId",
+            "description": "Agent version's prefixed public identifier."
           }
         }
       },
@@ -24637,11 +24805,13 @@
           },
           "created_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this resource was created (RFC 3339)."
           },
           "id": {
             "type": "string",
-            "format": "uuid"
+            "format": "uuid",
+            "description": "Prefixed public identifier (see `specs/id-schema.md`)."
           },
           "last_error": {
             "type": [
@@ -24659,14 +24829,16 @@
             "format": "int32"
           },
           "status": {
-            "type": "string"
+            "type": "string",
+            "description": "Current lifecycle status."
           },
           "workflow_id": {
             "type": [
               "string",
               "null"
             ],
-            "format": "uuid"
+            "format": "uuid",
+            "description": "Durable workflow's identifier."
           }
         }
       },
@@ -24682,10 +24854,12 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/TaskResponse"
-            }
+            },
+            "description": "Page of items returned by this query."
           },
           "total": {
             "type": "integer",
+            "description": "Total number of items matching the query, across all pages.",
             "minimum": 0
           }
         }
@@ -25207,7 +25381,8 @@
         "properties": {
           "execution_id": {
             "type": "string",
-            "format": "uuid"
+            "format": "uuid",
+            "description": "Schedule execution's identifier."
           }
         }
       },
@@ -25627,7 +25802,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Human-readable description. Safe to render in user-facing messages."
           },
           "display_name": {
             "type": [
@@ -25687,7 +25863,8 @@
                 "type": "null"
               },
               {
-                "$ref": "#/components/schemas/HarnessStatus"
+                "$ref": "#/components/schemas/HarnessStatus",
+                "description": "Current lifecycle status."
               }
             ]
           },
@@ -25704,7 +25881,8 @@
             ],
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Free-form tags attached to this resource."
           }
         }
       },
@@ -25716,13 +25894,15 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Human-readable description. Safe to render in user-facing messages."
           },
           "name": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Human-readable name. Safe to render in user-facing messages."
           }
         }
       },
@@ -25740,7 +25920,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Discriminator selecting the variant of this resource."
           },
           "tags": {
             "type": [
@@ -25749,13 +25930,15 @@
             ],
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Free-form tags attached to this resource."
           },
           "title": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Human-readable title. Safe to render in user-facing messages."
           }
         }
       },
@@ -25967,7 +26150,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Human-readable name. Safe to render in user-facing messages."
           }
         }
       },
@@ -26027,7 +26211,9 @@
               "null"
             ]
           },
-          "metadata": {},
+          "metadata": {
+            "description": "Free-form metadata attached to this resource."
+          },
           "private_key": {
             "type": [
               "string",
@@ -26044,7 +26230,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Current lifecycle status."
           }
         }
       },
@@ -26091,7 +26278,9 @@
             ],
             "format": "double"
           },
-          "metadata": {},
+          "metadata": {
+            "description": "Free-form metadata attached to this resource."
+          },
           "rail_preference": {
             "type": [
               "array",
@@ -26112,7 +26301,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Current lifecycle status."
           }
         }
       },
@@ -26148,13 +26338,15 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Human-readable description. Safe to render in user-facing messages."
           },
           "name": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Human-readable name. Safe to render in user-facing messages."
           },
           "query": {
             "$ref": "#/components/schemas/ReportQuery"
@@ -26309,13 +26501,15 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Human-readable description. Safe to render in user-facing messages."
           },
           "name": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Human-readable name. Safe to render in user-facing messages."
           },
           "source": {
             "oneOf": [
@@ -26354,16 +26548,19 @@
           },
           "created_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this resource was created (RFC 3339)."
           },
           "email": {
             "type": "string"
           },
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Prefixed public identifier (see `specs/id-schema.md`)."
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Human-readable name. Safe to render in user-facing messages."
           },
           "roles": {
             "type": "array",
@@ -26568,7 +26765,8 @@
         ],
         "properties": {
           "status": {
-            "type": "string"
+            "type": "string",
+            "description": "Current lifecycle status."
           },
           "voice_connection_id": {
             "type": "string"
@@ -26786,27 +26984,32 @@
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this resource was archived, if any (RFC 3339)."
           },
           "created_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this resource was created (RFC 3339)."
           },
           "deleted_at": {
             "type": [
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this resource was soft-deleted, if any (RFC 3339)."
           },
           "description": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Human-readable description. Safe to render in user-facing messages."
           },
           "id": {
             "type": "string",
+            "description": "Prefixed public identifier (see `specs/id-schema.md`).",
             "example": "vol_01933b5a000070008000000000000001"
           },
           "is_readonly": {
@@ -26826,7 +27029,8 @@
             "format": "date-time"
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Human-readable name. Safe to render in user-facing messages."
           },
           "source": {
             "$ref": "#/components/schemas/VolumeSourceResponse"
@@ -26835,14 +27039,16 @@
             "type": "string"
           },
           "status": {
-            "type": "string"
+            "type": "string",
+            "description": "Current lifecycle status."
           },
           "sync_status": {
             "type": "string"
           },
           "updated_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this resource was last updated (RFC 3339)."
           }
         }
       },
@@ -26930,7 +27136,8 @@
             "type": "boolean"
           },
           "session_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Session's prefixed public identifier."
           }
         }
       },
@@ -27461,7 +27668,8 @@
                   "string",
                   "null"
                 ],
-                "format": "date-time"
+                "format": "date-time",
+                "description": "Timestamp when this resource was archived, if any (RFC 3339)."
               },
               "capability_id": {
                 "type": "string",
@@ -27470,7 +27678,8 @@
               },
               "created_at": {
                 "type": "string",
-                "format": "date-time"
+                "format": "date-time",
+                "description": "Timestamp when this resource was created (RFC 3339)."
               },
               "definition": {
                 "type": "object",
@@ -27481,7 +27690,8 @@
                   "string",
                   "null"
                 ],
-                "format": "date-time"
+                "format": "date-time",
+                "description": "Timestamp when this resource was soft-deleted, if any (RFC 3339)."
               },
               "description": {
                 "type": "string",
@@ -27513,7 +27723,8 @@
               },
               "updated_at": {
                 "type": "string",
-                "format": "date-time"
+                "format": "date-time",
+                "description": "Timestamp when this resource was last updated (RFC 3339)."
               }
             }
           },
@@ -28998,7 +29209,8 @@
             ]
           },
           "id": {
-            "type": "string"
+            "type": "string",
+            "description": "Prefixed public identifier (see `specs/id-schema.md`)."
           },
           "last_heartbeat_at": {
             "type": "string",
@@ -29009,13 +29221,17 @@
             "format": "int32",
             "minimum": 0
           },
-          "metadata": {},
+          "metadata": {
+            "description": "Free-form metadata attached to this resource."
+          },
           "started_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this resource started, if any (RFC 3339)."
           },
           "status": {
-            "type": "string"
+            "type": "string",
+            "description": "Current lifecycle status."
           },
           "tasks_completed": {
             "type": "integer",
@@ -29033,7 +29249,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Version number of this resource."
           },
           "worker_group": {
             "type": [
@@ -29056,13 +29273,15 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/WorkerResponse"
-            }
+            },
+            "description": "Page of items returned by this query."
           },
           "summary": {
             "$ref": "#/components/schemas/WorkersSummaryResponse"
           },
           "total": {
             "type": "integer",
+            "description": "Total number of items matching the query, across all pages.",
             "minimum": 0
           }
         }
@@ -29114,7 +29333,8 @@
         "properties": {
           "created_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this resource was created (RFC 3339)."
           },
           "event_data": {},
           "event_type": {
@@ -29122,7 +29342,8 @@
           },
           "id": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Prefixed public identifier (see `specs/id-schema.md`)."
           },
           "sequence_num": {
             "type": "integer",
@@ -29130,7 +29351,8 @@
           },
           "workflow_id": {
             "type": "string",
-            "format": "uuid"
+            "format": "uuid",
+            "description": "Durable workflow's identifier."
           }
         }
       },
@@ -29146,10 +29368,12 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/WorkflowEventResponse"
-            }
+            },
+            "description": "Page of items returned by this query."
           },
           "total": {
             "type": "integer",
+            "description": "Total number of items matching the query, across all pages.",
             "minimum": 0
           }
         }
@@ -29170,16 +29394,21 @@
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this resource completed, if any (RFC 3339)."
           },
           "created_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this resource was created (RFC 3339)."
           },
-          "error": {},
+          "error": {
+            "description": "Human-readable error message, populated when this resource is in a failed state."
+          },
           "id": {
             "type": "string",
-            "format": "uuid"
+            "format": "uuid",
+            "description": "Prefixed public identifier (see `specs/id-schema.md`)."
           },
           "input": {},
           "result": {},
@@ -29188,10 +29417,12 @@
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this resource started, if any (RFC 3339)."
           },
           "status": {
-            "type": "string"
+            "type": "string",
+            "description": "Current lifecycle status."
           },
           "workflow_type": {
             "type": "string"
@@ -29210,10 +29441,12 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/WorkflowResponse"
-            }
+            },
+            "description": "Page of items returned by this query."
           },
           "total": {
             "type": "integer",
+            "description": "Total number of items matching the query, across all pages.",
             "minimum": 0
           }
         }

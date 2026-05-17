@@ -37,6 +37,7 @@ pub struct GitCommitInfo {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct GitDiffEntry {
     pub path: String,
+    /// Current lifecycle status.
     pub status: String, // "added", "modified", "deleted", "renamed"
     pub old_path: Option<String>,
 }
@@ -60,6 +61,7 @@ pub struct GitDiffStats {
 /// A git ref (branch pointer)
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct GitRefInfo {
+    /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
     pub target: String, // hex OID
     pub is_symbolic: bool,

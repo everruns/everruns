@@ -77,8 +77,10 @@ impl AppState {
 /// Request to create a new eval
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateEvalRequest {
+    /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Human-readable description. Safe to render in user-facing messages.
     pub description: Option<String>,
     /// Session setup target (harness+agent, app, or full session params).
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -86,6 +88,7 @@ pub struct CreateEvalRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_override: Option<String>,
     #[serde(default)]
+    /// Free-form tags attached to this resource.
     pub tags: Option<Vec<String>>,
 }
 
@@ -93,8 +96,10 @@ pub struct CreateEvalRequest {
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct UpdateEvalRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Human-readable name. Safe to render in user-facing messages.
     pub name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Human-readable description. Safe to render in user-facing messages.
     pub description: Option<String>,
     /// Session setup target (harness+agent, app, or full session params).
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -102,19 +107,23 @@ pub struct UpdateEvalRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_override: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Free-form tags attached to this resource.
     pub tags: Option<Vec<String>>,
 }
 
 /// Request to create an eval case
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateEvalCaseRequest {
+    /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Human-readable description. Safe to render in user-facing messages.
     pub description: Option<String>,
     /// Optional per-case target override.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target: Option<EvalTarget>,
     #[serde(default)]
+    /// Free-form tags attached to this resource.
     pub tags: Option<Vec<String>>,
     pub conversation: Vec<EvalInputMessage>,
     /// Verification messages sent after conversation completes and session idles.
@@ -136,13 +145,16 @@ pub struct CreateEvalCaseRequest {
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct UpdateEvalCaseRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Human-readable name. Safe to render in user-facing messages.
     pub name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Human-readable description. Safe to render in user-facing messages.
     pub description: Option<String>,
     /// Optional per-case target override.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target: Option<EvalTarget>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Free-form tags attached to this resource.
     pub tags: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub conversation: Option<Vec<EvalInputMessage>>,
@@ -194,8 +206,10 @@ impl std::fmt::Display for ExternalScoreStatus {
 pub struct UpdateEvalResultScoresRequest {
     pub scores: Vec<Score>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Current lifecycle status.
     pub status: Option<ExternalScoreStatus>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Free-form metadata attached to this resource.
     pub metadata: Option<serde_json::Value>,
 }
 
@@ -205,6 +219,7 @@ pub struct BulkUpdateEvalResultScoresItem {
     pub result_id: EvalResultId,
     pub scores: Vec<Score>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Current lifecycle status.
     pub status: Option<ExternalScoreStatus>,
 }
 
@@ -212,6 +227,7 @@ pub struct BulkUpdateEvalResultScoresItem {
 pub struct BulkUpdateEvalRunScoresRequest {
     pub results: Vec<BulkUpdateEvalResultScoresItem>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Free-form metadata attached to this resource.
     pub metadata: Option<serde_json::Value>,
 }
 

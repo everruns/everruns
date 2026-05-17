@@ -596,8 +596,10 @@ async fn build_organization_response(
 /// Response for organization member
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct MemberResponse {
+    /// Owning user's UUID.
     pub user_id: String,
     pub email: String,
+    /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
     pub avatar_url: Option<String>,
     pub role: String,
@@ -607,6 +609,7 @@ pub struct MemberResponse {
 /// Request to add a member
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct AddMemberRequest {
+    /// Owning user's UUID.
     pub user_id: String,
     #[serde(default = "default_member_role")]
     pub role: String,

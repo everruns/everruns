@@ -100,6 +100,7 @@ pub struct Message {
     /// External actor identity (for messages from external channels like Slack)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub external_actor: Option<everruns_core::ExternalActor>,
+    /// Timestamp when this resource was created (RFC 3339).
     pub created_at: DateTime<Utc>,
 }
 

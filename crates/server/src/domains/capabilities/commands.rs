@@ -31,8 +31,10 @@ const MAX_LIMIT: u32 = 200;
 pub struct ListCapabilities {
     pub search: Option<String>,
     #[serde(default, deserialize_with = "deserialize_opt_u32_lenient")]
+    /// Zero-based offset into the result set.
     pub offset: Option<u32>,
     #[serde(default, deserialize_with = "deserialize_opt_u32_lenient")]
+    /// Maximum number of items returned in this page.
     pub limit: Option<u32>,
 }
 
@@ -96,6 +98,7 @@ inventory::submit! { CommandDescriptor::of::<ListCapabilities>() }
 /// Get a specific capability by ID.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct GetCapability {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: String,
 }
 
@@ -240,6 +243,7 @@ inventory::submit! { CommandDescriptor::of::<ListDeclarativeCapabilities>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct GetDeclarativeCapability {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: String,
 }
 
@@ -274,6 +278,7 @@ inventory::submit! { CommandDescriptor::of::<GetDeclarativeCapability>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateDeclarativeCapabilityCmd {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: String,
     #[serde(flatten)]
     pub req: UpdateDeclarativeCapabilityRequest,
@@ -352,6 +357,7 @@ inventory::submit! { CommandDescriptor::of::<UpdateDeclarativeCapabilityCmd>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct DeleteDeclarativeCapability {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: String,
 }
 
@@ -394,6 +400,7 @@ inventory::submit! { CommandDescriptor::of::<DeleteDeclarativeCapability>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct DestroyDeclarativeCapability {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: String,
 }
 

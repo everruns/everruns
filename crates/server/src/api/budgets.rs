@@ -73,20 +73,25 @@ pub struct CreateBudgetRequest {
     pub subject_type: String,
     pub subject_id: String,
     pub currency: String,
+    /// Maximum number of items returned in this page.
     pub limit: f64,
     #[serde(default)]
     pub soft_limit: Option<f64>,
     #[serde(default)]
     pub period: Option<BudgetPeriod>,
     #[serde(default)]
+    /// Free-form metadata attached to this resource.
     pub metadata: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct UpdateBudgetRequest {
+    /// Maximum number of items returned in this page.
     pub limit: Option<f64>,
     pub soft_limit: Option<Option<f64>>,
+    /// Current lifecycle status.
     pub status: Option<String>,
+    /// Free-form metadata attached to this resource.
     pub metadata: Option<serde_json::Value>,
 }
 
@@ -94,6 +99,7 @@ pub struct UpdateBudgetRequest {
 pub struct TopUpRequest {
     pub amount: f64,
     #[serde(default)]
+    /// Human-readable description. Safe to render in user-facing messages.
     pub description: Option<String>,
 }
 

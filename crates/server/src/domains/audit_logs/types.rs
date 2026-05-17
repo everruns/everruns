@@ -12,6 +12,7 @@ pub use crate::storage::models::{AuditLogQuery, AuditLogRow};
 /// shape returned by the HTTP and MCP adapters.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct AuditLogEntry {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: String,
     pub domain: String,
     pub action: String,
@@ -20,7 +21,9 @@ pub struct AuditLogEntry {
     pub target_type: Option<String>,
     pub target_id: Option<String>,
     pub ip_address: Option<String>,
+    /// Free-form metadata attached to this resource.
     pub metadata: serde_json::Value,
+    /// Timestamp when this resource was created (RFC 3339).
     pub created_at: DateTime<Utc>,
 }
 

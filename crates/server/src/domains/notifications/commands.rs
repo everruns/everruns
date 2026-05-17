@@ -13,6 +13,7 @@ fn require_user_id(ctx: &Ctx) -> Result<uuid::Uuid, CommandError> {
 
 #[derive(Debug, Default, Deserialize, ToSchema)]
 pub struct ListNotifications {
+    /// Maximum number of items returned in this page.
     pub limit: Option<i64>,
 }
 

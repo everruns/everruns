@@ -12,20 +12,26 @@ use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct SavedReport {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: Uuid,
+    /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Human-readable description. Safe to render in user-facing messages.
     pub description: Option<String>,
     pub query: ReportQuery,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dashboard: Option<SavedReportDashboardMetadata>,
+    /// Timestamp when this resource was created (RFC 3339).
     pub created_at: DateTime<Utc>,
+    /// Timestamp when this resource was last updated (RFC 3339).
     pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct SavedReportDashboardMetadata {
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// Human-readable title. Safe to render in user-facing messages.
     pub title: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub section: Option<String>,
@@ -38,8 +44,10 @@ pub struct SavedReportDashboardMetadata {
 /// Request body for the `create_saved_report` operation.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateSavedReportRequest {
+    /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
     #[serde(default)]
+    /// Human-readable description. Safe to render in user-facing messages.
     pub description: Option<String>,
     pub query: ReportQuery,
     #[serde(default)]
@@ -50,9 +58,11 @@ pub struct CreateSavedReportRequest {
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct UpdateSavedReportRequest {
     #[serde(default)]
+    /// Human-readable name. Safe to render in user-facing messages.
     pub name: Option<String>,
     #[serde(default, deserialize_with = "deserialize_nullable_update_field")]
     #[schema(value_type = Option<String>, nullable = true)]
+    /// Human-readable description. Safe to render in user-facing messages.
     pub description: UpdateField<String>,
     #[serde(default, deserialize_with = "deserialize_nullable_update_field")]
     #[schema(value_type = ReportQuery, nullable = false)]
@@ -128,13 +138,16 @@ pub struct ReportingOutboxDiagnostics {
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct FailedReportingOutboxRow {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: Uuid,
+    /// Owning organization's prefixed public identifier.
     pub org_id: i64,
     pub source_type: String,
     pub source_id: String,
     pub attempts: i32,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_error: Option<String>,
+    /// Timestamp when this resource was last updated (RFC 3339).
     pub updated_at: DateTime<Utc>,
 }
 

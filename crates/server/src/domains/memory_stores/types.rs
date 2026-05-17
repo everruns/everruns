@@ -9,17 +9,22 @@ pub use crate::storage::models::{MemoryDbRow, MemoryStoreDbRow};
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct MemoryStoreResponse {
     #[schema(value_type = String, example = "mst_01933b5a000070008000000000000001")]
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: MemoryStoreId,
+    /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
     pub is_default: bool,
     pub active_memory_count: i64,
+    /// Timestamp when this resource was created (RFC 3339).
     pub created_at: DateTime<Utc>,
+    /// Timestamp when this resource was last updated (RFC 3339).
     pub updated_at: DateTime<Utc>,
 }
 
 /// Request body for the `create_memory_store` operation.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateMemoryStoreRequest {
+    /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
     #[serde(default)]
     pub is_default: bool,
@@ -29,6 +34,7 @@ pub struct CreateMemoryStoreRequest {
 #[derive(Debug, Clone, Default, Deserialize, ToSchema)]
 pub struct UpdateMemoryStoreRequest {
     #[serde(default)]
+    /// Human-readable name. Safe to render in user-facing messages.
     pub name: Option<String>,
     #[serde(default)]
     pub is_default: Option<bool>,
@@ -38,23 +44,30 @@ pub struct UpdateMemoryStoreRequest {
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct MemoryResponse {
     #[schema(value_type = String, example = "mem_01933b5a000070008000000000000001")]
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: MemoryId,
     #[schema(value_type = String, example = "mst_01933b5a000070008000000000000001")]
     pub store_id: MemoryStoreId,
     pub content: String,
     pub content_parts: serde_json::Value,
+    /// Discriminator selecting the variant of this resource.
     pub kind: String,
     pub importance: i16,
+    /// Free-form tags attached to this resource.
     pub tags: Vec<String>,
     pub active: bool,
+    /// Timestamp when this resource was created (RFC 3339).
     pub created_at: DateTime<Utc>,
+    /// Timestamp when this resource was last updated (RFC 3339).
     pub updated_at: DateTime<Utc>,
 }
 
 /// Response body for the `list_memories` operation.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct ListMemoriesResponse {
+    /// Page of items returned by this query.
     pub data: Vec<MemoryResponse>,
+    /// Total number of items matching the query, across all pages.
     pub total: i64,
 }
 
@@ -63,12 +76,14 @@ pub struct ListMemoriesQuery {
     #[serde(default)]
     pub query: Option<String>,
     #[serde(default)]
+    /// Discriminator selecting the variant of this resource.
     pub kind: Option<String>,
     #[serde(default)]
     pub tag: Option<Vec<String>>,
     #[serde(default)]
     pub include_inactive: Option<bool>,
     #[serde(default)]
+    /// Maximum number of items returned in this page.
     pub limit: Option<usize>,
 }
 

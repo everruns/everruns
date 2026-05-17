@@ -91,6 +91,7 @@ inventory::submit! { CommandDescriptor::of::<ListMemoryStores>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateMemoryStore {
+    /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
     #[serde(default)]
     pub is_default: bool,
@@ -164,6 +165,7 @@ inventory::submit! { CommandDescriptor::of::<CreateMemoryStore>() }
 pub struct UpdateMemoryStore {
     pub store_id: String,
     #[serde(default)]
+    /// Human-readable name. Safe to render in user-facing messages.
     pub name: Option<String>,
     #[serde(default)]
     pub is_default: Option<bool>,
@@ -320,12 +322,14 @@ pub struct ListMemoriesCmd {
     #[serde(default)]
     pub query: Option<String>,
     #[serde(default)]
+    /// Discriminator selecting the variant of this resource.
     pub kind: Option<String>,
     #[serde(default)]
     pub tag: Option<Vec<String>>,
     #[serde(default)]
     pub include_inactive: Option<bool>,
     #[serde(default)]
+    /// Maximum number of items returned in this page.
     pub limit: Option<usize>,
 }
 
@@ -396,6 +400,7 @@ inventory::submit! { CommandDescriptor::of::<ListMemoriesCmd>() }
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ForgetMemoryCmd {
     pub store_id: String,
+    /// Memory's prefixed public identifier.
     pub memory_id: String,
 }
 

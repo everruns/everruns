@@ -59,12 +59,14 @@ fn validate_q_filter(q: Option<&str>) -> Result<(), CommandError> {
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ListEvents {
+    /// Session's prefixed public identifier.
     pub session_id: String,
     pub since_id: Option<EventId>,
     #[serde(default)]
     pub types: Vec<String>,
     #[serde(default)]
     pub exclude: Vec<String>,
+    /// Maximum number of items returned in this page.
     pub limit: Option<i32>,
     pub before_sequence: Option<i32>,
 
@@ -306,6 +308,7 @@ inventory::submit! { CommandDescriptor::of::<ListEvents>() }
 #[derive(Debug, Serialize, ToSchema)]
 pub struct EventTypeCountOut {
     pub event_type: String,
+    /// Count of items matching the query.
     pub count: i64,
 }
 
@@ -329,6 +332,7 @@ pub struct EventsSummaryResult {
 /// Debug snapshot for a session: per-type counts and time span.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct EventsSummaryCmd {
+    /// Session's prefixed public identifier.
     pub session_id: String,
 }
 
@@ -400,6 +404,7 @@ inventory::submit! { CommandDescriptor::of::<EventsSummaryCmd>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct StreamSse {
+    /// Session's prefixed public identifier.
     pub session_id: String,
 }
 

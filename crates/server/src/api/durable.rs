@@ -249,6 +249,7 @@ pub fn routes(state: AppState) -> Router {
 /// System health response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct HealthResponse {
+    /// Current lifecycle status.
     pub status: String,
     pub total_workers: usize,
     pub active_workers: usize,
@@ -350,23 +351,28 @@ impl HealthResponse {
 /// Worker response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct WorkerResponse {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub worker_group: Option<String>,
     pub activity_types: Vec<String>,
     pub max_concurrency: u32,
     pub current_load: u32,
+    /// Current lifecycle status.
     pub status: String,
     pub accepting_tasks: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub backpressure_reason: Option<String>,
+    /// Timestamp when this resource started, if any (RFC 3339).
     pub started_at: DateTime<Utc>,
     pub last_heartbeat_at: DateTime<Utc>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hostname: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Version number of this resource.
     pub version: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Free-form metadata attached to this resource.
     pub metadata: Option<serde_json::Value>,
     /// Total tasks completed by this worker
     pub tasks_completed: u64,
@@ -413,7 +419,9 @@ pub struct WorkersSummaryResponse {
 /// Workers list response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct WorkersListResponse {
+    /// Page of items returned by this query.
     pub data: Vec<WorkerResponse>,
+    /// Total number of items matching the query, across all pages.
     pub total: usize,
     pub summary: WorkersSummaryResponse,
 }
@@ -421,18 +429,24 @@ pub struct WorkersListResponse {
 /// Workflow response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct WorkflowResponse {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: Uuid,
     pub workflow_type: String,
+    /// Current lifecycle status.
     pub status: String,
     pub input: serde_json::Value,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub result: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Human-readable error message, populated when this resource is in a failed state.
     pub error: Option<serde_json::Value>,
+    /// Timestamp when this resource was created (RFC 3339).
     pub created_at: DateTime<Utc>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Timestamp when this resource started, if any (RFC 3339).
     pub started_at: Option<DateTime<Utc>>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Timestamp when this resource completed, if any (RFC 3339).
     pub completed_at: Option<DateTime<Utc>>,
 }
 
@@ -455,18 +469,23 @@ impl From<WorkflowInfoExtended> for WorkflowResponse {
 /// Workflows list response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct WorkflowsListResponse {
+    /// Page of items returned by this query.
     pub data: Vec<WorkflowResponse>,
+    /// Total number of items matching the query, across all pages.
     pub total: usize,
 }
 
 /// Workflow event response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct WorkflowEventResponse {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: i64,
+    /// Durable workflow's identifier.
     pub workflow_id: Uuid,
     pub sequence_num: i32,
     pub event_type: String,
     pub event_data: serde_json::Value,
+    /// Timestamp when this resource was created (RFC 3339).
     pub created_at: DateTime<Utc>,
 }
 
@@ -486,18 +505,23 @@ impl From<WorkflowEventInfo> for WorkflowEventResponse {
 /// Workflow events list response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct WorkflowEventsListResponse {
+    /// Page of items returned by this query.
     pub data: Vec<WorkflowEventResponse>,
+    /// Total number of items matching the query, across all pages.
     pub total: usize,
 }
 
 /// Task response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct TaskResponse {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: Uuid,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Durable workflow's identifier.
     pub workflow_id: Option<Uuid>,
     pub activity_id: String,
     pub activity_type: String,
+    /// Current lifecycle status.
     pub status: String,
     pub priority: i32,
     pub attempt: u32,
@@ -506,6 +530,7 @@ pub struct TaskResponse {
     pub claimed_by: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_error: Option<String>,
+    /// Timestamp when this resource was created (RFC 3339).
     pub created_at: DateTime<Utc>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub claimed_at: Option<DateTime<Utc>>,
@@ -542,16 +567,20 @@ impl From<TaskInfo> for TaskResponse {
 /// Tasks list response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct TasksListResponse {
+    /// Page of items returned by this query.
     pub data: Vec<TaskResponse>,
+    /// Total number of items matching the query, across all pages.
     pub total: usize,
 }
 
 /// DLQ entry response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct DlqEntryResponse {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: Uuid,
     pub original_task_id: Uuid,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Durable workflow's identifier.
     pub workflow_id: Option<Uuid>,
     pub activity_id: String,
     pub activity_type: String,
@@ -582,7 +611,9 @@ impl From<DlqEntry> for DlqEntryResponse {
 /// DLQ list response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct DlqListResponse {
+    /// Page of items returned by this query.
     pub data: Vec<DlqEntryResponse>,
+    /// Total number of items matching the query, across all pages.
     pub total: usize,
 }
 
@@ -599,6 +630,7 @@ pub struct CircuitBreakerResponse {
     pub opened_at: Option<DateTime<Utc>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub half_open_at: Option<DateTime<Utc>>,
+    /// Timestamp when this resource was last updated (RFC 3339).
     pub updated_at: DateTime<Utc>,
 }
 
@@ -626,7 +658,9 @@ impl From<CircuitBreakerState> for CircuitBreakerResponse {
 /// Circuit breakers list response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct CircuitBreakersListResponse {
+    /// Page of items returned by this query.
     pub data: Vec<CircuitBreakerResponse>,
+    /// Total number of items matching the query, across all pages.
     pub total: usize,
 }
 
@@ -1249,6 +1283,7 @@ pub struct EnqueueTaskOptions {
 /// Response for enqueued task
 #[derive(Debug, Serialize, ToSchema)]
 pub struct EnqueueTaskResponse {
+    /// Durable task's identifier.
     pub task_id: Uuid,
 }
 

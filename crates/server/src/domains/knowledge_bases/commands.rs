@@ -166,8 +166,10 @@ inventory::submit! { CommandDescriptor::of::<ListKnowledgeBases>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateKnowledgeBase {
+    /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
     #[serde(default)]
+    /// Human-readable description. Safe to render in user-facing messages.
     pub description: Option<String>,
 }
 
@@ -223,6 +225,7 @@ inventory::submit! { CommandDescriptor::of::<CreateKnowledgeBase>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct GetKnowledgeBase {
+    /// Knowledge base's prefixed public identifier.
     pub kb_id: String,
 }
 
@@ -267,6 +270,7 @@ inventory::submit! { CommandDescriptor::of::<GetKnowledgeBase>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateKnowledgeBaseCmd {
+    /// Knowledge base's prefixed public identifier.
     pub kb_id: String,
     #[serde(flatten)]
     pub request: UpdateKnowledgeBaseRequest,
@@ -339,6 +343,7 @@ inventory::submit! { CommandDescriptor::of::<UpdateKnowledgeBaseCmd>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct DeleteKnowledgeBase {
+    /// Knowledge base's prefixed public identifier.
     pub kb_id: String,
 }
 
@@ -411,10 +416,12 @@ async fn resolve_kb_internal_id(
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ListKnowledgeEntries {
+    /// Knowledge base's prefixed public identifier.
     pub kb_id: String,
     #[serde(default)]
     pub search: Option<String>,
     #[serde(default)]
+    /// Discriminator selecting the variant of this resource.
     pub kind: Option<String>,
 }
 
@@ -467,12 +474,16 @@ inventory::submit! { CommandDescriptor::of::<ListKnowledgeEntries>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateKnowledgeEntry {
+    /// Knowledge base's prefixed public identifier.
     pub kb_id: String,
+    /// Human-readable title. Safe to render in user-facing messages.
     pub title: String,
     pub body: String,
     #[serde(default)]
+    /// Discriminator selecting the variant of this resource.
     pub kind: Option<String>,
     #[serde(default)]
+    /// Free-form tags attached to this resource.
     pub tags: Option<Vec<String>>,
 }
 
@@ -535,7 +546,9 @@ inventory::submit! { CommandDescriptor::of::<CreateKnowledgeEntry>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct GetKnowledgeEntry {
+    /// Knowledge base's prefixed public identifier.
     pub kb_id: String,
+    /// Knowledge base entry's prefixed public identifier.
     pub entry_id: String,
 }
 
@@ -577,7 +590,9 @@ inventory::submit! { CommandDescriptor::of::<GetKnowledgeEntry>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateKnowledgeEntryCmd {
+    /// Knowledge base's prefixed public identifier.
     pub kb_id: String,
+    /// Knowledge base entry's prefixed public identifier.
     pub entry_id: String,
     #[serde(flatten)]
     pub request: UpdateKnowledgeEntryRequest,
@@ -650,7 +665,9 @@ inventory::submit! { CommandDescriptor::of::<UpdateKnowledgeEntryCmd>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct DeleteKnowledgeEntry {
+    /// Knowledge base's prefixed public identifier.
     pub kb_id: String,
+    /// Knowledge base entry's prefixed public identifier.
     pub entry_id: String,
 }
 

@@ -154,16 +154,20 @@ pub struct RollbackAgentVersionRequest {
 /// Request body for the `set_default_agent_version` operation.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct SetDefaultAgentVersionRequest {
+    /// Agent version's prefixed public identifier.
     pub version_id: AgentVersionId,
 }
 
 /// Request body for the `fork_agent_version` operation.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct ForkAgentVersionRequest {
+    /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
     #[serde(default)]
+    /// Human-readable display name. Safe to render in user-facing messages.
     pub display_name: Option<String>,
     #[serde(default)]
+    /// Human-readable description. Safe to render in user-facing messages.
     pub description: Option<String>,
 }
 

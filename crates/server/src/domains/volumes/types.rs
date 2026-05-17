@@ -12,9 +12,12 @@ pub use crate::storage::models::{CreateVolumeRow, UpdateVolume, VolumeRow};
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct VolumeResponse {
     #[schema(value_type = String, example = "vol_01933b5a000070008000000000000001")]
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: VolumeId,
+    /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Human-readable description. Safe to render in user-facing messages.
     pub description: Option<String>,
     pub source_type: String,
     pub source: VolumeSourceResponse,
@@ -25,21 +28,29 @@ pub struct VolumeResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_sync_error: Option<String>,
     #[serde(skip)]
+    /// Internal database UUID. Not part of the public identifier surface.
     pub internal_id: Uuid,
+    /// Current lifecycle status.
     pub status: String,
+    /// Timestamp when this resource was created (RFC 3339).
     pub created_at: DateTime<Utc>,
+    /// Timestamp when this resource was last updated (RFC 3339).
     pub updated_at: DateTime<Utc>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Timestamp when this resource was archived, if any (RFC 3339).
     pub archived_at: Option<DateTime<Utc>>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Timestamp when this resource was soft-deleted, if any (RFC 3339).
     pub deleted_at: Option<DateTime<Utc>>,
 }
 
 /// Request body for the `create_volume` operation.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateVolumeRequest {
+    /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
     #[serde(default)]
+    /// Human-readable description. Safe to render in user-facing messages.
     pub description: Option<String>,
     #[serde(default)]
     pub source: Option<CreateVolumeSourceRequest>,
@@ -49,9 +60,11 @@ pub struct CreateVolumeRequest {
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct UpdateVolumeRequest {
     #[serde(default)]
+    /// Human-readable name. Safe to render in user-facing messages.
     pub name: Option<String>,
     #[serde(default, deserialize_with = "deserialize_nullable_update_field")]
     #[schema(value_type = Option<String>, nullable = true)]
+    /// Human-readable description. Safe to render in user-facing messages.
     pub description: UpdateField<String>,
     #[serde(default)]
     pub source: Option<CreateVolumeSourceRequest>,

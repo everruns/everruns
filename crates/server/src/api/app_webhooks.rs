@@ -67,6 +67,7 @@ impl AppWebhookState {
 pub struct WebhookInvocationResponse {
     pub accepted: bool,
     #[schema(value_type = String)]
+    /// Session's prefixed public identifier.
     pub session_id: everruns_core::typed_id::SessionId,
     pub created_session: bool,
 }

@@ -217,7 +217,9 @@ pub struct UpdatePaymentAccountCmd {
     pub label: Option<String>,
     pub public_address: Option<Option<String>>,
     pub private_key: Option<String>,
+    /// Current lifecycle status.
     pub status: Option<String>,
+    /// Free-form metadata attached to this resource.
     pub metadata: Option<serde_json::Value>,
 }
 
@@ -474,7 +476,9 @@ pub struct UpdatePaymentPolicyCmd {
     pub max_amount_usd_per_turn: Option<Option<f64>>,
     pub max_amount_usd_per_day: Option<Option<f64>>,
     pub require_approval_above_usd: Option<Option<f64>>,
+    /// Current lifecycle status.
     pub status: Option<String>,
+    /// Free-form metadata attached to this resource.
     pub metadata: Option<serde_json::Value>,
 }
 
@@ -583,7 +587,9 @@ inventory::submit! { CommandDescriptor::of::<DisablePaymentPolicy>() }
 
 #[derive(Debug, Default, Deserialize, ToSchema)]
 pub struct ListPaymentAttempts {
+    /// Session's prefixed public identifier.
     pub session_id: Option<String>,
+    /// Maximum number of items returned in this page.
     pub limit: i64,
 }
 

@@ -110,6 +110,7 @@ inventory::submit! { CommandDescriptor::of::<ListSavedReports>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct GetSavedReport {
+    /// Saved report's prefixed public identifier.
     pub report_id: Uuid,
 }
 
@@ -172,6 +173,7 @@ inventory::submit! { CommandDescriptor::of::<CreateSavedReport>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateSavedReport {
+    /// Saved report's prefixed public identifier.
     pub report_id: Uuid,
     pub request: UpdateSavedReportRequest,
 }
@@ -207,6 +209,7 @@ inventory::submit! { CommandDescriptor::of::<UpdateSavedReport>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct DeleteSavedReport {
+    /// Saved report's prefixed public identifier.
     pub report_id: Uuid,
 }
 
@@ -241,6 +244,7 @@ inventory::submit! { CommandDescriptor::of::<DeleteSavedReport>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct RunSavedReport {
+    /// Saved report's prefixed public identifier.
     pub report_id: Uuid,
 }
 
@@ -321,6 +325,7 @@ inventory::submit! { CommandDescriptor::of::<ExportReportQuery>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ExportSavedReport {
+    /// Saved report's prefixed public identifier.
     pub report_id: Uuid,
     pub request: ExportSavedReportRequest,
 }
@@ -394,6 +399,7 @@ inventory::submit! { CommandDescriptor::of::<GetReportingDiagnostics>() }
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct RunReportingProjector {
     #[serde(default = "default_projector_limit")]
+    /// Maximum number of items returned in this page.
     pub limit: i64,
 }
 

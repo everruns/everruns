@@ -215,13 +215,17 @@ pub struct UpdateScheduleRequest {
 /// Schedule response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ScheduleResponse {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: Uuid,
+    /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Human-readable description. Safe to render in user-facing messages.
     pub description: Option<String>,
     pub cron_expression: String,
     pub timezone: String,
     pub target: ScheduleTargetResponse,
+    /// Whether this resource is enabled.
     pub enabled: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_concurrent: Option<u32>,
@@ -234,7 +238,9 @@ pub struct ScheduleResponse {
     pub last_triggered_at: Option<DateTime<Utc>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next_trigger_at: Option<DateTime<Utc>>,
+    /// Timestamp when this resource was created (RFC 3339).
     pub created_at: DateTime<Utc>,
+    /// Timestamp when this resource was last updated (RFC 3339).
     pub updated_at: DateTime<Utc>,
 }
 
@@ -243,6 +249,7 @@ pub struct ScheduleResponse {
 pub struct ScheduleTargetResponse {
     #[serde(rename = "type")]
     pub target_type: String,
+    /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
     pub input: serde_json::Value,
 }
@@ -281,28 +288,40 @@ impl From<ScheduleRow> for ScheduleResponse {
 /// Schedules list response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct SchedulesListResponse {
+    /// Page of items returned by this query.
     pub data: Vec<ScheduleResponse>,
+    /// Total number of items matching the query, across all pages.
     pub total: u64,
 }
 
 /// Schedule execution response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ScheduleExecutionResponse {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: Uuid,
+    /// Schedule's prefixed public identifier.
     pub schedule_id: Uuid,
+    /// Timestamp when this resource is scheduled to run (RFC 3339).
     pub scheduled_at: DateTime<Utc>,
+    /// Timestamp when this resource started, if any (RFC 3339).
     pub started_at: DateTime<Utc>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Timestamp when this resource completed, if any (RFC 3339).
     pub completed_at: Option<DateTime<Utc>>,
+    /// Current lifecycle status.
     pub status: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Durable workflow's identifier.
     pub workflow_id: Option<Uuid>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Durable task's identifier.
     pub task_id: Option<Uuid>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Human-readable error message, populated when this resource is in a failed state.
     pub error: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration_ms: Option<i32>,
+    /// Timestamp when this resource was created (RFC 3339).
     pub created_at: DateTime<Utc>,
 }
 
@@ -335,7 +354,9 @@ impl From<ScheduleExecutionRow> for ScheduleExecutionResponse {
 /// Schedule executions list response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ScheduleExecutionsListResponse {
+    /// Page of items returned by this query.
     pub data: Vec<ScheduleExecutionResponse>,
+    /// Total number of items matching the query, across all pages.
     pub total: usize,
 }
 
@@ -379,6 +400,7 @@ impl From<ScheduleStats> for ScheduleStatsResponse {
 /// Manual trigger response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct TriggerResponse {
+    /// Schedule execution's identifier.
     pub execution_id: Uuid,
 }
 

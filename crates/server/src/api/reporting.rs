@@ -64,6 +64,7 @@ impl_dispatchable!(AppState);
 #[derive(Debug, Clone, Deserialize, IntoParams, ToSchema)]
 pub struct ProjectorRunQuery {
     #[serde(default = "default_projector_limit")]
+    /// Maximum number of items returned in this page.
     pub limit: i64,
 }
 

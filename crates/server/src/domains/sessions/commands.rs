@@ -169,11 +169,14 @@ inventory::submit! { CommandDescriptor::of::<CreateSession>() }
 
 #[derive(Debug, Default, Deserialize, ToSchema)]
 pub struct ListSessions {
+    /// Agent's prefixed public identifier.
     pub agent_id: Option<AgentId>,
     pub search: Option<String>,
     #[serde(default, deserialize_with = "deserialize_opt_u32_lenient")]
+    /// Zero-based offset into the result set.
     pub offset: Option<u32>,
     #[serde(default, deserialize_with = "deserialize_opt_u32_lenient")]
+    /// Maximum number of items returned in this page.
     pub limit: Option<u32>,
 }
 
@@ -240,6 +243,7 @@ inventory::submit! { CommandDescriptor::of::<ListSessions>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct GetSession {
+    /// Session's prefixed public identifier.
     pub session_id: String,
 }
 
@@ -274,6 +278,7 @@ inventory::submit! { CommandDescriptor::of::<GetSession>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct GetSessionContextReport {
+    /// Session's prefixed public identifier.
     pub session_id: String,
 }
 
@@ -373,6 +378,7 @@ inventory::submit! { CommandDescriptor::of::<GetSessionContextReport>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateSessionCmd {
+    /// Session's prefixed public identifier.
     pub session_id: String,
     #[serde(flatten)]
     pub req: UpdateSessionRequest,
@@ -412,6 +418,7 @@ inventory::submit! { CommandDescriptor::of::<UpdateSessionCmd>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct DeleteSession {
+    /// Session's prefixed public identifier.
     pub session_id: String,
 }
 
@@ -538,6 +545,7 @@ inventory::submit! { CommandDescriptor::of::<GetSessionStats>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct PinSession {
+    /// Session's prefixed public identifier.
     pub session_id: String,
 }
 
@@ -575,6 +583,7 @@ inventory::submit! { CommandDescriptor::of::<PinSession>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UnpinSession {
+    /// Session's prefixed public identifier.
     pub session_id: String,
 }
 
@@ -611,6 +620,7 @@ inventory::submit! { CommandDescriptor::of::<UnpinSession>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CancelSession {
+    /// Session's prefixed public identifier.
     pub session_id: String,
 }
 

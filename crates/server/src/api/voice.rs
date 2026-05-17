@@ -227,6 +227,7 @@ pub struct VoiceAttachResponse {
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct VoiceEndResponse {
     pub voice_connection_id: String,
+    /// Current lifecycle status.
     pub status: String,
 }
 

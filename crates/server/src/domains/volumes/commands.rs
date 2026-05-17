@@ -259,8 +259,10 @@ inventory::submit! { CommandDescriptor::of::<ListVolumes>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateVolume {
+    /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
     #[serde(default)]
+    /// Human-readable description. Safe to render in user-facing messages.
     pub description: Option<String>,
     #[serde(default)]
     pub source: Option<CreateVolumeSourceRequest>,
@@ -325,6 +327,7 @@ inventory::submit! { CommandDescriptor::of::<CreateVolume>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct GetVolume {
+    /// Workspace volume's prefixed public identifier.
     pub volume_id: String,
 }
 
@@ -369,6 +372,7 @@ inventory::submit! { CommandDescriptor::of::<GetVolume>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateVolumeCmd {
+    /// Workspace volume's prefixed public identifier.
     pub volume_id: String,
     #[serde(flatten)]
     pub request: UpdateVolumeRequest,
@@ -454,6 +458,7 @@ inventory::submit! { CommandDescriptor::of::<UpdateVolumeCmd>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SyncVolumeNow {
+    /// Workspace volume's prefixed public identifier.
     pub volume_id: String,
 }
 
@@ -518,6 +523,7 @@ inventory::submit! { CommandDescriptor::of::<SyncVolumeNow>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct DeleteVolume {
+    /// Workspace volume's prefixed public identifier.
     pub volume_id: String,
 }
 
