@@ -1,6 +1,7 @@
 // Runtime construction: wires the everruns InProcessRuntime with the coding
 // agent's real-filesystem tools and the requested LLM provider.
 
+use crate::approval::ApprovalGate;
 use crate::instructions::ProjectInstructions;
 use crate::tools::{
     BashTool, EditFileTool, GrepTool, ListDirectoryTool, ReadFileTool, Workspace, WriteFileTool,
@@ -30,6 +31,7 @@ use uuid::Uuid;
 /// picks them up just like any first-party capability.
 struct CodingCapability {
     workspace: Workspace,
+    gate: Arc<ApprovalGate>,
     system_addition: String,
 }
 
@@ -55,11 +57,14 @@ impl Capability for CodingCapability {
     fn tools(&self) -> Vec<Box<dyn Tool>> {
         vec![
             Box::new(ReadFileTool::new(self.workspace.clone())),
-            Box::new(WriteFileTool::new(self.workspace.clone())),
-            Box::new(EditFileTool::new(self.workspace.clone())),
+            Box::new(WriteFileTool::new(
+                self.workspace.clone(),
+                self.gate.clone(),
+            )),
+            Box::new(EditFileTool::new(self.workspace.clone(), self.gate.clone())),
             Box::new(ListDirectoryTool::new(self.workspace.clone())),
             Box::new(GrepTool::new(self.workspace.clone())),
-            Box::new(BashTool::new(self.workspace.clone())),
+            Box::new(BashTool::new(self.workspace.clone(), self.gate.clone())),
         ]
     }
 }
@@ -117,7 +122,11 @@ pub struct RuntimeBundle {
     pub tool_names: Vec<String>,
 }
 
-pub async fn build(workspace_root: PathBuf, provider: ProviderChoice) -> Result<RuntimeBundle> {
+pub async fn build(
+    workspace_root: PathBuf,
+    provider: ProviderChoice,
+    gate: Arc<ApprovalGate>,
+) -> Result<RuntimeBundle> {
     let canonical_root = std::fs::canonicalize(&workspace_root)
         .with_context(|| format!("canonicalize workspace: {}", workspace_root.display()))?;
     let workspace = Workspace::new(canonical_root.clone());
@@ -128,6 +137,7 @@ pub async fn build(workspace_root: PathBuf, provider: ProviderChoice) -> Result<
 
     let coding_capability = CodingCapability {
         workspace: workspace.clone(),
+        gate,
         system_addition,
     };
 
@@ -225,7 +235,10 @@ fn build_system_addition(root: &std::path::Path, instructions: &ProjectInstructi
     s.push_str(
         "Use the provided tools (read_file, write_file, edit_file, list_directory, grep, bash) \
          to investigate and modify the codebase. Prefer read_file and grep before editing. \
-         Keep changes small and focused. Never operate outside the workspace root.\n",
+         Keep changes small and focused. Never operate outside the workspace root. \
+         write_file, edit_file, and bash require human approval — explain what you intend \
+         to do before calling them. Writes to `.git/`, `node_modules/`, `target/`, `dist/`, \
+         and similar build/vendored directories are blocked.\n",
     );
     if !instructions.is_empty() {
         s.push_str("\nProject instructions follow. Treat these as authoritative:\n\n");

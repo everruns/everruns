@@ -1,28 +1,32 @@
 // TUI app state and event loop.
 // Decision: keep the rendering layer tiny — a scrolling chat above a single
-// input box. The event loop multiplexes terminal keystrokes with a background
-// turn so the UI stays responsive while the model is thinking.
+// input box, plus a modal approval bar for destructive tools. The event loop
+// multiplexes terminal keystrokes with a background turn task and an approval
+// channel so the UI stays responsive while the model is thinking.
 
+use crate::approval::ApprovalRequest;
 use crate::runtime::RuntimeBundle;
 use anyhow::Result;
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-use everruns_core::events::EventData;
-use everruns_core::message::MessageRole;
+use everruns_core::events::{EventData, ToolCompletedData};
+use everruns_core::message::{ContentPart, MessageRole};
 use ratatui::Terminal;
 use ratatui::backend::Backend;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+use serde_json::Value;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, oneshot};
 
 #[derive(Clone, Debug)]
 pub enum Author {
     User,
     Assistant,
     Tool,
+    Diff,
     System,
 }
 
@@ -32,6 +36,7 @@ impl Author {
             Author::User => "you",
             Author::Assistant => "agent",
             Author::Tool => "tool",
+            Author::Diff => "diff",
             Author::System => "system",
         }
     }
@@ -40,6 +45,7 @@ impl Author {
             Author::User => Color::LightCyan,
             Author::Assistant => Color::LightGreen,
             Author::Tool => Color::Yellow,
+            Author::Diff => Color::Magenta,
             Author::System => Color::DarkGray,
         }
     }
@@ -51,6 +57,13 @@ pub struct ChatLine {
     pub text: String,
 }
 
+type ApprovalRx = mpsc::UnboundedReceiver<(ApprovalRequest, oneshot::Sender<bool>)>;
+
+struct PendingApproval {
+    req: ApprovalRequest,
+    responder: oneshot::Sender<bool>,
+}
+
 pub struct App {
     bundle: Arc<RuntimeBundle>,
     pub lines: Vec<ChatLine>,
@@ -59,6 +72,8 @@ pub struct App {
     pub should_quit: bool,
     pub scroll: u16,
     rx: Option<mpsc::UnboundedReceiver<TurnEvent>>,
+    approval_rx: ApprovalRx,
+    pending: Option<PendingApproval>,
 }
 
 #[derive(Debug)]
@@ -69,7 +84,7 @@ enum TurnEvent {
 }
 
 impl App {
-    pub fn new(bundle: Arc<RuntimeBundle>) -> Self {
+    pub fn new(bundle: Arc<RuntimeBundle>, approval_rx: ApprovalRx) -> Self {
         let mut app = Self {
             bundle,
             lines: Vec::new(),
@@ -78,6 +93,8 @@ impl App {
             should_quit: false,
             scroll: 0,
             rx: None,
+            approval_rx,
+            pending: None,
         };
         app.emit_system_banner();
         app
@@ -96,7 +113,7 @@ impl App {
                 self.bundle.instruction_summary.join(", ")
             ));
         }
-        self.push_system("type /help for commands, Esc or Ctrl-D to exit".into());
+        self.push_system("type /help for commands, Esc or Ctrl-D to exit; approvals: y / n".into());
     }
 
     fn push_user(&mut self, text: String) {
@@ -116,6 +133,7 @@ impl App {
         loop {
             terminal.draw(|f| draw(f, self))?;
 
+            // 1) drain background turn events
             if let Some(rx) = self.rx.as_mut() {
                 match rx.try_recv() {
                     Ok(TurnEvent::Lines(lines)) => {
@@ -141,6 +159,23 @@ impl App {
                 }
             }
 
+            // 2) drain pending approval requests
+            if self.pending.is_none()
+                && let Ok((req, responder)) = self.approval_rx.try_recv()
+            {
+                let header = format!("approval needed: {}", req.headline());
+                self.push_system(header);
+                let detail = req.detail();
+                for line in detail.lines().take(40) {
+                    self.lines.push(ChatLine {
+                        author: Author::Diff,
+                        text: line.to_string(),
+                    });
+                }
+                self.pending = Some(PendingApproval { req, responder });
+            }
+
+            // 3) keystrokes
             if event::poll(Duration::from_millis(80))?
                 && let Event::Key(key) = event::read()?
             {
@@ -150,6 +185,11 @@ impl App {
                 self.handle_key(key).await;
             }
             if self.should_quit {
+                // If we exit with an outstanding approval, deny it so the tool
+                // task unblocks and the runtime can record a tool error.
+                if let Some(p) = self.pending.take() {
+                    let _ = p.responder.send(false);
+                }
                 break;
             }
         }
@@ -157,16 +197,35 @@ impl App {
     }
 
     async fn handle_key(&mut self, key: KeyEvent) {
-        if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('c') {
+        if key.modifiers.contains(KeyModifiers::CONTROL)
+            && (key.code == KeyCode::Char('c') || key.code == KeyCode::Char('d'))
+        {
             self.should_quit = true;
             return;
         }
-        if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Char('d') {
-            self.should_quit = true;
+
+        // Approval mode: only y / n / Esc.
+        if self.pending.is_some() {
+            match key.code {
+                KeyCode::Char('y') | KeyCode::Char('Y') => {
+                    if let Some(p) = self.pending.take() {
+                        let _ = p.responder.send(true);
+                        self.push_system("approved".into());
+                    }
+                }
+                KeyCode::Char('n') | KeyCode::Char('N') | KeyCode::Esc => {
+                    if let Some(p) = self.pending.take() {
+                        let _ = p.responder.send(false);
+                        self.push_system("denied".into());
+                    }
+                }
+                _ => {}
+            }
             return;
         }
+
         if self.busy {
-            // Ignore input while a turn is running.
+            // Ignore input while a turn is running (other than approvals above).
             return;
         }
         match key.code {
@@ -271,10 +330,28 @@ impl App {
             for event in events.iter().skip(events_before) {
                 if let EventData::ToolCompleted(data) = &event.data {
                     let marker = if data.success { "✓" } else { "✗" };
+                    let summary = summarize_tool_result(data);
+                    let line = if summary.is_empty() {
+                        format!("{} {marker}", data.tool_name)
+                    } else {
+                        format!("{} {marker}  {summary}", data.tool_name)
+                    };
                     out.push(ChatLine {
                         author: Author::Tool,
-                        text: format!("{} {marker}", data.tool_name),
+                        text: line,
                     });
+                    // For edits, also surface the diff inline so the operator
+                    // can see exactly what changed.
+                    if data.tool_name == "edit_file"
+                        && let Some(diff) = extract_field(data, "diff")
+                    {
+                        for line in diff.lines().take(40) {
+                            out.push(ChatLine {
+                                author: Author::Diff,
+                                text: line.to_string(),
+                            });
+                        }
+                    }
                 }
             }
             // Assistant text from the turn.
@@ -311,19 +388,119 @@ impl App {
     }
 }
 
+// ---------- helpers for surfacing tool results ----------
+
+fn result_value(data: &ToolCompletedData) -> Option<Value> {
+    let parts = data.result.as_ref()?;
+    for part in parts {
+        if let ContentPart::Text(t) = part
+            && let Ok(v) = serde_json::from_str::<Value>(&t.text)
+        {
+            return Some(v);
+        }
+    }
+    None
+}
+
+fn extract_field(data: &ToolCompletedData, field: &str) -> Option<String> {
+    let v = result_value(data)?;
+    v.get(field).and_then(|s| s.as_str()).map(str::to_string)
+}
+
+/// One-line summary of a tool result, used in the transcript and `--print` output.
+pub fn summarize_tool_result(data: &ToolCompletedData) -> String {
+    let Some(v) = result_value(data) else {
+        if let Some(err) = &data.error {
+            return format!("error: {}", first_line(err, 120));
+        }
+        return String::new();
+    };
+    match data.tool_name.as_str() {
+        "read_file" => {
+            let path = v.get("path").and_then(Value::as_str).unwrap_or("");
+            let lines = v.get("lines_returned").and_then(Value::as_u64).unwrap_or(0);
+            let total = v.get("total_lines").and_then(Value::as_u64).unwrap_or(0);
+            format!("{path} ({lines}/{total} lines)")
+        }
+        "write_file" => {
+            let path = v.get("path").and_then(Value::as_str).unwrap_or("");
+            let bytes = v.get("bytes_written").and_then(Value::as_u64).unwrap_or(0);
+            format!("{path} ({bytes} bytes)")
+        }
+        "edit_file" => {
+            let path = v.get("path").and_then(Value::as_str).unwrap_or("");
+            let n = v.get("replacements").and_then(Value::as_u64).unwrap_or(0);
+            format!("{path} ({n} replacement(s))")
+        }
+        "list_directory" => {
+            let path = v.get("path").and_then(Value::as_str).unwrap_or("");
+            let n = v
+                .get("entries")
+                .and_then(Value::as_array)
+                .map(|a| a.len())
+                .unwrap_or(0);
+            format!("{path} ({n} entries)")
+        }
+        "grep" => {
+            let pattern = v.get("pattern").and_then(Value::as_str).unwrap_or("");
+            let n = v.get("match_count").and_then(Value::as_u64).unwrap_or(0);
+            format!("/{pattern}/ ({n} match(es))")
+        }
+        "bash" => {
+            let cmd = v
+                .get("command")
+                .and_then(Value::as_str)
+                .map(|c| first_line(c, 80))
+                .unwrap_or_default();
+            let code = v
+                .get("exit_code")
+                .and_then(Value::as_i64)
+                .map(|c| c.to_string())
+                .unwrap_or_else(|| "?".into());
+            format!("`{cmd}` exit={code}")
+        }
+        _ => String::new(),
+    }
+}
+
+fn first_line(s: &str, max: usize) -> String {
+    let l = s.lines().next().unwrap_or("");
+    if l.len() > max {
+        format!("{}…", &l[..max])
+    } else {
+        l.to_string()
+    }
+}
+
+// ---------- rendering ----------
+
 fn draw(f: &mut ratatui::Frame, app: &App) {
+    let has_approval = app.pending.is_some();
+    let input_height: u16 = 3;
+    let approval_height: u16 = if has_approval { 3 } else { 0 };
+
+    let mut constraints = vec![Constraint::Min(3)];
+    if has_approval {
+        constraints.push(Constraint::Length(approval_height));
+    }
+    constraints.push(Constraint::Length(input_height));
+    constraints.push(Constraint::Length(1));
+
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Min(3),
-            Constraint::Length(3),
-            Constraint::Length(1),
-        ])
+        .constraints(constraints)
         .split(f.area());
 
-    draw_chat(f, chunks[0], app);
-    draw_input(f, chunks[1], app);
-    draw_status(f, chunks[2], app);
+    let mut idx = 0;
+    draw_chat(f, chunks[idx], app);
+    idx += 1;
+    if has_approval {
+        draw_approval(f, chunks[idx], app);
+        idx += 1;
+    }
+    draw_input(f, chunks[idx], app);
+    idx += 1;
+    draw_status(f, chunks[idx], app);
 }
 
 fn draw_chat(f: &mut ratatui::Frame, area: Rect, app: &App) {
@@ -369,8 +546,33 @@ fn draw_chat(f: &mut ratatui::Frame, area: Rect, app: &App) {
     f.render_widget(para, area);
 }
 
+fn draw_approval(f: &mut ratatui::Frame, area: Rect, app: &App) {
+    let title = " approve? press y to allow, n / Esc to deny ";
+    let text = app
+        .pending
+        .as_ref()
+        .map(|p| p.req.headline())
+        .unwrap_or_default();
+    let para = Paragraph::new(Span::styled(
+        text,
+        Style::default()
+            .fg(Color::Black)
+            .bg(Color::Yellow)
+            .add_modifier(Modifier::BOLD),
+    ))
+    .block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(title)
+            .border_style(Style::default().fg(Color::Yellow)),
+    );
+    f.render_widget(para, area);
+}
+
 fn draw_input(f: &mut ratatui::Frame, area: Rect, app: &App) {
-    let title = if app.busy {
+    let title = if app.pending.is_some() {
+        " approval pending — answer y / n above "
+    } else if app.busy {
         " thinking… (input disabled) "
     } else {
         " message (Enter to send) "
@@ -378,7 +580,7 @@ fn draw_input(f: &mut ratatui::Frame, area: Rect, app: &App) {
     let para = Paragraph::new(app.input.as_str())
         .block(Block::default().borders(Borders::ALL).title(title));
     f.render_widget(para, area);
-    if !app.busy {
+    if !app.busy && app.pending.is_none() {
         let x = area.x + 1 + (app.input.len() as u16).min(area.width.saturating_sub(2));
         let y = area.y + 1;
         f.set_cursor_position((x, y));

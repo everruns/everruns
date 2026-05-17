@@ -3,12 +3,14 @@
 // example is testable in CI and easy to demo against a real codebase.
 
 mod app;
+mod approval;
 mod instructions;
 mod runtime;
 mod tools;
 
 use anyhow::Result;
 use app::App;
+use approval::ApprovalGate;
 use clap::Parser;
 use crossterm::execute;
 use crossterm::terminal::{
@@ -45,6 +47,10 @@ struct Cli {
     /// Run a single prompt non-interactively and print the result. Useful for CI smoke tests.
     #[arg(short = 'p', long)]
     print: Option<String>,
+
+    /// Auto-approve every destructive tool call (write/edit/bash). Print mode implies this.
+    #[arg(long)]
+    yes: bool,
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy)]
@@ -88,23 +94,37 @@ async fn main() -> Result<()> {
         .clone()
         .unwrap_or_else(|| std::env::current_dir().expect("cwd"));
     let provider = pick_provider(&cli);
-    let bundle = runtime::build(cwd, provider).await?;
+
+    let is_print = cli.print.is_some();
+    let (gate, approval_rx) = if is_print || cli.yes {
+        (ApprovalGate::auto(), None)
+    } else {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        (ApprovalGate::channel(tx), Some(rx))
+    };
+    let bundle = runtime::build(cwd, provider, gate).await?;
     let bundle = Arc::new(bundle);
 
     if let Some(prompt) = cli.print {
         return run_print_mode(bundle, prompt).await;
     }
-    run_tui(bundle).await
+    run_tui(bundle, approval_rx.expect("approval channel for TUI")).await
 }
 
-async fn run_tui(bundle: Arc<RuntimeBundle>) -> Result<()> {
+async fn run_tui(
+    bundle: Arc<RuntimeBundle>,
+    approval_rx: tokio::sync::mpsc::UnboundedReceiver<(
+        approval::ApprovalRequest,
+        tokio::sync::oneshot::Sender<bool>,
+    )>,
+) -> Result<()> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
     execute!(stdout, EnterAlternateScreen)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut app = App::new(bundle);
+    let mut app = App::new(bundle, approval_rx);
     let result = app.run(&mut terminal).await;
 
     disable_raw_mode()?;
@@ -144,7 +164,12 @@ async fn run_print_mode(bundle: Arc<RuntimeBundle>, prompt: String) -> Result<()
     for event in events.iter().skip(before_events) {
         if let EventData::ToolCompleted(data) = &event.data {
             let status = if data.success { "✓" } else { "✗" };
-            println!("[tool {status}] {}", data.tool_name);
+            let summary = app::summarize_tool_result(data);
+            if summary.is_empty() {
+                println!("[tool {status}] {}", data.tool_name);
+            } else {
+                println!("[tool {status}] {} — {summary}", data.tool_name);
+            }
         }
     }
     for msg in messages.iter().skip(before_msgs) {

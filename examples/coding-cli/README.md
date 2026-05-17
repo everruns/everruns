@@ -9,10 +9,22 @@ depends on the public runtime crate the same way an external embedder would.
 
 ## What it does
 
-- **TUI** (ratatui) chat: scrolling transcript, single-line input, status bar
+- **TUI** (ratatui) chat: scrolling transcript, single-line input, status bar,
+  modal approval bar for destructive tools
 - **Real-filesystem tools**: `read_file`, `write_file`, `edit_file`,
   `list_directory`, `grep`, `bash` — all rooted at a workspace path, with
   traversal protection
+- **Human-in-the-loop approvals**: `write_file`, `edit_file`, and `bash`
+  request explicit approval (`y` / `n`) before running. `edit_file` shows a
+  unified diff in the prompt. `--yes` auto-approves; `--print` mode implies
+  auto-approve.
+- **Write blocklist**: writes into `.git/`, `node_modules/`, `target/`,
+  `dist/`, `build/`, `.next/`, `.venv/`, `venv/`, `.tox/`, `.gradle/` are
+  rejected at any depth. Read access is unrestricted.
+- **Tool-result visibility**: the transcript shows a per-tool summary
+  (e.g. `read_file ✓  crates/runtime/src/runtime.rs (45/788 lines)`,
+  `` bash ✓  `cargo test` exit=0 ``) and, for `edit_file`, the unified diff
+  inline.
 - **AGENTS.md / CLAUDE.md / .agents.md** loaded from the workspace root and
   injected into the system prompt
 - **Provider selection** via env vars: `ANTHROPIC_API_KEY` → Anthropic,
@@ -61,6 +73,7 @@ cargo run --manifest-path examples/coding-cli/Cargo.toml -- --provider sim -p "h
 | `--provider <P>`           | Force `anthropic`, `openai`, or `sim` (default: env-detected)        |
 | `-m, --model <ID>`         | Override the model id for the chosen provider                        |
 | `-p, --print <PROMPT>`     | Run one prompt non-interactively and print the result                |
+| `--yes`                    | Auto-approve every destructive tool call (write/edit/bash)           |
 
 `RUST_LOG` is honored for the underlying tracing layer (writes to stderr).
 
@@ -84,3 +97,7 @@ cargo run --manifest-path examples/coding-cli/Cargo.toml -- --provider sim -p "h
   binary exits.
 - Bash tool has a 120s timeout and a 64KiB stdout cap. Long-running jobs aren't
   yet supported as background tools.
+- The bash approval prompt shows the command string only — sub-commands
+  spawned by it are not pre-listed.
+- Write blocklist matches directory names case-sensitively at any depth; it is
+  intentionally conservative, not exhaustive.

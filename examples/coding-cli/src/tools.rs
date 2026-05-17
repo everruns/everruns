@@ -1,30 +1,54 @@
 // Real-filesystem tools for the coding CLI.
 // Decision: a coding agent must touch the user's actual project files, so these
 // tools operate on disk under a workspace root rather than the runtime's
-// in-memory VFS. Path traversal outside the root is rejected.
+// in-memory VFS. Path traversal outside the root is rejected. Destructive ops
+// route through an `ApprovalGate` and respect a write blocklist.
 
+use crate::approval::{ApprovalGate, ApprovalRequest};
 use async_trait::async_trait;
 use everruns_core::tool_types::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use ignore::WalkBuilder;
 use regex::Regex;
 use serde_json::{Value, json};
+use similar::TextDiff;
 use std::path::{Component, Path, PathBuf};
 use std::process::Stdio;
 use std::sync::Arc;
 use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 
+/// Default directories no tool may write into. Read access is unrestricted.
+const DEFAULT_WRITE_BLOCKLIST: &[&str] = &[
+    ".git",
+    "node_modules",
+    "target",
+    ".next",
+    ".venv",
+    "venv",
+    "dist",
+    "build",
+    ".tox",
+    ".gradle",
+];
+
 /// Shared workspace context for all tools.
 #[derive(Clone)]
 pub struct Workspace {
     root: Arc<PathBuf>,
+    write_blocklist: Arc<Vec<String>>,
 }
 
 impl Workspace {
     pub fn new(root: PathBuf) -> Self {
         Self {
             root: Arc::new(root),
+            write_blocklist: Arc::new(
+                DEFAULT_WRITE_BLOCKLIST
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect(),
+            ),
         }
     }
 
@@ -56,6 +80,24 @@ impl Workspace {
             ));
         }
         Ok(normalized)
+    }
+
+    /// Reject writes that land inside a blocklisted directory at any depth.
+    fn check_writable(&self, abs: &Path) -> Result<(), String> {
+        let Ok(rel) = abs.strip_prefix(self.root.as_path()) else {
+            return Ok(());
+        };
+        for comp in rel.components() {
+            if let Component::Normal(name) = comp {
+                let s = name.to_string_lossy();
+                if self.write_blocklist.iter().any(|b| b == s.as_ref()) {
+                    return Err(format!(
+                        "writes into `{s}/` are blocked; this directory is in the workspace write blocklist"
+                    ));
+                }
+            }
+        }
+        Ok(())
     }
 
     fn display(&self, abs: &Path) -> String {
@@ -161,10 +203,11 @@ impl Tool for ReadFileTool {
 
 pub struct WriteFileTool {
     ws: Workspace,
+    gate: Arc<ApprovalGate>,
 }
 impl WriteFileTool {
-    pub fn new(ws: Workspace) -> Self {
-        Self { ws }
+    pub fn new(ws: Workspace, gate: Arc<ApprovalGate>) -> Self {
+        Self { ws, gate }
     }
 }
 
@@ -177,7 +220,7 @@ impl Tool for WriteFileTool {
         Some("Write File")
     }
     fn description(&self) -> &str {
-        "Create or overwrite a file with the given content. Parent directories are created as needed."
+        "Create or overwrite a file with the given content. Parent directories are created as needed. Asks the user for approval."
     }
     fn parameters_schema(&self) -> Value {
         json!({
@@ -203,6 +246,20 @@ impl Tool for WriteFileTool {
             Ok(p) => p,
             Err(e) => return ToolExecutionResult::tool_error(e),
         };
+        if let Err(e) = self.ws.check_writable(&resolved) {
+            return ToolExecutionResult::tool_error(e);
+        }
+        let display_path = self.ws.display(&resolved);
+        let approved = self
+            .gate
+            .approve(ApprovalRequest::Write {
+                path: display_path.clone(),
+                bytes: content.len(),
+            })
+            .await;
+        if !approved {
+            return ToolExecutionResult::tool_error("user denied write_file");
+        }
         if let Some(parent) = resolved.parent()
             && let Err(e) = tokio::fs::create_dir_all(parent).await
         {
@@ -212,7 +269,7 @@ impl Tool for WriteFileTool {
             return ToolExecutionResult::tool_error(format!("write failed: {e}"));
         }
         ToolExecutionResult::success(json!({
-            "path": self.ws.display(&resolved),
+            "path": display_path,
             "bytes_written": content.len(),
         }))
     }
@@ -222,10 +279,11 @@ impl Tool for WriteFileTool {
 
 pub struct EditFileTool {
     ws: Workspace,
+    gate: Arc<ApprovalGate>,
 }
 impl EditFileTool {
-    pub fn new(ws: Workspace) -> Self {
-        Self { ws }
+    pub fn new(ws: Workspace, gate: Arc<ApprovalGate>) -> Self {
+        Self { ws, gate }
     }
 }
 
@@ -278,6 +336,9 @@ impl Tool for EditFileTool {
             Ok(p) => p,
             Err(e) => return ToolExecutionResult::tool_error(e),
         };
+        if let Err(e) = self.ws.check_writable(&resolved) {
+            return ToolExecutionResult::tool_error(e);
+        }
         let original = match tokio::fs::read_to_string(&resolved).await {
             Ok(c) => c,
             Err(e) => return ToolExecutionResult::tool_error(format!("read failed: {e}")),
@@ -298,14 +359,37 @@ impl Tool for EditFileTool {
         } else {
             original.replacen(old_string, new_string, 1)
         };
+        let display_path = self.ws.display(&resolved);
+        let replacements = if replace_all { occurrences } else { 1 };
+        let unified_diff = unified_diff(&original, &updated, &display_path, 3);
+        let approved = self
+            .gate
+            .approve(ApprovalRequest::Edit {
+                path: display_path.clone(),
+                unified_diff: unified_diff.clone(),
+                replacements,
+            })
+            .await;
+        if !approved {
+            return ToolExecutionResult::tool_error("user denied edit_file");
+        }
         if let Err(e) = tokio::fs::write(&resolved, &updated).await {
             return ToolExecutionResult::tool_error(format!("write failed: {e}"));
         }
         ToolExecutionResult::success(json!({
-            "path": self.ws.display(&resolved),
-            "replacements": if replace_all { occurrences } else { 1 },
+            "path": display_path,
+            "replacements": replacements,
+            "diff": unified_diff,
         }))
     }
+}
+
+fn unified_diff(old: &str, new: &str, label: &str, context: usize) -> String {
+    let diff = TextDiff::from_lines(old, new);
+    diff.unified_diff()
+        .header(&format!("a/{label}"), &format!("b/{label}"))
+        .context_radius(context)
+        .to_string()
 }
 
 // ---------- list_directory ----------
@@ -489,13 +573,15 @@ impl Tool for GrepTool {
 
 pub struct BashTool {
     ws: Workspace,
+    gate: Arc<ApprovalGate>,
     timeout_secs: u64,
     max_output_bytes: usize,
 }
 impl BashTool {
-    pub fn new(ws: Workspace) -> Self {
+    pub fn new(ws: Workspace, gate: Arc<ApprovalGate>) -> Self {
         Self {
             ws,
+            gate,
             timeout_secs: 120,
             max_output_bytes: 64 * 1024,
         }
@@ -528,6 +614,15 @@ impl Tool for BashTool {
             Some(c) => c.to_string(),
             None => return ToolExecutionResult::tool_error("'command' is required"),
         };
+        let approved = self
+            .gate
+            .approve(ApprovalRequest::Bash {
+                command: command.clone(),
+            })
+            .await;
+        if !approved {
+            return ToolExecutionResult::tool_error("user denied bash command");
+        }
         let root = self.ws.root().to_path_buf();
         let timeout = std::time::Duration::from_secs(self.timeout_secs);
         let max_bytes = self.max_output_bytes;
