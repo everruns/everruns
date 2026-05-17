@@ -19,13 +19,13 @@ interface NavSection {
 
 const settingsSections: NavSection[] = [
   {
-    label: "Organisation",
+    label: "Organization",
     items: [
       {
-        name: "Organisation",
+        name: "Organization",
         href: "/settings/organization",
         icon: Building2,
-        description: "Manage organisation defaults and memberships",
+        description: "Manage organization defaults and memberships",
       },
       {
         name: "LLM Providers",

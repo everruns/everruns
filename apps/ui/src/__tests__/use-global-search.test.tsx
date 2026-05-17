@@ -66,7 +66,7 @@ describe("useGlobalSearch", () => {
     expect(orgResult).toMatchObject({
       id: "organization:org_second",
       title: "Second Org",
-      subtitle: "Switch organisation > org_second",
+      subtitle: "Switch organization > org_second",
     });
 
     act(() => {
@@ -84,7 +84,7 @@ describe("useGlobalSearch", () => {
     expect(orgResult).toMatchObject({
       id: "organization:org_current",
       title: "Current Org",
-      subtitle: "Current organisation > org_current",
+      subtitle: "Current organization > org_current",
     });
     expect(orgResult?.onSelect).toBeUndefined();
   });

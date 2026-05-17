@@ -38,8 +38,8 @@ interface StepContext {
 
 const SETUP_STEPS: SetupStep[] = [
   {
-    label: "Organisation created",
-    description: "Your new organisation has been provisioned",
+    label: "Organization created",
+    description: "Your new organization has been provisioned",
     check: (ctx) => ctx.orgLoaded,
   },
   {
@@ -222,7 +222,7 @@ export default function OrgSetupPage() {
               <Building2 className="h-6 w-6 text-primary" />
             </div>
             <h1 className="text-xl font-semibold">
-              {is404 ? "Organisation not found" : "Failed to load organisation"}
+              {is404 ? "Organization not found" : "Failed to load organization"}
             </h1>
             {!is404 && orgErrorDetail?.message && (
               <p className="text-sm text-muted-foreground">{orgErrorDetail.message}</p>
@@ -246,7 +246,7 @@ export default function OrgSetupPage() {
           </div>
           <h1 className="text-xl font-semibold">Setting up {org?.name}</h1>
           <p className="text-sm text-muted-foreground">
-            Your organisation is being configured with everything you need to get started.
+            Your organization is being configured with everything you need to get started.
           </p>
         </div>
 

@@ -404,7 +404,7 @@ describe("Sidebar with config", () => {
     render(<Sidebar config={config} />);
 
     // Dialog title should not be in the DOM when custom handler overrides default
-    expect(screen.queryByText("Create a new organisation")).not.toBeInTheDocument();
+    expect(screen.queryByText("Create a new organization")).not.toBeInTheDocument();
     // The org selector trigger should still render
     expect(screen.getByText("Test Org")).toBeInTheDocument();
   });
@@ -496,7 +496,7 @@ describe("Sidebar with config", () => {
   });
 });
 
-describe("Create Organisation dialog", () => {
+describe("Create Organization dialog", () => {
   beforeEach(() => {
     mockPathname.mockReturnValue("/dashboard");
     mockPush.mockClear();
@@ -516,12 +516,12 @@ describe("Create Organisation dialog", () => {
     const orgTrigger = screen.getByText("Test Org");
     fireEvent.click(orgTrigger);
 
-    // Click "Create Organisation"
-    const createBtn = screen.getByText("Create Organisation");
+    // Click "Create Organization"
+    const createBtn = screen.getByText("Create Organization");
     fireEvent.click(createBtn);
 
     // Fill in the org name
-    const input = screen.getByPlaceholderText("Organisation name");
+    const input = screen.getByPlaceholderText("Organization name");
     fireEvent.change(input, { target: { value: "New Org" } });
 
     // Submit the form
@@ -546,8 +546,8 @@ describe("Create Organisation dialog", () => {
     const orgTrigger = screen.getByText("Test Org");
     fireEvent.click(orgTrigger);
 
-    // Click "Create Organisation"
-    const createBtn = screen.getByText("Create Organisation");
+    // Click "Create Organization"
+    const createBtn = screen.getByText("Create Organization");
     fireEvent.click(createBtn);
 
     // Click Cancel

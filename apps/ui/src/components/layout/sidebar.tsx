@@ -8,7 +8,7 @@
  *
  * Extension points:
  * - navigation: replace the default navigation sections entirely
- * - orgActions.createOrg: override "Create Organisation" click handler
+ * - orgActions.createOrg: override "Create Organization" click handler
  * - extraSections: append additional sections (billing, usage, etc.)
  * - profileMenu.items: append items inside the authenticated profile menu
  */
