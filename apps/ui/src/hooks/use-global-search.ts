@@ -195,7 +195,15 @@ const NAVIGATION_PAGES: NavigationPage[] = [
     title: "Settings > Organization",
     href: "/settings/organization",
     icon: Settings,
-    keywords: ["org", "organization", "organizations", "team", "switch"],
+    keywords: [
+      "org",
+      "organization",
+      "organizations",
+      "organisation",
+      "organisations",
+      "team",
+      "switch",
+    ],
   },
   {
     title: "Settings > Members",
@@ -365,7 +373,7 @@ export function useGlobalSearch(query: string) {
           org.name,
           org.public_id,
           org.role,
-          "organization org team tenant switch",
+          "organization organisation org team tenant switch",
         )
       ) {
         results.push({

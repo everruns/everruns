@@ -76,6 +76,13 @@ describe("useGlobalSearch", () => {
     expect(mockSetCurrentOrg).toHaveBeenCalledWith(mockSecondOrg);
   });
 
+  it("keeps the previous British spelling as a search alias", () => {
+    const { result } = renderHook(() => useGlobalSearch("organisation"));
+
+    expect(result.current.some((item) => item.href === "/settings/organization")).toBe(true);
+    expect(result.current.some((item) => item.id === "organization:org_second")).toBe(true);
+  });
+
   it("marks the current organization without attaching a switch action", () => {
     const { result } = renderHook(() => useGlobalSearch("current"));
 
