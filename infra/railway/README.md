@@ -15,6 +15,12 @@ Pin the live validation deployment to `v0.8.31`. The public template can use
 `latest` after the validation deployment is healthy, because the release
 workflow only moves `latest` on versioned releases.
 
+Template image URL:
+
+```text
+https://raw.githubusercontent.com/everruns/everruns/main/infra/railway/template-icon.svg
+```
+
 ## Service Shape
 
 | Service | Source | Public | Notes |
