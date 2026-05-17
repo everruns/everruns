@@ -157,6 +157,12 @@ Always make sure you are working on top of latest main from remote.
 - `specs/a2a-capability.md` - A2A outbound delegation capability (Everruns agent calling external A2A agents)
 - `specs/fcp-channel.md` - FCP (Free Communication Protocol) inbound channel for App invocation via text-first HTTP
 - `specs/app-endpoint-auth.md` - Shared inbound auth framework for App-published endpoints (AG-UI, A2A, webhook) with OIDC/JWT, OAuth2 introspection, HTTP Basic, mTLS
+- `specs/agent-versions.md` - Immutable Agent configuration snapshots (audit, rollback, forks, App deployment pinning)
+- `specs/model-router.md` - Model Routers: semantic LLM selection via named routes, strategies, and candidates
+- `specs/email.md` - Internal email delivery abstraction for product and operational flows
+- `specs/voice.md` - Voice Sessions (Realtime API transport over a durable Everruns session)
+- `specs/volumes.md` - Workspace Volumes (org-scoped persistent filesystem trees mounted into sessions)
+- `specs/machine-payments.md` - Capability-side payments to external paid services during agent execution
 
 ### Test Cases
 
