@@ -27,6 +27,10 @@
 		reverse_proxy {$SERVER_HOST}:9000
 	}
 
+	handle /cli/login-success {
+		reverse_proxy {$SERVER_HOST}:9000
+	}
+
 	handle /health {
 		reverse_proxy {$SERVER_HOST}:9000
 	}
