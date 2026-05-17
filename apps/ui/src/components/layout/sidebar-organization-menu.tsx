@@ -59,9 +59,9 @@ function CreateOrganizationDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Create Organisation</DialogTitle>
+          <DialogTitle>Create Organization</DialogTitle>
           <DialogDescription>
-            Create a new organisation. You will be added as a member automatically.
+            Create a new organization. You will be added as a member automatically.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -71,13 +71,13 @@ function CreateOrganizationDialog({
               id="org-name"
               value={name}
               onChange={(event) => setName(event.target.value)}
-              placeholder="Organisation name"
+              placeholder="Organization name"
               required
             />
           </div>
           {createOrg.isError && (
             <p className="text-sm text-destructive">
-              Failed to create organisation: {createOrg.error.message}
+              Failed to create organization: {createOrg.error.message}
             </p>
           )}
           <DialogFooter>
@@ -145,7 +145,7 @@ export function SidebarOrganizationMenu({
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={handleCreate}>
                 <Plus className="icon-sharp mr-2 h-4 w-4" />
-                Create Organisation
+                Create Organization
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenuPositioner>

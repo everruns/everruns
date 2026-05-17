@@ -58,7 +58,7 @@ const CONTROL_CLASS_NAME = "w-full";
 const AUTOSAVE_DELAY_MS = 700;
 
 export default function OrganizationPage() {
-  usePageTitle("Organisation", "Settings");
+  usePageTitle("Organization", "Settings");
   const router = useRouter();
   const { currentOrg, organizations, setCurrentOrg } = useOrg();
   const { data: organization, isLoading, error } = useOrganization();
@@ -201,7 +201,7 @@ export default function OrganizationPage() {
 
         setSavingGroups([]);
         setAutoSaveState("error");
-        setAutoSaveError(err instanceof Error ? err.message : "Failed to save organisation");
+        setAutoSaveError(err instanceof Error ? err.message : "Failed to save organization");
       }
     }, AUTOSAVE_DELAY_MS);
   };
@@ -238,16 +238,16 @@ export default function OrganizationPage() {
     <div className="space-y-8">
       <section>
         <div className="mb-6">
-          <h2 className="text-xl font-semibold">Organisation</h2>
+          <h2 className="text-xl font-semibold">Organization</h2>
           <p className="text-sm text-muted-foreground">
-            Manage organisation-level defaults and identity.
+            Manage organization-level defaults and identity.
           </p>
         </div>
 
         {error ? (
           <Card className="p-8 text-center">
             <AlertCircle className="h-12 w-12 mx-auto text-destructive mb-4" />
-            <h3 className="text-lg font-medium mb-2">Failed to load organisation</h3>
+            <h3 className="text-lg font-medium mb-2">Failed to load organization</h3>
             <p className="text-muted-foreground">{error.message}</p>
           </Card>
         ) : isLoading ? (
@@ -271,7 +271,7 @@ export default function OrganizationPage() {
           <div className="space-y-6">
             <SettingsGroup
               title="Identity"
-              description="Name and stable identifier for this organisation."
+              description="Name and stable identifier for this organization."
               status={
                 <AutoSaveBadge
                   group="identity"
@@ -283,7 +283,7 @@ export default function OrganizationPage() {
               }
             >
               <SettingsRow
-                label="Organisation Name"
+                label="Organization Name"
                 description="Shown in navigation, resource ownership, and member-facing views."
                 htmlFor="org-name"
               >
@@ -292,14 +292,14 @@ export default function OrganizationPage() {
                   value={name}
                   onChange={handleNameChange}
                   onKeyDown={handleKeyDown}
-                  placeholder="Organisation name"
+                  placeholder="Organization name"
                   className={CONTROL_CLASS_NAME}
                 />
               </SettingsRow>
 
               <SettingsRow
-                label="Organisation ID"
-                description="Use this ID when making API calls scoped to this organisation."
+                label="Organization ID"
+                description="Use this ID when making API calls scoped to this organization."
                 htmlFor="org-id"
               >
                 <div className="flex items-center gap-2">
@@ -412,30 +412,30 @@ export default function OrganizationPage() {
       <section>
         <div className="mb-6 flex flex-col items-stretch gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div>
-            <h2 className="text-xl font-semibold">Organisations</h2>
-            <p className="text-sm text-muted-foreground">All organisations you are a member of.</p>
+            <h2 className="text-xl font-semibold">Organizations</h2>
+            <p className="text-sm text-muted-foreground">All organizations you are a member of.</p>
           </div>
           <Button className="w-full xl:w-auto" onClick={() => setCreateDialogOpen(true)}>
             <Plus className="h-4 w-4 mr-2" />
-            Create Organisation
+            Create Organization
           </Button>
         </div>
 
         {organizations.length === 0 ? (
           <Card className="p-8 text-center">
             <Building2 className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium mb-2">No organisations</h3>
+            <h3 className="text-lg font-medium mb-2">No organizations</h3>
             <p className="text-muted-foreground">
-              Create an organisation to start managing shared resources.
+              Create an organization to start managing shared resources.
             </p>
           </Card>
         ) : (
           <Card className="overflow-hidden">
             <div className="overflow-x-auto">
-              <Table aria-label="Organisations" className="min-w-[42rem]">
+              <Table aria-label="Organizations" className="min-w-[42rem]">
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Organisation</TableHead>
+                    <TableHead>Organization</TableHead>
                     <TableHead>ID</TableHead>
                     <TableHead>Role</TableHead>
                     <TableHead>Status</TableHead>
@@ -486,9 +486,9 @@ export default function OrganizationPage() {
       <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Create Organisation</DialogTitle>
+            <DialogTitle>Create Organization</DialogTitle>
             <DialogDescription>
-              Create a new organisation. You will be added as a member automatically.
+              Create a new organization. You will be added as a member automatically.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={handleCreateOrg} className="space-y-4">
@@ -498,7 +498,7 @@ export default function OrganizationPage() {
                 id="new-org-name"
                 value={newOrgName}
                 onChange={(e) => setNewOrgName(e.target.value)}
-                placeholder="Organisation name"
+                placeholder="Organization name"
                 required
               />
             </div>

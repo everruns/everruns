@@ -42,7 +42,7 @@ jest.mock("@/hooks/use-global-search", () => ({
       category: "organization",
       icon: Boxes,
       title: "Second Org",
-      subtitle: "Switch organisation > org_second",
+      subtitle: "Switch organization > org_second",
       href: "/settings/organization",
       onSelect: mockOnSelect,
     },

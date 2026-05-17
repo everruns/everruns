@@ -564,12 +564,12 @@ Some resources remain system-wide (not org-scoped):
 - `/v1/auth/*` - Authentication endpoints
 
 ### UI Organization Selector
-Located in sidebar (`apps/ui/src/components/layout/sidebar.tsx`). Shows current org with dropdown to switch between user's organizations. Uses Base UI's `DropdownMenu` component. Includes a "Create Organisation" button at the bottom of the dropdown.
+Located in sidebar (`apps/ui/src/components/layout/sidebar.tsx`). Shows current org with dropdown to switch between user's organizations. Uses Base UI's `DropdownMenu` component. Includes a "Create Organization" button at the bottom of the dropdown.
 
 ### UI Organization Creation
-Two entry points for creating organisations:
-1. **Sidebar dropdown:** "Create Organisation" menu item opens a dialog
-2. **Settings > Organisation page:** "Create Organisation" button in the "Your Organisations" section
+Two entry points for creating organizations:
+1. **Sidebar dropdown:** "Create Organization" menu item opens a dialog
+2. **Settings > Organization page:** "Create Organization" button in the "Your Organizations" section
 
 Both use the `useCreateOrganization` hook (`hooks/use-organizations.ts`) which calls `POST /v1/orgs`. On success, the new org is auto-selected as the current org via `setCurrentOrg()`.
 
@@ -577,8 +577,8 @@ Both use the `useCreateOrganization` hook (`hooks/use-organizations.ts`) which c
 
 The settings sidebar (`/settings/*`) is organized into two labeled sections:
 
-**Organisation** (org-scoped settings):
-- **General** (`/settings/organisation`) — Org name, ID, "Your Organisations" list
+**Organization** (org-scoped settings):
+- **General** (`/settings/organization`) — Org name, ID, "Your Organizations" list
 - **LLM Providers** (`/settings/providers`) — Provider configs and API keys
 - **Members** (`/settings/members`) — Team member list
 
@@ -588,14 +588,14 @@ The settings sidebar (`/settings/*`) is organized into two labeled sections:
 
 Section labels are rendered as uppercase headers (`text-xs font-semibold uppercase tracking-wider`). Active nav item highlighted with accent left border.
 
-### UI Organisation Management
-The settings page (`/settings/organisation`) has two sections:
-1. **Current Organisation:** Edit name, view org ID (existing)
-2. **Your Organisations:** Lists all orgs the user belongs to with switch buttons. Current org highlighted with a "Current" badge.
+### UI Organization Management
+The settings page (`/settings/organization`) has two sections:
+1. **Current Organization:** Edit name, view org ID (existing)
+2. **Your Organizations:** Lists all orgs the user belongs to with switch buttons. Current org highlighted with a "Current" badge.
 
 ## Cross-Org Resource Resolution
 
-Users who belong to multiple organisations routinely follow direct links
+Users who belong to multiple organizations routinely follow direct links
 (shared URLs, bookmarks, external notifications) that point at a resource
 owned by one of their orgs but not the one currently selected. With strict
 org scoping (see the Query Rules above) the entity API returns 404 for that

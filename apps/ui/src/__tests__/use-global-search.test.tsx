@@ -66,7 +66,7 @@ describe("useGlobalSearch", () => {
     expect(orgResult).toMatchObject({
       id: "organization:org_second",
       title: "Second Org",
-      subtitle: "Switch organisation > org_second",
+      subtitle: "Switch organization > org_second",
     });
 
     act(() => {
@@ -74,6 +74,13 @@ describe("useGlobalSearch", () => {
     });
 
     expect(mockSetCurrentOrg).toHaveBeenCalledWith(mockSecondOrg);
+  });
+
+  it("keeps the previous British spelling as a search alias", () => {
+    const { result } = renderHook(() => useGlobalSearch("organisation"));
+
+    expect(result.current.some((item) => item.href === "/settings/organization")).toBe(true);
+    expect(result.current.some((item) => item.id === "organization:org_second")).toBe(true);
   });
 
   it("marks the current organization without attaching a switch action", () => {
@@ -84,7 +91,7 @@ describe("useGlobalSearch", () => {
     expect(orgResult).toMatchObject({
       id: "organization:org_current",
       title: "Current Org",
-      subtitle: "Current organisation > org_current",
+      subtitle: "Current organization > org_current",
     });
     expect(orgResult?.onSelect).toBeUndefined();
   });

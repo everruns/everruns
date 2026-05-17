@@ -192,10 +192,18 @@ const NAVIGATION_PAGES: NavigationPage[] = [
     keywords: ["openai", "anthropic", "credentials"],
   },
   {
-    title: "Settings > Organisation",
+    title: "Settings > Organization",
     href: "/settings/organization",
     icon: Settings,
-    keywords: ["org", "organization", "organizations", "team", "switch"],
+    keywords: [
+      "org",
+      "organization",
+      "organizations",
+      "organisation",
+      "organisations",
+      "team",
+      "switch",
+    ],
   },
   {
     title: "Settings > Members",
@@ -374,8 +382,8 @@ export function useGlobalSearch(query: string) {
           icon: Building2,
           title: org.name,
           subtitle: isCurrent
-            ? `Current organisation > ${org.public_id}`
-            : `Switch organisation > ${org.public_id}`,
+            ? `Current organization > ${org.public_id}`
+            : `Switch organization > ${org.public_id}`,
           href: "/settings/organization",
           onSelect: isCurrent ? undefined : () => setCurrentOrg(org),
         });

@@ -47,7 +47,7 @@ export default function VolumeDetailPage({ params }: { params: Promise<{ volumeI
     return (
       <ResourceNotFound
         title="Volume not found"
-        description="The requested volume is not available in the current organisation."
+        description="The requested volume is not available in the current organization."
         backHref="/volumes"
         backLabel="Back to Volumes"
         resourceId={volumeId}

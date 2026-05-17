@@ -30,7 +30,7 @@ const CATEGORY_LABELS: Record<SearchResultCategory, string> = {
   mcp_server: "MCP Servers",
   app: "Apps",
   eval: "Evals",
-  organization: "Organisations",
+  organization: "Organizations",
   id: "Go to",
 };
 
@@ -169,7 +169,7 @@ export function CommandPalette() {
                 ref={inputRef}
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search pages, organisations, agents..."
+                placeholder="Search pages, organizations, agents..."
                 className="flex-1 bg-transparent py-3.5 text-sm outline-none placeholder:text-muted-foreground"
               />
               <kbd className="hidden sm:inline-flex h-5 items-center gap-1 border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">

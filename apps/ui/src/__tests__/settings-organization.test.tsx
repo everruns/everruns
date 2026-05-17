@@ -103,18 +103,18 @@ describe("OrganizationPage", () => {
     };
   });
 
-  it("renders accessible organisations separately from general settings", () => {
+  it("renders accessible organizations separately from general settings", () => {
     render(<OrganizationPage />);
 
-    expect(screen.getByRole("heading", { name: "Organisation" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Organization" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Models" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Harnesses" })).toBeInTheDocument();
     expect(screen.getByLabelText("Default Model")).toBeInTheDocument();
     expect(screen.getByLabelText("Select default harness")).toBeInTheDocument();
     expect(screen.getByLabelText("Select base harness")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Organisations" })).toBeInTheDocument();
-    expect(screen.getByRole("table", { name: "Organisations" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "Organisation" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Organizations" })).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "Organizations" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Organization" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "ID" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Role" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Status" })).toBeInTheDocument();
@@ -126,7 +126,7 @@ describe("OrganizationPage", () => {
     expect(screen.getByText("Current")).toBeInTheDocument();
   });
 
-  it("switches to another organisation", () => {
+  it("switches to another organization", () => {
     render(<OrganizationPage />);
 
     fireEvent.click(screen.getByRole("button", { name: "Switch to Second Org" }));
@@ -138,12 +138,12 @@ describe("OrganizationPage", () => {
     });
   });
 
-  it("creates a new organisation and routes to setup", async () => {
+  it("creates a new organization and routes to setup", async () => {
     mockMutateAsync.mockResolvedValue({ id: "org-3", name: "New Org" });
 
     render(<OrganizationPage />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Create Organisation" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create Organization" }));
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "New Org" } });
     fireEvent.click(screen.getByRole("button", { name: "Create" }));
 
@@ -158,12 +158,12 @@ describe("OrganizationPage", () => {
     });
   });
 
-  it("autosaves organisation identity changes", async () => {
+  it("autosaves organization identity changes", async () => {
     jest.useFakeTimers();
 
     render(<OrganizationPage />);
 
-    fireEvent.change(screen.getByLabelText("Organisation Name"), {
+    fireEvent.change(screen.getByLabelText("Organization Name"), {
       target: { value: "Renamed Org" },
     });
 
@@ -195,7 +195,7 @@ describe("OrganizationPage", () => {
 
     render(<OrganizationPage />);
 
-    fireEvent.change(screen.getByLabelText("Organisation Name"), {
+    fireEvent.change(screen.getByLabelText("Organization Name"), {
       target: { value: "Renamed Org" },
     });
 
@@ -215,7 +215,7 @@ describe("OrganizationPage", () => {
     jest.useRealTimers();
   });
 
-  it("ignores stale autosaves after the loaded organisation changes", async () => {
+  it("ignores stale autosaves after the loaded organization changes", async () => {
     jest.useFakeTimers();
     let resolveSave: () => void = () => {};
     mockUpdateOrganization.mockReturnValueOnce(
@@ -226,7 +226,7 @@ describe("OrganizationPage", () => {
 
     const { rerender } = render(<OrganizationPage />);
 
-    fireEvent.change(screen.getByLabelText("Organisation Name"), {
+    fireEvent.change(screen.getByLabelText("Organization Name"), {
       target: { value: "Renamed Org" },
     });
 
@@ -250,7 +250,7 @@ describe("OrganizationPage", () => {
       await Promise.resolve();
     });
 
-    expect(screen.getByLabelText("Organisation Name")).toHaveValue("Second Org");
+    expect(screen.getByLabelText("Organization Name")).toHaveValue("Second Org");
 
     jest.useRealTimers();
   });
