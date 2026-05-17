@@ -6803,6 +6803,7 @@
           {
             "name": "owner_type",
             "in": "query",
+            "description": "Filter to a single owner class (user, agent identity, or organization).",
             "required": false,
             "schema": {
               "type": [
@@ -6814,6 +6815,7 @@
           {
             "name": "owner_id",
             "in": "query",
+            "description": "Filter to a specific owner principal id.",
             "required": false,
             "schema": {
               "type": [
@@ -7025,6 +7027,7 @@
           {
             "name": "session_id",
             "in": "query",
+            "description": "Filter to attempts originating from a specific session.",
             "required": false,
             "schema": {
               "type": [
@@ -7036,6 +7039,7 @@
           {
             "name": "limit",
             "in": "query",
+            "description": "Maximum number of attempts returned. Defaults to 50.",
             "required": false,
             "schema": {
               "type": "integer",
@@ -7071,6 +7075,7 @@
           {
             "name": "payment_account_id",
             "in": "query",
+            "description": "Filter to policies that authorize a specific payment account.",
             "required": false,
             "schema": {
               "type": [
@@ -7082,6 +7087,7 @@
           {
             "name": "subject_type",
             "in": "query",
+            "description": "Filter to a single subject class.",
             "required": false,
             "schema": {
               "type": [
@@ -7093,6 +7099,7 @@
           {
             "name": "subject_id",
             "in": "query",
+            "description": "Filter to a specific subject principal id.",
             "required": false,
             "schema": {
               "type": [
@@ -12776,6 +12783,7 @@
           "failure_count": {
             "type": "integer",
             "format": "int32",
+            "description": "Count of consecutive failures observed within the current rolling window.",
             "minimum": 0
           },
           "half_open_at": {
@@ -12783,37 +12791,43 @@
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp the breaker is eligible to transition to `half_open` and probe again (RFC 3339)."
           },
           "key": {
-            "type": "string"
+            "type": "string",
+            "description": "Stable key identifying the dependency the breaker guards (e.g. provider URL or activity type)."
           },
           "last_failure_at": {
             "type": [
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp of the most recent failure recorded against this breaker (RFC 3339)."
           },
           "opened_at": {
             "type": [
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp the breaker last transitioned to `open` (RFC 3339)."
           },
           "state": {
-            "type": "string"
+            "type": "string",
+            "description": "Current breaker state (`closed`, `open`, or `half_open`)."
           },
           "success_count": {
             "type": "integer",
             "format": "int32",
+            "description": "Count of consecutive successes observed within the current rolling window.",
             "minimum": 0
           },
           "updated_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Timestamp when this resource was last updated (RFC 3339)."
+            "description": "Timestamp when this breaker state was last updated (RFC 3339)."
           }
         }
       },
@@ -13999,31 +14013,37 @@
         ],
         "properties": {
           "label": {
-            "type": "string"
+            "type": "string",
+            "description": "Human-readable label. Safe to render in user-facing messages."
           },
           "metadata": {
-            "description": "Free-form metadata attached to this resource."
+            "description": "Free-form metadata attached to this account (caller-defined; opaque to the platform)."
           },
           "owner_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Prefixed identifier of the owning principal (e.g. `user_…`, `agent_…`, `org_…`)."
           },
           "owner_type": {
-            "type": "string"
+            "type": "string",
+            "description": "Principal class that owns the account (user, agent identity, or organization)."
           },
           "private_key": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Private key material for the rail. Stored encrypted; never returned in responses."
           },
           "public_address": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Public address on the rail (chain address, account number, etc.). Optional; can be filled in later."
           },
           "rail": {
-            "type": "string"
+            "type": "string",
+            "description": "Settlement rail this account operates on (e.g. `mpp_tempo`, `x402_base`)."
           }
         }
       },
@@ -14040,59 +14060,69 @@
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Capability IDs this policy permits paid calls for. Empty list means no capability gating."
           },
           "allowed_hosts": {
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "HTTP host allowlist for paid outbound calls. Empty list means no host gating."
           },
           "max_amount_usd_per_day": {
             "type": [
               "number",
               "null"
             ],
-            "format": "double"
+            "format": "double",
+            "description": "Maximum cumulative amount (USD) per UTC day. `None` means no per-day cap."
           },
           "max_amount_usd_per_request": {
             "type": [
               "number",
               "null"
             ],
-            "format": "double"
+            "format": "double",
+            "description": "Maximum amount (USD) any single paid request may settle for. `None` means no per-request cap."
           },
           "max_amount_usd_per_turn": {
             "type": [
               "number",
               "null"
             ],
-            "format": "double"
+            "format": "double",
+            "description": "Maximum cumulative amount (USD) per agent turn. `None` means no per-turn cap."
           },
           "metadata": {
-            "description": "Free-form metadata attached to this resource."
+            "description": "Free-form metadata attached to this policy."
           },
           "payment_account_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Payment account this policy authorizes spending from."
           },
           "rail_preference": {
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Preferred settlement rails in priority order; the authority picks the first available."
           },
           "require_approval_above_usd": {
             "type": [
               "number",
               "null"
             ],
-            "format": "double"
+            "format": "double",
+            "description": "Threshold (USD) above which a request requires explicit human approval before settling. `None` disables the approval gate."
           },
           "subject_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Prefixed identifier of the bound subject."
           },
           "subject_type": {
-            "type": "string"
+            "type": "string",
+            "description": "Class of subject this policy binds to (e.g. `agent_identity`, `session`)."
           }
         }
       },
@@ -14676,38 +14706,47 @@
         ],
         "properties": {
           "activity_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Per-workflow activity ID of the failed task."
           },
           "activity_type": {
-            "type": "string"
+            "type": "string",
+            "description": "Activity type name of the failed task."
           },
           "attempts": {
             "type": "integer",
             "format": "int32",
+            "description": "Number of attempts made before the task was sent to the DLQ.",
             "minimum": 0
           },
           "dead_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when the task was moved to the DLQ (RFC 3339)."
           },
           "error_history": {
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Full ordered history of error messages, one per attempt."
           },
           "id": {
             "type": "string",
             "format": "uuid",
             "description": "Prefixed public identifier (see `specs/id-schema.md`)."
           },
-          "input": {},
+          "input": {
+            "description": "Task input payload at the time of failure (used for inspection and replay)."
+          },
           "last_error": {
-            "type": "string"
+            "type": "string",
+            "description": "Most recent error message (the one that pushed the task to the DLQ)."
           },
           "original_task_id": {
             "type": "string",
-            "format": "uuid"
+            "format": "uuid",
+            "description": "Task ID that was originally retried and ultimately failed (matches the `tasks` record before its move to the DLQ)."
           },
           "workflow_id": {
             "type": [
@@ -14715,7 +14754,7 @@
               "null"
             ],
             "format": "uuid",
-            "description": "Durable workflow's identifier."
+            "description": "Owning workflow's identifier, if the task was part of one."
           }
         }
       },
@@ -18883,40 +18922,48 @@
                       "type": "array",
                       "items": {
                         "type": "string"
-                      }
+                      },
+                      "description": "Capability tags supported by this model (e.g. `chat`, `tools`, `vision`)."
                     },
                     "created_at": {
                       "type": "string",
-                      "format": "date-time"
+                      "format": "date-time",
+                      "description": "Timestamp when this model was created (RFC 3339)."
                     },
                     "display_name": {
-                      "type": "string"
+                      "type": "string",
+                      "description": "Human-readable display name. Safe to render in user-facing messages."
                     },
                     "enabled": {
                       "type": "boolean",
-                      "description": "Whether this model is enabled (visible in UI model pickers).\nAll models are available via API regardless of this flag."
+                      "description": "Whether this model is visible in UI model pickers. All models remain available via API regardless of this flag."
                     },
                     "id": {
                       "type": "string",
+                      "description": "Prefixed public identifier (see `specs/id-schema.md`).",
                       "example": "model_01933b5a00007000800000000000001"
                     },
                     "is_favorite": {
-                      "type": "boolean"
+                      "type": "boolean",
+                      "description": "Whether this model is starred in the UI for quick access."
                     },
                     "model_id": {
-                      "type": "string"
+                      "type": "string",
+                      "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-4o`, `claude-sonnet-4`)."
                     },
                     "provider_id": {
                       "type": "string",
+                      "description": "Owning provider's prefixed public identifier.",
                       "example": "provider_01933b5a00007000800000000000001"
                     },
                     "source": {
                       "$ref": "#/components/schemas/LlmModelSource",
-                      "description": "How the model was added to the system"
+                      "description": "How this model entry was added (manually, discovered, or seeded as predefined)."
                     },
                     "updated_at": {
                       "type": "string",
-                      "format": "date-time"
+                      "format": "date-time",
+                      "description": "Timestamp when this model was last updated (RFC 3339)."
                     }
                   }
                 },
@@ -18983,18 +19030,21 @@
                       "type": "array",
                       "items": {
                         "type": "string"
-                      }
+                      },
+                      "description": "Capability tags supported by this model."
                     },
                     "created_at": {
                       "type": "string",
-                      "format": "date-time"
+                      "format": "date-time",
+                      "description": "Timestamp when this model was created (RFC 3339)."
                     },
                     "display_name": {
-                      "type": "string"
+                      "type": "string",
+                      "description": "Human-readable display name."
                     },
                     "enabled": {
                       "type": "boolean",
-                      "description": "Whether this model is enabled (visible in UI model pickers)"
+                      "description": "Whether this model is visible in UI model pickers."
                     },
                     "healthy": {
                       "type": "boolean",
@@ -19002,13 +19052,16 @@
                     },
                     "id": {
                       "type": "string",
+                      "description": "Prefixed public identifier (see `specs/id-schema.md`).",
                       "example": "model_01933b5a00007000800000000000001"
                     },
                     "is_favorite": {
-                      "type": "boolean"
+                      "type": "boolean",
+                      "description": "Whether this model is starred in the UI for quick access."
                     },
                     "model_id": {
-                      "type": "string"
+                      "type": "string",
+                      "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-4o`)."
                     },
                     "profile": {
                       "oneOf": [
@@ -19017,27 +19070,31 @@
                         },
                         {
                           "$ref": "#/components/schemas/LlmModelProfile",
-                          "description": "Readonly profile with model capabilities (not persisted to database)"
+                          "description": "Readonly profile with model capabilities (limits, pricing, modalities). Not persisted."
                         }
                       ]
                     },
                     "provider_id": {
                       "type": "string",
+                      "description": "Owning provider's prefixed public identifier.",
                       "example": "provider_01933b5a00007000800000000000001"
                     },
                     "provider_name": {
-                      "type": "string"
+                      "type": "string",
+                      "description": "Joined provider display name."
                     },
                     "provider_type": {
-                      "$ref": "#/components/schemas/LlmProviderType"
+                      "$ref": "#/components/schemas/LlmProviderType",
+                      "description": "Joined provider implementation type."
                     },
                     "source": {
                       "$ref": "#/components/schemas/LlmModelSource",
-                      "description": "How the model was added to the system"
+                      "description": "How this model entry was added (manually, discovered, or seeded as predefined)."
                     },
                     "updated_at": {
                       "type": "string",
-                      "format": "date-time"
+                      "format": "date-time",
+                      "description": "Timestamp when this model was last updated (RFC 3339)."
                     }
                   }
                 },
@@ -19096,20 +19153,23 @@
                   "properties": {
                     "api_key_set": {
                       "type": "boolean",
-                      "description": "Whether an API key is configured (key is never returned)"
+                      "description": "Whether an API key is configured. The key itself is never returned."
                     },
                     "base_url": {
                       "type": [
                         "string",
                         "null"
-                      ]
+                      ],
+                      "description": "Custom base URL for self-hosted / proxied providers. `None` means use the provider's default endpoint."
                     },
                     "created_at": {
                       "type": "string",
-                      "format": "date-time"
+                      "format": "date-time",
+                      "description": "Timestamp when this provider was created (RFC 3339)."
                     },
                     "id": {
                       "type": "string",
+                      "description": "Prefixed public identifier (see `specs/id-schema.md`).",
                       "example": "provider_01933b5a00007000800000000000001"
                     },
                     "last_synced_at": {
@@ -19118,20 +19178,24 @@
                         "null"
                       ],
                       "format": "date-time",
-                      "description": "When models were last synced from provider API"
+                      "description": "Timestamp of the most recent successful model sync from the provider's API (RFC 3339)."
                     },
                     "name": {
-                      "type": "string"
+                      "type": "string",
+                      "description": "Human-readable provider name. Safe to render in user-facing messages."
                     },
                     "provider_type": {
-                      "$ref": "#/components/schemas/LlmProviderType"
+                      "$ref": "#/components/schemas/LlmProviderType",
+                      "description": "Provider implementation type (OpenAI, Anthropic, Gemini, etc.)."
                     },
                     "status": {
-                      "$ref": "#/components/schemas/LlmProviderStatus"
+                      "$ref": "#/components/schemas/LlmProviderStatus",
+                      "description": "Current lifecycle status of this provider."
                     },
                     "updated_at": {
                       "type": "string",
-                      "format": "date-time"
+                      "format": "date-time",
+                      "description": "Timestamp when this provider was last updated (RFC 3339)."
                     }
                   }
                 },
@@ -19918,40 +19982,48 @@
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Capability tags supported by this model (e.g. `chat`, `tools`, `vision`)."
           },
           "created_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this model was created (RFC 3339)."
           },
           "display_name": {
-            "type": "string"
+            "type": "string",
+            "description": "Human-readable display name. Safe to render in user-facing messages."
           },
           "enabled": {
             "type": "boolean",
-            "description": "Whether this model is enabled (visible in UI model pickers).\nAll models are available via API regardless of this flag."
+            "description": "Whether this model is visible in UI model pickers. All models remain available via API regardless of this flag."
           },
           "id": {
             "type": "string",
+            "description": "Prefixed public identifier (see `specs/id-schema.md`).",
             "example": "model_01933b5a00007000800000000000001"
           },
           "is_favorite": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether this model is starred in the UI for quick access."
           },
           "model_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-4o`, `claude-sonnet-4`)."
           },
           "provider_id": {
             "type": "string",
+            "description": "Owning provider's prefixed public identifier.",
             "example": "provider_01933b5a00007000800000000000001"
           },
           "source": {
             "$ref": "#/components/schemas/LlmModelSource",
-            "description": "How the model was added to the system"
+            "description": "How this model entry was added (manually, discovered, or seeded as predefined)."
           },
           "updated_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this model was last updated (RFC 3339)."
           }
         }
       },
@@ -20210,18 +20282,21 @@
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Capability tags supported by this model."
           },
           "created_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this model was created (RFC 3339)."
           },
           "display_name": {
-            "type": "string"
+            "type": "string",
+            "description": "Human-readable display name."
           },
           "enabled": {
             "type": "boolean",
-            "description": "Whether this model is enabled (visible in UI model pickers)"
+            "description": "Whether this model is visible in UI model pickers."
           },
           "healthy": {
             "type": "boolean",
@@ -20229,13 +20304,16 @@
           },
           "id": {
             "type": "string",
+            "description": "Prefixed public identifier (see `specs/id-schema.md`).",
             "example": "model_01933b5a00007000800000000000001"
           },
           "is_favorite": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether this model is starred in the UI for quick access."
           },
           "model_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-4o`)."
           },
           "profile": {
             "oneOf": [
@@ -20244,27 +20322,31 @@
               },
               {
                 "$ref": "#/components/schemas/LlmModelProfile",
-                "description": "Readonly profile with model capabilities (not persisted to database)"
+                "description": "Readonly profile with model capabilities (limits, pricing, modalities). Not persisted."
               }
             ]
           },
           "provider_id": {
             "type": "string",
+            "description": "Owning provider's prefixed public identifier.",
             "example": "provider_01933b5a00007000800000000000001"
           },
           "provider_name": {
-            "type": "string"
+            "type": "string",
+            "description": "Joined provider display name."
           },
           "provider_type": {
-            "$ref": "#/components/schemas/LlmProviderType"
+            "$ref": "#/components/schemas/LlmProviderType",
+            "description": "Joined provider implementation type."
           },
           "source": {
             "$ref": "#/components/schemas/LlmModelSource",
-            "description": "How the model was added to the system"
+            "description": "How this model entry was added (manually, discovered, or seeded as predefined)."
           },
           "updated_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this model was last updated (RFC 3339)."
           }
         }
       },
@@ -20308,20 +20390,23 @@
         "properties": {
           "api_key_set": {
             "type": "boolean",
-            "description": "Whether an API key is configured (key is never returned)"
+            "description": "Whether an API key is configured. The key itself is never returned."
           },
           "base_url": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Custom base URL for self-hosted / proxied providers. `None` means use the provider's default endpoint."
           },
           "created_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this provider was created (RFC 3339)."
           },
           "id": {
             "type": "string",
+            "description": "Prefixed public identifier (see `specs/id-schema.md`).",
             "example": "provider_01933b5a00007000800000000000001"
           },
           "last_synced_at": {
@@ -20330,20 +20415,24 @@
               "null"
             ],
             "format": "date-time",
-            "description": "When models were last synced from provider API"
+            "description": "Timestamp of the most recent successful model sync from the provider's API (RFC 3339)."
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Human-readable provider name. Safe to render in user-facing messages."
           },
           "provider_type": {
-            "$ref": "#/components/schemas/LlmProviderType"
+            "$ref": "#/components/schemas/LlmProviderType",
+            "description": "Provider implementation type (OpenAI, Anthropic, Gemini, etc.)."
           },
           "status": {
-            "$ref": "#/components/schemas/LlmProviderStatus"
+            "$ref": "#/components/schemas/LlmProviderStatus",
+            "description": "Current lifecycle status of this provider."
           },
           "updated_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this provider was last updated (RFC 3339)."
           }
         }
       },
@@ -20908,64 +20997,78 @@
         "properties": {
           "active_workers": {
             "type": "integer",
+            "description": "Number of workers actively heartbeating (gauge).",
             "minimum": 0
           },
           "claimed_tasks": {
             "type": "integer",
+            "description": "Number of tasks currently claimed by a worker (gauge).",
             "minimum": 0
           },
           "dlq_size": {
             "type": "integer",
+            "description": "Size of the dead-letter queue (gauge).",
             "minimum": 0
           },
           "load_percentage": {
             "type": "number",
-            "format": "double"
+            "format": "double",
+            "description": "Aggregate worker load as a percentage of total `max_concurrency` (0.0-100.0)."
           },
           "pending_tasks": {
             "type": "integer",
+            "description": "Number of tasks waiting to be claimed by a worker (gauge).",
             "minimum": 0
           },
           "pending_workflows": {
             "type": "integer",
+            "description": "Number of workflows waiting to be claimed by a worker (gauge).",
             "minimum": 0
           },
           "running_workflows": {
             "type": "integer",
+            "description": "Number of workflows currently executing (gauge).",
             "minimum": 0
           },
           "tasks_completed_total": {
             "type": "integer",
             "format": "int64",
+            "description": "Cumulative count of tasks completed successfully since process start (monotonic counter).",
             "minimum": 0
           },
           "tasks_failed_total": {
             "type": "integer",
             "format": "int64",
+            "description": "Cumulative count of tasks that failed or were sent to the DLQ (monotonic counter).",
             "minimum": 0
           },
           "tasks_started_total": {
             "type": "integer",
             "format": "int64",
+            "description": "Cumulative count of tasks claimed at least once (monotonic counter).",
             "minimum": 0
           },
           "timestamp": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Sampling timestamp for this data point (RFC 3339)."
           },
           "workflows_completed_total": {
             "type": "integer",
             "format": "int64",
+            "description": "Cumulative count of workflows that completed successfully (monotonic counter).",
             "minimum": 0
           },
           "workflows_failed_total": {
             "type": "integer",
             "format": "int64",
+            "description": "Cumulative count of workflows that ended in failure (monotonic counter).",
             "minimum": 0
           },
           "workflows_started_total": {
             "type": "integer",
             "format": "int64",
+            "description": "Cumulative count of workflows that started (monotonic counter).",
             "minimum": 0
           }
         }
@@ -22405,39 +22508,51 @@
         "properties": {
           "created_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this account was created (RFC 3339)."
           },
           "id": {
-            "$ref": "#/components/schemas/payacctId"
+            "$ref": "#/components/schemas/payacctId",
+            "description": "Prefixed public identifier (see `specs/id-schema.md`)."
           },
           "label": {
-            "type": "string"
+            "type": "string",
+            "description": "Human-readable label for this account. Safe to render in user-facing messages."
           },
-          "metadata": {},
+          "metadata": {
+            "description": "Free-form metadata attached to this account (caller-defined; opaque to the platform)."
+          },
           "organization_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Owning organization's prefixed public identifier."
           },
           "owner_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Prefixed identifier of the owning principal (e.g. `user_…`, `agent_…`, `org_…`)."
           },
           "owner_type": {
-            "$ref": "#/components/schemas/PaymentOwnerType"
+            "$ref": "#/components/schemas/PaymentOwnerType",
+            "description": "Principal class that owns this account (user, agent identity, or organization)."
           },
           "public_address": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Public address on the rail (chain address, account number, etc.). Optional; `None` until provisioning completes."
           },
           "rail": {
-            "$ref": "#/components/schemas/PaymentRail"
+            "$ref": "#/components/schemas/PaymentRail",
+            "description": "Settlement rail this account operates on."
           },
           "status": {
-            "$ref": "#/components/schemas/PaymentStatus"
+            "$ref": "#/components/schemas/PaymentStatus",
+            "description": "Current lifecycle status of this account."
           },
           "updated_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this account was last updated (RFC 3339)."
           }
         }
       },
@@ -22459,32 +22574,40 @@
         "properties": {
           "amount_usd": {
             "type": "number",
-            "format": "double"
+            "format": "double",
+            "description": "Amount actually charged (USD)."
           },
           "capability": {
-            "type": "string"
+            "type": "string",
+            "description": "Capability ID that originated this paid call."
           },
           "created_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this attempt was created (RFC 3339)."
           },
           "currency": {
-            "type": "string"
+            "type": "string",
+            "description": "ISO 4217 currency code for the charge (typically `USD`)."
           },
           "error_message": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Human-readable error message when `status` is `failed`; `None` otherwise."
           },
           "id": {
-            "$ref": "#/components/schemas/payattId"
+            "$ref": "#/components/schemas/payattId",
+            "description": "Prefixed public identifier (see `specs/id-schema.md`)."
           },
           "operation": {
-            "type": "string"
+            "type": "string",
+            "description": "Capability-specific operation name that originated this paid call."
           },
           "organization_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Owning organization's prefixed public identifier."
           },
           "payment_account_id": {
             "oneOf": [
@@ -22492,7 +22615,8 @@
                 "type": "null"
               },
               {
-                "$ref": "#/components/schemas/payacctId"
+                "$ref": "#/components/schemas/payacctId",
+                "description": "Payment account that settled (or attempted to settle) this attempt. `None` if no account could be resolved."
               }
             ]
           },
@@ -22502,32 +22626,40 @@
                 "type": "null"
               },
               {
-                "$ref": "#/components/schemas/PaymentRail"
+                "$ref": "#/components/schemas/PaymentRail",
+                "description": "Settlement rail actually used. `None` if the attempt failed before rail selection."
               }
             ]
           },
-          "receipt": {},
+          "receipt": {
+            "description": "Rail-specific receipt payload (transaction id, block reference, signature, etc.)."
+          },
           "request_hash": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Stable hash of the outbound request used to detect replays. `None` when not applicable."
           },
           "session_id": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Session that initiated the paid call, if any."
           },
           "status": {
-            "$ref": "#/components/schemas/PaymentStatus"
+            "$ref": "#/components/schemas/PaymentStatus",
+            "description": "Current lifecycle status of this attempt."
           },
           "target_url": {
-            "type": "string"
+            "type": "string",
+            "description": "Destination URL of the paid outbound call."
           },
           "updated_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this attempt was last updated (RFC 3339)."
           }
         }
       },
@@ -22561,74 +22693,91 @@
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Capability IDs this policy permits paid calls for. Empty list means no capability gating."
           },
           "allowed_hosts": {
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "HTTP host allowlist for paid outbound calls. Empty list means no host gating."
           },
           "created_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this policy was created (RFC 3339)."
           },
           "id": {
-            "$ref": "#/components/schemas/paypolId"
+            "$ref": "#/components/schemas/paypolId",
+            "description": "Prefixed public identifier (see `specs/id-schema.md`)."
           },
           "max_amount_usd_per_day": {
             "type": [
               "number",
               "null"
             ],
-            "format": "double"
+            "format": "double",
+            "description": "Maximum cumulative amount (USD) per UTC day. `None` means no per-day cap."
           },
           "max_amount_usd_per_request": {
             "type": [
               "number",
               "null"
             ],
-            "format": "double"
+            "format": "double",
+            "description": "Maximum amount (USD) any single paid request may settle for. `None` means no per-request cap."
           },
           "max_amount_usd_per_turn": {
             "type": [
               "number",
               "null"
             ],
-            "format": "double"
+            "format": "double",
+            "description": "Maximum cumulative amount (USD) per agent turn. `None` means no per-turn cap."
           },
-          "metadata": {},
+          "metadata": {
+            "description": "Free-form metadata attached to this policy."
+          },
           "organization_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Owning organization's prefixed public identifier."
           },
           "payment_account_id": {
-            "$ref": "#/components/schemas/payacctId"
+            "$ref": "#/components/schemas/payacctId",
+            "description": "Payment account this policy authorizes spending from."
           },
           "rail_preference": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/PaymentRail"
-            }
+            },
+            "description": "Preferred settlement rails in priority order; the authority picks the first available."
           },
           "require_approval_above_usd": {
             "type": [
               "number",
               "null"
             ],
-            "format": "double"
+            "format": "double",
+            "description": "Threshold (USD) above which a request requires explicit human approval before settling. `None` disables the approval gate."
           },
           "status": {
-            "$ref": "#/components/schemas/PaymentStatus"
+            "$ref": "#/components/schemas/PaymentStatus",
+            "description": "Current lifecycle status of this policy."
           },
           "subject_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Prefixed identifier of the bound subject."
           },
           "subject_type": {
-            "type": "string"
+            "type": "string",
+            "description": "Class of subject this policy binds to (e.g. `agent_identity`, `session`)."
           },
           "updated_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this policy was last updated (RFC 3339)."
           }
         }
       },
@@ -25029,14 +25178,17 @@
         ],
         "properties": {
           "activity_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Stable per-workflow activity ID (used for deduplication within a workflow run)."
           },
           "activity_type": {
-            "type": "string"
+            "type": "string",
+            "description": "Activity type name, used by workers to route the task."
           },
           "attempt": {
             "type": "integer",
             "format": "int32",
+            "description": "1-based attempt counter (incremented on each retry).",
             "minimum": 0
           },
           "claimed_at": {
@@ -25044,18 +25196,20 @@
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this task was last claimed by a worker (RFC 3339). `None` if never claimed."
           },
           "claimed_by": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Worker ID that holds the current claim; `None` if pending or terminal."
           },
           "created_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Timestamp when this resource was created (RFC 3339)."
+            "description": "Timestamp when this task was enqueued (RFC 3339)."
           },
           "id": {
             "type": "string",
@@ -25066,20 +25220,23 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Last error message recorded by the worker; `None` if the task has never failed."
           },
           "max_attempts": {
             "type": "integer",
             "format": "int32",
+            "description": "Maximum number of attempts before the task is sent to the DLQ.",
             "minimum": 0
           },
           "priority": {
             "type": "integer",
-            "format": "int32"
+            "format": "int32",
+            "description": "Priority; higher values run first within the same activity type."
           },
           "status": {
             "type": "string",
-            "description": "Current lifecycle status."
+            "description": "Current lifecycle status (`pending`, `claimed`, `completed`, `failed`, `dead`, `cancelled`)."
           },
           "workflow_id": {
             "type": [
@@ -25087,7 +25244,7 @@
               "null"
             ],
             "format": "uuid",
-            "description": "Durable workflow's identifier."
+            "description": "Owning workflow's identifier. `None` for one-off tasks not tied to a workflow."
           }
         }
       },
@@ -26458,29 +26615,32 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "New label, if changing."
           },
           "metadata": {
-            "description": "Free-form metadata attached to this resource."
+            "description": "New free-form metadata. Replaces the existing metadata blob entirely when set."
           },
           "private_key": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "New private key material. Set to `Some(...)` to rotate; omit to leave unchanged."
           },
           "public_address": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "New public address. The outer `Option` indicates whether to update; the inner allows clearing the field."
           },
           "status": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Current lifecycle status."
+            "description": "New lifecycle status. Valid values: `active`, `disabled`."
           }
         }
       },
@@ -26495,7 +26655,8 @@
             ],
             "items": {
               "type": "string"
-            }
+            },
+            "description": "New capability allowlist. Outer `None` leaves the field unchanged."
           },
           "allowed_hosts": {
             "type": [
@@ -26504,31 +26665,35 @@
             ],
             "items": {
               "type": "string"
-            }
+            },
+            "description": "New host allowlist. Outer `None` leaves the field unchanged."
           },
           "max_amount_usd_per_day": {
             "type": [
               "number",
               "null"
             ],
-            "format": "double"
+            "format": "double",
+            "description": "New per-day cap (USD). Outer `None` leaves the field unchanged; inner `None` clears the cap."
           },
           "max_amount_usd_per_request": {
             "type": [
               "number",
               "null"
             ],
-            "format": "double"
+            "format": "double",
+            "description": "New per-request cap (USD). Outer `None` leaves the field unchanged; inner `None` clears the cap."
           },
           "max_amount_usd_per_turn": {
             "type": [
               "number",
               "null"
             ],
-            "format": "double"
+            "format": "double",
+            "description": "New per-turn cap (USD). Outer `None` leaves the field unchanged; inner `None` clears the cap."
           },
           "metadata": {
-            "description": "Free-form metadata attached to this resource."
+            "description": "New free-form metadata. Replaces the existing metadata blob entirely when set."
           },
           "rail_preference": {
             "type": [
@@ -26537,21 +26702,23 @@
             ],
             "items": {
               "type": "string"
-            }
+            },
+            "description": "New rail preference order. Outer `None` leaves the field unchanged."
           },
           "require_approval_above_usd": {
             "type": [
               "number",
               "null"
             ],
-            "format": "double"
+            "format": "double",
+            "description": "New approval threshold (USD). Outer `None` leaves the field unchanged; inner `None` disables the gate."
           },
           "status": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Current lifecycle status."
+            "description": "New lifecycle status. Valid values: `active`, `disabled`."
           }
         }
       },
@@ -28178,40 +28345,48 @@
                 "type": "array",
                 "items": {
                   "type": "string"
-                }
+                },
+                "description": "Capability tags supported by this model (e.g. `chat`, `tools`, `vision`)."
               },
               "created_at": {
                 "type": "string",
-                "format": "date-time"
+                "format": "date-time",
+                "description": "Timestamp when this model was created (RFC 3339)."
               },
               "display_name": {
-                "type": "string"
+                "type": "string",
+                "description": "Human-readable display name. Safe to render in user-facing messages."
               },
               "enabled": {
                 "type": "boolean",
-                "description": "Whether this model is enabled (visible in UI model pickers).\nAll models are available via API regardless of this flag."
+                "description": "Whether this model is visible in UI model pickers. All models remain available via API regardless of this flag."
               },
               "id": {
                 "type": "string",
+                "description": "Prefixed public identifier (see `specs/id-schema.md`).",
                 "example": "model_01933b5a00007000800000000000001"
               },
               "is_favorite": {
-                "type": "boolean"
+                "type": "boolean",
+                "description": "Whether this model is starred in the UI for quick access."
               },
               "model_id": {
-                "type": "string"
+                "type": "string",
+                "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-4o`, `claude-sonnet-4`)."
               },
               "provider_id": {
                 "type": "string",
+                "description": "Owning provider's prefixed public identifier.",
                 "example": "provider_01933b5a00007000800000000000001"
               },
               "source": {
                 "$ref": "#/components/schemas/LlmModelSource",
-                "description": "How the model was added to the system"
+                "description": "How this model entry was added (manually, discovered, or seeded as predefined)."
               },
               "updated_at": {
                 "type": "string",
-                "format": "date-time"
+                "format": "date-time",
+                "description": "Timestamp when this model was last updated (RFC 3339)."
               }
             }
           },
@@ -28265,18 +28440,21 @@
                 "type": "array",
                 "items": {
                   "type": "string"
-                }
+                },
+                "description": "Capability tags supported by this model."
               },
               "created_at": {
                 "type": "string",
-                "format": "date-time"
+                "format": "date-time",
+                "description": "Timestamp when this model was created (RFC 3339)."
               },
               "display_name": {
-                "type": "string"
+                "type": "string",
+                "description": "Human-readable display name."
               },
               "enabled": {
                 "type": "boolean",
-                "description": "Whether this model is enabled (visible in UI model pickers)"
+                "description": "Whether this model is visible in UI model pickers."
               },
               "healthy": {
                 "type": "boolean",
@@ -28284,13 +28462,16 @@
               },
               "id": {
                 "type": "string",
+                "description": "Prefixed public identifier (see `specs/id-schema.md`).",
                 "example": "model_01933b5a00007000800000000000001"
               },
               "is_favorite": {
-                "type": "boolean"
+                "type": "boolean",
+                "description": "Whether this model is starred in the UI for quick access."
               },
               "model_id": {
-                "type": "string"
+                "type": "string",
+                "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-4o`)."
               },
               "profile": {
                 "oneOf": [
@@ -28299,27 +28480,31 @@
                   },
                   {
                     "$ref": "#/components/schemas/LlmModelProfile",
-                    "description": "Readonly profile with model capabilities (not persisted to database)"
+                    "description": "Readonly profile with model capabilities (limits, pricing, modalities). Not persisted."
                   }
                 ]
               },
               "provider_id": {
                 "type": "string",
+                "description": "Owning provider's prefixed public identifier.",
                 "example": "provider_01933b5a00007000800000000000001"
               },
               "provider_name": {
-                "type": "string"
+                "type": "string",
+                "description": "Joined provider display name."
               },
               "provider_type": {
-                "$ref": "#/components/schemas/LlmProviderType"
+                "$ref": "#/components/schemas/LlmProviderType",
+                "description": "Joined provider implementation type."
               },
               "source": {
                 "$ref": "#/components/schemas/LlmModelSource",
-                "description": "How the model was added to the system"
+                "description": "How this model entry was added (manually, discovered, or seeded as predefined)."
               },
               "updated_at": {
                 "type": "string",
-                "format": "date-time"
+                "format": "date-time",
+                "description": "Timestamp when this model was last updated (RFC 3339)."
               }
             }
           },
@@ -28365,20 +28550,23 @@
             "properties": {
               "api_key_set": {
                 "type": "boolean",
-                "description": "Whether an API key is configured (key is never returned)"
+                "description": "Whether an API key is configured. The key itself is never returned."
               },
               "base_url": {
                 "type": [
                   "string",
                   "null"
-                ]
+                ],
+                "description": "Custom base URL for self-hosted / proxied providers. `None` means use the provider's default endpoint."
               },
               "created_at": {
                 "type": "string",
-                "format": "date-time"
+                "format": "date-time",
+                "description": "Timestamp when this provider was created (RFC 3339)."
               },
               "id": {
                 "type": "string",
+                "description": "Prefixed public identifier (see `specs/id-schema.md`).",
                 "example": "provider_01933b5a00007000800000000000001"
               },
               "last_synced_at": {
@@ -28387,20 +28575,24 @@
                   "null"
                 ],
                 "format": "date-time",
-                "description": "When models were last synced from provider API"
+                "description": "Timestamp of the most recent successful model sync from the provider's API (RFC 3339)."
               },
               "name": {
-                "type": "string"
+                "type": "string",
+                "description": "Human-readable provider name. Safe to render in user-facing messages."
               },
               "provider_type": {
-                "$ref": "#/components/schemas/LlmProviderType"
+                "$ref": "#/components/schemas/LlmProviderType",
+                "description": "Provider implementation type (OpenAI, Anthropic, Gemini, etc.)."
               },
               "status": {
-                "$ref": "#/components/schemas/LlmProviderStatus"
+                "$ref": "#/components/schemas/LlmProviderStatus",
+                "description": "Current lifecycle status of this provider."
               },
               "updated_at": {
                 "type": "string",
-                "format": "date-time"
+                "format": "date-time",
+                "description": "Timestamp when this provider was last updated (RFC 3339)."
               }
             }
           },
@@ -29423,13 +29615,15 @@
         ],
         "properties": {
           "accepting_tasks": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether the worker is currently accepting new task assignments. Disabled briefly during drains or backpressure."
           },
           "activity_types": {
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Activity types this worker accepts. Tasks with other activity types skip this worker."
           },
           "avg_task_duration_ms": {
             "type": [
@@ -29437,25 +29631,28 @@
               "null"
             ],
             "format": "int64",
-            "description": "Average task duration in milliseconds",
+            "description": "Average task duration in milliseconds across recent activity.",
             "minimum": 0
           },
           "backpressure_reason": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Human-readable reason the worker is rejecting tasks, when `accepting_tasks` is `false`."
           },
           "current_load": {
             "type": "integer",
             "format": "int32",
+            "description": "Number of tasks currently executing on this worker.",
             "minimum": 0
           },
           "hostname": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Hostname / pod name the worker is running on. Operator hint; not used for routing."
           },
           "id": {
             "type": "string",
@@ -29463,35 +29660,37 @@
           },
           "last_heartbeat_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp of the most recent heartbeat from this worker (RFC 3339)."
           },
           "max_concurrency": {
             "type": "integer",
             "format": "int32",
+            "description": "Maximum number of tasks the worker will run concurrently.",
             "minimum": 0
           },
           "metadata": {
-            "description": "Free-form metadata attached to this resource."
+            "description": "Free-form worker-reported metadata (deployment, capabilities flag set, etc.)."
           },
           "started_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Timestamp when this resource started, if any (RFC 3339)."
+            "description": "Timestamp when this worker started accepting tasks (RFC 3339)."
           },
           "status": {
             "type": "string",
-            "description": "Current lifecycle status."
+            "description": "Current lifecycle status (`running`, `draining`, `stopped`, etc.)."
           },
           "tasks_completed": {
             "type": "integer",
             "format": "int64",
-            "description": "Total tasks completed by this worker",
+            "description": "Total tasks this worker has completed successfully.",
             "minimum": 0
           },
           "tasks_failed": {
             "type": "integer",
             "format": "int64",
-            "description": "Total tasks failed by this worker",
+            "description": "Total tasks this worker has failed (including retries that were ultimately abandoned).",
             "minimum": 0
           },
           "version": {
@@ -29499,13 +29698,14 @@
               "string",
               "null"
             ],
-            "description": "Version number of this resource."
+            "description": "Build version of the worker binary."
           },
           "worker_group": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Logical group this worker belongs to (used for routing). `None` for ungrouped workers."
           }
         }
       },

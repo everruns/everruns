@@ -1019,7 +1019,10 @@ async fn create_auto_snapshot_from_agent(
             .await
         {
             Ok(version) => return Ok(version),
-            Err(CommandError::Conflict(message)) => {
+            Err(CommandError {
+                kind: CommandErrorKind::Conflict(message),
+                ..
+            }) => {
                 last_conflict = Some(message);
             }
             Err(error) => return Err(error),

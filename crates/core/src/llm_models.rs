@@ -118,19 +118,26 @@ impl std::str::FromStr for LlmModelSource {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct LlmProvider {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "provider_01933b5a00007000800000000000001"))]
     pub id: ProviderId,
+    /// Human-readable provider name. Safe to render in user-facing messages.
     pub name: String,
+    /// Provider implementation type (OpenAI, Anthropic, Gemini, etc.).
     pub provider_type: LlmProviderType,
+    /// Custom base URL for self-hosted / proxied providers. `None` means use the provider's default endpoint.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub base_url: Option<String>,
-    /// Whether an API key is configured (key is never returned)
+    /// Whether an API key is configured. The key itself is never returned.
     pub api_key_set: bool,
+    /// Current lifecycle status of this provider.
     pub status: LlmProviderStatus,
-    /// When models were last synced from provider API
+    /// Timestamp of the most recent successful model sync from the provider's API (RFC 3339).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_synced_at: Option<DateTime<Utc>>,
+    /// Timestamp when this provider was created (RFC 3339).
     pub created_at: DateTime<Utc>,
+    /// Timestamp when this provider was last updated (RFC 3339).
     pub updated_at: DateTime<Utc>,
 }
 
@@ -138,20 +145,27 @@ pub struct LlmProvider {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct LlmModel {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "model_01933b5a00007000800000000000001"))]
     pub id: ModelId,
+    /// Owning provider's prefixed public identifier.
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "provider_01933b5a00007000800000000000001"))]
     pub provider_id: ProviderId,
+    /// Provider-side model identifier as sent on the wire (e.g. `gpt-4o`, `claude-sonnet-4`).
     pub model_id: String,
+    /// Human-readable display name. Safe to render in user-facing messages.
     pub display_name: String,
+    /// Capability tags supported by this model (e.g. `chat`, `tools`, `vision`).
     pub capabilities: Vec<String>,
+    /// Whether this model is starred in the UI for quick access.
     pub is_favorite: bool,
-    /// Whether this model is enabled (visible in UI model pickers).
-    /// All models are available via API regardless of this flag.
+    /// Whether this model is visible in UI model pickers. All models remain available via API regardless of this flag.
     pub enabled: bool,
-    /// How the model was added to the system
+    /// How this model entry was added (manually, discovered, or seeded as predefined).
     pub source: LlmModelSource,
+    /// Timestamp when this model was created (RFC 3339).
     pub created_at: DateTime<Utc>,
+    /// Timestamp when this model was last updated (RFC 3339).
     pub updated_at: DateTime<Utc>,
 }
 
@@ -159,27 +173,37 @@ pub struct LlmModel {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct LlmModelWithProvider {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "model_01933b5a00007000800000000000001"))]
     pub id: ModelId,
+    /// Owning provider's prefixed public identifier.
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "provider_01933b5a00007000800000000000001"))]
     pub provider_id: ProviderId,
+    /// Provider-side model identifier as sent on the wire (e.g. `gpt-4o`).
     pub model_id: String,
+    /// Human-readable display name.
     pub display_name: String,
+    /// Capability tags supported by this model.
     pub capabilities: Vec<String>,
+    /// Whether this model is starred in the UI for quick access.
     pub is_favorite: bool,
-    /// Whether this model is enabled (visible in UI model pickers)
+    /// Whether this model is visible in UI model pickers.
     pub enabled: bool,
-    /// How the model was added to the system
+    /// How this model entry was added (manually, discovered, or seeded as predefined).
     pub source: LlmModelSource,
+    /// Timestamp when this model was created (RFC 3339).
     pub created_at: DateTime<Utc>,
+    /// Timestamp when this model was last updated (RFC 3339).
     pub updated_at: DateTime<Utc>,
+    /// Joined provider display name.
     pub provider_name: String,
+    /// Joined provider implementation type.
     pub provider_type: LlmProviderType,
     /// Derived: model is configured and ready for use. Currently means the
     /// joined provider is active and has an API key set; over time this may
     /// also incorporate live reachability checks. Not persisted.
     pub healthy: bool,
-    /// Readonly profile with model capabilities (not persisted to database)
+    /// Readonly profile with model capabilities (limits, pricing, modalities). Not persisted.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub profile: Option<LlmModelProfile>,
 }
