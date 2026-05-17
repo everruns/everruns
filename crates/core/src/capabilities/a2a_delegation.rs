@@ -738,7 +738,7 @@ fn send_request(
                 "text/plain".to_string(),
                 "application/json".to_string(),
             ]),
-            push_notification_config: None,
+            task_push_notification_config: None,
             history_length: None,
             return_immediately: Some(return_immediately),
         }),
