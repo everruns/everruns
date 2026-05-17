@@ -409,6 +409,57 @@ async fn fcp_post_session_cookie_reuses_same_session() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn fcp_post_cookie_reuses_matching_session_when_multiple_exist() {
+    let server = TestServer::in_memory().await;
+    let app = create_published_fcp_app(&server, fast_timeout_config()).await;
+
+    let first = send_fcp_post(
+        &server,
+        &app.public_id,
+        "client one",
+        vec![("content-type", "text/plain")],
+    )
+    .await;
+    assert_accepted_or_timeout(first.status());
+    let first_cookie = test_harness::extract_cookie(first.headers(), "fcp_session");
+
+    let second = send_fcp_post(
+        &server,
+        &app.public_id,
+        "client two",
+        vec![("content-type", "text/plain")],
+    )
+    .await;
+    assert_accepted_or_timeout(second.status());
+
+    let third = send_fcp_post(
+        &server,
+        &app.public_id,
+        "client one again",
+        vec![("content-type", "text/plain"), ("cookie", &first_cookie)],
+    )
+    .await;
+    assert_accepted_or_timeout(third.status());
+
+    let sessions: Value = server.get("/v1/sessions").await.assert_success().json();
+    let expected_tag = format!("fcp:app:{}", app.public_id);
+    let tagged_count = sessions["data"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter(|s| {
+                    s["tags"]
+                        .as_array()
+                        .map(|tags| tags.iter().any(|t| t.as_str() == Some(&expected_tag)))
+                        .unwrap_or(false)
+                })
+                .count()
+        })
+        .unwrap_or(0);
+    assert_eq!(tagged_count, 2, "cookie reuse must not create a third session");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn fcp_post_stale_cookie_creates_new_session() {
     let server = TestServer::in_memory().await;
     let app = create_published_fcp_app(&server, fast_timeout_config()).await;
