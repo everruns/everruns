@@ -125,11 +125,11 @@ export default defineConfig({
                 },
                 {
                   label: "Features",
-                  autogenerate: { directory: "features" },
+                  items: [{ autogenerate: { directory: "features" } }],
                 },
                 {
                   label: "Advanced",
-                  autogenerate: { directory: "advanced" },
+                  items: [{ autogenerate: { directory: "advanced" } }],
                 },
               ],
             },
@@ -140,11 +140,11 @@ export default defineConfig({
               items: [
                 {
                   label: "Harnesses",
-                  autogenerate: { directory: "built-ins/harnesses" },
+                  items: [{ autogenerate: { directory: "built-ins/harnesses" } }],
                 },
                 {
                   label: "Capabilities",
-                  autogenerate: { directory: "capabilities" },
+                  items: [{ autogenerate: { directory: "capabilities" } }],
                 },
               ],
             },
@@ -155,15 +155,15 @@ export default defineConfig({
               items: [
                 {
                   label: "Integrations",
-                  autogenerate: { directory: "integrations" },
+                  items: [{ autogenerate: { directory: "integrations" } }],
                 },
                 {
                   label: "Observability",
-                  autogenerate: { directory: "observability" },
+                  items: [{ autogenerate: { directory: "observability" } }],
                 },
                 {
                   label: "Ecosystem",
-                  autogenerate: { directory: "ecosystem" },
+                  items: [{ autogenerate: { directory: "ecosystem" } }],
                 },
               ],
             },
@@ -181,7 +181,7 @@ export default defineConfig({
                 },
                 {
                   label: "How-to guides",
-                  autogenerate: { directory: "how-to" },
+                  items: [{ autogenerate: { directory: "how-to" } }],
                 },
               ],
             },
@@ -192,7 +192,7 @@ export default defineConfig({
               items: [
                 {
                   label: "Explanation",
-                  autogenerate: { directory: "explanation" },
+                  items: [{ autogenerate: { directory: "explanation" } }],
                 },
               ],
             },
@@ -218,7 +218,7 @@ export default defineConfig({
                     { label: "Admin Container", slug: "sre/admin-container" },
                     {
                       label: "Runbooks",
-                      autogenerate: { directory: "sre/runbooks" },
+                      items: [{ autogenerate: { directory: "sre/runbooks" } }],
                     },
                   ],
                 },
