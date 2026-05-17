@@ -10,7 +10,13 @@ The API is designed for both humans and LLM agents (hosted, OpenAPI tool
 callers, MCP, A2A). Six guidelines guide every endpoint:
 
 1. **Semantic operations** — business-intent endpoints with a stable
-   `operationId` on every `#[utoipa::path]`.
+   `operationId` on every `#[utoipa::path]`. utoipa auto-derives the
+   operationId from the handler fn name; the convention is lower_snake_case
+   matching the corresponding domain command name (e.g. `create_agent`),
+   which keeps the OpenAPI tool catalog aligned with the MCP `execute`
+   builtin set. `crates/server/tests/openapi_coverage_test.rs` enforces
+   that every annotated handler is registered in `openapi::ApiDoc` and
+   that every operationId is snake_case.
 2. **Self-sufficient OpenAPI** — every field carries `description` and
    `example`; agents do "preflight thinking" from the spec.
 3. **Domain language** — concepts from [`concepts.md`](concepts.md) used
