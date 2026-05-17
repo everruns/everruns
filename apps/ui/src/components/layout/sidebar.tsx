@@ -23,6 +23,7 @@ import {
   BookOpen,
   Brain,
   Calendar,
+  ChartColumn,
   ClipboardCheck,
   FlaskConical,
   HardDrive,
@@ -86,6 +87,7 @@ export interface SidebarConfig {
 export const defaultTopNavigation: NavigationItem[] = [
   { name: "Chat", href: "/chat", icon: MessageCircle, flag: "global_chat", experimental: true },
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { name: "Reports", href: "/reports", icon: ChartColumn },
   { name: "Sessions", href: "/sessions", icon: MessageSquare },
 ];
 

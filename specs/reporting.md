@@ -128,9 +128,16 @@ Projectors:
 - Emit fact batches through `ReportingProjectionSink`.
 - Mark outbox rows complete after the sink commit succeeds.
 - Retry with bounded backoff and store non-secret errors in `last_error`.
+- Release stale `processing` claims before polling so a server crash cannot
+  strand rows forever.
 
 NATS or another push channel may wake projectors, but durable polling remains
 the correctness mechanism.
+
+The server runs a built-in reporting background task for PostgreSQL storage. It
+is controlled by `REPORTING_BACKGROUND_ENABLED`,
+`REPORTING_PROJECTOR_INTERVAL_SECS`, `REPORTING_PROJECTOR_LIMIT`,
+`REPORTING_BACKFILL_INTERVAL_SECS`, and `REPORTING_BACKFILL_LIMIT`.
 
 ## Idempotency
 
@@ -451,6 +458,9 @@ Backfills:
 - Backfills enqueue outbox work by source type, org, and time range.
 - Backfills are idempotent and resumable.
 - Backfills must be rate-limited per org and globally.
+- The initial backfill/reconciler enqueues missing event, session,
+  LLM-generation, and usage-ledger work from canonical tables. It is available
+  as an admin operation and also runs periodically in the background.
 
 Retention:
 

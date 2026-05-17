@@ -14,3 +14,4 @@ export * from "./durable";
 export * from "./agent-identities";
 export * from "./volumes";
 export * from "./memory-stores";
+export * from "./reporting";

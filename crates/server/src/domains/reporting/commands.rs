@@ -7,7 +7,8 @@ use uuid::Uuid;
 use super::catalog;
 use super::types::{
     CreateSavedReportRequest, ExportReportQueryRequest, ExportSavedReportRequest,
-    ProjectorRunResult, ReportExport, ReportingDiagnostics, SavedReport, UpdateSavedReportRequest,
+    ProjectorRunResult, ReportExport, ReportingBackfillRequest, ReportingBackfillResult,
+    ReportingDiagnostics, SavedReport, UpdateSavedReportRequest,
 };
 use super::{REPORT_ADMIN, REPORT_MANAGE, REPORT_VIEW};
 use crate::domains::common::{Command, CommandDescriptor, CommandError, CommandMeta, Ctx};
@@ -426,3 +427,35 @@ impl Command for RunReportingProjector {
 }
 
 inventory::submit! { CommandDescriptor::of::<RunReportingProjector>() }
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct BackfillReporting(pub ReportingBackfillRequest);
+
+impl Command for BackfillReporting {
+    type Output = ReportingBackfillResult;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "backfill_reporting",
+            category: "reporting",
+            description: "Enqueue missing reporting projection work from canonical sources.",
+            method: "POST",
+            path: "/v1/reports/admin/backfill",
+        }
+    }
+
+    fn policy() -> Option<&'static Policy> {
+        Some(&REPORT_ADMIN)
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<ReportingBackfillResult, CommandError> {
+        let service = ctx.reporting_service.as_ref().ok_or_else(|| {
+            CommandError::Internal(anyhow::anyhow!("Reporting service not configured"))
+        })?;
+        service
+            .backfill_missing(Some(ctx.org_id()), self.0.limit)
+            .await
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<BackfillReporting>() }

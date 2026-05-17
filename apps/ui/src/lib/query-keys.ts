@@ -66,6 +66,15 @@ export const queryKeys = {
     list: () => ["notifications"] as const,
   },
 
+  reporting: {
+    all: ["reporting"] as const,
+    catalog: (org?: string) => ["reporting", org, "catalog"] as const,
+    query: (org?: string, query?: Record<string, unknown>) =>
+      ["reporting", org, "query", query] as const,
+    saved: (org?: string) => ["reporting", org, "saved"] as const,
+    diagnostics: (org?: string) => ["reporting", org, "diagnostics"] as const,
+  },
+
   // LLM Provider queries
   llmProviders: {
     all: ["llm-providers"] as const,

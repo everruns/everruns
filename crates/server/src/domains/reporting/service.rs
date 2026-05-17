@@ -11,8 +11,9 @@ use uuid::Uuid;
 use super::catalog;
 use super::types::{
     CreateSavedReportRequest, DatasetProjectorLag, FailedReportingOutboxRow, ProjectorRunResult,
-    ReportExport, ReportExportFormat, ReportingDiagnostics, ReportingOutboxDiagnostics,
-    SavedReport, SavedReportDashboardMetadata, UpdateSavedReportRequest,
+    ReportExport, ReportExportFormat, ReportingBackfillResult, ReportingDiagnostics,
+    ReportingOutboxDiagnostics, SavedReport, SavedReportDashboardMetadata,
+    UpdateSavedReportRequest,
 };
 use crate::domains::common::{CommandError, classify_anyhow};
 use crate::storage::StorageBackend;
@@ -379,6 +380,40 @@ impl ReportingService {
                 claimed: 0,
                 completed: 0,
                 failed: 0,
+            }),
+        }
+    }
+
+    pub async fn run_projector_due(&self, limit: i64) -> Result<ProjectorRunResult, CommandError> {
+        match self.db.as_ref() {
+            StorageBackend::Postgres(db) => PostgresReportingProjector::new(db.pool().clone())
+                .run_due(limit)
+                .await
+                .map_err(classify_anyhow),
+            StorageBackend::InMemory(_) => Ok(ProjectorRunResult {
+                claimed: 0,
+                completed: 0,
+                failed: 0,
+            }),
+        }
+    }
+
+    pub async fn backfill_missing(
+        &self,
+        org_id: Option<i64>,
+        limit: i64,
+    ) -> Result<ReportingBackfillResult, CommandError> {
+        match self.db.as_ref() {
+            StorageBackend::Postgres(db) => PostgresReportingProjector::new(db.pool().clone())
+                .backfill_missing(org_id, limit)
+                .await
+                .map_err(classify_anyhow),
+            StorageBackend::InMemory(_) => Ok(ReportingBackfillResult {
+                enqueued: 0,
+                events: 0,
+                sessions: 0,
+                llm_generations: 0,
+                usage_ledger: 0,
             }),
         }
     }

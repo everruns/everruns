@@ -1741,6 +1741,9 @@ impl ServerAppBuilder {
             volume_connection_resolver,
         );
 
+        // -- Reporting projection and missing-work reconciliation (both prod and dev) --
+        crate::domains::reporting::background::spawn_reporting_background_task(db.clone());
+
         // -- Custom background tasks --
         for task_fn in self.background_tasks {
             let ctx = server_context.clone();
