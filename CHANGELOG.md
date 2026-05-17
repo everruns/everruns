@@ -9,6 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.8.31] - 2026-05-17
+
+### Highlights
+
+- **Free Communication Protocol (FCP) app channel** - New text-first HTTP inbound channel for App invocation alongside AG-UI and A2A ([#1827](https://github.com/everruns/everruns/pull/1827)).
+- **A2A HMAC request signing** - Opt-in HMAC request signing on outbound A2A delegation guards against replay attacks ([#1826](https://github.com/everruns/everruns/pull/1826)).
+
+### What's Changed
+
+- fix(reporting): escape LF-prefixed CSV formulas by [@chaliy](https://github.com/chaliy)
+- feat(fcp): Free Communication Protocol app channel ([#1827](https://github.com/everruns/everruns/pull/1827)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): default AG-UI channels to generated token ([#1828](https://github.com/everruns/everruns/pull/1828)) by [@chaliy](https://github.com/chaliy)
+- feat(a2a): opt-in HMAC request signing for replay protection ([#1826](https://github.com/everruns/everruns/pull/1826)) by [@chaliy](https://github.com/chaliy)
+- refactor(config): simplify deployment env vars by [@chaliy](https://github.com/chaliy)
+- docs: restructure documentation along Diataxis quadrants ([#1824](https://github.com/everruns/everruns/pull/1824)) by [@chaliy](https://github.com/chaliy)
+- fix(core): classify OpenAI insufficient_quota as provider_misconfigured ([#1819](https://github.com/everruns/everruns/pull/1819)) by [@chaliy](https://github.com/chaliy)
+- fix(server): block DNS-rebinding SSRF in endpoint auth ([#1820](https://github.com/everruns/everruns/pull/1820)) by [@chaliy](https://github.com/chaliy)
+- fix(session-files): enforce readonly ancestor writes ([#1821](https://github.com/everruns/everruns/pull/1821)) by [@chaliy](https://github.com/chaliy)
+- fix(reporting): scope projector runs to caller org ([#1822](https://github.com/everruns/everruns/pull/1822)) by [@chaliy](https://github.com/chaliy)
+- fix(mcp): align discover output schema with response ([#1823](https://github.com/everruns/everruns/pull/1823)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump node from 25-alpine to 26-alpine in /apps/ui ([#1817](https://github.com/everruns/everruns/pull/1817)) by [@dependabot](https://github.com/dependabot)
+- chore(deps): bump the npm_and_yarn group across 2 directories with 2 updates ([#1818](https://github.com/everruns/everruns/pull/1818)) by [@dependabot](https://github.com/dependabot)
+- fix(reporting): make outbox enqueue best-effort on event/session/llm writes ([#1816](https://github.com/everruns/everruns/pull/1816)) by [@chaliy](https://github.com/chaliy)
+- docs(readme): rewrite to reflect current platform scope ([#1808](https://github.com/everruns/everruns/pull/1808)) by [@chaliy](https://github.com/chaliy)
+
 ## [0.8.30] - 2026-05-11
 
 ### Highlights
