@@ -1,4 +1,4 @@
-# Railway Deployment And Template
+# Railway Deployment and Template
 
 This directory documents the Everruns Railway template shape and keeps a
 maintainable Caddy ingress config for repo-backed deployments. Railway does not
@@ -88,7 +88,7 @@ DATABASE_UNPOOLED_URL=${{ postgres.DATABASE_URL }}
 VALKEY_URL=${{ redis.REDIS_URL }}
 NATS_URL=nats://${{ nats.RAILWAY_PRIVATE_DOMAIN }}:4222
 
-DEPLOYMENT_GRADE=dev
+DEPLOYMENT_GRADE=preview
 
 AUTH_MODE=admin
 AUTH_ADMIN_EMAIL=<template input>
