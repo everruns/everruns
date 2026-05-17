@@ -186,7 +186,7 @@ impl Command for CreateDeclarativeCapability {
                     display_name: definition.display_name.clone(),
                     description: definition.description.clone(),
                     definition: serde_json::to_value(&definition)
-                        .map_err(|error| CommandError::Internal(error.into()))?,
+                        .map_err(|error| CommandError::internal(error.into()))?,
                 },
             )
             .await
@@ -303,7 +303,7 @@ impl Command for UpdateDeclarativeCapabilityCmd {
     async fn execute(self, ctx: &Ctx) -> Result<DeclarativeCapability, CommandError> {
         let existing = get_declarative_capability_by_public_id(ctx, &self.id).await?;
         if matches!(self.req.status.as_deref(), Some("deleted")) {
-            return Err(CommandError::Forbidden(
+            return Err(CommandError::forbidden(
                 "Setting status=deleted requires dangerous delete permission".to_string(),
             ));
         }
@@ -330,7 +330,7 @@ impl Command for UpdateDeclarativeCapabilityCmd {
             input.description = Some(definition.description.clone());
             input.definition = Some(
                 serde_json::to_value(&definition)
-                    .map_err(|error| CommandError::Internal(error.into()))?,
+                    .map_err(|error| CommandError::internal(error.into()))?,
             );
         }
         if let Some(status) = self.req.status {

@@ -17,7 +17,7 @@ fn sync_service(
 ) -> Result<&std::sync::Arc<crate::services::ModelSyncService>, CommandError> {
     ctx.model_sync_service
         .as_ref()
-        .ok_or_else(|| CommandError::Internal(anyhow::anyhow!("Model sync service not configured")))
+        .ok_or_else(|| CommandError::internal(anyhow::anyhow!("Model sync service not configured")))
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -261,7 +261,7 @@ impl Command for SyncProviderModels {
             }),
             crate::services::SyncResult::NotSupported => Ok(SyncModelsResponse::NotSupported),
             crate::services::SyncResult::Failed { error } => {
-                Err(CommandError::Internal(anyhow::anyhow!(error)))
+                Err(CommandError::internal(anyhow::anyhow!(error)))
             }
         }
     }

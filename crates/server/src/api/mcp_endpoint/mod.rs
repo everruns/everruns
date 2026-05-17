@@ -23,7 +23,7 @@ use crate::auth::AuthMethod;
 use crate::auth::middleware::AuthUser;
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::budgets::BudgetService;
-use crate::domains::common::{Command, CommandError, Ctx};
+use crate::domains::common::{Command, CommandError, CommandErrorKind, Ctx};
 use crate::domains::messages::MessageService;
 use crate::domains::session_files::SessionFileService;
 use crate::domains::session_sandbox::SessionSandboxService;
@@ -522,13 +522,13 @@ fn mcp_ctx(org: &ResolvedOrg, state: &AppState) -> Ctx {
 }
 
 fn resource_error(resource: &str, e: CommandError) -> String {
-    match e {
-        CommandError::Forbidden(msg) => msg,
-        CommandError::BadRequest(msg)
-        | CommandError::NotFound(msg)
-        | CommandError::Conflict(msg) => msg,
-        CommandError::Unprocessable(msg) => msg,
-        CommandError::Internal(err) => format!("Failed to list {resource}: {err}"),
+    match e.kind {
+        CommandErrorKind::Forbidden(msg)
+        | CommandErrorKind::BadRequest(msg)
+        | CommandErrorKind::NotFound(msg)
+        | CommandErrorKind::Conflict(msg)
+        | CommandErrorKind::Unprocessable(msg) => msg,
+        CommandErrorKind::Internal(err) => format!("Failed to list {resource}: {err}"),
     }
 }
 
@@ -1668,35 +1668,32 @@ mod resources_read_policy_tests {
     fn resource_error_forbidden_returns_policy_message() {
         let msg = resource_error(
             "harnesses",
-            CommandError::Forbidden("access denied: harness.view".into()),
+            CommandError::forbidden("access denied: harness.view"),
         );
         assert_eq!(msg, "access denied: harness.view");
     }
 
     #[test]
     fn resource_error_not_found_returns_message() {
-        let msg = resource_error("agents", CommandError::NotFound("agent missing".into()));
+        let msg = resource_error("agents", CommandError::not_found_msg("agent missing"));
         assert_eq!(msg, "agent missing");
     }
 
     #[test]
     fn resource_error_bad_request_returns_message() {
-        let msg = resource_error("harnesses", CommandError::BadRequest("bad param".into()));
+        let msg = resource_error("harnesses", CommandError::bad_request("bad param"));
         assert_eq!(msg, "bad param");
     }
 
     #[test]
     fn resource_error_conflict_returns_message() {
-        let msg = resource_error("providers", CommandError::Conflict("dup".into()));
+        let msg = resource_error("providers", CommandError::conflict("dup"));
         assert_eq!(msg, "dup");
     }
 
     #[test]
     fn resource_error_unprocessable_returns_message() {
-        let msg = resource_error(
-            "capabilities",
-            CommandError::Unprocessable("unprocessable".into()),
-        );
+        let msg = resource_error("capabilities", CommandError::unprocessable("unprocessable"));
         assert_eq!(msg, "unprocessable");
     }
 
@@ -1704,7 +1701,7 @@ mod resources_read_policy_tests {
     fn resource_error_internal_prefixes_resource_name() {
         let msg = resource_error(
             "providers",
-            CommandError::Internal(anyhow::anyhow!("connection refused")),
+            CommandError::internal(anyhow::anyhow!("connection refused")),
         );
         assert_eq!(msg, "Failed to list providers: connection refused");
     }
@@ -1723,7 +1720,7 @@ mod resources_read_policy_tests {
 
         let err = result.expect_err("denying resolver must block list_harnesses");
         assert!(
-            matches!(err, CommandError::Forbidden(ref msg) if msg.contains("harness.view")),
+            matches!(err, CommandError { kind: CommandErrorKind::Forbidden(ref msg), .. } if msg.contains("harness.view")),
             "expected Forbidden(harness.view), got {err:?}"
         );
     }
@@ -1735,7 +1732,7 @@ mod resources_read_policy_tests {
 
         let err = result.expect_err("denying resolver must block list_providers");
         assert!(
-            matches!(err, CommandError::Forbidden(ref msg) if msg.contains("llm_provider.view")),
+            matches!(err, CommandError { kind: CommandErrorKind::Forbidden(ref msg), .. } if msg.contains("llm_provider.view")),
             "expected Forbidden(llm_provider.view), got {err:?}"
         );
     }
@@ -1754,7 +1751,7 @@ mod resources_read_policy_tests {
 
         let err = result.expect_err("denying resolver must block list_agents");
         assert!(
-            matches!(err, CommandError::Forbidden(ref msg) if msg.contains("agent.view")),
+            matches!(err, CommandError { kind: CommandErrorKind::Forbidden(ref msg), .. } if msg.contains("agent.view")),
             "expected Forbidden(agent.view), got {err:?}"
         );
     }

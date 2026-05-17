@@ -82,7 +82,7 @@ impl Command for CreateSkill {
             );
         }
         let metadata =
-            serde_json::to_value(&metadata_map).map_err(|e| CommandError::Internal(e.into()))?;
+            serde_json::to_value(&metadata_map).map_err(|e| CommandError::internal(e.into()))?;
 
         let input = CreateSkillRow {
             public_id,
@@ -343,7 +343,7 @@ impl Command for UpdateSkillCmd {
         let req = self.req;
         let id = skill_id.uuid();
         if matches!(req.status, Some(SkillStatus::Deleted)) {
-            return Err(CommandError::Forbidden(
+            return Err(CommandError::forbidden(
                 "Setting status=deleted requires dangerous delete permission".to_string(),
             ));
         }
@@ -416,7 +416,7 @@ impl Command for UpdateSkillCmd {
             }
             input.metadata = Some(
                 serde_json::to_value(&metadata_map)
-                    .map_err(|e| CommandError::Internal(e.into()))?,
+                    .map_err(|e| CommandError::internal(e.into()))?,
             );
             input.allowed_tools = parsed.allowed_tools;
             input.instructions = Some(parsed.instructions);

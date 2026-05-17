@@ -165,7 +165,7 @@ impl Command for ExportSessionMessages {
         let mut body = String::new();
         for message in &messages {
             let line =
-                serde_json::to_string(message).map_err(|e| CommandError::Internal(e.into()))?;
+                serde_json::to_string(message).map_err(|e| CommandError::internal(e.into()))?;
             body.push_str(&line);
             body.push('\n');
         }

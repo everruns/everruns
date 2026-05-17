@@ -18,7 +18,7 @@ use utoipa::ToSchema;
 
 use crate::api::common::ErrorResponse;
 use crate::domains::apps::{WebhookInvocationRequest, invoke_webhook_app_channel};
-use crate::domains::common::CommandError;
+use crate::domains::common::{CommandError, CommandErrorKind};
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
 use crate::middleware::RequestId;
@@ -242,16 +242,32 @@ fn internal_error(error: anyhow::Error) -> (StatusCode, Json<ErrorResponse>) {
 
 fn command_error_response(error: CommandError) -> (StatusCode, Json<ErrorResponse>) {
     match error {
-        CommandError::BadRequest(message) => bad_request(message),
-        CommandError::Unprocessable(message) => (
+        CommandError {
+            kind: CommandErrorKind::BadRequest(message),
+            ..
+        } => bad_request(message),
+        CommandError {
+            kind: CommandErrorKind::Unprocessable(message),
+            ..
+        } => (
             StatusCode::UNPROCESSABLE_ENTITY,
             Json(ErrorResponse::new(message)),
         ),
-        CommandError::Forbidden(message) => forbidden(message),
-        CommandError::NotFound(_) => not_found(),
-        CommandError::Conflict(message) => {
-            (StatusCode::CONFLICT, Json(ErrorResponse::new(message)))
-        }
-        CommandError::Internal(error) => internal_error(error),
+        CommandError {
+            kind: CommandErrorKind::Forbidden(message),
+            ..
+        } => forbidden(message),
+        CommandError {
+            kind: CommandErrorKind::NotFound(_),
+            ..
+        } => not_found(),
+        CommandError {
+            kind: CommandErrorKind::Conflict(message),
+            ..
+        } => (StatusCode::CONFLICT, Json(ErrorResponse::new(message))),
+        CommandError {
+            kind: CommandErrorKind::Internal(error),
+            ..
+        } => internal_error(error),
     }
 }

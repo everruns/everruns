@@ -35,7 +35,7 @@ impl Command for RunReportQuery {
 
     async fn execute(self, ctx: &Ctx) -> Result<ReportResult, CommandError> {
         let service = ctx.reporting_service.as_ref().ok_or_else(|| {
-            CommandError::Internal(anyhow::anyhow!("Reporting service not configured"))
+            CommandError::internal(anyhow::anyhow!("Reporting service not configured"))
         })?;
         service
             .query(
@@ -100,7 +100,7 @@ impl Command for ListSavedReports {
 
     async fn execute(self, ctx: &Ctx) -> Result<Vec<SavedReport>, CommandError> {
         let service = ctx.reporting_service.as_ref().ok_or_else(|| {
-            CommandError::Internal(anyhow::anyhow!("Reporting service not configured"))
+            CommandError::internal(anyhow::anyhow!("Reporting service not configured"))
         })?;
         service.list_saved_reports(ctx.org_id()).await
     }
@@ -132,7 +132,7 @@ impl Command for GetSavedReport {
 
     async fn execute(self, ctx: &Ctx) -> Result<SavedReport, CommandError> {
         let service = ctx.reporting_service.as_ref().ok_or_else(|| {
-            CommandError::Internal(anyhow::anyhow!("Reporting service not configured"))
+            CommandError::internal(anyhow::anyhow!("Reporting service not configured"))
         })?;
         service.get_saved_report(ctx.org_id(), self.report_id).await
     }
@@ -162,7 +162,7 @@ impl Command for CreateSavedReport {
 
     async fn execute(self, ctx: &Ctx) -> Result<SavedReport, CommandError> {
         let service = ctx.reporting_service.as_ref().ok_or_else(|| {
-            CommandError::Internal(anyhow::anyhow!("Reporting service not configured"))
+            CommandError::internal(anyhow::anyhow!("Reporting service not configured"))
         })?;
         service.create_saved_report(ctx.org_id(), self.0).await
     }
@@ -195,7 +195,7 @@ impl Command for UpdateSavedReport {
 
     async fn execute(self, ctx: &Ctx) -> Result<SavedReport, CommandError> {
         let service = ctx.reporting_service.as_ref().ok_or_else(|| {
-            CommandError::Internal(anyhow::anyhow!("Reporting service not configured"))
+            CommandError::internal(anyhow::anyhow!("Reporting service not configured"))
         })?;
         service
             .update_saved_report(ctx.org_id(), self.report_id, self.request)
@@ -229,7 +229,7 @@ impl Command for DeleteSavedReport {
 
     async fn execute(self, ctx: &Ctx) -> Result<(), CommandError> {
         let service = ctx.reporting_service.as_ref().ok_or_else(|| {
-            CommandError::Internal(anyhow::anyhow!("Reporting service not configured"))
+            CommandError::internal(anyhow::anyhow!("Reporting service not configured"))
         })?;
         service
             .delete_saved_report(ctx.org_id(), self.report_id)
@@ -263,7 +263,7 @@ impl Command for RunSavedReport {
 
     async fn execute(self, ctx: &Ctx) -> Result<ReportResult, CommandError> {
         let service = ctx.reporting_service.as_ref().ok_or_else(|| {
-            CommandError::Internal(anyhow::anyhow!("Reporting service not configured"))
+            CommandError::internal(anyhow::anyhow!("Reporting service not configured"))
         })?;
         service
             .run_saved_report(
@@ -301,7 +301,7 @@ impl Command for ExportReportQuery {
 
     async fn execute(self, ctx: &Ctx) -> Result<ReportExport, CommandError> {
         let service = ctx.reporting_service.as_ref().ok_or_else(|| {
-            CommandError::Internal(anyhow::anyhow!("Reporting service not configured"))
+            CommandError::internal(anyhow::anyhow!("Reporting service not configured"))
         })?;
         service
             .export_query(
@@ -344,7 +344,7 @@ impl Command for ExportSavedReport {
 
     async fn execute(self, ctx: &Ctx) -> Result<ReportExport, CommandError> {
         let service = ctx.reporting_service.as_ref().ok_or_else(|| {
-            CommandError::Internal(anyhow::anyhow!("Reporting service not configured"))
+            CommandError::internal(anyhow::anyhow!("Reporting service not configured"))
         })?;
         service
             .export_saved_report(
@@ -383,7 +383,7 @@ impl Command for GetReportingDiagnostics {
 
     async fn execute(self, ctx: &Ctx) -> Result<ReportingDiagnostics, CommandError> {
         let service = ctx.reporting_service.as_ref().ok_or_else(|| {
-            CommandError::Internal(anyhow::anyhow!("Reporting service not configured"))
+            CommandError::internal(anyhow::anyhow!("Reporting service not configured"))
         })?;
         service.diagnostics(ctx.org_id()).await
     }
@@ -420,7 +420,7 @@ impl Command for RunReportingProjector {
 
     async fn execute(self, ctx: &Ctx) -> Result<ProjectorRunResult, CommandError> {
         let service = ctx.reporting_service.as_ref().ok_or_else(|| {
-            CommandError::Internal(anyhow::anyhow!("Reporting service not configured"))
+            CommandError::internal(anyhow::anyhow!("Reporting service not configured"))
         })?;
         service.run_projector_once(ctx.org_id(), self.limit).await
     }

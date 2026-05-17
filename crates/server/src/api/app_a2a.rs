@@ -12,6 +12,7 @@
 // events. Other methods return JSON-RPC `-32601 Method not found`.
 // See `specs/a2a-channel.md`.
 
+use crate::domains::common::CommandErrorKind;
 use std::convert::Infallible;
 use std::sync::Arc;
 
@@ -860,7 +861,7 @@ async fn handle_message_stream(
                 let sub = event_delivery
                     .subscribe(session_id.uuid())
                     .await
-                    .map_err(crate::domains::common::CommandError::Internal)?;
+                    .map_err(crate::domains::common::CommandError::internal)?;
                 *slot.lock().await = Some(sub);
                 Ok(())
             }
@@ -1066,17 +1067,33 @@ fn command_error_response(
     err: crate::domains::common::CommandError,
 ) -> (StatusCode, Json<ErrorResponse>) {
     match err {
-        crate::domains::common::CommandError::BadRequest(msg) => bad_request(msg),
-        crate::domains::common::CommandError::Forbidden(msg) => forbidden(msg),
-        crate::domains::common::CommandError::NotFound(_) => not_found(),
-        crate::domains::common::CommandError::Conflict(msg) => {
-            (StatusCode::CONFLICT, Json(ErrorResponse::new(msg)))
-        }
-        crate::domains::common::CommandError::Unprocessable(msg) => (
+        crate::domains::common::CommandError {
+            kind: CommandErrorKind::BadRequest(msg),
+            ..
+        } => bad_request(msg),
+        crate::domains::common::CommandError {
+            kind: CommandErrorKind::Forbidden(msg),
+            ..
+        } => forbidden(msg),
+        crate::domains::common::CommandError {
+            kind: CommandErrorKind::NotFound(_),
+            ..
+        } => not_found(),
+        crate::domains::common::CommandError {
+            kind: CommandErrorKind::Conflict(msg),
+            ..
+        } => (StatusCode::CONFLICT, Json(ErrorResponse::new(msg))),
+        crate::domains::common::CommandError {
+            kind: CommandErrorKind::Unprocessable(msg),
+            ..
+        } => (
             StatusCode::UNPROCESSABLE_ENTITY,
             Json(ErrorResponse::new(msg)),
         ),
-        crate::domains::common::CommandError::Internal(error) => internal_error(error),
+        crate::domains::common::CommandError {
+            kind: CommandErrorKind::Internal(error),
+            ..
+        } => internal_error(error),
     }
 }
 

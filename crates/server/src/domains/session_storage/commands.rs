@@ -154,7 +154,7 @@ impl Command for BatchSetSessionSecrets {
         for (name, value) in &self.secrets {
             let encrypted = encryption
                 .encrypt_string(value)
-                .map_err(CommandError::Internal)?;
+                .map_err(CommandError::internal)?;
             ctx.db
                 .upsert_session_secret(crate::storage::models::UpsertSessionSecret {
                     session_id,

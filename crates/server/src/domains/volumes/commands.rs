@@ -707,7 +707,13 @@ mod tests {
         .run(&org_two)
         .await
         .expect_err("other org should not read volume");
-        assert!(matches!(err, CommandError::NotFound(_)));
+        assert!(matches!(
+            err,
+            CommandError {
+                kind: CommandErrorKind::NotFound(_),
+                ..
+            }
+        ));
     }
 
     #[tokio::test]
@@ -730,7 +736,13 @@ mod tests {
         .run(&ctx)
         .await
         .expect_err("duplicate name should fail");
-        assert!(matches!(err, CommandError::Conflict(_)));
+        assert!(matches!(
+            err,
+            CommandError {
+                kind: CommandErrorKind::Conflict(_),
+                ..
+            }
+        ));
     }
 
     #[tokio::test]
@@ -845,7 +857,13 @@ mod tests {
         .run(&ctx)
         .await
         .expect_err("manual volume cannot sync");
-        assert!(matches!(manual_err, CommandError::BadRequest(_)));
+        assert!(matches!(
+            manual_err,
+            CommandError {
+                kind: CommandErrorKind::BadRequest(_),
+                ..
+            }
+        ));
 
         let created = CreateVolume {
             name: "Repo".into(),
@@ -942,7 +960,13 @@ mod tests {
             .await
             .expect_err("secret-bearing URL should fail");
 
-            assert!(matches!(err, CommandError::BadRequest(_)));
+            assert!(matches!(
+                err,
+                CommandError {
+                    kind: CommandErrorKind::BadRequest(_),
+                    ..
+                }
+            ));
         }
     }
 
@@ -973,7 +997,13 @@ mod tests {
             .await
             .expect_err("unsafe git URL should fail");
 
-            assert!(matches!(err, CommandError::BadRequest(_)));
+            assert!(matches!(
+                err,
+                CommandError {
+                    kind: CommandErrorKind::BadRequest(_),
+                    ..
+                }
+            ));
         }
     }
 }

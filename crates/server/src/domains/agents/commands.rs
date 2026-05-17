@@ -98,7 +98,7 @@ async fn check_high_risk_caps(
         .await
         .map_err(classify_anyhow)?;
     if !high.is_empty() {
-        return Err(CommandError::Forbidden(format!(
+        return Err(CommandError::forbidden(format!(
             "Admin role required to assign high-risk capabilities: {}",
             high.join(", ")
         )));
@@ -245,7 +245,9 @@ impl Command for CreateAgent {
                 .create_agent_with_id(ctx.org_id(), AgentId::from_uuid(internal_uuid), input)
                 .await
                 .map_err(classify_anyhow)?
-                .ok_or_else(|| CommandError::Conflict("Agent UUID collision".into()))?;
+                .ok_or_else(|| {
+                    CommandError::conflict("Agent UUID collision").with_code("agent_id_taken")
+                })?;
             (row, internal_uuid)
         };
 
@@ -410,7 +412,7 @@ impl Command for UpdateAgentCmd {
         }
         validate_update_limits(&req)?;
         if matches!(req.status, Some(AgentStatus::Deleted)) {
-            return Err(CommandError::Forbidden(
+            return Err(CommandError::forbidden(
                 "Setting status=deleted requires dangerous delete permission".to_string(),
             ));
         }
@@ -1580,7 +1582,13 @@ mod tests {
         .expect_err("member must not activate high-risk version");
 
         assert!(
-            matches!(err, CommandError::Forbidden(_)),
+            matches!(
+                err,
+                CommandError {
+                    kind: CommandErrorKind::Forbidden(_),
+                    ..
+                }
+            ),
             "expected Forbidden, got {err:?}"
         );
 
@@ -1616,7 +1624,13 @@ mod tests {
         .expect_err("member must not roll back to high-risk version");
 
         assert!(
-            matches!(err, CommandError::Forbidden(_)),
+            matches!(
+                err,
+                CommandError {
+                    kind: CommandErrorKind::Forbidden(_),
+                    ..
+                }
+            ),
             "expected Forbidden, got {err:?}"
         );
 

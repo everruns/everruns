@@ -213,6 +213,34 @@ without a corresponding spec update, and ensure `command_error_kind` covers
 every variant when adding a new one (the unit test in `catalog.rs::tests`
 enforces this).
 
+### Agent-actionable extensions
+
+`CommandError` is a struct: `{ kind, code, allowed_actions, retry_after_seconds }`.
+Construct with the helpers (`CommandError::bad_request`, `forbidden`, `conflict`,
+`not_found`, `not_found_msg`, `unprocessable`, `internal`) and chain the
+extension builders when the recovery semantics warrant it:
+
+```rust
+CommandError::conflict("agent already exists")
+    .with_code("agent_already_exists")
+    .with_action(
+        AllowedAction::new("get-existing")
+            .with_operation_id("get_agent")
+            .with_hint("Fetch the existing agent and reuse it."),
+    )
+```
+
+The HTTP adapter (`From<CommandError> for (StatusCode, Json<ErrorResponse>)` in
+`domains/common.rs`) copies every extension into the RFC 9457 Problem Details
+body (`code`, `allowed_actions`, `retry_after_seconds`). See
+[`specs/apis.md`](apis.md#error-responses) for the wire shape.
+
+Extensions are intentionally **not** surfaced over MCP `execute` today — the
+`<kind>: <message>` wire format is a documented contract that bashkit
+consumers parse. Adding a structured channel (e.g. a JSON-tail or an
+out-of-band metadata field) is a future additive extension; the internal data
+model is ready for it without further refactoring.
+
 ## Writing a Command
 
 Canonical pattern (see `domains/agents/commands.rs` for reference):

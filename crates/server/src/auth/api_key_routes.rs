@@ -149,6 +149,7 @@ async fn create_api_key(
                 state.resource_limits.max_api_keys_per_user
             ),
             status: StatusCode::CONFLICT,
+            code: Some("api_key_limit_reached"),
         });
     }
 

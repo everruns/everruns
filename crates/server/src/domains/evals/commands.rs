@@ -507,7 +507,7 @@ impl Command for ExportEvalRunArtifacts {
         let mut body = String::new();
         for result in run.results {
             let line = serde_json::to_string(&q::run_artifact_export_value(&result))
-                .map_err(|e| CommandError::Internal(e.into()))?;
+                .map_err(|e| CommandError::internal(e.into()))?;
             body.push_str(&line);
             body.push('\n');
         }

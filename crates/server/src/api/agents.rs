@@ -783,7 +783,10 @@ pub async fn upsert_agent(
             .await;
         match create_result {
             Ok(agent) => (agent, true),
-            Err(crate::domains::common::CommandError::Conflict(_)) => {
+            Err(crate::domains::common::CommandError {
+                kind: crate::domains::common::CommandErrorKind::Conflict(_),
+                ..
+            }) => {
                 let existing = crate::domains::agents::queries::get_by_name(
                     &state.db,
                     state.ctx(&org).org_id(),

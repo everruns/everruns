@@ -43,13 +43,13 @@ fn validate_mcp_name(name: &str) -> Result<(), CommandError> {
 
 fn encrypt_api_key(ctx: &Ctx, api_key: &str) -> Result<Vec<u8>, CommandError> {
     let encryption = ctx.encryption.as_ref().ok_or_else(|| {
-        CommandError::Internal(anyhow::anyhow!(
+        CommandError::internal(anyhow::anyhow!(
             "Encryption not configured. Cannot store API key."
         ))
     })?;
     encryption
         .encrypt_string(api_key)
-        .map_err(CommandError::Internal)
+        .map_err(CommandError::internal)
 }
 
 // ============================================================================
@@ -278,7 +278,7 @@ impl Command for UpdateMcpServerCmd {
 
         let req = self.req;
         if matches!(req.status, Some(McpServerStatus::Deleted)) {
-            return Err(CommandError::Forbidden(
+            return Err(CommandError::forbidden(
                 "Setting status=deleted requires dangerous delete permission".to_string(),
             ));
         }

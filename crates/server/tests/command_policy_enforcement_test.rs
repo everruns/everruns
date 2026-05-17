@@ -23,7 +23,9 @@ use everruns_core::{
     Caller, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, DefaultPermissionResolver, OrgRole, Permission,
     PermissionResolver,
 };
-use everruns_server::domains::common::{Command, CommandError, Ctx, catalog_entries, dispatch};
+use everruns_server::domains::common::{
+    Command, CommandError, CommandErrorKind, Ctx, catalog_entries, dispatch,
+};
 use everruns_server::domains::harnesses::types::CreateHarnessRequest;
 use everruns_server::domains::harnesses::{CreateHarness, ListHarnesses};
 use everruns_server::services::CapabilityService;
@@ -107,7 +109,13 @@ async fn run_blocks_member_from_manage_command() {
         .await
         .expect_err("Member must not be allowed to create harnesses");
     assert!(
-        matches!(err, CommandError::Forbidden(_)),
+        matches!(
+            err,
+            CommandError {
+                kind: CommandErrorKind::Forbidden(_),
+                ..
+            }
+        ),
         "expected Forbidden, got {err:?}"
     );
 }
@@ -154,7 +162,13 @@ async fn run_honors_custom_resolver_denying_owner_write() {
         .await
         .expect_err("Custom resolver must block Owner write");
     assert!(
-        matches!(err, CommandError::Forbidden(_)),
+        matches!(
+            err,
+            CommandError {
+                kind: CommandErrorKind::Forbidden(_),
+                ..
+            }
+        ),
         "expected Forbidden, got {err:?}"
     );
 }
@@ -179,7 +193,13 @@ async fn run_honors_read_only_resolver() {
         .run(&ctx)
         .await
         .expect_err("Read-only resolver must block create");
-    assert!(matches!(err, CommandError::Forbidden(_)));
+    assert!(matches!(
+        err,
+        CommandError {
+            kind: CommandErrorKind::Forbidden(_),
+            ..
+        }
+    ));
 }
 
 // ============================================================================
@@ -200,7 +220,13 @@ async fn dispatch_blocks_member_from_manage_command() {
         .await
         .expect_err("dispatch must enforce Command::policy()");
     assert!(
-        matches!(err, CommandError::Forbidden(_)),
+        matches!(
+            err,
+            CommandError {
+                kind: CommandErrorKind::Forbidden(_),
+                ..
+            }
+        ),
         "expected Forbidden from dispatch, got {err:?}"
     );
 }
@@ -215,7 +241,13 @@ async fn dispatch_honors_custom_resolver() {
     let err = dispatch("create_harness", params, &ctx)
         .await
         .expect_err("dispatch must consult custom resolver");
-    assert!(matches!(err, CommandError::Forbidden(_)));
+    assert!(matches!(
+        err,
+        CommandError {
+            kind: CommandErrorKind::Forbidden(_),
+            ..
+        }
+    ));
 }
 
 // ============================================================================

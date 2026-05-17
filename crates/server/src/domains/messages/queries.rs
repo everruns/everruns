@@ -13,11 +13,11 @@ pub fn parse_session_id(input: &str) -> Result<SessionId, CommandError> {
 pub fn session_service(ctx: &Ctx) -> Result<&Arc<SessionService>, CommandError> {
     ctx.session_service
         .as_ref()
-        .ok_or_else(|| CommandError::Internal(anyhow::anyhow!("Session service not configured")))
+        .ok_or_else(|| CommandError::internal(anyhow::anyhow!("Session service not configured")))
 }
 
 pub fn message_service(ctx: &Ctx) -> Result<&Arc<MessageService>, CommandError> {
     ctx.message_service
         .as_ref()
-        .ok_or_else(|| CommandError::Internal(anyhow::anyhow!("Message service not configured")))
+        .ok_or_else(|| CommandError::internal(anyhow::anyhow!("Message service not configured")))
 }

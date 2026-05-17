@@ -54,5 +54,5 @@ pub fn is_reserved_path(path: &str) -> bool {
 
 pub fn classify_storage(error: anyhow::Error) -> CommandError {
     tracing::error!("Session file domain error: {error}");
-    CommandError::Internal(error)
+    CommandError::internal(error)
 }

@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 pub fn session_sandbox_service(ctx: &Ctx) -> Result<&Arc<SessionSandboxService>, CommandError> {
     ctx.session_sandbox_service.as_ref().ok_or_else(|| {
-        CommandError::Internal(anyhow::anyhow!("Session sandbox service not configured"))
+        CommandError::internal(anyhow::anyhow!("Session sandbox service not configured"))
     })
 }
 
@@ -20,7 +20,7 @@ pub fn map_tool_error(err: ToolExecutionResult) -> CommandError {
     match err {
         ToolExecutionResult::ToolError(message) => CommandError::bad_request(message),
         ToolExecutionResult::InternalError(error) => {
-            CommandError::Internal(anyhow::anyhow!(error.message))
+            CommandError::internal(anyhow::anyhow!(error.message))
         }
         ToolExecutionResult::ConnectionRequired { provider } => {
             CommandError::unprocessable(format!("Connection required: {provider}"))

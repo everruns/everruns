@@ -17,14 +17,17 @@ use std::pin::Pin;
 use std::sync::Arc;
 use utoipa::ToSchema;
 
-use crate::api::common::ErrorResponse;
+use crate::api::common::{AllowedAction, ErrorResponse};
 
 // ============================================================================
 // CommandError — protocol-agnostic, adapters map to HTTP status / MCP string
 // ============================================================================
 
+/// Stable, lower-snake-case category for a command failure. The token set is
+/// part of the public MCP contract (see `specs/domains.md` "Structured
+/// dispatch errors"); do not rename or drop tokens without a spec update.
 #[derive(Debug, thiserror::Error)]
-pub enum CommandError {
+pub enum CommandErrorKind {
     #[error("{0}")]
     BadRequest(String),
     #[error("{0}")]
@@ -35,36 +38,122 @@ pub enum CommandError {
     NotFound(String),
     #[error("{0}")]
     Conflict(String),
-    #[error("{0}")]
+    #[error(transparent)]
     Internal(#[from] anyhow::Error),
+}
+
+/// Command failure with optional agent-actionable extensions.
+///
+/// Carries the `kind`/`message` pair plus the RFC 9457 Problem Details
+/// extensions (`code`, `allowed_actions`, `retry_after_seconds`). The HTTP
+/// adapter (`From<CommandError> for (StatusCode, Json<ErrorResponse>)`)
+/// propagates every extension. MCP `execute` keeps emitting
+/// `<kind>: <message>` for bashkit compatibility; surfacing extensions over
+/// MCP is a planned additive extension (see `specs/domains.md`).
+#[derive(Debug)]
+pub struct CommandError {
+    pub kind: CommandErrorKind,
+    pub code: Option<String>,
+    pub allowed_actions: Vec<AllowedAction>,
+    pub retry_after_seconds: Option<u32>,
+}
+
+impl std::fmt::Display for CommandError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.kind.fmt(f)
+    }
+}
+
+impl std::error::Error for CommandError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.kind)
+    }
+}
+
+impl From<CommandErrorKind> for CommandError {
+    fn from(kind: CommandErrorKind) -> Self {
+        Self {
+            kind,
+            code: None,
+            allowed_actions: Vec::new(),
+            retry_after_seconds: None,
+        }
+    }
+}
+
+impl From<anyhow::Error> for CommandError {
+    fn from(e: anyhow::Error) -> Self {
+        CommandErrorKind::Internal(e).into()
+    }
 }
 
 impl CommandError {
     pub fn status(&self) -> StatusCode {
-        match self {
-            Self::BadRequest(_) => StatusCode::BAD_REQUEST,
-            Self::Unprocessable(_) => StatusCode::UNPROCESSABLE_ENTITY,
-            Self::Forbidden(_) => StatusCode::FORBIDDEN,
-            Self::NotFound(_) => StatusCode::NOT_FOUND,
-            Self::Conflict(_) => StatusCode::CONFLICT,
-            Self::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        match &self.kind {
+            CommandErrorKind::BadRequest(_) => StatusCode::BAD_REQUEST,
+            CommandErrorKind::Unprocessable(_) => StatusCode::UNPROCESSABLE_ENTITY,
+            CommandErrorKind::Forbidden(_) => StatusCode::FORBIDDEN,
+            CommandErrorKind::NotFound(_) => StatusCode::NOT_FOUND,
+            CommandErrorKind::Conflict(_) => StatusCode::CONFLICT,
+            CommandErrorKind::Internal(_) => StatusCode::INTERNAL_SERVER_ERROR,
         }
     }
 
+    /// Plain message for transport adapters (MCP `<kind>: <message>` etc.).
+    /// `Internal` is intentionally hidden; callers must redact it themselves.
+    pub fn message(&self) -> String {
+        self.kind.to_string()
+    }
+
     pub fn not_found(resource: &str) -> Self {
-        Self::NotFound(format!("{resource} not found"))
+        CommandError::not_found_msg(format!("{resource} not found"))
+    }
+
+    /// Build a NotFound with the supplied message verbatim. Use when the
+    /// "<resource> not found" template isn't a fit (e.g. dispatch told us
+    /// "Unknown command: foo").
+    pub fn not_found_msg(message: impl Into<String>) -> Self {
+        CommandErrorKind::NotFound(message.into()).into()
     }
 
     pub fn bad_request(msg: impl Into<String>) -> Self {
-        Self::BadRequest(msg.into())
+        CommandErrorKind::BadRequest(msg.into()).into()
     }
 
     pub fn unprocessable(msg: impl Into<String>) -> Self {
-        Self::Unprocessable(msg.into())
+        CommandErrorKind::Unprocessable(msg.into()).into()
     }
 
     pub fn conflict(msg: impl Into<String>) -> Self {
-        Self::Conflict(msg.into())
+        CommandErrorKind::Conflict(msg.into()).into()
+    }
+
+    pub fn forbidden(msg: impl Into<String>) -> Self {
+        CommandErrorKind::Forbidden(msg.into()).into()
+    }
+
+    pub fn internal(err: anyhow::Error) -> Self {
+        CommandErrorKind::Internal(err).into()
+    }
+
+    // ---- Agent-actionable extension builders ------------------------------
+
+    /// Attach a stable, machine-readable error code (snake_case).
+    pub fn with_code(mut self, code: impl Into<String>) -> Self {
+        self.code = Some(code.into());
+        self
+    }
+
+    /// Attach a recovery action the caller can take.
+    pub fn with_action(mut self, action: AllowedAction) -> Self {
+        self.allowed_actions.push(action);
+        self
+    }
+
+    /// Attach a retry hint (seconds). Only meaningful on 429 / transient 503.
+    pub fn with_retry_after(mut self, seconds: u32) -> Self {
+        self.retry_after_seconds = Some(seconds);
+        self
     }
 }
 
@@ -72,24 +161,24 @@ impl CommandError {
 pub fn classify_anyhow(e: anyhow::Error) -> CommandError {
     // PolicyError → Forbidden
     if let Some(pe) = e.downcast_ref::<PolicyError>() {
-        return CommandError::Forbidden(pe.message.clone());
+        return CommandError::forbidden(pe.message.clone());
     }
 
     // BadRequestError → BadRequest
     if let Some(br) = e.downcast_ref::<crate::errors::BadRequestError>() {
-        return CommandError::BadRequest(br.message().to_string());
+        return CommandError::bad_request(br.message().to_string());
     }
 
     // ResourceNotFoundError → NotFound
     if let Some(nf) = e.downcast_ref::<crate::errors::ResourceNotFoundError>() {
-        return CommandError::NotFound(format!("{} not found", nf.resource()));
+        return CommandError::not_found(nf.resource());
     }
 
     let msg = e.to_string();
     let lowered = msg.to_ascii_lowercase();
 
     if lowered.contains("duplicate key") || lowered.contains("already exists") {
-        return CommandError::Conflict(msg);
+        return CommandError::conflict(msg).with_code("already_exists");
     }
 
     // EVE-437: this list catches `anyhow::bail!` strings emitted from
@@ -134,10 +223,10 @@ pub fn classify_anyhow(e: anyhow::Error) -> CommandError {
     .any(|pattern| lowered.contains(pattern));
 
     if is_bad_request {
-        return CommandError::BadRequest(msg);
+        return CommandError::bad_request(msg);
     }
 
-    CommandError::Internal(e)
+    CommandError::internal(e)
 }
 
 // ============================================================================
@@ -147,13 +236,33 @@ pub fn classify_anyhow(e: anyhow::Error) -> CommandError {
 impl From<CommandError> for (StatusCode, Json<ErrorResponse>) {
     fn from(e: CommandError) -> Self {
         let status = e.status();
-        match &e {
-            CommandError::Internal(inner) => {
+        let CommandError {
+            kind,
+            code,
+            allowed_actions,
+            retry_after_seconds,
+        } = e;
+        let mut body = match kind {
+            CommandErrorKind::Internal(inner) => {
                 tracing::error!("Command error: {inner}");
-                (status, Json(ErrorResponse::new("Internal server error")))
+                ErrorResponse::new("Internal server error")
+                    .with_code(code.unwrap_or_else(|| "internal_error".to_string()))
             }
-            _ => (status, Json(ErrorResponse::new(e.to_string()))),
+            other => {
+                let mut body = ErrorResponse::new(other.to_string());
+                if let Some(c) = code {
+                    body = body.with_code(c);
+                }
+                body
+            }
+        };
+        for action in allowed_actions {
+            body = body.with_action(action);
         }
+        if let Some(secs) = retry_after_seconds {
+            body = body.with_retry_after(secs);
+        }
+        body.into_response(status)
     }
 }
 
@@ -521,7 +630,7 @@ pub trait Command: DeserializeOwned + Send + 'static + CommandSchema {
                 if let Some(policy) = Self::policy() {
                     policy
                         .evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)
-                        .map_err(|e| CommandError::Forbidden(e.message))?;
+                        .map_err(|e| CommandError::forbidden(e.message))?;
                 }
                 self.execute(ctx).await
             }
@@ -555,7 +664,10 @@ pub trait Command: DeserializeOwned + Send + 'static + CommandSchema {
                 // them. 4xx remain at debug! — they're caller-induced and
                 // would dominate log volume otherwise.
                 match err {
-                    CommandError::Internal(_) => {
+                    CommandError {
+                        kind: CommandErrorKind::Internal(_),
+                        ..
+                    } => {
                         tracing::error!(status, error = %err, "command failed");
                     }
                     _ => {
@@ -574,12 +686,30 @@ pub trait Command: DeserializeOwned + Send + 'static + CommandSchema {
 /// counter and `everruns_command_duration_seconds` histogram.
 fn command_error_status_label(err: &CommandError) -> &'static str {
     match err {
-        CommandError::BadRequest(_) => "bad_request",
-        CommandError::Unprocessable(_) => "unprocessable",
-        CommandError::Forbidden(_) => "forbidden",
-        CommandError::NotFound(_) => "not_found",
-        CommandError::Conflict(_) => "conflict",
-        CommandError::Internal(_) => "internal",
+        CommandError {
+            kind: CommandErrorKind::BadRequest(_),
+            ..
+        } => "bad_request",
+        CommandError {
+            kind: CommandErrorKind::Unprocessable(_),
+            ..
+        } => "unprocessable",
+        CommandError {
+            kind: CommandErrorKind::Forbidden(_),
+            ..
+        } => "forbidden",
+        CommandError {
+            kind: CommandErrorKind::NotFound(_),
+            ..
+        } => "not_found",
+        CommandError {
+            kind: CommandErrorKind::Conflict(_),
+            ..
+        } => "conflict",
+        CommandError {
+            kind: CommandErrorKind::Internal(_),
+            ..
+        } => "internal",
     }
 }
 
@@ -776,12 +906,12 @@ fn dispatch_for<C: Command>(
 ) -> Pin<Box<dyn Future<Output = Result<String, CommandError>> + Send + '_>> {
     Box::pin(async move {
         let cmd: C =
-            serde_json::from_value(params).map_err(|e| CommandError::BadRequest(e.to_string()))?;
+            serde_json::from_value(params).map_err(|e| CommandError::bad_request(e.to_string()))?;
 
         // `run` handles the policy check using the active resolver in `ctx`.
         let result = cmd.run(ctx).await?;
 
-        serde_json::to_string(&result).map_err(|e| CommandError::Internal(e.into()))
+        serde_json::to_string(&result).map_err(|e| CommandError::internal(e.into()))
     })
 }
 
@@ -808,7 +938,7 @@ pub async fn dispatch(
 ) -> Result<String, CommandError> {
     let desc = DISPATCH_TABLE
         .get(name)
-        .ok_or_else(|| CommandError::NotFound(format!("Unknown command: {name}")))?;
+        .ok_or_else(|| CommandError::not_found_msg(format!("Unknown command: {name}")))?;
     (desc.dispatch)(params, ctx).await
 }
 
@@ -1025,7 +1155,9 @@ mod error_tests {
     #[test]
     fn classify_anyhow_maps_bad_request_error() {
         let err = classify_anyhow(crate::errors::BadRequestError::new("bad input").into());
-        assert!(matches!(err, CommandError::BadRequest(msg) if msg == "bad input"));
+        assert!(
+            matches!(err, CommandError { kind: CommandErrorKind::BadRequest(msg), .. } if msg == "bad input")
+        );
     }
 
     // Cardinality contract for the `status` label on `everruns_commands_total`
@@ -1035,27 +1167,27 @@ mod error_tests {
     #[test]
     fn command_error_status_label_covers_every_variant() {
         assert_eq!(
-            command_error_status_label(&CommandError::BadRequest("x".into())),
+            command_error_status_label(&CommandError::bad_request("x")),
             "bad_request"
         );
         assert_eq!(
-            command_error_status_label(&CommandError::Unprocessable("x".into())),
+            command_error_status_label(&CommandError::unprocessable("x")),
             "unprocessable"
         );
         assert_eq!(
-            command_error_status_label(&CommandError::Forbidden("x".into())),
+            command_error_status_label(&CommandError::forbidden("x")),
             "forbidden"
         );
         assert_eq!(
-            command_error_status_label(&CommandError::NotFound("x".into())),
+            command_error_status_label(&CommandError::not_found_msg("x")),
             "not_found"
         );
         assert_eq!(
-            command_error_status_label(&CommandError::Conflict("x".into())),
+            command_error_status_label(&CommandError::conflict("x")),
             "conflict"
         );
         assert_eq!(
-            command_error_status_label(&CommandError::Internal(anyhow::anyhow!("x"))),
+            command_error_status_label(&CommandError::internal(anyhow::anyhow!("x"))),
             "internal"
         );
     }
@@ -1063,7 +1195,9 @@ mod error_tests {
     #[test]
     fn classify_anyhow_maps_not_found_error() {
         let err = classify_anyhow(crate::errors::ResourceNotFoundError::new("Thing").into());
-        assert!(matches!(err, CommandError::NotFound(msg) if msg == "Thing not found"));
+        assert!(
+            matches!(err, CommandError { kind: CommandErrorKind::NotFound(msg), .. } if msg == "Thing not found")
+        );
     }
 
     // EVE-437: every substring added to the `is_bad_request` list must in
@@ -1088,7 +1222,13 @@ mod error_tests {
         for raw in cases {
             let err = classify_anyhow(anyhow::anyhow!("{raw}"));
             assert!(
-                matches!(err, CommandError::BadRequest(_)),
+                matches!(
+                    err,
+                    CommandError {
+                        kind: CommandErrorKind::BadRequest(_),
+                        ..
+                    }
+                ),
                 "{raw} must classify as BadRequest, got {err:?}"
             );
         }
@@ -1101,7 +1241,13 @@ mod error_tests {
     fn classify_anyhow_unknown_message_is_internal() {
         let err = classify_anyhow(anyhow::anyhow!("connection timed out"));
         assert!(
-            matches!(err, CommandError::Internal(_)),
+            matches!(
+                err,
+                CommandError {
+                    kind: CommandErrorKind::Internal(_),
+                    ..
+                }
+            ),
             "unknown messages must remain Internal: {err:?}"
         );
     }
@@ -1113,13 +1259,71 @@ mod error_tests {
     fn classify_anyhow_maps_policy_error() {
         let pe = everruns_core::PolicyError::denied("test_policy", "admin role");
         let err = classify_anyhow(anyhow::Error::new(pe));
-        let CommandError::Forbidden(msg) = &err else {
+        let CommandError {
+            kind: CommandErrorKind::Forbidden(msg),
+            ..
+        } = &err
+        else {
             panic!("PolicyError must classify as Forbidden, got {err:?}");
         };
         assert!(
             msg.contains("admin role"),
             "Forbidden message must include detail, got {msg:?}"
         );
+    }
+
+    #[test]
+    fn http_adapter_propagates_extensions() {
+        use crate::api::common::AllowedAction;
+        let err = CommandError::conflict("agent already exists")
+            .with_code("agent_already_exists")
+            .with_action(
+                AllowedAction::new("get-existing")
+                    .with_operation_id("get_agent")
+                    .with_hint("Fetch the existing agent and reuse it."),
+            );
+        let (status, body) = <(StatusCode, Json<ErrorResponse>)>::from(err);
+        assert_eq!(status, StatusCode::CONFLICT);
+        let body = body.0;
+        assert_eq!(body.status, 409);
+        assert_eq!(body.title, "Conflict");
+        assert_eq!(body.detail.as_deref(), Some("agent already exists"));
+        assert_eq!(body.code.as_deref(), Some("agent_already_exists"));
+        assert_eq!(body.allowed_actions.len(), 1);
+        assert_eq!(body.allowed_actions[0].rel, "get-existing");
+        assert_eq!(
+            body.allowed_actions[0].operation_id.as_deref(),
+            Some("get_agent")
+        );
+    }
+
+    #[test]
+    fn http_adapter_propagates_retry_after() {
+        let err = CommandError::unprocessable("backend warming up").with_retry_after(30);
+        let (status, body) = <(StatusCode, Json<ErrorResponse>)>::from(err);
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(body.0.retry_after_seconds, Some(30));
+    }
+
+    #[test]
+    fn http_adapter_redacts_internal_detail() {
+        let err = CommandError::internal(anyhow::anyhow!("db handle exhausted: secret=hunter2"));
+        let (_status, body) = <(StatusCode, Json<ErrorResponse>)>::from(err);
+        // detail is the safe generic string, never the anyhow message.
+        assert_eq!(body.0.detail.as_deref(), Some("Internal server error"));
+        assert_eq!(body.0.code.as_deref(), Some("internal_error"));
+    }
+
+    #[test]
+    fn mcp_format_dispatch_error_unchanged_by_extensions() {
+        // Bashkit consumers parse `<kind>: <message>` — adding extensions to
+        // CommandError MUST NOT alter that wire string.
+        let plain = CommandError::bad_request("missing field 'name'");
+        let with_ext = CommandError::bad_request("missing field 'name'")
+            .with_code("agent_name_required")
+            .with_retry_after(0);
+        assert_eq!(plain.to_string(), "missing field 'name'");
+        assert_eq!(with_ext.to_string(), "missing field 'name'");
     }
 }
 

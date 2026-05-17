@@ -160,13 +160,13 @@ impl ReportingService {
                 .bind(org_id)
                 .bind(request.name)
                 .bind(request.description)
-                .bind(serde_json::to_value(request.query).map_err(|err| CommandError::Internal(err.into()))?)
+                .bind(serde_json::to_value(request.query).map_err(|err| CommandError::internal(err.into()))?)
                 .bind(
                     request
                         .dashboard
                         .map(serde_json::to_value)
                         .transpose()
-                        .map_err(|err| CommandError::Internal(err.into()))?,
+                        .map_err(|err| CommandError::internal(err.into()))?,
                 )
                 .fetch_one(db.pool())
                 .await
@@ -228,13 +228,13 @@ impl ReportingService {
                 .bind(description)
                 .bind(
                     serde_json::to_value(query)
-                        .map_err(|err| CommandError::Internal(err.into()))?,
+                        .map_err(|err| CommandError::internal(err.into()))?,
                 )
                 .bind(
                     dashboard
                         .map(serde_json::to_value)
                         .transpose()
-                        .map_err(|err| CommandError::Internal(err.into()))?,
+                        .map_err(|err| CommandError::internal(err.into()))?,
                 )
                 .fetch_optional(db.pool())
                 .await
@@ -436,11 +436,11 @@ fn saved_report_from_row(row: sqlx::postgres::PgRow) -> Result<SavedReport, Comm
         description: row
             .try_get("description")
             .map_err(|err| classify_anyhow(err.into()))?,
-        query: serde_json::from_value(query).map_err(|err| CommandError::Internal(err.into()))?,
+        query: serde_json::from_value(query).map_err(|err| CommandError::internal(err.into()))?,
         dashboard: dashboard
             .map(serde_json::from_value)
             .transpose()
-            .map_err(|err| CommandError::Internal(err.into()))?,
+            .map_err(|err| CommandError::internal(err.into()))?,
         created_at: row
             .try_get("created_at")
             .map_err(|err| classify_anyhow(err.into()))?,

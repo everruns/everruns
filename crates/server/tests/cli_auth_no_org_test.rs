@@ -114,11 +114,15 @@ async fn test_cli_exchange_no_orgs_returns_422() {
         "Expected 422 for user with no orgs, got {status}: {body}"
     );
     assert!(
-        body["error"]
+        body["detail"]
             .as_str()
             .unwrap_or("")
             .contains("create an organization"),
         "Error should tell user to create an org: {body}"
+    );
+    assert_eq!(
+        body["code"], "unprocessable",
+        "Auth errors should carry the stable RFC 9457 `code`: {body}"
     );
 }
 

@@ -57,7 +57,7 @@ impl Command for ListAuditLogs {
         // here costs nothing and makes this command safe to call directly.
         AUDIT_LOG_VIEW
             .evaluate(&ctx.caller)
-            .map_err(|e| CommandError::Forbidden(e.message))?;
+            .map_err(|e| CommandError::forbidden(e.message))?;
 
         let limit = self.limit.unwrap_or(50).clamp(1, 200);
 
@@ -167,7 +167,13 @@ mod tests {
             .execute(&ctx)
             .await
             .expect_err("member should be rejected by AUDIT_LOG_VIEW policy");
-        assert!(matches!(err, CommandError::Forbidden(_)));
+        assert!(matches!(
+            err,
+            CommandError {
+                kind: CommandErrorKind::Forbidden(_),
+                ..
+            }
+        ));
     }
 
     #[tokio::test]

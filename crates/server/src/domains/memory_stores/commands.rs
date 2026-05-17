@@ -649,7 +649,13 @@ mod tests {
             .run(&org_b)
             .await
             .expect_err("org B should not see store A");
-        assert!(matches!(err, CommandError::NotFound(_)));
+        assert!(matches!(
+            err,
+            CommandError {
+                kind: CommandErrorKind::NotFound(_),
+                ..
+            }
+        ));
 
         // Org B's backend recall returns nothing for org A's store_id.
         let (recalled, total) = backend_b
@@ -687,7 +693,13 @@ mod tests {
         .run(&org_b)
         .await
         .expect_err("other org should not see the store");
-        assert!(matches!(err, CommandError::NotFound(_)));
+        assert!(matches!(
+            err,
+            CommandError {
+                kind: CommandErrorKind::NotFound(_),
+                ..
+            }
+        ));
 
         // ListMemoryStores in other org should be empty.
         let listed = ListMemoryStores.run(&org_b).await.expect("list stores");
@@ -787,7 +799,13 @@ mod tests {
         .run(&ctx)
         .await
         .expect_err("rename should conflict");
-        assert!(matches!(err, CommandError::Conflict(_)));
+        assert!(matches!(
+            err,
+            CommandError {
+                kind: CommandErrorKind::Conflict(_),
+                ..
+            }
+        ));
     }
 
     #[tokio::test]
@@ -811,7 +829,13 @@ mod tests {
         .run(&ctx)
         .await
         .expect_err("demote-only-default should be rejected");
-        assert!(matches!(err, CommandError::BadRequest(_)));
+        assert!(matches!(
+            err,
+            CommandError {
+                kind: CommandErrorKind::BadRequest(_),
+                ..
+            }
+        ));
 
         let listed = ListMemoryStores.run(&ctx).await.expect("list stores");
         assert!(listed.iter().any(|s| s.id == only.id && s.is_default));
@@ -838,6 +862,12 @@ mod tests {
         .run(&ctx)
         .await
         .expect_err("empty update should fail");
-        assert!(matches!(err, CommandError::BadRequest(_)));
+        assert!(matches!(
+            err,
+            CommandError {
+                kind: CommandErrorKind::BadRequest(_),
+                ..
+            }
+        ));
     }
 }

@@ -41,7 +41,7 @@ fn map_update_error(error: anyhow::Error) -> CommandError {
 fn map_delete_error(error: anyhow::Error) -> CommandError {
     let msg = error.to_string();
     if msg.contains("readonly") {
-        CommandError::Forbidden(msg)
+        CommandError::forbidden(msg)
     } else if msg.contains("not empty") || msg.contains("Cannot delete root") {
         CommandError::bad_request(msg)
     } else {

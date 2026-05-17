@@ -1223,10 +1223,10 @@ where
     } = request;
 
     if app.status != AppStatus::Published {
-        return Err(CommandError::Forbidden("App is not published".to_string()));
+        return Err(CommandError::forbidden("App is not published".to_string()));
     }
     if !channel.enabled {
-        return Err(CommandError::Forbidden(
+        return Err(CommandError::forbidden(
             "App channel is disabled".to_string(),
         ));
     }
@@ -2123,7 +2123,7 @@ impl Command for UpdateAppCmd {
 
         let req = self.req;
         if matches!(req.status, Some(AppStatus::Deleted)) {
-            return Err(CommandError::Forbidden(
+            return Err(CommandError::forbidden(
                 "Setting status=deleted requires dangerous delete permission".to_string(),
             ));
         }
@@ -2745,10 +2745,10 @@ impl Command for TriggerAppScheduleChannelCmd {
 
     async fn execute(self, ctx: &Ctx) -> Result<TriggerAppScheduleChannelOutput, CommandError> {
         let session_service = ctx.session_service.as_ref().ok_or_else(|| {
-            CommandError::Internal(anyhow::anyhow!("Session service not available"))
+            CommandError::internal(anyhow::anyhow!("Session service not available"))
         })?;
         let message_service = ctx.message_service.as_ref().ok_or_else(|| {
-            CommandError::Internal(anyhow::anyhow!("Message service not available"))
+            CommandError::internal(anyhow::anyhow!("Message service not available"))
         })?;
         let app_id: AppId = self
             .app_id

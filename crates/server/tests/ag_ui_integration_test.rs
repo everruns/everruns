@@ -563,7 +563,7 @@ async fn test_ag_ui_rejects_privileged_message_roles() {
         );
         let body: Value = resp.json();
         // Generic error — must not echo the offending role back.
-        let error = body["error"].as_str().unwrap_or("");
+        let error = body["detail"].as_str().unwrap_or("");
         assert_eq!(error, "invalid_request");
         assert!(
             !error.contains(role),
@@ -594,7 +594,7 @@ async fn test_ag_ui_rejects_duplicate_message_ids() {
     let resp = send_ag_ui_run(&server, &app.public_id, &payload).await;
     assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
     let body: Value = resp.json();
-    assert_eq!(body["error"], "invalid_request");
+    assert_eq!(body["detail"], "invalid_request");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

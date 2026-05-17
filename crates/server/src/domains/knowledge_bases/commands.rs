@@ -844,7 +844,13 @@ mod tests {
         .run(&ctx)
         .await
         .expect_err("invalid kind should fail");
-        assert!(matches!(err, CommandError::BadRequest(_)));
+        assert!(matches!(
+            err,
+            CommandError {
+                kind: CommandErrorKind::BadRequest(_),
+                ..
+            }
+        ));
 
         let oversize = "x".repeat(MAX_ENTRY_BODY_BYTES + 1);
         let err = CreateKnowledgeEntry {
@@ -857,7 +863,13 @@ mod tests {
         .run(&ctx)
         .await
         .expect_err("oversized body should fail");
-        assert!(matches!(err, CommandError::BadRequest(_)));
+        assert!(matches!(
+            err,
+            CommandError {
+                kind: CommandErrorKind::BadRequest(_),
+                ..
+            }
+        ));
     }
 
     #[tokio::test]
@@ -880,7 +892,13 @@ mod tests {
         .run(&org_two)
         .await
         .expect_err("other org should not read kb");
-        assert!(matches!(err, CommandError::NotFound(_)));
+        assert!(matches!(
+            err,
+            CommandError {
+                kind: CommandErrorKind::NotFound(_),
+                ..
+            }
+        ));
     }
 
     #[tokio::test]
@@ -901,7 +919,13 @@ mod tests {
         .run(&ctx)
         .await
         .expect_err("duplicate name should fail");
-        assert!(matches!(err, CommandError::Conflict(_)));
+        assert!(matches!(
+            err,
+            CommandError {
+                kind: CommandErrorKind::Conflict(_),
+                ..
+            }
+        ));
     }
 
     #[tokio::test]
@@ -956,7 +980,13 @@ mod tests {
         .run(&ctx)
         .await
         .expect_err("create on archived kb should fail");
-        assert!(matches!(err, CommandError::BadRequest(_)));
+        assert!(matches!(
+            err,
+            CommandError {
+                kind: CommandErrorKind::BadRequest(_),
+                ..
+            }
+        ));
 
         let err = UpdateKnowledgeEntryCmd {
             kb_id: kb.id.to_string(),
@@ -971,7 +1001,13 @@ mod tests {
         .run(&ctx)
         .await
         .expect_err("update on archived kb should fail");
-        assert!(matches!(err, CommandError::BadRequest(_)));
+        assert!(matches!(
+            err,
+            CommandError {
+                kind: CommandErrorKind::BadRequest(_),
+                ..
+            }
+        ));
 
         let err = DeleteKnowledgeEntry {
             kb_id: kb.id.to_string(),
@@ -980,7 +1016,13 @@ mod tests {
         .run(&ctx)
         .await
         .expect_err("delete on archived kb should fail");
-        assert!(matches!(err, CommandError::BadRequest(_)));
+        assert!(matches!(
+            err,
+            CommandError {
+                kind: CommandErrorKind::BadRequest(_),
+                ..
+            }
+        ));
 
         let err = UpdateKnowledgeBaseCmd {
             kb_id: kb.id.to_string(),
@@ -992,6 +1034,12 @@ mod tests {
         .run(&ctx)
         .await
         .expect_err("update on archived kb should fail");
-        assert!(matches!(err, CommandError::BadRequest(_)));
+        assert!(matches!(
+            err,
+            CommandError {
+                kind: CommandErrorKind::BadRequest(_),
+                ..
+            }
+        ));
     }
 }

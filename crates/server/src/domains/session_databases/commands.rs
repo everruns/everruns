@@ -9,7 +9,7 @@ fn sqldb_store(
     ctx: &Ctx,
 ) -> Result<&std::sync::Arc<dyn everruns_core::session_sqldb::SessionSqlDbStore>, CommandError> {
     ctx.sqldb_store.as_ref().ok_or_else(|| {
-        CommandError::Internal(anyhow::anyhow!("Session SQL DB store not configured"))
+        CommandError::internal(anyhow::anyhow!("Session SQL DB store not configured"))
     })
 }
 
@@ -42,7 +42,7 @@ impl Command for ListSessionDatabases {
         let items = sqldb_store(ctx)?
             .list_databases(session_id)
             .await
-            .map_err(|e| CommandError::Internal(e.into()))?
+            .map_err(|e| CommandError::internal(e.into()))?
             .into_iter()
             .map(Into::into)
             .collect();
@@ -90,7 +90,7 @@ impl Command for CreateSessionDatabaseCmd {
                 SessionSqlDbError::DatabaseAlreadyExists(_) => {
                     CommandError::conflict(e.to_string())
                 }
-                other => CommandError::Internal(other.into()),
+                other => CommandError::internal(other.into()),
             })?;
 
         Ok(info.into())
@@ -125,7 +125,7 @@ impl Command for GetSessionDatabase {
         sqldb_store(ctx)?
             .get_database(session_id, &self.name)
             .await
-            .map_err(|e| CommandError::Internal(e.into()))?
+            .map_err(|e| CommandError::internal(e.into()))?
             .map(Into::into)
             .ok_or_else(|| CommandError::not_found("Database"))
     }
@@ -168,7 +168,7 @@ impl Command for DeleteSessionDatabase {
         let deleted = sqldb_store(ctx)?
             .delete_database(session_id, &self.name)
             .await
-            .map_err(|e| CommandError::Internal(e.into()))?;
+            .map_err(|e| CommandError::internal(e.into()))?;
         if !deleted {
             return Err(CommandError::not_found("Database"));
         }
@@ -206,7 +206,7 @@ impl Command for GetSessionDatabaseSchema {
             .await
             .map_err(|e| match e {
                 SessionSqlDbError::DatabaseNotFound(_) => CommandError::not_found("Database"),
-                other => CommandError::Internal(other.into()),
+                other => CommandError::internal(other.into()),
             })?;
 
         Ok(SchemaResponse {

@@ -39,7 +39,7 @@ fn validate_limit(limit: f64, soft_limit: Option<f64>) -> Result<(), CommandErro
 fn require_budget_manage(ctx: &Ctx) -> Result<(), CommandError> {
     BUDGET_MANAGE
         .evaluate(&ctx.caller)
-        .map_err(|e| CommandError::Forbidden(e.message))
+        .map_err(|e| CommandError::forbidden(e.message))
 }
 
 #[derive(Debug, Serialize)]
@@ -696,7 +696,13 @@ mod tests {
         .execute(&ctx)
         .await
         .expect_err("member should be denied by BUDGET_MANAGE");
-        assert!(matches!(err, CommandError::Forbidden(_)));
+        assert!(matches!(
+            err,
+            CommandError {
+                kind: CommandErrorKind::Forbidden(_),
+                ..
+            }
+        ));
     }
 
     #[tokio::test]

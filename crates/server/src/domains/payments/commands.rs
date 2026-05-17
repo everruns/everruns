@@ -70,7 +70,7 @@ fn encrypt_wallet_key(
     let encryption = ctx
         .encryption
         .as_ref()
-        .ok_or_else(|| CommandError::Internal(anyhow::anyhow!("Encryption is not configured")))?;
+        .ok_or_else(|| CommandError::internal(anyhow::anyhow!("Encryption is not configured")))?;
     // THREAT[TM-CRYPTO-008]: Machine-payment wallet keys must not be stored in plaintext.
     // Mitigation: accept the key only at write time, encrypt it with the server envelope
     // encryption service, and never include it in payment account API responses.
@@ -78,7 +78,7 @@ fn encrypt_wallet_key(
         .encrypt_string(private_key.trim())
         .map(Some)
         .map_err(|error| {
-            CommandError::Internal(anyhow::anyhow!("Failed to encrypt wallet key: {error}"))
+            CommandError::internal(anyhow::anyhow!("Failed to encrypt wallet key: {error}"))
         })
 }
 
@@ -660,7 +660,7 @@ mod tests {
             .expect_err("x402 accounts must be backed by signing material");
 
         assert!(
-            matches!(err, CommandError::BadRequest(message) if message.contains("private_key"))
+            matches!(err, CommandError { kind: CommandErrorKind::BadRequest(message), .. } if message.contains("private_key"))
         );
     }
 
