@@ -129,9 +129,11 @@ function defaultQuery(dataset: DatasetCatalogEntry | undefined, days = 7): Repor
 export default function ReportsPage() {
   usePageTitle("Reports");
   const { hasRole } = useOrg();
+  const canManageReports = hasRole("admin");
+  const canAdministerReports = hasRole("owner");
   const catalog = useReportCatalog();
   const savedReports = useSavedReports();
-  const diagnostics = useReportingDiagnostics();
+  const diagnostics = useReportingDiagnostics(canAdministerReports);
   const createSavedReport = useCreateSavedReport();
   const deleteSavedReport = useDeleteSavedReport();
   const runSavedReport = useRunSavedReport();
@@ -145,6 +147,7 @@ export default function ReportsPage() {
   const [selectedRange, setSelectedRange] = useState("7");
   const [saveName, setSaveName] = useState("");
   const [manualResult, setManualResult] = useState<ReportResult>();
+  const [savedQuery, setSavedQuery] = useState<ReportQuery>();
 
   const datasets = useMemo(() => catalog.data?.datasets ?? [], [catalog.data?.datasets]);
   const dataset = useMemo(
@@ -162,6 +165,7 @@ export default function ReportsPage() {
   }, [dataset, selectedDataset]);
 
   const query = useMemo<ReportQuery | undefined>(() => {
+    if (savedQuery) return savedQuery;
     if (!dataset || !selectedMeasure) return defaultQuery(dataset, Number(selectedRange));
     return {
       dataset: dataset.name,
@@ -172,15 +176,13 @@ export default function ReportsPage() {
       order_by: [{ measure: selectedMeasure, direction: "desc" }],
       limit: 100,
     };
-  }, [dataset, selectedDimension, selectedMeasure, selectedRange]);
+  }, [dataset, savedQuery, selectedDimension, selectedMeasure, selectedRange]);
 
   const result = useReportQuery(query);
   const activeResult = manualResult ?? result.data;
   const activeColumns = activeResult?.columns ?? [];
   const activeRows = activeResult?.rows ?? [];
   const measureColumn = activeColumns.find((column) => column.kind === "measure")?.name;
-  const canManageReports = hasRole("admin");
-  const canAdministerReports = canManageReports;
   const measureTotal = measureColumn
     ? activeRows.reduce(
         (sum, row) => sum + (typeof row[measureColumn] === "number" ? row[measureColumn] : 0),
@@ -191,6 +193,7 @@ export default function ReportsPage() {
   const handleDatasetChange = (value: string) => {
     const next = datasets.find((entry) => entry.name === value);
     setManualResult(undefined);
+    setSavedQuery(undefined);
     setSelectedDataset(value);
     setSelectedDimension(
       next?.dimensions.includes("day") ? "day" : (next?.dimensions[0] ?? "none"),
@@ -212,6 +215,7 @@ export default function ReportsPage() {
     setSelectedDataset(report.query.dataset);
     setSelectedDimension(report.query.dimensions[0] ?? "none");
     setSelectedMeasure(report.query.measures[0] ?? "");
+    setSavedQuery(report.query);
     setManualResult(await runSavedReport.mutateAsync(report.id));
   };
 
@@ -306,20 +310,22 @@ export default function ReportsPage() {
               </p>
             </CardContent>
           </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Outbox</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-semibold">
-                {(diagnostics.data?.outbox.pending ?? 0).toLocaleString()}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {diagnostics.data?.outbox.failed ?? 0} failed,{" "}
-                {diagnostics.data?.outbox.processing ?? 0} processing
-              </p>
-            </CardContent>
-          </Card>
+          {canAdministerReports && (
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">Outbox</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-semibold">
+                  {(diagnostics.data?.outbox.pending ?? 0).toLocaleString()}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {diagnostics.data?.outbox.failed ?? 0} failed,{" "}
+                  {diagnostics.data?.outbox.processing ?? 0} processing
+                </p>
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         <section className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
@@ -353,6 +359,7 @@ export default function ReportsPage() {
                     value={selectedDimension}
                     onValueChange={(value) => {
                       setManualResult(undefined);
+                      setSavedQuery(undefined);
                       setSelectedDimension(value);
                     }}
                   >
@@ -375,6 +382,7 @@ export default function ReportsPage() {
                     value={selectedMeasure}
                     onValueChange={(value) => {
                       setManualResult(undefined);
+                      setSavedQuery(undefined);
                       setSelectedMeasure(value);
                     }}
                   >
@@ -396,6 +404,7 @@ export default function ReportsPage() {
                     value={selectedRange}
                     onValueChange={(value) => {
                       setManualResult(undefined);
+                      setSavedQuery(undefined);
                       setSelectedRange(value);
                     }}
                   >
@@ -535,45 +544,49 @@ export default function ReportsPage() {
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">Projection Lag</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  {(diagnostics.data?.projector_lag ?? []).map((lag) => (
-                    <div
-                      key={lag.dataset}
-                      className="flex items-center justify-between border-b py-1.5 last:border-b-0"
-                    >
-                      <span className="text-sm">{formatDatasetName(lag.dataset)}</span>
-                      <Badge variant={lag.freshness_lag_ms === null ? "outline" : "secondary"}>
-                        {freshnessLabel(lag.freshness_lag_ms)}
-                      </Badge>
+            {canAdministerReports && (
+              <>
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">Projection Lag</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {(diagnostics.data?.projector_lag ?? []).map((lag) => (
+                        <div
+                          key={lag.dataset}
+                          className="flex items-center justify-between border-b py-1.5 last:border-b-0"
+                        >
+                          <span className="text-sm">{formatDatasetName(lag.dataset)}</span>
+                          <Badge variant={lag.freshness_lag_ms === null ? "outline" : "secondary"}>
+                            {freshnessLabel(lag.freshness_lag_ms)}
+                          </Badge>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+                  </CardContent>
+                </Card>
 
-            {diagnostics.data?.outbox.failed_rows.length ? (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">Failed Rows</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  {diagnostics.data.outbox.failed_rows.slice(0, 5).map((row) => (
-                    <div key={row.id} className="border p-2 text-xs">
-                      <div className="font-medium">{row.source_type}</div>
-                      <div className="truncate text-muted-foreground">{row.source_id}</div>
-                      {row.last_error && (
-                        <div className="mt-1 text-destructive">{row.last_error}</div>
-                      )}
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            ) : null}
+                {diagnostics.data?.outbox.failed_rows.length ? (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base">Failed Rows</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      {diagnostics.data.outbox.failed_rows.slice(0, 5).map((row) => (
+                        <div key={row.id} className="border p-2 text-xs">
+                          <div className="font-medium">{row.source_type}</div>
+                          <div className="truncate text-muted-foreground">{row.source_id}</div>
+                          {row.last_error && (
+                            <div className="mt-1 text-destructive">{row.last_error}</div>
+                          )}
+                        </div>
+                      ))}
+                    </CardContent>
+                  </Card>
+                ) : null}
+              </>
+            )}
           </aside>
         </section>
       </PageBody>

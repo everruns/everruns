@@ -97,14 +97,14 @@ export function useExportSavedReport() {
   });
 }
 
-export function useReportingDiagnostics() {
+export function useReportingDiagnostics(enabled = true) {
   const { currentOrg } = useOrg();
   const org = currentOrg?.public_id;
 
   return useQuery({
     queryKey: queryKeys.reporting.diagnostics(org),
     queryFn: getReportingDiagnostics,
-    enabled: !!org,
+    enabled: enabled && !!org,
     refetchInterval: 30_000,
     retry: false,
   });

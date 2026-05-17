@@ -1,5 +1,5 @@
 export type ReportColumnKind = "dimension" | "measure";
-export type ReportFilterOp = "eq" | "neq" | "in" | "gt" | "gte" | "lt" | "lte";
+export type ReportFilterOp = "eq" | "neq" | "in";
 export type ReportOrderDirection = "asc" | "desc";
 export type ReportExportFormat = "csv" | "json";
 

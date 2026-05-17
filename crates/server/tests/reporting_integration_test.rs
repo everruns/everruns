@@ -6,6 +6,7 @@ use axum::http::StatusCode;
 use chrono::{Duration, Utc};
 use serde_json::{Value, json};
 use test_harness::TestServer;
+use uuid::Uuid;
 
 fn report_query() -> Value {
     let to = Utc::now();
@@ -159,4 +160,47 @@ async fn reporting_backfill_endpoint_is_admin_scoped() {
     assert_eq!(result["sessions"], 0);
     assert_eq!(result["llm_generations"], 0);
     assert_eq!(result["usage_ledger"], 0);
+}
+
+#[tokio::test]
+async fn reporting_backfill_enqueues_missing_postgres_session_fact() {
+    let server = TestServer::new().await;
+    let title = format!("reporting-backfill-{}", Uuid::now_v7());
+
+    let (session_id, updated_at): (Uuid, chrono::DateTime<Utc>) = sqlx::query_as(
+        r#"
+        INSERT INTO sessions (org_id, title, status)
+        VALUES (1, $1, 'started')
+        RETURNING id, updated_at
+        "#,
+    )
+    .bind(&title)
+    .fetch_one(&server.pool)
+    .await
+    .expect("insert test session");
+
+    let result: Value = server
+        .post("/v1/reports/admin/backfill", json!({ "limit": 100 }))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+
+    assert!(result["sessions"].as_i64().unwrap() >= 1);
+
+    let row: (String,) = sqlx::query_as(
+        r#"
+        SELECT source_version
+          FROM reporting_outbox
+         WHERE org_id = 1
+           AND source_type = 'session'
+           AND source_id = $1
+           AND reason = 'session_snapshot'
+        "#,
+    )
+    .bind(session_id.to_string())
+    .fetch_one(&server.pool)
+    .await
+    .expect("backfill should enqueue session outbox row");
+
+    assert_eq!(row.0, updated_at.to_rfc3339());
 }

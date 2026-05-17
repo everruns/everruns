@@ -151,7 +151,7 @@ fn default_backfill_limit() -> i64 {
     1_000
 }
 
-#[derive(Debug, Clone, Serialize, ToSchema)]
+#[derive(Debug, Clone, Default, Serialize, ToSchema)]
 pub struct ReportingBackfillResult {
     pub enqueued: i64,
     pub events: i64,

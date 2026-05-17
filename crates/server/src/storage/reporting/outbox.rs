@@ -1,11 +1,12 @@
 use anyhow::{Context, Result};
-use sqlx::PgPool;
+use sqlx::{PgPool, Postgres, pool::PoolConnection};
 use uuid::Uuid;
 
 use super::models::ReportingOutboxRow;
 use crate::domains::reporting::types::{ProjectorRunResult, ReportingBackfillResult};
 
 const STALE_PROCESSING_MINUTES: i32 = 15;
+const GLOBAL_BACKFILL_LOCK_KEY: i64 = 0x6576_6572_7270_7471;
 
 #[derive(Clone)]
 pub struct PostgresReportingProjector {
@@ -136,22 +137,51 @@ impl PostgresReportingProjector {
         org_id: Option<i64>,
         limit: i64,
     ) -> Result<ReportingBackfillResult> {
-        let limit = limit.clamp(1, 10_000);
-        let events = self.backfill_events(org_id, limit).await?;
-        let remaining = limit.saturating_sub(events);
-        let sessions = self.backfill_sessions(org_id, remaining).await?;
-        let remaining = remaining.saturating_sub(sessions);
-        let llm_generations = self.backfill_llm_generations(org_id, remaining).await?;
-        let remaining = remaining.saturating_sub(llm_generations);
-        let usage_ledger = self.backfill_usage_ledger(org_id, remaining).await?;
+        let mut global_lock = match org_id {
+            Some(_) => None,
+            None => match self.try_acquire_global_backfill_lock().await? {
+                Some(lock) => Some(lock),
+                None => return Ok(ReportingBackfillResult::default()),
+            },
+        };
 
-        Ok(ReportingBackfillResult {
-            enqueued: events + sessions + llm_generations + usage_ledger,
-            events,
-            sessions,
-            llm_generations,
-            usage_ledger,
-        })
+        let limit = limit.clamp(1, 10_000);
+        let result = async {
+            let events = self.backfill_events(org_id, limit).await?;
+            let remaining = limit.saturating_sub(events);
+            let sessions = self.backfill_sessions(org_id, remaining).await?;
+            let remaining = remaining.saturating_sub(sessions);
+            let llm_generations = self.backfill_llm_generations(org_id, remaining).await?;
+            let remaining = remaining.saturating_sub(llm_generations);
+            let usage_ledger = self.backfill_usage_ledger(org_id, remaining).await?;
+
+            Ok(ReportingBackfillResult {
+                enqueued: events + sessions + llm_generations + usage_ledger,
+                events,
+                sessions,
+                llm_generations,
+                usage_ledger,
+            })
+        }
+        .await;
+
+        if let Some(mut lock) = global_lock.take() {
+            sqlx::query("SELECT pg_advisory_unlock($1)")
+                .bind(GLOBAL_BACKFILL_LOCK_KEY)
+                .execute(&mut *lock)
+                .await?;
+        }
+
+        result
+    }
+
+    async fn try_acquire_global_backfill_lock(&self) -> Result<Option<PoolConnection<Postgres>>> {
+        let mut connection = self.pool.acquire().await?;
+        let acquired = sqlx::query_scalar::<_, bool>("SELECT pg_try_advisory_lock($1)")
+            .bind(GLOBAL_BACKFILL_LOCK_KEY)
+            .fetch_one(&mut *connection)
+            .await?;
+        Ok(acquired.then_some(connection))
     }
 
     async fn backfill_events(&self, org_id: Option<i64>, limit: i64) -> Result<i64> {
@@ -258,7 +288,31 @@ impl PostgresReportingProjector {
             INSERT INTO reporting_outbox (
                 org_id, source_type, source_id, source_version, reason, status, next_attempt_at
             )
-            SELECT org_id, 'session', id::TEXT, updated_at::TEXT, 'session_snapshot', 'pending', NOW()
+            SELECT org_id,
+                   'session',
+                   id::TEXT,
+                   COALESCE(
+                       (
+                           SELECT existing.source_version
+                             FROM reporting_outbox existing
+                            WHERE existing.org_id = candidates.org_id
+                              AND existing.source_type = 'session'
+                              AND existing.source_id = candidates.id::TEXT
+                              AND existing.reason = 'session_snapshot'
+                            ORDER BY existing.created_at DESC
+                            LIMIT 1
+                       ),
+                       CASE
+                           WHEN MOD(EXTRACT(MICROSECONDS FROM updated_at)::BIGINT, 1000000) = 0
+                               THEN TO_CHAR(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+                           WHEN MOD(EXTRACT(MICROSECONDS FROM updated_at)::BIGINT, 1000) = 0
+                               THEN TO_CHAR(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+                           ELSE TO_CHAR(updated_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"')
+                       END
+                   ),
+                   'session_snapshot',
+                   'pending',
+                   NOW()
               FROM candidates
             ON CONFLICT (org_id, source_type, source_id, source_version, reason)
             DO UPDATE SET
