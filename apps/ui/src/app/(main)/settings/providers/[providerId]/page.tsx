@@ -23,7 +23,7 @@ export default function ProviderDetailPage({
 }) {
   const { providerId } = use(params);
   const { data: provider, isLoading } = useLlmProvider(providerId);
-  const { data: models = [] } = useLlmModels();
+  const { data: models = [], isLoading: modelsLoading } = useLlmModels();
   const updateProvider = useUpdateLlmProvider(providerId);
   const [name, setName] = useState("");
   const [nameProviderId, setNameProviderId] = useState<string | null>(null);
@@ -167,15 +167,24 @@ export default function ProviderDetailPage({
             <CardTitle>Models</CardTitle>
           </CardHeader>
           <CardContent className="flex flex-wrap items-center gap-3 text-sm">
-            <span className="text-muted-foreground">
-              {formatCountLabel(modelCounts.total, "model")} available
-            </span>
-            <Badge variant="outline">{modelCounts.enabled} enabled</Badge>
-            <Link href={`/models?provider=${encodeURIComponent(provider.id)}`}>
-              <Button variant="outline" size="sm">
-                View provider models
-              </Button>
-            </Link>
+            {modelsLoading ? (
+              <>
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-5 w-20" />
+              </>
+            ) : (
+              <>
+                <span className="text-muted-foreground">
+                  {formatCountLabel(modelCounts.total, "model")} available
+                </span>
+                <Badge variant="outline">{modelCounts.enabled} enabled</Badge>
+                <Link href={`/models?provider=${encodeURIComponent(provider.id)}`}>
+                  <Button variant="outline" size="sm">
+                    View provider models
+                  </Button>
+                </Link>
+              </>
+            )}
           </CardContent>
         </Card>
       </PageBody>

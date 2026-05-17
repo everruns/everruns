@@ -50,12 +50,20 @@ export default function ModelsPage() {
   const [addModelOpen, setAddModelOpen] = useState(false);
   const [togglingModelId, setTogglingModelId] = useState<string | null>(null);
   const selectedProviderId = searchParams.get("provider");
-  const selectedProvider = selectedProviderId
-    ? providers.find((provider) => provider.id === selectedProviderId)
-    : undefined;
-  const filteredModels = selectedProviderId
-    ? models.filter((model) => model.provider_id === selectedProviderId)
-    : models;
+  const selectedProvider = useMemo(
+    () =>
+      selectedProviderId
+        ? providers.find((provider) => provider.id === selectedProviderId)
+        : undefined,
+    [providers, selectedProviderId],
+  );
+  const filteredModels = useMemo(
+    () =>
+      selectedProviderId
+        ? models.filter((model) => model.provider_id === selectedProviderId)
+        : models,
+    [models, selectedProviderId],
+  );
 
   const { enabledModels, availableModels } = useMemo(() => {
     const enabled = filteredModels.filter((m) => m.enabled).sort(compareByRecency);
