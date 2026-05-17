@@ -26,13 +26,17 @@ export default function ProviderDetailPage({
   const { data: models = [] } = useLlmModels();
   const updateProvider = useUpdateLlmProvider(providerId);
   const [name, setName] = useState("");
+  const [nameProviderId, setNameProviderId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   usePageTitle(provider ? provider.name : null, "Provider");
 
   useEffect(() => {
-    if (provider) setName(provider.name);
-  }, [provider]);
+    if (provider && nameProviderId !== provider.id) {
+      setName(provider.name);
+      setNameProviderId(provider.id);
+    }
+  }, [provider, nameProviderId]);
 
   const modelCounts = useMemo(() => {
     return models.reduce(

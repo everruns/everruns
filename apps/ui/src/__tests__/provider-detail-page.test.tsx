@@ -126,4 +126,32 @@ describe("ProviderDetailPage", () => {
       expect(updateProvider).toHaveBeenCalledWith({ name: "OpenAI Renamed" });
     });
   });
+
+  it("does not reset an in-progress name edit after provider refetch", async () => {
+    let provider = mockProvider;
+    mockUseLlmProvider.mockImplementation(() => ({
+      data: provider,
+      isLoading: false,
+      error: null,
+    }));
+
+    let rerender: ReturnType<typeof render>["rerender"];
+    await act(async () => {
+      ({ rerender } = render(
+        <ProviderDetailPage params={Promise.resolve({ providerId: "provider-1" })} />,
+        { wrapper },
+      ));
+    });
+
+    fireEvent.change(await screen.findByLabelText("Name"), {
+      target: { value: "Draft Name" },
+    });
+
+    provider = { ...mockProvider };
+    await act(async () => {
+      rerender(<ProviderDetailPage params={Promise.resolve({ providerId: "provider-1" })} />);
+    });
+
+    expect(screen.getByDisplayValue("Draft Name")).toBeInTheDocument();
+  });
 });
