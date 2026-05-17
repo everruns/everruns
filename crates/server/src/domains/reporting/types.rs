@@ -35,6 +35,7 @@ pub struct SavedReportDashboardMetadata {
     pub position: Option<i32>,
 }
 
+/// Request body for the `create_saved_report` operation.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateSavedReportRequest {
     pub name: String,
@@ -45,6 +46,7 @@ pub struct CreateSavedReportRequest {
     pub dashboard: Option<SavedReportDashboardMetadata>,
 }
 
+/// Request body for the `update_saved_report` operation.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct UpdateSavedReportRequest {
     #[serde(default)]
@@ -67,6 +69,7 @@ pub enum ReportExportFormat {
     Json,
 }
 
+/// Request body for the `export_report_query` operation.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct ExportReportQueryRequest {
     pub query: ReportQuery,
@@ -74,6 +77,7 @@ pub struct ExportReportQueryRequest {
     pub format: ReportExportFormat,
 }
 
+/// Request body for the `export_saved_report` operation.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct ExportSavedReportRequest {
     #[serde(default = "default_export_format")]

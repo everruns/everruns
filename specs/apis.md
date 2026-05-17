@@ -17,8 +17,12 @@ callers, MCP, A2A). Six guidelines guide every endpoint:
    builtin set. `crates/server/tests/openapi_coverage_test.rs` enforces
    that every annotated handler is registered in `openapi::ApiDoc` and
    that every operationId is snake_case.
-2. **Self-sufficient OpenAPI** — every field carries `description` and
-   `example`; agents do "preflight thinking" from the spec.
+2. **Self-sufficient OpenAPI** — every operation, schema, and field carries
+   a `description` (and ideally an `example` for non-trivial fields) so
+   agents can do "preflight thinking" from the spec alone.
+   `crates/server/tests/openapi_descriptions_test.rs` enforces ratcheting
+   coverage floors — each merge can only raise the percentage, never lower
+   it.
 3. **Domain language** — concepts from [`concepts.md`](concepts.md) used
    consistently in field names and descriptions.
 4. **Actionable errors** — [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457)

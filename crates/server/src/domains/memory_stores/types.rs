@@ -5,6 +5,7 @@ use utoipa::{IntoParams, ToSchema};
 
 pub use crate::storage::models::{MemoryDbRow, MemoryStoreDbRow};
 
+/// Response body for memory store.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct MemoryStoreResponse {
     #[schema(value_type = String, example = "mst_01933b5a000070008000000000000001")]
@@ -16,6 +17,7 @@ pub struct MemoryStoreResponse {
     pub updated_at: DateTime<Utc>,
 }
 
+/// Request body for the `create_memory_store` operation.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateMemoryStoreRequest {
     pub name: String,
@@ -23,6 +25,7 @@ pub struct CreateMemoryStoreRequest {
     pub is_default: bool,
 }
 
+/// Request body for the `update_memory_store` operation.
 #[derive(Debug, Clone, Default, Deserialize, ToSchema)]
 pub struct UpdateMemoryStoreRequest {
     #[serde(default)]
@@ -31,6 +34,7 @@ pub struct UpdateMemoryStoreRequest {
     pub is_default: Option<bool>,
 }
 
+/// Response body for memory.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct MemoryResponse {
     #[schema(value_type = String, example = "mem_01933b5a000070008000000000000001")]
@@ -47,6 +51,7 @@ pub struct MemoryResponse {
     pub updated_at: DateTime<Utc>,
 }
 
+/// Response body for the `list_memories` operation.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct ListMemoriesResponse {
     pub data: Vec<MemoryResponse>,

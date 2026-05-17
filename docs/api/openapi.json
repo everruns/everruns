@@ -1108,6 +1108,7 @@
         "tags": [
           "voice"
         ],
+        "description": "Create a voice session for a specific agent. Returns connection details for the realtime audio channel.",
         "operationId": "create_agent_voice_session",
         "requestBody": {
           "content": {
@@ -1891,6 +1892,7 @@
         "tags": [
           "apps"
         ],
+        "description": "Invoke a webhook channel for a published App. The body is forwarded to the agent as a message.",
         "operationId": "invoke_webhook",
         "parameters": [
           {
@@ -4879,6 +4881,7 @@
         "tags": [
           "knowledge_bases"
         ],
+        "description": "List knowledge bases.",
         "operationId": "list_kbs",
         "parameters": [
           {
@@ -4921,6 +4924,7 @@
         "tags": [
           "knowledge_bases"
         ],
+        "description": "Create a new knowledge base.",
         "operationId": "create_kb",
         "requestBody": {
           "content": {
@@ -4971,6 +4975,7 @@
         "tags": [
           "knowledge_bases"
         ],
+        "description": "Get a knowledge base by ID.",
         "operationId": "get_kb",
         "parameters": [
           {
@@ -5010,6 +5015,7 @@
         "tags": [
           "knowledge_bases"
         ],
+        "description": "Delete a knowledge base.",
         "operationId": "delete_kb",
         "parameters": [
           {
@@ -5042,6 +5048,7 @@
         "tags": [
           "knowledge_bases"
         ],
+        "description": "Update a knowledge base. Only provided fields are modified.",
         "operationId": "update_kb",
         "parameters": [
           {
@@ -5113,6 +5120,7 @@
         "tags": [
           "knowledge_bases"
         ],
+        "description": "List knowledge base entries.",
         "operationId": "list_entries",
         "parameters": [
           {
@@ -5174,6 +5182,7 @@
         "tags": [
           "knowledge_bases"
         ],
+        "description": "Create a new knowledge base entry.",
         "operationId": "create_entry",
         "parameters": [
           {
@@ -5235,6 +5244,7 @@
         "tags": [
           "knowledge_bases"
         ],
+        "description": "Get a knowledge base entry by ID.",
         "operationId": "get_entry",
         "parameters": [
           {
@@ -5283,6 +5293,7 @@
         "tags": [
           "knowledge_bases"
         ],
+        "description": "Delete a knowledge base entry.",
         "operationId": "delete_entry",
         "parameters": [
           {
@@ -5324,6 +5335,7 @@
         "tags": [
           "knowledge_bases"
         ],
+        "description": "Update a knowledge base entry. Only provided fields are modified.",
         "operationId": "update_entry",
         "parameters": [
           {
@@ -6165,6 +6177,7 @@
         "tags": [
           "memory_stores"
         ],
+        "description": "List memory stores.",
         "operationId": "list_memory_stores",
         "responses": {
           "200": {
@@ -6183,6 +6196,7 @@
         "tags": [
           "memory_stores"
         ],
+        "description": "Create a new memory store.",
         "operationId": "create_memory_store",
         "requestBody": {
           "content": {
@@ -6233,6 +6247,7 @@
         "tags": [
           "memory_stores"
         ],
+        "description": "Get a memory store by ID.",
         "operationId": "get_memory_store",
         "parameters": [
           {
@@ -6272,6 +6287,7 @@
         "tags": [
           "memory_stores"
         ],
+        "description": "Update a memory store. Only provided fields are modified.",
         "operationId": "update_memory_store",
         "parameters": [
           {
@@ -6343,6 +6359,7 @@
         "tags": [
           "memory_stores"
         ],
+        "description": "List memories.",
         "operationId": "list_memories",
         "parameters": [
           {
@@ -6443,6 +6460,7 @@
         "tags": [
           "memory_stores"
         ],
+        "description": "Forget a memory.",
         "operationId": "forget_memory",
         "parameters": [
           {
@@ -6670,6 +6688,7 @@
         "tags": [
           "payments"
         ],
+        "description": "List payment accounts.",
         "operationId": "list_payment_accounts",
         "parameters": [
           {
@@ -6715,6 +6734,7 @@
         "tags": [
           "payments"
         ],
+        "description": "Create a new payment account.",
         "operationId": "create_payment_account",
         "requestBody": {
           "content": {
@@ -6755,6 +6775,7 @@
         "tags": [
           "payments"
         ],
+        "description": "Get a payment account by ID.",
         "operationId": "get_payment_account",
         "parameters": [
           {
@@ -6794,6 +6815,7 @@
         "tags": [
           "payments"
         ],
+        "description": "Disable a payment account without deleting it.",
         "operationId": "disable_payment_account",
         "parameters": [
           {
@@ -6826,6 +6848,7 @@
         "tags": [
           "payments"
         ],
+        "description": "Update a payment account. Only provided fields are modified.",
         "operationId": "update_payment_account",
         "parameters": [
           {
@@ -6887,6 +6910,7 @@
         "tags": [
           "payments"
         ],
+        "description": "List recent payment attempts (operator audit view).",
         "operationId": "list_payment_attempts",
         "parameters": [
           {
@@ -6932,6 +6956,7 @@
         "tags": [
           "payments"
         ],
+        "description": "List payment policies.",
         "operationId": "list_payment_policies",
         "parameters": [
           {
@@ -6988,6 +7013,7 @@
         "tags": [
           "payments"
         ],
+        "description": "Create a new payment policy.",
         "operationId": "create_payment_policy",
         "requestBody": {
           "content": {
@@ -7028,6 +7054,7 @@
         "tags": [
           "payments"
         ],
+        "description": "Get a payment policy by ID.",
         "operationId": "get_payment_policy",
         "parameters": [
           {
@@ -7067,6 +7094,7 @@
         "tags": [
           "payments"
         ],
+        "description": "Disable a payment policy without deleting it.",
         "operationId": "disable_payment_policy",
         "parameters": [
           {
@@ -7099,6 +7127,7 @@
         "tags": [
           "payments"
         ],
+        "description": "Update a payment policy. Only provided fields are modified.",
         "operationId": "update_payment_policy",
         "parameters": [
           {
@@ -7200,6 +7229,7 @@
         "tags": [
           "reporting"
         ],
+        "description": "Return diagnostics for the reporting subsystem (operator view).",
         "operationId": "get_diagnostics",
         "responses": {
           "200": {
@@ -7230,6 +7260,7 @@
         "tags": [
           "reporting"
         ],
+        "description": "Return the available reporting datasets and their schemas.",
         "operationId": "get_catalog",
         "responses": {
           "200": {
@@ -7260,6 +7291,7 @@
         "tags": [
           "reporting"
         ],
+        "description": "Run a reporting projector to refresh derived data (operator action).",
         "operationId": "run_projector",
         "parameters": [
           {
@@ -7301,6 +7333,7 @@
         "tags": [
           "reporting"
         ],
+        "description": "Run an ad-hoc reporting query against a registered dataset.",
         "operationId": "run_query",
         "requestBody": {
           "content": {
@@ -7351,6 +7384,7 @@
         "tags": [
           "reporting"
         ],
+        "description": "Run an ad-hoc reporting query and stream the result as CSV.",
         "operationId": "export_query",
         "requestBody": {
           "content": {
@@ -7401,6 +7435,7 @@
         "tags": [
           "reporting"
         ],
+        "description": "List saved reports.",
         "operationId": "list_saved_reports",
         "responses": {
           "200": {
@@ -7429,6 +7464,7 @@
         "tags": [
           "reporting"
         ],
+        "description": "Create a new saved report.",
         "operationId": "create_saved_report",
         "requestBody": {
           "content": {
@@ -7479,6 +7515,7 @@
         "tags": [
           "reporting"
         ],
+        "description": "Get a saved report by ID.",
         "operationId": "get_saved_report",
         "parameters": [
           {
@@ -7529,6 +7566,7 @@
         "tags": [
           "reporting"
         ],
+        "description": "Delete a saved report.",
         "operationId": "delete_saved_report",
         "parameters": [
           {
@@ -7572,6 +7610,7 @@
         "tags": [
           "reporting"
         ],
+        "description": "Update a saved report. Only provided fields are modified.",
         "operationId": "update_saved_report",
         "parameters": [
           {
@@ -7644,6 +7683,7 @@
         "tags": [
           "reporting"
         ],
+        "description": "Run a previously saved reporting query and stream the result as CSV.",
         "operationId": "export_saved_report",
         "parameters": [
           {
@@ -7706,6 +7746,7 @@
         "tags": [
           "reporting"
         ],
+        "description": "Run a previously saved reporting query and return the result.",
         "operationId": "run_saved_report",
         "parameters": [
           {
@@ -7958,6 +7999,7 @@
         "tags": [
           "voice"
         ],
+        "description": "Create a voice session for the user's global chat. Returns connection details for the realtime audio channel.",
         "operationId": "create_chat_voice_session",
         "requestBody": {
           "content": {
@@ -9770,6 +9812,7 @@
         "tags": [
           "session-sandbox"
         ],
+        "description": "Get the current session sandbox status (lease, runtime image, network access).",
         "operationId": "get_sandbox",
         "parameters": [
           {
@@ -9802,6 +9845,7 @@
         "tags": [
           "session-sandbox"
         ],
+        "description": "Manage the session sandbox lifecycle (start, stop, reset).",
         "operationId": "manage_sandbox",
         "parameters": [
           {
@@ -10112,6 +10156,7 @@
         "tags": [
           "voice"
         ],
+        "description": "Create a voice call attached to the session.",
         "operationId": "create_call",
         "parameters": [
           {
@@ -10152,6 +10197,7 @@
         "tags": [
           "voice"
         ],
+        "description": "Create an ephemeral client secret for the voice channel.",
         "operationId": "create_client_secret",
         "parameters": [
           {
@@ -10192,6 +10238,7 @@
         "tags": [
           "voice"
         ],
+        "description": "Attach an external voice call to the session.",
         "operationId": "attach_call",
         "parameters": [
           {
@@ -10240,6 +10287,7 @@
         "tags": [
           "voice"
         ],
+        "description": "End the in-flight voice call.",
         "operationId": "end_call",
         "parameters": [
           {
@@ -10852,6 +10900,7 @@
         "tags": [
           "volumes"
         ],
+        "description": "List workspace volumes.",
         "operationId": "list_volumes",
         "parameters": [
           {
@@ -10894,6 +10943,7 @@
         "tags": [
           "volumes"
         ],
+        "description": "Create a new workspace volume.",
         "operationId": "create_volume",
         "requestBody": {
           "content": {
@@ -10944,6 +10994,7 @@
         "tags": [
           "volumes"
         ],
+        "description": "Get a workspace volume by ID.",
         "operationId": "get_volume",
         "parameters": [
           {
@@ -10983,6 +11034,7 @@
         "tags": [
           "volumes"
         ],
+        "description": "Delete a workspace volume.",
         "operationId": "delete_volume",
         "parameters": [
           {
@@ -11015,6 +11067,7 @@
         "tags": [
           "volumes"
         ],
+        "description": "Update a workspace volume. Only provided fields are modified.",
         "operationId": "update_volume",
         "parameters": [
           {
@@ -11086,6 +11139,7 @@
         "tags": [
           "volumes"
         ],
+        "description": "Trigger a synchronous sync of a volume now.",
         "operationId": "sync_volume_now",
         "parameters": [
           {
@@ -11203,6 +11257,7 @@
       },
       "AddA2aChannelHttpRequest": {
         "type": "object",
+        "description": "Request body for the `add_a2a_channel_http` operation.",
         "required": [
           "message"
         ],
@@ -11582,6 +11637,7 @@
       },
       "AgentVersionDiffResponse": {
         "type": "object",
+        "description": "Response body for agent version diff.",
         "required": [
           "from_version_id",
           "to_version_id",
@@ -13147,6 +13203,7 @@
       },
       "CreateAgentVersionRequest": {
         "type": "object",
+        "description": "Request body for the `create_agent_version` operation.",
         "properties": {
           "change_kind": {
             "oneOf": [
@@ -13267,6 +13324,7 @@
       },
       "CreateDeclarativeCapabilityRequest": {
         "type": "object",
+        "description": "Request body for the `create_declarative_capability` operation.",
         "required": [
           "definition"
         ],
@@ -13415,6 +13473,7 @@
       },
       "CreateKnowledgeBaseRequest": {
         "type": "object",
+        "description": "Request body for the `create_knowledge_base` operation.",
         "required": [
           "name"
         ],
@@ -13432,6 +13491,7 @@
       },
       "CreateKnowledgeEntryRequest": {
         "type": "object",
+        "description": "Request body for the `create_knowledge_entry` operation.",
         "required": [
           "title",
           "body"
@@ -13601,6 +13661,7 @@
       },
       "CreateMemoryStoreRequest": {
         "type": "object",
+        "description": "Request body for the `create_memory_store` operation.",
         "required": [
           "name"
         ],
@@ -13685,6 +13746,7 @@
       },
       "CreatePaymentAccountRequest": {
         "type": "object",
+        "description": "Request body for the `create_payment_account` operation.",
         "required": [
           "owner_type",
           "owner_id",
@@ -13721,6 +13783,7 @@
       },
       "CreatePaymentPolicyRequest": {
         "type": "object",
+        "description": "Request body for the `create_payment_policy` operation.",
         "required": [
           "payment_account_id",
           "subject_type",
@@ -13787,6 +13850,7 @@
       },
       "CreateSavedReportRequest": {
         "type": "object",
+        "description": "Request body for the `create_saved_report` operation.",
         "required": [
           "name",
           "query"
@@ -14026,6 +14090,7 @@
       },
       "CreateVolumeRequest": {
         "type": "object",
+        "description": "Request body for the `create_volume` operation.",
         "required": [
           "name"
         ],
@@ -14095,7 +14160,8 @@
               }
             ]
           }
-        ]
+        ],
+        "description": "Request body for the `create_volume_source` operation."
       },
       "DatabaseInfoResponse": {
         "type": "object",
@@ -14873,6 +14939,7 @@
       },
       "ExportReportQueryRequest": {
         "type": "object",
+        "description": "Request body for the `export_report_query` operation.",
         "required": [
           "query"
         ],
@@ -14887,6 +14954,7 @@
       },
       "ExportSavedReportRequest": {
         "type": "object",
+        "description": "Request body for the `export_saved_report` operation.",
         "properties": {
           "format": {
             "$ref": "#/components/schemas/ReportExportFormat"
@@ -15234,6 +15302,7 @@
       },
       "ForkAgentVersionRequest": {
         "type": "object",
+        "description": "Request body for the `fork_agent_version` operation.",
         "required": [
           "name"
         ],
@@ -15257,6 +15326,7 @@
       },
       "GetOrCreateChatSessionRequest": {
         "type": "object",
+        "description": "Request body for the `get_or_create_chat_session` operation.",
         "properties": {
           "locale": {
             "type": [
@@ -15290,6 +15360,7 @@
       },
       "GetSessionSandboxResponse": {
         "type": "object",
+        "description": "Response body for the `get_session_sandbox` operation.",
         "required": [
           "configured",
           "exists"
@@ -15472,6 +15543,7 @@
       },
       "GitHubVolumeSourceRequest": {
         "type": "object",
+        "description": "Request body for git hub volume source.",
         "required": [
           "repository"
         ],
@@ -15505,6 +15577,7 @@
       },
       "GitHubVolumeSourceResponse": {
         "type": "object",
+        "description": "Response body for git hub volume source.",
         "required": [
           "repository",
           "branch"
@@ -15556,6 +15629,7 @@
       },
       "GitVolumeSourceRequest": {
         "type": "object",
+        "description": "Request body for git volume source.",
         "required": [
           "url"
         ],
@@ -15589,6 +15663,7 @@
       },
       "GitVolumeSourceResponse": {
         "type": "object",
+        "description": "Response body for git volume source.",
         "required": [
           "url",
           "branch"
@@ -16268,6 +16343,7 @@
       },
       "KnowledgeBaseResponse": {
         "type": "object",
+        "description": "Response body for knowledge base.",
         "required": [
           "id",
           "name",
@@ -16318,6 +16394,7 @@
       },
       "KnowledgeEntryResponse": {
         "type": "object",
+        "description": "Response body for knowledge entry.",
         "required": [
           "id",
           "kb_id",
@@ -16596,6 +16673,7 @@
       },
       "ListMemoriesResponse": {
         "type": "object",
+        "description": "Response body for the `list_memories` operation.",
         "required": [
           "data",
           "total"
@@ -17325,6 +17403,7 @@
             "type": "array",
             "items": {
               "type": "object",
+              "description": "Response body for knowledge base.",
               "required": [
                 "id",
                 "name",
@@ -17388,6 +17467,7 @@
             "type": "array",
             "items": {
               "type": "object",
+              "description": "Response body for knowledge entry.",
               "required": [
                 "id",
                 "kb_id",
@@ -17558,6 +17638,7 @@
             "type": "array",
             "items": {
               "type": "object",
+              "description": "Response body for memory store.",
               "required": [
                 "id",
                 "name",
@@ -18015,6 +18096,7 @@
             "type": "array",
             "items": {
               "type": "object",
+              "description": "Response body for volume.",
               "required": [
                 "id",
                 "name",
@@ -20009,6 +20091,7 @@
       },
       "ManageSessionSandboxRequest": {
         "type": "object",
+        "description": "Request body for the `manage_session_sandbox` operation.",
         "required": [
           "action"
         ],
@@ -20020,6 +20103,7 @@
       },
       "ManageSessionSandboxResponse": {
         "type": "object",
+        "description": "Response body for the `manage_session_sandbox` operation.",
         "required": [
           "action",
           "exists",
@@ -20072,7 +20156,8 @@
         }
       },
       "ManualVolumeSourceResponse": {
-        "type": "object"
+        "type": "object",
+        "description": "Response body for manual volume source."
       },
       "McpServer": {
         "type": "object",
@@ -20230,6 +20315,7 @@
       },
       "MemoryResponse": {
         "type": "object",
+        "description": "Response body for memory.",
         "required": [
           "id",
           "store_id",
@@ -20283,6 +20369,7 @@
       },
       "MemoryStoreResponse": {
         "type": "object",
+        "description": "Response body for memory store.",
         "required": [
           "id",
           "name",
@@ -22904,6 +22991,7 @@
       },
       "ResolveOrgResponse": {
         "type": "object",
+        "description": "Response body for the `resolve_org` operation.",
         "required": [
           "org_id",
           "org_name"
@@ -22940,6 +23028,7 @@
       },
       "ResourceStatsResponse": {
         "type": "object",
+        "description": "Response body for resource stats.",
         "required": [
           "session_count",
           "active_session_count",
@@ -23051,6 +23140,7 @@
       },
       "RollbackAgentVersionRequest": {
         "type": "object",
+        "description": "Request body for the `rollback_agent_version` operation.",
         "properties": {
           "save_version": {
             "type": "boolean"
@@ -24097,6 +24187,7 @@
       },
       "SetDefaultAgentVersionRequest": {
         "type": "object",
+        "description": "Request body for the `set_default_agent_version` operation.",
         "required": [
           "version_id"
         ],
@@ -25470,6 +25561,7 @@
       },
       "UpdateDeclarativeCapabilityRequest": {
         "type": "object",
+        "description": "Request body for the `update_declarative_capability` operation.",
         "properties": {
           "definition": {
             "type": "object",
@@ -25618,6 +25710,7 @@
       },
       "UpdateKnowledgeBaseRequest": {
         "type": "object",
+        "description": "Request body for the `update_knowledge_base` operation.",
         "properties": {
           "description": {
             "type": [
@@ -25635,6 +25728,7 @@
       },
       "UpdateKnowledgeEntryRequest": {
         "type": "object",
+        "description": "Request body for the `update_knowledge_entry` operation.",
         "properties": {
           "body": {
             "type": [
@@ -25861,6 +25955,7 @@
       },
       "UpdateMemoryStoreRequest": {
         "type": "object",
+        "description": "Request body for the `update_memory_store` operation.",
         "properties": {
           "is_default": {
             "type": [
@@ -25924,6 +26019,7 @@
       },
       "UpdatePaymentAccountRequest": {
         "type": "object",
+        "description": "Request body for the `update_payment_account` operation.",
         "properties": {
           "label": {
             "type": [
@@ -25954,6 +26050,7 @@
       },
       "UpdatePaymentPolicyRequest": {
         "type": "object",
+        "description": "Request body for the `update_payment_policy` operation.",
         "properties": {
           "allowed_capabilities": {
             "type": [
@@ -26035,6 +26132,7 @@
       },
       "UpdateSavedReportRequest": {
         "type": "object",
+        "description": "Request body for the `update_saved_report` operation.",
         "properties": {
           "dashboard": {
             "oneOf": [
@@ -26205,6 +26303,7 @@
       },
       "UpdateVolumeRequest": {
         "type": "object",
+        "description": "Request body for the `update_volume` operation.",
         "properties": {
           "description": {
             "type": [
@@ -26303,10 +26402,12 @@
               }
             }
           }
-        ]
+        ],
+        "description": "Request body for voice attach."
       },
       "VoiceAttachResponse": {
         "type": "object",
+        "description": "Response body for voice attach.",
         "required": [
           "voice_connection_id",
           "provider_call_id",
@@ -26357,10 +26458,12 @@
               }
             }
           }
-        ]
+        ],
+        "description": "Request body for voice call."
       },
       "VoiceCallResponse": {
         "type": "object",
+        "description": "Response body for voice call.",
         "required": [
           "voice_connection_id",
           "provider",
@@ -26406,10 +26509,12 @@
           {
             "$ref": "#/components/schemas/VoiceSessionOptions"
           }
-        ]
+        ],
+        "description": "Request body for voice client secret."
       },
       "VoiceClientSecretResponse": {
         "type": "object",
+        "description": "Response body for voice client secret.",
         "required": [
           "voice_connection_id",
           "provider",
@@ -26444,6 +26549,7 @@
       },
       "VoiceEndRequest": {
         "type": "object",
+        "description": "Request body for voice end.",
         "properties": {
           "reason": {
             "type": [
@@ -26455,6 +26561,7 @@
       },
       "VoiceEndResponse": {
         "type": "object",
+        "description": "Response body for voice end.",
         "required": [
           "voice_connection_id",
           "status"
@@ -26551,6 +26658,7 @@
           },
           "voice": {
             "type": "object",
+            "description": "Response body for voice call.",
             "required": [
               "voice_connection_id",
               "provider",
@@ -26660,6 +26768,7 @@
       },
       "VolumeResponse": {
         "type": "object",
+        "description": "Response body for volume.",
         "required": [
           "id",
           "name",
@@ -26802,10 +26911,12 @@
               }
             ]
           }
-        ]
+        ],
+        "description": "Response body for volume source."
       },
       "WebhookInvocationResponse": {
         "type": "object",
+        "description": "Response body for webhook invocation.",
         "required": [
           "accepted",
           "session_id",

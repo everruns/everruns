@@ -156,12 +156,14 @@ pub struct VoiceSessionOptions {
     pub instructions: Option<String>,
 }
 
+/// Request body for voice client secret.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct VoiceClientSecretRequest {
     #[serde(flatten)]
     pub options: VoiceSessionOptions,
 }
 
+/// Request body for voice call.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct VoiceCallRequest {
     pub sdp: String,
@@ -169,6 +171,7 @@ pub struct VoiceCallRequest {
     pub options: VoiceSessionOptions,
 }
 
+/// Request body for voice attach.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct VoiceAttachRequest {
     pub provider_call_id: String,
@@ -176,12 +179,14 @@ pub struct VoiceAttachRequest {
     pub options: VoiceSessionOptions,
 }
 
+/// Request body for voice end.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct VoiceEndRequest {
     #[serde(default)]
     pub reason: Option<String>,
 }
 
+/// Response body for voice client secret.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct VoiceClientSecretResponse {
     pub voice_connection_id: String,
@@ -193,6 +198,7 @@ pub struct VoiceClientSecretResponse {
     pub client_secret: Value,
 }
 
+/// Response body for voice call.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct VoiceCallResponse {
     pub voice_connection_id: String,
@@ -205,6 +211,7 @@ pub struct VoiceCallResponse {
     pub answer_sdp: String,
 }
 
+/// Response body for voice attach.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct VoiceAttachResponse {
     pub voice_connection_id: String,
@@ -216,6 +223,7 @@ pub struct VoiceAttachResponse {
     pub expires_at: chrono::DateTime<chrono::Utc>,
 }
 
+/// Response body for voice end.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct VoiceEndResponse {
     pub voice_connection_id: String,
@@ -229,6 +237,7 @@ pub struct VoiceSessionResponse<T> {
 }
 
 #[utoipa::path(
+    description = "Create an ephemeral client secret for the voice channel.",
     post,
     path = "/v1/sessions/{session_id}/voice/client-secret",
     request_body = VoiceClientSecretRequest,
@@ -293,6 +302,7 @@ pub async fn create_client_secret(
 }
 
 #[utoipa::path(
+    description = "Create a voice call attached to the session.",
     post,
     path = "/v1/sessions/{session_id}/voice/calls",
     request_body = VoiceCallRequest,
@@ -314,6 +324,7 @@ pub async fn create_call(
 }
 
 #[utoipa::path(
+    description = "Attach an external voice call to the session.",
     post,
     path = "/v1/sessions/{session_id}/voice/{voice_connection_id}/attach",
     request_body = VoiceAttachRequest,
@@ -374,6 +385,7 @@ pub async fn attach_call(
 }
 
 #[utoipa::path(
+    description = "End the in-flight voice call.",
     post,
     path = "/v1/sessions/{session_id}/voice/{voice_connection_id}/end",
     request_body = VoiceEndRequest,
@@ -398,6 +410,7 @@ pub async fn end_call(
 }
 
 #[utoipa::path(
+    description = "Create a voice session for a specific agent. Returns connection details for the realtime audio channel.",
     post,
     path = "/v1/agents/{agent_id}/voice/sessions",
     request_body = VoiceCallRequest,
@@ -442,6 +455,7 @@ pub async fn create_agent_voice_session(
 }
 
 #[utoipa::path(
+    description = "Create a voice session for the user's global chat. Returns connection details for the realtime audio channel.",
     post,
     path = "/v1/sessions/chat/voice",
     request_body = VoiceCallRequest,

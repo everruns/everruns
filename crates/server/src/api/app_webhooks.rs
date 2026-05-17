@@ -62,6 +62,7 @@ impl AppWebhookState {
     }
 }
 
+/// Response body for webhook invocation.
 #[derive(Debug, serde::Serialize, ToSchema)]
 pub struct WebhookInvocationResponse {
     pub accepted: bool,
@@ -80,6 +81,7 @@ pub fn routes(state: AppWebhookState) -> Router {
 }
 
 #[utoipa::path(
+    description = "Invoke a webhook channel for a published App. The body is forwarded to the agent as a message.",
     post,
     path = "/v1/apps/{app_id}/webhooks/{channel_id}",
     params(

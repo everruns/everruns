@@ -55,6 +55,7 @@ pub struct DeclarativeCapability {
     pub deleted_at: Option<DateTime<Utc>>,
 }
 
+/// Request body for the `create_declarative_capability` operation.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateDeclarativeCapabilityRequest {
     /// Definition for the new declarative capability. `name` must be unique per org and becomes the canonical `declarative:<name>` capability ref.
@@ -70,6 +71,7 @@ pub struct CreateDeclarativeCapabilityRequest {
     pub definition: DeclarativeCapabilityDefinition,
 }
 
+/// Request body for the `update_declarative_capability` operation.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct UpdateDeclarativeCapabilityRequest {
     /// Replacement declarative definition. Changing `name` updates the canonical capability ref after uniqueness validation.

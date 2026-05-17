@@ -33,6 +33,7 @@ const LINK_DECORATION_MAX_RESPONSE_BYTES: u64 = 16 * 1024 * 1024;
 /// ```
 pub type ApiResult<T> = Result<Json<T>, (StatusCode, Json<ErrorResponse>)>;
 
+/// Response body for resource stats.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct ResourceStatsResponse {
     pub session_count: u64,

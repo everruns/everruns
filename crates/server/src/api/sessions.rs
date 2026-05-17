@@ -234,6 +234,7 @@ pub struct UpdateSessionRequest {
     pub tags: Option<Vec<String>>,
 }
 
+/// Request body for the `get_or_create_chat_session` operation.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct GetOrCreateChatSessionRequest {
     /// Browser locale for seeding the global chat session (BCP 47, e.g. `uk-UA`).

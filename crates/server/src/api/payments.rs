@@ -86,6 +86,7 @@ pub fn routes(state: AppState) -> Router {
 }
 
 #[utoipa::path(
+    description = "Create a new payment account.",
     post,
     path = "/v1/payments/accounts",
     request_body = CreatePaymentAccountRequest,
@@ -105,6 +106,7 @@ pub async fn create_payment_account(
 }
 
 #[utoipa::path(
+    description = "List payment accounts.",
     get,
     path = "/v1/payments/accounts",
     params(ListPaymentAccountsQuery),
@@ -127,6 +129,7 @@ pub async fn list_payment_accounts(
 }
 
 #[utoipa::path(
+    description = "Get a payment account by ID.",
     get,
     path = "/v1/payments/accounts/{payment_account_id}",
     params(("payment_account_id" = String, Path, description = "Payment account ID")),
@@ -149,6 +152,7 @@ pub async fn get_payment_account(
 }
 
 #[utoipa::path(
+    description = "Update a payment account. Only provided fields are modified.",
     patch,
     path = "/v1/payments/accounts/{payment_account_id}",
     params(("payment_account_id" = String, Path, description = "Payment account ID")),
@@ -181,6 +185,7 @@ pub async fn update_payment_account(
 }
 
 #[utoipa::path(
+    description = "Disable a payment account without deleting it.",
     delete,
     path = "/v1/payments/accounts/{payment_account_id}",
     params(("payment_account_id" = String, Path, description = "Payment account ID")),
@@ -205,6 +210,7 @@ pub async fn disable_payment_account(
 }
 
 #[utoipa::path(
+    description = "Create a new payment policy.",
     post,
     path = "/v1/payments/policies",
     request_body = CreatePaymentPolicyRequest,
@@ -224,6 +230,7 @@ pub async fn create_payment_policy(
 }
 
 #[utoipa::path(
+    description = "List payment policies.",
     get,
     path = "/v1/payments/policies",
     params(ListPaymentPoliciesQuery),
@@ -247,6 +254,7 @@ pub async fn list_payment_policies(
 }
 
 #[utoipa::path(
+    description = "Get a payment policy by ID.",
     get,
     path = "/v1/payments/policies/{payment_policy_id}",
     params(("payment_policy_id" = String, Path, description = "Payment policy ID")),
@@ -269,6 +277,7 @@ pub async fn get_payment_policy(
 }
 
 #[utoipa::path(
+    description = "Update a payment policy. Only provided fields are modified.",
     patch,
     path = "/v1/payments/policies/{payment_policy_id}",
     params(("payment_policy_id" = String, Path, description = "Payment policy ID")),
@@ -305,6 +314,7 @@ pub async fn update_payment_policy(
 }
 
 #[utoipa::path(
+    description = "Disable a payment policy without deleting it.",
     delete,
     path = "/v1/payments/policies/{payment_policy_id}",
     params(("payment_policy_id" = String, Path, description = "Payment policy ID")),
@@ -329,6 +339,7 @@ pub async fn disable_payment_policy(
 }
 
 #[utoipa::path(
+    description = "List recent payment attempts (operator audit view).",
     get,
     path = "/v1/payments/attempts",
     params(ListPaymentAttemptsQuery),

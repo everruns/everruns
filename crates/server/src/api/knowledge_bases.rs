@@ -66,6 +66,7 @@ pub fn routes(state: AppState) -> Router {
 }
 
 #[utoipa::path(
+    description = "Create a new knowledge base.",
     post,
     path = "/v1/knowledge-bases",
     request_body = CreateKnowledgeBaseRequest,
@@ -86,6 +87,7 @@ pub async fn create_kb(
 }
 
 #[utoipa::path(
+    description = "List knowledge bases.",
     get,
     path = "/v1/knowledge-bases",
     params(ListKnowledgeBasesQuery),
@@ -106,6 +108,7 @@ pub async fn list_kbs(
 }
 
 #[utoipa::path(
+    description = "Get a knowledge base by ID.",
     get,
     path = "/v1/knowledge-bases/{kb_id}",
     params(("kb_id" = String, Path, description = "Knowledge base ID")),
@@ -126,6 +129,7 @@ pub async fn get_kb(
 }
 
 #[utoipa::path(
+    description = "Update a knowledge base. Only provided fields are modified.",
     patch,
     path = "/v1/knowledge-bases/{kb_id}",
     params(("kb_id" = String, Path, description = "Knowledge base ID")),
@@ -152,6 +156,7 @@ pub async fn update_kb(
 }
 
 #[utoipa::path(
+    description = "Delete a knowledge base.",
     delete,
     path = "/v1/knowledge-bases/{kb_id}",
     params(("kb_id" = String, Path, description = "Knowledge base ID")),
@@ -173,6 +178,7 @@ pub async fn delete_kb(
 // ------------- entries -------------
 
 #[utoipa::path(
+    description = "List knowledge base entries.",
     get,
     path = "/v1/knowledge-bases/{kb_id}/entries",
     params(
@@ -198,6 +204,7 @@ pub async fn list_entries(
 }
 
 #[utoipa::path(
+    description = "Create a new knowledge base entry.",
     post,
     path = "/v1/knowledge-bases/{kb_id}/entries",
     params(("kb_id" = String, Path, description = "Knowledge base ID")),
@@ -222,6 +229,7 @@ pub async fn create_entry(
 }
 
 #[utoipa::path(
+    description = "Get a knowledge base entry by ID.",
     get,
     path = "/v1/knowledge-bases/{kb_id}/entries/{entry_id}",
     params(
@@ -247,6 +255,7 @@ pub async fn get_entry(
 }
 
 #[utoipa::path(
+    description = "Update a knowledge base entry. Only provided fields are modified.",
     patch,
     path = "/v1/knowledge-bases/{kb_id}/entries/{entry_id}",
     params(
@@ -279,6 +288,7 @@ pub async fn update_entry(
 }
 
 #[utoipa::path(
+    description = "Delete a knowledge base entry.",
     delete,
     path = "/v1/knowledge-bases/{kb_id}/entries/{entry_id}",
     params(

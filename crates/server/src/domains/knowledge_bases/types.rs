@@ -11,6 +11,7 @@ pub use crate::storage::models::{
     UpdateKnowledgeBase, UpdateKnowledgeEntry,
 };
 
+/// Response body for knowledge base.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct KnowledgeBaseResponse {
     #[schema(value_type = String, example = "kb_01933b5a000070008000000000000001")]
@@ -29,6 +30,7 @@ pub struct KnowledgeBaseResponse {
     pub deleted_at: Option<DateTime<Utc>>,
 }
 
+/// Request body for the `create_knowledge_base` operation.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateKnowledgeBaseRequest {
     pub name: String,
@@ -36,6 +38,7 @@ pub struct CreateKnowledgeBaseRequest {
     pub description: Option<String>,
 }
 
+/// Request body for the `update_knowledge_base` operation.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct UpdateKnowledgeBaseRequest {
     #[serde(default)]
@@ -67,6 +70,7 @@ pub fn knowledge_base_response(row: KnowledgeBaseRow) -> anyhow::Result<Knowledg
     })
 }
 
+/// Response body for knowledge entry.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct KnowledgeEntryResponse {
     #[schema(value_type = String, example = "kbe_01933b5a000070008000000000000001")]
@@ -97,6 +101,7 @@ pub fn knowledge_entry_response(
     })
 }
 
+/// Request body for the `create_knowledge_entry` operation.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateKnowledgeEntryRequest {
     pub title: String,
@@ -107,6 +112,7 @@ pub struct CreateKnowledgeEntryRequest {
     pub tags: Option<Vec<String>>,
 }
 
+/// Request body for the `update_knowledge_entry` operation.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct UpdateKnowledgeEntryRequest {
     #[serde(default)]

@@ -455,6 +455,7 @@ pub async fn delete_channel(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// Request body for the `add_a2a_channel_http` operation.
 #[derive(Debug, serde::Deserialize, utoipa::ToSchema)]
 pub struct AddA2aChannelHttpRequest {
     #[serde(default)]

@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
+/// Request body for the `create_payment_account` operation.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreatePaymentAccountRequest {
     pub owner_type: String,
@@ -15,6 +16,7 @@ pub struct CreatePaymentAccountRequest {
     pub metadata: Option<serde_json::Value>,
 }
 
+/// Request body for the `update_payment_account` operation.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct UpdatePaymentAccountRequest {
     pub label: Option<String>,
@@ -30,6 +32,7 @@ pub struct ListPaymentAccountsQuery {
     pub owner_id: Option<String>,
 }
 
+/// Request body for the `create_payment_policy` operation.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreatePaymentPolicyRequest {
     pub payment_account_id: String,
@@ -49,6 +52,7 @@ pub struct CreatePaymentPolicyRequest {
     pub metadata: Option<serde_json::Value>,
 }
 
+/// Request body for the `update_payment_policy` operation.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct UpdatePaymentPolicyRequest {
     pub allowed_capabilities: Option<Vec<String>>,

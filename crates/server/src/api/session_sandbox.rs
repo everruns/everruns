@@ -45,6 +45,7 @@ pub enum SessionSandboxAction {
     Delete,
 }
 
+/// Response body for the `get_session_sandbox` operation.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct GetSessionSandboxResponse {
     pub configured: bool,
@@ -72,11 +73,13 @@ pub struct GetSessionSandboxResponse {
     pub updated_at: Option<String>,
 }
 
+/// Request body for the `manage_session_sandbox` operation.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct ManageSessionSandboxRequest {
     pub action: SessionSandboxAction,
 }
 
+/// Response body for the `manage_session_sandbox` operation.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ManageSessionSandboxResponse {
     pub action: SessionSandboxAction,
@@ -141,6 +144,7 @@ pub fn routes(state: AppState) -> Router {
 }
 
 #[utoipa::path(
+    description = "Get the current session sandbox status (lease, runtime image, network access).",
     get,
     path = "/v1/sessions/{session_id}/sandbox",
     params(
@@ -165,6 +169,7 @@ pub async fn get_sandbox(
 }
 
 #[utoipa::path(
+    description = "Manage the session sandbox lifecycle (start, stop, reset).",
     post,
     path = "/v1/sessions/{session_id}/sandbox",
     params(

@@ -65,6 +65,7 @@ pub fn routes(state: AppState) -> Router {
 }
 
 #[utoipa::path(
+    description = "List memory stores.",
     get,
     path = "/v1/memory-stores",
     responses(
@@ -82,6 +83,7 @@ pub async fn list_memory_stores(
 }
 
 #[utoipa::path(
+    description = "Create a new memory store.",
     post,
     path = "/v1/memory-stores",
     request_body = CreateMemoryStoreRequest,
@@ -102,6 +104,7 @@ pub async fn create_memory_store(
 }
 
 #[utoipa::path(
+    description = "Get a memory store by ID.",
     get,
     path = "/v1/memory-stores/{store_id}",
     params(("store_id" = String, Path, description = "Memory store ID")),
@@ -122,6 +125,7 @@ pub async fn get_memory_store(
 }
 
 #[utoipa::path(
+    description = "Update a memory store. Only provided fields are modified.",
     patch,
     path = "/v1/memory-stores/{store_id}",
     params(("store_id" = String, Path, description = "Memory store ID")),
@@ -148,6 +152,7 @@ pub async fn update_memory_store(
 }
 
 #[utoipa::path(
+    description = "List memories.",
     get,
     path = "/v1/memory-stores/{store_id}/memories",
     params(
@@ -174,6 +179,7 @@ pub async fn list_memories(
 }
 
 #[utoipa::path(
+    description = "Forget a memory.",
     delete,
     path = "/v1/memory-stores/{store_id}/memories/{memory_id}",
     params(
