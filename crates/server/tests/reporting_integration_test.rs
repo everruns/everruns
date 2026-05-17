@@ -143,3 +143,20 @@ async fn reporting_diagnostics_are_admin_scoped() {
     assert!(diagnostics["projector_lag"].as_array().unwrap().len() >= 5);
     assert_eq!(diagnostics["outbox"]["failed"], 0);
 }
+
+#[tokio::test]
+async fn reporting_backfill_endpoint_is_admin_scoped() {
+    let server = TestServer::in_memory().await;
+
+    let result: Value = server
+        .post("/v1/reports/admin/backfill", json!({ "limit": 100 }))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+
+    assert_eq!(result["enqueued"], 0);
+    assert_eq!(result["events"], 0);
+    assert_eq!(result["sessions"], 0);
+    assert_eq!(result["llm_generations"], 0);
+    assert_eq!(result["usage_ledger"], 0);
+}

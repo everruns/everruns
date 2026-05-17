@@ -5,6 +5,7 @@
 
 use everruns_core::{Permission, Policy, Rule};
 
+pub mod background;
 pub mod catalog;
 pub mod commands;
 pub mod service;

@@ -140,3 +140,22 @@ pub struct ProjectorRunResult {
     pub completed: usize,
     pub failed: usize,
 }
+
+#[derive(Debug, Clone, Deserialize, ToSchema)]
+pub struct ReportingBackfillRequest {
+    #[serde(default = "default_backfill_limit")]
+    pub limit: i64,
+}
+
+fn default_backfill_limit() -> i64 {
+    1_000
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ReportingBackfillResult {
+    pub enqueued: i64,
+    pub events: i64,
+    pub sessions: i64,
+    pub llm_generations: i64,
+    pub usage_ledger: i64,
+}

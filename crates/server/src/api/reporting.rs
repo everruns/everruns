@@ -18,12 +18,13 @@ use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
 use crate::domains::reporting::types::{
     CreateSavedReportRequest, ExportReportQueryRequest, ExportSavedReportRequest,
-    ProjectorRunResult, ReportExport, ReportingDiagnostics, SavedReport, UpdateSavedReportRequest,
+    ProjectorRunResult, ReportExport, ReportingBackfillRequest, ReportingBackfillResult,
+    ReportingDiagnostics, SavedReport, UpdateSavedReportRequest,
 };
 use crate::domains::reporting::{
-    CreateSavedReport, DeleteSavedReport, ExportReportQuery, ExportSavedReport, GetReportCatalog,
-    GetReportingDiagnostics, GetSavedReport, ListSavedReports, ReportingService, RunReportQuery,
-    RunReportingProjector, RunSavedReport, UpdateSavedReport,
+    BackfillReporting, CreateSavedReport, DeleteSavedReport, ExportReportQuery, ExportSavedReport,
+    GetReportCatalog, GetReportingDiagnostics, GetSavedReport, ListSavedReports, ReportingService,
+    RunReportQuery, RunReportingProjector, RunSavedReport, UpdateSavedReport,
 };
 use crate::storage::StorageBackend;
 
@@ -91,6 +92,7 @@ pub fn routes(state: AppState) -> Router {
             post(export_saved_report),
         )
         .route("/v1/reports/admin/diagnostics", get(get_diagnostics))
+        .route("/v1/reports/admin/backfill", post(backfill_reporting))
         .route("/v1/reports/projector/run", post(run_projector))
         .with_state(state)
 }
@@ -320,6 +322,26 @@ pub async fn get_diagnostics(
     State(state): State<AppState>,
 ) -> Result<Json<ReportingDiagnostics>, ApiError> {
     Ok(Json(GetReportingDiagnostics.run(&state.ctx(&org)).await?))
+}
+
+#[utoipa::path(
+    post,
+    path = "/v1/reports/admin/backfill",
+    request_body = ReportingBackfillRequest,
+    responses(
+        (status = 200, description = "Reporting backfill enqueue result", body = ReportingBackfillResult),
+        (status = 403, description = "Forbidden", body = ErrorResponse)
+    ),
+    tag = "reporting"
+)]
+pub async fn backfill_reporting(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Json(request): Json<ReportingBackfillRequest>,
+) -> Result<Json<ReportingBackfillResult>, ApiError> {
+    Ok(Json(
+        BackfillReporting(request).run(&state.ctx(&org)).await?,
+    ))
 }
 
 #[utoipa::path(

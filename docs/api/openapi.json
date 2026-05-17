@@ -5628,6 +5628,46 @@
         }
       }
     },
+    "/v1/reports/admin/backfill": {
+      "post": {
+        "tags": [
+          "reporting"
+        ],
+        "operationId": "backfill_reporting",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReportingBackfillRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Reporting backfill enqueue result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReportingBackfillResult"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/reports/admin/diagnostics": {
       "get": {
         "tags": [
@@ -19796,6 +19836,47 @@
           "to": {
             "type": "string",
             "format": "date-time"
+          }
+        }
+      },
+      "ReportingBackfillRequest": {
+        "type": "object",
+        "properties": {
+          "limit": {
+            "type": "integer",
+            "format": "int64"
+          }
+        }
+      },
+      "ReportingBackfillResult": {
+        "type": "object",
+        "required": [
+          "enqueued",
+          "events",
+          "sessions",
+          "llm_generations",
+          "usage_ledger"
+        ],
+        "properties": {
+          "enqueued": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "events": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "llm_generations": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "sessions": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "usage_ledger": {
+            "type": "integer",
+            "format": "int64"
           }
         }
       },

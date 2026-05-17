@@ -234,6 +234,7 @@ use utoipa::OpenApi;
         api::reporting::run_saved_report,
         api::reporting::export_saved_report,
         api::reporting::get_diagnostics,
+        api::reporting::backfill_reporting,
         api::reporting::run_projector,
     ),
     components(
@@ -399,6 +400,8 @@ use utoipa::OpenApi;
             domains::reporting::types::FailedReportingOutboxRow,
             domains::reporting::types::ReportExport,
             domains::reporting::types::ReportExportFormat,
+            domains::reporting::types::ReportingBackfillRequest,
+            domains::reporting::types::ReportingBackfillResult,
             domains::reporting::types::ReportingDiagnostics,
             domains::reporting::types::ReportingOutboxDiagnostics,
             domains::reporting::types::SavedReport,
