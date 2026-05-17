@@ -179,7 +179,8 @@ export default function ReportsPage() {
   const activeColumns = activeResult?.columns ?? [];
   const activeRows = activeResult?.rows ?? [];
   const measureColumn = activeColumns.find((column) => column.kind === "measure")?.name;
-  const canAdministerReports = hasRole("admin");
+  const canManageReports = hasRole("admin");
+  const canAdministerReports = canManageReports;
   const measureTotal = measureColumn
     ? activeRows.reduce(
         (sum, row) => sum + (typeof row[measureColumn] === "number" ? row[measureColumn] : 0),
@@ -410,25 +411,27 @@ export default function ReportsPage() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2">
-                  <Label>Save</Label>
-                  <div className="flex gap-2">
-                    <Input
-                      value={saveName}
-                      onChange={(event) => setSaveName(event.target.value)}
-                      placeholder="Report name"
-                    />
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={handleSave}
-                      disabled={!saveName.trim() || createSavedReport.isPending}
-                      aria-label="Save report"
-                    >
-                      <Save className="h-4 w-4" />
-                    </Button>
+                {canManageReports && (
+                  <div className="space-y-2">
+                    <Label>Save</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        value={saveName}
+                        onChange={(event) => setSaveName(event.target.value)}
+                        placeholder="Report name"
+                      />
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={handleSave}
+                        disabled={!saveName.trim() || createSavedReport.isPending}
+                        aria-label="Save report"
+                      >
+                        <Save className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
-                </div>
+                )}
               </CardContent>
             </Card>
 
@@ -515,14 +518,16 @@ export default function ReportsPage() {
                         >
                           <Download className="h-4 w-4" />
                         </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => deleteSavedReport.mutate(report.id)}
-                          aria-label="Delete saved report"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        {canManageReports && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => deleteSavedReport.mutate(report.id)}
+                            aria-label="Delete saved report"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
                       </div>
                     </div>
                   ))
