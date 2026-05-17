@@ -45,7 +45,8 @@ Use this skill when the task is about repo maintenance rather than a single feat
 - Prefer the highest-signal path first: recent diffs, flaky areas, failing checks, stale specs, outdated dependencies, or known security/performance hotspots.
 - Always run `cargo outdated` (or `cargo search` per-crate) and `npm outdated` during release-readiness or dependency-scoped maintenance — even when no security advisory exists. Patch/minor bumps are cheap to miss and cheap to apply; skipping them silently accumulates drift.
 - Check Linear issues in the OSS project (EVE team) already in `In Progress` when maintenance covers release readiness or workflow hygiene. Treat issues whose `updatedAt` is older than 1 day as stale by default, then triage or report them.
-- When maintenance covers release readiness or repo workflow hygiene, review recent upstream plugin-platform changes before declaring local plugins current. Check the Codex and Claude Code Everruns Dev plugin surfaces together: compare `.agents/plugins/marketplace.json`, `.claude-plugin/marketplace.json`, `plugins/everruns-dev/.codex-plugin/plugin.json`, `plugins/everruns-dev/.claude-plugin/plugin.json`, and shipped plugin behavior; run `scripts/test-everruns-dev-plugin.sh` or equivalent metadata validation so registration and version parity are proven.
+- When maintenance covers release readiness or repo workflow hygiene, review recent upstream plugin-platform changes before declaring local plugins current. Check the Codex and Claude Code Everruns Dev plugin surfaces together: compare `.agents/plugins/marketplace.json`, `.claude-plugin/marketplace.json`, `plugins/everruns-dev/.codex-plugin/plugin.json`, `plugins/everruns-dev/.claude-plugin/plugin.json`, shipped plugin behavior, skills, docs, and marketplace entries; run `scripts/test-everruns-dev-plugin.sh` or equivalent metadata validation so registration, version parity, compatibility, and non-contradiction are proven.
+- When maintenance covers recently shipped features or release readiness, check for half-built cross-surface features: UI disconnected from backend behavior, backend capabilities missing intended MCP/CLI/docs exposure, MCP or CLI behavior lagging API semantics, or tests/manual cases claiming more than the product provides.
 - Skip untouched areas when there is a clear reason. Say why they were skipped.
 - Prefer fixing over reporting.
 - For bugs uncovered during maintenance, prefer a failing test before the fix when practical.
@@ -80,6 +81,17 @@ Goal: docs describe the current system intent and constraints, without drifting 
 Good evidence:
 - changed behavior reflected in `specs/`, `apps/docs/`, OpenAPI, or examples when relevant
 - stale or duplicate spec detail removed in favor of links to source files
+
+### Feature Completeness Across Surfaces
+
+Goal: features that appear shipped in one surface are connected, reachable, and consistent across the intended UI, backend, MCP, CLI, docs, and tests.
+
+Good evidence:
+- UI affordances call real backend APIs and handle loading, errors, auth, and state refresh
+- backend features intended for agent or automation use are exposed through MCP/app surfaces where applicable
+- CLI commands and flags match current API semantics and do not duplicate stale assumptions
+- docs, specs, examples, tests, and manual test cases do not claim unavailable behavior
+- gaps are fixed locally or captured as specific findings with the missing surface, user impact, and next action
 
 ### Security And Threat Posture
 

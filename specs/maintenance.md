@@ -14,6 +14,8 @@ Maintenance work should optimize for these outcomes:
 2. Improve the repo in concrete ways or produce crisp findings with evidence.
 3. Match validation depth to the actual risk surface.
 4. Keep release claims honest: do not call the repo ready unless the relevant surfaces were checked.
+5. Detect half-built features whose visible surfaces do not match their implementation status, especially gaps between UI, backend APIs, MCP, CLI, docs, and tests.
+6. Keep shipped plugin surfaces current, mutually consistent, and aligned with upstream platform behavior.
 
 ## Ownership Boundary
 
@@ -40,9 +42,23 @@ Relevant references:
 - Maintenance is risk-proportional, not sweep-proportional. A larger checklist is not inherently better.
 - The selected maintenance scope must be explained, including what was skipped and why.
 - If maintenance changes code or behavior, affected artifacts must stay in sync: specs, docs, OpenAPI, threat model, test cases, agent instructions, and release materials as applicable.
-- When maintenance covers repo workflow hygiene, treat Codex and Claude Code plugin surfaces as maintained workflow artifacts. Review recent upstream plugin-platform changes before claiming either plugin is current, and verify the shared Everruns Dev plugin metadata stays in parity across Codex and Claude manifests.
+- When maintenance covers repo workflow hygiene, treat Codex and Claude Code plugin surfaces as maintained workflow artifacts. Review recent upstream plugin-platform changes before claiming either plugin is current, verify the shared Everruns Dev plugin metadata stays in parity across Codex and Claude manifests, and resolve contradictions between plugin manifests, skills, MCP/app behavior, docs, and marketplace entries.
 - Specs should not duplicate operational workflow text that belongs in skills or commands.
 - Maintenance should prefer concrete fixes over ceremonial audits when a safe local fix exists.
+
+## Feature Completeness Drift
+
+Maintenance should look for features that appear shipped in one surface but are missing, stubbed, or disconnected in another. A feature is not release-ready merely because one layer exists.
+
+Examples of drift to catch:
+
+- UI controls or pages that are not connected to backend state, mutations, streaming updates, auth, or error handling
+- backend APIs with no reachable UI, CLI, MCP, SDK, or docs path when those surfaces are part of the intended product contract
+- MCP tools, resources, or app cards that lag backend capabilities or expose behavior the UI/CLI cannot support consistently
+- CLI commands that duplicate stale assumptions, omit important flags, or contradict current API semantics
+- specs, docs, examples, tests, and manual test cases that describe a more complete feature than the product actually provides
+
+The expected outcome is either a small fix that reconnects the surfaces or a crisp finding that names the missing surface, the user-visible impact, and the next action. Maintenance should not bury these gaps as generic technical debt because half-built features distort release readiness.
 
 ## Spec Hygiene
 
@@ -70,7 +86,8 @@ Before a release, maintenance should cover:
   - `cargo outdated --root-deps-only --workspace` currently fails with a `libsqlite3-sys` `links` conflict because its temporary solve combines the workspace `sqlx 0.8` pin with the latest `rusqlite`. The real lockfile builds, so treat that failure as a tooling artifact and inspect `Cargo.toml` plus `cargo tree -i sqlx` / `cargo tree -i rusqlite` instead until `sqlx` and `rusqlite` are upgraded together
   - major npm upgrades (TypeScript, lucide-react, marked, openui packages) ship as separate PRs per framework family so each can be validated by the matching UI or docs build
   - bump npm packages that have transitive runtime dependencies (e.g. `@ag-ui/core`) together with the packages that pin them (e.g. `@openuidev/*`), otherwise npm installs duplicate copies in the lockfile
-- the Codex and Claude Code plugin surfaces reviewed against recent upstream plugin-platform changes: inspect the latest relevant platform references, then compare them to `.agents/plugins/marketplace.json`, `.claude-plugin/marketplace.json`, `plugins/everruns-dev/.codex-plugin/plugin.json`, `plugins/everruns-dev/.claude-plugin/plugin.json`, and shipped plugin behavior; run `scripts/test-everruns-dev-plugin.sh` or equivalent metadata validation to prove registration and version parity before claiming release readiness
+- feature completeness across product surfaces: changed or recently shipped features should have their intended UI, backend, MCP, CLI, docs, tests, and manual-test coverage checked for disconnected, stubbed, or contradictory behavior
+- the Codex and Claude Code plugin surfaces reviewed against recent upstream plugin-platform changes: inspect the latest relevant platform references, then compare them to `.agents/plugins/marketplace.json`, `.claude-plugin/marketplace.json`, `plugins/everruns-dev/.codex-plugin/plugin.json`, `plugins/everruns-dev/.claude-plugin/plugin.json`, shipped plugin behavior, skills, docs, and marketplace entries; run `scripts/test-everruns-dev-plugin.sh` or equivalent metadata validation to prove registration, version parity, compatibility, and non-contradiction before claiming release readiness
 
 A full-repo sweep is not mandatory if the evidence is already strong. The bar is confidence, not checklist completion theater.
 
