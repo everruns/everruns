@@ -3,6 +3,19 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactNode } from "react";
 import ModelsPage from "@/app/(main)/models/page";
 
+const mockUseSearchParams = jest.fn();
+
+jest.mock("next/navigation", () => ({
+  useSearchParams: () => mockUseSearchParams(),
+}));
+
+jest.mock("next/link", () => ({
+  __esModule: true,
+  default: ({ children, href }: { children: React.ReactNode; href: string }) => (
+    <a href={href}>{children}</a>
+  ),
+}));
+
 const mockProviders = [
   {
     id: "provider-1",
@@ -11,6 +24,16 @@ const mockProviders = [
     status: "active",
     api_key_set: true,
     base_url: "https://api.openai.com/v1",
+    created_at: "2024-01-01T00:00:00Z",
+    updated_at: "2024-01-01T00:00:00Z",
+  },
+  {
+    id: "provider-2",
+    name: "Anthropic Dev",
+    provider_type: "anthropic",
+    status: "active",
+    api_key_set: true,
+    base_url: null,
     created_at: "2024-01-01T00:00:00Z",
     updated_at: "2024-01-01T00:00:00Z",
   },
@@ -112,6 +135,7 @@ describe("ModelsPage", () => {
       mutateAsync: jest.fn(),
       isPending: false,
     });
+    mockUseSearchParams.mockReturnValue(new URLSearchParams());
   });
 
   it("renders Models section header", () => {
@@ -156,6 +180,37 @@ describe("ModelsPage", () => {
 
     expect(screen.getByRole("heading", { name: "Enabled models" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Available models" })).toBeInTheDocument();
+  });
+
+  it("filters models by provider query parameter", () => {
+    mockUseSearchParams.mockReturnValue(new URLSearchParams("provider=provider-2"));
+    mockUseLlmModels.mockReturnValue({
+      data: [
+        ...mockModels,
+        {
+          id: "model-2",
+          model_id: "claude-sonnet-4-5",
+          display_name: "Claude Sonnet 4.5",
+          provider_id: "provider-2",
+          provider_name: "Anthropic Dev",
+          provider_type: "anthropic",
+          healthy: true,
+          enabled: true,
+          capabilities: ["chat"],
+          created_at: "2024-01-01T00:00:00Z",
+          updated_at: "2024-01-01T00:00:00Z",
+        },
+      ],
+      isLoading: false,
+      error: null,
+    });
+
+    render(<ModelsPage />, { wrapper });
+
+    expect(screen.getByText("Manage the models available from Anthropic Dev.")).toBeInTheDocument();
+    expect(screen.getByText("Claude Sonnet 4.5")).toBeInTheDocument();
+    expect(screen.queryByText(/gpt-5\.2 - OpenAI Production/)).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Clear filter/i })).toHaveAttribute("href", "/models");
   });
 
   it("sorts models within a section by release date descending", () => {

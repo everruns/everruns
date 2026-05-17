@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import {
+  useLlmModels,
   useLlmProviders,
   useDeleteLlmProvider,
   useSyncProviderModels,
@@ -22,6 +23,7 @@ export default function ProvidersPage() {
     isLoading: providersLoading,
     error: providersError,
   } = useLlmProviders();
+  const { data: models = [], isLoading: modelsLoading } = useLlmModels();
   const deleteProvider = useDeleteLlmProvider();
   const syncModels = useSyncProviderModels();
 
@@ -32,6 +34,17 @@ export default function ProvidersPage() {
     type: "success" | "error";
     text: string;
   } | null>(null);
+
+  const modelCountsByProvider = useMemo(() => {
+    const counts = new Map<string, { total: number; enabled: number }>();
+    for (const model of models) {
+      const current = counts.get(model.provider_id) ?? { total: 0, enabled: 0 };
+      current.total += 1;
+      if (model.enabled) current.enabled += 1;
+      counts.set(model.provider_id, current);
+    }
+    return counts;
+  }, [models]);
 
   const handleDeleteProvider = async (id: string) => {
     if (
@@ -132,6 +145,8 @@ export default function ProvidersPage() {
                 onSetApiKey={setApiKeyProvider}
                 onSyncModels={handleSyncModels}
                 isSyncing={syncingProviderId === provider.id}
+                modelCounts={modelCountsByProvider.get(provider.id) ?? { total: 0, enabled: 0 }}
+                modelsLoading={modelsLoading}
               />
             ))}
           </div>

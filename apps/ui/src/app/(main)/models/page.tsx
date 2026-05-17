@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Cpu, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -39,6 +41,7 @@ function compareByRecency(a: LlmModelWithProvider, b: LlmModelWithProvider): num
 export default function ModelsPage() {
   usePageTitle("Models");
   const queryClient = useQueryClient();
+  const searchParams = useSearchParams();
   const { data: providers = [] } = useLlmProviders();
   const { data: models = [], isLoading: modelsLoading, error: modelsError } = useLlmModels();
   const { data: org } = useOrganization();
@@ -46,14 +49,33 @@ export default function ModelsPage() {
   const deleteModel = useDeleteLlmModel();
   const [addModelOpen, setAddModelOpen] = useState(false);
   const [togglingModelId, setTogglingModelId] = useState<string | null>(null);
+  const selectedProviderId = searchParams.get("provider");
+  const selectedProvider = useMemo(
+    () =>
+      selectedProviderId
+        ? providers.find((provider) => provider.id === selectedProviderId)
+        : undefined,
+    [providers, selectedProviderId],
+  );
+  const filteredModels = useMemo(
+    () =>
+      selectedProviderId
+        ? models.filter((model) => model.provider_id === selectedProviderId)
+        : models,
+    [models, selectedProviderId],
+  );
 
   const { enabledModels, availableModels } = useMemo(() => {
-    const enabled = models.filter((m) => m.enabled).sort(compareByRecency);
-    const available = models.filter((m) => !m.enabled).sort(compareByRecency);
+    const enabled = filteredModels.filter((m) => m.enabled).sort(compareByRecency);
+    const available = filteredModels.filter((m) => !m.enabled).sort(compareByRecency);
     return { enabledModels: enabled, availableModels: available };
-  }, [models]);
+  }, [filteredModels]);
+  const allEnabledModels = useMemo(
+    () => models.filter((model) => model.enabled).sort(compareByRecency),
+    [models],
+  );
   const selectedDefaultModelName = org?.default_model_id
-    ? (enabledModels.find((model) => model.id === org.default_model_id)?.display_name ??
+    ? (allEnabledModels.find((model) => model.id === org.default_model_id)?.display_name ??
       "Unknown model")
     : undefined;
 
@@ -90,12 +112,23 @@ export default function ModelsPage() {
     <PageShell>
       <PageHeader
         title="Models"
-        description="Manage the models available from your configured providers."
+        description={
+          selectedProvider
+            ? `Manage the models available from ${selectedProvider.name}.`
+            : "Manage the models available from your configured providers."
+        }
         actions={
-          <Button onClick={() => setAddModelOpen(true)} disabled={providers.length === 0}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Model
-          </Button>
+          <>
+            {selectedProviderId && (
+              <Link href="/models">
+                <Button variant="outline">Clear filter</Button>
+              </Link>
+            )}
+            <Button onClick={() => setAddModelOpen(true)} disabled={providers.length === 0}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Model
+            </Button>
+          </>
         }
       />
 
@@ -113,14 +146,18 @@ export default function ModelsPage() {
                 <Skeleton key={index} className="h-16 w-full" />
               ))}
             </div>
-          ) : models.length === 0 ? (
+          ) : filteredModels.length === 0 ? (
             <Card className="p-8 text-center">
               <Cpu className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <h3 className="text-lg font-medium mb-2">No models configured</h3>
+              <h3 className="text-lg font-medium mb-2">
+                {selectedProvider ? "No models for this provider" : "No models configured"}
+              </h3>
               <p className="text-muted-foreground mb-4">
-                {providers.length === 0
-                  ? "Add a provider first, then add models to it."
-                  : "Add models to your providers to use them with agents."}
+                {selectedProvider
+                  ? "Sync or add models for this provider to use them with agents."
+                  : providers.length === 0
+                    ? "Add a provider first, then add models to it."
+                    : "Add models to your providers to use them with agents."}
               </p>
               {providers.length > 0 && (
                 <Button onClick={() => setAddModelOpen(true)}>
@@ -186,7 +223,7 @@ export default function ModelsPage() {
           )}
         </section>
 
-        {enabledModels.length > 0 && (
+        {allEnabledModels.length > 0 && (
           <section>
             <div className="mb-4">
               <h2 className="text-xl font-semibold">Organization Settings</h2>
@@ -213,7 +250,7 @@ export default function ModelsPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="none">No default model</SelectItem>
-                      {enabledModels.map((model) => (
+                      {allEnabledModels.map((model) => (
                         <SelectItem key={model.id} value={model.id}>
                           <div className="flex items-center gap-2">
                             <ProviderIcon
