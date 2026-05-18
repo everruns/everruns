@@ -29,10 +29,12 @@ members = [
     "integrations/e2b",
     "integrations/sprites",
     "integrations/pi",
+    "examples/coding-cli",
 ]
 
 exclude = [
     "research/infinity_context",
+    "examples/weekend-concierge-host",
 ]
 
 [workspace.package]
