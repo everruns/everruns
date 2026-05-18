@@ -1,13 +1,8 @@
-use chrono::Utc;
 use everruns_core::capabilities::TestMathCapability;
 use everruns_core::llm_driver_registry::DriverRegistry;
 use everruns_core::llmsim_driver::LlmSimConfig;
-use everruns_core::{
-    Agent, AgentCapabilityConfig, AgentStatus, CapabilityRegistry, Harness, HarnessStatus,
-    LlmProviderType, ModelWithProvider, PlatformDefinition, Session, SessionStatus,
-};
-use everruns_runtime::InProcessRuntimeBuilder;
-use uuid::Uuid;
+use everruns_core::{CapabilityRegistry, LlmProviderType, ModelWithProvider, PlatformDefinition};
+use everruns_runtime::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -16,10 +11,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let platform = PlatformDefinition::new(capabilities, DriverRegistry::new());
 
-    let harness_id = "harness_00000000000000000000000000000010".parse()?;
-    let agent_id = "agent_00000000000000000000000000000010".parse()?;
-    let session_id = "session_00000000000000000000000000000010".parse()?;
+    // Per-type builders are useful when an embedder needs stable ids or
+    // separate construction. IDs are generated unless `.id(...)` is called.
+    let harness_builder = HarnessBuilder::new("math", "You are a math assistant.")
+        .display_name("Math")
+        .description("Minimal embedded harness")
+        .capability("test_math");
+    let harness_id = harness_builder.harness_id();
+    let agent_builder = AgentBuilder::new("math-agent", "Use tools when they help.")
+        .display_name("Math Agent")
+        .max_iterations(8);
+    let agent_id = agent_builder.agent_id();
+    let session_builder = SessionBuilder::new(harness_id)
+        .agent(agent_id)
+        .title("Embedded Math Session");
+    let _per_type_builders = (
+        harness_builder.build(),
+        agent_builder.build(),
+        session_builder.build(),
+    );
 
+    // The runtime below uses the compact convenience.
     let runtime = InProcessRuntimeBuilder::new()
         .platform_definition(platform)
         .llm_sim(
@@ -38,96 +50,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             api_key: Some("fake-key".into()),
             base_url: None,
         })
-        .harness(Harness {
-            id: harness_id,
-            name: "math".into(),
-            display_name: Some("Math".into()),
-            description: Some("Minimal embedded harness".into()),
-            system_prompt: "You are a math assistant.".into(),
-            parent_harness_id: None,
-            default_model_id: None,
-            tags: vec![],
-            capabilities: vec![AgentCapabilityConfig::new("test_math")],
-            initial_files: vec![],
-            network_access: None,
-            mcp_servers: Default::default(),
-            is_built_in: false,
-            status: HarnessStatus::Active,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-            archived_at: None,
-            deleted_at: None,
-        })
-        .agent(Agent {
-            public_id: agent_id,
-            internal_id: Uuid::nil(),
-            name: "math-agent".into(),
-            display_name: Some("Math Agent".into()),
-            description: None,
-            system_prompt: "Use tools when they help.".into(),
-            default_model_id: None,
-            default_version_id: None,
-            forked_from_agent_id: None,
-            forked_from_version_id: None,
-            root_agent_id: None,
-            tags: vec![],
-            capabilities: vec![],
-            initial_files: vec![],
-            network_access: None,
-            max_iterations: Some(8),
-            tools: vec![],
-            mcp_servers: Default::default(),
-            status: AgentStatus::Active,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-            archived_at: None,
-            deleted_at: None,
-            usage: None,
-        })
-        .session(Session {
-            id: session_id,
-            organization_id: everruns_core::DEFAULT_ORG_PUBLIC_ID.to_string(),
-            harness_id,
-            agent_id: Some(agent_id),
-            agent_version_id: None,
-            agent_identity_id: None,
-            owner_principal_id: everruns_core::PrincipalId::from_seed(1),
-            resolved_owner_user_id: None,
-            owner: None,
-            effective_owner: None,
-            title: Some("Embedded Math Session".into()),
-            locale: None,
-            preview: None,
-            output_preview: None,
-            tags: vec![],
-            model_id: None,
-            capabilities: vec![],
-            tools: vec![],
-            mcp_servers: Default::default(),
-            system_prompt: None,
-            initial_files: vec![],
-            hints: None,
-            network_access: None,
-            max_iterations: None,
-            status: SessionStatus::Started,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-            started_at: None,
-            finished_at: None,
-            usage: None,
-            is_pinned: None,
-            active_schedule_count: None,
-            features: vec![],
-            parent_session_id: None,
-            subagent_name: None,
-            subagent_task: None,
-            subagent_status: None,
-            blueprint_id: None,
-            blueprint_config: None,
+        .single_session(|s| {
+            s.harness("math", "You are a math assistant.")
+                .harness_display_name("Math")
+                .harness_description("Minimal embedded harness")
+                .with_capability("test_math")
+                .agent("math-agent", "Use tools when they help.")
+                .agent_display_name("Math Agent")
+                .agent_max_iterations(8)
+                .session_title("Embedded Math Session")
         })
         .build()
         .await?;
 
+    let session_id = runtime.default_session_id().expect("single_session id");
     let result = runtime.run_text_turn(session_id, "What is 6 * 7?").await?;
 
     println!("success: {}", result.success);

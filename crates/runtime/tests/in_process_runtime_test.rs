@@ -1,4 +1,4 @@
-use chrono::Utc;
+use chrono::{TimeZone, Utc};
 use everruns_core::capabilities::TestMathCapability;
 use everruns_core::llm_driver_registry::DriverRegistry;
 use everruns_core::llmsim_driver::LlmSimConfig;
@@ -7,16 +7,14 @@ use everruns_core::memory::{
     InMemoryMemoryStore, InMemoryMessageRetriever,
 };
 use everruns_core::{
-    Agent, AgentCapabilityConfig, AgentStatus, CapabilityRegistry, Harness, HarnessStatus,
-    LlmProviderType, MessageRole, ModelWithProvider, PlatformDefinition, Session, SessionStatus,
-    ToolCall,
+    Agent, CapabilityRegistry, Harness, LlmProviderType, MessageRole, ModelWithProvider,
+    PlatformDefinition, Session, ToolCall,
 };
 use everruns_runtime::{
-    InMemorySessionFileStore, InMemorySessionStorageStore, InMemorySessionStore,
-    InProcessRuntimeBuilder, RuntimeBackends,
+    AgentBuilder, HarnessBuilder, InMemorySessionFileStore, InMemorySessionStorageStore,
+    InMemorySessionStore, InProcessRuntimeBuilder, RuntimeBackends, SessionBuilder,
 };
 use std::sync::Arc;
-use uuid::Uuid;
 
 fn minimal_platform() -> PlatformDefinition {
     let mut capabilities = CapabilityRegistry::new();
@@ -25,55 +23,19 @@ fn minimal_platform() -> PlatformDefinition {
 }
 
 fn harness(harness_id: everruns_core::HarnessId) -> Harness {
-    Harness {
-        id: harness_id,
-        name: "math".into(),
-        display_name: Some("Math".into()),
-        description: None,
-        system_prompt: "You are a math assistant.".into(),
-        parent_harness_id: None,
-        default_model_id: None,
-        tags: vec![],
-        capabilities: vec![AgentCapabilityConfig::new("test_math")],
-        initial_files: vec![],
-        network_access: None,
-        mcp_servers: Default::default(),
-        is_built_in: false,
-        status: HarnessStatus::Active,
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
-        archived_at: None,
-        deleted_at: None,
-    }
+    HarnessBuilder::new("math", "You are a math assistant.")
+        .id(harness_id)
+        .display_name("Math")
+        .capability("test_math")
+        .build()
 }
 
 fn agent(agent_id: everruns_core::AgentId) -> Agent {
-    Agent {
-        public_id: agent_id,
-        internal_id: Uuid::nil(),
-        name: "math-agent".into(),
-        display_name: Some("Math Agent".into()),
-        description: None,
-        system_prompt: "Use tools when needed.".into(),
-        default_model_id: None,
-        default_version_id: None,
-        forked_from_agent_id: None,
-        forked_from_version_id: None,
-        root_agent_id: None,
-        tags: vec![],
-        capabilities: vec![],
-        initial_files: vec![],
-        network_access: None,
-        max_iterations: Some(8),
-        tools: vec![],
-        mcp_servers: Default::default(),
-        status: AgentStatus::Active,
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
-        archived_at: None,
-        deleted_at: None,
-        usage: None,
-    }
+    AgentBuilder::new("math-agent", "Use tools when needed.")
+        .id(agent_id)
+        .display_name("Math Agent")
+        .max_iterations(8)
+        .build()
 }
 
 fn session(
@@ -81,47 +43,45 @@ fn session(
     harness_id: everruns_core::HarnessId,
     agent_id: Option<everruns_core::AgentId>,
 ) -> Session {
-    Session {
-        id: session_id,
-        organization_id: everruns_core::DEFAULT_ORG_PUBLIC_ID.to_string(),
-        harness_id,
-        agent_id,
-        agent_version_id: None,
-        agent_identity_id: None,
-        owner_principal_id: everruns_core::PrincipalId::from_seed(1),
-        resolved_owner_user_id: None,
-        owner: None,
-        effective_owner: None,
-        title: Some("Embedded Session".into()),
-        locale: None,
-        preview: None,
-        output_preview: None,
-        tags: vec![],
-        model_id: None,
-        capabilities: vec![],
-        tools: vec![],
-        mcp_servers: Default::default(),
-        system_prompt: None,
-        initial_files: vec![],
-        hints: None,
-        network_access: None,
-        max_iterations: None,
-        status: SessionStatus::Started,
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
-        started_at: None,
-        finished_at: None,
-        usage: None,
-        is_pinned: None,
-        active_schedule_count: None,
-        features: vec![],
-        parent_session_id: None,
-        subagent_name: None,
-        subagent_task: None,
-        subagent_status: None,
-        blueprint_id: None,
-        blueprint_config: None,
+    let builder = SessionBuilder::new(harness_id)
+        .id(session_id)
+        .title("Embedded Session");
+    match agent_id {
+        Some(agent_id) => builder.agent(agent_id).build(),
+        None => builder.build(),
     }
+}
+
+#[test]
+fn per_type_builders_accept_explicit_timestamps() {
+    let timestamp = Utc.with_ymd_and_hms(2026, 1, 2, 3, 4, 5).unwrap();
+    let harness_id = everruns_core::HarnessId::from_seed(51);
+    let agent_id = everruns_core::AgentId::from_seed(51);
+    let session_id = everruns_core::SessionId::from_seed(51);
+
+    let harness = HarnessBuilder::new("math", "prompt")
+        .id(harness_id)
+        .created_at(timestamp)
+        .updated_at(timestamp)
+        .build();
+    let agent = AgentBuilder::new("math-agent", "prompt")
+        .id(agent_id)
+        .created_at(timestamp)
+        .updated_at(timestamp)
+        .build();
+    let session = SessionBuilder::new(harness_id)
+        .id(session_id)
+        .agent(agent_id)
+        .created_at(timestamp)
+        .updated_at(timestamp)
+        .build();
+
+    assert_eq!(harness.created_at, timestamp);
+    assert_eq!(harness.updated_at, timestamp);
+    assert_eq!(agent.created_at, timestamp);
+    assert_eq!(agent.updated_at, timestamp);
+    assert_eq!(session.created_at, timestamp);
+    assert_eq!(session.updated_at, timestamp);
 }
 
 #[tokio::test]
@@ -195,6 +155,38 @@ async fn runtime_executes_tool_loop_and_persists_messages() {
             .any(|event_type| event_type == "tool.completed"),
         "tool execution events must be captured for embedders",
     );
+}
+
+#[tokio::test]
+async fn single_session_builder_seeds_runnable_runtime() {
+    let runtime = InProcessRuntimeBuilder::new()
+        .platform_definition(minimal_platform())
+        .llm_sim(LlmSimConfig::fixed("single session works"))
+        .single_session(|s| {
+            s.harness("math", "You are a math assistant.")
+                .with_capability("test_math")
+                .agent("math-agent", "Use tools when needed.")
+                .agent_max_iterations(8)
+                .session_title("Embedded Session")
+        })
+        .build()
+        .await
+        .unwrap();
+
+    let session_id = runtime.default_session_id().expect("default session id");
+    let context = runtime.load_context(session_id).await.unwrap();
+
+    assert_eq!(context.harness_chain.last().expect("harness").name, "math");
+    assert_eq!(
+        context.agent.expect("agent").system_prompt,
+        "Use tools when needed."
+    );
+
+    let result = runtime
+        .run_text_turn(session_id, "Say this is working.")
+        .await
+        .unwrap();
+    assert!(result.success);
 }
 
 #[tokio::test]

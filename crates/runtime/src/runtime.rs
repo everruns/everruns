@@ -8,6 +8,7 @@ use crate::backends::{
     RuntimeFileStore, RuntimeHarnessStore, RuntimeMessageStore, RuntimeProviderStore,
     RuntimeSessionStore,
 };
+use crate::builders::SingleSessionBuilder;
 use crate::in_memory::{
     InMemorySessionFileStore, InMemorySessionStorageStore, InMemorySessionStore,
 };
@@ -119,6 +120,7 @@ pub struct InProcessRuntimeBuilder {
     harnesses: Vec<Harness>,
     agents: Vec<Agent>,
     sessions: Vec<Session>,
+    default_session_id: Option<SessionId>,
     seeded_files: Vec<(SessionId, InitialFile)>,
 }
 
@@ -147,6 +149,7 @@ impl InProcessRuntimeBuilder {
             harnesses: Vec::new(),
             agents: Vec::new(),
             sessions: Vec::new(),
+            default_session_id: None,
             seeded_files: Vec::new(),
         }
     }
@@ -204,6 +207,23 @@ impl InProcessRuntimeBuilder {
     /// Seed a session into the runtime store.
     pub fn session(mut self, session: Session) -> Self {
         self.sessions.push(session);
+        self
+    }
+
+    /// Seed one harness, one agent, and one session with a compact sub-builder.
+    ///
+    /// The generated session id is exposed from the built runtime via
+    /// [`InProcessRuntime::default_session_id`].
+    pub fn single_session<F>(mut self, configure: F) -> Self
+    where
+        F: FnOnce(SingleSessionBuilder) -> SingleSessionBuilder,
+    {
+        let (harness, agent, session, session_id) =
+            configure(SingleSessionBuilder::default()).build();
+        self.harnesses.push(harness);
+        self.agents.push(agent);
+        self.sessions.push(session);
+        self.default_session_id = Some(session_id);
         self
     }
 
@@ -306,6 +326,7 @@ impl InProcessRuntimeBuilder {
             harness_store: backends.harness_store,
             agent_store: backends.agent_store,
             session_store: backends.session_store,
+            default_session_id: self.default_session_id,
             message_store: backends.message_store,
             provider_store: backends.provider_store,
             event_emitter,
@@ -356,6 +377,7 @@ pub struct InProcessRuntime {
     harness_store: Arc<dyn RuntimeHarnessStore>,
     agent_store: Arc<dyn RuntimeAgentStore>,
     session_store: Arc<dyn RuntimeSessionStore>,
+    default_session_id: Option<SessionId>,
     message_store: Arc<dyn RuntimeMessageStore>,
     provider_store: Arc<dyn RuntimeProviderStore>,
     event_emitter: PersistingEventEmitter,
@@ -370,6 +392,12 @@ impl InProcessRuntime {
     /// Create a builder for the in-process runtime.
     pub fn builder() -> InProcessRuntimeBuilder {
         InProcessRuntimeBuilder::new()
+    }
+
+    /// Return the default session id seeded by
+    /// [`InProcessRuntimeBuilder::single_session`], if one was configured.
+    pub fn default_session_id(&self) -> Option<SessionId> {
+        self.default_session_id
     }
 
     /// Execute one turn for an existing session.

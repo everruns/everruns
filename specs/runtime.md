@@ -57,12 +57,23 @@ The builder must allow an embedder to:
 - Optionally register `llmsim` for deterministic local examples and tests
 - Swap the default in-memory stores for custom backends via `RuntimeBackends`
 
+`everruns-runtime` also exposes `HarnessBuilder`, `AgentBuilder`, and
+`SessionBuilder` as the supported embedder construction path for those seed
+models. The core structs remain public data models and may still be constructed
+directly, but embedders should prefer the builders so new optional core fields
+can be defaulted inside the runtime crate instead of forcing every embedder to
+update struct literals. `InProcessRuntimeBuilder::single_session(...)` is the
+recommended compact path for the common one-harness, one-agent, one-session
+runtime shape and records the generated session id for
+`InProcessRuntime::default_session_id()`.
+
 ### Runtime responsibilities
 
 `InProcessRuntime` must expose:
 
 - `run_turn(session_id, input)` for one turn of execution
 - `run_text_turn(session_id, text)` convenience helper
+- `default_session_id()` for runtimes seeded with `single_session(...)`
 - `load_context(session_id)` to inspect the assembled turn context without
   executing a new turn, including empty sessions before the first message
 - `messages(session_id)` to inspect conversation history
@@ -251,6 +262,7 @@ test binaries in `crates/runtime/tests/`.
 ## Source Index
 
 - `crates/runtime/src/lib.rs`
+- `crates/runtime/src/builders.rs`
 - `crates/runtime/src/runtime.rs`
 - `crates/runtime/src/host.rs`
 - `crates/runtime/src/in_memory.rs`
