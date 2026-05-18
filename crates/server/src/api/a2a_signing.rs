@@ -9,24 +9,32 @@
 // Decision: Signing is **opt-in per channel** via
 //   `A2aChannelConfig::signing_secret`. Channels without a secret keep the
 //   existing API-key-only behavior so existing deployments do not break.
-// Decision: Signature base string follows Slack: `v0:{timestamp}:{body}`
-//   with HMAC-SHA256, hex-encoded, prefixed `v0=`. Timestamp window is
-//   300 seconds (5 minutes) absolute, mirroring Slack and the Slack
-//   ingress already in this codebase, which gives a forgiving but bounded
-//   replay window for clock skew.
+// Decision: Signature base string is Slack-derived but target-bound:
+//   `v0:{timestamp}:{channel_scope}:{body}` where `channel_scope` is
+//   `{app_id}:{channel_id}`. Slack signs only `v0:{timestamp}:{body}`; we
+//   add the channel scope because operators who reuse the same
+//   `signing_secret` across multiple A2A channels would otherwise be
+//   vulnerable to cross-channel replay (a captured request for channel A
+//   could be redirected to channel B since the replay store is keyed
+//   per-channel — the dedup would not catch it). Encoded with HMAC-SHA256,
+//   hex-encoded, prefixed `v0=`. Timestamp window is 300 seconds (5
+//   minutes) absolute, mirroring Slack and the Slack ingress already in
+//   this codebase, which gives a forgiving but bounded replay window for
+//   clock skew.
 // Decision: Replay defence-in-depth: in addition to the timestamp window,
 //   the **signature itself** is recorded as a single-use nonce with the
 //   same TTL. A captured request that survives the timestamp check will
 //   still be rejected within that window because its (deterministic)
 //   signature is already in the store. The signature is unique per
-//   `(timestamp, body, secret)`. Two legitimate requests with byte-identical
-//   bodies sent in the same unix second produce the same HMAC and the
-//   second one will be rejected as a replay — this mirrors the Slack
-//   precedent and is acceptable in practice because JSON-RPC clients
-//   already vary `id` per request, which makes the body distinct. Clients
-//   that may legitimately repeat identical bodies (e.g. unkeyed
-//   notifications) must include a per-request token in the body or bump
-//   the timestamp by at least one second between retries.
+//   `(timestamp, channel_scope, body, secret)`. Two legitimate requests
+//   with byte-identical bodies sent in the same unix second to the same
+//   channel produce the same HMAC and the second one will be rejected as
+//   a replay — this mirrors the Slack precedent and is acceptable in
+//   practice because JSON-RPC clients already vary `id` per request,
+//   which makes the body distinct. Clients that may legitimately repeat
+//   identical bodies (e.g. unkeyed notifications) must include a
+//   per-request token in the body or bump the timestamp by at least one
+//   second between retries.
 // Decision: Two backends mirror the channel rate limiter — in-memory
 //   `HashMap` for single-instance/dev and Valkey `SET ... NX EX` for
 //   distributed deployments. The check runs after API key verification
@@ -97,13 +105,22 @@ impl SignatureCheckError {
 
 /// Verify an A2A request signature against the configured shared secret.
 ///
+/// The expected basestring is `v0:{timestamp}:{channel_scope}:{body}` with
+/// each segment separated by a literal colon and no whitespace. The HMAC
+/// digest is hex-encoded and prefixed `v0=`. `channel_scope` is the
+/// caller-supplied target identifier — for the A2A endpoint this is
+/// `{app_id}:{channel_id}` so the same `signing_secret` reused across
+/// channels cannot let a captured request be replayed against a
+/// different channel target. The body slice must be the **raw request
+/// bytes** (not a re-serialized JSON value) so the signature matches
+/// what the client produced.
+///
 /// Returns `Ok(signature_string)` on success — the caller passes that into
-/// the nonce store. The body slice must be the **raw request bytes** (not
-/// a re-serialized JSON value) so the signature matches what the client
-/// produced.
+/// the nonce store.
 pub fn verify_signature(
     timestamp_header: Option<&str>,
     signature_header: Option<&str>,
+    channel_scope: &str,
     body: &[u8],
     signing_secret: &str,
     now_secs: i64,
@@ -123,10 +140,13 @@ pub fn verify_signature(
         return Err(SignatureCheckError::StaleTimestamp);
     }
 
-    let mut sig_basestring = Vec::with_capacity(SIG_VERSION.len() + 2 + 16 + body.len());
+    let mut sig_basestring =
+        Vec::with_capacity(SIG_VERSION.len() + 3 + 16 + channel_scope.len() + body.len());
     sig_basestring.extend_from_slice(SIG_VERSION.as_bytes());
     sig_basestring.push(b':');
     sig_basestring.extend_from_slice(timestamp.as_bytes());
+    sig_basestring.push(b':');
+    sig_basestring.extend_from_slice(channel_scope.as_bytes());
     sig_basestring.push(b':');
     sig_basestring.extend_from_slice(body);
 
@@ -261,9 +281,9 @@ pub fn now_unix_seconds() -> i64 {
 mod tests {
     use super::*;
 
-    fn sign(secret: &str, ts: i64, body: &[u8]) -> String {
+    fn sign(secret: &str, ts: i64, channel_scope: &str, body: &[u8]) -> String {
         let mut mac = HmacSha256::new_from_slice(secret.as_bytes()).unwrap();
-        mac.update(format!("v0:{ts}:").as_bytes());
+        mac.update(format!("v0:{ts}:{channel_scope}:").as_bytes());
         mac.update(body);
         format!("v0={}", hex::encode(mac.finalize().into_bytes()))
     }
@@ -272,12 +292,14 @@ mod tests {
     fn verify_signature_accepts_valid_request() {
         let secret = "topsecret";
         let ts = 1_700_000_000_i64;
+        let channel_scope = "app1:ch1";
         let body = br#"{"jsonrpc":"2.0","method":"message/send"}"#;
-        let sig = sign(secret, ts, body);
+        let sig = sign(secret, ts, channel_scope, body);
 
         let result = verify_signature(
             Some(&ts.to_string()),
             Some(&sig),
+            channel_scope,
             body,
             secret,
             ts, // now == ts is well within the window
@@ -290,11 +312,11 @@ mod tests {
         let secret = "topsecret";
         let body = b"{}";
         assert_eq!(
-            verify_signature(None, Some("v0=abc"), body, secret, 0),
+            verify_signature(None, Some("v0=abc"), "app1:ch1", body, secret, 0),
             Err(SignatureCheckError::MissingHeader(A2A_TIMESTAMP_HEADER)),
         );
         assert_eq!(
-            verify_signature(Some("0"), None, body, secret, 0),
+            verify_signature(Some("0"), None, "app1:ch1", body, secret, 0),
             Err(SignatureCheckError::MissingHeader(A2A_SIGNATURE_HEADER)),
         );
     }
@@ -304,11 +326,18 @@ mod tests {
         let secret = "topsecret";
         let ts = 1_700_000_000_i64;
         let body = b"{}";
-        let sig = sign(secret, ts, body);
+        let sig = sign(secret, ts, "app1:ch1", body);
         // 6 minutes later
         let now = ts + 360;
         assert_eq!(
-            verify_signature(Some(&ts.to_string()), Some(&sig), body, secret, now),
+            verify_signature(
+                Some(&ts.to_string()),
+                Some(&sig),
+                "app1:ch1",
+                body,
+                secret,
+                now
+            ),
             Err(SignatureCheckError::StaleTimestamp),
         );
     }
@@ -320,10 +349,17 @@ mod tests {
         let secret = "topsecret";
         let ts = 1_700_000_000_i64;
         let body = b"{}";
-        let sig = sign(secret, ts, body);
+        let sig = sign(secret, ts, "app1:ch1", body);
         let now = ts - 360;
         assert_eq!(
-            verify_signature(Some(&ts.to_string()), Some(&sig), body, secret, now),
+            verify_signature(
+                Some(&ts.to_string()),
+                Some(&sig),
+                "app1:ch1",
+                body,
+                secret,
+                now
+            ),
             Err(SignatureCheckError::StaleTimestamp),
         );
     }
@@ -331,7 +367,14 @@ mod tests {
     #[test]
     fn verify_signature_rejects_invalid_timestamp_format() {
         assert_eq!(
-            verify_signature(Some("not-a-number"), Some("v0=abc"), b"{}", "s", 0),
+            verify_signature(
+                Some("not-a-number"),
+                Some("v0=abc"),
+                "app1:ch1",
+                b"{}",
+                "s",
+                0,
+            ),
             Err(SignatureCheckError::InvalidTimestamp),
         );
     }
@@ -341,9 +384,40 @@ mod tests {
         let ts = 1_700_000_000_i64;
         let body = b"{}";
         // Compute a signature with one secret, verify with another.
-        let bogus = sign("not-the-secret", ts, body);
+        let bogus = sign("not-the-secret", ts, "app1:ch1", body);
         assert_eq!(
-            verify_signature(Some(&ts.to_string()), Some(&bogus), body, "the-secret", ts),
+            verify_signature(
+                Some(&ts.to_string()),
+                Some(&bogus),
+                "app1:ch1",
+                body,
+                "the-secret",
+                ts,
+            ),
+            Err(SignatureCheckError::SignatureMismatch),
+        );
+    }
+
+    #[test]
+    fn verify_signature_rejects_scope_mismatch() {
+        // Signature produced for one channel scope must not verify against a
+        // different one, even when secret/timestamp/body are identical. This
+        // is the core security property added by the scope-bound basestring
+        // (TM-A2A-010) — without it, operators reusing one `signing_secret`
+        // across multiple A2A channels are exposed to cross-channel replay.
+        let secret = "topsecret";
+        let ts = 1_700_000_000_i64;
+        let body = br#"{"jsonrpc":"2.0","method":"message/send"}"#;
+        let sig_for_ch1 = sign(secret, ts, "app1:ch1", body);
+        assert_eq!(
+            verify_signature(
+                Some(&ts.to_string()),
+                Some(&sig_for_ch1),
+                "app1:ch2",
+                body,
+                secret,
+                ts,
+            ),
             Err(SignatureCheckError::SignatureMismatch),
         );
     }
@@ -353,10 +427,17 @@ mod tests {
         let secret = "topsecret";
         let ts = 1_700_000_000_i64;
         let original = br#"{"a":1}"#;
-        let sig = sign(secret, ts, original);
+        let sig = sign(secret, ts, "app1:ch1", original);
         let tampered = br#"{"a":2}"#;
         assert_eq!(
-            verify_signature(Some(&ts.to_string()), Some(&sig), tampered, secret, ts),
+            verify_signature(
+                Some(&ts.to_string()),
+                Some(&sig),
+                "app1:ch1",
+                tampered,
+                secret,
+                ts,
+            ),
             Err(SignatureCheckError::SignatureMismatch),
         );
     }

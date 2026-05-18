@@ -319,19 +319,27 @@ async fn authenticate_request(
         verify_a2a_api_key(headers, &config.api_key_hash)?;
     }
 
-    // THREAT[TM-A2A-010]: Optional Slack-style HMAC signing — when the
+    // THREAT[TM-A2A-010]: Optional Slack-derived HMAC signing — when the
     // channel has a `signing_secret` configured, every request must carry
-    // a `(timestamp, signature)` header pair signed against the raw body
-    // with that secret. The 5-minute timestamp window plus the
-    // signature-keyed dedup store bound the replay surface to the window
-    // even if an `Authorization: Bearer` is captured. Channels without a
-    // `signing_secret` keep the existing API-key / endpoint-auth behavior.
+    // a `(timestamp, signature)` header pair signed against the basestring
+    // `v0:{timestamp}:{channel_scope}:{body}` (where `channel_scope` is
+    // `{app_id}:{channel_id}`). Channels without a `signing_secret` keep
+    // the existing API-key / endpoint-auth behavior. The 5-minute
+    // timestamp window plus the signature-keyed dedup store bound the
+    // replay surface to the window even if an `Authorization: Bearer` is
+    // captured. The scope inside the basestring also prevents
+    // cross-channel replay when operators reuse the same `signing_secret`
+    // across multiple A2A channels — the replay store is keyed
+    // per-channel and would not catch a forwarded request that signed
+    // only `v0:{ts}:{body}`.
     //
     // The check runs **after** primary authentication so an unauthenticated
     // caller cannot use signing failures to probe channel existence or
     // grow the replay store. Missing-header / mismatch / replay all
     // collapse to a single 401 response so a remote attacker cannot
     // distinguish the failure modes.
+    let channel_scope = format!("{}:{}", app.public_id, channel_id_typed);
+
     let pending_signature = if let Some(signing_secret) = config.signing_secret.as_deref()
         && !signing_secret.is_empty()
     {
@@ -344,6 +352,7 @@ async fn authenticate_request(
         let signature = match verify_signature(
             timestamp_header,
             signature_header,
+            &channel_scope,
             body,
             signing_secret,
             now_unix_seconds(),
@@ -363,8 +372,6 @@ async fn authenticate_request(
     } else {
         None
     };
-
-    let channel_scope = format!("{}:{}", app.public_id, channel_id_typed);
 
     // THREAT[TM-A2A-013]: Unattended A2A traffic must respect a configurable
     // per-app, per-IP cap in addition to the global API limit. App owners
