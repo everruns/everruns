@@ -29,9 +29,8 @@ TUI in PR #1839) revealed a real seam: `AgentInstructionsCapability` and
 VFS *is* the workspace) but breaks in an embedded coding-CLI where the
 workspace is a real directory on disk.
 
-The original pluggable seam lived on `RuntimeBackends.file_store`; the platform
-profile now owns the higher-level factory so embedders can choose the session
-filesystem as part of the deployment surface.
+The pluggable seam is `PlatformDefinition.session_file_system_factory`, so
+embedders choose the session filesystem as part of the deployment surface.
 
 ## Decision Process
 
@@ -39,7 +38,7 @@ We evaluated four options before landing on the pluggable-store approach:
 
 | Option | Description | Outcome |
 |--------|-------------|---------|
-| A. Pluggable `SessionFileSystem` at runtime builder | Single trait, embedder picks the impl. Already supported by `RuntimeBackends.file_store`. | Superseded by platform factories. |
+| A. Pluggable `SessionFileSystem` at runtime builder | Single trait, embedder picks the impl. | Superseded by platform factories. |
 | B. Mount-point overlay (`MountSource::HostPath`) | Compose mounts on top of a base filesystem via a resolver. | Eventual destination. Strict superset of the factory seam. |
 | C. Split `SystemPromptContext` into `file_store` + `WorkspaceSource` | Separate sandbox writes from project-context reads. | Rejected. Parallel abstraction that B subsumes naturally via `MountAccess::ReadOnly`. |
 | D. Per-capability factory (`AgentInstructionsCapability::with_loader(...)`) | Each capability re-solves the loader problem itself. | Rejected. Does not compose; doesn't scale to N capabilities. |
@@ -255,9 +254,6 @@ let platform = PlatformDefinition::builder()
     ))
     .build();
 ```
-
-`RuntimeBackends.file_store` remains as an explicit override path for embedders
-that need to supply an already-resolved filesystem bundle.
 
 Factories may require host dependencies such as a database handle, virtual
 mount registry, or workspace root. `InProcessRuntimeBuilder` accepts a

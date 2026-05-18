@@ -1,13 +1,14 @@
-// Runtime construction: wires `InProcessRuntime` with a real-disk
-// `SessionFileStore` so the built-in `agent_instructions`, `file_system`,
-// and `skills` capabilities operate against the embedder's actual workspace.
-// Only the `bash` tool is custom — it shells out to the host instead of
-// running against the VFS.
+// Runtime construction: wires `InProcessRuntime` through a platform
+// `SessionFileSystemFactory` so the built-in `agent_instructions`,
+// `file_system`, and `skills` capabilities operate against the embedder's
+// actual workspace. Only the `bash` tool is custom — it shells out to the host
+// instead of running against the VFS.
 
 use crate::approval::ApprovalGate;
 use crate::file_store_decorators::{ApprovalGatingFileStore, WriteBlocklistFileStore};
 use crate::tools::{BashTool, Workspace};
 use anyhow::{Context, Result, anyhow};
+use async_trait::async_trait;
 use everruns_core::capabilities::{
     AGENT_INSTRUCTIONS_CAPABILITY_ID, AgentInstructionsCapability, Capability, CapabilityStatus,
     FileSystemCapability, INFINITY_CONTEXT_CAPABILITY_ID, InfinityContextCapability,
@@ -21,11 +22,12 @@ use everruns_core::tools::Tool;
 use everruns_core::typed_id::SessionId;
 use everruns_core::{
     AgentCapabilityConfig, CapabilityRegistry, ModelWithProvider, PlatformDefinition,
+    SessionFileSystem, SessionFileSystemFactory, SessionFileSystemFactoryContext,
 };
 use everruns_integrations_duckduckgo::DuckDuckGoCapability;
 use everruns_runtime::{
     InProcessRuntime, InProcessRuntimeBuilder, RealDiskFileStore, RuntimeBackends,
-    RuntimeFileStore, RuntimeProviderStore,
+    RuntimeProviderStore,
 };
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
@@ -70,6 +72,30 @@ impl Capability for CodingBashCapability {
             self.workspace.clone(),
             self.gate.clone(),
         ))]
+    }
+}
+
+struct CodingCliSessionFileSystemFactory {
+    root: PathBuf,
+    gate: Arc<ApprovalGate>,
+}
+
+#[async_trait]
+impl SessionFileSystemFactory for CodingCliSessionFileSystemFactory {
+    fn name(&self) -> &'static str {
+        "CodingCliSessionFileSystemFactory"
+    }
+
+    async fn create_session_file_system(
+        &self,
+        _context: SessionFileSystemFactoryContext,
+    ) -> everruns_core::Result<Arc<dyn SessionFileSystem>> {
+        let disk: Arc<dyn SessionFileSystem> = Arc::new(RealDiskFileStore::new(&self.root)?);
+        let blocklisted: Arc<dyn SessionFileSystem> = Arc::new(WriteBlocklistFileStore::new(disk));
+        Ok(Arc::new(ApprovalGatingFileStore::new(
+            blocklisted,
+            self.gate.clone(),
+        )))
     }
 }
 
@@ -263,23 +289,17 @@ pub async fn build(
         .with_context(|| format!("canonicalize workspace: {}", workspace_root.display()))?;
     let workspace = Workspace::new(canonical_root.clone());
 
-    // Build the FileStore stack: ApprovalGating(WriteBlocklist(RealDisk)).
-    let disk: Arc<dyn RuntimeFileStore> = Arc::new(RealDiskFileStore::new(&canonical_root)?);
-    let blocklisted: Arc<dyn RuntimeFileStore> = Arc::new(WriteBlocklistFileStore::new(disk));
-    let gated: Arc<dyn RuntimeFileStore> =
-        Arc::new(ApprovalGatingFileStore::new(blocklisted, gate.clone()));
-    let file_store = gated;
-
-    // The rest of the backends stay in memory.
-    let backends = RuntimeBackends::in_memory().with_file_store(file_store);
+    // Non-filesystem backends stay in memory; the session filesystem is owned
+    // by the platform factory below.
+    let backends = RuntimeBackends::in_memory();
     let provider_store = backends.provider_store.clone();
 
     // Register a curated set of built-in capabilities (no opinionated bundle
     // — we want a tight, predictable surface for the coding-CLI) plus our
     // bash capability.
     //
-    // Filesystem-anchored (all read via the FileStore stack we built above,
-    // so they target the real workspace transparently):
+    // Filesystem-anchored (all read via the platform filesystem factory, so
+    // they target the real workspace transparently):
     //   * agent_instructions   — re-reads AGENTS.md every turn
     //   * session_file_system  — read/write/edit/list/grep/delete/stat tools
     //   * skills               — discovers SKILL.md under /.agents/skills/
@@ -302,7 +322,7 @@ pub async fn build(
     capabilities.register(WebFetchCapability::from_env());
     capabilities.register(CodingBashCapability {
         workspace: workspace.clone(),
-        gate,
+        gate: gate.clone(),
     });
 
     let mut driver_registry = DriverRegistry::new();
@@ -320,7 +340,14 @@ pub async fn build(
         },
     };
 
-    let platform = PlatformDefinition::new(capabilities, driver_registry);
+    let platform = PlatformDefinition::builder()
+        .capability_registry(capabilities)
+        .driver_registry(driver_registry)
+        .session_file_system_factory(Arc::new(CodingCliSessionFileSystemFactory {
+            root: canonical_root.clone(),
+            gate: gate.clone(),
+        }))
+        .build();
 
     // SingleSessionBuilder bundles the harness/agent/session shape with
     // defaults that runtime owns — keeps this example small and absorbs
@@ -341,7 +368,7 @@ pub async fn build(
         AgentCapabilityConfig::new(PROMPT_CACHING_CAPABILITY_ID),
         AgentCapabilityConfig::new("duckduckgo"),
         // enable_file_download=true: saved responses land on disk through the
-        // RealDiskFileStore stack, so the blocklist and approval gate apply.
+        // platform filesystem stack, so the blocklist and approval gate apply.
         AgentCapabilityConfig::with_config(
             "web_fetch",
             serde_json::json!({ "enable_file_download": true }),
@@ -351,8 +378,8 @@ pub async fn build(
 
     let mut builder = InProcessRuntimeBuilder::new()
         .platform_definition(platform)
-        .backends(backends)
         .default_model(default_model)
+        .backends(backends)
         .single_session(move |s| {
             let mut s = s
                 .harness("coding-cli", HARNESS_PROMPT)
@@ -392,7 +419,7 @@ pub async fn build(
 
     // Probe for AGENTS.md / CLAUDE.md / .agents.md on disk for the startup
     // banner only — the agent itself sees content via AgentInstructionsCapability,
-    // which re-reads /AGENTS.md every turn through the runtime FileStore.
+    // which re-reads /AGENTS.md every turn through the session filesystem.
     let instruction_files = ["AGENTS.md", "CLAUDE.md", ".agents.md"]
         .iter()
         .filter(|f| canonical_root.join(f).exists())

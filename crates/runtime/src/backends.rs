@@ -4,9 +4,7 @@
 // blanket `Arc<T>: T` impls in core let the runtime forward to atoms without
 // shim wrappers.
 
-use crate::in_memory::{
-    InMemorySessionFileStore, InMemorySessionStorageStore, InMemorySessionStore,
-};
+use crate::in_memory::{InMemorySessionStorageStore, InMemorySessionStore};
 use async_trait::async_trait;
 use everruns_core::agent::Agent;
 use everruns_core::error::Result;
@@ -21,8 +19,8 @@ use everruns_core::message::Message;
 use everruns_core::message_retriever::{InputMessage, MessageRetriever};
 use everruns_core::session::Session;
 use everruns_core::traits::{
-    AgentStore, EventEmitter, HarnessStore, LlmProviderStore, ModelWithProvider, SessionFileSystem,
-    SessionMutator, SessionStorageStore, SessionStore,
+    AgentStore, EventEmitter, HarnessStore, LlmProviderStore, ModelWithProvider, SessionMutator,
+    SessionStorageStore, SessionStore,
 };
 use everruns_core::typed_id::SessionId;
 use std::sync::Arc;
@@ -62,9 +60,6 @@ pub trait RuntimeMessageStore: MessageRetriever + Send + Sync {
     async fn store_message(&self, session_id: SessionId, message: Message) -> Result<()>;
 }
 
-/// Backward-compatible alias for the old runtime filesystem extension.
-pub use everruns_core::traits::SessionFileSystem as RuntimeFileStore;
-
 /// Provider store contract for runtime lookup and default-model configuration.
 #[async_trait]
 pub trait RuntimeProviderStore: LlmProviderStore + Send + Sync {
@@ -93,12 +88,11 @@ impl<T: EventBus + ?Sized> EventBus for Arc<T> {
     }
 }
 
-/// Backend bundle supplied to the embedded runtime.
+/// Non-filesystem backend bundle supplied to the embedded runtime.
 ///
 /// Use this when you want the public runtime orchestration but your own store
-/// implementations instead of the built-in in-memory ones. For an
-/// all-in-memory baseline plus targeted overrides, use
-/// [`RuntimeBackends::in_memory`] followed by `with_*` setters.
+/// implementations instead of the built-in in-memory ones. Session filesystem
+/// selection is always resolved from `PlatformDefinition`.
 #[derive(Clone)]
 pub struct RuntimeBackends {
     /// Harness definitions available to the runtime.
@@ -113,8 +107,6 @@ pub struct RuntimeBackends {
     pub provider_store: Arc<dyn RuntimeProviderStore>,
     /// Event sink (emit + optional collection).
     pub event_bus: Arc<dyn EventBus>,
-    /// Session filesystem backend.
-    pub file_store: Arc<dyn SessionFileSystem>,
     /// Session key/value + secret storage backend.
     pub storage_store: Arc<dyn SessionStorageStore>,
     /// Persistent cross-session memory backend.
@@ -135,7 +127,6 @@ impl RuntimeBackends {
             message_store: Arc::new(InMemoryMessageRetriever::new()),
             provider_store: Arc::new(InMemoryLlmProviderStore::new()),
             event_bus,
-            file_store: Arc::new(InMemorySessionFileStore::new()),
             storage_store: Arc::new(InMemorySessionStorageStore::new()),
             memory_store: Arc::new(InMemoryMemoryStore::new()),
         }
@@ -168,11 +159,6 @@ impl RuntimeBackends {
 
     pub fn with_event_bus(mut self, bus: Arc<dyn EventBus>) -> Self {
         self.event_bus = bus;
-        self
-    }
-
-    pub fn with_file_store(mut self, store: Arc<dyn SessionFileSystem>) -> Self {
-        self.file_store = store;
         self
     }
 

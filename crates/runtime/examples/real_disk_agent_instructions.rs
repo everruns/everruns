@@ -21,7 +21,7 @@ use everruns_core::{
     Agent, AgentCapabilityConfig, AgentStatus, CapabilityRegistry, Harness, HarnessStatus,
     LlmProviderType, ModelWithProvider, PlatformDefinition, Session, SessionStatus,
 };
-use everruns_runtime::{InProcessRuntimeBuilder, RealDiskFileStore, RuntimeBackends};
+use everruns_runtime::{InProcessRuntimeBuilder, RealDiskSessionFileSystemFactory};
 use tempfile::TempDir;
 use uuid::Uuid;
 
@@ -37,16 +37,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "## Project rules\nPrefer snake_case identifiers.",
     )?;
 
-    // 3. Build a RuntimeBackends with the real-disk file_store. Everything
-    //    else stays in memory — only the workspace surface is real.
-    let backends = RuntimeBackends::in_memory()
-        .with_file_store(Arc::new(RealDiskFileStore::new(workspace.path())?));
-
-    // 4. Register AgentInstructionsCapability and a no-op math capability so
-    //    the harness has something to assemble.
+    // 3. Register AgentInstructionsCapability and configure the platform
+    //    filesystem factory so only the workspace surface is real.
     let mut capabilities = CapabilityRegistry::new();
     capabilities.register(AgentInstructionsCapability);
-    let platform = PlatformDefinition::new(capabilities, DriverRegistry::new());
+    let platform = PlatformDefinition::builder()
+        .capability_registry(capabilities)
+        .driver_registry(DriverRegistry::new())
+        .session_file_system_factory(Arc::new(RealDiskSessionFileSystemFactory::new(
+            workspace.path(),
+        )))
+        .build();
 
     let harness_id = "harness_00000000000000000000000000000091".parse().unwrap();
     let agent_id = "agent_00000000000000000000000000000091".parse().unwrap();
@@ -54,7 +55,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let runtime = InProcessRuntimeBuilder::new()
         .platform_definition(platform)
-        .backends(backends)
         .llm_sim(LlmSimConfig::fixed("ack"))
         .default_model(ModelWithProvider {
             model: "llmsim-model".into(),

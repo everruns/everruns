@@ -24,7 +24,7 @@ use everruns_core::{
     Agent, AgentCapabilityConfig, AgentStatus, CapabilityRegistry, Harness, HarnessStatus,
     LlmProviderType, ModelWithProvider, PlatformDefinition, Session, SessionStatus, ToolCall,
 };
-use everruns_runtime::{InProcessRuntimeBuilder, RealDiskFileStore, RuntimeBackends};
+use everruns_runtime::{InProcessRuntimeBuilder, RealDiskSessionFileSystemFactory};
 use tempfile::TempDir;
 use uuid::Uuid;
 
@@ -37,16 +37,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 2. Pre-seed a source file directly on disk so the agent can read it.
     std::fs::write(workspace.path().join("input.txt"), "hello from real disk")?;
 
-    // 3. Plug RealDiskFileStore into the runtime backends.
-    let backends = RuntimeBackends::in_memory()
-        .with_file_store(Arc::new(RealDiskFileStore::new(workspace.path())?));
-
-    // 4. Register only the built-in FileSystemCapability — no custom tools.
+    // 3. Register only the built-in FileSystemCapability — no custom tools.
+    //    PlatformDefinition selects the real-disk session filesystem.
     let mut capabilities = CapabilityRegistry::new();
     capabilities.register(FileSystemCapability);
-    let platform = PlatformDefinition::new(capabilities, DriverRegistry::new());
+    let platform = PlatformDefinition::builder()
+        .capability_registry(capabilities)
+        .driver_registry(DriverRegistry::new())
+        .session_file_system_factory(Arc::new(RealDiskSessionFileSystemFactory::new(
+            workspace.path(),
+        )))
+        .build();
 
-    // 5. Drive the agent with a fixed tool-call script via llmsim: read the
+    // 4. Drive the agent with a fixed tool-call script via llmsim: read the
     //    seeded file, then write a new file. The runtime forwards every
     //    tool call through `ToolContext.file_store` to the real-disk store.
     let llmsim = LlmSimConfig::fixed("done").with_tool_call_sequence(vec![
@@ -72,7 +75,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let runtime = InProcessRuntimeBuilder::new()
         .platform_definition(platform)
-        .backends(backends)
         .llm_sim(llmsim)
         .default_model(ModelWithProvider {
             model: "llmsim-model".into(),

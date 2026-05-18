@@ -11,7 +11,7 @@ use crate::host::{
     RuntimeHostAdapter, RuntimeHostTurnContext, RuntimeSessionLifecycle, execute_act_activity,
     execute_input_activity, execute_reason_activity,
 };
-use crate::in_memory::InMemorySessionFileSystemFactory;
+use crate::in_memory::{InMemorySessionFileStore, InMemorySessionFileSystemFactory};
 use async_trait::async_trait;
 use everruns_core::agent::Agent;
 use everruns_core::atoms::{ActInput, AtomContext, InputAtomInput, ReasonInput};
@@ -270,20 +270,13 @@ impl InProcessRuntimeBuilder {
     pub async fn build(mut self) -> Result<InProcessRuntime> {
         let backends = match self.backends.take() {
             Some(backends) => backends,
-            None => {
-                let factory = self.platform_definition.session_file_system_factory();
-                let file_store: Arc<dyn SessionFileSystem> = if factory.is_disabled() {
-                    Arc::new(crate::in_memory::InMemorySessionFileStore::new())
-                } else {
-                    factory
-                        .create_session_file_system(
-                            self.session_file_system_factory_context.clone(),
-                        )
-                        .await?
-                };
-                RuntimeBackends::in_memory().with_file_store(file_store)
-            }
+            None => RuntimeBackends::in_memory(),
         };
+        let file_store = resolve_session_file_system(
+            &self.platform_definition,
+            self.session_file_system_factory_context.clone(),
+        )
+        .await?;
 
         if let Some(config) = self.llm_sim_config.take() {
             let driver = LlmSimDriver::new(config);
@@ -330,17 +323,14 @@ impl InProcessRuntimeBuilder {
             seed_runtime_initial_files(
                 backends.harness_store.as_ref(),
                 backends.agent_store.as_ref(),
-                backends.file_store.as_ref(),
+                file_store.as_ref(),
                 session,
             )
             .await?;
         }
 
         for (session_id, file) in &self.seeded_files {
-            backends
-                .file_store
-                .seed_initial_file(*session_id, file)
-                .await?;
+            file_store.seed_initial_file(*session_id, file).await?;
         }
 
         let persisting_emitter =
@@ -356,10 +346,24 @@ impl InProcessRuntimeBuilder {
             provider_store: backends.provider_store,
             event_bus: backends.event_bus,
             persisting_emitter,
-            file_store: backends.file_store,
+            file_store,
             storage_store: backends.storage_store,
             memory_store: backends.memory_store,
         })
+    }
+}
+
+async fn resolve_session_file_system(
+    platform_definition: &PlatformDefinition,
+    file_system_factory_context: SessionFileSystemFactoryContext,
+) -> Result<Arc<dyn SessionFileSystem>> {
+    let file_system_factory = platform_definition.session_file_system_factory();
+    if file_system_factory.is_disabled() {
+        Ok(Arc::new(InMemorySessionFileStore::new()))
+    } else {
+        Ok(file_system_factory
+            .create_session_file_system(file_system_factory_context)
+            .await?)
     }
 }
 

@@ -1,7 +1,7 @@
-// Composable SessionFileStore decorators for policy enforcement.
+// Composable SessionFileSystem decorators for policy enforcement.
 //
 // EVE-478 plans to ship these in everruns-runtime; until then they live here
-// alongside the embedder that needs them. They wrap any `SessionFileStore`
+// alongside the embedder that needs them. They wrap any `SessionFileSystem`
 // (today: the runtime's `RealDiskFileStore`) and layer two concerns:
 //
 //   * WriteBlocklistFileStore — reject writes/deletes inside vendored or
@@ -18,9 +18,8 @@ use crate::approval::{ApprovalGate, ApprovalRequest};
 use async_trait::async_trait;
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, InitialFile, SessionFile};
-use everruns_core::traits::SessionFileStore;
+use everruns_core::traits::SessionFileSystem;
 use everruns_core::typed_id::SessionId;
-use everruns_runtime::RuntimeFileStore;
 use std::path::Component;
 use std::sync::Arc;
 
@@ -39,22 +38,18 @@ const DEFAULT_WRITE_BLOCKLIST: &[&str] = &[
 
 /// Reject writes into vendored / build directories.
 //
-// Non-generic over the wrapped store: we store an `Arc<dyn RuntimeFileStore>`
+// Non-generic over the wrapped store: we store an `Arc<dyn SessionFileSystem>`
 // rather than a generic `Arc<S>`. Two reasons:
-//   1. CI rustc (stable 1.95.0) reports E0119 on generic decorators that impl
-//      both `SessionFileStore` and `RuntimeFileStore` for the same generic
-//      `WriteBlocklistFileStore<S>`, even though the trait param of each impl
-//      differs. Couldn't reproduce locally on identical rustc, but trait
-//      objects sidestep the coherence question entirely.
+//   1. Trait objects sidestep coherence questions for decorator stacks.
 //   2. The only concrete value of `S` that ever flows through is the runtime's
 //      `RealDiskFileStore`; monomorphization wasn't earning anything.
 pub struct WriteBlocklistFileStore {
-    inner: Arc<dyn RuntimeFileStore>,
+    inner: Arc<dyn SessionFileSystem>,
     blocklist: Vec<String>,
 }
 
 impl WriteBlocklistFileStore {
-    pub fn new(inner: Arc<dyn RuntimeFileStore>) -> Self {
+    pub fn new(inner: Arc<dyn SessionFileSystem>) -> Self {
         Self {
             inner,
             blocklist: DEFAULT_WRITE_BLOCKLIST
@@ -81,7 +76,7 @@ impl WriteBlocklistFileStore {
 }
 
 #[async_trait]
-impl SessionFileStore for WriteBlocklistFileStore {
+impl SessionFileSystem for WriteBlocklistFileStore {
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
         self.inner.read_file(session_id, path).await
     }
@@ -167,18 +162,18 @@ impl SessionFileStore for WriteBlocklistFileStore {
 /// so the approval prompt can show a diff. That's one extra read per write,
 /// acceptable for a coding agent where writes are rare and small.
 pub struct ApprovalGatingFileStore {
-    inner: Arc<dyn RuntimeFileStore>,
+    inner: Arc<dyn SessionFileSystem>,
     gate: Arc<ApprovalGate>,
 }
 
 impl ApprovalGatingFileStore {
-    pub fn new(inner: Arc<dyn RuntimeFileStore>, gate: Arc<ApprovalGate>) -> Self {
+    pub fn new(inner: Arc<dyn SessionFileSystem>, gate: Arc<ApprovalGate>) -> Self {
         Self { inner, gate }
     }
 }
 
 #[async_trait]
-impl SessionFileStore for ApprovalGatingFileStore {
+impl SessionFileSystem for ApprovalGatingFileStore {
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
         self.inner.read_file(session_id, path).await
     }
