@@ -7,13 +7,13 @@ import {
   Archive,
   FolderOpen,
   GitBranch,
-  Github,
   HardDrive,
   Pencil,
   Plus,
   RefreshCw,
   Search,
 } from "lucide-react";
+import { GithubIcon as Github } from "@/components/icons/github-icon";
 import { ArchiveFilter } from "@/components/archive-filter";
 import { QueryStateWrapper } from "@/components/query-state-wrapper";
 import { ArchiveVolumeDialog } from "@/components/volumes/archive-volume-dialog";

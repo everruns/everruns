@@ -1,6 +1,8 @@
 "use client";
 
-import { Github, Globe2, Twitter, type LucideIcon } from "lucide-react";
+import { Globe2, type LucideIcon } from "lucide-react";
+import { GithubIcon as Github } from "@/components/icons/github-icon";
+import { TwitterIcon as Twitter } from "@/components/icons/twitter-icon";
 import { type AnchorHTMLAttributes, type ComponentType } from "react";
 import { cn } from "@/lib/utils";
 

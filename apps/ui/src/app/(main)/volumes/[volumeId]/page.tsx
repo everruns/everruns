@@ -7,11 +7,11 @@ import {
   Archive,
   ArrowLeft,
   GitBranch,
-  Github,
   HardDrive,
   Pencil,
   RefreshCw,
 } from "lucide-react";
+import { GithubIcon as Github } from "@/components/icons/github-icon";
 import { ResourceNotFound } from "@/components/resource-not-found";
 import { ArchiveVolumeDialog } from "@/components/volumes/archive-volume-dialog";
 import { VolumeFormDialog } from "@/components/volumes/volume-form-dialog";
