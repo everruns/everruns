@@ -524,13 +524,7 @@ impl Command for UpdateAgentCmd {
         };
 
         let agent = q::row_to_agent(row, caps);
-        if let Err(error) = create_auto_snapshot_from_agent(ctx, &agent).await {
-            tracing::warn!(
-                agent_id = %agent.public_id,
-                error = %error,
-                "failed to create automatic agent draft snapshot"
-            );
-        }
+        create_auto_snapshot_from_agent(ctx, &agent).await?;
 
         Ok(agent)
     }
@@ -705,10 +699,12 @@ impl Command for UpsertAgent {
                 .map_err(classify_anyhow)?
         };
 
-        Ok(UpsertResult {
-            agent: q::row_to_agent(row, final_caps),
-            was_created,
-        })
+        let agent = q::row_to_agent(row, final_caps);
+        if !was_created {
+            create_auto_snapshot_from_agent(ctx, &agent).await?;
+        }
+
+        Ok(UpsertResult { agent, was_created })
     }
 }
 
@@ -1007,7 +1003,21 @@ async fn create_auto_snapshot_from_agent(
     ctx: &Ctx,
     agent: &Agent,
 ) -> Result<AgentVersion, CommandError> {
-    create_version_from_agent(ctx, agent, AgentVersionChangeKind::Auto, None, None, false).await
+    let mut last_conflict = None;
+    for _ in 0..3 {
+        match create_version_from_agent(ctx, agent, AgentVersionChangeKind::Auto, None, None, false)
+            .await
+        {
+            Ok(version) => return Ok(version),
+            Err(CommandError::Conflict(message)) => {
+                last_conflict = Some(message);
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    Err(CommandError::conflict(last_conflict.unwrap_or_else(|| {
+        "Agent version number conflict".to_string()
+    })))
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -1070,17 +1080,16 @@ impl Command for CreateAgentVersionCmd {
 
     async fn execute(self, ctx: &Ctx) -> Result<AgentVersion, CommandError> {
         let agent = resolve_agent(ctx, &self.agent_id).await?;
-        create_version_from_agent(
-            ctx,
-            &agent,
-            self.req
-                .change_kind
-                .unwrap_or(AgentVersionChangeKind::Manual),
-            self.req.summary,
-            None,
-            true,
-        )
-        .await
+        let change_kind = self
+            .req
+            .change_kind
+            .unwrap_or(AgentVersionChangeKind::Manual);
+        if change_kind == AgentVersionChangeKind::Auto {
+            return Err(CommandError::bad_request(
+                "Automatic change kind is reserved for draft snapshots",
+            ));
+        }
+        create_version_from_agent(ctx, &agent, change_kind, self.req.summary, None, true).await
     }
 }
 
@@ -1115,6 +1124,11 @@ impl Command for SetDefaultAgentVersion {
         if version.agent_id.uuid() != agent.internal_id {
             return Err(CommandError::bad_request(
                 "Agent version belongs to another agent",
+            ));
+        }
+        if !version.is_published {
+            return Err(CommandError::bad_request(
+                "Default agent version must be published",
             ));
         }
         let version_agent = q::version_to_agent(&agent, &version);
@@ -1683,6 +1697,112 @@ mod tests {
             .expect("latest published lookup succeeds")
             .expect("published version exists");
         assert_eq!(latest_published.id, published.public_id);
+    }
+
+    #[tokio::test]
+    async fn upsert_agent_update_creates_unpublished_auto_snapshot() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = ctx_with_role(db, OrgRole::Owner);
+        let agent_id = AgentId::new();
+        let mut req = basic_agent_request("upsert-auto-snapshot-agent");
+        req.system_prompt = "initial upsert prompt".to_string();
+
+        let created = UpsertAgent {
+            id: agent_id.to_string(),
+            req: req.clone(),
+        }
+        .run(&ctx)
+        .await
+        .expect("agent is created by upsert");
+        assert!(created.was_created);
+
+        req.system_prompt = "updated upsert prompt".to_string();
+        let updated = UpsertAgent {
+            id: agent_id.to_string(),
+            req,
+        }
+        .run(&ctx)
+        .await
+        .expect("agent is updated by upsert");
+        assert!(!updated.was_created);
+
+        let snapshots = ListAgentVersions {
+            agent_id: agent_id.to_string(),
+        }
+        .run(&ctx)
+        .await
+        .expect("versions are listed");
+        assert_eq!(snapshots.len(), 1);
+        assert_eq!(snapshots[0].change_kind, AgentVersionChangeKind::Auto);
+        assert!(!snapshots[0].is_published);
+        assert_eq!(
+            snapshots[0].authored_config["system_prompt"],
+            "updated upsert prompt"
+        );
+    }
+
+    #[tokio::test]
+    async fn create_agent_version_rejects_auto_change_kind() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = ctx_with_role(db, OrgRole::Owner);
+        let agent = CreateAgent(basic_agent_request("manual-auto-kind-agent"))
+            .run(&ctx)
+            .await
+            .expect("agent is created");
+
+        let err = CreateAgentVersionCmd {
+            agent_id: agent.public_id.to_string(),
+            req: CreateAgentVersionRequest {
+                summary: None,
+                change_kind: Some(AgentVersionChangeKind::Auto),
+            },
+        }
+        .run(&ctx)
+        .await
+        .expect_err("manual publish cannot use automatic change kind");
+
+        assert!(
+            matches!(err, CommandError::BadRequest(_)),
+            "expected BadRequest, got {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn set_default_version_rejects_unpublished_snapshot() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = ctx_with_role(db, OrgRole::Owner);
+        let agent = CreateAgent(basic_agent_request("default-draft-agent"))
+            .run(&ctx)
+            .await
+            .expect("agent is created");
+        UpdateAgentCmd {
+            id: agent.public_id.to_string(),
+            req: update_prompt_request("draft-only prompt"),
+        }
+        .run(&ctx)
+        .await
+        .expect("agent is updated");
+        let snapshots = ListAgentVersions {
+            agent_id: agent.public_id.to_string(),
+        }
+        .run(&ctx)
+        .await
+        .expect("versions are listed");
+
+        let err = SetDefaultAgentVersion {
+            agent_id: agent.public_id.to_string(),
+            req: SetDefaultAgentVersionRequest {
+                version_id: snapshots[0].public_id,
+            },
+        }
+        .run(&ctx)
+        .await
+        .expect_err("draft snapshot cannot become default");
+
+        assert!(
+            matches!(err, CommandError::BadRequest(_)),
+            "expected BadRequest, got {err:?}"
+        );
     }
 
     #[tokio::test]
