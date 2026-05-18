@@ -627,12 +627,10 @@ async fn resolve_session(
 ) -> Result<ResolvedSession, Response> {
     let routing_tag = format!("fcp:app:{}", app.public_id);
     if let Some(session_id) = cookie_session_id {
-        match state
-            .db
-            .get_session(app.org_id, session_id.into())
-            .await
-        {
-            Ok(Some(row)) if row.app_id == Some(app.internal_id) && row.tags.contains(&routing_tag) => {
+        match state.db.get_session(app.org_id, session_id.into()).await {
+            Ok(Some(row))
+                if row.app_id == Some(app.internal_id) && row.tags.contains(&routing_tag) =>
+            {
                 if let Some(age) = expired_age_seconds(
                     row.created_at,
                     config.session_expiration_seconds,
