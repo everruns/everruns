@@ -4,7 +4,8 @@
 
 mod app;
 mod approval;
-mod instructions;
+mod diff;
+mod file_store_decorators;
 mod runtime;
 mod tools;
 
@@ -142,8 +143,11 @@ async fn run_print_mode(bundle: Arc<RuntimeBundle>, prompt: String) -> Result<()
     println!("[workspace] {}", bundle.workspace_root.display());
     println!("[provider]  {}", bundle.provider_label);
     println!("[tools]     {}", bundle.tool_names.join(", "));
-    if !bundle.instruction_summary.is_empty() {
-        println!("[instructions] {}", bundle.instruction_summary.join(", "));
+    if !bundle.instruction_files.is_empty() {
+        println!(
+            "[instructions] {} (loaded dynamically via agent_instructions)",
+            bundle.instruction_files.join(", ")
+        );
     }
     println!("[prompt] {prompt}\n");
 

@@ -1,49 +1,55 @@
-// Runtime construction: wires the everruns InProcessRuntime with the coding
-// agent's real-filesystem tools and the requested LLM provider.
+// Runtime construction: wires `InProcessRuntime` with a real-disk
+// `SessionFileStore` so the built-in `agent_instructions`, `file_system`,
+// and `skills` capabilities operate against the embedder's actual workspace.
+// Only the `bash` tool is custom — it shells out to the host instead of
+// running against the VFS.
 
 use crate::approval::ApprovalGate;
-use crate::instructions::ProjectInstructions;
-use crate::tools::{
-    BashTool, EditFileTool, GrepTool, ListDirectoryTool, ReadFileTool, Workspace, WriteFileTool,
-};
+use crate::file_store_decorators::{ApprovalGatingFileStore, WriteBlocklistFileStore};
+use crate::tools::{BashTool, Workspace};
 use anyhow::{Context, Result, anyhow};
 use chrono::Utc;
-use everruns_core::capabilities::{Capability, CapabilityStatus};
+use everruns_core::capabilities::{
+    AGENT_INSTRUCTIONS_CAPABILITY_ID, AgentInstructionsCapability, Capability, CapabilityStatus,
+    FileSystemCapability,
+};
 use everruns_core::llm_driver_registry::DriverRegistry;
 use everruns_core::llm_models::LlmProviderType;
 use everruns_core::llmsim_driver::LlmSimConfig;
+use everruns_core::memory::{
+    InMemoryAgentStore, InMemoryEventEmitter, InMemoryHarnessStore, InMemoryLlmProviderStore,
+    InMemoryMemoryStore, InMemoryMessageRetriever,
+};
 use everruns_core::tools::Tool;
 use everruns_core::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_core::{
     Agent, AgentCapabilityConfig, AgentStatus, CapabilityRegistry, Harness, HarnessStatus,
     ModelWithProvider, PlatformDefinition, PrincipalId, Session, SessionStatus,
 };
-use everruns_runtime::{InProcessRuntime, InProcessRuntimeBuilder};
+use everruns_runtime::{
+    InMemorySessionStorageStore, InMemorySessionStore, InProcessRuntime, InProcessRuntimeBuilder,
+    RealDiskFileStore, RuntimeBackends, RuntimeFileStore,
+};
 use std::path::PathBuf;
 use std::sync::Arc;
 use uuid::Uuid;
 
-// ---------- coding capability ----------
+// ---------- coding-cli's only custom capability: the bash tool ----------
 
-/// Capability that exposes the coding-CLI's real-filesystem tools.
-///
-/// The capability owns the tools so the runtime's capability resolution path
-/// picks them up just like any first-party capability.
-struct CodingCapability {
+struct CodingBashCapability {
     workspace: Workspace,
     gate: Arc<ApprovalGate>,
-    system_addition: String,
 }
 
-impl Capability for CodingCapability {
+impl Capability for CodingBashCapability {
     fn id(&self) -> &str {
-        "coding_cli"
+        "coding_cli_bash"
     }
     fn name(&self) -> &str {
-        "Coding CLI Tools"
+        "Coding CLI Bash"
     }
     fn description(&self) -> &str {
-        "Real-filesystem tools (read/write/edit/list/grep/bash) for an embedded coding agent."
+        "Shell command execution rooted at the host workspace. Requires user approval."
     }
     fn status(&self) -> CapabilityStatus {
         CapabilityStatus::Available
@@ -52,20 +58,16 @@ impl Capability for CodingCapability {
         Some("Examples")
     }
     fn system_prompt_addition(&self) -> Option<&str> {
-        Some(&self.system_addition)
+        Some(
+            "Use `bash` for shell commands when needed (tests, lint, git status, etc.). \
+             Prefer the filesystem tools for file reads and edits. Both ask the user for approval.",
+        )
     }
     fn tools(&self) -> Vec<Box<dyn Tool>> {
-        vec![
-            Box::new(ReadFileTool::new(self.workspace.clone())),
-            Box::new(WriteFileTool::new(
-                self.workspace.clone(),
-                self.gate.clone(),
-            )),
-            Box::new(EditFileTool::new(self.workspace.clone(), self.gate.clone())),
-            Box::new(ListDirectoryTool::new(self.workspace.clone())),
-            Box::new(GrepTool::new(self.workspace.clone())),
-            Box::new(BashTool::new(self.workspace.clone(), self.gate.clone())),
-        ]
+        vec![Box::new(BashTool::new(
+            self.workspace.clone(),
+            self.gate.clone(),
+        ))]
     }
 }
 
@@ -120,7 +122,7 @@ pub struct RuntimeBundle {
     pub session_id: SessionId,
     pub workspace_root: PathBuf,
     pub provider_label: String,
-    pub instruction_summary: Vec<String>,
+    pub instruction_files: Vec<String>,
     pub tool_names: Vec<String>,
 }
 
@@ -133,18 +135,36 @@ pub async fn build(
         .with_context(|| format!("canonicalize workspace: {}", workspace_root.display()))?;
     let workspace = Workspace::new(canonical_root.clone());
 
-    let instructions = ProjectInstructions::load(&canonical_root);
-    let instruction_summary = instructions.summary();
-    let system_addition = build_system_addition(&canonical_root, &instructions);
+    // Build the FileStore stack: ApprovalGating(WriteBlocklist(RealDisk)).
+    let disk = Arc::new(RealDiskFileStore::new(&canonical_root)?);
+    let blocklisted = Arc::new(WriteBlocklistFileStore::new(disk));
+    let gated = Arc::new(ApprovalGatingFileStore::new(blocklisted, gate.clone()));
+    let file_store: Arc<dyn RuntimeFileStore> = gated;
 
-    let coding_capability = CodingCapability {
-        workspace: workspace.clone(),
-        gate,
-        system_addition,
+    // The rest of the backends stay in memory.
+    let event_emitter = InMemoryEventEmitter::new();
+    let backends = RuntimeBackends {
+        harness_store: Arc::new(InMemoryHarnessStore::new()),
+        agent_store: Arc::new(InMemoryAgentStore::new()),
+        session_store: Arc::new(InMemorySessionStore::new()),
+        message_store: Arc::new(InMemoryMessageRetriever::new()),
+        provider_store: Arc::new(InMemoryLlmProviderStore::new()),
+        event_emitter: Arc::new(event_emitter.clone()),
+        event_collector: Some(Arc::new(event_emitter)),
+        file_store,
+        storage_store: Arc::new(InMemorySessionStorageStore::new()),
+        memory_store: Arc::new(InMemoryMemoryStore::new()),
     };
 
+    // Register built-in capabilities (no opinionated bundle — we want a
+    // tight surface for the coding-CLI) plus our bash capability.
     let mut capabilities = CapabilityRegistry::new();
-    capabilities.register(coding_capability);
+    capabilities.register(AgentInstructionsCapability);
+    capabilities.register(FileSystemCapability);
+    capabilities.register(CodingBashCapability {
+        workspace: workspace.clone(),
+        gate,
+    });
 
     let mut driver_registry = DriverRegistry::new();
     let mut llm_sim: Option<LlmSimConfig> = None;
@@ -196,6 +216,7 @@ pub async fn build(
 
     let mut builder = InProcessRuntimeBuilder::new()
         .platform_definition(platform)
+        .backends(backends)
         .default_model(default_model)
         .harness(coding_harness(harness_id))
         .agent(coding_agent(agent_id))
@@ -218,35 +239,23 @@ pub async fn build(
         .map(|t| t.name().to_string())
         .collect();
 
+    // Probe for AGENTS.md / CLAUDE.md / .agents.md on disk for the startup
+    // banner only — the agent itself sees content via AgentInstructionsCapability,
+    // which re-reads /AGENTS.md every turn through the runtime FileStore.
+    let instruction_files = ["AGENTS.md", "CLAUDE.md", ".agents.md"]
+        .iter()
+        .filter(|f| canonical_root.join(f).exists())
+        .map(|s| s.to_string())
+        .collect();
+
     Ok(RuntimeBundle {
         runtime: Arc::new(runtime),
         session_id,
         workspace_root: canonical_root,
         provider_label: provider.label(),
-        instruction_summary,
+        instruction_files,
         tool_names,
     })
-}
-
-fn build_system_addition(root: &std::path::Path, instructions: &ProjectInstructions) -> String {
-    let mut s = String::new();
-    s.push_str(&format!(
-        "You are an interactive terminal coding agent. The workspace root is `{}`.\n",
-        root.display()
-    ));
-    s.push_str(
-        "Use the provided tools (read_file, write_file, edit_file, list_directory, grep, bash) \
-         to investigate and modify the codebase. Prefer read_file and grep before editing. \
-         Keep changes small and focused. Never operate outside the workspace root. \
-         write_file, edit_file, and bash require human approval — explain what you intend \
-         to do before calling them. Writes to `.git/`, `node_modules/`, `target/`, `dist/`, \
-         and similar build/vendored directories are blocked.\n",
-    );
-    if !instructions.is_empty() {
-        s.push_str("\nProject instructions follow. Treat these as authoritative:\n\n");
-        s.push_str(&instructions.rendered());
-    }
-    s
 }
 
 fn coding_harness(id: HarnessId) -> Harness {
@@ -261,7 +270,11 @@ fn coding_harness(id: HarnessId) -> Harness {
         parent_harness_id: None,
         default_model_id: None,
         tags: vec!["example".into(), "coding".into()],
-        capabilities: vec![AgentCapabilityConfig::new("coding_cli")],
+        capabilities: vec![
+            AgentCapabilityConfig::new(AGENT_INSTRUCTIONS_CAPABILITY_ID),
+            AgentCapabilityConfig::new("session_file_system"),
+            AgentCapabilityConfig::new("coding_cli_bash"),
+        ],
         mcp_servers: Default::default(),
         initial_files: vec![],
         network_access: None,

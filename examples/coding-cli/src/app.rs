@@ -116,10 +116,10 @@ impl App {
         ));
         self.push_system(format!("model: {}", self.bundle.provider_label));
         self.push_system(format!("tools: {}", self.bundle.tool_names.join(", ")));
-        if !self.bundle.instruction_summary.is_empty() {
+        if !self.bundle.instruction_files.is_empty() {
             self.push_system(format!(
-                "instructions: {}",
-                self.bundle.instruction_summary.join(", ")
+                "instructions: {} (live-reloaded each turn)",
+                self.bundle.instruction_files.join(", ")
             ));
         }
         self.push_system("type /help for commands, Esc or Ctrl-D to exit; approvals: y / n".into());
@@ -457,36 +457,52 @@ pub fn summarize_tool_result(data: &ToolCompletedData) -> String {
         }
         return String::new();
     };
+    // Field names match the built-in `session_file_system` capability's
+    // result shapes. See crates/core/src/capabilities/file_system.rs.
     match data.tool_name.as_str() {
         "read_file" => {
             let path = v.get("path").and_then(Value::as_str).unwrap_or("");
-            let lines = v.get("lines_returned").and_then(Value::as_u64).unwrap_or(0);
             let total = v.get("total_lines").and_then(Value::as_u64).unwrap_or(0);
-            format!("{path} ({lines}/{total} lines)")
+            let shown = v.get("lines_shown");
+            let start = shown
+                .and_then(|s| s.get("start"))
+                .and_then(Value::as_u64)
+                .unwrap_or(0);
+            let end = shown
+                .and_then(|s| s.get("end"))
+                .and_then(Value::as_u64)
+                .unwrap_or(0);
+            let count = end.saturating_sub(start.saturating_sub(1));
+            format!("{path} ({count}/{total} lines)")
         }
         "write_file" => {
             let path = v.get("path").and_then(Value::as_str).unwrap_or("");
-            let bytes = v.get("bytes_written").and_then(Value::as_u64).unwrap_or(0);
+            let bytes = v.get("size_bytes").and_then(Value::as_u64).unwrap_or(0);
             format!("{path} ({bytes} bytes)")
         }
         "edit_file" => {
             let path = v.get("path").and_then(Value::as_str).unwrap_or("");
-            let n = v.get("replacements").and_then(Value::as_u64).unwrap_or(0);
-            format!("{path} ({n} replacement(s))")
+            let n = v.get("applied_edits").and_then(Value::as_u64).unwrap_or(0);
+            format!("{path} ({n} edit(s))")
         }
         "list_directory" => {
             let path = v.get("path").and_then(Value::as_str).unwrap_or("");
-            let n = v
-                .get("entries")
-                .and_then(Value::as_array)
-                .map(|a| a.len())
-                .unwrap_or(0);
+            let n = v.get("count").and_then(Value::as_u64).unwrap_or(0);
             format!("{path} ({n} entries)")
         }
-        "grep" => {
+        "grep_files" => {
             let pattern = v.get("pattern").and_then(Value::as_str).unwrap_or("");
             let n = v.get("match_count").and_then(Value::as_u64).unwrap_or(0);
             format!("/{pattern}/ ({n} match(es))")
+        }
+        "delete_file" => {
+            let path = v.get("path").and_then(Value::as_str).unwrap_or("");
+            format!("{path} (deleted)")
+        }
+        "stat_file" => {
+            let path = v.get("path").and_then(Value::as_str).unwrap_or("");
+            let size = v.get("size_bytes").and_then(Value::as_u64).unwrap_or(0);
+            format!("{path} ({size} bytes)")
         }
         "bash" => {
             let cmd = v

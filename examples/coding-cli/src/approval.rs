@@ -1,7 +1,9 @@
-// Approval gate for destructive tool calls.
-// Decision: write/edit/bash await an explicit yes from the human via a oneshot
-// channel; read/list/grep run free. The TUI installs an interactive gate, the
-// `--print` one-shot mode installs auto-approve. `--yes` overrides interactive.
+// Approval gate for destructive operations.
+// Decision: writes/deletes flow through SessionFileStore decorators; bash
+// goes through the BashTool directly. Both await an explicit yes from the
+// human via a oneshot channel. Read-only ops (read_file, list_directory,
+// grep) run free. The TUI installs an interactive gate, the `--print`
+// one-shot mode installs auto-approve. `--yes` overrides interactive.
 
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
@@ -11,14 +13,15 @@ pub enum ApprovalRequest {
     Bash {
         command: String,
     },
-    Write {
+    FileWrite {
         path: String,
-        bytes: usize,
+        /// Existing content if the file already exists (for diff display).
+        before: Option<String>,
+        after: String,
     },
-    Edit {
+    FileDelete {
         path: String,
-        unified_diff: String,
-        replacements: usize,
+        recursive: bool,
     },
 }
 
@@ -26,17 +29,34 @@ impl ApprovalRequest {
     pub fn headline(&self) -> String {
         match self {
             Self::Bash { command } => format!("run bash: {}", first_line(command, 200)),
-            Self::Write { path, bytes } => format!("write {path} ({bytes} bytes)"),
-            Self::Edit {
-                path, replacements, ..
-            } => format!("edit {path} ({replacements} replacement(s))"),
+            Self::FileWrite {
+                path,
+                before,
+                after,
+            } => {
+                let verb = if before.is_some() { "edit" } else { "create" };
+                format!("{verb} {path} ({} bytes)", after.len())
+            }
+            Self::FileDelete { path, recursive } => {
+                let r = if *recursive { " (recursive)" } else { "" };
+                format!("delete {path}{r}")
+            }
         }
     }
+
+    /// Multi-line body shown above the prompt (diff, command, etc.).
     pub fn detail(&self) -> String {
         match self {
             Self::Bash { command } => command.clone(),
-            Self::Write { bytes, .. } => format!("(content omitted, {bytes} bytes)"),
-            Self::Edit { unified_diff, .. } => unified_diff.clone(),
+            Self::FileWrite {
+                before,
+                after,
+                path,
+            } => match before {
+                Some(b) => crate::diff::unified(b, after, path, 3),
+                None => format!("(new file, {} bytes)", after.len()),
+            },
+            Self::FileDelete { .. } => String::new(),
         }
     }
 }

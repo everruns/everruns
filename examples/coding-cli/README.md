@@ -90,13 +90,22 @@ ercode --provider sim -p "hi"
 
 ## How it's wired
 
-- `src/tools.rs` — six tool impls of the `everruns_core::tools::Tool` trait,
-  each rooted at a `Workspace` that rejects traversal outside the root.
-- `src/runtime.rs` — wraps the tools in a custom `Capability`, picks a driver
-  (Anthropic / OpenAI / llmsim), and seeds a single
-  harness/agent/session into an `InProcessRuntime`.
-- `src/instructions.rs` — loads `AGENTS.md` / `CLAUDE.md` / `.agents.md` from
-  the workspace root and folds them into the harness system prompt.
+- `src/runtime.rs` — plugs `RealDiskFileStore` (from `everruns-runtime`)
+  rooted at the workspace, wrapped by two policy decorators
+  (`WriteBlocklistFileStore` and `ApprovalGatingFileStore`), into
+  `RuntimeBackends.file_store`. Registers the built-in
+  `AgentInstructionsCapability` (live-reloads AGENTS.md every turn),
+  `FileSystemCapability` (read/write/edit/list/grep/delete/stat tools on real
+  disk via the FileStore stack), and a tiny custom `CodingBashCapability` for
+  the shell tool. Picks a driver (Anthropic / OpenAI / llmsim).
+- `src/file_store_decorators.rs` — `WriteBlocklistFileStore` and
+  `ApprovalGatingFileStore`. Both implement `SessionFileStore +
+  RuntimeFileStore` and compose freely. EVE-478 plans to ship these in
+  `everruns-runtime`; until then they live here.
+- `src/tools.rs` — `BashTool` only. Built-in `virtual_bash` runs against the
+  VFS, not the real workspace, so the shell tool stays custom.
+- `src/approval.rs` — `ApprovalGate` and the request enum; the gate is shared
+  between the bash tool and the FileStore decorator.
 - `src/app.rs` + `src/main.rs` — ratatui TUI and one-shot CLI driver.
 
 ## Caveats
@@ -112,3 +121,6 @@ ercode --provider sim -p "hi"
   spawned by it are not pre-listed.
 - Write blocklist matches directory names case-sensitively at any depth; it is
   intentionally conservative, not exhaustive.
+- `FileStore` decorators live in this example. EVE-478 will move
+  `ApprovalGatingFileStore` and `WriteBlocklistFileStore` (or equivalents)
+  into `everruns-runtime` so other embedders can compose them.
