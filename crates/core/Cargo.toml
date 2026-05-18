@@ -11,11 +11,14 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/everruns-core"
 description = "Core agent abstractions for Everruns - agent loop, events, tools, LLM providers"
 
 [dependencies]
 # Core dependencies
-everruns-config = { path = "../config" }
+everruns-config = { path = "../config", version = "0.8.31" }
 anyhow.workspace = true
 thiserror.workspace = true
 async-trait.workspace = true
@@ -98,23 +101,25 @@ inventory.workspace = true
 llmsim = "0.2.1"
 
 # OpenUI component definitions and prompt generator
-everruns-openui = { path = "../openui" }
+everruns-openui = { path = "../openui", version = "0.8.31", optional = true }
 
 # A2UI component catalog and prompt generator
-everruns-a2ui = { path = "../a2ui" }
+everruns-a2ui = { path = "../a2ui", version = "0.8.31", optional = true }
 
 # A2A outbound agent delegation
 a2a.workspace = true
 a2a-client.workspace = true
 
 # Compile-time directory embedding for virtual mounts (platform docs)
-include_dir = "0.7"
+include_dir = { version = "0.7", optional = true }
 
 [features]
 default = ["llm-tests"]
+embedded-platform-docs = ["dep:include_dir"]
 openapi = ["utoipa"]
 sqlx = ["dep:sqlx"]
 tree-sitter-outlines = ["dep:tree-sitter", "dep:tree-sitter-rust", "dep:tree-sitter-typescript", "dep:tree-sitter-python"]
+ui-capabilities = ["dep:everruns-openui", "dep:everruns-a2ui"]
 llm-tests = []  # LLM integration tests (requires API keys)
 
 [dev-dependencies]

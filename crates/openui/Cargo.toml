@@ -11,6 +11,9 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/everruns-openui"
 description = "OpenUI component definitions and prompt generator for Everruns"
 
 [dependencies]
