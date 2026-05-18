@@ -31,3 +31,4 @@ everruns-anthropic = { path = "../../crates/anthropic" }
 everruns-core = { path = "../../crates/core" }
 everruns-openai = { path = "../../crates/openai" }
 everruns-runtime = { path = "../../crates/runtime" }
+everruns-integrations-duckduckgo = { path = "../../integrations/duckduckgo" }

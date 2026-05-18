@@ -27,6 +27,10 @@ depends on the public runtime crate the same way an external embedder would.
     failing tool call in a loop.
   - `prompt_caching` — Anthropic prompt-caching markers; free token savings
     on long system prompts (including AGENTS.md).
+  - `duckduckgo` — `duckduckgo_search` tool. Free, no API key. Hits the
+    DuckDuckGo Instant Answer API for definitions, abstracts, and related
+    topics. Useful for the agent to look up docs/concepts without leaving
+    the session.
   - `web_fetch` (opt-in via `--web`) — HTTP GET/HEAD with optional
     markdown/text conversion. With `--web` enabled, downloads can also save
     to disk via the same `RealDiskFileStore` stack, so the blocklist and

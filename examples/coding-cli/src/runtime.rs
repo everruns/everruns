@@ -8,7 +8,6 @@ use crate::approval::ApprovalGate;
 use crate::file_store_decorators::{ApprovalGatingFileStore, WriteBlocklistFileStore};
 use crate::tools::{BashTool, Workspace};
 use anyhow::{Context, Result, anyhow};
-use chrono::Utc;
 use everruns_core::capabilities::{
     AGENT_INSTRUCTIONS_CAPABILITY_ID, AgentInstructionsCapability, Capability, CapabilityStatus,
     CurrentTimeCapability, FileSystemCapability, INFINITY_CONTEXT_CAPABILITY_ID,
@@ -24,18 +23,23 @@ use everruns_core::memory::{
     InMemoryMemoryStore, InMemoryMessageRetriever,
 };
 use everruns_core::tools::Tool;
-use everruns_core::typed_id::{AgentId, HarnessId, SessionId};
+use everruns_core::typed_id::SessionId;
 use everruns_core::{
-    Agent, AgentCapabilityConfig, AgentStatus, CapabilityRegistry, Harness, HarnessStatus,
-    ModelWithProvider, PlatformDefinition, PrincipalId, Session, SessionStatus,
+    AgentCapabilityConfig, CapabilityRegistry, ModelWithProvider, PlatformDefinition,
 };
+use everruns_integrations_duckduckgo::DuckDuckGoCapability;
 use everruns_runtime::{
     InMemorySessionStorageStore, InMemorySessionStore, InProcessRuntime, InProcessRuntimeBuilder,
     RealDiskFileStore, RuntimeBackends, RuntimeFileStore,
 };
 use std::path::PathBuf;
 use std::sync::Arc;
-use uuid::Uuid;
+
+const HARNESS_PROMPT: &str = "You are a precise, terse coding assistant. \
+    Make minimal, surgical changes. Always explain non-obvious decisions briefly.";
+
+const AGENT_PROMPT: &str = "Default to investigation before edits. Cite file paths and line numbers \
+     when discussing code. Run tests when you change behavior.";
 
 // ---------- coding-cli's only custom capability: the bash tool ----------
 
@@ -176,6 +180,7 @@ pub async fn build(
     //   * stateless_todo_list  — write_todos tool for multi-step tasks
     //   * loop_detection       — safety net against repeated identical tool calls
     //   * prompt_caching       — Anthropic prompt caching; free token savings
+    //   * duckduckgo           — free web search (`duckduckgo_search`); no API key
     let mut capabilities = CapabilityRegistry::new();
     capabilities.register(AgentInstructionsCapability);
     capabilities.register(FileSystemCapability);
@@ -185,6 +190,7 @@ pub async fn build(
     capabilities.register(StatelessTodoListCapability);
     capabilities.register(LoopDetectionCapability);
     capabilities.register(PromptCachingCapability::new());
+    capabilities.register(DuckDuckGoCapability);
     if enable_web {
         capabilities.register(WebFetchCapability::from_env());
     }
@@ -237,26 +243,57 @@ pub async fn build(
 
     let platform = PlatformDefinition::new(capabilities, driver_registry);
 
-    let harness_id = HarnessId::new();
-    let agent_id = AgentId::new();
-    let session_id = SessionId::new();
+    // SingleSessionBuilder bundles the harness/agent/session shape with
+    // defaults that runtime owns — keeps this example small and absorbs
+    // future core-struct fields automatically.
+    let session_title = format!("coding-cli @ {}", canonical_root.display());
+    let mut harness_capabilities: Vec<AgentCapabilityConfig> = vec![
+        AgentCapabilityConfig::new(AGENT_INSTRUCTIONS_CAPABILITY_ID),
+        AgentCapabilityConfig::new("session_file_system"),
+        AgentCapabilityConfig::new(SKILLS_CAPABILITY_ID),
+        AgentCapabilityConfig::new(INFINITY_CONTEXT_CAPABILITY_ID),
+        AgentCapabilityConfig::new("current_time"),
+        AgentCapabilityConfig::new("stateless_todo_list"),
+        AgentCapabilityConfig::new("loop_detection"),
+        AgentCapabilityConfig::new(PROMPT_CACHING_CAPABILITY_ID),
+        AgentCapabilityConfig::new("duckduckgo"),
+        AgentCapabilityConfig::new("coding_cli_bash"),
+    ];
+    if enable_web {
+        harness_capabilities.push(AgentCapabilityConfig::with_config(
+            "web_fetch",
+            serde_json::json!({ "enable_file_download": true }),
+        ));
+    }
 
     let mut builder = InProcessRuntimeBuilder::new()
         .platform_definition(platform)
         .backends(backends)
         .default_model(default_model)
-        .harness(coding_harness(harness_id, enable_web))
-        .agent(coding_agent(agent_id))
-        .session(coding_session(
-            session_id,
-            harness_id,
-            agent_id,
-            &canonical_root,
-        ));
+        .single_session(move |s| {
+            let mut s = s
+                .harness("coding-cli", HARNESS_PROMPT)
+                .harness_display_name("Coding CLI")
+                .harness_description("Embedded terminal coding agent.")
+                .agent("coding-agent", AGENT_PROMPT)
+                .agent_display_name("Coding Agent")
+                .agent_description("Reads, edits, and runs commands inside a project workspace.")
+                .agent_max_iterations(20)
+                .session_title(session_title.clone())
+                .tag("example")
+                .tag("coding");
+            for cap in harness_capabilities {
+                s = s.harness_capability(cap);
+            }
+            s
+        });
     if let Some(cfg) = llm_sim {
         builder = builder.llm_sim(cfg);
     }
     let runtime = builder.build().await?;
+    let session_id = runtime
+        .default_session_id()
+        .expect("single_session sets the default session id");
 
     let context = runtime.load_context(session_id).await?;
     let tool_names = context
@@ -283,128 +320,4 @@ pub async fn build(
         instruction_files,
         tool_names,
     })
-}
-
-fn coding_harness(id: HarnessId, enable_web: bool) -> Harness {
-    let mut capabilities = vec![
-        AgentCapabilityConfig::new(AGENT_INSTRUCTIONS_CAPABILITY_ID),
-        AgentCapabilityConfig::new("session_file_system"),
-        AgentCapabilityConfig::new(SKILLS_CAPABILITY_ID),
-        AgentCapabilityConfig::new(INFINITY_CONTEXT_CAPABILITY_ID),
-        AgentCapabilityConfig::new("current_time"),
-        AgentCapabilityConfig::new("stateless_todo_list"),
-        AgentCapabilityConfig::new("loop_detection"),
-        AgentCapabilityConfig::new(PROMPT_CACHING_CAPABILITY_ID),
-        AgentCapabilityConfig::new("coding_cli_bash"),
-    ];
-    if enable_web {
-        // Turn on file-download so saved responses land in the workspace via
-        // our FileStore stack (subject to the blocklist + approval gate).
-        capabilities.push(AgentCapabilityConfig::with_config(
-            "web_fetch",
-            serde_json::json!({ "enable_file_download": true }),
-        ));
-    }
-    Harness {
-        id,
-        name: "coding-cli".into(),
-        display_name: Some("Coding CLI".into()),
-        description: Some("Embedded terminal coding agent.".into()),
-        system_prompt: "You are a precise, terse coding assistant. \
-            Make minimal, surgical changes. Always explain non-obvious decisions briefly."
-            .into(),
-        parent_harness_id: None,
-        default_model_id: None,
-        tags: vec!["example".into(), "coding".into()],
-        capabilities,
-        mcp_servers: Default::default(),
-        initial_files: vec![],
-        network_access: None,
-        is_built_in: false,
-        status: HarnessStatus::Active,
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
-        archived_at: None,
-        deleted_at: None,
-    }
-}
-
-fn coding_agent(id: AgentId) -> Agent {
-    Agent {
-        public_id: id,
-        internal_id: Uuid::nil(),
-        name: "coding-agent".into(),
-        display_name: Some("Coding Agent".into()),
-        description: Some("Reads, edits, and runs commands inside a project workspace.".into()),
-        system_prompt: "Default to investigation before edits. Cite file paths and line numbers \
-                        when discussing code. Run tests when you change behavior."
-            .into(),
-        default_model_id: None,
-        default_version_id: None,
-        forked_from_agent_id: None,
-        forked_from_version_id: None,
-        root_agent_id: None,
-        tags: vec!["example".into()],
-        capabilities: vec![],
-        mcp_servers: Default::default(),
-        initial_files: vec![],
-        network_access: None,
-        max_iterations: Some(20),
-        tools: vec![],
-        status: AgentStatus::Active,
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
-        archived_at: None,
-        deleted_at: None,
-        usage: None,
-    }
-}
-
-fn coding_session(
-    id: SessionId,
-    harness_id: HarnessId,
-    agent_id: AgentId,
-    root: &std::path::Path,
-) -> Session {
-    Session {
-        id,
-        organization_id: everruns_core::DEFAULT_ORG_PUBLIC_ID.to_string(),
-        harness_id,
-        agent_id: Some(agent_id),
-        agent_version_id: None,
-        agent_identity_id: None,
-        owner_principal_id: PrincipalId::from_seed(1),
-        resolved_owner_user_id: None,
-        owner: None,
-        effective_owner: None,
-        title: Some(format!("coding-cli @ {}", root.display())),
-        locale: None,
-        preview: None,
-        output_preview: None,
-        tags: vec!["coding-cli".into()],
-        model_id: None,
-        capabilities: vec![],
-        tools: vec![],
-        mcp_servers: Default::default(),
-        system_prompt: None,
-        initial_files: vec![],
-        hints: None,
-        network_access: None,
-        max_iterations: None,
-        status: SessionStatus::Started,
-        created_at: Utc::now(),
-        updated_at: Utc::now(),
-        started_at: None,
-        finished_at: None,
-        usage: None,
-        is_pinned: None,
-        active_schedule_count: None,
-        features: vec![],
-        parent_session_id: None,
-        subagent_name: None,
-        subagent_task: None,
-        subagent_status: None,
-        blueprint_id: None,
-        blueprint_config: None,
-    }
 }
