@@ -2705,21 +2705,21 @@ dependencies = [
 
 [[package]]
 name = "fetchkit"
-version = "0.2.0"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3e551cfcd0082a9acbe9be3dc068f368ef6b5ea6546c47fdd76eb3216ddbf686"
+checksum = "830662c4a2b95832e4dd411706f2999f6e241eccd9b9f1afcab8b2f498b0faa9"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
  "bytes",
  "ed25519-dalek",
  "futures",
- "rand 0.8.6",
+ "rand 0.10.1",
  "reqwest 0.13.3",
  "schemars",
  "serde",
  "serde_json",
- "sha2 0.10.9",
+ "sha2 0.11.0",
  "thiserror 2.0.18",
  "tokio",
  "tower",
