@@ -137,7 +137,6 @@ pub async fn build(
     workspace_root: PathBuf,
     provider: ProviderChoice,
     gate: Arc<ApprovalGate>,
-    enable_web: bool,
 ) -> Result<RuntimeBundle> {
     let canonical_root = std::fs::canonicalize(&workspace_root)
         .with_context(|| format!("canonicalize workspace: {}", workspace_root.display()))?;
@@ -191,9 +190,7 @@ pub async fn build(
     capabilities.register(LoopDetectionCapability);
     capabilities.register(PromptCachingCapability::new());
     capabilities.register(DuckDuckGoCapability);
-    if enable_web {
-        capabilities.register(WebFetchCapability::from_env());
-    }
+    capabilities.register(WebFetchCapability::from_env());
     capabilities.register(CodingBashCapability {
         workspace: workspace.clone(),
         gate,
@@ -247,7 +244,7 @@ pub async fn build(
     // defaults that runtime owns — keeps this example small and absorbs
     // future core-struct fields automatically.
     let session_title = format!("coding-cli @ {}", canonical_root.display());
-    let mut harness_capabilities: Vec<AgentCapabilityConfig> = vec![
+    let harness_capabilities: Vec<AgentCapabilityConfig> = vec![
         AgentCapabilityConfig::new(AGENT_INSTRUCTIONS_CAPABILITY_ID),
         AgentCapabilityConfig::new("session_file_system"),
         AgentCapabilityConfig::new(SKILLS_CAPABILITY_ID),
@@ -257,14 +254,14 @@ pub async fn build(
         AgentCapabilityConfig::new("loop_detection"),
         AgentCapabilityConfig::new(PROMPT_CACHING_CAPABILITY_ID),
         AgentCapabilityConfig::new("duckduckgo"),
-        AgentCapabilityConfig::new("coding_cli_bash"),
-    ];
-    if enable_web {
-        harness_capabilities.push(AgentCapabilityConfig::with_config(
+        // enable_file_download=true: saved responses land on disk through the
+        // RealDiskFileStore stack, so the blocklist and approval gate apply.
+        AgentCapabilityConfig::with_config(
             "web_fetch",
             serde_json::json!({ "enable_file_download": true }),
-        ));
-    }
+        ),
+        AgentCapabilityConfig::new("coding_cli_bash"),
+    ];
 
     let mut builder = InProcessRuntimeBuilder::new()
         .platform_definition(platform)

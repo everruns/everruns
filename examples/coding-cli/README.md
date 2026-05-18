@@ -31,10 +31,9 @@ depends on the public runtime crate the same way an external embedder would.
     DuckDuckGo Instant Answer API for definitions, abstracts, and related
     topics. Useful for the agent to look up docs/concepts without leaving
     the session.
-  - `web_fetch` (opt-in via `--web`) — HTTP GET/HEAD with optional
-    markdown/text conversion. With `--web` enabled, downloads can also save
-    to disk via the same `RealDiskFileStore` stack, so the blocklist and
-    approval gate apply.
+  - `web_fetch` — HTTP GET/HEAD with optional markdown/text conversion.
+    Saved responses land on disk via the same `RealDiskFileStore` stack,
+    so the blocklist and approval gate apply.
 
 Note on parallel tool calls: independent tool calls already execute in
 parallel when the LLM provider batches them in one assistant turn (Anthropic
@@ -106,7 +105,6 @@ ercode --provider sim -p "hi"
 | `-m, --model <ID>`         | Override the model id for the chosen provider                        |
 | `-p, --print <PROMPT>`     | Run one prompt non-interactively and print the result                |
 | `--yes`                    | Auto-approve every destructive tool call (write/edit/bash)           |
-| `--web`                    | Enable the `web_fetch` capability (HTTP GET/HEAD + optional file save) |
 
 `RUST_LOG` is honored for the underlying tracing layer (writes to stderr).
 
