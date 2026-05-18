@@ -8,6 +8,9 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/everruns-anthropic"
 description = "Anthropic Claude provider implementation for Everruns"
 
 [dependencies]
@@ -35,7 +38,7 @@ chrono.workspace = true
 tracing.workspace = true
 
 # Internal dependencies
-everruns-core = { path = "../core" }
+everruns-core = { path = "../core", version = "0.8.31" }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }
