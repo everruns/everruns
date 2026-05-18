@@ -92,7 +92,6 @@ function DiffBlock({
 export function AgentVersionHistory({ agent }: { agent: Agent }) {
   const router = useRouter();
   const { data: versions = [], isLoading } = useAgentVersions(agent.id);
-  const latest = versions[0];
   const [summary, setSummary] = useState("");
   const [changeKind, setChangeKind] = useState<AgentVersionChangeKind>("manual");
   const [fromVersionId, setFromVersionId] = useState<string>("");
@@ -108,6 +107,15 @@ export function AgentVersionHistory({ agent }: { agent: Agent }) {
   const rollback = useRollbackAgentVersion();
   const fork = useForkAgentVersion();
   const diff = useAgentVersionDiff(agent.id, fromVersionId || undefined, toVersionId || undefined);
+  const publishedVersions = useMemo(
+    () => versions.filter((version) => version.is_published),
+    [versions],
+  );
+  const draftSnapshots = useMemo(
+    () => versions.filter((version) => !version.is_published),
+    [versions],
+  );
+  const latest = publishedVersions[0];
 
   const selectedFrom = useMemo(
     () => versions.find((version) => version.id === fromVersionId),
@@ -174,13 +182,13 @@ export function AgentVersionHistory({ agent }: { agent: Agent }) {
                 <Skeleton className="h-14 w-full" />
                 <Skeleton className="h-14 w-full" />
               </div>
-            ) : versions.length === 0 ? (
+            ) : publishedVersions.length === 0 ? (
               <p className="py-8 text-center text-sm text-muted-foreground">
                 No saved versions yet.
               </p>
             ) : (
               <div className="divide-y border">
-                {versions.map((version) => (
+                {publishedVersions.map((version) => (
                   <div key={version.id} className="grid gap-3 p-3 md:grid-cols-[1fr_auto]">
                     <div className="min-w-0 space-y-1">
                       <div className="flex flex-wrap items-center gap-2">
@@ -213,6 +221,54 @@ export function AgentVersionHistory({ agent }: { agent: Agent }) {
                         <Star className="mr-1 h-3 w-3" />
                         Default
                       </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setRollbackVersion(version)}
+                      >
+                        <RotateCcw className="mr-1 h-3 w-3" />
+                        Rollback
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => setForkVersion(version)}>
+                        <GitBranch className="mr-1 h-3 w-3" />
+                        Fork
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Automatic Snapshots</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {isLoading ? (
+              <div className="space-y-2">
+                <Skeleton className="h-14 w-full" />
+                <Skeleton className="h-14 w-full" />
+              </div>
+            ) : draftSnapshots.length === 0 ? (
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                No automatic snapshots yet.
+              </p>
+            ) : (
+              <div className="divide-y border">
+                {draftSnapshots.map((version) => (
+                  <div key={version.id} className="grid gap-3 p-3 md:grid-cols-[1fr_auto]">
+                    <div className="min-w-0 space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium">{version.version}</span>
+                        <Badge variant="outline">auto</Badge>
+                      </div>
+                      <p className="font-mono text-xs text-muted-foreground">
+                        {formatVersionDate(version.created_at)} · {version.config_hash.slice(0, 12)}
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-start gap-2">
                       <Button
                         size="sm"
                         variant="outline"
