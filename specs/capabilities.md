@@ -360,6 +360,12 @@ FileSystem tools require session context to access the isolated virtual filesyst
 - `session_id`: The session whose filesystem to access
 - `file_store`: A `SessionFileStore` trait implementation for file operations
 
+See `specs/file-store.md` for the pluggable `SessionFileStore` contract, the
+in-memory and real-disk implementations, and the policy decorators
+(`WriteBlocklistFileStore`, `ApprovalGatingFileStore`). New capabilities that
+need filesystem access MUST go through `ToolContext.file_store` or
+`SystemPromptContext.file_store` rather than calling `std::fs` directly.
+
 ##### Design Decision: Session Isolation
 
 Each session has its own isolated filesystem stored in PostgreSQL. Files are session-scoped and cannot be accessed across sessions. This provides security isolation and clean separation between conversations.

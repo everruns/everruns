@@ -13,13 +13,15 @@ description = "Public in-process runtime for embedding Everruns harnesses"
 [dependencies]
 async-trait.workspace = true
 chrono.workspace = true
+ignore.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-tokio = { workspace = true, features = ["sync"] }
+tokio = { workspace = true, features = ["fs", "sync"] }
 tracing.workspace = true
 uuid.workspace = true
 
 everruns-core = { path = "../core" }
 
 [dev-dependencies]
+tempfile.workspace = true
 tokio = { workspace = true, features = ["full", "test-util"] }

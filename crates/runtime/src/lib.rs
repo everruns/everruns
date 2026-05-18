@@ -133,10 +133,40 @@
 //! assert!(result.success);
 //! # Ok::<(), everruns_core::AgentLoopError>(())
 //! ```
+//!
+//! # Real-disk workspace
+//!
+//! Embedders who want built-in capabilities (`file_system`,
+//! `agent_instructions`, `skills`, ...) to read and write a real directory
+//! on disk plug a [`RealDiskFileStore`] (optionally wrapped with
+//! [`WriteBlocklistFileStore`] and [`ApprovalGatingFileStore`]) into
+//! [`RuntimeBackends::file_store`].
+//!
+//! ```ignore
+//! use std::sync::Arc;
+//! use everruns_runtime::{
+//!     ApprovalGatingFileStore, RealDiskFileStore, RuntimeBackends,
+//!     WriteBlocklistFileStore, auto_approve_callback,
+//! };
+//!
+//! let workspace_root = std::env::current_dir()?;
+//! let file_store = Arc::new(ApprovalGatingFileStore::new(
+//!     WriteBlocklistFileStore::default_blocked(
+//!         RealDiskFileStore::new(workspace_root)?,
+//!     ),
+//!     auto_approve_callback(),
+//! ));
+//! // backends.file_store = file_store;
+//! # Ok::<(), everruns_core::AgentLoopError>(())
+//! ```
+//!
+//! See `specs/file-store.md` for the contract and composition rules.
 
 mod backends;
 mod host;
 mod in_memory;
+mod policy;
+mod real_disk;
 mod runtime;
 mod turn_strategy;
 
@@ -150,5 +180,10 @@ pub use host::{
     execute_act_activity, execute_input_activity, execute_reason_activity,
 };
 pub use in_memory::{InMemorySessionFileStore, InMemorySessionStorageStore, InMemorySessionStore};
+pub use policy::{
+    ApprovalCallback, ApprovalGatingFileStore, WriteBlocklistFileStore, WriteKind, WriteRequest,
+    auto_approve_callback,
+};
+pub use real_disk::RealDiskFileStore;
 pub use runtime::{InProcessRuntime, InProcessRuntimeBuilder, TurnResult};
 pub use turn_strategy::{RuntimeActPlan, RuntimeTurnPlan, RuntimeTurnState, plan_next_host_turn};

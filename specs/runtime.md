@@ -181,6 +181,15 @@ embedded runtime needs for:
 - persisting assistant and tool-result messages from emitted events
 - configuring the runtime default model
 
+For `RuntimeFileStore` specifically, embedders can choose between
+`InMemorySessionFileStore` (default, per-session isolation, suitable for
+tests and embedded use without disk state) and `RealDiskFileStore` (rooted
+at a host directory; honours `.gitignore` for grep). See
+`specs/file-store.md` for the trait contract, path namespace, policy
+decorators (`WriteBlocklistFileStore`, `ApprovalGatingFileStore`), and the
+rule that capabilities must consume the seam rather than touching
+`std::fs` directly.
+
 This keeps `everruns-core` storage traits read-oriented where they already were,
 while making custom embedded backends a supported public path.
 

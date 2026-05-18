@@ -101,6 +101,7 @@ Always make sure you are working on top of latest main from remote.
 - `specs/encryption.md` - Envelope encryption for sensitive data
 - `specs/audit-logging.md` - Audit logging (domains, AOP macro, trait, API)
 - `specs/session-filesystem.md` - Per-session virtual filesystem
+- `specs/file-store.md` - Pluggable `SessionFileStore` seam (in-memory, real-disk, policy decorators)
 - `specs/cli.md` - CLI specification (commands, file sync, wire protocol)
 - `specs/usage-tracking.md` - LLM token usage tracking
 - `specs/budgeting.md` - Extensible budgeting system (budgets, meters, rules, soft enforcement)
