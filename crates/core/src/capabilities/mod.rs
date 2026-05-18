@@ -135,7 +135,8 @@ pub use a2a_delegation::{
 pub use a2ui::{A2UI_CAPABILITY_ID, A2UiCapability};
 pub use agent_instructions::{
     AGENT_INSTRUCTIONS_CAPABILITY_ID, AGENTS_MD_PATH, AgentInstructionsCapability,
-    MAX_AGENTS_MD_SIZE, format_agents_md_content,
+    AgentInstructionsConfig, DEFAULT_AGENT_INSTRUCTIONS_FILE, MAX_AGENT_INSTRUCTIONS_FILES,
+    MAX_AGENTS_MD_SIZE, format_agents_md_content, format_instruction_file_content,
 };
 pub use attach_skill::{
     AttachSkillCapability, SKILL_CAPABILITY_PREFIX, SKILLS_DISCOVERY_PATH, SkillContribution,

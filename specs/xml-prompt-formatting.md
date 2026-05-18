@@ -2,7 +2,7 @@
 
 ## Abstract
 
-System prompts use XML tags to create clear boundaries between capability instructions, user-provided project instructions (AGENTS.md), and the agent's base system prompt. This follows Anthropic's recommendation for multi-component prompts and is the cross-provider consensus for structured prompt formatting.
+System prompts use XML tags to create clear boundaries between capability instructions, user-provided project instruction files, and the agent's base system prompt. This follows Anthropic's recommendation for multi-component prompts and is the cross-provider consensus for structured prompt formatting.
 
 ## Rationale
 
@@ -10,7 +10,7 @@ System prompts use XML tags to create clear boundaries between capability instru
 
 When multiple capabilities are enabled, the LLM receives a wall of text where:
 - Boundaries between capability sections are ambiguous (only `\n\n` separators)
-- User-provided AGENTS.md content bleeds into system capability instructions
+- User-provided instruction file content bleeds into system capability instructions
 - Tool guidance for one capability can be misattributed to another
 - The distinction between platform instructions and agent-level behavior is unclear
 
@@ -22,7 +22,7 @@ Anthropic's prompt engineering docs recommend XML tags for multi-component promp
 Key advantages over markdown-only formatting:
 - **Clear boundaries**: Unambiguous section delimiters reduce misattribution
 - **Cross-model support**: XML tags are recommended by Anthropic, Google, and OpenAI
-- **Prompt injection resistance**: XML boundaries make it harder for injected content in AGENTS.md to impersonate system instructions
+- **Prompt injection resistance**: XML boundaries make it harder for injected content in instruction files to impersonate system instructions
 - **Parseability**: Tags enable referencing sections by name (e.g., "the instructions in `<agent-instructions>`")
 
 Trade-offs accepted:
@@ -37,7 +37,7 @@ Three XML tags wrap the three logical sections of the assembled system prompt:
 
 | Tag | Purpose | Content |
 |-----|---------|---------|
-| `<agent-instructions source="AGENTS.md">` | User-provided project instructions | AGENTS.md file content (markdown) |
+| `<agent-instructions source="{path}">` | User-provided project instructions | Configured instruction file content (markdown) |
 | `<capability id="{cap_id}">` | Per-capability tool guidance | Capability's `system_prompt_addition()` (markdown) |
 | `<system-prompt>` | Agent's core behavior prompt | Agent's base `system_prompt` field |
 
@@ -66,7 +66,7 @@ You are a helpful assistant.
 
 Top to bottom (matches existing order, unchanged):
 
-1. **AGENTS.md** — user-provided project instructions (if `agent_instructions` capability enabled)
+1. **Instruction files** — user-provided project instructions (if `agent_instructions` capability enabled and configured files exist)
 2. **Capability prompts** — in capability application order (agent caps, then session caps)
 3. **Base system prompt** — agent's core behavior prompt
 
@@ -74,7 +74,7 @@ Top to bottom (matches existing order, unchanged):
 
 - `<system-prompt>` tags only appear when at least one capability contributes a `system_prompt_addition`. If no capabilities add prompts, the base prompt is used unwrapped.
 - `<capability>` tags only appear for capabilities that have a non-None `system_prompt_addition()`.
-- `<agent-instructions>` tags only appear when AGENTS.md exists and is non-empty.
+- `<agent-instructions>` tags only appear when a configured instruction file exists and is non-empty.
 - Capabilities without `system_prompt_addition` (e.g., `current_time`, `noop`) add no XML to the prompt.
 
 ### Implementation
@@ -92,12 +92,12 @@ if let Some(addition) = capability.system_prompt_addition() {
 }
 ```
 
-#### `format_agents_md_content()` (agent_instructions.rs)
+#### `format_instruction_file_content()` (agent_instructions.rs)
 
-Wraps AGENTS.md content in `<agent-instructions>` tags:
+Wraps configured instruction file content in `<agent-instructions>` tags:
 
 ```rust
-let mut result = format!("<agent-instructions source=\"AGENTS.md\">\n{}", body);
+let mut result = format!("<agent-instructions source=\"{}\">\n{}", source, body);
 // ... truncation handling ...
 result.push_str("\n</agent-instructions>");
 ```
