@@ -100,7 +100,14 @@ impl CommandError {
     }
 
     /// Plain message for transport adapters (MCP `<kind>: <message>` etc.).
-    /// `Internal` is intentionally hidden; callers must redact it themselves.
+    ///
+    /// For `Internal` this currently returns the underlying anyhow message,
+    /// which MAY contain sensitive context (provider hints, stack-trace tail,
+    /// SQL fragments). Transport adapters that emit responses to untrusted
+    /// callers (HTTP body, public MCP, etc.) MUST redact the `Internal`
+    /// variant themselves rather than echoing this value verbatim. The HTTP
+    /// adapter (`From<CommandError> for (StatusCode, Json<ErrorResponse>)`)
+    /// already does this.
     pub fn message(&self) -> String {
         self.kind.to_string()
     }

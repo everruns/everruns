@@ -105,12 +105,8 @@ pub fn routes(state: AppState) -> Router {
 
 fn require_user_id(org: &ResolvedOrg) -> Result<uuid::Uuid, (StatusCode, Json<ErrorResponse>)> {
     org.user_id.ok_or_else(|| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(ErrorResponse::new(
-                "Notifications require an authenticated user".to_string(),
-            )),
-        )
+        ErrorResponse::new("Notifications require an authenticated user".to_string())
+            .into_response(StatusCode::UNAUTHORIZED)
     })
 }
 
@@ -170,10 +166,8 @@ pub async fn stream_notifications_sse(
         .try_acquire(org.org_id, user_id)
         .map_err(|rejection| {
             tracing::warn!(org_id = org.org_id, user_id = %user_id, reason = %rejection, "Notification SSE rejected");
-            (
-                StatusCode::TOO_MANY_REQUESTS,
-                Json(ErrorResponse::new(rejection.to_string())),
-            )
+            ErrorResponse::new(rejection.to_string())
+                .into_response(StatusCode::TOO_MANY_REQUESTS)
         })?;
 
     let service = state.notification_service.clone();

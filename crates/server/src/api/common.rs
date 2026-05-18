@@ -355,10 +355,7 @@ impl<T> ApiPolicyResultExt<T> for Result<T, anyhow::Error> {
             } else if let Some(bad_request) = e.downcast_ref::<crate::errors::BadRequestError>() {
                 ErrorResponse::new(bad_request.message()).into_response(StatusCode::BAD_REQUEST)
             } else if let Some(policy_err) = e.downcast_ref::<everruns_core::PolicyError>() {
-                (
-                    StatusCode::FORBIDDEN,
-                    Json(ErrorResponse::new(&policy_err.message)),
-                )
+                ErrorResponse::new(&policy_err.message).into_response(StatusCode::FORBIDDEN)
             } else if let Some(response) = classify_anyhow_error(&e.to_string()) {
                 response
             } else {

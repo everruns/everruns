@@ -321,10 +321,7 @@ async fn resume_session(
                 .await?,
         )
         .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse::new(e.to_string())),
-            )
+            ErrorResponse::new(e.to_string()).into_response(StatusCode::INTERNAL_SERVER_ERROR)
         })?,
     ))
 }

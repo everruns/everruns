@@ -125,19 +125,15 @@ pub async fn submit_tool_results(
     Json(req): Json<SubmitToolResultsRequest>,
 ) -> ApiResult<SubmitToolResultsResponse> {
     let session_id: SessionId = session_id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse::new(format!("Invalid session ID: {}", e))),
-        )
+        ErrorResponse::new(format!("Invalid session ID: {}", e))
+            .into_response(StatusCode::BAD_REQUEST)
     })?;
 
     if req.tool_results.is_empty() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse::new(
-                "tool_results must not be empty".to_string(),
-            )),
-        ));
+        return Err(
+            ErrorResponse::new("tool_results must not be empty".to_string())
+                .into_response(StatusCode::BAD_REQUEST),
+        );
     }
 
     // Get session and verify status
@@ -150,13 +146,11 @@ pub async fn submit_tool_results(
         .ok_or_not_found_json("Session")?;
 
     if session.status != SessionStatus::WaitingForToolResults {
-        return Err((
-            StatusCode::CONFLICT,
-            Json(ErrorResponse::new(format!(
-                "Session is not waiting for tool results (current status: {})",
-                session.status
-            ))),
-        ));
+        return Err(ErrorResponse::new(format!(
+            "Session is not waiting for tool results (current status: {})",
+            session.status
+        ))
+        .into_response(StatusCode::CONFLICT));
     }
 
     // Use session_id as turn_id (matches how DurableRunner uses workflow_id = session_id)

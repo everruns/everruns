@@ -204,19 +204,15 @@ pub async fn create_organization(
 
     // Validate input
     if req.name.is_empty() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse::new("Organization name cannot be empty")),
-        ));
+        return Err(ErrorResponse::new("Organization name cannot be empty")
+            .into_response(StatusCode::BAD_REQUEST));
     }
 
     if req.name.len() > 255 {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse::new(
-                "Organization name cannot exceed 255 characters",
-            )),
-        ));
+        return Err(
+            ErrorResponse::new("Organization name cannot exceed 255 characters")
+                .into_response(StatusCode::BAD_REQUEST),
+        );
     }
 
     // Enforce org-per-user limit (counts orgs created by this user, not memberships)
@@ -226,13 +222,11 @@ pub async fn create_organization(
         .await
         .log_internal_error_json("count user created organizations")?;
     if org_count >= state.resource_limits.max_orgs_per_user {
-        return Err((
-            StatusCode::CONFLICT,
-            Json(ErrorResponse::new(format!(
-                "Organization limit reached (max {})",
-                state.resource_limits.max_orgs_per_user
-            ))),
-        ));
+        return Err(ErrorResponse::new(format!(
+            "Organization limit reached (max {})",
+            state.resource_limits.max_orgs_per_user
+        ))
+        .into_response(StatusCode::CONFLICT));
     }
 
     // Generate public_id
@@ -381,29 +375,23 @@ pub async fn update_organization(
     if updates_org_settings
         && !is_org_admin_of_public_db(&state.db, user.id, &org_public_id).await?
     {
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse::new(
-                "Only organization admins can update organization settings",
-            )),
-        ));
+        return Err(ErrorResponse::new(
+            "Only organization admins can update organization settings",
+        )
+        .into_response(StatusCode::FORBIDDEN));
     }
 
     // Validate input
     if let Some(ref name) = req.name {
         if name.is_empty() {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse::new("Organization name cannot be empty")),
-            ));
+            return Err(ErrorResponse::new("Organization name cannot be empty")
+                .into_response(StatusCode::BAD_REQUEST));
         }
         if name.len() > 255 {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse::new(
-                    "Organization name cannot exceed 255 characters",
-                )),
-            ));
+            return Err(
+                ErrorResponse::new("Organization name cannot exceed 255 characters")
+                    .into_response(StatusCode::BAD_REQUEST),
+            );
         }
     }
 
@@ -417,10 +405,8 @@ pub async fn update_organization(
 
     // Cannot update default organization name
     if org_row.org_id == DEFAULT_ORG_ID && req.name.is_some() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse::new("Cannot update default organization")),
-        ));
+        return Err(ErrorResponse::new("Cannot update default organization")
+            .into_response(StatusCode::BAD_REQUEST));
     }
 
     let UpdateOrganizationRequest {
@@ -433,12 +419,10 @@ pub async fn update_organization(
 
     // Resolve default_harness_name to default_harness_id (mutually exclusive)
     if default_harness_id.is_some() && default_harness_name.is_some() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse::new(
-                "Cannot specify both default_harness_id and default_harness_name",
-            )),
-        ));
+        return Err(ErrorResponse::new(
+            "Cannot specify both default_harness_id and default_harness_name",
+        )
+        .into_response(StatusCode::BAD_REQUEST));
     }
     if let Some(ref harness_name) = default_harness_name {
         super::validation::validate_harness_name_strict(harness_name)?;
@@ -460,16 +444,11 @@ pub async fn update_organization(
             .await
             .log_internal_error_json("resolve default model")?
             .ok_or_else(|| {
-                (
-                    StatusCode::BAD_REQUEST,
-                    Json(ErrorResponse::new("Model not found")),
-                )
+                ErrorResponse::new("Model not found").into_response(StatusCode::BAD_REQUEST)
             })?;
         if !model.enabled {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse::new("Default model must be an enabled model")),
-            ));
+            return Err(ErrorResponse::new("Default model must be an enabled model")
+                .into_response(StatusCode::BAD_REQUEST));
         }
     }
     if default_harness_name.is_none()
@@ -661,27 +640,19 @@ pub async fn add_member(
 ) -> Result<(StatusCode, Json<MemberResponse>), (StatusCode, Json<ErrorResponse>)> {
     // Parse and validate role
     let role: OrgRole = req.role.parse().map_err(|_| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse::new(
-                "Invalid role. Must be 'owner', 'admin', or 'member'",
-            )),
-        )
+        ErrorResponse::new("Invalid role. Must be 'owner', 'admin', or 'member'")
+            .into_response(StatusCode::BAD_REQUEST)
     })?;
 
     // Only owners can add owners
     if role == OrgRole::Owner && !org.role.has_permission(OrgRole::Owner) {
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse::new("Only owners can add owners")),
-        ));
+        return Err(
+            ErrorResponse::new("Only owners can add owners").into_response(StatusCode::FORBIDDEN)
+        );
     }
 
     let target_user_id: uuid::Uuid = req.user_id.parse().map_err(|_| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse::new("Invalid user_id")),
-        )
+        ErrorResponse::new("Invalid user_id").into_response(StatusCode::BAD_REQUEST)
     })?;
 
     // Verify user exists
@@ -690,12 +661,7 @@ pub async fn add_member(
         .get_user(target_user_id)
         .await
         .log_internal_error_json("get user")?
-        .ok_or_else(|| {
-            (
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse::new("User not found")),
-            )
-        })?;
+        .ok_or_else(|| ErrorResponse::new("User not found").into_response(StatusCode::NOT_FOUND))?;
 
     // Check if already a member
     let existing = state
@@ -705,10 +671,9 @@ pub async fn add_member(
         .log_internal_error_json("check membership")?;
 
     if existing.is_some() {
-        return Err((
-            StatusCode::CONFLICT,
-            Json(ErrorResponse::new("User is already a member")),
-        ));
+        return Err(
+            ErrorResponse::new("User is already a member").into_response(StatusCode::CONFLICT)
+        );
     }
 
     // Enforce member-per-org limit
@@ -718,13 +683,11 @@ pub async fn add_member(
         .await
         .log_internal_error_json("count organization members")?;
     if member_count >= state.resource_limits.max_members_per_org {
-        return Err((
-            StatusCode::CONFLICT,
-            Json(ErrorResponse::new(format!(
-                "Member limit reached (max {})",
-                state.resource_limits.max_members_per_org
-            ))),
-        ));
+        return Err(ErrorResponse::new(format!(
+            "Member limit reached (max {})",
+            state.resource_limits.max_members_per_org
+        ))
+        .into_response(StatusCode::CONFLICT));
     }
 
     // Add member
@@ -766,19 +729,12 @@ pub async fn update_member_role(
     Json(req): Json<UpdateMemberRoleRequest>,
 ) -> ApiResult<MemberResponse> {
     let new_role: OrgRole = req.role.parse().map_err(|_| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse::new(
-                "Invalid role. Must be 'owner', 'admin', or 'member'",
-            )),
-        )
+        ErrorResponse::new("Invalid role. Must be 'owner', 'admin', or 'member'")
+            .into_response(StatusCode::BAD_REQUEST)
     })?;
 
     let target_user_id: uuid::Uuid = user_id_str.parse().map_err(|_| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse::new("Invalid user_id")),
-        )
+        ErrorResponse::new("Invalid user_id").into_response(StatusCode::BAD_REQUEST)
     })?;
 
     // Get current member info
@@ -788,10 +744,7 @@ pub async fn update_member_role(
         .await
         .log_internal_error_json("get member")?
         .ok_or_else(|| {
-            (
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse::new("Member not found")),
-            )
+            ErrorResponse::new("Member not found").into_response(StatusCode::NOT_FOUND)
         })?;
 
     let current_role: OrgRole = current.role.parse().unwrap_or(OrgRole::Member);
@@ -800,10 +753,8 @@ pub async fn update_member_role(
     if (current_role == OrgRole::Owner || new_role == OrgRole::Owner)
         && !org.role.has_permission(OrgRole::Owner)
     {
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse::new("Only owners can change owner roles")),
-        ));
+        return Err(ErrorResponse::new("Only owners can change owner roles")
+            .into_response(StatusCode::FORBIDDEN));
     }
 
     // Cannot demote last owner
@@ -814,10 +765,8 @@ pub async fn update_member_role(
             .await
             .log_internal_error_json("count owners")?;
         if owner_count <= 1 {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse::new("Cannot remove the last owner")),
-            ));
+            return Err(ErrorResponse::new("Cannot remove the last owner")
+                .into_response(StatusCode::BAD_REQUEST));
         }
     }
 
@@ -828,10 +777,7 @@ pub async fn update_member_role(
         .await
         .log_internal_error_json("update member role")?
         .ok_or_else(|| {
-            (
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse::new("Member not found")),
-            )
+            ErrorResponse::new("Member not found").into_response(StatusCode::NOT_FOUND)
         })?;
 
     let mut builder = AuditEvent::management(
@@ -866,20 +812,15 @@ pub async fn remove_member(
     Path((_org_public_id, user_id_str)): Path<(String, String)>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     let target_user_id: uuid::Uuid = user_id_str.parse().map_err(|_| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse::new("Invalid user_id")),
-        )
+        ErrorResponse::new("Invalid user_id").into_response(StatusCode::BAD_REQUEST)
     })?;
 
     let is_self = target_user_id == user.id;
 
     // Must be owner to remove others (self-removal always allowed)
     if !is_self && !org.role.has_permission(OrgRole::Owner) {
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse::new("Only owners can remove members")),
-        ));
+        return Err(ErrorResponse::new("Only owners can remove members")
+            .into_response(StatusCode::FORBIDDEN));
     }
 
     // Check if target is owner — cannot remove last owner
@@ -889,10 +830,7 @@ pub async fn remove_member(
         .await
         .log_internal_error_json("get member")?
         .ok_or_else(|| {
-            (
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse::new("Member not found")),
-            )
+            ErrorResponse::new("Member not found").into_response(StatusCode::NOT_FOUND)
         })?;
 
     if member.role == "owner" {
@@ -902,10 +840,8 @@ pub async fn remove_member(
             .await
             .log_internal_error_json("count owners")?;
         if owner_count <= 1 {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse::new("Cannot remove the last owner")),
-            ));
+            return Err(ErrorResponse::new("Cannot remove the last owner")
+                .into_response(StatusCode::BAD_REQUEST));
         }
     }
 
@@ -927,10 +863,7 @@ pub async fn remove_member(
 
         Ok(StatusCode::NO_CONTENT)
     } else {
-        Err((
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse::new("Member not found")),
-        ))
+        Err(ErrorResponse::new("Member not found").into_response(StatusCode::NOT_FOUND))
     }
 }
 

@@ -618,8 +618,9 @@ served as `application/problem+json`:
 }
 ```
 
-Required: `type`, `title`, `status`. Extensions: `code` (stable snake_case),
-`detail` (sanitized per [`public-endpoints.md`](public-endpoints.md)),
+Required: `title`, `status`. Optional: `type` (problem-type URI; defaults to
+`about:blank` per RFC 9457 when omitted), `detail` (sanitized per
+[`public-endpoints.md`](public-endpoints.md)), `code` (stable snake_case),
 `allowed_actions[]` (`{rel, operation_id, hint, href?}`),
 `retry_after_seconds` (on `429` / transient `503`), `instance` (request path).
 

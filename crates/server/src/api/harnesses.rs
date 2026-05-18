@@ -206,12 +206,10 @@ pub async fn import_harness(
         .filter(|id| !state.platform_definition.capability_registry().has(id))
         .collect();
     if !missing.is_empty() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse::new(format!(
-                "Example requires unregistered capabilities: {missing:?}"
-            ))),
-        ));
+        return Err(ErrorResponse::new(format!(
+            "Example requires unregistered capabilities: {missing:?}"
+        ))
+        .into_response(StatusCode::BAD_REQUEST));
     }
 
     // Resolve parent harness ID by name within this org. Examples are required

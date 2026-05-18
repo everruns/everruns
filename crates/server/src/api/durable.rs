@@ -92,12 +92,8 @@ impl AppState {
         &self,
     ) -> Result<&Arc<dyn WorkflowEventStore + Send + Sync>, (StatusCode, Json<ErrorResponse>)> {
         self.store.as_ref().ok_or_else(|| {
-            (
-                StatusCode::SERVICE_UNAVAILABLE,
-                Json(ErrorResponse::new(
-                    "Durable execution store not available".to_string(),
-                )),
-            )
+            ErrorResponse::new("Durable execution store not available".to_string())
+                .into_response(StatusCode::SERVICE_UNAVAILABLE)
         })
     }
 
@@ -829,10 +825,8 @@ pub async fn get_health(
     let store = state.get_store()?;
     let health = store.get_system_health().await.map_err(|e| {
         tracing::error!("Failed to get system health: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse::new("Internal server error".to_string())),
-        )
+        ErrorResponse::new("Internal server error".to_string())
+            .into_response(StatusCode::INTERNAL_SERVER_ERROR)
     })?;
 
     Ok(Json(
@@ -893,10 +887,8 @@ pub async fn list_workers(
 
     let workers = store.list_workers(filter).await.map_err(|e| {
         tracing::error!("Failed to list workers: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse::new("Internal server error".to_string())),
-        )
+        ErrorResponse::new("Internal server error".to_string())
+            .into_response(StatusCode::INTERNAL_SERVER_ERROR)
     })?;
 
     let total = workers.len();
@@ -946,10 +938,8 @@ pub async fn drain_worker(
     let store = state.get_store()?;
     store.drain_worker(&worker_id).await.map_err(|e| {
         tracing::error!("Failed to drain worker: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse::new("Internal server error".to_string())),
-        )
+        ErrorResponse::new("Internal server error".to_string())
+            .into_response(StatusCode::INTERNAL_SERVER_ERROR)
     })?;
 
     Ok(StatusCode::OK)
@@ -976,10 +966,8 @@ pub async fn resume_worker(
     let store = state.get_store()?;
     store.resume_worker(&worker_id).await.map_err(|e| {
         tracing::error!("Failed to resume worker: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse::new("Internal server error".to_string())),
-        )
+        ErrorResponse::new("Internal server error".to_string())
+            .into_response(StatusCode::INTERNAL_SERVER_ERROR)
     })?;
 
     Ok(StatusCode::OK)
@@ -1032,10 +1020,8 @@ pub async fn list_workflows(
         .await
         .map_err(|e| {
             tracing::error!("Failed to list workflows: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse::new("Internal server error".to_string())),
-            )
+            ErrorResponse::new("Internal server error".to_string())
+                .into_response(StatusCode::INTERNAL_SERVER_ERROR)
         })?;
 
     let total = workflows.len();
@@ -1071,15 +1057,13 @@ pub async fn get_workflow(
         .await
         .map_err(|e| {
             tracing::error!("Failed to get workflow {}: {}", workflow_id, e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse::new("Internal server error".to_string())),
-            )
+            ErrorResponse::new("Internal server error".to_string())
+                .into_response(StatusCode::INTERNAL_SERVER_ERROR)
         })?
-        .ok_or((
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse::new("Workflow not found".to_string())),
-        ))?;
+        .ok_or(
+            ErrorResponse::new("Workflow not found".to_string())
+                .into_response(StatusCode::NOT_FOUND),
+        )?;
 
     Ok(Json(WorkflowResponse::from(workflow)))
 }
@@ -1106,10 +1090,8 @@ pub async fn get_workflow_events(
     let store = state.get_store()?;
     let events = store.get_workflow_events(workflow_id).await.map_err(|e| {
         tracing::error!("Failed to get workflow events: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse::new("Internal server error".to_string())),
-        )
+        ErrorResponse::new("Internal server error".to_string())
+            .into_response(StatusCode::INTERNAL_SERVER_ERROR)
     })?;
 
     let total = events.len();
@@ -1145,16 +1127,14 @@ pub async fn cancel_workflow(
         .cancel_workflow(workflow_id)
         .await
         .map_err(|e| match e {
-            everruns_durable::StoreError::WorkflowNotFound(_) => (
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse::new("Workflow not found".to_string())),
-            ),
+            everruns_durable::StoreError::WorkflowNotFound(_) => {
+                ErrorResponse::new("Workflow not found".to_string())
+                    .into_response(StatusCode::NOT_FOUND)
+            }
             _ => {
                 tracing::error!("Failed to cancel workflow: {}", e);
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(ErrorResponse::new("Internal server error".to_string())),
-                )
+                ErrorResponse::new("Internal server error".to_string())
+                    .into_response(StatusCode::INTERNAL_SERVER_ERROR)
             }
         })?;
 
@@ -1191,10 +1171,8 @@ pub async fn send_signal(
 
     store.send_signal(workflow_id, signal).await.map_err(|e| {
         tracing::error!("Failed to send signal: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse::new("Internal server error".to_string())),
-        )
+        ErrorResponse::new("Internal server error".to_string())
+            .into_response(StatusCode::INTERNAL_SERVER_ERROR)
     })?;
 
     Ok(StatusCode::OK)
@@ -1247,10 +1225,8 @@ pub async fn list_tasks(
 
     let tasks = store.list_tasks(filter, pagination).await.map_err(|e| {
         tracing::error!("Failed to list tasks: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse::new("Internal server error".to_string())),
-        )
+        ErrorResponse::new("Internal server error".to_string())
+            .into_response(StatusCode::INTERNAL_SERVER_ERROR)
     })?;
 
     let total = tasks.len();
@@ -1326,10 +1302,8 @@ pub async fn enqueue_task(
 
     let task_id = store.enqueue_task(task).await.map_err(|e| {
         tracing::error!("Failed to enqueue standalone task: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse::new(format!("Failed to enqueue task: {e}"))),
-        )
+        ErrorResponse::new(format!("Failed to enqueue task: {e}"))
+            .into_response(StatusCode::INTERNAL_SERVER_ERROR)
     })?;
 
     // Notify NATS subscribers (no-op for PG backend)
@@ -1374,10 +1348,8 @@ pub async fn list_dlq(
 
     let entries = store.list_dlq(filter, pagination).await.map_err(|e| {
         tracing::error!("Failed to list DLQ: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse::new("Internal server error".to_string())),
-        )
+        ErrorResponse::new("Internal server error".to_string())
+            .into_response(StatusCode::INTERNAL_SERVER_ERROR)
     })?;
 
     let total = entries.len();
@@ -1407,16 +1379,14 @@ pub async fn retry_dlq(
 ) -> ApiResult<Uuid> {
     let store = state.get_store()?;
     let task_id = store.requeue_from_dlq(dlq_id).await.map_err(|e| match e {
-        everruns_durable::StoreError::TaskNotFound(_) => (
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse::new("DLQ entry not found".to_string())),
-        ),
+        everruns_durable::StoreError::TaskNotFound(_) => {
+            ErrorResponse::new("DLQ entry not found".to_string())
+                .into_response(StatusCode::NOT_FOUND)
+        }
         _ => {
             tracing::error!("Failed to retry DLQ entry: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse::new("Internal server error".to_string())),
-            )
+            ErrorResponse::new("Internal server error".to_string())
+                .into_response(StatusCode::INTERNAL_SERVER_ERROR)
         }
     })?;
 
@@ -1440,10 +1410,8 @@ pub async fn list_circuit_breakers(
     let store = state.get_store()?;
     let circuit_breakers = store.list_circuit_breakers().await.map_err(|e| {
         tracing::error!("Failed to list circuit breakers: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse::new("Internal server error".to_string())),
-        )
+        ErrorResponse::new("Internal server error".to_string())
+            .into_response(StatusCode::INTERNAL_SERVER_ERROR)
     })?;
 
     let total = circuit_breakers.len();
@@ -1477,19 +1445,17 @@ pub async fn get_circuit_breaker(
     let store = state.get_store()?;
     let circuit_breakers = store.list_circuit_breakers().await.map_err(|e| {
         tracing::error!("Failed to list circuit breakers: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse::new("Internal server error".to_string())),
-        )
+        ErrorResponse::new("Internal server error".to_string())
+            .into_response(StatusCode::INTERNAL_SERVER_ERROR)
     })?;
 
     let breaker = circuit_breakers
         .into_iter()
         .find(|cb| cb.key == key)
-        .ok_or((
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse::new("Circuit breaker not found".to_string())),
-        ))?;
+        .ok_or(
+            ErrorResponse::new("Circuit breaker not found".to_string())
+                .into_response(StatusCode::NOT_FOUND),
+        )?;
 
     Ok(Json(CircuitBreakerResponse::from(breaker)))
 }
@@ -1515,10 +1481,8 @@ pub async fn force_open_circuit_breaker(
     let store = state.get_store()?;
     store.force_open_circuit_breaker(&key).await.map_err(|e| {
         tracing::error!("Failed to force open circuit breaker: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse::new("Internal server error".to_string())),
-        )
+        ErrorResponse::new("Internal server error".to_string())
+            .into_response(StatusCode::INTERNAL_SERVER_ERROR)
     })?;
 
     tracing::info!(key = %key, "Force opened circuit breaker");
@@ -1549,16 +1513,14 @@ pub async fn force_close_circuit_breaker(
         .force_close_circuit_breaker(&key)
         .await
         .map_err(|e| match e {
-            everruns_durable::StoreError::CircuitBreakerNotFound(_) => (
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse::new("Circuit breaker not found".to_string())),
-            ),
+            everruns_durable::StoreError::CircuitBreakerNotFound(_) => {
+                ErrorResponse::new("Circuit breaker not found".to_string())
+                    .into_response(StatusCode::NOT_FOUND)
+            }
             _ => {
                 tracing::error!("Failed to force close circuit breaker: {}", e);
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(ErrorResponse::new("Internal server error".to_string())),
-                )
+                ErrorResponse::new("Internal server error".to_string())
+                    .into_response(StatusCode::INTERNAL_SERVER_ERROR)
             }
         })?;
 
@@ -1590,16 +1552,14 @@ pub async fn delete_circuit_breaker(
         .delete_circuit_breaker(&key)
         .await
         .map_err(|e| match e {
-            everruns_durable::StoreError::CircuitBreakerNotFound(_) => (
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse::new("Circuit breaker not found".to_string())),
-            ),
+            everruns_durable::StoreError::CircuitBreakerNotFound(_) => {
+                ErrorResponse::new("Circuit breaker not found".to_string())
+                    .into_response(StatusCode::NOT_FOUND)
+            }
             _ => {
                 tracing::error!("Failed to delete circuit breaker: {}", e);
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(ErrorResponse::new("Internal server error".to_string())),
-                )
+                ErrorResponse::new("Internal server error".to_string())
+                    .into_response(StatusCode::INTERNAL_SERVER_ERROR)
             }
         })?;
 

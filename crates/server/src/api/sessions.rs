@@ -619,12 +619,10 @@ pub async fn pin_session(
     Path(session_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     if org.user_id.is_none() {
-        return Err((
-            StatusCode::UNAUTHORIZED,
-            Json(ErrorResponse::new(
-                "Authentication required to pin sessions".to_string(),
-            )),
-        ));
+        return Err(
+            ErrorResponse::new("Authentication required to pin sessions".to_string())
+                .into_response(StatusCode::UNAUTHORIZED),
+        );
     }
     PinSession { session_id }.run(&state.ctx(&org)).await?;
 
@@ -653,12 +651,10 @@ pub async fn unpin_session(
     Path(session_id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     if org.user_id.is_none() {
-        return Err((
-            StatusCode::UNAUTHORIZED,
-            Json(ErrorResponse::new(
-                "Authentication required to unpin sessions".to_string(),
-            )),
-        ));
+        return Err(
+            ErrorResponse::new("Authentication required to unpin sessions".to_string())
+                .into_response(StatusCode::UNAUTHORIZED),
+        );
     }
     UnpinSession { session_id }.run(&state.ctx(&org)).await?;
 

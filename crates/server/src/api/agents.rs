@@ -317,13 +317,11 @@ pub(crate) fn require_admin_for_high_risk(
     let refs: Vec<&str> = caps.iter().map(|c| c.capability_ref.as_str()).collect();
     let high = capability_service.high_risk_ids(&refs);
     if !high.is_empty() {
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse::new(format!(
-                "Admin role required to assign high-risk capabilities: {}",
-                high.join(", ")
-            ))),
-        ));
+        return Err(ErrorResponse::new(format!(
+            "Admin role required to assign high-risk capabilities: {}",
+            high.join(", ")
+        ))
+        .into_response(StatusCode::FORBIDDEN));
     }
     Ok(())
 }
@@ -770,12 +768,10 @@ pub async fn upsert_agent(
     } else {
         // Enforce path name matches body name to prevent ambiguous updates.
         if req.name != agent_id_or_name {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse::new(
-                    "Agent name in URL must match name in request body",
-                )),
-            ));
+            return Err(
+                ErrorResponse::new("Agent name in URL must match name in request body")
+                    .into_response(StatusCode::BAD_REQUEST),
+            );
         }
         // Name-based upsert: try create, if name taken → update
         let create_result = crate::domains::agents::CreateAgent(req.clone())
@@ -853,10 +849,8 @@ pub async fn export_agent(
     Path(agent_id): Path<String>,
 ) -> Result<Response, (StatusCode, Json<ErrorResponse>)> {
     let agent_id: AgentId = agent_id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse::new(format!("Invalid agent ID: {}", e))),
-        )
+        ErrorResponse::new(format!("Invalid agent ID: {}", e))
+            .into_response(StatusCode::BAD_REQUEST)
     })?;
 
     let agent = crate::domains::agents::GetAgent {
@@ -949,12 +943,10 @@ async fn import_from_example(
         .filter(|id| !state.platform_definition.capability_registry().has(id))
         .collect();
     if !missing.is_empty() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse::new(format!(
-                "Example requires unregistered capabilities: {missing:?}"
-            ))),
-        ));
+        return Err(ErrorResponse::new(format!(
+            "Example requires unregistered capabilities: {missing:?}"
+        ))
+        .into_response(StatusCode::BAD_REQUEST));
     }
 
     let capabilities: Vec<AgentCapabilityConfig> = seed

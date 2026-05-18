@@ -145,22 +145,18 @@ fn validate_event_type_list(
     param_name: &str,
 ) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
     if types.len() > MAX_EVENT_TYPE_FILTER_SIZE {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse::new(format!(
-                "{param_name}: too many values ({}, max {MAX_EVENT_TYPE_FILTER_SIZE})",
-                types.len()
-            ))),
-        ));
+        return Err(ErrorResponse::new(format!(
+            "{param_name}: too many values ({}, max {MAX_EVENT_TYPE_FILTER_SIZE})",
+            types.len()
+        ))
+        .into_response(StatusCode::BAD_REQUEST));
     }
     for t in types {
         if !VALID_EVENT_TYPES.contains(&t.as_str()) {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse::new(format!(
-                    "{param_name}: unknown event type '{t}'"
-                ))),
-            ));
+            return Err(
+                ErrorResponse::new(format!("{param_name}: unknown event type '{t}'"))
+                    .into_response(StatusCode::BAD_REQUEST),
+            );
         }
     }
     Ok(())
@@ -295,10 +291,8 @@ pub async fn stream_sse(
     query.validate()?;
 
     let session_id: SessionId = session_id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse::new(format!("Invalid session ID: {}", e))),
-        )
+        ErrorResponse::new(format!("Invalid session ID: {}", e))
+            .into_response(StatusCode::BAD_REQUEST)
     })?;
 
     // Verify session exists
@@ -308,16 +302,11 @@ pub async fn stream_sse(
         .await
         .map_err(|e| {
             tracing::error!("Failed to get session: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse::new("Internal server error".to_string())),
-            )
+            ErrorResponse::new("Internal server error".to_string())
+                .into_response(StatusCode::INTERNAL_SERVER_ERROR)
         })?
         .ok_or_else(|| {
-            (
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse::new("Session not found".to_string())),
-            )
+            ErrorResponse::new("Session not found".to_string()).into_response(StatusCode::NOT_FOUND)
         })?;
 
     let session_id = session_id.uuid();
@@ -333,10 +322,7 @@ pub async fn stream_sse(
                 reason = %rejection,
                 "SSE connection rejected"
             );
-            (
-                StatusCode::TOO_MANY_REQUESTS,
-                Json(ErrorResponse::new(rejection.to_string())),
-            )
+            ErrorResponse::new(rejection.to_string()).into_response(StatusCode::TOO_MANY_REQUESTS)
         })?;
 
     tracing::info!(session_id = %session_id, since_id = ?query.since_id, types = ?query.types, exclude = ?query.exclude, "Starting event stream");

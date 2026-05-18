@@ -122,10 +122,8 @@ pub async fn invoke_webhook(
     let channel_id_typed = channel_id
         .parse::<everruns_core::typed_id::AppChannelId>()
         .map_err(|e| {
-            (
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse::new(format!("Invalid channel ID: {e}"))),
-            )
+            ErrorResponse::new(format!("Invalid channel ID: {e}"))
+                .into_response(StatusCode::BAD_REQUEST)
         })?;
     let channel = app.channel_by_id(&channel_id_typed).ok_or_else(not_found)?;
     if channel.channel_type != everruns_core::ChannelType::Webhook {
@@ -206,41 +204,26 @@ fn flatten_headers(headers: &HeaderMap) -> HashMap<String, String> {
 }
 
 fn bad_request(message: impl Into<String>) -> (StatusCode, Json<ErrorResponse>) {
-    (
-        StatusCode::BAD_REQUEST,
-        Json(ErrorResponse::new(message.into())),
-    )
+    ErrorResponse::new(message.into()).into_response(StatusCode::BAD_REQUEST)
 }
 
 fn forbidden(message: impl Into<String>) -> (StatusCode, Json<ErrorResponse>) {
-    (
-        StatusCode::FORBIDDEN,
-        Json(ErrorResponse::new(message.into())),
-    )
+    ErrorResponse::new(message.into()).into_response(StatusCode::FORBIDDEN)
 }
 
 fn unauthorized() -> (StatusCode, Json<ErrorResponse>) {
-    (
-        StatusCode::UNAUTHORIZED,
-        Json(ErrorResponse::new(
-            "Invalid or missing webhook token".to_string(),
-        )),
-    )
+    ErrorResponse::new("Invalid or missing webhook token".to_string())
+        .into_response(StatusCode::UNAUTHORIZED)
 }
 
 fn not_found() -> (StatusCode, Json<ErrorResponse>) {
-    (
-        StatusCode::NOT_FOUND,
-        Json(ErrorResponse::new("App channel not found".to_string())),
-    )
+    ErrorResponse::new("App channel not found".to_string()).into_response(StatusCode::NOT_FOUND)
 }
 
 fn internal_error(error: anyhow::Error) -> (StatusCode, Json<ErrorResponse>) {
     tracing::error!(error = %error, "Failed to invoke app webhook");
-    (
-        StatusCode::INTERNAL_SERVER_ERROR,
-        Json(ErrorResponse::new("Internal server error".to_string())),
-    )
+    ErrorResponse::new("Internal server error".to_string())
+        .into_response(StatusCode::INTERNAL_SERVER_ERROR)
 }
 
 fn command_error_response(error: CommandError) -> (StatusCode, Json<ErrorResponse>) {
@@ -252,10 +235,7 @@ fn command_error_response(error: CommandError) -> (StatusCode, Json<ErrorRespons
         CommandError {
             kind: CommandErrorKind::Unprocessable(message),
             ..
-        } => (
-            StatusCode::UNPROCESSABLE_ENTITY,
-            Json(ErrorResponse::new(message)),
-        ),
+        } => ErrorResponse::new(message).into_response(StatusCode::UNPROCESSABLE_ENTITY),
         CommandError {
             kind: CommandErrorKind::Forbidden(message),
             ..
@@ -267,7 +247,7 @@ fn command_error_response(error: CommandError) -> (StatusCode, Json<ErrorRespons
         CommandError {
             kind: CommandErrorKind::Conflict(message),
             ..
-        } => (StatusCode::CONFLICT, Json(ErrorResponse::new(message))),
+        } => ErrorResponse::new(message).into_response(StatusCode::CONFLICT),
         CommandError {
             kind: CommandErrorKind::Internal(error),
             ..

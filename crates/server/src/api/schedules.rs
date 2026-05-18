@@ -62,12 +62,8 @@ impl ScheduleAppState {
         &self,
     ) -> Result<&Arc<dyn WorkflowEventStore + Send + Sync>, (StatusCode, Json<ErrorResponse>)> {
         self.store.as_ref().ok_or_else(|| {
-            (
-                StatusCode::SERVICE_UNAVAILABLE,
-                Json(ErrorResponse::new(
-                    "Durable execution store not available".to_string(),
-                )),
-            )
+            ErrorResponse::new("Durable execution store not available".to_string())
+                .into_response(StatusCode::SERVICE_UNAVAILABLE)
         })
     }
 
