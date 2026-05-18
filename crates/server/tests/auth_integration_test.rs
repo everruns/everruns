@@ -369,7 +369,7 @@ async fn test_refresh_no_token_returns_401() {
 
     assert_eq!(status, StatusCode::UNAUTHORIZED);
     assert!(
-        body["error"]
+        body["detail"]
             .as_str()
             .unwrap()
             .contains("Missing refresh token")
@@ -391,7 +391,7 @@ async fn test_refresh_invalid_token_returns_401() {
 
     assert_eq!(status, StatusCode::UNAUTHORIZED);
     assert!(
-        body["error"]
+        body["detail"]
             .as_str()
             .unwrap()
             .contains("Invalid refresh token")
@@ -413,7 +413,7 @@ async fn test_refresh_invalid_cookie_returns_401() {
 
     assert_eq!(status, StatusCode::UNAUTHORIZED);
     assert!(
-        body["error"]
+        body["detail"]
             .as_str()
             .unwrap()
             .contains("Invalid refresh token")

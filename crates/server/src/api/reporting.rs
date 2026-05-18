@@ -360,6 +360,7 @@ pub async fn backfill_reporting(
 #[utoipa::path(
     post,
     path = "/v1/reports/projector/run",
+    description = "Run a reporting projector to refresh derived data (operator action).",
     params(ProjectorRunQuery),
     responses(
         (status = 200, description = "Reporting projector run result", body = ProjectorRunResult),

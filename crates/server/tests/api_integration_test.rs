@@ -640,7 +640,7 @@ async fn test_get_session_schedule_wrong_parent_returns_not_found() {
         .assert_status(StatusCode::NOT_FOUND)
         .json();
 
-    assert_eq!(body["error"], "Schedule not found");
+    assert_eq!(body["detail"], "Schedule not found");
 }
 
 #[tokio::test]
@@ -661,7 +661,7 @@ async fn test_update_session_schedule_wrong_parent_returns_not_found() {
         .await
         .assert_status(StatusCode::NOT_FOUND)
         .json();
-    assert_eq!(body["error"], "Schedule not found");
+    assert_eq!(body["detail"], "Schedule not found");
 
     let persisted = server
         .db
@@ -686,7 +686,7 @@ async fn test_delete_session_schedule_wrong_parent_returns_not_found() {
         .await
         .assert_status(StatusCode::NOT_FOUND)
         .json();
-    assert_eq!(body["error"], "Schedule not found");
+    assert_eq!(body["detail"], "Schedule not found");
 
     let persisted = server
         .db
@@ -714,7 +714,7 @@ async fn test_trigger_session_schedule_wrong_parent_returns_not_found() {
         .await
         .assert_status(StatusCode::NOT_FOUND)
         .json();
-    assert_eq!(body["error"], "Schedule not found");
+    assert_eq!(body["detail"], "Schedule not found");
 
     let persisted = server
         .db
@@ -4070,7 +4070,7 @@ async fn test_publish_app_without_channels_returns_bad_request() {
         .json();
 
     assert!(
-        response["error"]
+        response["detail"]
             .as_str()
             .unwrap_or_default()
             .contains("at least one channel"),
@@ -4104,7 +4104,7 @@ async fn test_update_app_to_published_returns_bad_request() {
         .json();
 
     assert!(
-        response["error"]
+        response["detail"]
             .as_str()
             .unwrap_or_default()
             .contains("publish/unpublish endpoints"),
@@ -4152,7 +4152,7 @@ async fn test_publish_archived_app_returns_bad_request() {
         .json();
 
     assert!(
-        response["error"]
+        response["detail"]
             .as_str()
             .unwrap_or_default()
             .contains("draft before publishing"),

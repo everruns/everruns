@@ -456,7 +456,7 @@ impl Command for BackfillReporting {
 
     async fn execute(self, ctx: &Ctx) -> Result<ReportingBackfillResult, CommandError> {
         let service = ctx.reporting_service.as_ref().ok_or_else(|| {
-            CommandError::Internal(anyhow::anyhow!("Reporting service not configured"))
+            CommandError::internal(anyhow::anyhow!("Reporting service not configured"))
         })?;
         service
             .backfill_missing(Some(ctx.org_id()), self.0.limit)

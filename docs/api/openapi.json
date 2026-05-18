@@ -7192,6 +7192,7 @@
         "tags": [
           "reporting"
         ],
+        "description": "Run a reporting projector to refresh derived data (operator action).",
         "operationId": "backfill_reporting",
         "requestBody": {
           "content": {
