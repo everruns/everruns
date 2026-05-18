@@ -154,6 +154,11 @@ impl SessionFileStore for WriteBlocklistFileStore {
         self.check(path)?;
         self.inner.create_directory(session_id, path).await
     }
+
+    async fn seed_initial_file(&self, session_id: SessionId, file: &InitialFile) -> Result<()> {
+        self.check(&file.path)?;
+        self.inner.seed_initial_file(session_id, file).await
+    }
 }
 
 /// Gate destructive ops through the approval channel. Reads pass through.
@@ -283,18 +288,7 @@ impl SessionFileStore for ApprovalGatingFileStore {
         // the approval flow.
         self.inner.create_directory(session_id, path).await
     }
-}
 
-#[async_trait]
-impl RuntimeFileStore for WriteBlocklistFileStore {
-    async fn seed_initial_file(&self, session_id: SessionId, file: &InitialFile) -> Result<()> {
-        self.check(&file.path)?;
-        self.inner.seed_initial_file(session_id, file).await
-    }
-}
-
-#[async_trait]
-impl RuntimeFileStore for ApprovalGatingFileStore {
     async fn seed_initial_file(&self, session_id: SessionId, file: &InitialFile) -> Result<()> {
         // Initial files are embedder-supplied seed data — not LLM-driven —
         // so no approval prompt.
