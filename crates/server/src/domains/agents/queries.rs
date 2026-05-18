@@ -89,6 +89,7 @@ pub fn row_to_agent_version(row: AgentVersionRow) -> AgentVersion {
         semver_minor: row.semver_minor,
         semver_patch: row.semver_patch,
         version: row.version,
+        is_published: row.is_published,
         parent_version_id: row.parent_version_id,
         source_version_id: row.source_version_id,
         created_by_principal_id: row.created_by_principal_id,

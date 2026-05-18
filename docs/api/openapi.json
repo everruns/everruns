@@ -9809,6 +9809,7 @@
           "semver_minor",
           "semver_patch",
           "version",
+          "is_published",
           "change_kind",
           "config_hash",
           "authored_config",
@@ -9842,6 +9843,10 @@
           "id": {
             "type": "string",
             "example": "agentver_01933b5a000070008000000000000001"
+          },
+          "is_published": {
+            "type": "boolean",
+            "description": "Published versions are user-controlled semver releases. Unpublished rows\nare automatic draft snapshots kept for audit and rollback."
           },
           "parent_version_id": {
             "type": [
@@ -9889,6 +9894,7 @@
         "type": "string",
         "description": "Reason a version was created. Stored as lower_snake_case text.",
         "enum": [
+          "auto",
           "manual",
           "patch",
           "minor",

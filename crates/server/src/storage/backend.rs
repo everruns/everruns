@@ -473,6 +473,14 @@ impl StorageBackend {
         dispatch!(self, get_latest_agent_version, org_id, agent_id)
     }
 
+    pub async fn get_latest_agent_snapshot(
+        &self,
+        org_id: i64,
+        agent_id: AgentId,
+    ) -> Result<Option<AgentVersionRow>> {
+        dispatch!(self, get_latest_agent_snapshot, org_id, agent_id)
+    }
+
     // ============================================
     // Harnesses
     // ============================================

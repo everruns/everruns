@@ -23,7 +23,7 @@ use crate::storage::models::AuditLogQuery;
 use crate::storage::password::hash_password;
 use chrono::{DateTime, Duration, Timelike, Utc};
 use everruns_core::app::{InvocationSessionMode, ScheduleChannelConfig, WebhookChannelConfig};
-use everruns_core::typed_id::{AgentId, AppChannelId, AppId, HarnessId, SessionId};
+use everruns_core::typed_id::{AgentId, AgentVersionId, AppChannelId, AppId, HarnessId, SessionId};
 use everruns_core::{
     A2aChannelConfig, AgUiChannelConfig, AgUiToolVisibility, AgentAction, App, AppChannel,
     AppEndpointAuthConfig, AppEndpointAuthMode, AppEndpointAuthProviderConfig, AppStatus,
@@ -97,6 +97,30 @@ async fn validate_agent_identity(
         )));
     }
     Ok(identity.id.uuid())
+}
+
+async fn validate_published_agent_version(
+    ctx: &Ctx,
+    agent_id: Option<Uuid>,
+    version_id: AgentVersionId,
+) -> Result<Uuid, CommandError> {
+    let version = ctx
+        .db
+        .get_agent_version(ctx.org_id(), version_id)
+        .await
+        .map_err(classify_anyhow)?
+        .ok_or_else(|| CommandError::not_found("Agent version"))?;
+    if Some(version.agent_id.uuid()) != agent_id {
+        return Err(CommandError::bad_request(
+            "Agent version must belong to the selected agent",
+        ));
+    }
+    if !version.is_published {
+        return Err(CommandError::bad_request(
+            "Agent version must be published before it can be pinned to an app",
+        ));
+    }
+    Ok(version.id.uuid())
 }
 
 const SCHEDULE_CHANNEL_ACTIVITY: &str = "invoke_scheduled_app_channel";
@@ -1581,18 +1605,7 @@ impl Command for CreateApp {
             None => None,
         };
         let agent_version_uuid = if let Some(version_id) = agent_version_id {
-            let version = ctx
-                .db
-                .get_agent_version(ctx.org_id(), version_id)
-                .await
-                .map_err(classify_anyhow)?
-                .ok_or_else(|| CommandError::not_found("Agent version"))?;
-            if Some(version.agent_id.uuid()) != agent_uuid {
-                return Err(CommandError::bad_request(
-                    "Agent version must belong to the selected agent",
-                ));
-            }
-            Some(version.id.uuid())
+            Some(validate_published_agent_version(ctx, agent_uuid, version_id).await?)
         } else {
             None
         };
@@ -2160,20 +2173,9 @@ impl Command for UpdateAppCmd {
         };
         let effective_agent_id = agent_id.or(existing.agent_id);
         let agent_version_id = match req.agent_version_id {
-            UpdateField::Set(version_id) => {
-                let version = ctx
-                    .db
-                    .get_agent_version(ctx.org_id(), version_id)
-                    .await
-                    .map_err(classify_anyhow)?
-                    .ok_or_else(|| CommandError::not_found("Agent version"))?;
-                if Some(version.agent_id.uuid()) != effective_agent_id {
-                    return Err(CommandError::bad_request(
-                        "Agent version must belong to the selected agent",
-                    ));
-                }
-                UpdateField::Set(version.id.uuid())
-            }
+            UpdateField::Set(version_id) => UpdateField::Set(
+                validate_published_agent_version(ctx, effective_agent_id, version_id).await?,
+            ),
             UpdateField::Clear => UpdateField::Clear,
             UpdateField::Unchanged => UpdateField::Unchanged,
         };

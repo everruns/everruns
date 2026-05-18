@@ -18,6 +18,7 @@ The pilot is intentionally Agent-specific (`agent_versions`) instead of a generi
 - `config_hash` is computed from authored config for quick equality checks.
 - `parent_version_id` links normal history. `source_version_id` records rollback/fork provenance.
 - Agent draft rows keep `default_version_id`, fork lineage (`forked_from_agent_id`, `forked_from_version_id`), and `root_agent_id`.
+- User-published versions use semantic versions and `is_published = true`. Automatic draft snapshots use `is_published = false`, `change_kind = auto`, and internal labels such as `draft.12`; they do not become defaults or App deployment targets.
 
 ### Runtime Binding
 
@@ -33,6 +34,7 @@ The pilot is intentionally Agent-specific (`agent_versions`) instead of a generi
 
 - Agent detail exposes a version history tab behind `FEATURE_AGENT_VERSIONS`.
 - Users can save a version, set default, compare two versions, roll back a draft, and fork a version into a new Agent.
+- Each Agent update records an automatic draft snapshot so normal saves retain rollback history without requiring the user to publish a semantic version.
 - App configuration exposes the Agent version policy behind the same flag.
 - Rollbacks create a new rollback version by default so history remains append-only.
 

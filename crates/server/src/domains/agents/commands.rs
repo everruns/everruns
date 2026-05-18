@@ -523,7 +523,10 @@ impl Command for UpdateAgentCmd {
                 .map_err(classify_anyhow)?
         };
 
-        Ok(q::row_to_agent(row, caps))
+        let agent = q::row_to_agent(row, caps);
+        create_auto_snapshot_from_agent(ctx, &agent).await?;
+
+        Ok(agent)
     }
 }
 
@@ -696,10 +699,12 @@ impl Command for UpsertAgent {
                 .map_err(classify_anyhow)?
         };
 
-        Ok(UpsertResult {
-            agent: q::row_to_agent(row, final_caps),
-            was_created,
-        })
+        let agent = q::row_to_agent(row, final_caps);
+        if !was_created {
+            create_auto_snapshot_from_agent(ctx, &agent).await?;
+        }
+
+        Ok(UpsertResult { agent, was_created })
     }
 }
 
@@ -893,15 +898,14 @@ async fn build_resolved_config(
     }))
 }
 
-fn bump_version(
+fn bump_published_version(
     previous: Option<&crate::storage::models::AgentVersionRow>,
     change_kind: &AgentVersionChangeKind,
-) -> (i32, i32, i32, i32, String) {
+) -> (i32, i32, i32, String) {
     if previous.is_none() {
-        return (1, 0, 1, 0, "0.1.0".to_string());
+        return (0, 1, 0, "0.1.0".to_string());
     }
 
-    let number = previous.map_or(1, |v| v.version_number + 1);
     let (mut major, mut minor, mut patch) = previous
         .map(|v| (v.semver_major, v.semver_minor, v.semver_patch))
         .unwrap_or((0, 0, 0));
@@ -918,7 +922,7 @@ fn bump_version(
         _ => patch += 1,
     }
     let version = format!("{major}.{minor}.{patch}");
-    (number, major, minor, patch, version)
+    (major, minor, patch, version)
 }
 
 async fn create_version_from_agent(
@@ -927,15 +931,27 @@ async fn create_version_from_agent(
     change_kind: AgentVersionChangeKind,
     summary: Option<String>,
     source_version_id: Option<AgentVersionId>,
+    is_published: bool,
 ) -> Result<AgentVersion, CommandError> {
     let agent_id = AgentId::from_uuid(agent.internal_id);
-    let previous = ctx
+    let previous_snapshot = ctx
+        .db
+        .get_latest_agent_snapshot(ctx.org_id(), agent_id)
+        .await
+        .map_err(classify_anyhow)?;
+    let previous_published = ctx
         .db
         .get_latest_agent_version(ctx.org_id(), agent_id)
         .await
         .map_err(classify_anyhow)?;
-    let (version_number, semver_major, semver_minor, semver_patch, version) =
-        bump_version(previous.as_ref(), &change_kind);
+    let version_number = previous_snapshot
+        .as_ref()
+        .map_or(1, |row| row.version_number + 1);
+    let (semver_major, semver_minor, semver_patch, version) = if is_published {
+        bump_published_version(previous_published.as_ref(), &change_kind)
+    } else {
+        (0, 0, 0, format!("draft.{version_number}"))
+    };
     let authored_config = q::authored_config(agent);
     let resolved_config = build_resolved_config(ctx, agent).await?;
     let version_id = AgentVersionId::new();
@@ -951,7 +967,12 @@ async fn create_version_from_agent(
             semver_minor,
             semver_patch,
             version,
-            parent_version_id: previous.map(|row| row.id),
+            is_published,
+            parent_version_id: if is_published {
+                previous_published.map(|row| row.id)
+            } else {
+                previous_snapshot.map(|row| row.id)
+            },
             source_version_id,
             created_by_principal_id: None,
             change_kind: change_kind.to_string(),
@@ -962,7 +983,7 @@ async fn create_version_from_agent(
         })
         .await
         .map_err(classify_anyhow)?;
-    if agent.default_version_id.is_none() {
+    if is_published && agent.default_version_id.is_none() {
         ctx.db
             .update_agent(
                 ctx.org_id(),
@@ -976,6 +997,27 @@ async fn create_version_from_agent(
             .map_err(classify_anyhow)?;
     }
     Ok(q::row_to_agent_version(row))
+}
+
+async fn create_auto_snapshot_from_agent(
+    ctx: &Ctx,
+    agent: &Agent,
+) -> Result<AgentVersion, CommandError> {
+    let mut last_conflict = None;
+    for _ in 0..3 {
+        match create_version_from_agent(ctx, agent, AgentVersionChangeKind::Auto, None, None, false)
+            .await
+        {
+            Ok(version) => return Ok(version),
+            Err(CommandError::Conflict(message)) => {
+                last_conflict = Some(message);
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    Err(CommandError::conflict(last_conflict.unwrap_or_else(|| {
+        "Agent version number conflict".to_string()
+    })))
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -1038,16 +1080,16 @@ impl Command for CreateAgentVersionCmd {
 
     async fn execute(self, ctx: &Ctx) -> Result<AgentVersion, CommandError> {
         let agent = resolve_agent(ctx, &self.agent_id).await?;
-        create_version_from_agent(
-            ctx,
-            &agent,
-            self.req
-                .change_kind
-                .unwrap_or(AgentVersionChangeKind::Manual),
-            self.req.summary,
-            None,
-        )
-        .await
+        let change_kind = self
+            .req
+            .change_kind
+            .unwrap_or(AgentVersionChangeKind::Manual);
+        if change_kind == AgentVersionChangeKind::Auto {
+            return Err(CommandError::bad_request(
+                "Automatic change kind is reserved for draft snapshots",
+            ));
+        }
+        create_version_from_agent(ctx, &agent, change_kind, self.req.summary, None, true).await
     }
 }
 
@@ -1082,6 +1124,11 @@ impl Command for SetDefaultAgentVersion {
         if version.agent_id.uuid() != agent.internal_id {
             return Err(CommandError::bad_request(
                 "Agent version belongs to another agent",
+            ));
+        }
+        if !version.is_published {
+            return Err(CommandError::bad_request(
+                "Default agent version must be published",
             ));
         }
         let version_agent = q::version_to_agent(&agent, &version);
@@ -1186,6 +1233,7 @@ impl Command for RollbackAgentVersion {
                     .summary
                     .or_else(|| Some(format!("Rollback to {}", version.version))),
                 Some(version.public_id),
+                true,
             )
             .await?;
         }
@@ -1341,6 +1389,7 @@ impl Command for ForkAgentVersion {
             AgentVersionChangeKind::Fork,
             Some(format!("Forked from {}", version.version)),
             Some(version.public_id),
+            true,
         )
         .await?;
         Ok(agent)
@@ -1499,10 +1548,9 @@ mod tests {
 
     #[test]
     fn first_agent_version_is_initial_minor_even_for_major_change() {
-        let (number, major, minor, patch, version) =
-            bump_version(None, &AgentVersionChangeKind::Major);
+        let (major, minor, patch, version) =
+            bump_published_version(None, &AgentVersionChangeKind::Major);
 
-        assert_eq!(number, 1);
         assert_eq!((major, minor, patch), (0, 1, 0));
         assert_eq!(version, "0.1.0");
     }
@@ -1543,6 +1591,42 @@ mod tests {
         }
     }
 
+    fn basic_agent_request(name: &str) -> CreateAgentRequest {
+        CreateAgentRequest {
+            id: None,
+            name: name.to_string(),
+            display_name: None,
+            description: None,
+            system_prompt: "initial prompt".to_string(),
+            default_model_id: None,
+            tags: Vec::new(),
+            capabilities: Vec::new(),
+            initial_files: Vec::new(),
+            tools: Vec::new(),
+            mcp_servers: Default::default(),
+            network_access: None,
+            max_iterations: None,
+        }
+    }
+
+    fn update_prompt_request(system_prompt: &str) -> UpdateAgentRequest {
+        UpdateAgentRequest {
+            name: None,
+            display_name: None,
+            description: None,
+            system_prompt: Some(system_prompt.to_string()),
+            default_model_id: None,
+            tags: None,
+            capabilities: None,
+            initial_files: None,
+            status: None,
+            tools: None,
+            mcp_servers: None,
+            network_access: None,
+            max_iterations: None,
+        }
+    }
+
     async fn create_high_risk_agent_version(ctx: &Ctx, name: &str) -> (Agent, AgentVersion) {
         let agent = CreateAgent(high_risk_agent_request(name.to_string()))
             .run(ctx)
@@ -1559,6 +1643,166 @@ mod tests {
         .await
         .expect("admin can create high-risk version");
         (agent, version)
+    }
+
+    #[tokio::test]
+    async fn update_agent_creates_unpublished_auto_snapshot() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = ctx_with_role(db.clone(), OrgRole::Owner);
+        let agent = CreateAgent(basic_agent_request("auto-snapshot-agent"))
+            .run(&ctx)
+            .await
+            .expect("agent is created");
+
+        UpdateAgentCmd {
+            id: agent.public_id.to_string(),
+            req: update_prompt_request("updated prompt"),
+        }
+        .run(&ctx)
+        .await
+        .expect("agent is updated");
+
+        let snapshots = ListAgentVersions {
+            agent_id: agent.public_id.to_string(),
+        }
+        .run(&ctx)
+        .await
+        .expect("versions are listed");
+        assert_eq!(snapshots.len(), 1);
+        assert_eq!(snapshots[0].change_kind, AgentVersionChangeKind::Auto);
+        assert!(!snapshots[0].is_published);
+        assert_eq!(snapshots[0].version, "draft.1");
+        assert_eq!(
+            snapshots[0].authored_config["system_prompt"],
+            "updated prompt"
+        );
+
+        let published = CreateAgentVersionCmd {
+            agent_id: agent.public_id.to_string(),
+            req: CreateAgentVersionRequest {
+                summary: Some("publish current draft".to_string()),
+                change_kind: None,
+            },
+        }
+        .run(&ctx)
+        .await
+        .expect("published version is created");
+        assert!(published.is_published);
+        assert_eq!(published.version, "0.1.0");
+        assert_eq!(published.version_number, 2);
+
+        let latest_published = db
+            .get_latest_agent_version(DEFAULT_ORG_ID, AgentId::from_uuid(agent.internal_id))
+            .await
+            .expect("latest published lookup succeeds")
+            .expect("published version exists");
+        assert_eq!(latest_published.id, published.public_id);
+    }
+
+    #[tokio::test]
+    async fn upsert_agent_update_creates_unpublished_auto_snapshot() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = ctx_with_role(db, OrgRole::Owner);
+        let agent_id = AgentId::new();
+        let mut req = basic_agent_request("upsert-auto-snapshot-agent");
+        req.system_prompt = "initial upsert prompt".to_string();
+
+        let created = UpsertAgent {
+            id: agent_id.to_string(),
+            req: req.clone(),
+        }
+        .run(&ctx)
+        .await
+        .expect("agent is created by upsert");
+        assert!(created.was_created);
+
+        req.system_prompt = "updated upsert prompt".to_string();
+        let updated = UpsertAgent {
+            id: agent_id.to_string(),
+            req,
+        }
+        .run(&ctx)
+        .await
+        .expect("agent is updated by upsert");
+        assert!(!updated.was_created);
+
+        let snapshots = ListAgentVersions {
+            agent_id: agent_id.to_string(),
+        }
+        .run(&ctx)
+        .await
+        .expect("versions are listed");
+        assert_eq!(snapshots.len(), 1);
+        assert_eq!(snapshots[0].change_kind, AgentVersionChangeKind::Auto);
+        assert!(!snapshots[0].is_published);
+        assert_eq!(
+            snapshots[0].authored_config["system_prompt"],
+            "updated upsert prompt"
+        );
+    }
+
+    #[tokio::test]
+    async fn create_agent_version_rejects_auto_change_kind() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = ctx_with_role(db, OrgRole::Owner);
+        let agent = CreateAgent(basic_agent_request("manual-auto-kind-agent"))
+            .run(&ctx)
+            .await
+            .expect("agent is created");
+
+        let err = CreateAgentVersionCmd {
+            agent_id: agent.public_id.to_string(),
+            req: CreateAgentVersionRequest {
+                summary: None,
+                change_kind: Some(AgentVersionChangeKind::Auto),
+            },
+        }
+        .run(&ctx)
+        .await
+        .expect_err("manual publish cannot use automatic change kind");
+
+        assert!(
+            matches!(err, CommandError::BadRequest(_)),
+            "expected BadRequest, got {err:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn set_default_version_rejects_unpublished_snapshot() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = ctx_with_role(db, OrgRole::Owner);
+        let agent = CreateAgent(basic_agent_request("default-draft-agent"))
+            .run(&ctx)
+            .await
+            .expect("agent is created");
+        UpdateAgentCmd {
+            id: agent.public_id.to_string(),
+            req: update_prompt_request("draft-only prompt"),
+        }
+        .run(&ctx)
+        .await
+        .expect("agent is updated");
+        let snapshots = ListAgentVersions {
+            agent_id: agent.public_id.to_string(),
+        }
+        .run(&ctx)
+        .await
+        .expect("versions are listed");
+
+        let err = SetDefaultAgentVersion {
+            agent_id: agent.public_id.to_string(),
+            req: SetDefaultAgentVersionRequest {
+                version_id: snapshots[0].public_id,
+            },
+        }
+        .run(&ctx)
+        .await
+        .expect_err("draft snapshot cannot become default");
+
+        assert!(
+            matches!(err, CommandError::BadRequest(_)),
+            "expected BadRequest, got {err:?}"
+        );
     }
 
     #[tokio::test]

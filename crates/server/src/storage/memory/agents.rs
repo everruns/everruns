@@ -447,6 +447,7 @@ impl InMemoryDatabase {
             semver_minor: input.semver_minor,
             semver_patch: input.semver_patch,
             version: input.version,
+            is_published: input.is_published,
             parent_version_id: input.parent_version_id,
             source_version_id: input.source_version_id,
             created_by_principal_id: input.created_by_principal_id,
@@ -491,6 +492,18 @@ impl InMemoryDatabase {
     }
 
     pub async fn get_latest_agent_version(
+        &self,
+        org_id: i64,
+        agent_id: AgentId,
+    ) -> Result<Option<AgentVersionRow>> {
+        Ok(self
+            .list_agent_versions(org_id, agent_id)
+            .await?
+            .into_iter()
+            .find(|row| row.is_published))
+    }
+
+    pub async fn get_latest_agent_snapshot(
         &self,
         org_id: i64,
         agent_id: AgentId,

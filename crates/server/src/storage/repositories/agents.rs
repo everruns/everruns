@@ -432,13 +432,13 @@ impl Database {
             r#"
             INSERT INTO agent_versions (
                 id, public_id, org_id, agent_id, version_number,
-                semver_major, semver_minor, semver_patch, version,
+                semver_major, semver_minor, semver_patch, version, is_published,
                 parent_version_id, source_version_id, created_by_principal_id,
                 change_kind, summary, config_hash, authored_config, resolved_config
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
             RETURNING id, public_id, org_id, agent_id, version_number,
-                semver_major, semver_minor, semver_patch, version,
+                semver_major, semver_minor, semver_patch, version, is_published,
                 parent_version_id, source_version_id, created_by_principal_id,
                 change_kind, summary, config_hash, authored_config, resolved_config, created_at
             "#,
@@ -452,6 +452,7 @@ impl Database {
         .bind(input.semver_minor)
         .bind(input.semver_patch)
         .bind(input.version)
+        .bind(input.is_published)
         .bind(input.parent_version_id)
         .bind(input.source_version_id)
         .bind(input.created_by_principal_id)
@@ -472,7 +473,7 @@ impl Database {
         Ok(sqlx::query_as::<_, AgentVersionRow>(
             r#"
             SELECT id, public_id, org_id, agent_id, version_number,
-                semver_major, semver_minor, semver_patch, version,
+                semver_major, semver_minor, semver_patch, version, is_published,
                 parent_version_id, source_version_id, created_by_principal_id,
                 change_kind, summary, config_hash, authored_config, resolved_config, created_at
             FROM agent_versions
@@ -494,7 +495,7 @@ impl Database {
         Ok(sqlx::query_as::<_, AgentVersionRow>(
             r#"
             SELECT id, public_id, org_id, agent_id, version_number,
-                semver_major, semver_minor, semver_patch, version,
+                semver_major, semver_minor, semver_patch, version, is_published,
                 parent_version_id, source_version_id, created_by_principal_id,
                 change_kind, summary, config_hash, authored_config, resolved_config, created_at
             FROM agent_versions
@@ -515,7 +516,30 @@ impl Database {
         Ok(sqlx::query_as::<_, AgentVersionRow>(
             r#"
             SELECT id, public_id, org_id, agent_id, version_number,
-                semver_major, semver_minor, semver_patch, version,
+                semver_major, semver_minor, semver_patch, version, is_published,
+                parent_version_id, source_version_id, created_by_principal_id,
+                change_kind, summary, config_hash, authored_config, resolved_config, created_at
+            FROM agent_versions
+            WHERE org_id = $1 AND agent_id = $2 AND is_published = TRUE
+            ORDER BY version_number DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(org_id)
+        .bind(agent_id)
+        .fetch_optional(&self.pool)
+        .await?)
+    }
+
+    pub async fn get_latest_agent_snapshot(
+        &self,
+        org_id: i64,
+        agent_id: AgentId,
+    ) -> Result<Option<AgentVersionRow>> {
+        Ok(sqlx::query_as::<_, AgentVersionRow>(
+            r#"
+            SELECT id, public_id, org_id, agent_id, version_number,
+                semver_major, semver_minor, semver_patch, version, is_published,
                 parent_version_id, source_version_id, created_by_principal_id,
                 change_kind, summary, config_hash, authored_config, resolved_config, created_at
             FROM agent_versions

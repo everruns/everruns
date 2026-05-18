@@ -50,6 +50,7 @@ export interface Agent {
 }
 
 export type AgentVersionChangeKind =
+  | "auto"
   | "manual"
   | "patch"
   | "minor"
@@ -66,6 +67,7 @@ export interface AgentVersion {
   semver_minor: number;
   semver_patch: number;
   version: string;
+  is_published: boolean;
   parent_version_id: string | null;
   source_version_id: string | null;
   created_by_principal_id: string | null;

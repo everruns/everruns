@@ -416,6 +416,9 @@ function AppDetailPageLegacy({ params }: { params: Promise<{ appId: string }> })
   const { data: editableAgentVersions = [] } = useAgentVersions(
     agentVersionsEnabled && editAgentId ? editAgentId : undefined,
   );
+  const publishedEditableAgentVersions = editableAgentVersions.filter(
+    (version) => version.is_published,
+  );
 
   const invalidateApp = () => {
     queryClient.invalidateQueries({ queryKey: queryKeys.apps.detail(appId) });
@@ -1053,7 +1056,9 @@ function AppDetailPageLegacy({ params }: { params: Promise<{ appId: string }> })
 
   const agent = agents?.find((candidate) => candidate.id === app?.agent_id);
   const harness = harnesses?.find((candidate) => candidate.id === app?.harness_id);
-  const pinnedVersion = appAgentVersions.find((version) => version.id === app?.agent_version_id);
+  const pinnedVersion = appAgentVersions.find(
+    (version) => version.is_published && version.id === app?.agent_version_id,
+  );
 
   if (isLoading) {
     return (
@@ -2573,7 +2578,7 @@ function AppDetailPageLegacy({ params }: { params: Promise<{ appId: string }> })
                               <SelectValue placeholder="Select version" />
                             </SelectTrigger>
                             <SelectContent>
-                              {editableAgentVersions.map((version) => (
+                              {publishedEditableAgentVersions.map((version) => (
                                 <SelectItem key={version.id} value={version.id}>
                                   {version.version}
                                 </SelectItem>
