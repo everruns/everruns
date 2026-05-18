@@ -10,9 +10,11 @@ use crate::storage::{
     models::{CreateSessionFileRow, SessionFileInfoRow, SessionFileRow, UpdateSessionFile},
 };
 use anyhow::{Result, anyhow};
+use async_trait::async_trait;
 use everruns_core::{
-    FileInfo, FileStat, GrepMatch, GrepResult, MountAccess, MountEntry, MountPoint, MountSource,
-    SessionFile, SessionId,
+    AgentLoopError, FileInfo, FileStat, GrepMatch, GrepResult, MountAccess, MountEntry, MountPoint,
+    MountSource, SessionFile, SessionFileSystem, SessionFileSystemFactory,
+    SessionFileSystemFactoryContext, SessionId,
 };
 use regex::Regex;
 use std::sync::Arc;
@@ -54,6 +56,38 @@ pub struct CopyFileInput {
 pub struct GrepInput {
     pub pattern: String,
     pub path_pattern: Option<String>,
+}
+
+/// Factory for the server-backed session filesystem.
+///
+/// The resolved filesystem uses `StorageBackend`, so it works with PostgreSQL
+/// in production and the in-memory backend in dev/test. Optional virtual mounts
+/// are supplied through the factory context when the host has one.
+#[derive(Debug, Clone, Default)]
+pub struct StorageSessionFileSystemFactory;
+
+#[async_trait]
+impl SessionFileSystemFactory for StorageSessionFileSystemFactory {
+    fn name(&self) -> &'static str {
+        "StorageSessionFileSystemFactory"
+    }
+
+    async fn create_session_file_system(
+        &self,
+        context: SessionFileSystemFactoryContext,
+    ) -> everruns_core::Result<Arc<dyn SessionFileSystem>> {
+        let db = context.get::<StorageBackend>().ok_or_else(|| {
+            AgentLoopError::config("StorageSessionFileSystemFactory requires StorageBackend")
+        })?;
+        let service =
+            match context
+                .get::<crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry>(
+                ) {
+                Some(registry) => SessionFileService::new(db).with_virtual_registry(registry),
+                None => SessionFileService::new(db),
+            };
+        Ok(Arc::new(service))
+    }
 }
 
 pub struct SessionFileService {
@@ -501,6 +535,8 @@ impl SessionFileService {
         encoding: &str,
     ) -> Result<Option<SessionFile>> {
         let path = Self::normalize_path(path);
+        Self::validate_path(&path)?;
+        self.ensure_path_not_virtual(session_id, &path)?;
 
         let expected_bytes = SessionFile::decode_content(expected_content, expected_encoding)?;
         let content = SessionFile::decode_content(content, encoding)?;
@@ -987,6 +1023,240 @@ impl SessionFileService {
     }
 }
 
+fn file_system_error(error: anyhow::Error) -> AgentLoopError {
+    AgentLoopError::store(error.to_string())
+}
+
+fn is_already_exists_error(error: &anyhow::Error) -> bool {
+    let msg = error.to_string();
+    msg.contains("already exists")
+        || msg.contains("duplicate key")
+        || msg.contains("unique constraint")
+        || msg.contains("UNIQUE constraint")
+}
+
+fn file_system_display_error(error: impl std::fmt::Display) -> AgentLoopError {
+    AgentLoopError::store(error.to_string())
+}
+
+#[async_trait]
+impl SessionFileSystem for SessionFileService {
+    async fn seed_initial_file(
+        &self,
+        session_id: SessionId,
+        file: &everruns_core::InitialFile,
+    ) -> everruns_core::Result<()> {
+        let session_id_uuid = session_id.uuid();
+        let path = Self::normalize_path(&file.path);
+        Self::validate_path(&path).map_err(file_system_error)?;
+        self.ensure_path_not_virtual(session_id_uuid, &path)
+            .map_err(file_system_error)?;
+        self.ensure_parent_path_writable(session_id_uuid, &path)
+            .await
+            .map_err(file_system_error)?;
+
+        if let Some(parent) = FileInfo::parent_path(&path) {
+            self.ensure_directory_exists(session_id_uuid, &parent)
+                .await
+                .map_err(file_system_error)?;
+        }
+
+        let content = SessionFile::decode_content(&file.content, &file.encoding)
+            .map_err(file_system_display_error)?;
+
+        if self
+            .db
+            .session_file_exists(session_id_uuid, &path)
+            .await
+            .map_err(file_system_error)?
+        {
+            self.db
+                .update_session_file(
+                    session_id_uuid,
+                    &path,
+                    UpdateSessionFile {
+                        content: Some(content),
+                        is_readonly: Some(file.is_readonly),
+                    },
+                )
+                .await
+                .map_err(file_system_error)?
+                .ok_or_else(|| AgentLoopError::store("File not found after update"))?;
+        } else {
+            self.db
+                .create_session_file(CreateSessionFileRow {
+                    session_id,
+                    path,
+                    content: Some(content),
+                    is_directory: false,
+                    is_readonly: file.is_readonly,
+                })
+                .await
+                .map_err(file_system_error)?;
+        }
+
+        Ok(())
+    }
+
+    async fn read_file(
+        &self,
+        session_id: SessionId,
+        path: &str,
+    ) -> everruns_core::Result<Option<SessionFile>> {
+        SessionFileService::read_file(self, session_id.uuid(), path)
+            .await
+            .map_err(file_system_error)
+    }
+
+    async fn write_file(
+        &self,
+        session_id: SessionId,
+        path: &str,
+        content: &str,
+        encoding: &str,
+    ) -> everruns_core::Result<SessionFile> {
+        let session_id_uuid = session_id.uuid();
+        if SessionFileService::read_file(self, session_id_uuid, path)
+            .await
+            .map_err(file_system_error)?
+            .is_some()
+        {
+            return self
+                .update_file(
+                    session_id_uuid,
+                    path,
+                    UpdateFileInput {
+                        content: Some(content.to_string()),
+                        encoding: Some(encoding.to_string()),
+                        is_readonly: None,
+                    },
+                )
+                .await
+                .map_err(file_system_error)?
+                .ok_or_else(|| AgentLoopError::store("File not found after update"));
+        }
+
+        match self
+            .create_file(
+                session_id_uuid,
+                CreateFileInput {
+                    path: path.to_string(),
+                    content: Some(content.to_string()),
+                    encoding: Some(encoding.to_string()),
+                    is_readonly: Some(false),
+                },
+            )
+            .await
+        {
+            Ok(file) => Ok(file),
+            Err(error) if is_already_exists_error(&error) => self
+                .update_file(
+                    session_id_uuid,
+                    path,
+                    UpdateFileInput {
+                        content: Some(content.to_string()),
+                        encoding: Some(encoding.to_string()),
+                        is_readonly: None,
+                    },
+                )
+                .await
+                .map_err(file_system_error)?
+                .ok_or_else(|| AgentLoopError::store("File not found after race recovery")),
+            Err(error) => Err(file_system_error(error)),
+        }
+    }
+
+    async fn write_file_if_content_matches(
+        &self,
+        session_id: SessionId,
+        path: &str,
+        expected_content: &str,
+        expected_encoding: &str,
+        content: &str,
+        encoding: &str,
+    ) -> everruns_core::Result<Option<SessionFile>> {
+        self.update_file_if_content_matches(
+            session_id.uuid(),
+            path,
+            expected_content,
+            expected_encoding,
+            content,
+            encoding,
+        )
+        .await
+        .map_err(file_system_error)
+    }
+
+    async fn delete_file(
+        &self,
+        session_id: SessionId,
+        path: &str,
+        recursive: bool,
+    ) -> everruns_core::Result<bool> {
+        self.delete(session_id.uuid(), path, recursive)
+            .await
+            .map_err(file_system_error)
+    }
+
+    async fn list_directory(
+        &self,
+        session_id: SessionId,
+        path: &str,
+    ) -> everruns_core::Result<Vec<FileInfo>> {
+        SessionFileService::list_directory(self, session_id.uuid(), path)
+            .await
+            .map_err(file_system_error)
+    }
+
+    async fn stat_file(
+        &self,
+        session_id: SessionId,
+        path: &str,
+    ) -> everruns_core::Result<Option<FileStat>> {
+        self.stat(session_id.uuid(), path)
+            .await
+            .map_err(file_system_error)
+    }
+
+    async fn grep_files(
+        &self,
+        session_id: SessionId,
+        pattern: &str,
+        path_pattern: Option<&str>,
+    ) -> everruns_core::Result<Vec<GrepMatch>> {
+        let results = self
+            .grep(
+                session_id.uuid(),
+                GrepInput {
+                    pattern: pattern.to_string(),
+                    path_pattern: path_pattern.map(ToString::to_string),
+                },
+            )
+            .await
+            .map_err(file_system_error)?;
+        Ok(results
+            .into_iter()
+            .flat_map(|result| result.matches)
+            .collect())
+    }
+
+    async fn create_directory(
+        &self,
+        session_id: SessionId,
+        path: &str,
+    ) -> everruns_core::Result<FileInfo> {
+        SessionFileService::create_directory(
+            self,
+            session_id.uuid(),
+            CreateDirectoryInput {
+                path: path.to_string(),
+            },
+        )
+        .await
+        .map_err(file_system_error)
+    }
+}
+
 /// Max regex pattern length to prevent resource-intensive compilation (TM-DOS-008).
 const MAX_GREP_PATTERN_LEN: usize = 1000;
 
@@ -1402,6 +1672,57 @@ mod tests {
             err.to_string().contains("readonly"),
             "Expected readonly error, got: {err}"
         );
+    }
+
+    #[tokio::test]
+    async fn virtual_cas_update_rejected() {
+        let (svc, registry, sid) = make_virtual_svc();
+
+        svc.create_directory(
+            sid,
+            CreateDirectoryInput {
+                path: "/docs".to_string(),
+            },
+        )
+        .await
+        .unwrap();
+        svc.create_file(
+            sid,
+            CreateFileInput {
+                path: "/docs/readme.md".to_string(),
+                content: Some("DB content".to_string()),
+                encoding: None,
+                is_readonly: Some(false),
+            },
+        )
+        .await
+        .unwrap();
+
+        registry.register(sid, "/docs".into(), sample_tree(), "test_cap".into());
+
+        let err = svc
+            .update_file_if_content_matches(
+                sid,
+                "/docs/readme.md",
+                "DB content",
+                "text",
+                "modified",
+                "text",
+            )
+            .await
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("readonly"),
+            "Expected readonly error, got: {err}"
+        );
+
+        let stored = svc
+            .db
+            .get_session_file(sid, "/docs/readme.md")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(stored.content.as_deref(), Some("DB content".as_bytes()));
     }
 
     #[tokio::test]

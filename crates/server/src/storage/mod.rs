@@ -5,7 +5,7 @@
 // - DbAgentStore: implements AgentStore for agent retrieval
 // - DbSessionStore: implements SessionStore for session retrieval
 // - DbMessageRetriever: implements MessageRetriever for message loading
-// - DbSessionFileStore: implements SessionFileStore for session filesystem
+// - DbSessionFileStore: implements SessionFileSystem for session filesystem
 // - DbSessionStorageStore: implements SessionStorageStore for key/value and secret storage
 // - DbLlmProviderStore: implements LlmProviderStore for LLM provider retrieval
 

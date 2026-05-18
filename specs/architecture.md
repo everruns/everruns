@@ -270,7 +270,7 @@ Workers communicate with the control-plane via gRPC instead of direct database a
    - `GrpcSessionStore` - Implements `SessionStore` trait via gRPC
    - `WorkerRuntimeHost` - Bridges worker adapters into `everruns-runtime` host execution
    - `GrpcLlmProviderStore` - Implements `LlmProviderStore` trait via gRPC
-   - `GrpcSessionFileStore` - Implements `SessionFileStore` trait via gRPC
+   - `GrpcSessionFileStore` - Implements `SessionFileSystem` trait via gRPC
    - `GrpcEventEmitter` - Implements `EventEmitter` trait via gRPC
    - `GrpcDurableStore` - Implements durable workflow operations via gRPC
    - `GrpcPlatformStore` - Implements `PlatformStore` trait via gRPC (platform management capability)

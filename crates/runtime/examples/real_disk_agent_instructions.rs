@@ -1,5 +1,5 @@
 // Demonstrates that `AgentInstructionsCapability` reads `AGENTS.md` from
-// whichever `SessionFileStore` the embedder plugs in — here, a
+// whichever `SessionFileSystem` the embedder plugs in — here, a
 // `RealDiskFileStore` rooted at a temp directory.
 //
 // What this proves:

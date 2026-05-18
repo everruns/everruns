@@ -1404,7 +1404,7 @@ impl Tool for CancelAgentTool {
 mod tests {
     use super::*;
     use crate::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
-    use crate::traits::SessionFileStore;
+    use crate::traits::SessionFileSystem;
     use crate::typed_id::SessionId;
     use a2a::StreamResponse;
     use a2a::{AgentCapabilities, AgentInterface, Artifact, TaskStatus, TaskStatusUpdateEvent};
@@ -1497,7 +1497,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl SessionFileStore for TestFileStore {
+    impl SessionFileSystem for TestFileStore {
         async fn read_file(
             &self,
             session_id: SessionId,

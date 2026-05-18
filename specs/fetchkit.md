@@ -14,7 +14,7 @@ External library ([github.com/everruns/fetchkit](https://github.com/everruns/fet
 
 fetchkit owns the `FileSaver` abstraction; consumers inject implementations:
 - **CLI**: `LocalFileSaver` (real filesystem, ships with fetchkit)
-- **Everruns**: `SessionFileSaver` adapter → `SessionFileStore` (per-session virtual filesystem)
+- **Everruns**: `SessionFileSaver` adapter → `SessionFileSystem` (per-session virtual filesystem)
 
 Key decisions:
 - **Config-gated**: file download enabled via per-capability config `{"enable_file_download": true}` — harnesses/agents opt in

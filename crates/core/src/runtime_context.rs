@@ -21,7 +21,7 @@ use crate::runtime_agent::RuntimeAgentBuilder;
 use crate::session::Session;
 use crate::tool_types::ToolDefinition;
 use crate::traits::{
-    AgentStore, HarnessStore, LlmProviderStore, ModelWithProvider, SessionFileStore, SessionStore,
+    AgentStore, HarnessStore, LlmProviderStore, ModelWithProvider, SessionFileSystem, SessionStore,
 };
 use crate::typed_id::{AgentId, HarnessId, ModelId, SessionId};
 use std::sync::Arc;
@@ -75,7 +75,7 @@ pub async fn assemble_turn_context(
     harness_id: HarnessId,
     agent_id: Option<AgentId>,
     mcp_tool_definitions: &[ToolDefinition],
-    file_store: Option<Arc<dyn SessionFileStore>>,
+    file_store: Option<Arc<dyn SessionFileSystem>>,
 ) -> Result<AssembledTurnContext> {
     assemble_turn_context_with_mode(
         harness_store,
@@ -110,7 +110,7 @@ pub async fn inspect_turn_context(
     harness_id: HarnessId,
     agent_id: Option<AgentId>,
     mcp_tool_definitions: &[ToolDefinition],
-    file_store: Option<Arc<dyn SessionFileStore>>,
+    file_store: Option<Arc<dyn SessionFileSystem>>,
 ) -> Result<AssembledTurnContext> {
     assemble_turn_context_with_mode(
         harness_store,
@@ -147,7 +147,7 @@ async fn assemble_turn_context_with_mode(
     harness_id: HarnessId,
     agent_id: Option<AgentId>,
     mcp_tool_definitions: &[ToolDefinition],
-    file_store: Option<Arc<dyn SessionFileStore>>,
+    file_store: Option<Arc<dyn SessionFileSystem>>,
     mode: ContextAssemblyMode,
 ) -> Result<AssembledTurnContext> {
     let harness_chain = harness_store.get_harness_chain(harness_id).await?;

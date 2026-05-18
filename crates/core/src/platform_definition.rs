@@ -7,11 +7,13 @@
 //!
 //! Server-only concerns such as route wiring, auth backends, and background
 //! task scheduling stay outside this module so the type can be reused from any
-//! binary crate.
+//! binary crate. Platform-wide host services belong here as factories, not as
+//! server-owned concrete dependencies.
 
 use crate::{
     Capability, CapabilityRegistry, ConnectionProvider, ConnectionProviderRegistry, DriverRegistry,
     EmailSender,
+    traits::{DisabledSessionFileSystemFactory, SessionFileSystemFactory},
 };
 use serde_json::Value;
 use std::sync::Arc;
@@ -147,9 +149,9 @@ impl BuiltInHarnessDefinition {
 /// Shared definition of the Everruns platform surface.
 ///
 /// `PlatformDefinition` lets an embedder decide which capabilities, LLM
-/// drivers, connection providers, and built-in harness templates exist at
-/// runtime. Server and worker code should consume the same definition so the
-/// control plane and execution plane stay aligned.
+/// drivers, connection providers, built-in harness templates, and platform
+/// service factories exist at runtime. Server and worker code should consume
+/// the same definition so the control plane and execution plane stay aligned.
 ///
 /// # Example
 ///
@@ -184,6 +186,7 @@ pub struct PlatformDefinition {
     connection_providers: ConnectionProviderRegistry,
     built_in_harnesses: Vec<BuiltInHarnessDefinition>,
     email_sender: Arc<dyn EmailSender>,
+    session_file_system_factory: Arc<dyn SessionFileSystemFactory>,
 }
 
 impl PlatformDefinition {
@@ -195,6 +198,7 @@ impl PlatformDefinition {
             connection_providers: ConnectionProviderRegistry::new(),
             built_in_harnesses: Vec::new(),
             email_sender: Arc::new(crate::DisabledEmailSender),
+            session_file_system_factory: Arc::new(DisabledSessionFileSystemFactory),
         }
     }
 
@@ -248,6 +252,11 @@ impl PlatformDefinition {
         self.email_sender.clone()
     }
 
+    /// Factory for the platform-selected session filesystem implementation.
+    pub fn session_file_system_factory(&self) -> Arc<dyn SessionFileSystemFactory> {
+        self.session_file_system_factory.clone()
+    }
+
     /// Append a built-in harness template.
     pub fn add_built_in_harness(&mut self, harness: BuiltInHarnessDefinition) {
         self.built_in_harnesses.push(harness);
@@ -274,6 +283,10 @@ impl std::fmt::Debug for PlatformDefinition {
             .field("connection_providers", &self.connection_providers)
             .field("built_in_harnesses", &harness_keys)
             .field("email_sender", &self.email_sender.name())
+            .field(
+                "session_file_system_factory",
+                &self.session_file_system_factory.name(),
+            )
             .finish()
     }
 }
@@ -339,6 +352,15 @@ impl PlatformDefinitionBuilder {
     /// Set the system-wide email sender.
     pub fn email_sender(mut self, sender: Arc<dyn EmailSender>) -> Self {
         self.platform.email_sender = sender;
+        self
+    }
+
+    /// Set the platform-wide session filesystem factory.
+    pub fn session_file_system_factory(
+        mut self,
+        factory: Arc<dyn SessionFileSystemFactory>,
+    ) -> Self {
+        self.platform.session_file_system_factory = factory;
         self
     }
 

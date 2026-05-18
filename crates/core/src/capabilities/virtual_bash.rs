@@ -6,11 +6,11 @@
 //!
 //! Design decisions:
 //! - SessionFileSystemAdapter implements bashkit's FileSystem trait
-//! - Direct delegation to SessionFileStore - no sync overhead
+//! - Direct delegation to SessionFileSystem - no sync overhead
 //! - Live visibility: files written by other tools are immediately visible
 //! - Resource limits prevent runaway scripts (max commands, loop iterations)
 //! - Context-aware tool that requires session filesystem access
-//! - SearchCapable impl delegates grep to SessionFileStore::grep_files for
+//! - SearchCapable impl delegates grep to SessionFileSystem::grep_files for
 //!   single-query indexed search instead of per-file linear scan
 //!
 //! Trust boundary (TM-AGENT-005, TM-BASH-001..016):
@@ -40,7 +40,7 @@ use crate::exec_tool_result::ExecToolResultPayload;
 use crate::session_file::SessionFile;
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
-use crate::traits::{SessionFileStore, ToolContext};
+use crate::traits::{SessionFileSystem, ToolContext};
 use crate::typed_id::SessionId;
 use async_trait::async_trait;
 use bashkit::{
@@ -722,17 +722,17 @@ fn collect_partial_output(mut rx: tokio::sync::mpsc::Receiver<(String, String)>)
 // SessionFileSystemAdapter
 // ============================================================================
 
-/// Adapter that implements bashkit's FileSystem trait by delegating to SessionFileStore.
+/// Adapter that implements bashkit's FileSystem trait by delegating to SessionFileSystem.
 ///
 /// This provides live visibility of session files during bash execution - any files
 /// written by other tools are immediately visible, and vice versa.
 pub struct SessionFileSystemAdapter {
     session_id: SessionId,
-    store: Arc<dyn SessionFileStore>,
+    store: Arc<dyn SessionFileSystem>,
 }
 
 impl SessionFileSystemAdapter {
-    pub fn new(session_id: SessionId, store: Arc<dyn SessionFileStore>) -> Self {
+    pub fn new(session_id: SessionId, store: Arc<dyn SessionFileSystem>) -> Self {
         Self { session_id, store }
     }
 
@@ -1071,7 +1071,7 @@ impl FileSystem for SessionFileSystemAdapter {
 }
 
 // ============================================================================
-// SearchCapable / SearchProvider — indexed search via SessionFileStore
+// SearchCapable / SearchProvider — indexed search via SessionFileSystem
 // ============================================================================
 
 impl SearchCapable for SessionFileSystemAdapter {
@@ -1085,13 +1085,13 @@ impl SearchCapable for SessionFileSystemAdapter {
     }
 }
 
-/// Bridges bashkit's synchronous `SearchProvider` to `SessionFileStore::grep_files`.
+/// Bridges bashkit's synchronous `SearchProvider` to `SessionFileSystem::grep_files`.
 ///
 /// Uses a scoped thread with a dedicated tokio runtime to call the async
 /// store method from the sync trait, avoiding nested `block_on` calls.
 struct SessionSearchProvider {
     session_id: SessionId,
-    store: Arc<dyn SessionFileStore>,
+    store: Arc<dyn SessionFileSystem>,
 }
 
 impl SearchProvider for SessionSearchProvider {
@@ -1180,7 +1180,7 @@ impl SearchProvider for SessionSearchProvider {
 mod tests {
     use super::*;
     use crate::session_file::FileInfo;
-    use crate::traits::SessionFileStore;
+    use crate::traits::SessionFileSystem;
     use crate::typed_id::SessionId;
     use crate::{FileStat, GrepMatch, Result};
     use std::collections::HashMap;
@@ -1217,7 +1217,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl SessionFileStore for MockFileStore {
+    impl SessionFileSystem for MockFileStore {
         async fn read_file(
             &self,
             session_id: SessionId,
@@ -1577,7 +1577,7 @@ mod tests {
 
     fn create_context_with_mock_store() -> (ToolContext, SessionId) {
         let session_id = SessionId::new();
-        let store: Arc<dyn SessionFileStore> = Arc::new(MockFileStore::new());
+        let store: Arc<dyn SessionFileSystem> = Arc::new(MockFileStore::new());
         let mut context = ToolContext::new(session_id);
         context.file_store = Some(store);
         (context, session_id)
@@ -1954,7 +1954,7 @@ mod tests {
     #[tokio::test]
     async fn test_adapter_read_write_workspace_file() {
         let session_id = SessionId::new();
-        let store: Arc<dyn SessionFileStore> = Arc::new(MockFileStore::new());
+        let store: Arc<dyn SessionFileSystem> = Arc::new(MockFileStore::new());
         let adapter = SessionFileSystemAdapter::new(session_id, store);
 
         // Write a file
@@ -1974,7 +1974,7 @@ mod tests {
     #[tokio::test]
     async fn test_adapter_read_outside_workspace_fails() {
         let session_id = SessionId::new();
-        let store: Arc<dyn SessionFileStore> = Arc::new(MockFileStore::new());
+        let store: Arc<dyn SessionFileSystem> = Arc::new(MockFileStore::new());
         let adapter = SessionFileSystemAdapter::new(session_id, store);
 
         let result = adapter.read_file(Path::new("/tmp/file.txt")).await;
@@ -1987,7 +1987,7 @@ mod tests {
     #[tokio::test]
     async fn test_adapter_write_outside_workspace_fails() {
         let session_id = SessionId::new();
-        let store: Arc<dyn SessionFileStore> = Arc::new(MockFileStore::new());
+        let store: Arc<dyn SessionFileSystem> = Arc::new(MockFileStore::new());
         let adapter = SessionFileSystemAdapter::new(session_id, store);
 
         let result = adapter
@@ -2002,7 +2002,7 @@ mod tests {
     #[tokio::test]
     async fn test_adapter_stat_workspace_root() {
         let session_id = SessionId::new();
-        let store: Arc<dyn SessionFileStore> = Arc::new(MockFileStore::new());
+        let store: Arc<dyn SessionFileSystem> = Arc::new(MockFileStore::new());
         let adapter = SessionFileSystemAdapter::new(session_id, store);
 
         let stat = adapter.stat(Path::new("/workspace")).await.unwrap();
@@ -2012,7 +2012,7 @@ mod tests {
     #[tokio::test]
     async fn test_adapter_stat_directory_returns_dir_type() {
         let session_id = SessionId::new();
-        let store: Arc<dyn SessionFileStore> = Arc::new(MockFileStore::new());
+        let store: Arc<dyn SessionFileSystem> = Arc::new(MockFileStore::new());
         let adapter = SessionFileSystemAdapter::new(session_id, store);
 
         // Create a directory
@@ -2032,7 +2032,7 @@ mod tests {
     #[tokio::test]
     async fn test_adapter_stat_file_returns_file_type() {
         let session_id = SessionId::new();
-        let store: Arc<dyn SessionFileStore> = Arc::new(MockFileStore::new());
+        let store: Arc<dyn SessionFileSystem> = Arc::new(MockFileStore::new());
         let adapter = SessionFileSystemAdapter::new(session_id, store);
 
         // Write a file
@@ -2056,7 +2056,7 @@ mod tests {
     #[tokio::test]
     async fn test_adapter_exists_workspace() {
         let session_id = SessionId::new();
-        let store: Arc<dyn SessionFileStore> = Arc::new(MockFileStore::new());
+        let store: Arc<dyn SessionFileSystem> = Arc::new(MockFileStore::new());
         let adapter = SessionFileSystemAdapter::new(session_id, store);
 
         // /workspace always exists
@@ -2069,7 +2069,7 @@ mod tests {
     #[tokio::test]
     async fn test_adapter_mkdir_and_list() {
         let session_id = SessionId::new();
-        let store: Arc<dyn SessionFileStore> = Arc::new(MockFileStore::new());
+        let store: Arc<dyn SessionFileSystem> = Arc::new(MockFileStore::new());
         let adapter = SessionFileSystemAdapter::new(session_id, store.clone());
 
         // Create a directory
@@ -2096,7 +2096,7 @@ mod tests {
     #[tokio::test]
     async fn test_adapter_rename_file() {
         let session_id = SessionId::new();
-        let store: Arc<dyn SessionFileStore> = Arc::new(MockFileStore::new());
+        let store: Arc<dyn SessionFileSystem> = Arc::new(MockFileStore::new());
         let adapter = SessionFileSystemAdapter::new(session_id, store);
 
         // Write original file
@@ -2129,7 +2129,7 @@ mod tests {
     #[tokio::test]
     async fn test_adapter_copy_file() {
         let session_id = SessionId::new();
-        let store: Arc<dyn SessionFileStore> = Arc::new(MockFileStore::new());
+        let store: Arc<dyn SessionFileSystem> = Arc::new(MockFileStore::new());
         let adapter = SessionFileSystemAdapter::new(session_id, store);
 
         // Write original file
@@ -2163,7 +2163,7 @@ mod tests {
     #[tokio::test]
     async fn test_adapter_append_file() {
         let session_id = SessionId::new();
-        let store: Arc<dyn SessionFileStore> = Arc::new(MockFileStore::new());
+        let store: Arc<dyn SessionFileSystem> = Arc::new(MockFileStore::new());
         let adapter = SessionFileSystemAdapter::new(session_id, store);
 
         // Write initial content
@@ -2189,7 +2189,7 @@ mod tests {
     #[tokio::test]
     async fn test_adapter_symlink_not_supported() {
         let session_id = SessionId::new();
-        let store: Arc<dyn SessionFileStore> = Arc::new(MockFileStore::new());
+        let store: Arc<dyn SessionFileSystem> = Arc::new(MockFileStore::new());
         let adapter = SessionFileSystemAdapter::new(session_id, store);
 
         let result = adapter
@@ -2202,7 +2202,7 @@ mod tests {
     #[tokio::test]
     async fn test_adapter_chmod_is_noop() {
         let session_id = SessionId::new();
-        let store: Arc<dyn SessionFileStore> = Arc::new(MockFileStore::new());
+        let store: Arc<dyn SessionFileSystem> = Arc::new(MockFileStore::new());
         let adapter = SessionFileSystemAdapter::new(session_id, store);
 
         // chmod should succeed as a no-op
@@ -2636,7 +2636,7 @@ mod tests {
     #[tokio::test]
     async fn test_adapter_overwrite_existing_file() {
         let session_id = SessionId::new();
-        let store: Arc<dyn SessionFileStore> = Arc::new(MockFileStore::new());
+        let store: Arc<dyn SessionFileSystem> = Arc::new(MockFileStore::new());
         let adapter = SessionFileSystemAdapter::new(session_id, store);
 
         // Write initial
@@ -2662,7 +2662,7 @@ mod tests {
     #[tokio::test]
     async fn test_adapter_append_to_existing_file() {
         let session_id = SessionId::new();
-        let store: Arc<dyn SessionFileStore> = Arc::new(MockFileStore::new());
+        let store: Arc<dyn SessionFileSystem> = Arc::new(MockFileStore::new());
         let adapter = SessionFileSystemAdapter::new(session_id, store);
 
         // Write initial
@@ -2818,7 +2818,7 @@ mod tests {
     #[test]
     fn test_adapter_is_search_capable() {
         let session_id = SessionId::new();
-        let store: Arc<dyn SessionFileStore> = Arc::new(MockFileStore::new());
+        let store: Arc<dyn SessionFileSystem> = Arc::new(MockFileStore::new());
         let adapter = SessionFileSystemAdapter::new(session_id, store);
 
         let sc = adapter.as_search_capable();
@@ -2838,7 +2838,7 @@ mod tests {
     #[tokio::test]
     async fn test_search_provider_returns_grep_results() {
         let session_id = SessionId::new();
-        let store: Arc<dyn SessionFileStore> = Arc::new(MockFileStore::new());
+        let store: Arc<dyn SessionFileSystem> = Arc::new(MockFileStore::new());
         let adapter = SessionFileSystemAdapter::new(session_id, store.clone());
 
         // Write files via the adapter
@@ -2880,7 +2880,7 @@ mod tests {
     #[tokio::test]
     async fn test_search_provider_truncates_at_max_results() {
         let session_id = SessionId::new();
-        let store: Arc<dyn SessionFileStore> = Arc::new(MockFileStore::new());
+        let store: Arc<dyn SessionFileSystem> = Arc::new(MockFileStore::new());
         let adapter = SessionFileSystemAdapter::new(session_id, store.clone());
 
         adapter

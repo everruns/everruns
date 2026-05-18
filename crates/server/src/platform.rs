@@ -11,6 +11,7 @@ use everruns_core::deployment::DeploymentGrade;
 use everruns_core::{
     BuiltInHarnessDefinition, CapabilityRegistry, PlatformDefinition, SystemEmailConfig,
 };
+use std::sync::Arc;
 
 /// Build the default OSS `PlatformDefinition` for the current deployment grade.
 pub fn oss_platform_definition() -> PlatformDefinition {
@@ -32,6 +33,9 @@ pub fn oss_platform_definition_for_grade(grade: DeploymentGrade) -> PlatformDefi
         .connection_providers(connection_providers)
         .built_in_harnesses(oss_built_in_harnesses())
         .email_sender(email_sender)
+        .session_file_system_factory(Arc::new(
+            crate::domains::session_files::StorageSessionFileSystemFactory,
+        ))
         .build()
 }
 

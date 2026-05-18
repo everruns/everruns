@@ -361,7 +361,7 @@ pub struct TurnContext {
 
 /// Session-scoped adapter: bridges WorkerAdapters → core traits that don't need org_id.
 ///
-/// Implements: MessageRetriever, EventEmitter, SessionFileStore.
+/// Implements: MessageRetriever, EventEmitter, SessionFileSystem.
 pub struct SessionAdapter<A: WorkerAdapters> {
     adapters: A,
 }
@@ -484,7 +484,7 @@ impl<A: WorkerAdapters> everruns_core::traits::EventEmitter for SessionAdapter<A
 }
 
 #[async_trait]
-impl<A: WorkerAdapters> everruns_core::traits::SessionFileStore for SessionAdapter<A> {
+impl<A: WorkerAdapters> everruns_core::traits::SessionFileSystem for SessionAdapter<A> {
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
         self.adapters.read_file(session_id.uuid(), path).await
     }

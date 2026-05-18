@@ -19,7 +19,7 @@ use everruns_core::session::SessionStatus;
 use everruns_core::traits::{
     AgentStore, BudgetChecker, EventEmitter, HarnessStore, ImageArtifactStore, ImageResolver,
     LeasedResourceStore, LlmProviderStore, ModelWithProvider, PaymentAuthority,
-    ProviderCredentialStore, SessionFileStore, SessionMutator, SessionResourceRegistry,
+    ProviderCredentialStore, SessionFileSystem, SessionMutator, SessionResourceRegistry,
     SessionScheduleStore, SessionSqlDbStoreRef, SessionStorageStore, SessionStore,
     UserConnectionResolver,
 };
@@ -201,7 +201,7 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
 
     fn event_emitter(&self) -> Arc<dyn EventEmitter>;
 
-    fn file_store(&self) -> Arc<dyn SessionFileStore>;
+    fn file_store(&self) -> Arc<dyn SessionFileSystem>;
 
     fn image_resolver(&self, _org_id: i64) -> Option<Arc<dyn ImageResolver>> {
         None

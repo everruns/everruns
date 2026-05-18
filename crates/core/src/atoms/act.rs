@@ -41,7 +41,7 @@ use crate::tool_narration::{
 };
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use crate::traits::{
-    AgentStore, EventEmitter, SessionFileStore, SessionMutator, SessionStore, ToolContext,
+    AgentStore, EventEmitter, SessionFileSystem, SessionMutator, SessionStore, ToolContext,
     ToolExecutor,
 };
 use crate::typed_id::{AgentId, HarnessId};
@@ -153,7 +153,7 @@ where
     tool_executor: T,
     event_emitter: Arc<E>,
     /// Optional file store for context-aware tools
-    file_store: Option<Arc<dyn SessionFileStore>>,
+    file_store: Option<Arc<dyn SessionFileSystem>>,
     /// Optional SQL database store for sql_execute/sql_query/sql_schema tools
     sqldb_store: Option<crate::traits::SessionSqlDbStoreRef>,
     /// Optional session storage store for kv_store/secret_store tools
@@ -247,7 +247,7 @@ where
     pub fn with_file_store(
         tool_executor: T,
         event_emitter: E,
-        file_store: Arc<dyn SessionFileStore>,
+        file_store: Arc<dyn SessionFileSystem>,
     ) -> Self {
         Self {
             tool_executor,

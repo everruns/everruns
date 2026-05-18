@@ -374,7 +374,7 @@ pub struct ReasonAtom {
     image_resolver: Option<Arc<dyn ImageResolver>>,
     /// Optional file store for capabilities that need filesystem access
     /// (e.g., agent_instructions reads AGENTS.md, skills_discovery scans for skills)
-    file_store: Option<Arc<dyn crate::traits::SessionFileStore>>,
+    file_store: Option<Arc<dyn crate::traits::SessionFileSystem>>,
 }
 
 impl ReasonAtom {
@@ -410,7 +410,10 @@ impl ReasonAtom {
     /// Capabilities like `agent_instructions` (reads AGENTS.md) and
     /// `skills_discovery` (scans for skills) use this to generate dynamic
     /// system prompt content.
-    pub fn with_file_store(mut self, file_store: Arc<dyn crate::traits::SessionFileStore>) -> Self {
+    pub fn with_file_store(
+        mut self,
+        file_store: Arc<dyn crate::traits::SessionFileSystem>,
+    ) -> Self {
         self.file_store = Some(file_store);
         self
     }

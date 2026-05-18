@@ -158,7 +158,7 @@ and worker-backed hosts stay aligned.
 `everruns-runtime` ships reference in-memory stores for public embedding:
 
 - Session store
-- Session virtual filesystem store
+- Session virtual filesystem
 - Session key/value + secret store
 - Message retriever
 - Harness store
@@ -174,13 +174,13 @@ These stores are intended to make embedded execution usable out of the box.
 Embedders that need persistence across process restarts may supply their own
 backend bundle through `RuntimeBackends`.
 
-`everruns-runtime` owns a small set of extension traits for this:
+`everruns-runtime` owns a small set of extension traits for mutable runtime
+domain stores:
 
 - `RuntimeHarnessStore`
 - `RuntimeAgentStore`
 - `RuntimeSessionStore`
 - `RuntimeMessageStore`
-- `RuntimeFileStore`
 - `RuntimeProviderStore`
 - optional `RuntimeEventCollector`
 
@@ -192,13 +192,18 @@ embedded runtime needs for:
 - persisting assistant and tool-result messages from emitted events
 - configuring the runtime default model
 
-For `RuntimeFileStore` specifically, embedders can choose between
-`InMemorySessionFileStore` (default, per-session isolation, suitable for
-tests and embedded use without disk state) and `RealDiskFileStore` (rooted
-at a host directory; honours `.gitignore` for grep). See
-`specs/file-store.md` for the trait contract, path namespace, and the rule
-that capabilities should consume the seam rather than touching `std::fs`
-directly.
+Session files are a platform service: `PlatformDefinition` carries a
+`SessionFileSystemFactory`, and the runtime resolves it when no explicit
+`RuntimeBackends.file_store` is supplied. Embedders can choose
+`InMemorySessionFileSystemFactory` (default), `RealDiskSessionFileSystemFactory`
+(rooted at a host directory; honours `.gitignore` for grep), or a custom future
+factory such as S3. See `specs/file-store.md` for the trait contract, path
+namespace, and the rule that capabilities should consume the seam rather than
+touching `std::fs` directly.
+
+Factories that depend on host values receive them through
+`SessionFileSystemFactoryContext`; the in-process builder accepts this context
+and passes it to the selected platform factory before runtime seeding.
 
 This keeps `everruns-core` storage traits read-oriented where they already were,
 while making custom embedded backends a supported public path.

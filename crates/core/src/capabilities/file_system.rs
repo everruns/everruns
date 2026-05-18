@@ -1619,7 +1619,7 @@ mod tests {
     use super::*;
     use crate::error::Result;
     use crate::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
-    use crate::traits::SessionFileStore;
+    use crate::traits::SessionFileSystem;
     use crate::typed_id::SessionId;
     use chrono::Utc;
     use std::collections::HashMap;
@@ -1750,7 +1750,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl SessionFileStore for MockFileStore {
+    impl SessionFileSystem for MockFileStore {
         async fn read_file(
             &self,
             _session_id: SessionId,

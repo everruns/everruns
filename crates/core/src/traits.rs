@@ -8,11 +8,12 @@
 use crate::agent::Agent;
 use crate::harness::Harness;
 use crate::llm_models::LlmProviderType;
-use crate::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
+use crate::session_file::{FileInfo, FileStat, GrepMatch, InitialFile, SessionFile};
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use crate::typed_id::{AgentId, HarnessId, ImageId, ModelId, SessionId};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -283,17 +284,18 @@ pub trait ToolExecutor: Send + Sync {
 }
 
 // ============================================================================
-// SessionFileStore - For session filesystem operations
+// SessionFileSystem - For session filesystem operations
 // ============================================================================
 
 /// Trait for session filesystem operations
 ///
-/// This trait abstracts file operations for tools that need to interact with
-/// the session's virtual filesystem. Implementations can:
+/// This trait abstracts the session filesystem contract for tools and hosts.
+/// Implementations can:
 /// - Store files in a database (production)
 /// - Use an in-memory filesystem for testing
+/// - Project files onto real disk or object storage
 #[async_trait]
-pub trait SessionFileStore: Send + Sync {
+pub trait SessionFileSystem: Send + Sync {
     /// Read a file by path
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>>;
 
@@ -357,6 +359,94 @@ pub trait SessionFileStore: Send + Sync {
 
     /// Create a directory
     async fn create_directory(&self, session_id: SessionId, path: &str) -> Result<FileInfo>;
+
+    /// Seed a starter file into a session workspace.
+    async fn seed_initial_file(&self, session_id: SessionId, file: &InitialFile) -> Result<()> {
+        if file.is_readonly {
+            return Err(crate::error::AgentLoopError::store(
+                "read-only initial files require a SessionFileSystem-specific seed implementation",
+            ));
+        }
+        self.write_file(session_id, &file.path, &file.content, &file.encoding)
+            .await?;
+        Ok(())
+    }
+}
+
+/// Backward-compatible alias for the old session filesystem trait name.
+pub use SessionFileSystem as SessionFileStore;
+
+/// Host-supplied values used by platform file-system factories.
+///
+/// The context is intentionally type-erased so `everruns-core` can own the
+/// platform contract without depending on server-only types such as
+/// `StorageBackend` or future object-storage clients.
+#[derive(Clone, Default)]
+pub struct SessionFileSystemFactoryContext {
+    values: Arc<HashMap<TypeId, Arc<dyn Any + Send + Sync>>>,
+}
+
+impl SessionFileSystemFactoryContext {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn with<T: Any + Send + Sync>(mut self, value: Arc<T>) -> Self {
+        let values = Arc::make_mut(&mut self.values);
+        values.insert(TypeId::of::<T>(), value);
+        self
+    }
+
+    pub fn get<T: Any + Send + Sync>(&self) -> Option<Arc<T>> {
+        self.values
+            .get(&TypeId::of::<T>())
+            .and_then(|value| value.clone().downcast::<T>().ok())
+    }
+}
+
+/// Factory for deployment-selected session filesystem implementations.
+#[async_trait]
+pub trait SessionFileSystemFactory: Send + Sync {
+    /// Human-readable factory name for diagnostics.
+    fn name(&self) -> &'static str {
+        "SessionFileSystemFactory"
+    }
+
+    /// Whether this factory intentionally leaves filesystem selection to the
+    /// runtime default.
+    fn is_disabled(&self) -> bool {
+        false
+    }
+
+    /// Resolve a live filesystem from host-provided dependencies.
+    async fn create_session_file_system(
+        &self,
+        context: SessionFileSystemFactoryContext,
+    ) -> Result<Arc<dyn SessionFileSystem>>;
+}
+
+/// Default factory used when a platform does not configure session files.
+#[derive(Debug, Clone, Default)]
+pub struct DisabledSessionFileSystemFactory;
+
+#[async_trait]
+impl SessionFileSystemFactory for DisabledSessionFileSystemFactory {
+    fn name(&self) -> &'static str {
+        "DisabledSessionFileSystemFactory"
+    }
+
+    fn is_disabled(&self) -> bool {
+        true
+    }
+
+    async fn create_session_file_system(
+        &self,
+        _context: SessionFileSystemFactoryContext,
+    ) -> Result<Arc<dyn SessionFileSystem>> {
+        Err(crate::error::AgentLoopError::config(
+            "session filesystem is disabled",
+        ))
+    }
 }
 
 // ============================================================================
@@ -638,7 +728,7 @@ pub struct ToolContext {
     pub session_id: SessionId,
 
     /// Optional file store for filesystem operations
-    pub file_store: Option<Arc<dyn SessionFileStore>>,
+    pub file_store: Option<Arc<dyn SessionFileSystem>>,
 
     /// Optional storage store for key/value and secret storage
     pub storage_store: Option<Arc<dyn SessionStorageStore>>,
@@ -752,7 +842,7 @@ impl ToolContext {
     }
 
     /// Create a context with a file store
-    pub fn with_file_store(session_id: SessionId, file_store: Arc<dyn SessionFileStore>) -> Self {
+    pub fn with_file_store(session_id: SessionId, file_store: Arc<dyn SessionFileSystem>) -> Self {
         Self {
             session_id,
             file_store: Some(file_store),
@@ -821,7 +911,7 @@ impl ToolContext {
     /// Create a context with both file store and storage store
     pub fn with_stores(
         session_id: SessionId,
-        file_store: Arc<dyn SessionFileStore>,
+        file_store: Arc<dyn SessionFileSystem>,
         storage_store: Arc<dyn SessionStorageStore>,
     ) -> Self {
         Self {

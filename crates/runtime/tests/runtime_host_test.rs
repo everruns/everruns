@@ -15,7 +15,7 @@ use everruns_core::memory::{
 };
 use everruns_core::memory_store::MemoryStoreBackend;
 use everruns_core::traits::{
-    AgentStore, EventEmitter, HarnessStore, LlmProviderStore, SessionFileStore, SessionMutator,
+    AgentStore, EventEmitter, HarnessStore, LlmProviderStore, SessionFileSystem, SessionMutator,
     SessionStore,
 };
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
@@ -179,7 +179,7 @@ impl RuntimeHostAdapter for MockHostAdapter {
         self.event_emitter.clone()
     }
 
-    fn file_store(&self) -> Arc<dyn SessionFileStore> {
+    fn file_store(&self) -> Arc<dyn SessionFileSystem> {
         self.file_store.clone()
     }
 

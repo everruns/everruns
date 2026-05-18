@@ -1,11 +1,10 @@
-// Real-disk SessionFileStore implementation.
+// Real-disk SessionFileSystem implementation.
 //
 // Rationale: built-in capabilities (`file_system`, `agent_instructions`,
-// `skills`, ...) read and write through `SessionFileStore`. For non-server
+// `skills`, ...) read and write through `SessionFileSystem`. For non-server
 // embedders like the coding-CLI, the workspace is a real directory on disk,
-// not the in-memory VFS. `RealDiskFileStore` is the bridge: an embedder
-// constructs one rooted at a workspace path and plugs it into
-// `RuntimeBackends.file_store`. The trait shape is unchanged.
+// not the in-memory VFS. `RealDiskSessionFileSystemFactory` lets the platform
+// resolve a `RealDiskFileStore` rooted at a workspace path.
 //
 // See `specs/file-store.md` for the contract, path-namespace rules, and the
 // forward-compatibility plan with the mount-overlay resolver (Option B).
@@ -14,7 +13,9 @@ use async_trait::async_trait;
 use chrono::{DateTime, TimeZone, Utc};
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, InitialFile, SessionFile};
-use everruns_core::traits::SessionFileStore;
+use everruns_core::traits::{
+    SessionFileSystem, SessionFileSystemFactory, SessionFileSystemFactoryContext,
+};
 use everruns_core::typed_id::SessionId;
 use ignore::WalkBuilder;
 use std::collections::HashSet;
@@ -24,11 +25,9 @@ use std::time::SystemTime;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use crate::backends::RuntimeFileStore;
-
-/// A `SessionFileStore` rooted at a real host directory.
+/// A `SessionFileSystem` rooted at a real host directory.
 ///
-/// Paths are interpreted per the FileStore namespace rules (leading `/`,
+/// Paths are interpreted per the session filesystem namespace rules (leading `/`,
 /// optional `/workspace` prefix, `..` rejected anywhere). `session_id` is
 /// accepted on every method but ignored — the store is single-workspace per
 /// process. See `specs/file-store.md` for the multi-tenant upgrade path.
@@ -42,6 +41,32 @@ use crate::backends::RuntimeFileStore;
 pub struct RealDiskFileStore {
     root: PathBuf,
     readonly: Arc<RwLock<HashSet<String>>>,
+}
+
+/// Factory for real-disk session files rooted at a fixed host directory.
+#[derive(Debug, Clone)]
+pub struct RealDiskSessionFileSystemFactory {
+    root: PathBuf,
+}
+
+impl RealDiskSessionFileSystemFactory {
+    pub fn new(root: impl Into<PathBuf>) -> Self {
+        Self { root: root.into() }
+    }
+}
+
+#[async_trait]
+impl SessionFileSystemFactory for RealDiskSessionFileSystemFactory {
+    fn name(&self) -> &'static str {
+        "RealDiskSessionFileSystemFactory"
+    }
+
+    async fn create_session_file_system(
+        &self,
+        _context: SessionFileSystemFactoryContext,
+    ) -> Result<Arc<dyn SessionFileSystem>> {
+        Ok(Arc::new(RealDiskFileStore::new(self.root.clone())?))
+    }
 }
 
 impl RealDiskFileStore {
@@ -175,7 +200,22 @@ impl RealDiskFileStore {
 }
 
 #[async_trait]
-impl SessionFileStore for RealDiskFileStore {
+impl SessionFileSystem for RealDiskFileStore {
+    async fn seed_initial_file(&self, session_id: SessionId, file: &InitialFile) -> Result<()> {
+        // Clear any prior readonly mark so seeding always wins over a
+        // previous starter-file declaration with the same path.
+        let absolute = self.resolve(&file.path)?;
+        let canonical = self.relative_capability_path(&absolute)?;
+        self.mark_readonly(canonical.clone(), false).await;
+
+        self.write_file(session_id, &file.path, &file.content, &file.encoding)
+            .await?;
+        if file.is_readonly {
+            self.mark_readonly(canonical, true).await;
+        }
+        Ok(())
+    }
+
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
         let absolute = self.resolve(path)?;
         let metadata = match tokio::fs::metadata(&absolute).await {
@@ -563,24 +603,6 @@ impl SessionFileStore for RealDiskFileStore {
             created_at,
             updated_at,
         })
-    }
-}
-
-#[async_trait]
-impl RuntimeFileStore for RealDiskFileStore {
-    async fn seed_initial_file(&self, session_id: SessionId, file: &InitialFile) -> Result<()> {
-        // Clear any prior readonly mark so seeding always wins over a
-        // previous starter-file declaration with the same path.
-        let absolute = self.resolve(&file.path)?;
-        let canonical = self.relative_capability_path(&absolute)?;
-        self.mark_readonly(canonical.clone(), false).await;
-
-        self.write_file(session_id, &file.path, &file.content, &file.encoding)
-            .await?;
-        if file.is_readonly {
-            self.mark_readonly(canonical, true).await;
-        }
-        Ok(())
     }
 }
 

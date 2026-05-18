@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use chrono::{TimeZone, Utc};
 use everruns_core::capabilities::TestMathCapability;
 use everruns_core::llm_driver_registry::DriverRegistry;
@@ -7,13 +8,16 @@ use everruns_core::memory::{
     InMemoryMemoryStore, InMemoryMessageRetriever,
 };
 use everruns_core::{
-    Agent, CapabilityRegistry, Harness, LlmProviderType, MessageRole, ModelWithProvider,
-    PlatformDefinition, Session, ToolCall,
+    Agent, CapabilityRegistry, Harness, InitialFile, LlmProviderType, MessageRole,
+    ModelWithProvider, PlatformDefinition, Session, SessionFileSystem, SessionFileSystemFactory,
+    SessionFileSystemFactoryContext, ToolCall,
 };
 use everruns_runtime::{
     AgentBuilder, HarnessBuilder, InMemorySessionFileStore, InMemorySessionStorageStore,
-    InMemorySessionStore, InProcessRuntimeBuilder, RuntimeBackends, SessionBuilder,
+    InMemorySessionStore, InProcessRuntimeBuilder, RealDiskFileStore, RuntimeBackends,
+    SessionBuilder,
 };
+use std::path::PathBuf;
 use std::sync::Arc;
 
 fn minimal_platform() -> PlatformDefinition {
@@ -49,6 +53,26 @@ fn session(
     match agent_id {
         Some(agent_id) => builder.agent(agent_id).build(),
         None => builder.build(),
+    }
+}
+
+#[derive(Debug)]
+struct ContextRealDiskFactory;
+
+#[async_trait]
+impl SessionFileSystemFactory for ContextRealDiskFactory {
+    fn name(&self) -> &'static str {
+        "ContextRealDiskFactory"
+    }
+
+    async fn create_session_file_system(
+        &self,
+        context: SessionFileSystemFactoryContext,
+    ) -> everruns_core::Result<Arc<dyn SessionFileSystem>> {
+        let root = context
+            .get::<PathBuf>()
+            .ok_or_else(|| everruns_core::AgentLoopError::config("missing real-disk root"))?;
+        Ok(Arc::new(RealDiskFileStore::new(root.as_path())?))
     }
 }
 
@@ -307,6 +331,49 @@ async fn runtime_accepts_explicit_backend_bundle() {
 
     assert!(result.success);
     assert_eq!(result.response, "Custom backend bundle works");
+}
+
+#[tokio::test]
+async fn runtime_uses_platform_session_file_system_factory() {
+    let harness_id = "harness_00000000000000000000000000000053".parse().unwrap();
+    let session_id = "session_00000000000000000000000000000053".parse().unwrap();
+    let tempdir = tempfile::tempdir().unwrap();
+
+    let mut capabilities = CapabilityRegistry::new();
+    capabilities.register(TestMathCapability);
+    let platform = PlatformDefinition::builder()
+        .capability_registry(capabilities)
+        .driver_registry(DriverRegistry::new())
+        .session_file_system_factory(Arc::new(ContextRealDiskFactory))
+        .build();
+
+    let mut harness = harness(harness_id);
+    harness.initial_files = vec![InitialFile {
+        path: "/seed.txt".into(),
+        content: "from platform factory".into(),
+        encoding: "text".into(),
+        is_readonly: false,
+    }];
+
+    let runtime = InProcessRuntimeBuilder::new()
+        .platform_definition(platform)
+        .session_file_system_factory_context(
+            SessionFileSystemFactoryContext::new().with(Arc::new(tempdir.path().to_path_buf())),
+        )
+        .llm_sim(LlmSimConfig::fixed("ok"))
+        .harness(harness)
+        .session(session(session_id, harness_id, None))
+        .build()
+        .await
+        .unwrap();
+
+    let file = runtime
+        .read_file(session_id, "/seed.txt")
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(file.content.as_deref(), Some("from platform factory"));
+    assert!(tempdir.path().join("seed.txt").exists());
 }
 
 #[tokio::test]

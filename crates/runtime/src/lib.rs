@@ -72,9 +72,10 @@
 //!
 //! Embedders who want built-in capabilities (`file_system`,
 //! `agent_instructions`, `skills`, ...) to read and write a real directory
-//! on disk plug a [`RealDiskFileStore`] into [`RuntimeBackends::file_store`].
-//! Every capability that goes through `ToolContext.file_store` or
-//! `SystemPromptContext.file_store` picks it up automatically.
+//! on disk can configure [`RealDiskSessionFileSystemFactory`] on their
+//! [`PlatformDefinition`]. Every capability that goes through
+//! `ToolContext.file_store` or `SystemPromptContext.file_store` picks it up
+//! automatically.
 //!
 //! See the runnable examples for the full wiring:
 //!
@@ -103,7 +104,10 @@ pub use host::{
     RuntimeHostAdapter, RuntimeHostTurnContext, RuntimeSessionLifecycle, detect_dependency_blocker,
     execute_act_activity, execute_input_activity, execute_reason_activity,
 };
-pub use in_memory::{InMemorySessionFileStore, InMemorySessionStorageStore, InMemorySessionStore};
-pub use real_disk::RealDiskFileStore;
+pub use in_memory::{
+    InMemorySessionFileStore, InMemorySessionFileSystemFactory, InMemorySessionStorageStore,
+    InMemorySessionStore,
+};
+pub use real_disk::{RealDiskFileStore, RealDiskSessionFileSystemFactory};
 pub use runtime::{InProcessRuntime, InProcessRuntimeBuilder, TurnResult};
 pub use turn_strategy::{RuntimeActPlan, RuntimeTurnPlan, RuntimeTurnState, plan_next_host_turn};
