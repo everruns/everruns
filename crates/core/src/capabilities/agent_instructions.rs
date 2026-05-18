@@ -1,12 +1,13 @@
 //! Agent Instructions Capability (AGENTS.md)
 //!
-//! Reads AGENTS.md from the session workspace and dynamically injects its
-//! content into the system prompt on every LLM turn. This provides project-level
-//! context and conventions to agents.
+//! Reads configured instruction files from the session workspace and dynamically
+//! injects their content into the system prompt on every LLM turn. This provides
+//! project-level context and conventions to agents.
 //!
 //! Design decisions:
 //! - Capability encapsulates all AGENTS.md logic: reading, formatting, and injection
-//! - system_prompt_contribution() reads /AGENTS.md from session filesystem via context
+//! - Default behavior reads /AGENTS.md from session filesystem via context
+//! - Per-capability config can opt into additional workspace-root files
 //! - Re-read every turn so edits are picked up immediately
 //! - 32 KiB size limit (truncated with warning), matching Codex convention
 //! - Missing file is silently ignored
@@ -15,15 +16,76 @@
 
 use super::{Capability, CapabilityStatus, SystemPromptContext};
 use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
+use std::collections::HashSet;
 
-/// Maximum size of AGENTS.md content in bytes (32 KiB).
+/// Maximum size of each instruction file's content in bytes (32 KiB).
 pub const MAX_AGENTS_MD_SIZE: usize = 32_768;
 
 /// Path to AGENTS.md in the session filesystem.
 pub const AGENTS_MD_PATH: &str = "/AGENTS.md";
 
+/// Default instruction file name.
+pub const DEFAULT_AGENT_INSTRUCTIONS_FILE: &str = "AGENTS.md";
+
+/// Maximum configured instruction files to read per turn.
+pub const MAX_AGENT_INSTRUCTIONS_FILES: usize = 16;
+
 /// Capability ID constant.
 pub const AGENT_INSTRUCTIONS_CAPABILITY_ID: &str = "agent_instructions";
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct AgentInstructionsConfig {
+    /// Workspace-root instruction files to read in order.
+    pub files: Vec<String>,
+}
+
+impl Default for AgentInstructionsConfig {
+    fn default() -> Self {
+        Self {
+            files: vec![DEFAULT_AGENT_INSTRUCTIONS_FILE.to_string()],
+        }
+    }
+}
+
+impl AgentInstructionsConfig {
+    pub fn from_value(config: &Value) -> Result<Self, String> {
+        if config.is_null() {
+            return Ok(Self::default());
+        }
+
+        let parsed: Self = serde_json::from_value(config.clone())
+            .map_err(|e| format!("invalid agent_instructions config: {e}"))?;
+        parsed.validate()?;
+        Ok(parsed)
+    }
+
+    pub fn file_paths(&self) -> Vec<String> {
+        let mut seen = HashSet::new();
+        self.files
+            .iter()
+            .filter_map(|file| normalize_instruction_file_path(file).ok())
+            .filter(|path| seen.insert(path.clone()))
+            .collect()
+    }
+
+    fn validate(&self) -> Result<(), String> {
+        if self.files.is_empty() {
+            return Err("files must include at least one instruction file".to_string());
+        }
+        if self.files.len() > MAX_AGENT_INSTRUCTIONS_FILES {
+            return Err(format!(
+                "files may include at most {MAX_AGENT_INSTRUCTIONS_FILES} instruction files"
+            ));
+        }
+        for file in &self.files {
+            normalize_instruction_file_path(file)?;
+        }
+        Ok(())
+    }
+}
 
 /// Agent Instructions capability — reads AGENTS.md from session workspace.
 pub struct AgentInstructionsCapability;
@@ -39,7 +101,7 @@ impl Capability for AgentInstructionsCapability {
     }
 
     fn description(&self) -> &str {
-        "Reads AGENTS.md from the session workspace and includes it as context in the system prompt. Content is re-read on every turn, so changes are picked up automatically.\n\n> [!TIP]\n> Write an `AGENTS.md` file to your session workspace with project conventions, coding style, or any instructions you want the agent to follow."
+        "Reads configured project instruction files from the session workspace and includes them as context in the system prompt. Defaults to AGENTS.md. Content is re-read on every turn, so changes are picked up automatically.\n\n> [!TIP]\n> Write an `AGENTS.md` file to your session workspace with project conventions, coding style, or any instructions you want the agent to follow."
     }
 
     fn status(&self) -> CapabilityStatus {
@@ -56,34 +118,109 @@ impl Capability for AgentInstructionsCapability {
 
     // No static system_prompt_addition — content is dynamic via system_prompt_contribution
 
-    /// Reads AGENTS.md from the session filesystem and returns formatted content.
+    fn config_schema(&self) -> Option<Value> {
+        Some(json!({
+            "type": "object",
+            "properties": {
+                "files": {
+                    "type": "array",
+                    "title": "Instruction files",
+                    "description": "Workspace-root Markdown files to read in order. Defaults to AGENTS.md.",
+                    "items": {
+                        "type": "string",
+                        "description": "File path relative to /workspace, for example AGENTS.md or CLAUDE.md.",
+                        "minLength": 1
+                    },
+                    "default": [DEFAULT_AGENT_INSTRUCTIONS_FILE],
+                    "minItems": 1,
+                    "maxItems": MAX_AGENT_INSTRUCTIONS_FILES,
+                    "uniqueItems": true
+                }
+            },
+            "additionalProperties": false
+        }))
+    }
+
+    fn config_ui_schema(&self) -> Option<Value> {
+        Some(json!({
+            "files": {
+                "ui:options": {
+                    "orderable": true
+                }
+            }
+        }))
+    }
+
+    fn validate_config(&self, config: &Value) -> Result<(), String> {
+        AgentInstructionsConfig::from_value(config).map(|_| ())
+    }
+
+    /// Reads configured instruction files from the session filesystem and
+    /// returns formatted content.
     ///
     /// This replaces the previous approach where ReasonAtom had hardcoded AGENTS.md
     /// reading logic. Now the capability fully encapsulates its own prompt generation.
     async fn system_prompt_contribution(&self, ctx: &SystemPromptContext) -> Option<String> {
-        let file_store = ctx.file_store.as_ref()?;
+        self.system_prompt_contribution_with_config(ctx, &Value::Null)
+            .await
+    }
 
-        match file_store.read_file(ctx.session_id, AGENTS_MD_PATH).await {
-            Ok(Some(file)) => file.content.as_deref().and_then(format_agents_md_content),
-            Ok(None) => {
-                // File doesn't exist — silently skip
-                None
-            }
-            Err(e) => {
+    async fn system_prompt_contribution_with_config(
+        &self,
+        ctx: &SystemPromptContext,
+        config: &Value,
+    ) -> Option<String> {
+        let file_store = ctx.file_store.as_ref()?;
+        let config = match AgentInstructionsConfig::from_value(config) {
+            Ok(config) => config,
+            Err(error) => {
                 tracing::warn!(
-                    error = %e,
+                    error = %error,
                     session_id = %ctx.session_id,
-                    "Failed to read AGENTS.md, skipping"
+                    "Invalid agent_instructions config, falling back to AGENTS.md"
                 );
-                None
+                AgentInstructionsConfig::default()
             }
+        };
+
+        let mut contributions = Vec::new();
+        for path in config.file_paths() {
+            let source = path.trim_start_matches('/');
+            match file_store.read_file(ctx.session_id, &path).await {
+                Ok(Some(file)) => {
+                    if let Some(content) = file
+                        .content
+                        .as_deref()
+                        .and_then(|c| format_instruction_file_content(source, c))
+                    {
+                        contributions.push(content);
+                    }
+                }
+                Ok(None) => {
+                    // File doesn't exist — silently skip
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        error = %e,
+                        session_id = %ctx.session_id,
+                        path = %path,
+                        "Failed to read agent instructions file, skipping"
+                    );
+                }
+            }
+        }
+
+        if contributions.is_empty() {
+            None
+        } else {
+            Some(contributions.join("\n\n"))
         }
     }
 
     fn system_prompt_preview(&self) -> Option<String> {
         Some(
             "<agent-instructions source=\"AGENTS.md\">\n\
-             (contents of /workspace/AGENTS.md, re-read every turn)\n\
+             (contents of configured /workspace instruction files, re-read every turn)\n\
              </agent-instructions>"
                 .to_string(),
         )
@@ -99,6 +236,14 @@ impl Capability for AgentInstructionsCapability {
 /// Truncates to `MAX_AGENTS_MD_SIZE` if content exceeds the limit.
 /// Returns `None` if content is empty.
 pub fn format_agents_md_content(content: &str) -> Option<String> {
+    format_instruction_file_content(DEFAULT_AGENT_INSTRUCTIONS_FILE, content)
+}
+
+/// Format an instruction file's content for injection into the system prompt.
+///
+/// Truncates to `MAX_AGENTS_MD_SIZE` if content exceeds the limit.
+/// Returns `None` if content is empty.
+pub fn format_instruction_file_content(source: &str, content: &str) -> Option<String> {
     let content = content.trim();
     if content.is_empty() {
         return None;
@@ -106,9 +251,10 @@ pub fn format_agents_md_content(content: &str) -> Option<String> {
 
     let (body, was_truncated) = if content.len() > MAX_AGENTS_MD_SIZE {
         tracing::warn!(
+            source = %source,
             content_size = content.len(),
             max_size = MAX_AGENTS_MD_SIZE,
-            "AGENTS.md exceeds size limit, truncating"
+            "Agent instructions file exceeds size limit, truncating"
         );
         let mut truncation_idx = MAX_AGENTS_MD_SIZE;
         while truncation_idx > 0 && !content.is_char_boundary(truncation_idx) {
@@ -120,17 +266,21 @@ pub fn format_agents_md_content(content: &str) -> Option<String> {
     };
 
     let escaped_body = escape_xml_text(body);
+    let escaped_source = escape_xml_attribute(source);
 
     let mut result = format!(
-        "<agent-instructions source=\"AGENTS.md\">\n{}",
-        escaped_body
+        "<agent-instructions source=\"{}\">\n{}",
+        escaped_source, escaped_body
     );
     if was_truncated {
-        result.push_str("\n\n[AGENTS.md was truncated — content exceeds 32 KiB limit]");
+        result.push_str(&format!(
+            "\n\n[{} was truncated — content exceeds 32 KiB limit]",
+            escape_xml_text(source)
+        ));
     }
     result.push_str(concat!(
         "\n\n",
-        "AGENTS.md may reference specs, skills, and other files in the workspace. ",
+        "Instruction files may reference specs, skills, and other files in the workspace. ",
         "Read referenced files before concluding you cannot perform a task. ",
         "Follow links progressively — don't load everything upfront, ",
         "but do read a file when its topic is relevant to the current request.",
@@ -139,11 +289,45 @@ pub fn format_agents_md_content(content: &str) -> Option<String> {
     Some(result)
 }
 
+fn normalize_instruction_file_path(file: &str) -> Result<String, String> {
+    let trimmed = file.trim();
+    if trimmed.is_empty() {
+        return Err("instruction file path cannot be empty".to_string());
+    }
+    if trimmed.contains('\0') {
+        return Err("instruction file path cannot contain null bytes".to_string());
+    }
+
+    let without_workspace = trimmed
+        .strip_prefix("/workspace/")
+        .or_else(|| trimmed.strip_prefix("workspace/"))
+        .unwrap_or(trimmed);
+    let relative = without_workspace.trim_start_matches('/');
+    if relative.is_empty() {
+        return Err("instruction file path must name a file".to_string());
+    }
+    if relative.ends_with('/') {
+        return Err("instruction file path must name a file".to_string());
+    }
+
+    for segment in relative.split('/') {
+        if segment.is_empty() || segment == "." || segment == ".." {
+            return Err(format!("invalid instruction file path: {file}"));
+        }
+    }
+
+    Ok(format!("/{relative}"))
+}
+
 fn escape_xml_text(content: &str) -> String {
     content
         .replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
+}
+
+fn escape_xml_attribute(content: &str) -> String {
+    escape_xml_text(content).replace('"', "&quot;")
 }
 
 #[cfg(test)]
@@ -154,12 +338,44 @@ mod tests {
     use crate::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
     use crate::traits::SessionFileStore;
     use crate::typed_id::SessionId;
-    use std::sync::Arc;
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex};
     use uuid::Uuid;
 
     /// Mock file store for testing dynamic system prompt contribution
     struct MockFileStore {
-        content: Option<String>,
+        files: HashMap<String, String>,
+        read_paths: Mutex<Vec<String>>,
+    }
+
+    impl MockFileStore {
+        fn empty() -> Self {
+            Self {
+                files: HashMap::new(),
+                read_paths: Mutex::new(Vec::new()),
+            }
+        }
+
+        fn single(path: &str, content: &str) -> Self {
+            Self {
+                files: HashMap::from([(path.to_string(), content.to_string())]),
+                read_paths: Mutex::new(Vec::new()),
+            }
+        }
+
+        fn with_files(files: &[(&str, &str)]) -> Self {
+            Self {
+                files: files
+                    .iter()
+                    .map(|(path, content)| (path.to_string(), content.to_string()))
+                    .collect(),
+                read_paths: Mutex::new(Vec::new()),
+            }
+        }
+
+        fn read_paths(&self) -> Vec<String> {
+            self.read_paths.lock().unwrap().clone()
+        }
     }
 
     #[async_trait::async_trait]
@@ -167,13 +383,14 @@ mod tests {
         async fn read_file(
             &self,
             _session_id: SessionId,
-            _path: &str,
+            path: &str,
         ) -> Result<Option<SessionFile>> {
-            Ok(self.content.as_ref().map(|c| SessionFile {
+            self.read_paths.lock().unwrap().push(path.to_string());
+            Ok(self.files.get(path).map(|c| SessionFile {
                 id: Uuid::nil(),
                 session_id: Uuid::nil(),
-                path: AGENTS_MD_PATH.to_string(),
-                name: "AGENTS.md".to_string(),
+                path: path.to_string(),
+                name: path.trim_start_matches('/').to_string(),
                 content: Some(c.clone()),
                 encoding: "text".to_string(),
                 is_directory: false,
@@ -376,25 +593,27 @@ mod tests {
     #[tokio::test]
     async fn test_contribution_reads_agents_md() {
         let cap = AgentInstructionsCapability;
-        let store = Arc::new(MockFileStore {
-            content: Some("## Style\nUse snake_case.".to_string()),
-        });
+        let store = Arc::new(MockFileStore::single(
+            AGENTS_MD_PATH,
+            "## Style\nUse snake_case.",
+        ));
         let ctx = SystemPromptContext {
             session_id: test_session_id(),
             locale: None,
-            file_store: Some(store),
+            file_store: Some(store.clone()),
         };
 
         let result = cap.system_prompt_contribution(&ctx).await.unwrap();
         assert!(result.contains("Use snake_case"));
         assert!(result.starts_with("<agent-instructions"));
         assert!(result.ends_with("</agent-instructions>"));
+        assert_eq!(store.read_paths(), vec!["/AGENTS.md"]);
     }
 
     #[tokio::test]
     async fn test_contribution_none_when_file_missing() {
         let cap = AgentInstructionsCapability;
-        let store = Arc::new(MockFileStore { content: None });
+        let store = Arc::new(MockFileStore::empty());
         let ctx = SystemPromptContext {
             session_id: test_session_id(),
             locale: None,
@@ -415,9 +634,7 @@ mod tests {
     #[tokio::test]
     async fn test_contribution_none_when_empty_content() {
         let cap = AgentInstructionsCapability;
-        let store = Arc::new(MockFileStore {
-            content: Some("   \n  ".to_string()),
-        });
+        let store = Arc::new(MockFileStore::single(AGENTS_MD_PATH, "   \n  "));
         let ctx = SystemPromptContext {
             session_id: test_session_id(),
             locale: None,
@@ -425,5 +642,71 @@ mod tests {
         };
 
         assert!(cap.system_prompt_contribution(&ctx).await.is_none());
+    }
+
+    #[test]
+    fn test_agent_instructions_config_defaults_to_agents_md() {
+        let config = AgentInstructionsConfig::from_value(&serde_json::json!({})).unwrap();
+        assert_eq!(config.files, vec!["AGENTS.md"]);
+    }
+
+    #[test]
+    fn test_agent_instructions_config_rejects_invalid_shape() {
+        assert!(AgentInstructionsConfig::from_value(&serde_json::json!({"files": []})).is_err());
+        assert!(
+            AgentInstructionsConfig::from_value(&serde_json::json!({"files": ["../CLAUDE.md"]}))
+                .is_err()
+        );
+        assert!(
+            AgentInstructionsConfig::from_value(
+                &serde_json::json!({"files": ["AGENTS.md"], "extra": true})
+            )
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn test_agent_instructions_config_normalizes_configured_files() {
+        let config = AgentInstructionsConfig::from_value(&serde_json::json!({
+            "files": ["AGENTS.md", "/workspace/CLAUDE.md", ".github/copilot-instructions.md"]
+        }))
+        .unwrap();
+
+        assert_eq!(
+            config.file_paths(),
+            vec![
+                "/AGENTS.md",
+                "/CLAUDE.md",
+                "/.github/copilot-instructions.md"
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn test_contribution_with_config_reads_multiple_instruction_files() {
+        let cap = AgentInstructionsCapability;
+        let store = Arc::new(MockFileStore::with_files(&[
+            ("/AGENTS.md", "Prefer Rust."),
+            ("/CLAUDE.md", "Prefer concise replies."),
+        ]));
+        let ctx = SystemPromptContext {
+            session_id: test_session_id(),
+            locale: None,
+            file_store: Some(store.clone()),
+        };
+
+        let result = cap
+            .system_prompt_contribution_with_config(
+                &ctx,
+                &serde_json::json!({ "files": ["AGENTS.md", "CLAUDE.md"] }),
+            )
+            .await
+            .unwrap();
+
+        assert!(result.contains("source=\"AGENTS.md\""));
+        assert!(result.contains("Prefer Rust."));
+        assert!(result.contains("source=\"CLAUDE.md\""));
+        assert!(result.contains("Prefer concise replies."));
+        assert_eq!(store.read_paths(), vec!["/AGENTS.md", "/CLAUDE.md"]);
     }
 }
