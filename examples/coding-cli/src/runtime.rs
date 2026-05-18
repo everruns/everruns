@@ -14,6 +14,7 @@ use everruns_core::capabilities::{
     CurrentTimeCapability, FileSystemCapability, INFINITY_CONTEXT_CAPABILITY_ID,
     InfinityContextCapability, LoopDetectionCapability, PROMPT_CACHING_CAPABILITY_ID,
     PromptCachingCapability, SKILLS_CAPABILITY_ID, SkillsCapability, StatelessTodoListCapability,
+    WebFetchCapability,
 };
 use everruns_core::llm_driver_registry::DriverRegistry;
 use everruns_core::llm_models::LlmProviderType;
@@ -132,6 +133,7 @@ pub async fn build(
     workspace_root: PathBuf,
     provider: ProviderChoice,
     gate: Arc<ApprovalGate>,
+    enable_web: bool,
 ) -> Result<RuntimeBundle> {
     let canonical_root = std::fs::canonicalize(&workspace_root)
         .with_context(|| format!("canonicalize workspace: {}", workspace_root.display()))?;
@@ -183,6 +185,9 @@ pub async fn build(
     capabilities.register(StatelessTodoListCapability);
     capabilities.register(LoopDetectionCapability);
     capabilities.register(PromptCachingCapability::new());
+    if enable_web {
+        capabilities.register(WebFetchCapability::from_env());
+    }
     capabilities.register(CodingBashCapability {
         workspace: workspace.clone(),
         gate,
@@ -240,7 +245,7 @@ pub async fn build(
         .platform_definition(platform)
         .backends(backends)
         .default_model(default_model)
-        .harness(coding_harness(harness_id))
+        .harness(coding_harness(harness_id, enable_web))
         .agent(coding_agent(agent_id))
         .session(coding_session(
             session_id,
@@ -280,7 +285,26 @@ pub async fn build(
     })
 }
 
-fn coding_harness(id: HarnessId) -> Harness {
+fn coding_harness(id: HarnessId, enable_web: bool) -> Harness {
+    let mut capabilities = vec![
+        AgentCapabilityConfig::new(AGENT_INSTRUCTIONS_CAPABILITY_ID),
+        AgentCapabilityConfig::new("session_file_system"),
+        AgentCapabilityConfig::new(SKILLS_CAPABILITY_ID),
+        AgentCapabilityConfig::new(INFINITY_CONTEXT_CAPABILITY_ID),
+        AgentCapabilityConfig::new("current_time"),
+        AgentCapabilityConfig::new("stateless_todo_list"),
+        AgentCapabilityConfig::new("loop_detection"),
+        AgentCapabilityConfig::new(PROMPT_CACHING_CAPABILITY_ID),
+        AgentCapabilityConfig::new("coding_cli_bash"),
+    ];
+    if enable_web {
+        // Turn on file-download so saved responses land in the workspace via
+        // our FileStore stack (subject to the blocklist + approval gate).
+        capabilities.push(AgentCapabilityConfig::with_config(
+            "web_fetch",
+            serde_json::json!({ "enable_file_download": true }),
+        ));
+    }
     Harness {
         id,
         name: "coding-cli".into(),
@@ -292,17 +316,7 @@ fn coding_harness(id: HarnessId) -> Harness {
         parent_harness_id: None,
         default_model_id: None,
         tags: vec!["example".into(), "coding".into()],
-        capabilities: vec![
-            AgentCapabilityConfig::new(AGENT_INSTRUCTIONS_CAPABILITY_ID),
-            AgentCapabilityConfig::new("session_file_system"),
-            AgentCapabilityConfig::new(SKILLS_CAPABILITY_ID),
-            AgentCapabilityConfig::new(INFINITY_CONTEXT_CAPABILITY_ID),
-            AgentCapabilityConfig::new("current_time"),
-            AgentCapabilityConfig::new("stateless_todo_list"),
-            AgentCapabilityConfig::new("loop_detection"),
-            AgentCapabilityConfig::new(PROMPT_CACHING_CAPABILITY_ID),
-            AgentCapabilityConfig::new("coding_cli_bash"),
-        ],
+        capabilities,
         mcp_servers: Default::default(),
         initial_files: vec![],
         network_access: None,

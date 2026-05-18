@@ -53,6 +53,12 @@ struct Cli {
     /// Auto-approve every destructive tool call (write/edit/bash). Print mode implies this.
     #[arg(long)]
     yes: bool,
+
+    /// Enable the built-in `web_fetch` capability (HTTP GET/HEAD with optional
+    /// markdown/text conversion and file-download to the workspace). Off by
+    /// default to avoid unexpected network egress.
+    #[arg(long)]
+    web: bool,
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy)]
@@ -104,7 +110,7 @@ async fn main() -> Result<()> {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         (ApprovalGate::channel(tx), Some(rx))
     };
-    let bundle = runtime::build(cwd, provider, gate).await?;
+    let bundle = runtime::build(cwd, provider, gate, cli.web).await?;
     let bundle = Arc::new(bundle);
 
     if let Some(prompt) = cli.print {
