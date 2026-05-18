@@ -1846,6 +1846,112 @@
         }
       }
     },
+    "/v1/apps/{app_id}/runs": {
+      "get": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "GET /v1/apps/{app_id}/runs - Recent app invocation runs",
+        "operationId": "list_app_runs",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "description": "App ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "window",
+            "in": "query",
+            "description": "Time window to include, such as 24h, 60m, or 7d.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "groupBy",
+            "in": "query",
+            "description": "Optional grouping. Currently only `hour` is supported.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recent app invocation runs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppRunListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid app ID or query",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "App not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/apps/{app_id}/unpublish": {
       "post": {
         "tags": [
@@ -12105,6 +12211,123 @@
           }
         }
       },
+      "AppRunBucket": {
+        "type": "object",
+        "description": "One bucket of the run-history histogram (per-hour aggregate).",
+        "required": [
+          "hour",
+          "ok",
+          "err"
+        ],
+        "properties": {
+          "err": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Count of runs that failed in this bucket.",
+            "minimum": 0
+          },
+          "hour": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Bucket start (top of the hour, RFC 3339)."
+          },
+          "ok": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Count of runs that completed successfully in this bucket.",
+            "minimum": 0
+          },
+          "running": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Count of runs still running when the bucket was queried.",
+            "minimum": 0
+          }
+        }
+      },
+      "AppRunEvent": {
+        "type": "object",
+        "description": "Single app-channel invocation record (one run = one channel-side event).",
+        "required": [
+          "id",
+          "app_id",
+          "channel_id",
+          "channel_type",
+          "status",
+          "created_at"
+        ],
+        "properties": {
+          "app_id": {
+            "type": "string",
+            "description": "App that received the invocation."
+          },
+          "channel_id": {
+            "type": "string",
+            "description": "Channel that originated the invocation."
+          },
+          "channel_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable channel name when set."
+          },
+          "channel_type": {
+            "$ref": "#/components/schemas/ChannelType",
+            "description": "Channel kind (slack, ag_ui, webhook, a2a, fcp)."
+          },
+          "completed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Timestamp the run finished, if any (RFC 3339)."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp the run started (RFC 3339)."
+          },
+          "id": {
+            "type": "string",
+            "description": "Prefixed public identifier of this run event."
+          },
+          "status": {
+            "type": "string",
+            "description": "Terminal status (`ok`, `err`, `running`)."
+          }
+        }
+      },
+      "AppRunListResponse": {
+        "type": "object",
+        "description": "Paged response for the app run history endpoint, optionally including a per-hour histogram.",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "buckets": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/AppRunBucket"
+            },
+            "description": "Per-hour aggregate buckets when the caller asked for them."
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AppRunEvent"
+            },
+            "description": "Page of run events ordered newest first."
+          }
+        }
+      },
       "AppStatus": {
         "type": "string",
         "description": "App lifecycle status.\n- `draft`: App is configured but not accepting requests\n- `published`: App is live, accepting incoming requests\n- `archived`: App is hidden from listings and cannot be modified or assigned\n- `deleted`: App is a tombstone kept only for historical references",
@@ -16647,6 +16870,25 @@
           "released",
           "cleanup_failed"
         ]
+      },
+      "ListAppRunsQuery": {
+        "type": "object",
+        "properties": {
+          "groupBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional grouping. Currently only `hour` is supported."
+          },
+          "window": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Time window to include, such as 24h, 60m, or 7d."
+          }
+        }
       },
       "ListExecutionsQuery": {
         "type": "object",
