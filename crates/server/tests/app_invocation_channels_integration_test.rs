@@ -12,6 +12,7 @@ use everruns_server::domains::apps::invoke_scheduled_app_channel;
 use everruns_server::domains::messages::MessageService;
 use everruns_server::domains::sessions::SessionService;
 use everruns_server::event_delivery::EventDelivery;
+use everruns_server::storage::models::CreateAuditLogRow;
 
 async fn create_app(
     server: &TestServer,
@@ -116,6 +117,79 @@ async fn list_user_message_texts(server: &TestServer, session_id: &str) -> Vec<S
 }
 
 #[tokio::test]
+async fn app_run_history_paginates_audit_log_fallback() {
+    let server = TestServer::in_memory().await;
+    let app = create_app(
+        &server,
+        "webhook-history",
+        "webhook",
+        json!({
+            "token": "history-token",
+            "session_mode": "session_per_invocation",
+            "message": "history",
+        }),
+    )
+    .await;
+
+    let app_id = app["id"].as_str().unwrap();
+    let channel_id = app["channels"][0]["id"].as_str().unwrap();
+    server
+        .db
+        .create_audit_log(CreateAuditLogRow {
+            org_id: DEFAULT_ORG_ID,
+            actor_id: None,
+            event_type: "agent.app_invocation.started".to_string(),
+            ip_address: None,
+            metadata: json!({
+                "app_id": app_id,
+                "app_channel_id": channel_id,
+                "app_channel_type": "webhook",
+            }),
+            domain: "agent".to_string(),
+            action: "agent.app_invocation.started".to_string(),
+            target_type: Some("app_channel".to_string()),
+            target_id: Some(channel_id.to_string()),
+        })
+        .await
+        .expect("create matching audit log");
+
+    tokio::time::sleep(std::time::Duration::from_millis(2)).await;
+    for idx in 0..500 {
+        server
+            .db
+            .create_audit_log(CreateAuditLogRow {
+                org_id: DEFAULT_ORG_ID,
+                actor_id: None,
+                event_type: "agent.app_invocation.started".to_string(),
+                ip_address: None,
+                metadata: json!({
+                    "app_id": format!("app_noise_{idx}"),
+                    "app_channel_id": format!("appchan_noise_{idx}"),
+                    "app_channel_type": "webhook",
+                }),
+                domain: "agent".to_string(),
+                action: "agent.app_invocation.started".to_string(),
+                target_type: Some("app_channel".to_string()),
+                target_id: Some(format!("appchan_noise_{idx}")),
+            })
+            .await
+            .expect("create unrelated audit log");
+    }
+
+    let run_history: Value = server
+        .get(&format!("/v1/apps/{app_id}/runs?window=24h"))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    let runs = run_history["data"].as_array().expect("runs array");
+    assert!(
+        runs.iter()
+            .any(|run| run["channel_id"].as_str() == Some(channel_id)),
+        "matching app invocation should be found beyond the first audit page"
+    );
+}
+
+#[tokio::test]
 async fn schedule_channel_binds_to_durable_schedule_and_invokes_shared_session() {
     let server = TestServer::in_memory().await;
     let app = create_app(
@@ -157,6 +231,30 @@ async fn schedule_channel_binds_to_durable_schedule_and_invokes_shared_session()
         .await
         .expect("published schedule binding");
     assert_eq!(published_schedule["enabled"], true);
+
+    let schedule_id = published_schedule["id"].as_str().unwrap();
+    let triggered: Value = server
+        .post(
+            &format!("/v1/durable/schedules/{schedule_id}/trigger"),
+            json!({}),
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    let run_history: Value = server
+        .get(&format!("/v1/apps/{app_id}/runs?window=24h&groupBy=hour"))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(
+        run_history["data"][0]["id"].as_str(),
+        triggered["execution_id"].as_str()
+    );
+    assert_eq!(run_history["data"][0]["app_id"], app_id);
+    assert_eq!(run_history["data"][0]["channel_id"], channel_id);
+    assert_eq!(run_history["data"][0]["channel_type"], "schedule");
+    assert_eq!(run_history["data"][0]["status"], "running");
+    assert_eq!(run_history["buckets"][0]["running"], 1);
 
     let session_service = SessionService::new(server.db.clone());
     let message_service = MessageService::new(

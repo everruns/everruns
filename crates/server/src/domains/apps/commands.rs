@@ -5,8 +5,9 @@
 
 use super::queries as q;
 use super::types::{
-    AddChannelRequest, CreateAppChannelRow, CreateAppRequest, CreateAppRow, UpdateApp,
-    UpdateAppChannel, UpdateAppRequest, UpdateChannelRequest,
+    AddChannelRequest, AppRunBucket, AppRunEvent, AppRunListResponse, CreateAppChannelRow,
+    CreateAppRequest, CreateAppRow, UpdateApp, UpdateAppChannel, UpdateAppRequest,
+    UpdateChannelRequest,
 };
 use super::{APP_DANGEROUS, APP_MANAGE, APP_VIEW};
 use crate::api::messages::{CreateMessageRequest, InputContentPart, InputMessage, MessageRole};
@@ -18,8 +19,9 @@ use crate::domains::sessions::SessionService;
 use crate::errors::ResourceNotFoundError;
 use crate::execution_metadata;
 use crate::services::PrincipalService;
+use crate::storage::models::AuditLogQuery;
 use crate::storage::password::hash_password;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Timelike, Utc};
 use everruns_core::app::{InvocationSessionMode, ScheduleChannelConfig, WebhookChannelConfig};
 use everruns_core::typed_id::{AgentId, AppChannelId, AppId, HarnessId, SessionId};
 use everruns_core::{
@@ -28,17 +30,22 @@ use everruns_core::{
     AuditEvent, ChannelType, FcpChannelConfig, Policy, SlackChannelConfig,
 };
 use everruns_durable::{
-    CreateScheduleRow, ScheduleTargetType, StoreError, UpdateField, UpdateSchedule,
+    CreateScheduleRow, Pagination as DurablePagination, ScheduleExecutionFilter,
+    ScheduleExecutionStatus, ScheduleTargetType, StoreError, UpdateField, UpdateSchedule,
     WorkflowEventStore,
 };
 use regex::Regex;
 use serde::Deserialize;
 use serde_json::{Value, json};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::str::FromStr;
 use std::sync::{Arc, LazyLock};
 use utoipa::ToSchema;
 use uuid::Uuid;
+
+const APP_RUN_AUDIT_PAGE_SIZE: usize = 500;
+const APP_RUN_AUDIT_MAX_PAGES: usize = 10;
+const APP_RUN_AUDIT_MATCH_LIMIT: usize = 100;
 
 // ============================================================================
 // Validation helpers
@@ -1811,6 +1818,269 @@ impl Command for ListAppChannels {
 }
 
 inventory::submit! { CommandDescriptor::of::<ListAppChannels>() }
+
+// ============================================================================
+// ListAppRuns
+// ============================================================================
+
+/// List recent app channel invocations for the app detail Live activity UI.
+#[derive(Debug, Default, Deserialize, ToSchema)]
+pub struct ListAppRuns {
+    pub app_id: String,
+    #[serde(default)]
+    pub window: Option<String>,
+    #[serde(default, rename = "groupBy")]
+    pub group_by: Option<String>,
+}
+
+impl Command for ListAppRuns {
+    type Output = AppRunListResponse;
+
+    fn meta() -> CommandMeta {
+        CommandMeta {
+            name: "list_app_runs",
+            category: "apps",
+            description: "List recent app channel invocation runs.",
+            method: "GET",
+            path: "/v1/apps/{id}/runs",
+        }
+    }
+
+    fn policy() -> Option<&'static Policy> {
+        Some(&APP_VIEW)
+    }
+
+    fn positional_arg() -> Option<&'static str> {
+        Some("app_id")
+    }
+
+    async fn execute(self, ctx: &Ctx) -> Result<AppRunListResponse, CommandError> {
+        let app_id: AppId = self
+            .app_id
+            .parse()
+            .map_err(|e| CommandError::bad_request(format!("Invalid app ID: {e}")))?;
+        let group_by_hour = match self.group_by.as_deref() {
+            None => false,
+            Some("hour") => true,
+            Some(_) => return Err(CommandError::bad_request("groupBy must be 'hour'")),
+        };
+        let cutoff = Utc::now() - parse_run_history_window(self.window.as_deref())?;
+
+        let encryption = ctx.encryption.as_ref();
+        let app = q::get_by_public_id(&ctx.db, encryption, ctx.org_id(), &app_id.to_string())
+            .await
+            .map_err(classify_anyhow)?
+            .ok_or_else(|| CommandError::not_found("App"))?;
+
+        let mut channel_by_id: HashMap<String, ChannelType> = app
+            .channels
+            .iter()
+            .map(|channel| (channel.public_id.to_string(), channel.channel_type.clone()))
+            .collect();
+        let mut schedule_channels = HashMap::new();
+        for channel_row in ctx
+            .db
+            .list_app_channels(app.internal_id)
+            .await
+            .map_err(classify_anyhow)?
+        {
+            if channel_row.channel_type == ChannelType::Schedule.to_string()
+                && let Some(schedule_id) = channel_row.durable_schedule_id
+                && let Some(channel_type) = ChannelType::from_str_opt(&channel_row.channel_type)
+            {
+                channel_by_id.insert(channel_row.public_id.clone(), channel_type.clone());
+                schedule_channels.insert(schedule_id, (channel_row.public_id, channel_type));
+            }
+        }
+
+        let mut runs = Vec::new();
+        let mut loaded_schedule_runs = false;
+        if !schedule_channels.is_empty()
+            && let Some(store) = &ctx.workflow_store
+        {
+            for (schedule_id, (channel_id, channel_type)) in &schedule_channels {
+                let executions = store
+                    .list_schedule_executions(
+                        ScheduleExecutionFilter {
+                            schedule_id: Some(*schedule_id),
+                            status: None,
+                        },
+                        DurablePagination {
+                            offset: 0,
+                            limit: 200,
+                        },
+                    )
+                    .await
+                    .map_err(|err| classify_anyhow(err.into()))?;
+                runs.extend(
+                    executions
+                        .into_iter()
+                        .filter(|execution| execution.scheduled_at >= cutoff)
+                        .map(|execution| AppRunEvent {
+                            id: execution.id.to_string(),
+                            app_id: app.public_id.to_string(),
+                            channel_id: channel_id.clone(),
+                            channel_type: channel_type.clone(),
+                            channel_name: None,
+                            status: schedule_execution_status(&execution.status).to_string(),
+                            created_at: execution.scheduled_at,
+                            completed_at: execution.completed_at,
+                        }),
+                );
+            }
+            loaded_schedule_runs = true;
+        }
+
+        let app_id_string = app.public_id.to_string();
+        let mut audit_before = None;
+        let mut audit_matches = 0usize;
+        for _ in 0..APP_RUN_AUDIT_MAX_PAGES {
+            let audit_rows = ctx
+                .db
+                .list_audit_logs(AuditLogQuery {
+                    org_id: ctx.org_id(),
+                    limit: APP_RUN_AUDIT_PAGE_SIZE as i64,
+                    before: audit_before,
+                    event_type_prefix: None,
+                    actor_id: None,
+                    domain: Some("agent"),
+                    action: Some("agent.app_invocation.started"),
+                })
+                .await
+                .map_err(classify_anyhow)?;
+            if audit_rows.is_empty() {
+                break;
+            }
+
+            let page_len = audit_rows.len();
+            let next_before = audit_rows.last().map(|row| row.created_at);
+            let reached_cutoff = audit_rows.last().is_some_and(|row| row.created_at < cutoff);
+            for row in audit_rows {
+                if row.created_at < cutoff
+                    || row.metadata.get("app_id").and_then(Value::as_str)
+                        != Some(app_id_string.as_str())
+                {
+                    continue;
+                }
+                let Some(channel_id) = row
+                    .metadata
+                    .get("app_channel_id")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned)
+                else {
+                    continue;
+                };
+                let Some(channel_type) = row
+                    .metadata
+                    .get("app_channel_type")
+                    .and_then(Value::as_str)
+                    .and_then(ChannelType::from_str_opt)
+                    .or_else(|| channel_by_id.get(&channel_id).cloned())
+                else {
+                    continue;
+                };
+                if channel_type == ChannelType::Schedule && loaded_schedule_runs {
+                    continue;
+                }
+                runs.push(AppRunEvent {
+                    id: row.id.to_string(),
+                    app_id: app_id_string.clone(),
+                    channel_id,
+                    channel_type,
+                    channel_name: None,
+                    status: "running".to_string(),
+                    created_at: row.created_at,
+                    completed_at: None,
+                });
+                audit_matches += 1;
+                if audit_matches >= APP_RUN_AUDIT_MATCH_LIMIT {
+                    break;
+                }
+            }
+            if page_len < APP_RUN_AUDIT_PAGE_SIZE
+                || reached_cutoff
+                || audit_matches >= APP_RUN_AUDIT_MATCH_LIMIT
+            {
+                break;
+            }
+            audit_before = next_before;
+        }
+
+        runs.sort_by_key(|run| std::cmp::Reverse(run.created_at));
+        runs.truncate(100);
+        let buckets = group_by_hour.then(|| bucket_app_runs_by_hour(&runs));
+        Ok(AppRunListResponse {
+            data: runs,
+            buckets,
+        })
+    }
+}
+
+inventory::submit! { CommandDescriptor::of::<ListAppRuns>() }
+
+fn parse_run_history_window(window: Option<&str>) -> Result<Duration, CommandError> {
+    let Some(window) = window else {
+        return Ok(Duration::hours(24));
+    };
+    if window.len() < 2 {
+        return Err(CommandError::bad_request(
+            "window must use m, h, or d units, such as 24h",
+        ));
+    }
+    let (amount, unit) = window.split_at(window.len() - 1);
+    let value: i64 = amount
+        .parse()
+        .map_err(|_| CommandError::bad_request("window must use a positive integer amount"))?;
+    if value <= 0 {
+        return Err(CommandError::bad_request("window must be positive"));
+    }
+    let duration = match unit {
+        "m" => Duration::minutes(value),
+        "h" => Duration::hours(value),
+        "d" => Duration::days(value),
+        _ => {
+            return Err(CommandError::bad_request(
+                "window must use m, h, or d units, such as 24h",
+            ));
+        }
+    };
+    Ok(duration.min(Duration::days(30)))
+}
+
+fn schedule_execution_status(status: &ScheduleExecutionStatus) -> &'static str {
+    match status {
+        ScheduleExecutionStatus::Pending => "pending",
+        ScheduleExecutionStatus::Running => "running",
+        ScheduleExecutionStatus::Completed => "completed",
+        ScheduleExecutionStatus::Failed => "failed",
+        ScheduleExecutionStatus::Skipped => "skipped",
+    }
+}
+
+fn bucket_app_runs_by_hour(runs: &[AppRunEvent]) -> Vec<AppRunBucket> {
+    let mut buckets: BTreeMap<DateTime<Utc>, AppRunBucket> = BTreeMap::new();
+    for run in runs {
+        let hour = run
+            .created_at
+            .with_minute(0)
+            .and_then(|ts| ts.with_second(0))
+            .and_then(|ts| ts.with_nanosecond(0))
+            .unwrap_or(run.created_at);
+        let bucket = buckets.entry(hour).or_insert_with(|| AppRunBucket {
+            hour,
+            ..Default::default()
+        });
+        match run.status.as_str() {
+            "completed" => bucket.ok += 1,
+            "failed" | "skipped" => bucket.err += 1,
+            _ => {
+                let running = bucket.running.unwrap_or(0) + 1;
+                bucket.running = Some(running);
+            }
+        }
+    }
+    buckets.into_values().collect()
+}
 
 // ============================================================================
 // UpdateApp

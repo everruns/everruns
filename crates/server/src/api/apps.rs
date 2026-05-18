@@ -4,7 +4,8 @@
 
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::apps::types::{
-    AddChannelRequest, CreateAppRequest, ListAppsQuery, UpdateAppRequest, UpdateChannelRequest,
+    AddChannelRequest, AppRunListResponse, CreateAppRequest, ListAppsQuery, UpdateAppRequest,
+    UpdateChannelRequest,
 };
 use crate::domains::apps::{
     APP_DANGEROUS, APP_MANAGE, APP_VIEW, AddA2aChannelCmd, AddA2aChannelOutput,
@@ -28,7 +29,9 @@ use super::common::{
 };
 use super::dispatch::{Dispatchable, impl_dispatchable};
 use crate::domains::common::Command;
+use serde::Deserialize;
 use std::sync::Arc;
+use utoipa::{IntoParams, ToSchema};
 
 /// App state for routes
 #[derive(Clone)]
@@ -106,6 +109,7 @@ pub fn routes(state: AppState) -> Router {
         .route("/v1/apps/{app_id}/delete", post(destroy_app))
         .route("/v1/apps/{app_id}/publish", post(publish_app))
         .route("/v1/apps/{app_id}/unpublish", post(unpublish_app))
+        .route("/v1/apps/{app_id}/runs", get(list_app_runs))
         // Channel sub-routes
         .route(
             "/v1/apps/{app_id}/channels",
@@ -333,6 +337,49 @@ pub async fn unpublish_app(
         .dispatcher(&org)
         .run_with_urls(crate::domains::apps::UnpublishApp { id: app_id })
         .await
+}
+
+#[derive(Debug, Default, Deserialize, IntoParams, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ListAppRunsQuery {
+    /// Time window to include, such as 24h, 60m, or 7d.
+    pub window: Option<String>,
+    /// Optional grouping. Currently only `hour` is supported.
+    pub group_by: Option<String>,
+}
+
+/// GET /v1/apps/{app_id}/runs - Recent app invocation runs
+#[utoipa::path(
+    get,
+    path = "/v1/apps/{app_id}/runs",
+    params(
+        ("app_id" = String, Path, description = "App ID"),
+        ListAppRunsQuery
+    ),
+    responses(
+        (status = 200, description = "Recent app invocation runs", body = AppRunListResponse),
+        (status = 400, description = "Invalid app ID or query", body = ErrorResponse),
+        (status = 401, description = "Unauthorized", body = ErrorResponse),
+        (status = 403, description = "Forbidden", body = ErrorResponse),
+        (status = 404, description = "App not found", body = ErrorResponse),
+        (status = 500, description = "Internal server error", body = ErrorResponse)
+    ),
+    tag = "apps"
+)]
+pub async fn list_app_runs(
+    org: ResolvedOrg,
+    State(state): State<AppState>,
+    Path(app_id): Path<String>,
+    Query(query): Query<ListAppRunsQuery>,
+) -> ApiResult<AppRunListResponse> {
+    let runs = crate::domains::apps::ListAppRuns {
+        app_id,
+        window: query.window,
+        group_by: query.group_by,
+    }
+    .run(&state.ctx(&org))
+    .await?;
+    Ok(Json(runs))
 }
 
 // ============================================
