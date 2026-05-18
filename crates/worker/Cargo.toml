@@ -15,7 +15,7 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 
 everruns-config = { path = "../config" }
-everruns-core = { path = "../core", features = ["tree-sitter-outlines"] }
+everruns-core = { path = "../core", features = ["embedded-platform-docs", "tree-sitter-outlines", "ui-capabilities"] }
 everruns-integrations-docker = { path = "../../integrations/docker" }
 everruns-integrations-brave-search = { path = "../../integrations/brave-search" }
 everruns-integrations-parallel = { path = "../../integrations/parallel" }

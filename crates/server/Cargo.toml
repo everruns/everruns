@@ -74,7 +74,7 @@ futures-util.workspace = true
 bashkit = { version = "0.5.0", features = ["scripted_tool", "jq"] }
 
 everruns-config = { path = "../config" }
-everruns-core = { path = "../core", features = ["openapi", "sqlx", "tree-sitter-outlines"] }
+everruns-core = { path = "../core", features = ["embedded-platform-docs", "openapi", "sqlx", "tree-sitter-outlines", "ui-capabilities"] }
 everruns-macros = { path = "../macros" }
 everruns-integrations-docker = { path = "../../integrations/docker" }
 everruns-integrations-brave-search = { path = "../../integrations/brave-search" }

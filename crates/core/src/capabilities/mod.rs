@@ -78,6 +78,7 @@ pub use crate::capability_types::{
 // ============================================================================
 
 mod a2a_delegation;
+#[cfg(feature = "ui-capabilities")]
 mod a2ui;
 mod agent_instructions;
 pub mod attach_skill;
@@ -99,6 +100,7 @@ mod loop_detection;
 pub mod mcp;
 mod noop;
 mod openai_tool_search;
+#[cfg(feature = "ui-capabilities")]
 mod openui;
 mod parallel;
 pub mod persistent_memory;
@@ -129,6 +131,7 @@ pub use a2a_delegation::{
     A2A_AGENT_DELEGATION_CAPABILITY_ID, A2aAgentDelegationCapability, CancelAgentTool,
     GetAgentRunsTool, MessageAgentTool, SpawnAgentTool, WaitAgentTool,
 };
+#[cfg(feature = "ui-capabilities")]
 pub use a2ui::{A2UI_CAPABILITY_ID, A2UiCapability};
 pub use agent_instructions::{
     AGENT_INSTRUCTIONS_CAPABILITY_ID, AGENTS_MD_PATH, AgentInstructionsCapability,
@@ -199,6 +202,7 @@ pub use noop::NoopCapability;
 pub use openai_tool_search::{
     DEFAULT_TOOL_SEARCH_THRESHOLD, OPENAI_TOOL_SEARCH_CAPABILITY_ID, OpenAiToolSearchCapability,
 };
+#[cfg(feature = "ui-capabilities")]
 pub use openui::{OPENUI_CAPABILITY_ID, OpenUiCapability};
 pub use parallel::ParallelCapability;
 pub use persistent_memory::{
@@ -826,9 +830,12 @@ impl CapabilityRegistry {
         // first sentence of the system prompt. Streaming-output guardrail.
         registry.register(PromptCanaryGuardrailCapability);
 
-        // OpenUI generative UI (all environments)
-        registry.register(OpenUiCapability);
-        registry.register(A2UiCapability);
+        // OpenUI/A2UI prompt helpers are product features, not required by embedders.
+        #[cfg(feature = "ui-capabilities")]
+        {
+            registry.register(OpenUiCapability);
+            registry.register(A2UiCapability);
+        }
 
         // Demo capability with mount points (all environments)
         registry.register(SampleDataCapability);
@@ -1797,7 +1804,7 @@ mod tests {
     }
 
     fn expected_core_builtin_ids() -> BTreeSet<&'static str> {
-        [
+        let mut ids = [
             "agent_instructions",
             "human_intent",
             "budgeting",
@@ -1828,8 +1835,6 @@ mod tests {
             "subagents",
             "a2a_agent_delegation",
             "system_commands",
-            "openui",
-            "a2ui",
             "sample_data",
             "data_knowledge",
             "knowledge_base",
@@ -1842,7 +1847,12 @@ mod tests {
             "prompt_canary_guardrail",
         ]
         .into_iter()
-        .collect()
+        .collect::<BTreeSet<_>>();
+        if cfg!(feature = "ui-capabilities") {
+            ids.insert("openui");
+            ids.insert("a2ui");
+        }
+        ids
     }
 
     fn registry_ids(registry: &CapabilityRegistry) -> BTreeSet<&str> {

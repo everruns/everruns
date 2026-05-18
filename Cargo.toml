@@ -40,6 +40,8 @@ version = "0.8.31"
 edition = "2024"
 license = "MIT"
 authors = ["Everruns Contributors"]
+homepage = "https://everruns.com"
+repository = "https://github.com/everruns/everruns"
 
 [workspace.dependencies]
 # Async runtime

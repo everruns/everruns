@@ -10,6 +10,9 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/everruns-config"
 description = "Shared configuration loading helpers for Everruns"
 
 [dependencies]
