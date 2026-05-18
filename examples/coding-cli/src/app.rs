@@ -7,7 +7,9 @@
 use crate::approval::ApprovalRequest;
 use crate::runtime::RuntimeBundle;
 use anyhow::Result;
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use crossterm::event::{
+    self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEvent, MouseEventKind,
+};
 use everruns_core::events::{EventData, ToolCompletedData};
 use everruns_core::message::{ContentPart, MessageRole};
 use ratatui::Terminal;
@@ -70,7 +72,12 @@ pub struct App {
     pub input: String,
     pub busy: bool,
     pub should_quit: bool,
-    pub scroll: u16,
+    /// Lines scrolled back from the bottom of the transcript. 0 = stuck to bottom.
+    pub scroll: u32,
+    /// Last rendered total line count for the chat area, used to clamp scroll.
+    pub last_total_lines: u32,
+    /// Last rendered visible-line height for the chat area, used for page jumps.
+    pub last_chat_height: u32,
     rx: Option<mpsc::UnboundedReceiver<TurnEvent>>,
     approval_rx: ApprovalRx,
     pending: Option<PendingApproval>,
@@ -92,6 +99,8 @@ impl App {
             busy: false,
             should_quit: false,
             scroll: 0,
+            last_total_lines: 0,
+            last_chat_height: 0,
             rx: None,
             approval_rx,
             pending: None,
@@ -175,14 +184,18 @@ impl App {
                 self.pending = Some(PendingApproval { req, responder });
             }
 
-            // 3) keystrokes
-            if event::poll(Duration::from_millis(80))?
-                && let Event::Key(key) = event::read()?
-            {
-                if key.kind == KeyEventKind::Release {
-                    continue;
+            // 3) keystrokes / mouse
+            if event::poll(Duration::from_millis(80))? {
+                match event::read()? {
+                    Event::Key(key) => {
+                        if key.kind == KeyEventKind::Release {
+                            continue;
+                        }
+                        self.handle_key(key).await;
+                    }
+                    Event::Mouse(m) => self.handle_mouse(m),
+                    _ => {}
                 }
-                self.handle_key(key).await;
             }
             if self.should_quit {
                 // If we exit with an outstanding approval, deny it so the tool
@@ -247,14 +260,40 @@ impl App {
                 self.push_user(text.clone());
                 self.start_turn(text);
             }
-            KeyCode::PageUp => {
-                self.scroll = self.scroll.saturating_add(5);
-            }
-            KeyCode::PageDown => {
-                self.scroll = self.scroll.saturating_sub(5);
-            }
+            KeyCode::Up => self.scroll_by(1),
+            KeyCode::Down => self.scroll_by(-1),
+            KeyCode::PageUp => self.scroll_by(self.page_step() as i32),
+            KeyCode::PageDown => self.scroll_by(-(self.page_step() as i32)),
+            KeyCode::Home => self.scroll_to_top(),
+            KeyCode::End => self.scroll = 0,
             _ => {}
         }
+    }
+
+    fn handle_mouse(&mut self, m: MouseEvent) {
+        match m.kind {
+            MouseEventKind::ScrollUp => self.scroll_by(3),
+            MouseEventKind::ScrollDown => self.scroll_by(-3),
+            _ => {}
+        }
+    }
+
+    fn page_step(&self) -> u32 {
+        (self.last_chat_height / 2).max(1)
+    }
+
+    fn scroll_by(&mut self, delta: i32) {
+        let max = self.max_scroll();
+        let cur = self.scroll as i64 + delta as i64;
+        self.scroll = cur.clamp(0, max as i64) as u32;
+    }
+
+    fn scroll_to_top(&mut self) {
+        self.scroll = self.max_scroll();
+    }
+
+    fn max_scroll(&self) -> u32 {
+        self.last_total_lines.saturating_sub(self.last_chat_height)
     }
 
     fn handle_command(&mut self, cmd: &str) {
@@ -262,9 +301,12 @@ impl App {
         let head = parts[0];
         match head {
             "help" => {
+                self.push_system("/help · /tools · /cwd · /model · /clear · /quit".into());
                 self.push_system(
-                    "/help · /tools · /cwd · /model · /clear · /quit (Esc/Ctrl-D also exit)".into(),
+                    "scroll: ↑/↓ line · PgUp/PgDn half-page · Home/End top/bottom · mouse wheel"
+                        .into(),
                 );
+                self.push_system("approvals: y allow · n / Esc deny · exit: Esc / Ctrl-D".into());
             }
             "tools" => {
                 self.push_system(format!("tools: {}", self.bundle.tool_names.join(", ")));
@@ -474,7 +516,7 @@ fn first_line(s: &str, max: usize) -> String {
 
 // ---------- rendering ----------
 
-fn draw(f: &mut ratatui::Frame, app: &App) {
+fn draw(f: &mut ratatui::Frame, app: &mut App) {
     let has_approval = app.pending.is_some();
     let input_height: u16 = 3;
     let approval_height: u16 = if has_approval { 3 } else { 0 };
@@ -495,15 +537,15 @@ fn draw(f: &mut ratatui::Frame, app: &App) {
     draw_chat(f, chunks[idx], app);
     idx += 1;
     if has_approval {
-        draw_approval(f, chunks[idx], app);
+        draw_approval(f, chunks[idx], &*app);
         idx += 1;
     }
-    draw_input(f, chunks[idx], app);
+    draw_input(f, chunks[idx], &*app);
     idx += 1;
-    draw_status(f, chunks[idx], app);
+    draw_status(f, chunks[idx], &*app);
 }
 
-fn draw_chat(f: &mut ratatui::Frame, area: Rect, app: &App) {
+fn draw_chat(f: &mut ratatui::Frame, area: Rect, app: &mut App) {
     let inner_width = area.width.saturating_sub(2).max(10) as usize;
     let mut lines: Vec<Line> = Vec::new();
     for chat in &app.lines {
@@ -533,15 +575,23 @@ fn draw_chat(f: &mut ratatui::Frame, area: Rect, app: &App) {
     }
     let height = area.height.saturating_sub(2) as usize;
     let total = lines.len();
+    app.last_total_lines = total as u32;
+    app.last_chat_height = height as u32;
     let max_scroll = total.saturating_sub(height);
-    let scroll_back = (app.scroll as usize).min(max_scroll);
+    if (app.scroll as usize) > max_scroll {
+        app.scroll = max_scroll as u32;
+    }
+    let scroll_back = app.scroll as usize;
     let end = total.saturating_sub(scroll_back);
     let start = end.saturating_sub(height);
     let view: Vec<Line> = lines[start..end].to_vec();
 
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title(" Everruns Coding CLI ");
+    let title = if scroll_back == 0 {
+        " Everruns Coding CLI ".to_string()
+    } else {
+        format!(" Everruns Coding CLI · ↑{scroll_back}/{max_scroll}  ↑↓ PgUp/PgDn Home/End ")
+    };
+    let block = Block::default().borders(Borders::ALL).title(title);
     let para = Paragraph::new(view).block(block).wrap(Wrap { trim: false });
     f.render_widget(para, area);
 }

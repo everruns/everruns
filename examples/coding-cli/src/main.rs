@@ -12,6 +12,7 @@ use anyhow::Result;
 use app::App;
 use approval::ApprovalGate;
 use clap::Parser;
+use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
 use crossterm::execute;
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
@@ -27,7 +28,7 @@ use std::sync::Arc;
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "ercli",
+    name = "ercode",
     version,
     about = "Everruns coding CLI — embedded terminal agent built on everruns-runtime"
 )]
@@ -66,7 +67,7 @@ fn pick_provider(cli: &Cli) -> ProviderChoice {
             model: "claude-sonnet-4-5".into(),
         },
         Some(ProviderArg::Openai) => ProviderChoice::OpenAi {
-            model: "gpt-4.1-mini".into(),
+            model: "gpt-5.5".into(),
         },
         Some(ProviderArg::Sim) => ProviderChoice::Sim,
         None => ProviderChoice::from_env(),
@@ -120,7 +121,7 @@ async fn run_tui(
 ) -> Result<()> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen)?;
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
@@ -128,7 +129,11 @@ async fn run_tui(
     let result = app.run(&mut terminal).await;
 
     disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+    execute!(
+        terminal.backend_mut(),
+        DisableMouseCapture,
+        LeaveAlternateScreen
+    )?;
     terminal.show_cursor()?;
     result
 }

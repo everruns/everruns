@@ -27,42 +27,53 @@ depends on the public runtime crate the same way an external embedder would.
   inline.
 - **AGENTS.md / CLAUDE.md / .agents.md** loaded from the workspace root and
   injected into the system prompt
-- **Provider selection** via env vars: `ANTHROPIC_API_KEY` → Anthropic,
-  `OPENAI_API_KEY` → OpenAI, otherwise falls back to `llmsim` (offline)
+- **Provider selection** via env vars: `OPENAI_API_KEY` → OpenAI (`gpt-5.5`),
+  `ANTHROPIC_API_KEY` → Anthropic (`claude-sonnet-4-5`), otherwise falls back
+  to `llmsim` (offline). OpenAI is preferred when both keys are present so the
+  default model stays `gpt-5.5`.
 - **Slash commands**: `/help`, `/tools`, `/cwd`, `/model`, `/clear`, `/quit`
 - **`--print`** one-shot mode for CI smoke tests
+
+## Install
+
+```bash
+cargo install --path examples/coding-cli --locked
+```
+
+This drops the `ercode` binary into `~/.cargo/bin/`.
 
 ## Run
 
 Interactive TUI in the current repo:
 
 ```bash
-cargo run --manifest-path examples/coding-cli/Cargo.toml
+ercode
+# or, without installing:
+cargo run -p everruns-coding-cli
 ```
 
 Against a different workspace:
 
 ```bash
-cargo run --manifest-path examples/coding-cli/Cargo.toml -- -C /path/to/repo
+ercode -C /path/to/repo
 ```
 
 One-shot prompt (no TUI):
 
 ```bash
-cargo run --manifest-path examples/coding-cli/Cargo.toml -- \
-  --provider anthropic -p "List the top-level crates and summarize each in one line."
+ercode --provider anthropic -p "List the top-level crates and summarize each in one line."
 ```
 
 With Doppler secrets:
 
 ```bash
-doppler run -- cargo run --manifest-path examples/coding-cli/Cargo.toml -- -p "Show me the runtime spec."
+doppler run -- ercode -p "Show me the runtime spec."
 ```
 
 Offline (no API key required):
 
 ```bash
-cargo run --manifest-path examples/coding-cli/Cargo.toml -- --provider sim -p "hi"
+ercode --provider sim -p "hi"
 ```
 
 ## Flags

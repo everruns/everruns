@@ -80,7 +80,18 @@ pub enum ProviderChoice {
 
 impl ProviderChoice {
     /// Pick a default based on env vars. CLI flags override this in `main`.
+    /// OpenAI is preferred when both keys are present so the out-of-the-box
+    /// default model stays `gpt-5.5`.
     pub fn from_env() -> Self {
+        if std::env::var("OPENAI_API_KEY")
+            .ok()
+            .is_some_and(|v| !v.is_empty())
+        {
+            return Self::OpenAi {
+                model: std::env::var("EVERRUNS_CLI_MODEL")
+                    .unwrap_or_else(|_| "gpt-5.5".to_string()),
+            };
+        }
         if std::env::var("ANTHROPIC_API_KEY")
             .ok()
             .is_some_and(|v| !v.is_empty())
@@ -88,15 +99,6 @@ impl ProviderChoice {
             return Self::Anthropic {
                 model: std::env::var("EVERRUNS_CLI_MODEL")
                     .unwrap_or_else(|_| "claude-sonnet-4-5".to_string()),
-            };
-        }
-        if std::env::var("OPENAI_API_KEY")
-            .ok()
-            .is_some_and(|v| !v.is_empty())
-        {
-            return Self::OpenAi {
-                model: std::env::var("EVERRUNS_CLI_MODEL")
-                    .unwrap_or_else(|_| "gpt-4.1-mini".to_string()),
             };
         }
         Self::Sim
