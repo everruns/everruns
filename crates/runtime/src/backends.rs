@@ -2,7 +2,7 @@
 // Decision: runtime extends core's read-only traits with the minimal write
 // operations needed for seeding and message persistence.
 
-use crate::in_memory::{InMemorySessionFileStore, InMemorySessionStore};
+use crate::in_memory::InMemorySessionStore;
 use async_trait::async_trait;
 use everruns_core::agent::Agent;
 use everruns_core::error::Result;
@@ -16,9 +16,9 @@ use everruns_core::memory_store::MemoryStoreBackend;
 use everruns_core::message::Message;
 use everruns_core::message_retriever::{InputMessage, MessageRetriever};
 use everruns_core::session::Session;
-use everruns_core::session_file::{InitialFile, SessionFile};
+use everruns_core::session_file::SessionFile;
 use everruns_core::traits::{
-    AgentStore, EventEmitter, HarnessStore, LlmProviderStore, ModelWithProvider, SessionFileStore,
+    AgentStore, EventEmitter, HarnessStore, LlmProviderStore, ModelWithProvider, SessionFileSystem,
     SessionMutator, SessionStorageStore, SessionStore,
 };
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, ModelId, SessionId};
@@ -59,12 +59,8 @@ pub trait RuntimeMessageStore: MessageRetriever + Send + Sync {
     async fn store_message(&self, session_id: SessionId, message: Message) -> Result<()>;
 }
 
-/// Filesystem contract for runtime seeding and lookup.
-#[async_trait]
-pub trait RuntimeFileStore: SessionFileStore + Send + Sync {
-    /// Seed a starter file into a session workspace.
-    async fn seed_initial_file(&self, session_id: SessionId, file: &InitialFile) -> Result<()>;
-}
+/// Backward-compatible alias for the old runtime filesystem extension.
+pub use everruns_core::traits::SessionFileSystem as RuntimeFileStore;
 
 /// Provider store contract for runtime lookup and default-model configuration.
 #[async_trait]
@@ -101,7 +97,7 @@ pub struct RuntimeBackends {
     /// Optional collector for `InProcessRuntime::events()`.
     pub event_collector: Option<Arc<dyn RuntimeEventCollector>>,
     /// Session filesystem backend.
-    pub file_store: Arc<dyn RuntimeFileStore>,
+    pub file_store: Arc<dyn SessionFileSystem>,
     /// Session key/value + secret storage backend.
     pub storage_store: Arc<dyn SessionStorageStore>,
     /// Persistent cross-session memory backend.
@@ -180,10 +176,10 @@ impl MessageRetriever for DynMessageStore {
 }
 
 #[derive(Clone)]
-pub(crate) struct DynFileStore(pub Arc<dyn RuntimeFileStore>);
+pub(crate) struct DynFileStore(pub Arc<dyn SessionFileSystem>);
 
 #[async_trait]
-impl SessionFileStore for DynFileStore {
+impl SessionFileSystem for DynFileStore {
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
         self.0.read_file(session_id, path).await
     }
@@ -329,12 +325,6 @@ impl RuntimeMessageStore for InMemoryMessageRetriever {
 }
 
 #[async_trait]
-impl RuntimeFileStore for InMemorySessionFileStore {
-    async fn seed_initial_file(&self, session_id: SessionId, file: &InitialFile) -> Result<()> {
-        InMemorySessionFileStore::seed_initial_file(self, session_id, file).await
-    }
-}
-
 #[async_trait]
 impl RuntimeProviderStore for InMemoryLlmProviderStore {
     async fn set_default_model(&self, model: ModelWithProvider) -> Result<()> {

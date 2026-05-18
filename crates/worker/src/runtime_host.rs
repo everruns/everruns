@@ -6,7 +6,7 @@ use async_trait::async_trait;
 use everruns_core::error::Result;
 use everruns_core::traits::{
     AgentStore, EventEmitter, HarnessStore, ImageArtifactStore, ImageResolver, LlmProviderStore,
-    PaymentAuthority, ProviderCredentialStore, SessionFileStore, SessionMutator, SessionStore,
+    PaymentAuthority, ProviderCredentialStore, SessionFileSystem, SessionMutator, SessionStore,
 };
 use everruns_core::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_core::{Agent, CapabilityRegistry, DriverRegistry, Harness, Session, SessionStatus};
@@ -119,7 +119,7 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
         Arc::new(AdapterEventEmitter::new(self.adapters.clone()))
     }
 
-    fn file_store(&self) -> Arc<dyn SessionFileStore> {
+    fn file_store(&self) -> Arc<dyn SessionFileSystem> {
         Arc::new(AdapterSessionFileStore::new(self.adapters.clone()))
     }
 

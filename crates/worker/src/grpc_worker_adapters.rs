@@ -218,7 +218,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
 
     async fn read_file(&self, session_id: Uuid, path: &str) -> Result<Option<SessionFile>> {
         let store = GrpcSessionFileStore::new(self.client.clone());
-        everruns_core::traits::SessionFileStore::read_file(
+        everruns_core::traits::SessionFileSystem::read_file(
             &store,
             SessionId::from_uuid(session_id),
             path,
@@ -234,7 +234,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         encoding: &str,
     ) -> Result<SessionFile> {
         let store = GrpcSessionFileStore::new(self.client.clone());
-        everruns_core::traits::SessionFileStore::write_file(
+        everruns_core::traits::SessionFileSystem::write_file(
             &store,
             SessionId::from_uuid(session_id),
             path,
@@ -254,7 +254,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         encoding: &str,
     ) -> Result<Option<SessionFile>> {
         let store = GrpcSessionFileStore::new(self.client.clone());
-        everruns_core::traits::SessionFileStore::write_file_if_content_matches(
+        everruns_core::traits::SessionFileSystem::write_file_if_content_matches(
             &store,
             SessionId::from_uuid(session_id),
             path,
@@ -268,7 +268,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
 
     async fn delete_file(&self, session_id: Uuid, path: &str, recursive: bool) -> Result<bool> {
         let store = GrpcSessionFileStore::new(self.client.clone());
-        everruns_core::traits::SessionFileStore::delete_file(
+        everruns_core::traits::SessionFileSystem::delete_file(
             &store,
             SessionId::from_uuid(session_id),
             path,
@@ -279,7 +279,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
 
     async fn list_directory(&self, session_id: Uuid, path: &str) -> Result<Vec<FileInfo>> {
         let store = GrpcSessionFileStore::new(self.client.clone());
-        everruns_core::traits::SessionFileStore::list_directory(
+        everruns_core::traits::SessionFileSystem::list_directory(
             &store,
             SessionId::from_uuid(session_id),
             path,
@@ -289,7 +289,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
 
     async fn stat_file(&self, session_id: Uuid, path: &str) -> Result<Option<FileStat>> {
         let store = GrpcSessionFileStore::new(self.client.clone());
-        everruns_core::traits::SessionFileStore::stat_file(
+        everruns_core::traits::SessionFileSystem::stat_file(
             &store,
             SessionId::from_uuid(session_id),
             path,
@@ -304,7 +304,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
         path_pattern: Option<&str>,
     ) -> Result<Vec<GrepMatch>> {
         let store = GrpcSessionFileStore::new(self.client.clone());
-        everruns_core::traits::SessionFileStore::grep_files(
+        everruns_core::traits::SessionFileSystem::grep_files(
             &store,
             SessionId::from_uuid(session_id),
             pattern,
@@ -315,7 +315,7 @@ impl WorkerAdapters for GrpcWorkerAdapters {
 
     async fn create_directory(&self, session_id: Uuid, path: &str) -> Result<FileInfo> {
         let store = GrpcSessionFileStore::new(self.client.clone());
-        everruns_core::traits::SessionFileStore::create_directory(
+        everruns_core::traits::SessionFileSystem::create_directory(
             &store,
             SessionId::from_uuid(session_id),
             path,

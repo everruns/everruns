@@ -26,7 +26,7 @@ use super::{Capability, CapabilityStatus};
 use crate::atoms::PostToolExecHook;
 use crate::tool_output_sanitizer::EXEC_OUTPUT_BUDGET;
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
-use crate::traits::{SessionFileStore, ToolContext};
+use crate::traits::{SessionFileSystem, ToolContext};
 use crate::typed_id::SessionId;
 
 /// Max bytes persisted per output stream file to avoid storage exhaustion.
@@ -51,7 +51,7 @@ pub struct PersistResult {
 ///
 /// This is the shared helper that any sandbox tool or hook can call.
 pub async fn persist_large_output(
-    file_store: &Arc<dyn SessionFileStore>,
+    file_store: &Arc<dyn SessionFileSystem>,
     session_id: SessionId,
     tool_call_id: &str,
     stdout: &str,
@@ -417,7 +417,7 @@ mod tests {
 
     use crate::error::Result;
     use crate::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
-    use crate::traits::SessionFileStore;
+    use crate::traits::SessionFileSystem;
     use chrono::Utc;
     use std::collections::HashMap;
     use std::sync::Mutex;
@@ -435,7 +435,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl SessionFileStore for MockFileStore {
+    impl SessionFileSystem for MockFileStore {
         async fn read_file(
             &self,
             _session_id: SessionId,
@@ -511,7 +511,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_persist_large_output_returns_none_below_budget() {
-        let store: Arc<dyn SessionFileStore> = Arc::new(MockFileStore::default());
+        let store: Arc<dyn SessionFileSystem> = Arc::new(MockFileStore::default());
         let small = "a".repeat(EXEC_OUTPUT_BUDGET);
         let result = persist_large_output(&store, test_session_id(), "call-1", &small, "").await;
         assert!(result.is_none());
@@ -520,7 +520,7 @@ mod tests {
     #[tokio::test]
     async fn test_persist_large_output_persists_stdout_above_budget() {
         let mock = Arc::new(MockFileStore::default());
-        let store: Arc<dyn SessionFileStore> = mock.clone();
+        let store: Arc<dyn SessionFileSystem> = mock.clone();
         let large = "x".repeat(EXEC_OUTPUT_BUDGET + 1);
         let result = persist_large_output(&store, test_session_id(), "call-2", &large, "").await;
         let r = result.expect("should persist");
@@ -538,7 +538,7 @@ mod tests {
     #[tokio::test]
     async fn test_persist_large_output_caps_persisted_stdout_size() {
         let mock = Arc::new(MockFileStore::default());
-        let store: Arc<dyn SessionFileStore> = mock.clone();
+        let store: Arc<dyn SessionFileSystem> = mock.clone();
         let huge = "x".repeat(MAX_PERSISTED_STREAM_BYTES + 2048);
         let result = persist_large_output(&store, test_session_id(), "call-cap", &huge, "").await;
         assert!(result.is_some());
@@ -550,7 +550,7 @@ mod tests {
     #[tokio::test]
     async fn test_persist_large_output_persists_stderr_above_threshold() {
         let mock = Arc::new(MockFileStore::default());
-        let store: Arc<dyn SessionFileStore> = mock.clone();
+        let store: Arc<dyn SessionFileSystem> = mock.clone();
         let large_stderr = "e".repeat(4097);
         let result =
             persist_large_output(&store, test_session_id(), "call-3", "small", &large_stderr).await;
@@ -563,7 +563,7 @@ mod tests {
     #[tokio::test]
     async fn test_persist_large_output_both_stdout_and_stderr() {
         let mock = Arc::new(MockFileStore::default());
-        let store: Arc<dyn SessionFileStore> = mock.clone();
+        let store: Arc<dyn SessionFileSystem> = mock.clone();
         let large_stdout = "o".repeat(EXEC_OUTPUT_BUDGET + 100);
         let large_stderr = "e".repeat(5000);
         let result = persist_large_output(
@@ -582,7 +582,7 @@ mod tests {
     #[tokio::test]
     async fn test_persist_large_output_sanitizes_id() {
         let mock = Arc::new(MockFileStore::default());
-        let store: Arc<dyn SessionFileStore> = mock.clone();
+        let store: Arc<dyn SessionFileSystem> = mock.clone();
         let large = "x".repeat(EXEC_OUTPUT_BUDGET + 1);
         let result =
             persist_large_output(&store, test_session_id(), "call/../../../etc", &large, "").await;
@@ -593,7 +593,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_persist_large_output_empty_id_returns_none() {
-        let store: Arc<dyn SessionFileStore> = Arc::new(MockFileStore::default());
+        let store: Arc<dyn SessionFileSystem> = Arc::new(MockFileStore::default());
         let large = "x".repeat(EXEC_OUTPUT_BUDGET + 1);
         let result = persist_large_output(&store, test_session_id(), "///...", &large, "").await;
         assert!(result.is_none());
@@ -602,7 +602,7 @@ mod tests {
     #[tokio::test]
     async fn test_persist_large_output_line_count() {
         let mock = Arc::new(MockFileStore::default());
-        let store: Arc<dyn SessionFileStore> = mock.clone();
+        let store: Arc<dyn SessionFileSystem> = mock.clone();
         // Create multi-line output that exceeds budget
         let line = "x".repeat(200);
         let lines: Vec<&str> = std::iter::repeat_n(line.as_str(), 100).collect();

@@ -358,14 +358,18 @@ For the full list of built-in capabilities with their tools, parameters, and sys
 
 FileSystem tools require session context to access the isolated virtual filesystem. Each tool implements `requires_context() -> true` and uses `execute_with_context()` instead of the standard `execute()`. The `ToolContext` provides:
 - `session_id`: The session whose filesystem to access
-- `file_store`: A `SessionFileStore` trait implementation for file operations
+- `file_store`: A `SessionFileSystem` trait implementation for file operations
 
-See `specs/file-store.md` for the pluggable `SessionFileStore` contract and
+See `specs/file-store.md` for the pluggable `SessionFileSystem` contract and
 the in-memory and real-disk implementations. New capabilities that need
 filesystem access should go through `ToolContext.file_store` or
 `SystemPromptContext.file_store` rather than calling `std::fs` directly,
 except for host-process tools (e.g. the bash tool) where the shell
-inherits the host filesystem regardless of which `FileStore` is plugged in.
+inherits the host filesystem regardless of which `SessionFileSystem` is plugged
+in.
+The active session filesystem is selected by the platform's
+`SessionFileSystemFactory` unless an embedder supplies an explicit runtime
+backend override.
 
 ##### Design Decision: Session Isolation
 
@@ -397,7 +401,7 @@ This capability uses the [bashkit](https://github.com/everruns/bashkit) library 
 
 ##### Design Decision: SessionFileSystemAdapter
 
-The `SessionFileSystemAdapter` implements bashkit's `FileSystem` trait, bridging bash file operations to the session file store. This enables:
+The `SessionFileSystemAdapter` implements bashkit's `FileSystem` trait, bridging bash file operations to the session filesystem. This enables:
 - **Live file visibility**: Files written by other tools during bash execution are immediately visible
 - **No sync overhead**: Eliminates pre/post execution sync of entire filesystem
 - **Memory efficiency**: Files read on-demand instead of loading all into memory

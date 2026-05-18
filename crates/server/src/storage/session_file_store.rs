@@ -1,12 +1,12 @@
-// Database-backed SessionFileStore implementation
+// Database-backed SessionFileSystem implementation
 //
-// This module implements the core SessionFileStore trait for persisting
+// This module implements the core SessionFileSystem trait for persisting
 // session files to the database.
 
 use async_trait::async_trait;
 use everruns_core::{
     AgentLoopError, FileInfo, FileStat, GrepMatch, Result, SessionFile, SessionId, StoreResultExt,
-    traits::SessionFileStore,
+    traits::SessionFileSystem,
 };
 use regex::Regex;
 
@@ -113,7 +113,7 @@ impl DbSessionFileStore {
 }
 
 #[async_trait]
-impl SessionFileStore for DbSessionFileStore {
+impl SessionFileSystem for DbSessionFileStore {
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
         let path = Self::normalize_path(path);
         let row = self

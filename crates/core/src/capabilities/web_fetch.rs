@@ -29,7 +29,7 @@
 use super::{Capability, CapabilityStatus, RiskLevel};
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
-use crate::traits::{SessionFileStore, ToolContext};
+use crate::traits::{SessionFileSystem, ToolContext};
 use crate::typed_id::SessionId;
 use async_trait::async_trait;
 use base64::Engine as _;
@@ -232,14 +232,14 @@ impl Capability for WebFetchCapability {
 }
 
 // ============================================================================
-// SessionFileSaver — bridges fetchkit::FileSaver to SessionFileStore
+// SessionFileSaver — bridges fetchkit::FileSaver to SessionFileSystem
 // ============================================================================
 
 /// Adapter that routes fetchkit file saves through the session virtual filesystem.
 ///
 /// Binary content is encoded as base64; text content is stored as-is.
 struct SessionFileSaver {
-    file_store: Arc<dyn SessionFileStore>,
+    file_store: Arc<dyn SessionFileSystem>,
     session_id: SessionId,
 }
 
@@ -279,7 +279,7 @@ impl FileSaver for SessionFileSaver {
 /// reserved IP ranges via resolve-then-check with DNS pinning.
 ///
 /// File download: when `save_to_file` is provided, content is saved through
-/// the session filesystem (SessionFileStore) via the SessionFileSaver adapter.
+/// the session filesystem (SessionFileSystem) via the SessionFileSaver adapter.
 pub struct WebFetchTool {
     fetchkit_tool: fetchkit::Tool,
     enable_save_to_file: bool,
@@ -410,7 +410,7 @@ impl Tool for WebFetchTool {
     }
 
     fn requires_context(&self) -> bool {
-        // Needed for save_to_file (SessionFileStore access)
+        // Needed for save_to_file (SessionFileSystem access)
         true
     }
 
@@ -479,7 +479,7 @@ impl Tool for WebFetchTool {
             };
         }
 
-        // save_to_file requested — need SessionFileStore
+        // save_to_file requested — need SessionFileSystem
         let file_store = match &context.file_store {
             Some(store) => store.clone(),
             None => {
@@ -1528,7 +1528,7 @@ mod tests {
     // File download tests (save_to_file via SessionFileSaver)
     // ========================================================================
 
-    /// In-memory SessionFileStore for testing file downloads
+    /// In-memory SessionFileSystem for testing file downloads
     struct MockFileStore {
         files: tokio::sync::Mutex<std::collections::HashMap<(SessionId, String), (String, String)>>,
     }
@@ -1550,7 +1550,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl SessionFileStore for MockFileStore {
+    impl SessionFileSystem for MockFileStore {
         async fn read_file(
             &self,
             session_id: SessionId,

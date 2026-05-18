@@ -32,7 +32,7 @@
 // (`ProcessCommandExecutor`, `preprocess_command_injections`, unit tests) so a
 // follow-up can flip the gate once a non-user-spoofable provenance signal
 // (e.g. a `mount_capability_id` column populated only by mount application
-// code) is added to `SessionFile` / `SessionFileStore`. See EVE-388.
+// code) is added to `SessionFile` / `SessionFileSystem`. See EVE-388.
 //
 // Re-enable must ALSO replace `ProcessCommandExecutor` (which spawns worker-host
 // `bash -c`) with a session-sandbox-backed executor: execution MUST run against
@@ -676,7 +676,7 @@ mod tests {
     use crate::session_resource::{
         RegisterSessionResource, SessionResourceEntry, SessionResourceFilter, SessionResourceStatus,
     };
-    use crate::traits::{SessionFileStore, SessionResourceRegistry};
+    use crate::traits::{SessionFileSystem, SessionResourceRegistry};
     use crate::typed_id::SessionId;
     use std::collections::HashMap;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -743,7 +743,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl SessionFileStore for MockFileStore {
+    impl SessionFileSystem for MockFileStore {
         async fn read_file(
             &self,
             session_id: SessionId,

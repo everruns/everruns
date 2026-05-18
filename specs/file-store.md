@@ -1,23 +1,23 @@
-# FileStore Specification
+# Session Filesystem Specification
 
 ## Abstract
 
-`SessionFileStore` (and its runtime extension `RuntimeFileStore`) is the
-canonical seam through which built-in capabilities read and write files.
-Implementations of this trait decide what "the workspace" physically is: an
-in-memory map, a PostgreSQL table, a remote gRPC adapter, or a real
-host-filesystem directory.
+`SessionFileSystem` is the canonical seam through which built-in capabilities
+read and write files. Implementations of this trait decide what "the
+workspace" physically is: an in-memory map, a PostgreSQL table, a remote gRPC
+adapter, a real host-filesystem directory, or a future object-store-backed
+filesystem.
 
 This spec defines the contract every implementation must honor and the
 discipline new capabilities should follow when they need filesystem access.
 
 ## Status
 
-This is the **Option A** pluggable-store seam (single trait, embedder picks
-the impl). It is a stepping stone toward the mount-overlay resolver
-(Option B) which will compose mounts on top of a base `FileStore`. The work
-here is preserved when B lands; see the forward-compatibility note at the
-bottom of this document.
+This is the platform-level session filesystem seam. `PlatformDefinition`
+carries a `SessionFileSystemFactory`, and runtime/server hosts resolve a live
+`SessionFileSystem` from host dependencies such as in-memory state, a storage
+backend, or a root directory. It is still compatible with the mount-overlay
+resolver direction, which can compose mounts on top of a base filesystem.
 
 ## Background
 
@@ -29,8 +29,9 @@ TUI in PR #1839) revealed a real seam: `AgentInstructionsCapability` and
 VFS *is* the workspace) but breaks in an embedded coding-CLI where the
 workspace is a real directory on disk.
 
-The pluggable seam already existed (`RuntimeBackends.file_store`); what was
-missing was a real-disk implementation and a documented contract.
+The original pluggable seam lived on `RuntimeBackends.file_store`; the platform
+profile now owns the higher-level factory so embedders can choose the session
+filesystem as part of the deployment surface.
 
 ## Decision Process
 
@@ -38,35 +39,36 @@ We evaluated four options before landing on the pluggable-store approach:
 
 | Option | Description | Outcome |
 |--------|-------------|---------|
-| A. Pluggable `SessionFileStore` at runtime builder | Single trait, embedder picks the impl. Already supported by `RuntimeBackends.file_store`. | **Chosen.** Unblocks `coding-cli` with no core API changes. |
-| B. Mount-point overlay (`MountSource::HostPath`) | Compose mounts on top of a base `FileStore` via a resolver. | Eventual destination. Strict superset of A; A is preserved when B lands. |
+| A. Pluggable `SessionFileSystem` at runtime builder | Single trait, embedder picks the impl. Already supported by `RuntimeBackends.file_store`. | Superseded by platform factories. |
+| B. Mount-point overlay (`MountSource::HostPath`) | Compose mounts on top of a base filesystem via a resolver. | Eventual destination. Strict superset of the factory seam. |
 | C. Split `SystemPromptContext` into `file_store` + `WorkspaceSource` | Separate sandbox writes from project-context reads. | Rejected. Parallel abstraction that B subsumes naturally via `MountAccess::ReadOnly`. |
 | D. Per-capability factory (`AgentInstructionsCapability::with_loader(...)`) | Each capability re-solves the loader problem itself. | Rejected. Does not compose; doesn't scale to N capabilities. |
 
 A unblocks every existing built-in capability (`file_system`,
 `agent_instructions`, `skills`, `web_fetch`, `tool_output_persistence`) the
-day the embedder plugs a real-disk `FileStore`.
+day the embedder plugs a real-disk filesystem.
 
 ## Contract
 
 ### Traits
 
-The public surface is two traits:
+The public surface is two core traits:
 
-- `everruns_core::traits::SessionFileStore` — the read/write contract every
+- `everruns_core::traits::SessionFileSystem` — the read/write contract every
   filesystem-aware capability calls.
-- `everruns_runtime::RuntimeFileStore` — extends `SessionFileStore` with
-  `seed_initial_file`, used during session bootstrap.
+- `everruns_core::traits::SessionFileSystemFactory` — resolves the platform's
+  chosen filesystem from host-provided dependencies.
 
-See `crates/core/src/traits.rs` and `crates/runtime/src/backends.rs` for the
-full method signatures and doc comments. The trait shape is intentionally
-small: an implementation supports `read_file`, `write_file`,
-`write_file_if_content_matches` (CAS), `delete_file`, `list_directory`,
-`stat_file`, `grep_files`, and `create_directory`.
+See `crates/core/src/traits.rs` for the full method signatures and doc
+comments. The filesystem trait shape is intentionally small: an implementation
+supports `read_file`, `write_file`, `write_file_if_content_matches` (CAS),
+`delete_file`, `list_directory`, `stat_file`, `grep_files`,
+`create_directory`, and `seed_initial_file`.
 
 ### Path Namespace
 
-`FileStore` paths are **absolute, forward-slash, leading-slash** strings.
+Session filesystem paths are **absolute, forward-slash, leading-slash**
+strings.
 
 | Input | Canonical form |
 |-------|----------------|
@@ -204,11 +206,23 @@ Implementation notes:
 
 Source: `crates/runtime/src/real_disk.rs`.
 
+### Factories
+
+- `InMemorySessionFileSystemFactory` resolves the runtime in-memory filesystem.
+- `RealDiskSessionFileSystemFactory` resolves a filesystem rooted at a host
+  directory.
+- `StorageSessionFileSystemFactory` resolves the server storage-backed
+  filesystem from `StorageBackend`.
+
+Future factories can resolve S3/object-store-backed filesystems without
+changing capability code.
+
 ### Future implementations
 
-Worker-side gRPC adapters and the server's `DbSessionFileStore` continue to
-implement the same trait. Adding a new backend (e.g. S3, in-memory zip)
-means implementing the trait; no API changes are required upstream.
+Worker-side gRPC adapters and the server's storage filesystem continue to
+implement the same trait. Adding a new backend (e.g. S3, in-memory zip) means
+implementing the trait and a factory; no capability API changes are required
+upstream.
 
 ## Capability Rule
 
@@ -217,7 +231,7 @@ means implementing the trait; no API changes are required upstream.
 > NOT call `std::fs`, `tokio::fs`, or other host-filesystem APIs
 > directly — *except* when the capability's execution model is inherently
 > a host process (e.g. the bash tool spawns a shell, which inherits the
-> host filesystem regardless of which `FileStore` is plugged in).
+> host filesystem regardless of which `SessionFileSystem` is plugged in).
 
 This rule keeps all existing and future capabilities aligned with the
 pluggable seam. A capability that follows the rule works against the
@@ -226,25 +240,38 @@ without code changes.
 
 Exceptions are limited to host-process tools (bash and equivalents) and
 require a comment in the capability's source naming the constraint that
-forced the bypass. Anything else goes through the `FileStore`.
+forced the bypass. Anything else goes through the `SessionFileSystem`.
 
 ## Wiring
 
-Embedders construct `RuntimeBackends` with their chosen `file_store`:
+Embedders normally configure the platform factory:
 
 ```rust
 let workspace_root = std::env::current_dir()?;
-let file_store = Arc::new(RealDiskFileStore::new(workspace_root)?);
 
-let backends = RuntimeBackends {
-    file_store,
-    // ...
-};
+let platform = PlatformDefinition::builder()
+    .session_file_system_factory(Arc::new(
+        RealDiskSessionFileSystemFactory::new(workspace_root),
+    ))
+    .build();
 ```
 
-The runtime forwards this `file_store` into every `ToolContext` and
-`SystemPromptContext` it constructs, so every capability picks up the new
-backend automatically.
+`RuntimeBackends.file_store` remains as an explicit override path for embedders
+that need to supply an already-resolved filesystem bundle.
+
+Factories may require host dependencies such as a database handle, virtual
+mount registry, or workspace root. `InProcessRuntimeBuilder` accepts a
+`SessionFileSystemFactoryContext` for these host-supplied values and passes it
+to the platform factory before seeding initial files.
+
+The runtime forwards the resolved filesystem into every `ToolContext` and
+`SystemPromptContext` it constructs, so every capability picks up the backend
+automatically.
+
+Server HTTP/API session-file management is a control-plane surface and remains
+wired through `SessionFileService`. The platform factory selects the filesystem
+used by runtime/tool execution, not a replacement for those management
+endpoints.
 
 See the runnable examples for the full wiring against a real
 `InProcessRuntime`:
@@ -285,19 +312,19 @@ When the mount-overlay resolver lands, the migration path is:
    backend.
 2. A new `MountSource::HostPath { root: PathBuf, access: MountAccess }`
    variant is added.
-3. The resolver composes mounts on top of a base `FileStore`. Embedders
-   that already pass `RealDiskFileStore` as `file_store` continue to work;
-   the resolver wraps it.
+3. The resolver composes mounts on top of a base `SessionFileSystem`.
+   Embedders that already use `RealDiskSessionFileSystemFactory` continue to
+   work; the resolver wraps the resolved filesystem.
 4. Capabilities can declare host-path mounts (e.g. `~/.local/share/data`
    as `/data` read-only) through `mounts()` instead of needing a custom
-   `FileStore` impl.
+   `SessionFileSystem` impl.
 
 ## Source Index
 
-- `crates/core/src/traits.rs` — `SessionFileStore` trait
+- `crates/core/src/traits.rs` — `SessionFileSystem` trait
 - `crates/core/src/session_file.rs` — `SessionFile`, `FileInfo`,
   `FileStat`, `GrepMatch`, `InitialFile`
-- `crates/runtime/src/backends.rs` — `RuntimeFileStore`, `RuntimeBackends`
+- `crates/runtime/src/backends.rs` — `RuntimeBackends`
 - `crates/runtime/src/in_memory.rs` — `InMemorySessionFileStore`
 - `crates/runtime/src/real_disk.rs` — `RealDiskFileStore`
 - `crates/runtime/examples/real_disk_agent_instructions.rs` — wiring

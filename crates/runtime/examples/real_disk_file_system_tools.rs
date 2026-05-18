@@ -1,6 +1,6 @@
 // Demonstrates that the built-in `file_system` capability's tools
 // (`write_file`, `read_file`, `list_directory`) operate against whichever
-// `SessionFileStore` the embedder plugs in — here, a `RealDiskFileStore`
+// `SessionFileSystem` the embedder plugs in — here, a `RealDiskFileStore`
 // rooted at a temp directory. The agent's tool calls land on real disk.
 //
 // What this proves:

@@ -21,7 +21,7 @@ use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, SessionFile};
 use everruns_core::traits::{
     AgentStore, CreateStoredImage, EventEmitter, HarnessStore, ImageArtifactStore,
     LeasedResourceStore, LlmProviderStore, ModelWithProvider, ProviderCredentialStore,
-    ProviderCredentials, ResolvedImage, SessionFileStore, SessionStore, StoredImage,
+    ProviderCredentials, ResolvedImage, SessionFileSystem, SessionStore, StoredImage,
     StoredImageInfo,
 };
 use everruns_core::typed_id::{
@@ -626,7 +626,7 @@ impl GrpcClient {
 
 /// Session-scoped gRPC adapter (no org_id needed).
 ///
-/// Implements: MessageRetriever, SessionFileStore, EventEmitter,
+/// Implements: MessageRetriever, SessionFileSystem, EventEmitter,
 /// SessionStorageStore, UserConnectionResolver, LeasedResourceStore,
 /// SessionSqlDbStore.
 #[derive(Clone)]
@@ -1649,11 +1649,11 @@ fn proto_model_with_provider_to_model(
 }
 
 // ============================================================================
-// SessionFileStore implementation
+// SessionFileSystem implementation
 // ============================================================================
 
 #[async_trait]
-impl SessionFileStore for GrpcAdapter {
+impl SessionFileSystem for GrpcAdapter {
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
         let mut client = self.client.inner.lock().await;
 

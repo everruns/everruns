@@ -69,7 +69,7 @@ XML tags provide clear boundaries between sections. See `specs/xml-prompt-format
 
 ## ReasonAtom Changes
 
-ReasonAtom holds an optional `SessionFileStore` that is passed to capabilities via `SystemPromptContext`. See `crates/core/src/atoms/reason.rs` for the `with_file_store` builder method.
+ReasonAtom holds an optional `SessionFileSystem` that is passed to capabilities via `SystemPromptContext`. See `crates/core/src/atoms/reason.rs` for the `with_file_store` builder method.
 
 ## Constants
 

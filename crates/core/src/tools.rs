@@ -1412,7 +1412,7 @@ impl SessionBackgroundSink {
 }
 
 async fn ensure_directory(
-    file_store: &dyn crate::traits::SessionFileStore,
+    file_store: &dyn crate::traits::SessionFileSystem,
     session_id: crate::SessionId,
     path: &str,
 ) -> Result<()> {
@@ -1504,7 +1504,7 @@ mod tests {
     use crate::platform_store::PlatformStore;
     use crate::session_file::{FileInfo, FileStat, SessionFile};
     use crate::session_resource::{SessionResourceEntry, SessionResourceFilter};
-    use crate::traits::{SessionFileStore, SessionResourceRegistry, SessionScheduleStore};
+    use crate::traits::{SessionFileSystem, SessionResourceRegistry, SessionScheduleStore};
     use crate::typed_id::{HarnessId, SessionId};
     use crate::{AgentId, KeyInfo, PlatformMessage, SecretInfo};
     use async_trait::async_trait;
@@ -1766,7 +1766,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl crate::traits::SessionFileStore for TestFileStore {
+    impl crate::traits::SessionFileSystem for TestFileStore {
         async fn read_file(
             &self,
             _session_id: SessionId,

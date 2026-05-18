@@ -588,7 +588,7 @@ toolkit crate (standalone)       everruns-core             other consumers
 │   └── build_output_schema()    │   ├── wires cancel/stream└── build_output_schema()
 ├── Tool (metadata+version)      │   └── maps to everruns
 ├── ToolExecutor (Value→Value)   └── AdapterImpl
-├── ToolExecution (stateful)         └── bridges to SessionFileStore
+├── ToolExecution (stateful)         └── bridges to SessionFileSystem
 │   ├── execute()
 │   ├── cancel() [optional]
 │   └── output_stream() [opt]

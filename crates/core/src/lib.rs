@@ -160,10 +160,11 @@ pub use runtime_context::{
     resolve_runtime_capabilities,
 };
 pub use traits::{
-    EventEmitter, HarnessStore, ImageResolver, KeyInfo, LeasedResourceStore, LlmProviderStore,
-    ModelWithProvider, NoopEventEmitter, ResolvedImage, SecretInfo, SessionFileStore,
-    SessionMutator, SessionResourceRegistry, SessionSqlDbStoreRef, SessionStorageStore,
-    SessionStore, ToolContext, ToolExecutor, UserConnectionResolver,
+    DisabledSessionFileSystemFactory, EventEmitter, HarnessStore, ImageResolver, KeyInfo,
+    LeasedResourceStore, LlmProviderStore, ModelWithProvider, NoopEventEmitter, ResolvedImage,
+    SecretInfo, SessionFileStore, SessionFileSystem, SessionFileSystemFactory,
+    SessionFileSystemFactoryContext, SessionMutator, SessionResourceRegistry, SessionSqlDbStoreRef,
+    SessionStorageStore, SessionStore, ToolContext, ToolExecutor, UserConnectionResolver,
 };
 pub use user_facing_error::{
     UserFacingError, UserFacingErrorContext, UserFacingErrorFields, classify_runtime_error_message,

@@ -22,8 +22,16 @@ This spec defines the contract for embedding. See `crates/core/src/platform_defi
 - LLM driver registry
 - Connection-provider registry
 - Built-in harness templates
+- System email sender
+- Session filesystem factory
 
 The type lives in `everruns-core` so any binary can construct or mutate it without depending on `everruns-server`.
+
+Platform-wide host services are represented as provider-neutral traits or
+factories. For example, `SessionFileSystemFactory` lets a platform select
+in-memory, storage-backed, real-disk, or future S3-backed session files while
+allowing each host to provide the concrete dependencies needed to resolve the
+live filesystem.
 
 ## In-process Runtime
 
@@ -94,6 +102,7 @@ The server must derive the following from the platform definition:
 - LLM driver registry for provider resolution and model sync
 - Connection providers for user connection APIs
 - Built-in harness templates for org initialization
+- Session filesystem factory for session file operations
 - Seed behavior for providers, models, harnesses, and agents
 - gRPC worker service capability/session registries
 - DEV_MODE in-process worker registries

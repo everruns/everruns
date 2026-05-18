@@ -5,12 +5,12 @@
 use crate::backends::{
     DynAgentStore, DynEventEmitter, DynFileStore, DynHarnessStore, DynMessageStore,
     DynProviderStore, DynSessionStore, RuntimeAgentStore, RuntimeBackends, RuntimeEventCollector,
-    RuntimeFileStore, RuntimeHarnessStore, RuntimeMessageStore, RuntimeProviderStore,
-    RuntimeSessionStore,
+    RuntimeHarnessStore, RuntimeMessageStore, RuntimeProviderStore, RuntimeSessionStore,
 };
 use crate::builders::SingleSessionBuilder;
 use crate::in_memory::{
-    InMemorySessionFileStore, InMemorySessionStorageStore, InMemorySessionStore,
+    InMemorySessionFileStore, InMemorySessionFileSystemFactory, InMemorySessionStorageStore,
+    InMemorySessionStore,
 };
 use async_trait::async_trait;
 use everruns_core::agent::Agent;
@@ -45,7 +45,9 @@ use everruns_core::tools::{ToolRegistry, ToolResultImage};
 use everruns_core::traits::{EventEmitter, ModelWithProvider, SessionStorageStore};
 use everruns_core::turn::{TurnAction, TurnContext, TurnOutcome, TurnStateMachine};
 use everruns_core::typed_id::{AgentId, OrgId, SessionId};
-use everruns_core::{InputMessage, MemoryStoreBackend};
+use everruns_core::{
+    InputMessage, MemoryStoreBackend, SessionFileSystem, SessionFileSystemFactoryContext,
+};
 use std::sync::Arc;
 
 #[derive(Debug, Clone)]
@@ -117,6 +119,7 @@ pub struct InProcessRuntimeBuilder {
     llm_sim_config: Option<LlmSimConfig>,
     default_model: Option<ModelWithProvider>,
     backends: Option<RuntimeBackends>,
+    session_file_system_factory_context: SessionFileSystemFactoryContext,
     harnesses: Vec<Harness>,
     agents: Vec<Agent>,
     sessions: Vec<Session>,
@@ -139,13 +142,15 @@ impl InProcessRuntimeBuilder {
     ///   default model via [`Self::default_model`].
     pub fn new() -> Self {
         Self {
-            platform_definition: PlatformDefinition::new(
-                CapabilityRegistry::with_builtins(),
-                DriverRegistry::new(),
-            ),
+            platform_definition: PlatformDefinition::builder()
+                .capability_registry(CapabilityRegistry::with_builtins())
+                .driver_registry(DriverRegistry::new())
+                .session_file_system_factory(Arc::new(InMemorySessionFileSystemFactory))
+                .build(),
             llm_sim_config: None,
             default_model: None,
             backends: None,
+            session_file_system_factory_context: SessionFileSystemFactoryContext::new(),
             harnesses: Vec::new(),
             agents: Vec::new(),
             sessions: Vec::new(),
@@ -189,6 +194,15 @@ impl InProcessRuntimeBuilder {
     /// Supply a custom backend bundle instead of the built-in in-memory stores.
     pub fn backends(mut self, backends: RuntimeBackends) -> Self {
         self.backends = Some(backends);
+        self
+    }
+
+    /// Supply host dependencies needed by the platform session filesystem factory.
+    pub fn session_file_system_factory_context(
+        mut self,
+        context: SessionFileSystemFactoryContext,
+    ) -> Self {
+        self.session_file_system_factory_context = context;
         self
     }
 
@@ -253,10 +267,16 @@ impl InProcessRuntimeBuilder {
     /// Returns a configuration error when no default model is available after
     /// applying explicit configuration and any requested `llmsim` setup.
     pub async fn build(mut self) -> Result<InProcessRuntime> {
-        let backends = self
-            .backends
-            .take()
-            .unwrap_or_else(default_in_memory_backends);
+        let backends = match self.backends.take() {
+            Some(backends) => backends,
+            None => {
+                default_in_memory_backends(
+                    &self.platform_definition,
+                    self.session_file_system_factory_context.clone(),
+                )
+                .await?
+            }
+        };
 
         if let Some(config) = self.llm_sim_config.take() {
             let driver = LlmSimDriver::new(config);
@@ -339,12 +359,22 @@ impl InProcessRuntimeBuilder {
     }
 }
 
-fn default_in_memory_backends() -> RuntimeBackends {
+async fn default_in_memory_backends(
+    platform_definition: &PlatformDefinition,
+    file_system_factory_context: SessionFileSystemFactoryContext,
+) -> Result<RuntimeBackends> {
     let harness_store: Arc<dyn RuntimeHarnessStore> = Arc::new(InMemoryHarnessStore::new());
     let agent_store: Arc<dyn RuntimeAgentStore> = Arc::new(InMemoryAgentStore::new());
     let session_store: Arc<dyn RuntimeSessionStore> = Arc::new(InMemorySessionStore::new());
     let message_store: Arc<dyn RuntimeMessageStore> = Arc::new(InMemoryMessageRetriever::new());
-    let file_store: Arc<dyn RuntimeFileStore> = Arc::new(InMemorySessionFileStore::new());
+    let file_system_factory = platform_definition.session_file_system_factory();
+    let file_store: Arc<dyn SessionFileSystem> = if file_system_factory.is_disabled() {
+        Arc::new(InMemorySessionFileStore::new())
+    } else {
+        file_system_factory
+            .create_session_file_system(file_system_factory_context)
+            .await?
+    };
     let storage_store: Arc<dyn SessionStorageStore> = Arc::new(InMemorySessionStorageStore::new());
     let memory_store: Arc<dyn MemoryStoreBackend> = Arc::new(InMemoryMemoryStore::new());
     let provider_store: Arc<dyn RuntimeProviderStore> = Arc::new(InMemoryLlmProviderStore::new());
@@ -352,7 +382,7 @@ fn default_in_memory_backends() -> RuntimeBackends {
     let event_emitter: Arc<dyn EventEmitter> = Arc::new(event_emitter_impl.clone());
     let event_collector: Arc<dyn RuntimeEventCollector> = Arc::new(event_emitter_impl);
 
-    RuntimeBackends {
+    Ok(RuntimeBackends {
         harness_store,
         agent_store,
         session_store,
@@ -363,7 +393,7 @@ fn default_in_memory_backends() -> RuntimeBackends {
         file_store,
         storage_store,
         memory_store,
-    }
+    })
 }
 
 #[derive(Clone)]
@@ -383,7 +413,7 @@ pub struct InProcessRuntime {
     event_emitter: PersistingEventEmitter,
     raw_event_emitter: Arc<dyn EventEmitter>,
     event_collector: Option<Arc<dyn RuntimeEventCollector>>,
-    file_store: Arc<dyn RuntimeFileStore>,
+    file_store: Arc<dyn SessionFileSystem>,
     storage_store: Arc<dyn SessionStorageStore>,
     memory_store: Arc<dyn MemoryStoreBackend>,
 }
@@ -733,7 +763,7 @@ fn effective_overlay(
 async fn seed_runtime_initial_files(
     harness_store: &dyn RuntimeHarnessStore,
     agent_store: &dyn RuntimeAgentStore,
-    file_store: &dyn RuntimeFileStore,
+    file_store: &dyn SessionFileSystem,
     session: &Session,
 ) -> Result<()> {
     let harness_chain = harness_store.get_harness_chain(session.harness_id).await?;

@@ -8,7 +8,7 @@
 > seamless file sharing between bash commands and file system tools.
 >
 > **Indexed Search**: `SessionFileSystemAdapter` implements bashkit's `SearchCapable` trait,
-> delegating `grep -r` to `SessionFileStore::grep_files` for single-query database search
+> delegating `grep -r` to `SessionFileSystem::grep_files` for single-query database search
 > instead of per-file linear scanning.
 
 ## Context
@@ -21,7 +21,7 @@ The implementation is in `crates/core/src/capabilities/virtual_bash.rs` with `Se
 
 Bashkit v0.1.12 restored `SearchCapable`/`SearchProvider` traits. When a `FileSystem` implements `SearchCapable`, builtins like `grep -r` use indexed search instead of reading every file individually.
 
-`SessionFileSystemAdapter` implements `SearchCapable` by delegating to `SessionFileStore::grep_files()`, which executes a single SQL query with server-side regex matching. This eliminates N+1 database calls for recursive grep.
+`SessionFileSystemAdapter` implements `SearchCapable` by delegating to `SessionFileSystem::grep_files()`, which executes a single SQL query with server-side regex matching. This eliminates N+1 database calls for recursive grep.
 
 The sync-to-async bridge uses `std::thread::scope` with a dedicated thread and its own tokio runtime to avoid nesting `block_on` calls.
 

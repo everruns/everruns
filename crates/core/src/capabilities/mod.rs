@@ -25,7 +25,7 @@ use crate::message_filter::MessageFilterProvider;
 use crate::runtime_agent::RuntimeAgent;
 use crate::tool_types::{ToolCall, ToolDefinition};
 use crate::tools::{Tool, ToolRegistry};
-use crate::traits::SessionFileStore;
+use crate::traits::SessionFileSystem;
 use crate::typed_id::SessionId;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -264,7 +264,7 @@ pub struct SystemPromptContext {
     /// Optional locale for localized prompts and tool behavior.
     pub locale: Option<String>,
     /// Optional file store for reading session files (e.g., AGENTS.md)
-    pub file_store: Option<Arc<dyn SessionFileStore>>,
+    pub file_store: Option<Arc<dyn SessionFileSystem>>,
 }
 
 impl SystemPromptContext {

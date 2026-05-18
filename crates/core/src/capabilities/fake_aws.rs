@@ -22,7 +22,7 @@ use super::{Capability, CapabilityStatus};
 use crate::SessionId;
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
-use crate::traits::{SessionFileStore, ToolContext};
+use crate::traits::{SessionFileSystem, ToolContext};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -92,7 +92,7 @@ async fn simulate_latency(op: OpKind) {
 /// Read a JSON collection from the session file store, returning seed data on
 /// first access and persisting it.
 async fn read_or_seed<T: Serialize + for<'de> Deserialize<'de>>(
-    store: &dyn SessionFileStore,
+    store: &dyn SessionFileSystem,
     session_id: SessionId,
     path: &str,
     seed: impl FnOnce() -> Vec<T>,
@@ -112,7 +112,7 @@ async fn read_or_seed<T: Serialize + for<'de> Deserialize<'de>>(
 
 /// Persist a collection back to the session file store.
 async fn persist<T: Serialize>(
-    store: &dyn SessionFileStore,
+    store: &dyn SessionFileSystem,
     session_id: SessionId,
     path: &str,
     items: &[T],

@@ -8,7 +8,8 @@ use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::session::Session;
 use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, InitialFile, SessionFile};
 use everruns_core::traits::{
-    KeyInfo, SecretInfo, SessionFileStore, SessionMutator, SessionStorageStore, SessionStore,
+    KeyInfo, SecretInfo, SessionFileSystem, SessionFileSystemFactory,
+    SessionFileSystemFactoryContext, SessionMutator, SessionStorageStore, SessionStore,
 };
 use everruns_core::typed_id::SessionId;
 use std::collections::{BTreeSet, HashMap};
@@ -70,6 +71,24 @@ struct FileEntry {
 #[derive(Debug, Default, Clone)]
 pub struct InMemorySessionFileStore {
     files: Arc<RwLock<HashMap<(SessionId, String), FileEntry>>>,
+}
+
+/// Factory for the runtime's in-memory session filesystem.
+#[derive(Debug, Clone, Default)]
+pub struct InMemorySessionFileSystemFactory;
+
+#[async_trait]
+impl SessionFileSystemFactory for InMemorySessionFileSystemFactory {
+    fn name(&self) -> &'static str {
+        "InMemorySessionFileSystemFactory"
+    }
+
+    async fn create_session_file_system(
+        &self,
+        _context: SessionFileSystemFactoryContext,
+    ) -> Result<Arc<dyn SessionFileSystem>> {
+        Ok(Arc::new(InMemorySessionFileStore::new()))
+    }
 }
 
 impl InMemorySessionFileStore {
@@ -195,7 +214,11 @@ impl InMemorySessionFileStore {
 }
 
 #[async_trait]
-impl SessionFileStore for InMemorySessionFileStore {
+impl SessionFileSystem for InMemorySessionFileStore {
+    async fn seed_initial_file(&self, session_id: SessionId, file: &InitialFile) -> Result<()> {
+        InMemorySessionFileStore::seed_initial_file(self, session_id, file).await
+    }
+
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
         let normalized = normalize_path(path);
         if normalized == "/" {
