@@ -175,6 +175,23 @@ fn assert_accepted_or_timeout(status: StatusCode) {
     );
 }
 
+async fn count_sessions_with_tag(server: &TestServer, tag: &str) -> usize {
+    let sessions: Value = server.get("/v1/sessions").await.assert_success().json();
+    sessions["data"]
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter(|s| {
+                    s["tags"]
+                        .as_array()
+                        .map(|tags| tags.iter().any(|t| t.as_str() == Some(tag)))
+                        .unwrap_or(false)
+                })
+                .count()
+        })
+        .unwrap_or(0)
+}
+
 /// Shorter response timeout for happy-path tests so 504 paths return
 /// quickly instead of waiting the default 120 s.
 fn fast_timeout_config() -> Value {
@@ -362,21 +379,8 @@ async fn fcp_post_session_cookie_reuses_same_session() {
     let cookie = test_harness::extract_cookie(first.headers(), "fcp_session");
 
     // Inspect sessions by tag — first POST must have created exactly one.
-    let sessions: Value = server.get("/v1/sessions").await.assert_success().json();
     let expected_tag = format!("fcp:app:{}", app.public_id);
-    let first_count = sessions["data"]
-        .as_array()
-        .map(|arr| {
-            arr.iter()
-                .filter(|s| {
-                    s["tags"]
-                        .as_array()
-                        .map(|tags| tags.iter().any(|t| t.as_str() == Some(&expected_tag)))
-                        .unwrap_or(false)
-                })
-                .count()
-        })
-        .unwrap_or(0);
+    let first_count = count_sessions_with_tag(&server, &expected_tag).await;
     assert_eq!(first_count, 1);
 
     let second = send_fcp_post(
@@ -388,23 +392,51 @@ async fn fcp_post_session_cookie_reuses_same_session() {
     .await;
     assert_accepted_or_timeout(second.status());
 
-    let sessions_after: Value = server.get("/v1/sessions").await.assert_success().json();
-    let after_count = sessions_after["data"]
-        .as_array()
-        .map(|arr| {
-            arr.iter()
-                .filter(|s| {
-                    s["tags"]
-                        .as_array()
-                        .map(|tags| tags.iter().any(|t| t.as_str() == Some(&expected_tag)))
-                        .unwrap_or(false)
-                })
-                .count()
-        })
-        .unwrap_or(0);
+    let after_count = count_sessions_with_tag(&server, &expected_tag).await;
     assert_eq!(
         after_count, 1,
         "second POST with cookie must reuse the session created by the first"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn fcp_post_cookie_reuses_matching_session_when_multiple_exist() {
+    let server = TestServer::in_memory().await;
+    let app = create_published_fcp_app(&server, fast_timeout_config()).await;
+
+    let first = send_fcp_post(
+        &server,
+        &app.public_id,
+        "client one",
+        vec![("content-type", "text/plain")],
+    )
+    .await;
+    assert_accepted_or_timeout(first.status());
+    let first_cookie = test_harness::extract_cookie(first.headers(), "fcp_session");
+
+    let second = send_fcp_post(
+        &server,
+        &app.public_id,
+        "client two",
+        vec![("content-type", "text/plain")],
+    )
+    .await;
+    assert_accepted_or_timeout(second.status());
+
+    let third = send_fcp_post(
+        &server,
+        &app.public_id,
+        "client one again",
+        vec![("content-type", "text/plain"), ("cookie", &first_cookie)],
+    )
+    .await;
+    assert_accepted_or_timeout(third.status());
+
+    let expected_tag = format!("fcp:app:{}", app.public_id);
+    let tagged_count = count_sessions_with_tag(&server, &expected_tag).await;
+    assert_eq!(
+        tagged_count, 2,
+        "cookie reuse must not create a third session"
     );
 }
 
