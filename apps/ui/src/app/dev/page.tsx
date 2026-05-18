@@ -74,6 +74,13 @@ const devPages = [
     href: "/dev/mcp-cards",
     icon: IdCard,
   },
+  {
+    title: "OpenUI Blocks",
+    description:
+      "OpenUI Lang renderer smoke surface (specs/openui.md) — Cards, charts, error boundary",
+    href: "/dev/openui-blocks",
+    icon: Sparkles,
+  },
 ];
 
 export default function DevPage() {
