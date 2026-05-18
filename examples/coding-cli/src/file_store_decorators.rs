@@ -71,7 +71,7 @@ impl<S> WriteBlocklistFileStore<S> {
 }
 
 #[async_trait]
-impl<S: SessionFileStore + 'static> SessionFileStore for WriteBlocklistFileStore<S> {
+impl<S: RuntimeFileStore + 'static> SessionFileStore for WriteBlocklistFileStore<S> {
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
         self.inner.read_file(session_id, path).await
     }
@@ -163,7 +163,7 @@ impl<S> ApprovalGatingFileStore<S> {
 }
 
 #[async_trait]
-impl<S: SessionFileStore + 'static> SessionFileStore for ApprovalGatingFileStore<S> {
+impl<S: RuntimeFileStore + 'static> SessionFileStore for ApprovalGatingFileStore<S> {
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
         self.inner.read_file(session_id, path).await
     }
