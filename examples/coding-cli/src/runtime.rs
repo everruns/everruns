@@ -11,7 +11,9 @@ use anyhow::{Context, Result, anyhow};
 use chrono::Utc;
 use everruns_core::capabilities::{
     AGENT_INSTRUCTIONS_CAPABILITY_ID, AgentInstructionsCapability, Capability, CapabilityStatus,
-    FileSystemCapability,
+    CurrentTimeCapability, FileSystemCapability, INFINITY_CONTEXT_CAPABILITY_ID,
+    InfinityContextCapability, LoopDetectionCapability, PROMPT_CACHING_CAPABILITY_ID,
+    PromptCachingCapability, SKILLS_CAPABILITY_ID, SkillsCapability, StatelessTodoListCapability,
 };
 use everruns_core::llm_driver_registry::DriverRegistry;
 use everruns_core::llm_models::LlmProviderType;
@@ -156,11 +158,31 @@ pub async fn build(
         memory_store: Arc::new(InMemoryMemoryStore::new()),
     };
 
-    // Register built-in capabilities (no opinionated bundle — we want a
-    // tight surface for the coding-CLI) plus our bash capability.
+    // Register a curated set of built-in capabilities (no opinionated bundle
+    // — we want a tight, predictable surface for the coding-CLI) plus our
+    // bash capability.
+    //
+    // Filesystem-anchored (all read via the FileStore stack we built above,
+    // so they target the real workspace transparently):
+    //   * agent_instructions   — re-reads AGENTS.md every turn
+    //   * session_file_system  — read/write/edit/list/grep/delete/stat tools
+    //   * skills               — discovers SKILL.md under /.agents/skills/
+    //
+    // Non-filesystem, but useful for a coding agent:
+    //   * infinity_context     — keeps long sessions usable; adds query_history
+    //   * current_time         — date/time tool, useful for git/time-anchored work
+    //   * stateless_todo_list  — write_todos tool for multi-step tasks
+    //   * loop_detection       — safety net against repeated identical tool calls
+    //   * prompt_caching       — Anthropic prompt caching; free token savings
     let mut capabilities = CapabilityRegistry::new();
     capabilities.register(AgentInstructionsCapability);
     capabilities.register(FileSystemCapability);
+    capabilities.register(SkillsCapability);
+    capabilities.register(InfinityContextCapability);
+    capabilities.register(CurrentTimeCapability);
+    capabilities.register(StatelessTodoListCapability);
+    capabilities.register(LoopDetectionCapability);
+    capabilities.register(PromptCachingCapability::new());
     capabilities.register(CodingBashCapability {
         workspace: workspace.clone(),
         gate,
@@ -273,6 +295,12 @@ fn coding_harness(id: HarnessId) -> Harness {
         capabilities: vec![
             AgentCapabilityConfig::new(AGENT_INSTRUCTIONS_CAPABILITY_ID),
             AgentCapabilityConfig::new("session_file_system"),
+            AgentCapabilityConfig::new(SKILLS_CAPABILITY_ID),
+            AgentCapabilityConfig::new(INFINITY_CONTEXT_CAPABILITY_ID),
+            AgentCapabilityConfig::new("current_time"),
+            AgentCapabilityConfig::new("stateless_todo_list"),
+            AgentCapabilityConfig::new("loop_detection"),
+            AgentCapabilityConfig::new(PROMPT_CACHING_CAPABILITY_ID),
             AgentCapabilityConfig::new("coding_cli_bash"),
         ],
         mcp_servers: Default::default(),

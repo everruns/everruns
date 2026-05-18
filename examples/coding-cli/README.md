@@ -11,27 +11,36 @@ depends on the public runtime crate the same way an external embedder would.
 
 - **TUI** (ratatui) chat: scrolling transcript, single-line input, status bar,
   modal approval bar for destructive tools
-- **Real-filesystem tools**: `read_file`, `write_file`, `edit_file`,
-  `list_directory`, `grep`, `bash` — all rooted at a workspace path, with
-  traversal protection
-- **Human-in-the-loop approvals**: `write_file`, `edit_file`, and `bash`
-  request explicit approval (`y` / `n`) before running. `edit_file` shows a
-  unified diff in the prompt. `--yes` auto-approves; `--print` mode implies
-  auto-approve.
+- **Real-filesystem tools** via the built-in `session_file_system` capability
+  on top of `RealDiskFileStore`: `read_file`, `write_file`, `edit_file`,
+  `list_directory`, `grep_files`, `delete_file`, `stat_file`.
+- **Plus a custom `bash`** tool that runs `bash -lc` from the workspace root.
+- **Curated built-in capabilities** wired beyond filesystem:
+  - `agent_instructions` — re-reads `AGENTS.md` every turn (live reload).
+  - `skills` — discovers `SKILL.md` files under `/.agents/skills/{name}/`;
+    exposes `list_skills` / `activate_skill`.
+  - `infinity_context` — keeps long sessions usable by trimming older history
+    out of the live prompt while keeping it queryable via `query_history`.
+  - `current_time` — `get_current_time` tool, handy for git/time-anchored work.
+  - `stateless_todo_list` — `write_todos` for multi-step task tracking.
+  - `loop_detection` — safety net against the model retrying the same
+    failing tool call in a loop.
+  - `prompt_caching` — Anthropic prompt-caching markers; free token savings
+    on long system prompts (including AGENTS.md).
+- **Human-in-the-loop approvals**: every write/edit/delete on disk and every
+  `bash` command requires explicit `y`/`n`. Writes show a unified diff in the
+  approval body. `--yes` auto-approves; `--print` mode implies auto-approve.
 - **Write blocklist**: writes into `.git/`, `node_modules/`, `target/`,
   `dist/`, `build/`, `.next/`, `.venv/`, `venv/`, `.tox/`, `.gradle/` are
   rejected at any depth. Read access is unrestricted.
 - **Tool-result visibility**: the transcript shows a per-tool summary
-  (e.g. `read_file ✓  crates/runtime/src/runtime.rs (45/788 lines)`,
-  `` bash ✓  `cargo test` exit=0 ``) and, for `edit_file`, the unified diff
-  inline.
-- **AGENTS.md / CLAUDE.md / .agents.md** loaded from the workspace root and
-  injected into the system prompt
+  (e.g. `read_file ✓  /workspace/crates/runtime/src/runtime.rs (45/788 lines)`,
+  `` bash ✓  `cargo test` exit=0 ``, `write_todos ✓`, `list_skills ✓`).
 - **Provider selection** via env vars: `OPENAI_API_KEY` → OpenAI (`gpt-5.5`),
   `ANTHROPIC_API_KEY` → Anthropic (`claude-sonnet-4-5`), otherwise falls back
   to `llmsim` (offline). OpenAI is preferred when both keys are present so the
   default model stays `gpt-5.5`.
-- **Slash commands**: `/help`, `/tools`, `/cwd`, `/model`, `/clear`, `/quit`
+- **Slash commands** (TUI): `/help`, `/tools`, `/cwd`, `/model`, `/clear`, `/quit`
 - **`--print`** one-shot mode for CI smoke tests
 
 ## Install
