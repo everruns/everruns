@@ -14076,7 +14076,7 @@
               "null"
             ],
             "format": "double",
-            "description": "Maximum cumulative amount (USD) per UTC day. `None` means no per-day cap."
+            "description": "Maximum cumulative amount (USD) per UTC day. **Advisory only — not yet enforced.** Stored for forward compatibility; the authority currently checks only `max_amount_usd_per_request`. `None` means no per-day cap."
           },
           "max_amount_usd_per_request": {
             "type": [
@@ -14084,7 +14084,7 @@
               "null"
             ],
             "format": "double",
-            "description": "Maximum amount (USD) any single paid request may settle for. `None` means no per-request cap."
+            "description": "Maximum amount (USD) any single paid request may settle for. **Enforced** by the payment authority at policy selection. `None` means no per-request cap."
           },
           "max_amount_usd_per_turn": {
             "type": [
@@ -14092,7 +14092,7 @@
               "null"
             ],
             "format": "double",
-            "description": "Maximum cumulative amount (USD) per agent turn. `None` means no per-turn cap."
+            "description": "Maximum cumulative amount (USD) per agent turn. **Advisory only — not yet enforced.** Stored for forward compatibility; the authority currently checks only `max_amount_usd_per_request`. `None` means no per-turn cap."
           },
           "metadata": {
             "description": "Free-form metadata attached to this policy."
@@ -14114,7 +14114,7 @@
               "null"
             ],
             "format": "double",
-            "description": "Threshold (USD) above which a request requires explicit human approval before settling. `None` disables the approval gate."
+            "description": "Threshold (USD) above which a request would require explicit human approval. **Advisory only — not yet enforced.** Stored for forward compatibility; no approval gate is wired up yet. `None` disables the (future) gate."
           },
           "subject_id": {
             "type": "string",
@@ -18936,7 +18936,7 @@
                     },
                     "enabled": {
                       "type": "boolean",
-                      "description": "Whether this model is visible in UI model pickers. All models remain available via API regardless of this flag."
+                      "description": "Whether this model is selectable. Controls UI visibility AND server-side resolution: `LlmResolverService` requires `enabled = true`, and org default-model validation rejects disabled models. Disabled models stay visible in raw list endpoints (so admins can re-enable them) but cannot be used in active sessions or as a session/agent default."
                     },
                     "id": {
                       "type": "string",
@@ -19044,7 +19044,7 @@
                     },
                     "enabled": {
                       "type": "boolean",
-                      "description": "Whether this model is visible in UI model pickers."
+                      "description": "Whether this model is selectable. Controls UI visibility AND server-side resolution: `LlmResolverService` requires `enabled = true`, and org default-model validation rejects disabled models."
                     },
                     "healthy": {
                       "type": "boolean",
@@ -19996,7 +19996,7 @@
           },
           "enabled": {
             "type": "boolean",
-            "description": "Whether this model is visible in UI model pickers. All models remain available via API regardless of this flag."
+            "description": "Whether this model is selectable. Controls UI visibility AND server-side resolution: `LlmResolverService` requires `enabled = true`, and org default-model validation rejects disabled models. Disabled models stay visible in raw list endpoints (so admins can re-enable them) but cannot be used in active sessions or as a session/agent default."
           },
           "id": {
             "type": "string",
@@ -20296,7 +20296,7 @@
           },
           "enabled": {
             "type": "boolean",
-            "description": "Whether this model is visible in UI model pickers."
+            "description": "Whether this model is selectable. Controls UI visibility AND server-side resolution: `LlmResolverService` requires `enabled = true`, and org default-model validation rejects disabled models."
           },
           "healthy": {
             "type": "boolean",
@@ -22718,7 +22718,7 @@
               "null"
             ],
             "format": "double",
-            "description": "Maximum cumulative amount (USD) per UTC day. `None` means no per-day cap."
+            "description": "Maximum cumulative amount (USD) per UTC day. **Advisory only — not yet enforced.** Stored on the policy for forward compatibility; the payment authority currently checks only `max_amount_usd_per_request`. `None` means no per-day cap."
           },
           "max_amount_usd_per_request": {
             "type": [
@@ -22726,7 +22726,7 @@
               "null"
             ],
             "format": "double",
-            "description": "Maximum amount (USD) any single paid request may settle for. `None` means no per-request cap."
+            "description": "Maximum amount (USD) any single paid request may settle for. **Enforced** by the payment authority at policy selection. `None` means no per-request cap."
           },
           "max_amount_usd_per_turn": {
             "type": [
@@ -22734,7 +22734,7 @@
               "null"
             ],
             "format": "double",
-            "description": "Maximum cumulative amount (USD) per agent turn. `None` means no per-turn cap."
+            "description": "Maximum cumulative amount (USD) per agent turn. **Advisory only — not yet enforced.** Stored on the policy for forward compatibility; the payment authority currently checks only `max_amount_usd_per_request`. `None` means no per-turn cap."
           },
           "metadata": {
             "description": "Free-form metadata attached to this policy."
@@ -22760,7 +22760,7 @@
               "null"
             ],
             "format": "double",
-            "description": "Threshold (USD) above which a request requires explicit human approval before settling. `None` disables the approval gate."
+            "description": "Threshold (USD) above which a request would require explicit human approval. **Advisory only — not yet enforced.** Stored on the policy for forward compatibility; no approval gate is wired up yet. `None` disables the (future) gate."
           },
           "status": {
             "$ref": "#/components/schemas/PaymentStatus",
@@ -25188,7 +25188,7 @@
           "attempt": {
             "type": "integer",
             "format": "int32",
-            "description": "1-based attempt counter (incremented on each retry).",
+            "description": "Attempt counter. `0` before the task has ever been claimed; incremented to `1` on the first claim and once more per retry.",
             "minimum": 0
           },
           "claimed_at": {
@@ -26674,7 +26674,7 @@
               "null"
             ],
             "format": "double",
-            "description": "New per-day cap (USD). Outer `None` leaves the field unchanged; inner `None` clears the cap."
+            "description": "New per-day cap (USD). **Advisory only — not yet enforced.** Outer `None` leaves the field unchanged; inner `None` clears the cap."
           },
           "max_amount_usd_per_request": {
             "type": [
@@ -26682,7 +26682,7 @@
               "null"
             ],
             "format": "double",
-            "description": "New per-request cap (USD). Outer `None` leaves the field unchanged; inner `None` clears the cap."
+            "description": "New per-request cap (USD). **Enforced** by the payment authority. Outer `None` leaves the field unchanged; inner `None` clears the cap."
           },
           "max_amount_usd_per_turn": {
             "type": [
@@ -26690,7 +26690,7 @@
               "null"
             ],
             "format": "double",
-            "description": "New per-turn cap (USD). Outer `None` leaves the field unchanged; inner `None` clears the cap."
+            "description": "New per-turn cap (USD). **Advisory only — not yet enforced.** Outer `None` leaves the field unchanged; inner `None` clears the cap."
           },
           "metadata": {
             "description": "New free-form metadata. Replaces the existing metadata blob entirely when set."
@@ -26711,7 +26711,7 @@
               "null"
             ],
             "format": "double",
-            "description": "New approval threshold (USD). Outer `None` leaves the field unchanged; inner `None` disables the gate."
+            "description": "New approval threshold (USD). **Advisory only — not yet enforced.** Outer `None` leaves the field unchanged; inner `None` disables the (future) gate."
           },
           "status": {
             "type": [
@@ -28359,7 +28359,7 @@
               },
               "enabled": {
                 "type": "boolean",
-                "description": "Whether this model is visible in UI model pickers. All models remain available via API regardless of this flag."
+                "description": "Whether this model is selectable. Controls UI visibility AND server-side resolution: `LlmResolverService` requires `enabled = true`, and org default-model validation rejects disabled models. Disabled models stay visible in raw list endpoints (so admins can re-enable them) but cannot be used in active sessions or as a session/agent default."
               },
               "id": {
                 "type": "string",
@@ -28454,7 +28454,7 @@
               },
               "enabled": {
                 "type": "boolean",
-                "description": "Whether this model is visible in UI model pickers."
+                "description": "Whether this model is selectable. Controls UI visibility AND server-side resolution: `LlmResolverService` requires `enabled = true`, and org default-model validation rejects disabled models."
               },
               "healthy": {
                 "type": "boolean",

@@ -531,7 +531,7 @@ pub struct TaskResponse {
     pub status: String,
     /// Priority; higher values run first within the same activity type.
     pub priority: i32,
-    /// 1-based attempt counter (incremented on each retry).
+    /// Attempt counter. `0` before the task has ever been claimed; incremented to `1` on the first claim and once more per retry.
     pub attempt: u32,
     /// Maximum number of attempts before the task is sent to the DLQ.
     pub max_attempts: u32,

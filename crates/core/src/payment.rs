@@ -184,13 +184,13 @@ pub struct PaymentPolicy {
     pub allowed_hosts: Vec<String>,
     /// Preferred settlement rails in priority order; the authority picks the first available.
     pub rail_preference: Vec<PaymentRail>,
-    /// Maximum amount (USD) any single paid request may settle for. `None` means no per-request cap.
+    /// Maximum amount (USD) any single paid request may settle for. **Enforced** by the payment authority at policy selection. `None` means no per-request cap.
     pub max_amount_usd_per_request: Option<f64>,
-    /// Maximum cumulative amount (USD) per agent turn. `None` means no per-turn cap.
+    /// Maximum cumulative amount (USD) per agent turn. **Advisory only — not yet enforced.** Stored on the policy for forward compatibility; the payment authority currently checks only `max_amount_usd_per_request`. `None` means no per-turn cap.
     pub max_amount_usd_per_turn: Option<f64>,
-    /// Maximum cumulative amount (USD) per UTC day. `None` means no per-day cap.
+    /// Maximum cumulative amount (USD) per UTC day. **Advisory only — not yet enforced.** Stored on the policy for forward compatibility; the payment authority currently checks only `max_amount_usd_per_request`. `None` means no per-day cap.
     pub max_amount_usd_per_day: Option<f64>,
-    /// Threshold (USD) above which a request requires explicit human approval before settling. `None` disables the approval gate.
+    /// Threshold (USD) above which a request would require explicit human approval. **Advisory only — not yet enforced.** Stored on the policy for forward compatibility; no approval gate is wired up yet. `None` disables the (future) gate.
     pub require_approval_above_usd: Option<f64>,
     /// Current lifecycle status of this policy.
     pub status: PaymentStatus,

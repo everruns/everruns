@@ -1784,7 +1784,13 @@ mod tests {
         .expect_err("manual publish cannot use automatic change kind");
 
         assert!(
-            matches!(err, CommandError::BadRequest(_)),
+            matches!(
+                err,
+                CommandError {
+                    kind: CommandErrorKind::BadRequest(_),
+                    ..
+                }
+            ),
             "expected BadRequest, got {err:?}"
         );
     }
@@ -1822,7 +1828,13 @@ mod tests {
         .expect_err("draft snapshot cannot become default");
 
         assert!(
-            matches!(err, CommandError::BadRequest(_)),
+            matches!(
+                err,
+                CommandError {
+                    kind: CommandErrorKind::BadRequest(_),
+                    ..
+                }
+            ),
             "expected BadRequest, got {err:?}"
         );
     }

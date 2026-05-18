@@ -159,7 +159,7 @@ pub struct LlmModel {
     pub capabilities: Vec<String>,
     /// Whether this model is starred in the UI for quick access.
     pub is_favorite: bool,
-    /// Whether this model is visible in UI model pickers. All models remain available via API regardless of this flag.
+    /// Whether this model is selectable. Controls UI visibility AND server-side resolution: `LlmResolverService` requires `enabled = true`, and org default-model validation rejects disabled models. Disabled models stay visible in raw list endpoints (so admins can re-enable them) but cannot be used in active sessions or as a session/agent default.
     pub enabled: bool,
     /// How this model entry was added (manually, discovered, or seeded as predefined).
     pub source: LlmModelSource,
@@ -187,7 +187,7 @@ pub struct LlmModelWithProvider {
     pub capabilities: Vec<String>,
     /// Whether this model is starred in the UI for quick access.
     pub is_favorite: bool,
-    /// Whether this model is visible in UI model pickers.
+    /// Whether this model is selectable. Controls UI visibility AND server-side resolution: `LlmResolverService` requires `enabled = true`, and org default-model validation rejects disabled models.
     pub enabled: bool,
     /// How this model entry was added (manually, discovered, or seeded as predefined).
     pub source: LlmModelSource,
