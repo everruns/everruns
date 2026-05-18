@@ -95,7 +95,7 @@ rand = "0.9"
 base64 = "0.22"
 
 # Rate limiting
-governor = "0.8"
+governor = "0.10"
 
 # Valkey/Redis (distributed rate limiting)
 fred = { version = "10", features = ["enable-rustls-ring", "i-scripts"] }
