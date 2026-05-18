@@ -142,10 +142,11 @@ pub async fn build(
     let workspace = Workspace::new(canonical_root.clone());
 
     // Build the FileStore stack: ApprovalGating(WriteBlocklist(RealDisk)).
-    let disk = Arc::new(RealDiskFileStore::new(&canonical_root)?);
-    let blocklisted = Arc::new(WriteBlocklistFileStore::new(disk));
-    let gated = Arc::new(ApprovalGatingFileStore::new(blocklisted, gate.clone()));
-    let file_store: Arc<dyn RuntimeFileStore> = gated;
+    let disk: Arc<dyn RuntimeFileStore> = Arc::new(RealDiskFileStore::new(&canonical_root)?);
+    let blocklisted: Arc<dyn RuntimeFileStore> = Arc::new(WriteBlocklistFileStore::new(disk));
+    let gated: Arc<dyn RuntimeFileStore> =
+        Arc::new(ApprovalGatingFileStore::new(blocklisted, gate.clone()));
+    let file_store = gated;
 
     // The rest of the backends stay in memory.
     let event_emitter = InMemoryEventEmitter::new();

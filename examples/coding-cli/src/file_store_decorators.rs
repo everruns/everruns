@@ -38,13 +38,23 @@ const DEFAULT_WRITE_BLOCKLIST: &[&str] = &[
 ];
 
 /// Reject writes into vendored / build directories.
-pub struct WriteBlocklistFileStore<S> {
-    inner: Arc<S>,
+//
+// Non-generic over the wrapped store: we store an `Arc<dyn RuntimeFileStore>`
+// rather than a generic `Arc<S>`. Two reasons:
+//   1. CI rustc (stable 1.95.0) reports E0119 on generic decorators that impl
+//      both `SessionFileStore` and `RuntimeFileStore` for the same generic
+//      `WriteBlocklistFileStore<S>`, even though the trait param of each impl
+//      differs. Couldn't reproduce locally on identical rustc, but trait
+//      objects sidestep the coherence question entirely.
+//   2. The only concrete value of `S` that ever flows through is the runtime's
+//      `RealDiskFileStore`; monomorphization wasn't earning anything.
+pub struct WriteBlocklistFileStore {
+    inner: Arc<dyn RuntimeFileStore>,
     blocklist: Vec<String>,
 }
 
-impl<S> WriteBlocklistFileStore<S> {
-    pub fn new(inner: Arc<S>) -> Self {
+impl WriteBlocklistFileStore {
+    pub fn new(inner: Arc<dyn RuntimeFileStore>) -> Self {
         Self {
             inner,
             blocklist: DEFAULT_WRITE_BLOCKLIST
@@ -71,7 +81,7 @@ impl<S> WriteBlocklistFileStore<S> {
 }
 
 #[async_trait]
-impl<S: RuntimeFileStore + 'static> SessionFileStore for WriteBlocklistFileStore<S> {
+impl SessionFileStore for WriteBlocklistFileStore {
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
         self.inner.read_file(session_id, path).await
     }
@@ -151,19 +161,19 @@ impl<S: RuntimeFileStore + 'static> SessionFileStore for WriteBlocklistFileStore
 /// For writes we always read the existing content first (via the inner store)
 /// so the approval prompt can show a diff. That's one extra read per write,
 /// acceptable for a coding agent where writes are rare and small.
-pub struct ApprovalGatingFileStore<S> {
-    inner: Arc<S>,
+pub struct ApprovalGatingFileStore {
+    inner: Arc<dyn RuntimeFileStore>,
     gate: Arc<ApprovalGate>,
 }
 
-impl<S> ApprovalGatingFileStore<S> {
-    pub fn new(inner: Arc<S>, gate: Arc<ApprovalGate>) -> Self {
+impl ApprovalGatingFileStore {
+    pub fn new(inner: Arc<dyn RuntimeFileStore>, gate: Arc<ApprovalGate>) -> Self {
         Self { inner, gate }
     }
 }
 
 #[async_trait]
-impl<S: RuntimeFileStore + 'static> SessionFileStore for ApprovalGatingFileStore<S> {
+impl SessionFileStore for ApprovalGatingFileStore {
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
         self.inner.read_file(session_id, path).await
     }
@@ -276,7 +286,7 @@ impl<S: RuntimeFileStore + 'static> SessionFileStore for ApprovalGatingFileStore
 }
 
 #[async_trait]
-impl<S: RuntimeFileStore + 'static> RuntimeFileStore for WriteBlocklistFileStore<S> {
+impl RuntimeFileStore for WriteBlocklistFileStore {
     async fn seed_initial_file(&self, session_id: SessionId, file: &InitialFile) -> Result<()> {
         self.check(&file.path)?;
         self.inner.seed_initial_file(session_id, file).await
@@ -284,7 +294,7 @@ impl<S: RuntimeFileStore + 'static> RuntimeFileStore for WriteBlocklistFileStore
 }
 
 #[async_trait]
-impl<S: RuntimeFileStore + 'static> RuntimeFileStore for ApprovalGatingFileStore<S> {
+impl RuntimeFileStore for ApprovalGatingFileStore {
     async fn seed_initial_file(&self, session_id: SessionId, file: &InitialFile) -> Result<()> {
         // Initial files are embedder-supplied seed data — not LLM-driven —
         // so no approval prompt.
