@@ -17,8 +17,11 @@ use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, InitialFile, Se
 use everruns_core::traits::SessionFileStore;
 use everruns_core::typed_id::SessionId;
 use ignore::WalkBuilder;
+use std::collections::HashSet;
 use std::path::{Component, Path, PathBuf};
+use std::sync::Arc;
 use std::time::SystemTime;
+use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use crate::backends::RuntimeFileStore;
@@ -29,9 +32,16 @@ use crate::backends::RuntimeFileStore;
 /// optional `/workspace` prefix, `..` rejected anywhere). `session_id` is
 /// accepted on every method but ignored — the store is single-workspace per
 /// process. See `specs/file-store.md` for the multi-tenant upgrade path.
+///
+/// `is_readonly` flags from `seed_initial_file` are tracked in an in-memory
+/// set (the disk backend has no place to persist them), so writes and
+/// deletes through this store still honor the trait contract within a
+/// single process. The flag is *not* mapped onto filesystem permissions —
+/// other host processes can still modify the file directly.
 #[derive(Debug, Clone)]
 pub struct RealDiskFileStore {
     root: PathBuf,
+    readonly: Arc<RwLock<HashSet<String>>>,
 }
 
 impl RealDiskFileStore {
@@ -59,7 +69,23 @@ impl RealDiskFileStore {
                 canonical.display()
             )));
         }
-        Ok(Self { root: canonical })
+        Ok(Self {
+            root: canonical,
+            readonly: Arc::new(RwLock::new(HashSet::new())),
+        })
+    }
+
+    async fn is_readonly(&self, canonical_path: &str) -> bool {
+        self.readonly.read().await.contains(canonical_path)
+    }
+
+    async fn mark_readonly(&self, canonical_path: String, readonly: bool) {
+        let mut guard = self.readonly.write().await;
+        if readonly {
+            guard.insert(canonical_path);
+        } else {
+            guard.remove(&canonical_path);
+        }
     }
 
     /// Borrow the canonicalized workspace root.
@@ -168,6 +194,7 @@ impl SessionFileStore for RealDiskFileStore {
         let id = path_id(&canonical_path);
 
         let (created_at, updated_at) = file_times(&metadata);
+        let is_readonly = self.is_readonly(&canonical_path).await;
 
         if metadata.is_dir() {
             return Ok(Some(SessionFile {
@@ -188,7 +215,7 @@ impl SessionFileStore for RealDiskFileStore {
         let bytes = tokio::fs::read(&absolute).await.map_err(|e| {
             AgentLoopError::tool(format!("read failed for {}: {e}", absolute.display()))
         })?;
-        let size_bytes = bytes.len() as i64;
+        let size_bytes = saturating_i64(bytes.len() as u64);
         let (content, encoding) = SessionFile::encode_content(&bytes);
 
         Ok(Some(SessionFile {
@@ -199,7 +226,7 @@ impl SessionFileStore for RealDiskFileStore {
             content: Some(content),
             encoding,
             is_directory: false,
-            is_readonly: false,
+            is_readonly,
             size_bytes,
             created_at,
             updated_at,
@@ -214,6 +241,12 @@ impl SessionFileStore for RealDiskFileStore {
         encoding: &str,
     ) -> Result<SessionFile> {
         let absolute = self.resolve(path)?;
+        let canonical_path = self.relative_capability_path(&absolute)?;
+        if self.is_readonly(&canonical_path).await {
+            return Err(AgentLoopError::tool(format!(
+                "file is read-only: {canonical_path}"
+            )));
+        }
         if let Some(parent) = absolute.parent() {
             tokio::fs::create_dir_all(parent).await.map_err(|e| {
                 AgentLoopError::tool(format!("failed to create parent {}: {e}", parent.display()))
@@ -235,7 +268,6 @@ impl SessionFileStore for RealDiskFileStore {
             AgentLoopError::tool(format!("write failed for {}: {e}", absolute.display()))
         })?;
 
-        let canonical_path = self.relative_capability_path(&absolute)?;
         let metadata = tokio::fs::metadata(&absolute).await.map_err(|e| {
             AgentLoopError::tool(format!(
                 "post-write stat failed for {}: {e}",
@@ -255,7 +287,7 @@ impl SessionFileStore for RealDiskFileStore {
             encoding: encoding.to_string(),
             is_directory: false,
             is_readonly: false,
-            size_bytes: bytes.len() as i64,
+            size_bytes: saturating_i64(bytes.len() as u64),
             created_at,
             updated_at,
         })
@@ -269,8 +301,15 @@ impl SessionFileStore for RealDiskFileStore {
     ) -> Result<bool> {
         let absolute = self.resolve(path)?;
         if absolute == self.root {
-            // Refuse to delete the workspace root itself.
-            return Ok(false);
+            return Err(AgentLoopError::tool(
+                "cannot delete workspace root".to_string(),
+            ));
+        }
+        let canonical_path = self.relative_capability_path(&absolute)?;
+        if self.is_readonly(&canonical_path).await {
+            return Err(AgentLoopError::tool(format!(
+                "file is read-only: {canonical_path}"
+            )));
         }
         let metadata = match tokio::fs::metadata(&absolute).await {
             Ok(m) => m,
@@ -362,7 +401,11 @@ impl SessionFileStore for RealDiskFileStore {
                 path: canonical,
                 is_directory: is_dir,
                 is_readonly: false,
-                size_bytes: if is_dir { 0 } else { entry_meta.len() as i64 },
+                size_bytes: if is_dir {
+                    0
+                } else {
+                    saturating_i64(entry_meta.len())
+                },
                 created_at,
                 updated_at,
             });
@@ -386,15 +429,16 @@ impl SessionFileStore for RealDiskFileStore {
         let canonical = self.relative_capability_path(&absolute)?;
         let name = FileInfo::name_from_path(&canonical);
         let (created_at, updated_at) = file_times(&metadata);
+        let is_readonly = self.is_readonly(&canonical).await;
         Ok(Some(FileStat {
             path: canonical,
             name,
             is_directory: metadata.is_dir(),
-            is_readonly: false,
+            is_readonly,
             size_bytes: if metadata.is_dir() {
                 0
             } else {
-                metadata.len() as i64
+                saturating_i64(metadata.len())
             },
             created_at,
             updated_at,
@@ -435,7 +479,33 @@ impl SessionFileStore for RealDiskFileStore {
                     Ok(r) => r,
                     Err(_) => continue,
                 };
-                let rel_str = relative.to_string_lossy().replace('\\', "/");
+                // Skip non-UTF-8 paths rather than corrupting them with
+                // `to_string_lossy()`: `GrepMatch.path` must round-trip back
+                // through `resolve` for subsequent `read_file` calls.
+                let mut rel_str = String::new();
+                let mut ok = true;
+                let mut first = true;
+                for component in relative.components() {
+                    if let Component::Normal(seg) = component {
+                        if !first {
+                            rel_str.push('/');
+                        }
+                        first = false;
+                        match seg.to_str() {
+                            Some(s) => rel_str.push_str(s),
+                            None => {
+                                ok = false;
+                                break;
+                            }
+                        }
+                    } else {
+                        ok = false;
+                        break;
+                    }
+                }
+                if !ok {
+                    continue;
+                }
                 if let Some(filter) = &path_pattern
                     && !rel_str.contains(filter.as_str())
                 {
@@ -499,9 +569,18 @@ impl SessionFileStore for RealDiskFileStore {
 #[async_trait]
 impl RuntimeFileStore for RealDiskFileStore {
     async fn seed_initial_file(&self, session_id: SessionId, file: &InitialFile) -> Result<()> {
+        // Clear any prior readonly mark so seeding always wins over a
+        // previous starter-file declaration with the same path.
+        let absolute = self.resolve(&file.path)?;
+        let canonical = self.relative_capability_path(&absolute)?;
+        self.mark_readonly(canonical.clone(), false).await;
+
         self.write_file(session_id, &file.path, &file.content, &file.encoding)
-            .await
-            .map(|_| ())
+            .await?;
+        if file.is_readonly {
+            self.mark_readonly(canonical, true).await;
+        }
+        Ok(())
     }
 }
 
@@ -549,6 +628,17 @@ fn system_time_to_utc(time: SystemTime) -> Option<DateTime<Utc>> {
     let duration = time.duration_since(SystemTime::UNIX_EPOCH).ok()?;
     Utc.timestamp_opt(duration.as_secs() as i64, duration.subsec_nanos())
         .single()
+}
+
+/// Saturating `u64 -> i64` cast. The `SessionFile` trait fixes size as
+/// `i64`; files larger than 9 EiB are not realistically reachable through
+/// this code path, but the explicit cap makes the wrap intent obvious.
+fn saturating_i64(value: u64) -> i64 {
+    if value > i64::MAX as u64 {
+        i64::MAX
+    } else {
+        value as i64
+    }
 }
 
 #[cfg(test)]
@@ -803,5 +893,88 @@ mod tests {
         let err = RealDiskFileStore::new(&missing).expect_err("must reject missing root");
         let msg = format!("{err}");
         assert!(msg.contains("does not exist"), "got: {msg}");
+    }
+
+    #[tokio::test]
+    async fn delete_root_returns_explicit_error() {
+        let (store, _dir) = make_store();
+        let session = sid();
+        let err = store
+            .delete_file(session, "/", true)
+            .await
+            .expect_err("root delete must be an explicit error, not Ok(false)");
+        assert!(format!("{err}").contains("workspace root"));
+    }
+
+    #[tokio::test]
+    async fn seeded_readonly_file_rejects_writes() {
+        let (store, _dir) = make_store();
+        let session = sid();
+        store
+            .seed_initial_file(
+                session,
+                &InitialFile {
+                    path: "/locked.txt".to_string(),
+                    content: "starter".to_string(),
+                    encoding: "text".to_string(),
+                    is_readonly: true,
+                },
+            )
+            .await
+            .unwrap();
+
+        let read = store
+            .read_file(session, "/locked.txt")
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(read.is_readonly);
+
+        let err = store
+            .write_file(session, "/locked.txt", "changed", "text")
+            .await
+            .expect_err("readonly write must fail");
+        assert!(format!("{err}").contains("read-only"));
+
+        let err = store
+            .delete_file(session, "/locked.txt", false)
+            .await
+            .expect_err("readonly delete must fail");
+        assert!(format!("{err}").contains("read-only"));
+    }
+
+    #[tokio::test]
+    async fn reseeding_clears_readonly() {
+        let (store, _dir) = make_store();
+        let session = sid();
+        store
+            .seed_initial_file(
+                session,
+                &InitialFile {
+                    path: "/foo.txt".to_string(),
+                    content: "v1".to_string(),
+                    encoding: "text".to_string(),
+                    is_readonly: true,
+                },
+            )
+            .await
+            .unwrap();
+        // Re-seed without readonly: subsequent writes must succeed.
+        store
+            .seed_initial_file(
+                session,
+                &InitialFile {
+                    path: "/foo.txt".to_string(),
+                    content: "v2".to_string(),
+                    encoding: "text".to_string(),
+                    is_readonly: false,
+                },
+            )
+            .await
+            .unwrap();
+        store
+            .write_file(session, "/foo.txt", "v3", "text")
+            .await
+            .unwrap();
     }
 }

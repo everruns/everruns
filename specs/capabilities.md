@@ -360,11 +360,12 @@ FileSystem tools require session context to access the isolated virtual filesyst
 - `session_id`: The session whose filesystem to access
 - `file_store`: A `SessionFileStore` trait implementation for file operations
 
-See `specs/file-store.md` for the pluggable `SessionFileStore` contract, the
-in-memory and real-disk implementations, and the policy decorators
-(`WriteBlocklistFileStore`, `ApprovalGatingFileStore`). New capabilities that
-need filesystem access MUST go through `ToolContext.file_store` or
-`SystemPromptContext.file_store` rather than calling `std::fs` directly.
+See `specs/file-store.md` for the pluggable `SessionFileStore` contract and
+the in-memory and real-disk implementations. New capabilities that need
+filesystem access should go through `ToolContext.file_store` or
+`SystemPromptContext.file_store` rather than calling `std::fs` directly,
+except for host-process tools (e.g. the bash tool) where the shell
+inherits the host filesystem regardless of which `FileStore` is plugged in.
 
 ##### Design Decision: Session Isolation
 

@@ -138,34 +138,22 @@
 //!
 //! Embedders who want built-in capabilities (`file_system`,
 //! `agent_instructions`, `skills`, ...) to read and write a real directory
-//! on disk plug a [`RealDiskFileStore`] (optionally wrapped with
-//! [`WriteBlocklistFileStore`] and [`ApprovalGatingFileStore`]) into
-//! [`RuntimeBackends::file_store`].
+//! on disk plug a [`RealDiskFileStore`] into [`RuntimeBackends::file_store`].
+//! Every capability that goes through `ToolContext.file_store` or
+//! `SystemPromptContext.file_store` picks it up automatically.
 //!
-//! ```ignore
-//! use std::sync::Arc;
-//! use everruns_runtime::{
-//!     ApprovalGatingFileStore, RealDiskFileStore, RuntimeBackends,
-//!     WriteBlocklistFileStore, auto_approve_callback,
-//! };
+//! See the runnable examples for the full wiring:
 //!
-//! let workspace_root = std::env::current_dir()?;
-//! let file_store = Arc::new(ApprovalGatingFileStore::new(
-//!     WriteBlocklistFileStore::default_blocked(
-//!         RealDiskFileStore::new(workspace_root)?,
-//!     ),
-//!     auto_approve_callback(),
-//! ));
-//! // backends.file_store = file_store;
-//! # Ok::<(), everruns_core::AgentLoopError>(())
+//! ```text
+//! cargo run -p everruns-runtime --example real_disk_agent_instructions
+//! cargo run -p everruns-runtime --example real_disk_file_system_tools
 //! ```
 //!
-//! See `specs/file-store.md` for the contract and composition rules.
+//! And `specs/file-store.md` for the trait contract.
 
 mod backends;
 mod host;
 mod in_memory;
-mod policy;
 mod real_disk;
 mod runtime;
 mod turn_strategy;
@@ -180,10 +168,6 @@ pub use host::{
     execute_act_activity, execute_input_activity, execute_reason_activity,
 };
 pub use in_memory::{InMemorySessionFileStore, InMemorySessionStorageStore, InMemorySessionStore};
-pub use policy::{
-    ApprovalCallback, ApprovalGatingFileStore, WriteBlocklistFileStore, WriteKind, WriteRequest,
-    auto_approve_callback,
-};
 pub use real_disk::RealDiskFileStore;
 pub use runtime::{InProcessRuntime, InProcessRuntimeBuilder, TurnResult};
 pub use turn_strategy::{RuntimeActPlan, RuntimeTurnPlan, RuntimeTurnState, plan_next_host_turn};
