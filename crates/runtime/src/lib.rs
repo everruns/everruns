@@ -133,10 +133,28 @@
 //! assert!(result.success);
 //! # Ok::<(), everruns_core::AgentLoopError>(())
 //! ```
+//!
+//! # Real-disk workspace
+//!
+//! Embedders who want built-in capabilities (`file_system`,
+//! `agent_instructions`, `skills`, ...) to read and write a real directory
+//! on disk plug a [`RealDiskFileStore`] into [`RuntimeBackends::file_store`].
+//! Every capability that goes through `ToolContext.file_store` or
+//! `SystemPromptContext.file_store` picks it up automatically.
+//!
+//! See the runnable examples for the full wiring:
+//!
+//! ```text
+//! cargo run -p everruns-runtime --example real_disk_agent_instructions
+//! cargo run -p everruns-runtime --example real_disk_file_system_tools
+//! ```
+//!
+//! And `specs/file-store.md` for the trait contract.
 
 mod backends;
 mod host;
 mod in_memory;
+mod real_disk;
 mod runtime;
 mod turn_strategy;
 
@@ -150,5 +168,6 @@ pub use host::{
     execute_act_activity, execute_input_activity, execute_reason_activity,
 };
 pub use in_memory::{InMemorySessionFileStore, InMemorySessionStorageStore, InMemorySessionStore};
+pub use real_disk::RealDiskFileStore;
 pub use runtime::{InProcessRuntime, InProcessRuntimeBuilder, TurnResult};
 pub use turn_strategy::{RuntimeActPlan, RuntimeTurnPlan, RuntimeTurnState, plan_next_host_turn};

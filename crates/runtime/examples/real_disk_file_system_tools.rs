@@ -1,0 +1,207 @@
+// Demonstrates that the built-in `file_system` capability's tools
+// (`write_file`, `read_file`, `list_directory`) operate against whichever
+// `SessionFileStore` the embedder plugs in — here, a `RealDiskFileStore`
+// rooted at a temp directory. The agent's tool calls land on real disk.
+//
+// What this proves:
+//   1. A `write_file` tool call routed through `FileSystemCapability` ends
+//      up as actual bytes on the host filesystem (verified with std::fs).
+//   2. A `read_file` tool call routed through the same capability reads
+//      those bytes back.
+//   3. No bespoke per-embedder filesystem code: the in-tree capability is
+//      the only thing wired up.
+//
+// Run with:
+//   cargo run -p everruns-runtime --example real_disk_file_system_tools
+
+use std::sync::Arc;
+
+use chrono::Utc;
+use everruns_core::capabilities::FileSystemCapability;
+use everruns_core::llm_driver_registry::DriverRegistry;
+use everruns_core::llmsim_driver::LlmSimConfig;
+use everruns_core::memory::{
+    InMemoryAgentStore, InMemoryEventEmitter, InMemoryHarnessStore, InMemoryLlmProviderStore,
+    InMemoryMemoryStore, InMemoryMessageRetriever,
+};
+use everruns_core::{
+    Agent, AgentCapabilityConfig, AgentStatus, CapabilityRegistry, Harness, HarnessStatus,
+    LlmProviderType, ModelWithProvider, PlatformDefinition, Session, SessionStatus, ToolCall,
+};
+use everruns_runtime::{
+    InMemorySessionStorageStore, InMemorySessionStore, InProcessRuntimeBuilder, RealDiskFileStore,
+    RuntimeBackends,
+};
+use tempfile::TempDir;
+use uuid::Uuid;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // 1. Real workspace directory on disk.
+    let workspace = TempDir::new()?;
+    println!("workspace root: {}", workspace.path().display());
+
+    // 2. Pre-seed a source file directly on disk so the agent can read it.
+    std::fs::write(workspace.path().join("input.txt"), "hello from real disk")?;
+
+    // 3. Plug RealDiskFileStore into the runtime backends.
+    let event_emitter = InMemoryEventEmitter::new();
+    let backends = RuntimeBackends {
+        harness_store: Arc::new(InMemoryHarnessStore::new()),
+        agent_store: Arc::new(InMemoryAgentStore::new()),
+        session_store: Arc::new(InMemorySessionStore::new()),
+        message_store: Arc::new(InMemoryMessageRetriever::new()),
+        provider_store: Arc::new(InMemoryLlmProviderStore::new()),
+        event_emitter: Arc::new(event_emitter.clone()),
+        event_collector: Some(Arc::new(event_emitter)),
+        file_store: Arc::new(RealDiskFileStore::new(workspace.path())?),
+        storage_store: Arc::new(InMemorySessionStorageStore::new()),
+        memory_store: Arc::new(InMemoryMemoryStore::new()),
+    };
+
+    // 4. Register only the built-in FileSystemCapability — no custom tools.
+    let mut capabilities = CapabilityRegistry::new();
+    capabilities.register(FileSystemCapability);
+    let platform = PlatformDefinition::new(capabilities, DriverRegistry::new());
+
+    // 5. Drive the agent with a fixed tool-call script via llmsim: read the
+    //    seeded file, then write a new file. The runtime forwards every
+    //    tool call through `ToolContext.file_store` to the real-disk store.
+    let llmsim = LlmSimConfig::fixed("done").with_tool_call_sequence(vec![
+        vec![ToolCall {
+            id: "call_read_1".into(),
+            name: "read_file".into(),
+            arguments: serde_json::json!({ "path": "/workspace/input.txt" }),
+        }],
+        vec![ToolCall {
+            id: "call_write_1".into(),
+            name: "write_file".into(),
+            arguments: serde_json::json!({
+                "path": "/workspace/output.txt",
+                "content": "hello back",
+            }),
+        }],
+        vec![],
+    ]);
+
+    let harness_id = "harness_00000000000000000000000000000092".parse().unwrap();
+    let agent_id = "agent_00000000000000000000000000000092".parse().unwrap();
+    let session_id = "session_00000000000000000000000000000092".parse().unwrap();
+
+    let runtime = InProcessRuntimeBuilder::new()
+        .platform_definition(platform)
+        .backends(backends)
+        .llm_sim(llmsim)
+        .default_model(ModelWithProvider {
+            model: "llmsim-model".into(),
+            provider_type: LlmProviderType::LlmSim,
+            api_key: Some("fake-key".into()),
+            base_url: None,
+        })
+        .harness(Harness {
+            id: harness_id,
+            name: "files".into(),
+            display_name: Some("Files".into()),
+            description: Some("Harness exposing file_system tools".into()),
+            system_prompt: "Use the file_system tools.".into(),
+            parent_harness_id: None,
+            default_model_id: None,
+            tags: vec![],
+            capabilities: vec![AgentCapabilityConfig::new("session_file_system")],
+            initial_files: vec![],
+            network_access: None,
+            mcp_servers: Default::default(),
+            is_built_in: false,
+            status: HarnessStatus::Active,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            archived_at: None,
+            deleted_at: None,
+        })
+        .agent(Agent {
+            public_id: agent_id,
+            internal_id: Uuid::nil(),
+            name: "files-agent".into(),
+            display_name: Some("Files Agent".into()),
+            description: None,
+            system_prompt: "Use tools when needed.".into(),
+            default_model_id: None,
+            default_version_id: None,
+            forked_from_agent_id: None,
+            forked_from_version_id: None,
+            root_agent_id: None,
+            tags: vec![],
+            capabilities: vec![],
+            initial_files: vec![],
+            network_access: None,
+            max_iterations: Some(8),
+            tools: vec![],
+            mcp_servers: Default::default(),
+            status: AgentStatus::Active,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            archived_at: None,
+            deleted_at: None,
+            usage: None,
+        })
+        .session(Session {
+            id: session_id,
+            organization_id: everruns_core::DEFAULT_ORG_PUBLIC_ID.to_string(),
+            harness_id,
+            agent_id: Some(agent_id),
+            agent_version_id: None,
+            agent_identity_id: None,
+            owner_principal_id: everruns_core::PrincipalId::from_seed(1),
+            resolved_owner_user_id: None,
+            owner: None,
+            effective_owner: None,
+            title: Some("Files Session".into()),
+            locale: None,
+            preview: None,
+            output_preview: None,
+            tags: vec![],
+            model_id: None,
+            capabilities: vec![],
+            tools: vec![],
+            mcp_servers: Default::default(),
+            system_prompt: None,
+            initial_files: vec![],
+            hints: None,
+            network_access: None,
+            max_iterations: None,
+            status: SessionStatus::Started,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            started_at: None,
+            finished_at: None,
+            usage: None,
+            is_pinned: None,
+            active_schedule_count: None,
+            features: vec![],
+            parent_session_id: None,
+            subagent_name: None,
+            subagent_task: None,
+            subagent_status: None,
+            blueprint_id: None,
+            blueprint_config: None,
+        })
+        .build()
+        .await?;
+
+    let result = runtime
+        .run_text_turn(session_id, "Read input.txt then write output.txt.")
+        .await?;
+    println!(
+        "turn done: success={} iterations={} response={:?}",
+        result.success, result.iterations, result.response
+    );
+
+    // 6. Verify the write actually hit real disk. No FileStore call here —
+    //    we go straight to std::fs to prove the bytes are on the host.
+    let on_disk = std::fs::read_to_string(workspace.path().join("output.txt"))?;
+    println!("output.txt on real disk: {on_disk:?}");
+    assert_eq!(on_disk, "hello back");
+
+    println!("\nok: file_system capability tool calls landed on real disk");
+    Ok(())
+}
