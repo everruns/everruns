@@ -54,7 +54,7 @@ Always do step 1 before step 2. Always do step 3 when you change behavior.
 
 - **Read / search:** `read_file`, `grep_files`, `list_directory`, `stat_file`.
 - **Edit / write:** `edit_file` for targeted string replacement; `write_file` for new files or full rewrites; `delete_file` when removal is clearly intended.
-- **Run commands:** `bash` for tests, builds, linters, git, package managers, formatters. Output is capped at 64 KiB; long-running jobs are killed at 120s.
+- **Run commands:** `bash` for tests, builds, linters, git, package managers, formatters. stdout and stderr are each truncated to 64 KiB; the command is killed if combined output exceeds 128 KiB or the run exceeds 120s.
 - **Web:** `duckduckgo_search` for docs lookups; `web_fetch` for specific URLs (GET/HEAD only; can save to workspace).
 - **Skills:** `list_skills` then `activate_skill` to consult project-supplied SKILL.md files under `/.agents/skills/`.
 - **Multi-step work:** `write_todos` to publish a visible task list for anything that takes more than a couple of tool calls.
