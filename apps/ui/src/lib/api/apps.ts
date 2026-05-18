@@ -87,14 +87,10 @@ export async function triggerChannel(
 export async function listAppRuns(
   appId: string,
 ): Promise<{ data: AppRunEvent[]; buckets?: AppRunBucket[] }> {
-  try {
-    const response = await api.get<{ data: AppRunEvent[]; buckets?: AppRunBucket[] }>(
-      `/v1/apps/${appId}/runs?window=24h&groupBy=hour`,
-    );
-    return response.data;
-  } catch {
-    return { data: [] };
-  }
+  const response = await api.get<{ data: AppRunEvent[]; buckets?: AppRunBucket[] }>(
+    `/v1/apps/${appId}/runs?window=24h&groupBy=hour`,
+  );
+  return response.data;
 }
 
 /**

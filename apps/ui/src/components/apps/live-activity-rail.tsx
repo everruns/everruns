@@ -1,12 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { listAppRuns } from "@/lib/api/apps";
-import type { AppRunEvent } from "@/lib/api/types";
-import { createEventStream } from "@/lib/event-stream";
 import { cn } from "@/lib/utils";
 
 function relativeTime(value?: string | null): string {
@@ -21,51 +18,13 @@ function relativeTime(value?: string | null): string {
 }
 
 export function LiveActivityRail({ appId, className }: { appId: string; className?: string }) {
-  const [events, setEvents] = useState<AppRunEvent[]>([]);
-  const [streamUnavailable, setStreamUnavailable] = useState(false);
-
   const polling = useQuery({
-    queryKey: ["apps", appId, "runs", streamUnavailable ? "polling" : "idle"],
+    queryKey: ["apps", appId, "runs"],
     queryFn: () => listAppRuns(appId),
-    enabled: streamUnavailable,
     refetchInterval: 5000,
   });
 
-  useEffect(() => {
-    setEvents([]);
-    setStreamUnavailable(false);
-
-    let source: ReturnType<typeof createEventStream>;
-    try {
-      source = createEventStream(`/api/v1/apps/${appId}/runs/stream`, { withCredentials: true });
-    } catch {
-      setStreamUnavailable(true);
-      return;
-    }
-    source.addEventListener("run", (event) => {
-      try {
-        const next = JSON.parse((event as MessageEvent).data) as AppRunEvent;
-        setEvents((existing) =>
-          [next, ...existing.filter((item) => item.id !== next.id)].slice(0, 20),
-        );
-      } catch {
-        setStreamUnavailable(true);
-      }
-    });
-    source.onerror = () => {
-      setStreamUnavailable(true);
-      source.close();
-    };
-
-    return () => source.close();
-  }, [appId]);
-
-  const visibleEvents = useMemo(() => {
-    const polled = polling.data?.data ?? [];
-    return [...events, ...polled].filter(
-      (event, index, all) => all.findIndex((candidate) => candidate.id === event.id) === index,
-    );
-  }, [events, polling.data]);
+  const visibleEvents = polling.data?.data ?? [];
 
   return (
     <Card className={cn("h-fit", className)}>
@@ -73,7 +32,11 @@ export function LiveActivityRail({ appId, className }: { appId: string; classNam
         <CardTitle>Live activity</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        {visibleEvents.length === 0 ? (
+        {polling.isError ? (
+          <div className="border border-destructive/40 p-4 text-sm text-destructive">
+            Unable to load run history.
+          </div>
+        ) : visibleEvents.length === 0 ? (
           <div className="border border-dashed p-4 text-sm text-muted-foreground">
             Runs will appear here as channels invoke this app.
           </div>
@@ -93,11 +56,6 @@ export function LiveActivityRail({ appId, className }: { appId: string; classNam
               </p>
             </div>
           ))
-        )}
-        {streamUnavailable && (
-          <p className="text-xs text-muted-foreground">
-            Streaming unavailable; polling every 5 seconds.
-          </p>
         )}
       </CardContent>
     </Card>

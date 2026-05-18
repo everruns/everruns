@@ -5,10 +5,11 @@
 
 use crate::api::common::deserialize_nullable_update_field;
 use crate::domains::common::deserialize_opt_json_value_lenient;
+use chrono::{DateTime, Utc};
 use everruns_core::typed_id::{AgentId, AgentIdentityId, AgentVersionId, HarnessId};
 use everruns_core::{AgentVersionPolicy, AppStatus, ChannelType};
 use everruns_durable::UpdateField;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
 pub use crate::storage::models::{
@@ -118,6 +119,36 @@ pub struct ListAppsQuery {
     pub search: Option<String>,
     /// Include archived apps. Deleted apps never appear in lists.
     pub include_archived: Option<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct AppRunEvent {
+    pub id: String,
+    pub app_id: String,
+    pub channel_id: String,
+    pub channel_type: ChannelType,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub channel_name: Option<String>,
+    pub status: String,
+    pub created_at: DateTime<Utc>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub completed_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Default, ToSchema)]
+pub struct AppRunBucket {
+    pub hour: DateTime<Utc>,
+    pub ok: u32,
+    pub err: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub running: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct AppRunListResponse {
+    pub data: Vec<AppRunEvent>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub buckets: Option<Vec<AppRunBucket>>,
 }
 
 #[cfg(test)]

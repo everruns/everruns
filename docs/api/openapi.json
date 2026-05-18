@@ -1455,6 +1455,112 @@
         }
       }
     },
+    "/v1/apps/{app_id}/runs": {
+      "get": {
+        "tags": [
+          "apps"
+        ],
+        "summary": "GET /v1/apps/{app_id}/runs - Recent app invocation runs",
+        "operationId": "list_app_runs",
+        "parameters": [
+          {
+            "name": "app_id",
+            "in": "path",
+            "description": "App ID",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "window",
+            "in": "query",
+            "description": "Time window to include, such as 24h, 60m, or 7d.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "groupBy",
+            "in": "query",
+            "description": "Optional grouping. Currently only `hour` is supported.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recent app invocation runs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppRunListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid app ID or query",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "App not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/apps/{app_id}/webhooks/{channel_id}": {
       "post": {
         "tags": [
@@ -10068,6 +10174,106 @@
           }
         }
       },
+      "AppRunBucket": {
+        "type": "object",
+        "required": [
+          "hour",
+          "ok",
+          "err"
+        ],
+        "properties": {
+          "err": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "hour": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "ok": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "running": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "AppRunEvent": {
+        "type": "object",
+        "required": [
+          "id",
+          "app_id",
+          "channel_id",
+          "channel_type",
+          "status",
+          "created_at"
+        ],
+        "properties": {
+          "app_id": {
+            "type": "string"
+          },
+          "channel_id": {
+            "type": "string"
+          },
+          "channel_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "channel_type": {
+            "$ref": "#/components/schemas/ChannelType"
+          },
+          "completed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        }
+      },
+      "AppRunListResponse": {
+        "type": "object",
+        "required": [
+          "data"
+        ],
+        "properties": {
+          "buckets": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/AppRunBucket"
+            }
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AppRunEvent"
+            }
+          }
+        }
+      },
       "BTreeMap": {
         "type": "object",
         "additionalProperties": {
@@ -13853,6 +14059,25 @@
           "released",
           "cleanup_failed"
         ]
+      },
+      "ListAppRunsQuery": {
+        "type": "object",
+        "properties": {
+          "groupBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional grouping. Currently only `hour` is supported."
+          },
+          "window": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Time window to include, such as 24h, 60m, or 7d."
+          }
+        }
       },
       "ListExecutionsQuery": {
         "type": "object",
