@@ -1,14 +1,7 @@
 "use client";
 
-import {
-  CalendarClock,
-  Hash,
-  MessageSquareText,
-  Monitor,
-  RefreshCw,
-  Slack,
-  Webhook,
-} from "lucide-react";
+import { CalendarClock, Hash, MessageSquareText, Monitor, RefreshCw, Webhook } from "lucide-react";
+import { SlackIcon as Slack } from "@/components/icons/slack-icon";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";

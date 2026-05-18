@@ -8,9 +8,9 @@ import {
   Monitor,
   MoreHorizontal,
   Play,
-  Slack,
   Webhook,
 } from "lucide-react";
+import { SlackIcon as Slack } from "@/components/icons/slack-icon";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
