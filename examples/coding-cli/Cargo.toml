@@ -2,6 +2,7 @@
 name = "everruns-coding-cli"
 version = "0.1.0"
 edition = "2024"
+license.workspace = true
 publish = false
 description = "A minimal terminal coding agent built on everruns-runtime"
 
