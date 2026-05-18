@@ -15,7 +15,7 @@ documentation = "https://docs.rs/everruns-integrations-duckduckgo"
 description = "DuckDuckGo Instant Answer search integration for Everruns"
 
 [dependencies]
-everruns-core = { path = "../../crates/core", version = "0.8.31" }
+everruns-core.workspace = true
 inventory.workspace = true
 
 # HTTP client for DuckDuckGo API
