@@ -50,9 +50,11 @@ struct Cli {
     #[arg(short = 'p', long)]
     print: Option<String>,
 
-    /// Auto-approve every destructive tool call (write/edit/bash). Print mode implies this.
+    /// Prompt for y/n before every destructive tool call (write/edit/delete/bash).
+    /// Off by default — the agent acts autonomously. Ignored in `--print` mode
+    /// (one-shot runs always auto-approve since there's no interactive terminal).
     #[arg(long)]
-    yes: bool,
+    ask: bool,
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy)]
@@ -98,11 +100,16 @@ async fn main() -> Result<()> {
     let provider = pick_provider(&cli);
 
     let is_print = cli.print.is_some();
-    let (gate, approval_rx) = if is_print || cli.yes {
-        (ApprovalGate::auto(), None)
+    // Approval is opt-in: the agent runs autonomously by default. `--ask` in
+    // TUI mode wires a channel that prompts before destructive ops.
+    // Print/one-shot mode never prompts (no terminal to prompt at).
+    // Either way we still hand the TUI an mpsc receiver — when the gate is
+    // Auto nothing is ever sent on the channel, so the receiver sits idle.
+    let (gate_tx, approval_rx) = tokio::sync::mpsc::unbounded_channel();
+    let gate = if cli.ask && !is_print {
+        ApprovalGate::channel(gate_tx)
     } else {
-        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-        (ApprovalGate::channel(tx), Some(rx))
+        ApprovalGate::auto()
     };
     let bundle = runtime::build(cwd, provider, gate).await?;
     let bundle = Arc::new(bundle);
@@ -110,7 +117,7 @@ async fn main() -> Result<()> {
     if let Some(prompt) = cli.print {
         return run_print_mode(bundle, prompt).await;
     }
-    run_tui(bundle, approval_rx.expect("approval channel for TUI")).await
+    run_tui(bundle, approval_rx).await
 }
 
 async fn run_tui(

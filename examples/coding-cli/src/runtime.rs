@@ -10,10 +10,9 @@ use crate::tools::{BashTool, Workspace};
 use anyhow::{Context, Result, anyhow};
 use everruns_core::capabilities::{
     AGENT_INSTRUCTIONS_CAPABILITY_ID, AgentInstructionsCapability, Capability, CapabilityStatus,
-    CurrentTimeCapability, FileSystemCapability, INFINITY_CONTEXT_CAPABILITY_ID,
-    InfinityContextCapability, LoopDetectionCapability, PROMPT_CACHING_CAPABILITY_ID,
-    PromptCachingCapability, SKILLS_CAPABILITY_ID, SkillsCapability, StatelessTodoListCapability,
-    WebFetchCapability,
+    FileSystemCapability, INFINITY_CONTEXT_CAPABILITY_ID, InfinityContextCapability,
+    LoopDetectionCapability, PROMPT_CACHING_CAPABILITY_ID, PromptCachingCapability,
+    SKILLS_CAPABILITY_ID, SkillsCapability, StatelessTodoListCapability, WebFetchCapability,
 };
 use everruns_core::llm_driver_registry::DriverRegistry;
 use everruns_core::llm_models::LlmProviderType;
@@ -175,7 +174,6 @@ pub async fn build(
     //
     // Non-filesystem, but useful for a coding agent:
     //   * infinity_context     — keeps long sessions usable; adds query_history
-    //   * current_time         — date/time tool, useful for git/time-anchored work
     //   * stateless_todo_list  — write_todos tool for multi-step tasks
     //   * loop_detection       — safety net against repeated identical tool calls
     //   * prompt_caching       — Anthropic prompt caching; free token savings
@@ -185,7 +183,6 @@ pub async fn build(
     capabilities.register(FileSystemCapability);
     capabilities.register(SkillsCapability);
     capabilities.register(InfinityContextCapability);
-    capabilities.register(CurrentTimeCapability);
     capabilities.register(StatelessTodoListCapability);
     capabilities.register(LoopDetectionCapability);
     capabilities.register(PromptCachingCapability::new());
@@ -254,7 +251,6 @@ pub async fn build(
         AgentCapabilityConfig::new("session_file_system"),
         AgentCapabilityConfig::new(SKILLS_CAPABILITY_ID),
         AgentCapabilityConfig::new(INFINITY_CONTEXT_CAPABILITY_ID),
-        AgentCapabilityConfig::new("current_time"),
         AgentCapabilityConfig::new("stateless_todo_list"),
         AgentCapabilityConfig::new("loop_detection"),
         AgentCapabilityConfig::new(PROMPT_CACHING_CAPABILITY_ID),

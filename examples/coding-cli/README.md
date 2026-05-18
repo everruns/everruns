@@ -10,7 +10,7 @@ depends on the public runtime crate the same way an external embedder would.
 ## What it does
 
 - **TUI** (ratatui) chat: scrolling transcript, single-line input, status bar,
-  modal approval bar for destructive tools
+  modal approval bar (when `--ask` is on)
 - **Real-filesystem tools** via the built-in `session_file_system` capability
   on top of `RealDiskFileStore`: `read_file`, `write_file`, `edit_file`,
   `list_directory`, `grep_files`, `delete_file`, `stat_file`.
@@ -21,7 +21,6 @@ depends on the public runtime crate the same way an external embedder would.
     exposes `list_skills` / `activate_skill`.
   - `infinity_context` — keeps long sessions usable by trimming older history
     out of the live prompt while keeping it queryable via `query_history`.
-  - `current_time` — `get_current_time` tool, handy for git/time-anchored work.
   - `stateless_todo_list` — `write_todos` for multi-step task tracking.
   - `loop_detection` — safety net against the model retrying the same
     failing tool call in a loop.
@@ -38,9 +37,11 @@ depends on the public runtime crate the same way an external embedder would.
 Note on parallel tool calls: independent tool calls already execute in
 parallel when the LLM provider batches them in one assistant turn (Anthropic
 and OpenAI both do). No capability needed.
-- **Human-in-the-loop approvals**: every write/edit/delete on disk and every
-  `bash` command requires explicit `y`/`n`. Writes show a unified diff in the
-  approval body. `--yes` auto-approves; `--print` mode implies auto-approve.
+- **Approval prompts (opt-in via `--ask`)**: off by default — the agent acts
+  autonomously, exactly like codex/claude-code with `--auto`. Pass `--ask` to
+  prompt `y/n` before every write/edit/delete on disk and every `bash`
+  command. Writes show a unified diff in the approval body. `--print` mode
+  always auto-approves regardless of `--ask`.
 - **Write blocklist**: writes into `.git/`, `node_modules/`, `target/`,
   `dist/`, `build/`, `.next/`, `.venv/`, `venv/`, `.tox/`, `.gradle/` are
   rejected at any depth. Read access is unrestricted.
@@ -104,7 +105,7 @@ ercode --provider sim -p "hi"
 | `--provider <P>`           | Force `anthropic`, `openai`, or `sim` (default: env-detected)        |
 | `-m, --model <ID>`         | Override the model id for the chosen provider                        |
 | `-p, --print <PROMPT>`     | Run one prompt non-interactively and print the result                |
-| `--yes`                    | Auto-approve every destructive tool call (write/edit/bash)           |
+| `--ask`                    | Prompt before every destructive tool call (off by default)           |
 
 `RUST_LOG` is honored for the underlying tracing layer (writes to stderr).
 
