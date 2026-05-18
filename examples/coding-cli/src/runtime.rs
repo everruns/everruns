@@ -245,7 +245,12 @@ pub async fn build(
     // future core-struct fields automatically.
     let session_title = format!("coding-cli @ {}", canonical_root.display());
     let harness_capabilities: Vec<AgentCapabilityConfig> = vec![
-        AgentCapabilityConfig::new(AGENT_INSTRUCTIONS_CAPABILITY_ID),
+        // Configured to also pick up CLAUDE.md and .agents.md alongside the
+        // default AGENTS.md. All three are re-read every turn (live-reload).
+        AgentCapabilityConfig::with_config(
+            AGENT_INSTRUCTIONS_CAPABILITY_ID,
+            serde_json::json!({ "files": ["AGENTS.md", "CLAUDE.md", ".agents.md"] }),
+        ),
         AgentCapabilityConfig::new("session_file_system"),
         AgentCapabilityConfig::new(SKILLS_CAPABILITY_ID),
         AgentCapabilityConfig::new(INFINITY_CONTEXT_CAPABILITY_ID),
