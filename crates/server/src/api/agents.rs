@@ -317,15 +317,11 @@ pub(crate) fn require_admin_for_high_risk(
     let refs: Vec<&str> = caps.iter().map(|c| c.capability_ref.as_str()).collect();
     let high = capability_service.high_risk_ids(&refs);
     if !high.is_empty() {
-        return Err((
-            StatusCode::FORBIDDEN,
-            Json(ErrorResponse {
-                error: format!(
-                    "Admin role required to assign high-risk capabilities: {}",
-                    high.join(", ")
-                ),
-            }),
-        ));
+        return Err(ErrorResponse::new(format!(
+            "Admin role required to assign high-risk capabilities: {}",
+            high.join(", ")
+        ))
+        .into_response(StatusCode::FORBIDDEN));
     }
     Ok(())
 }
@@ -772,12 +768,10 @@ pub async fn upsert_agent(
     } else {
         // Enforce path name matches body name to prevent ambiguous updates.
         if req.name != agent_id_or_name {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse::new(
-                    "Agent name in URL must match name in request body",
-                )),
-            ));
+            return Err(
+                ErrorResponse::new("Agent name in URL must match name in request body")
+                    .into_response(StatusCode::BAD_REQUEST),
+            );
         }
         // Name-based upsert: try create, if name taken → update
         let create_result = crate::domains::agents::CreateAgent(req.clone())
@@ -785,7 +779,10 @@ pub async fn upsert_agent(
             .await;
         match create_result {
             Ok(agent) => (agent, true),
-            Err(crate::domains::common::CommandError::Conflict(_)) => {
+            Err(crate::domains::common::CommandError {
+                kind: crate::domains::common::CommandErrorKind::Conflict(_),
+                ..
+            }) => {
                 let existing = crate::domains::agents::queries::get_by_name(
                     &state.db,
                     state.ctx(&org).org_id(),
@@ -852,12 +849,8 @@ pub async fn export_agent(
     Path(agent_id): Path<String>,
 ) -> Result<Response, (StatusCode, Json<ErrorResponse>)> {
     let agent_id: AgentId = agent_id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("Invalid agent ID: {}", e),
-            }),
-        )
+        ErrorResponse::new(format!("Invalid agent ID: {}", e))
+            .into_response(StatusCode::BAD_REQUEST)
     })?;
 
     let agent = crate::domains::agents::GetAgent {
@@ -950,12 +943,10 @@ async fn import_from_example(
         .filter(|id| !state.platform_definition.capability_registry().has(id))
         .collect();
     if !missing.is_empty() {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("Example requires unregistered capabilities: {missing:?}"),
-            }),
-        ));
+        return Err(ErrorResponse::new(format!(
+            "Example requires unregistered capabilities: {missing:?}"
+        ))
+        .into_response(StatusCode::BAD_REQUEST));
     }
 
     let capabilities: Vec<AgentCapabilityConfig> = seed
@@ -1363,7 +1354,13 @@ mod high_risk_admin_gate_tests {
         );
         let (status, body) = result.expect_err("member must not assign virtual_bash");
         assert_eq!(status, StatusCode::FORBIDDEN);
-        assert!(body.0.error.contains("virtual_bash"));
+        assert!(
+            body.0
+                .detail
+                .as_deref()
+                .unwrap_or("")
+                .contains("virtual_bash")
+        );
     }
 
     #[test]
@@ -1376,7 +1373,7 @@ mod high_risk_admin_gate_tests {
         );
         let (status, body) = result.expect_err("member must not assign web_fetch");
         assert_eq!(status, StatusCode::FORBIDDEN);
-        assert!(body.0.error.contains("web_fetch"));
+        assert!(body.0.detail.as_deref().unwrap_or("").contains("web_fetch"));
     }
 
     #[test]

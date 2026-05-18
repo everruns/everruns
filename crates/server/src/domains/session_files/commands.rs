@@ -41,7 +41,7 @@ fn map_update_error(error: anyhow::Error) -> CommandError {
 fn map_delete_error(error: anyhow::Error) -> CommandError {
     let msg = error.to_string();
     if msg.contains("readonly") {
-        CommandError::Forbidden(msg)
+        CommandError::forbidden(msg)
     } else if msg.contains("not empty") || msg.contains("Cannot delete root") {
         CommandError::bad_request(msg)
     } else {
@@ -64,6 +64,7 @@ fn map_move_or_copy_error(error: anyhow::Error) -> CommandError {
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ListSessionFiles {
+    /// Session's prefixed public identifier.
     pub session_id: String,
     #[serde(default)]
     pub recursive: bool,
@@ -109,6 +110,7 @@ inventory::submit! { CommandDescriptor::of::<ListSessionFiles>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct GetSessionFile {
+    /// Session's prefixed public identifier.
     pub session_id: String,
     pub path: String,
     #[serde(default)]
@@ -170,6 +172,7 @@ inventory::submit! { CommandDescriptor::of::<GetSessionFile>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateSessionFile {
+    /// Session's prefixed public identifier.
     pub session_id: String,
     pub path: String,
     #[serde(flatten)]
@@ -262,6 +265,7 @@ inventory::submit! { CommandDescriptor::of::<CreateSessionFile>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateSessionFile {
+    /// Session's prefixed public identifier.
     pub session_id: String,
     pub path: String,
     #[serde(flatten)]
@@ -333,6 +337,7 @@ inventory::submit! { CommandDescriptor::of::<UpdateSessionFile>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct DeleteSessionFile {
+    /// Session's prefixed public identifier.
     pub session_id: String,
     pub path: String,
     #[serde(default)]
@@ -372,6 +377,7 @@ inventory::submit! { CommandDescriptor::of::<DeleteSessionFile>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct MoveSessionFile {
+    /// Session's prefixed public identifier.
     pub session_id: String,
     #[serde(flatten)]
     pub req: MoveFileRequest,
@@ -415,6 +421,7 @@ inventory::submit! { CommandDescriptor::of::<MoveSessionFile>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CopySessionFile {
+    /// Session's prefixed public identifier.
     pub session_id: String,
     #[serde(flatten)]
     pub req: CopyFileRequest,
@@ -458,6 +465,7 @@ inventory::submit! { CommandDescriptor::of::<CopySessionFile>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct GrepSessionFiles {
+    /// Session's prefixed public identifier.
     pub session_id: String,
     #[serde(flatten)]
     pub req: GrepRequest,
@@ -511,6 +519,7 @@ inventory::submit! { CommandDescriptor::of::<GrepSessionFiles>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct StatSessionFile {
+    /// Session's prefixed public identifier.
     pub session_id: String,
     #[serde(flatten)]
     pub req: StatRequest,

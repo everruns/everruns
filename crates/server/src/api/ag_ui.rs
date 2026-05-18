@@ -681,14 +681,10 @@ impl SessionError {
             SessionError::Expired {
                 age_seconds,
                 max_seconds,
-            } => (
-                StatusCode::GONE,
-                Json(ErrorResponse {
-                    error: format!(
+            } => ErrorResponse::new(format!(
                         "AG-UI thread expired after {age_seconds}s (limit {max_seconds}s); start a new thread"
-                    ),
-                }),
-            )
+                    ))
+                .into_response(StatusCode::GONE)
                 .into_response(),
             SessionError::Internal(err) => internal_error(err),
         }
@@ -1308,12 +1304,8 @@ fn parse_event_data<T: for<'de> Deserialize<'de>>(
 
 fn internal_error(err: anyhow::Error) -> Response {
     tracing::error!(error = %err, "AG-UI route failed");
-    (
-        StatusCode::INTERNAL_SERVER_ERROR,
-        Json(ErrorResponse {
-            error: "Internal server error".to_string(),
-        }),
-    )
+    ErrorResponse::new("Internal server error".to_string())
+        .into_response(StatusCode::INTERNAL_SERVER_ERROR)
         .into_response()
 }
 
@@ -1366,42 +1358,26 @@ fn validate_input_messages(messages: &[AgUiMessage]) -> Result<(), Box<Response>
 }
 
 fn bad_request(message: &str) -> Response {
-    (
-        StatusCode::BAD_REQUEST,
-        Json(ErrorResponse {
-            error: message.to_string(),
-        }),
-    )
+    ErrorResponse::new(message.to_string())
+        .into_response(StatusCode::BAD_REQUEST)
         .into_response()
 }
 
 fn forbidden(message: &str) -> Response {
-    (
-        StatusCode::FORBIDDEN,
-        Json(ErrorResponse {
-            error: message.to_string(),
-        }),
-    )
+    ErrorResponse::new(message.to_string())
+        .into_response(StatusCode::FORBIDDEN)
         .into_response()
 }
 
 fn unauthorized() -> Response {
-    (
-        StatusCode::UNAUTHORIZED,
-        Json(ErrorResponse {
-            error: "Invalid or missing AG-UI token".to_string(),
-        }),
-    )
+    ErrorResponse::new("Invalid or missing AG-UI token".to_string())
+        .into_response(StatusCode::UNAUTHORIZED)
         .into_response()
 }
 
 fn service_unavailable(message: &str) -> Response {
-    (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(ErrorResponse {
-            error: message.to_string(),
-        }),
-    )
+    ErrorResponse::new(message.to_string())
+        .into_response(StatusCode::SERVICE_UNAVAILABLE)
         .into_response()
 }
 
@@ -1416,24 +1392,15 @@ fn ag_ui_auth_error_response(error: AppEndpointAuthError) -> Response {
 }
 
 fn not_found() -> Response {
-    (
-        StatusCode::NOT_FOUND,
-        Json(ErrorResponse {
-            error: "App not found".to_string(),
-        }),
-    )
+    ErrorResponse::new("App not found".to_string())
+        .into_response(StatusCode::NOT_FOUND)
         .into_response()
 }
 
 fn too_many_requests(message: &str) -> Response {
-    (
-        StatusCode::TOO_MANY_REQUESTS,
-        [("retry-after", "60")],
-        Json(ErrorResponse {
-            error: message.to_string(),
-        }),
-    )
-        .into_response()
+    let (status, json) =
+        ErrorResponse::new(message.to_string()).into_response(StatusCode::TOO_MANY_REQUESTS);
+    (status, [("retry-after", "60")], json).into_response()
 }
 
 #[cfg(test)]

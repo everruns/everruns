@@ -11,7 +11,7 @@ pub fn ensure_platform_user(ctx: &Ctx) -> Result<(), CommandError> {
     if ctx.caller.is_platform_user {
         Ok(())
     } else {
-        Err(CommandError::Forbidden(
+        Err(CommandError::forbidden(
             "Platform user access is required".to_string(),
         ))
     }
@@ -20,7 +20,7 @@ pub fn ensure_platform_user(ctx: &Ctx) -> Result<(), CommandError> {
 pub fn store(ctx: &Ctx) -> Result<Arc<dyn WorkflowEventStore + Send + Sync>, CommandError> {
     ctx.workflow_store
         .clone()
-        .ok_or_else(|| CommandError::Internal(anyhow!("Durable execution store not available")))
+        .ok_or_else(|| CommandError::internal(anyhow!("Durable execution store not available")))
 }
 
 pub fn parse_target_type(value: &str) -> Result<ScheduleTargetType, CommandError> {
@@ -90,6 +90,6 @@ pub fn map_store_error(error: StoreError) -> CommandError {
         StoreError::ScheduleLimitExceeded { limit, .. } => {
             CommandError::conflict(format!("Schedule limit exceeded: max {limit} schedules"))
         }
-        other => CommandError::Internal(anyhow!(other)),
+        other => CommandError::internal(anyhow!(other)),
     }
 }

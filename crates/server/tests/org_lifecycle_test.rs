@@ -523,7 +523,7 @@ async fn test_api_key_creation_enforces_per_user_limit() {
         .assert_status(StatusCode::CONFLICT)
         .json();
     assert!(
-        over_limit["error"]
+        over_limit["detail"]
             .as_str()
             .expect("error message")
             .contains("API key limit reached"),

@@ -1247,10 +1247,10 @@ where
     } = request;
 
     if app.status != AppStatus::Published {
-        return Err(CommandError::Forbidden("App is not published".to_string()));
+        return Err(CommandError::forbidden("App is not published".to_string()));
     }
     if !channel.enabled {
-        return Err(CommandError::Forbidden(
+        return Err(CommandError::forbidden(
             "App channel is disabled".to_string(),
         ));
     }
@@ -1732,6 +1732,7 @@ inventory::submit! { CommandDescriptor::of::<ListApps>() }
 /// Get a single app by ID.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct GetApp {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: String,
 }
 
@@ -1780,6 +1781,7 @@ inventory::submit! { CommandDescriptor::of::<GetApp>() }
 /// List channels attached to an app.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ListAppChannels {
+    /// App's prefixed public identifier.
     pub app_id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub channel_type: Option<ChannelType>,
@@ -2102,6 +2104,7 @@ fn bucket_app_runs_by_hour(runs: &[AppRunEvent]) -> Vec<AppRunBucket> {
 /// Update an app. Only provided fields are changed.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateAppCmd {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: String,
     #[serde(flatten)]
     pub req: UpdateAppRequest,
@@ -2136,7 +2139,7 @@ impl Command for UpdateAppCmd {
 
         let req = self.req;
         if matches!(req.status, Some(AppStatus::Deleted)) {
-            return Err(CommandError::Forbidden(
+            return Err(CommandError::forbidden(
                 "Setting status=deleted requires dangerous delete permission".to_string(),
             ));
         }
@@ -2301,6 +2304,7 @@ inventory::submit! { CommandDescriptor::of::<UpdateAppCmd>() }
 /// Archive an app (soft delete).
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct DeleteApp {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: String,
 }
 
@@ -2366,6 +2370,7 @@ inventory::submit! { CommandDescriptor::of::<DeleteApp>() }
 /// Permanently delete an archived app.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct DestroyApp {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: String,
 }
 
@@ -2436,6 +2441,7 @@ inventory::submit! { CommandDescriptor::of::<DestroyApp>() }
 /// Publish an app (start accepting requests).
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct PublishApp {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: String,
 }
 
@@ -2507,6 +2513,7 @@ inventory::submit! { CommandDescriptor::of::<PublishApp>() }
 /// Unpublish an app (stop accepting requests).
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UnpublishApp {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: String,
 }
 
@@ -2571,6 +2578,7 @@ inventory::submit! { CommandDescriptor::of::<UnpublishApp>() }
 /// Add a channel to an app.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct AddChannel {
+    /// App's prefixed public identifier.
     pub app_id: String,
     #[serde(flatten)]
     pub req: AddChannelRequest,
@@ -2659,6 +2667,7 @@ inventory::submit! { CommandDescriptor::of::<AddChannel>() }
 /// Add a schedule invocation channel to an app using flat args suitable for bash mode.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct AddScheduleChannelCmd {
+    /// App's prefixed public identifier.
     pub app_id: String,
     /// Cron expression. Accepts 5 fields (`*/10 * * * *`) or 7 fields
     /// (`0 */10 * * * * *`); 5-field input is stored as 7-field cron.
@@ -2670,6 +2679,7 @@ pub struct AddScheduleChannelCmd {
     // Bashkit's MCP flag parser forwards bools as JSON strings ("true"/"false"),
     // so the lenient deserializer is required to accept `--enabled true`.
     #[serde(default, deserialize_with = "deserialize_opt_bool_lenient")]
+    /// Whether this resource is enabled.
     pub enabled: Option<bool>,
 }
 
@@ -2717,6 +2727,7 @@ inventory::submit! { CommandDescriptor::of::<AddScheduleChannelCmd>() }
 
 #[derive(Debug, serde::Serialize, ToSchema)]
 pub struct TriggerAppScheduleChannelOutput {
+    /// Session's prefixed public identifier.
     pub session_id: SessionId,
     pub created_session: bool,
 }
@@ -2724,7 +2735,9 @@ pub struct TriggerAppScheduleChannelOutput {
 /// Manually trigger an app schedule channel, primarily for testing.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct TriggerAppScheduleChannelCmd {
+    /// App's prefixed public identifier.
     pub app_id: String,
+    /// Channel's prefixed public identifier.
     pub channel_id: String,
 }
 
@@ -2747,10 +2760,10 @@ impl Command for TriggerAppScheduleChannelCmd {
 
     async fn execute(self, ctx: &Ctx) -> Result<TriggerAppScheduleChannelOutput, CommandError> {
         let session_service = ctx.session_service.as_ref().ok_or_else(|| {
-            CommandError::Internal(anyhow::anyhow!("Session service not available"))
+            CommandError::internal(anyhow::anyhow!("Session service not available"))
         })?;
         let message_service = ctx.message_service.as_ref().ok_or_else(|| {
-            CommandError::Internal(anyhow::anyhow!("Message service not available"))
+            CommandError::internal(anyhow::anyhow!("Message service not available"))
         })?;
         let app_id: AppId = self
             .app_id
@@ -2782,6 +2795,7 @@ inventory::submit! { CommandDescriptor::of::<TriggerAppScheduleChannelCmd>() }
 /// Add a webhook invocation channel to an app using flat args suitable for bash mode.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct AddWebhookChannelCmd {
+    /// App's prefixed public identifier.
     pub app_id: String,
     pub token: String,
     #[serde(default)]
@@ -2790,6 +2804,7 @@ pub struct AddWebhookChannelCmd {
     // Bashkit's MCP flag parser forwards bools as JSON strings ("true"/"false"),
     // so the lenient deserializer is required to accept `--enabled true`.
     #[serde(default, deserialize_with = "deserialize_opt_bool_lenient")]
+    /// Whether this resource is enabled.
     pub enabled: Option<bool>,
 }
 
@@ -2872,6 +2887,7 @@ pub struct AddA2aChannelOutput {
 /// and returns the plaintext exactly once.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct AddA2aChannelCmd {
+    /// App's prefixed public identifier.
     pub app_id: String,
     #[serde(default)]
     pub session_mode: InvocationSessionMode,
@@ -2881,6 +2897,7 @@ pub struct AddA2aChannelCmd {
     #[serde(default)]
     pub auth: Option<AppEndpointAuthConfig>,
     #[serde(default, deserialize_with = "deserialize_opt_bool_lenient")]
+    /// Whether this resource is enabled.
     pub enabled: Option<bool>,
 }
 
@@ -2947,7 +2964,9 @@ inventory::submit! { CommandDescriptor::of::<AddA2aChannelCmd>() }
 /// exactly once and invalidates the previous key.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct RegenerateA2aApiKeyCmd {
+    /// App's prefixed public identifier.
     pub app_id: String,
+    /// Channel's prefixed public identifier.
     pub channel_id: String,
 }
 
@@ -3062,7 +3081,9 @@ inventory::submit! { CommandDescriptor::of::<RegenerateA2aApiKeyCmd>() }
 /// Update a channel on an app.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateChannelCmd {
+    /// App's prefixed public identifier.
     pub app_id: String,
+    /// Channel's prefixed public identifier.
     pub channel_id: String,
     #[serde(flatten)]
     pub req: UpdateChannelRequest,
@@ -3193,7 +3214,9 @@ inventory::submit! { CommandDescriptor::of::<UpdateChannelCmd>() }
 /// Remove a channel from an app.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct DeleteChannel {
+    /// App's prefixed public identifier.
     pub app_id: String,
+    /// Channel's prefixed public identifier.
     pub channel_id: String,
 }
 

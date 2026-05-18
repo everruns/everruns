@@ -38,6 +38,7 @@ pub struct ResolveOrgQuery {
     pub id: String,
 }
 
+/// Response body for the `resolve_org` operation.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct ResolveOrgResponse {
     /// Public ID of the organization that owns the resource.

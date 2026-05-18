@@ -2,6 +2,11 @@
 // Decision: Shared library for binaries (API server, CLI tools)
 // Decision: Pluggable auth backend for SaaS wrapper repos
 // Decision: App builder pattern (ServerAppBuilder) for composable server configurations
+// Decision: `result_large_err` allowed crate-wide — ErrorResponse carries the
+//   full RFC 9457 Problem Details payload (title/detail/code/allowed_actions/...)
+//   and is only ever moved once per request, so the lint's stack-size concern
+//   doesn't reflect real overhead.
+#![allow(clippy::result_large_err)]
 
 // Force-link integration crates so inventory::submit! registrations are included
 extern crate everruns_container_sandbox;

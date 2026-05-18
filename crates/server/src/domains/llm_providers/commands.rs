@@ -17,11 +17,12 @@ fn sync_service(
 ) -> Result<&std::sync::Arc<crate::services::ModelSyncService>, CommandError> {
     ctx.model_sync_service
         .as_ref()
-        .ok_or_else(|| CommandError::Internal(anyhow::anyhow!("Model sync service not configured")))
+        .ok_or_else(|| CommandError::internal(anyhow::anyhow!("Model sync service not configured")))
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateProvider {
+    /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
     pub provider_type: LlmProviderType,
     pub base_url: Option<String>,
@@ -95,6 +96,7 @@ inventory::submit! { CommandDescriptor::of::<ListProviders>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct GetProvider {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: String,
 }
 
@@ -133,11 +135,14 @@ inventory::submit! { CommandDescriptor::of::<GetProvider>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateProvider {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: String,
+    /// Human-readable name. Safe to render in user-facing messages.
     pub name: Option<String>,
     pub provider_type: Option<LlmProviderType>,
     pub base_url: Option<String>,
     pub api_key: Option<String>,
+    /// Current lifecycle status.
     pub status: Option<LlmProviderStatus>,
 }
 
@@ -182,6 +187,7 @@ inventory::submit! { CommandDescriptor::of::<UpdateProvider>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct DeleteProvider {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: String,
 }
 
@@ -223,6 +229,7 @@ inventory::submit! { CommandDescriptor::of::<DeleteProvider>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SyncProviderModels {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: String,
 }
 
@@ -261,7 +268,7 @@ impl Command for SyncProviderModels {
             }),
             crate::services::SyncResult::NotSupported => Ok(SyncModelsResponse::NotSupported),
             crate::services::SyncResult::Failed { error } => {
-                Err(CommandError::Internal(anyhow::anyhow!(error)))
+                Err(CommandError::internal(anyhow::anyhow!(error)))
             }
         }
     }

@@ -43,30 +43,37 @@ impl FromRef<ApiKeyState> for AuthState {
 /// API key response (shown only once at creation)
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ApiKeyResponse {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: String,
+    /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
     pub key: String,
     pub key_prefix: String,
     pub scopes: Vec<String>,
     pub expires_at: Option<String>,
+    /// Timestamp when this resource was created (RFC 3339).
     pub created_at: String,
 }
 
 /// API key list item (without full key)
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ApiKeyListItem {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: String,
+    /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
     pub key_prefix: String,
     pub scopes: Vec<String>,
     pub expires_at: Option<String>,
     pub last_used_at: Option<String>,
+    /// Timestamp when this resource was created (RFC 3339).
     pub created_at: String,
 }
 
 /// Create API key request
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateApiKeyRequest {
+    /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
     #[serde(default)]
     pub scopes: Vec<String>,
@@ -149,6 +156,7 @@ async fn create_api_key(
                 state.resource_limits.max_api_keys_per_user
             ),
             status: StatusCode::CONFLICT,
+            code: Some("api_key_limit_reached"),
         });
     }
 

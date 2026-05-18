@@ -14,7 +14,9 @@ pub use crate::storage::models::{AgentIdentityRow, CreateAgentIdentityRow, Updat
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateAgentIdentityRequest {
     #[schema(example = "Ops Bot")]
+    /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
+    /// Human-readable description. Safe to render in user-facing messages.
     pub description: Option<String>,
     pub avatar_url: Option<String>,
     #[schema(example = "en-US")]
@@ -25,9 +27,11 @@ pub struct CreateAgentIdentityRequest {
 
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct UpdateAgentIdentityRequest {
+    /// Human-readable name. Safe to render in user-facing messages.
     pub name: Option<String>,
     #[serde(default, deserialize_with = "deserialize_nullable_update_field")]
     #[schema(value_type = Option<String>, nullable = true)]
+    /// Human-readable description. Safe to render in user-facing messages.
     pub description: UpdateField<String>,
     #[serde(default, deserialize_with = "deserialize_nullable_update_field")]
     #[schema(value_type = Option<String>, nullable = true)]
@@ -38,6 +42,7 @@ pub struct UpdateAgentIdentityRequest {
     #[serde(default, deserialize_with = "deserialize_nullable_update_field")]
     #[schema(value_type = Option<String>, nullable = true)]
     pub timezone: UpdateField<String>,
+    /// Current lifecycle status.
     pub status: Option<AgentIdentityStatus>,
 }
 

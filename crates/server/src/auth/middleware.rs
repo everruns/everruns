@@ -3,7 +3,6 @@
 // Decision: In "none" mode, create an anonymous user context
 
 use axum::{
-    Json,
     extract::{FromRef, FromRequestParts},
     http::{StatusCode, header, request::Parts},
     response::{IntoResponse, Response},
@@ -31,6 +30,8 @@ pub struct AuthError {
     pub error: String,
     #[serde(skip)]
     pub status: StatusCode,
+    #[serde(skip)]
+    pub code: Option<&'static str>,
 }
 
 impl AuthError {
@@ -38,6 +39,7 @@ impl AuthError {
         Self {
             error: message.to_string(),
             status: StatusCode::UNAUTHORIZED,
+            code: Some("unauthorized"),
         }
     }
 
@@ -45,6 +47,7 @@ impl AuthError {
         Self {
             error: message.to_string(),
             status: StatusCode::FORBIDDEN,
+            code: Some("forbidden"),
         }
     }
 
@@ -52,13 +55,20 @@ impl AuthError {
         Self {
             error: message.to_string(),
             status: StatusCode::UNPROCESSABLE_ENTITY,
+            code: Some("unprocessable"),
         }
     }
 }
 
 impl IntoResponse for AuthError {
     fn into_response(self) -> Response {
-        (self.status, Json(self)).into_response()
+        // Render through the shared RFC 9457 ErrorResponse so the auth surface
+        // matches every other API endpoint's wire format.
+        let mut body = crate::api::common::ErrorResponse::new(self.error);
+        if let Some(code) = self.code {
+            body = body.with_code(code);
+        }
+        body.into_response(self.status).into_response()
     }
 }
 
@@ -392,6 +402,7 @@ where
             AuthError {
                 error: "Organization not found".to_string(),
                 status: StatusCode::NOT_FOUND,
+                code: None,
             }
         })?;
 
@@ -536,6 +547,7 @@ where
                     let org = user.get_org(org_public_id).ok_or_else(|| AuthError {
                         error: "Organization not found".to_string(),
                         status: StatusCode::NOT_FOUND,
+                        code: None,
                     })?;
                     return Ok(ResolvedOrg {
                         org_id: org.org_id,
@@ -566,8 +578,8 @@ where
                 }
                 Err(AuthError {
                     error: "Multiple organizations available. Specify the target organization via the X-Org-Id header.".to_string(),
-                    status: StatusCode::BAD_REQUEST,
-                })
+                    status: StatusCode::BAD_REQUEST, code: None,
+        })
             }
             AuthMethod::None => {
                 // No-auth mode: anonymous user only carries the default org,
@@ -661,6 +673,7 @@ where
                     return Err(AuthError {
                         error: "Organization not found".to_string(),
                         status: StatusCode::NOT_FOUND,
+                        code: None,
                     });
                 }
                 // DB query failed — fall through to JWT-based validation
@@ -669,6 +682,7 @@ where
                 let org = user.get_org(org_public_id).ok_or_else(|| AuthError {
                     error: "Organization not found".to_string(),
                     status: StatusCode::NOT_FOUND,
+                    code: None,
                 })?;
 
                 Ok(ResolvedOrg {

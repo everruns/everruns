@@ -92,6 +92,7 @@ inventory::submit! { CommandDescriptor::of::<GetOrg>() }
 // (Cross-Org Resource Resolution).
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ResolveOrg {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: String,
 }
 
@@ -131,7 +132,7 @@ inventory::submit! { CommandDescriptor::of::<ResolveOrg>() }
 
 #[cfg(test)]
 mod tests {
-    use crate::domains::common::{CommandError, Ctx};
+    use crate::domains::common::{CommandError, CommandErrorKind, Ctx};
     use crate::storage::StorageBackend;
     use crate::storage::models::CreateAgentRow;
     use everruns_core::{Caller, DEFAULT_ORG_ID, OrgRole};
@@ -229,7 +230,16 @@ mod tests {
             crate::domains::common::dispatch("resolve_org", json!({ "id": agent_public_id }), &ctx)
                 .await
                 .expect_err("dispatch resolve_org should fail for non-member");
-        assert!(matches!(err, CommandError::NotFound(_)), "got {err:?}");
+        assert!(
+            matches!(
+                err,
+                CommandError {
+                    kind: CommandErrorKind::NotFound(_),
+                    ..
+                }
+            ),
+            "got {err:?}"
+        );
     }
 
     #[tokio::test]
@@ -244,7 +254,16 @@ mod tests {
         )
         .await
         .expect_err("unknown prefix should not resolve");
-        assert!(matches!(err, CommandError::NotFound(_)), "got {err:?}");
+        assert!(
+            matches!(
+                err,
+                CommandError {
+                    kind: CommandErrorKind::NotFound(_),
+                    ..
+                }
+            ),
+            "got {err:?}"
+        );
     }
 
     #[tokio::test]

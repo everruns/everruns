@@ -147,6 +147,7 @@ inventory::submit! { CommandDescriptor::of::<ListSchedules>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct GetSchedule {
+    /// Schedule's prefixed public identifier.
     pub schedule_id: uuid::Uuid,
 }
 
@@ -185,6 +186,7 @@ inventory::submit! { CommandDescriptor::of::<GetSchedule>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateScheduleCmd {
+    /// Schedule's prefixed public identifier.
     pub schedule_id: uuid::Uuid,
     #[serde(flatten)]
     pub req: UpdateScheduleRequest,
@@ -263,6 +265,7 @@ inventory::submit! { CommandDescriptor::of::<UpdateScheduleCmd>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct DeleteSchedule {
+    /// Schedule's prefixed public identifier.
     pub schedule_id: uuid::Uuid,
 }
 
@@ -297,6 +300,7 @@ inventory::submit! { CommandDescriptor::of::<DeleteSchedule>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct PauseSchedule {
+    /// Schedule's prefixed public identifier.
     pub schedule_id: uuid::Uuid,
 }
 
@@ -348,6 +352,7 @@ inventory::submit! { CommandDescriptor::of::<PauseSchedule>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ResumeSchedule {
+    /// Schedule's prefixed public identifier.
     pub schedule_id: uuid::Uuid,
 }
 
@@ -402,6 +407,7 @@ inventory::submit! { CommandDescriptor::of::<ResumeSchedule>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct TriggerSchedule {
+    /// Schedule's prefixed public identifier.
     pub schedule_id: uuid::Uuid,
 }
 
@@ -537,6 +543,7 @@ inventory::submit! { CommandDescriptor::of::<ListScheduleExecutions>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct GetExecution {
+    /// Schedule execution's identifier.
     pub execution_id: uuid::Uuid,
 }
 
@@ -575,6 +582,7 @@ inventory::submit! { CommandDescriptor::of::<GetExecution>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct GetScheduleStats {
+    /// Schedule's prefixed public identifier.
     pub schedule_id: uuid::Uuid,
 }
 

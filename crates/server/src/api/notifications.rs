@@ -33,8 +33,11 @@ use futures::{
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct Notification {
     #[schema(value_type = String, example = "notification_01933b5a00007000800000000000001")]
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: NotificationId,
+    /// Discriminator selecting the variant of this resource.
     pub kind: String,
+    /// Human-readable title. Safe to render in user-facing messages.
     pub title: String,
     pub body: String,
     pub target_type: Option<String>,
@@ -43,18 +46,22 @@ pub struct Notification {
     pub payload: serde_json::Value,
     pub occurrence_count: i32,
     pub viewed_at: Option<DateTime<Utc>>,
+    /// Timestamp when this resource was created (RFC 3339).
     pub created_at: DateTime<Utc>,
+    /// Timestamp when this resource was last updated (RFC 3339).
     pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ListNotificationsResponse {
+    /// Page of items returned by this query.
     pub data: Vec<Notification>,
     pub unviewed_count: u32,
 }
 
 #[derive(Debug, Deserialize, IntoParams, ToSchema)]
 pub struct ListNotificationsQuery {
+    /// Maximum number of items returned in this page.
     pub limit: Option<i64>,
 }
 
@@ -98,12 +105,8 @@ pub fn routes(state: AppState) -> Router {
 
 fn require_user_id(org: &ResolvedOrg) -> Result<uuid::Uuid, (StatusCode, Json<ErrorResponse>)> {
     org.user_id.ok_or_else(|| {
-        (
-            StatusCode::UNAUTHORIZED,
-            Json(ErrorResponse {
-                error: "Notifications require an authenticated user".to_string(),
-            }),
-        )
+        ErrorResponse::new("Notifications require an authenticated user".to_string())
+            .into_response(StatusCode::UNAUTHORIZED)
     })
 }
 
@@ -163,12 +166,8 @@ pub async fn stream_notifications_sse(
         .try_acquire(org.org_id, user_id)
         .map_err(|rejection| {
             tracing::warn!(org_id = org.org_id, user_id = %user_id, reason = %rejection, "Notification SSE rejected");
-            (
-                StatusCode::TOO_MANY_REQUESTS,
-                Json(ErrorResponse {
-                    error: rejection.to_string(),
-                }),
-            )
+            ErrorResponse::new(rejection.to_string())
+                .into_response(StatusCode::TOO_MANY_REQUESTS)
         })?;
 
     let service = state.notification_service.clone();

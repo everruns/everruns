@@ -43,13 +43,13 @@ fn validate_mcp_name(name: &str) -> Result<(), CommandError> {
 
 fn encrypt_api_key(ctx: &Ctx, api_key: &str) -> Result<Vec<u8>, CommandError> {
     let encryption = ctx.encryption.as_ref().ok_or_else(|| {
-        CommandError::Internal(anyhow::anyhow!(
+        CommandError::internal(anyhow::anyhow!(
             "Encryption not configured. Cannot store API key."
         ))
     })?;
     encryption
         .encrypt_string(api_key)
-        .map_err(CommandError::Internal)
+        .map_err(CommandError::internal)
 }
 
 // ============================================================================
@@ -198,6 +198,7 @@ inventory::submit! { CommandDescriptor::of::<ListMcpServers>() }
 /// Get a single MCP server by ID.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct GetMcpServer {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: String,
 }
 
@@ -244,6 +245,7 @@ inventory::submit! { CommandDescriptor::of::<GetMcpServer>() }
 /// Update an MCP server. Only provided fields are changed.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateMcpServerCmd {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: String,
     #[serde(flatten)]
     pub req: UpdateMcpServerRequest,
@@ -278,7 +280,7 @@ impl Command for UpdateMcpServerCmd {
 
         let req = self.req;
         if matches!(req.status, Some(McpServerStatus::Deleted)) {
-            return Err(CommandError::Forbidden(
+            return Err(CommandError::forbidden(
                 "Setting status=deleted requires dangerous delete permission".to_string(),
             ));
         }
@@ -379,6 +381,7 @@ inventory::submit! { CommandDescriptor::of::<UpdateMcpServerCmd>() }
 /// Archive an MCP server (soft delete).
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct DeleteMcpServer {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: String,
 }
 
@@ -432,6 +435,7 @@ inventory::submit! { CommandDescriptor::of::<DeleteMcpServer>() }
 /// Permanently delete an archived MCP server.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct DestroyMcpServer {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: String,
 }
 

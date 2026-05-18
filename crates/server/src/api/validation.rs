@@ -78,10 +78,7 @@ impl From<ValidationError> for (StatusCode, String) {
 
 impl From<ValidationError> for (StatusCode, Json<ErrorResponse>) {
     fn from(_: ValidationError) -> Self {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse::new(VALIDATION_ERROR_MESSAGE)),
-        )
+        ErrorResponse::new(VALIDATION_ERROR_MESSAGE).into_response(StatusCode::BAD_REQUEST)
     }
 }
 
@@ -120,12 +117,10 @@ pub fn validate_harness_name(name: &str) -> Result<(), (StatusCode, Json<ErrorRe
 pub fn validate_harness_name_strict(name: &str) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
     validate_harness_name_inner(name)?;
     if RESERVED_HARNESS_NAMES.contains(&name) {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse::new(format!(
-                "Harness name '{name}' is reserved and cannot be used"
-            ))),
-        ));
+        return Err(ErrorResponse::new(format!(
+            "Harness name '{name}' is reserved and cannot be used"
+        ))
+        .into_response(StatusCode::BAD_REQUEST));
     }
     Ok(())
 }
@@ -140,10 +135,7 @@ fn validate_harness_name_inner(name: &str) -> Result<(), (StatusCode, Json<Error
 /// `validate_addressable_name` and wraps the error as an HTTP 400.
 fn validate_name_format(entity: &str, name: &str) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
     everruns_core::validate_addressable_name(name).map_err(|msg| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse::new(format!("{entity} {msg}"))),
-        )
+        ErrorResponse::new(format!("{entity} {msg}")).into_response(StatusCode::BAD_REQUEST)
     })
 }
 

@@ -55,6 +55,7 @@ pub fn routes(state: AppState) -> Router {
 }
 
 #[utoipa::path(
+    description = "Create a new workspace volume.",
     post,
     path = "/v1/volumes",
     request_body = CreateVolumeRequest,
@@ -75,6 +76,7 @@ pub async fn create_volume(
 }
 
 #[utoipa::path(
+    description = "List workspace volumes.",
     get,
     path = "/v1/volumes",
     params(ListVolumesQuery),
@@ -93,6 +95,7 @@ pub async fn list_volumes(
 }
 
 #[utoipa::path(
+    description = "Get a workspace volume by ID.",
     get,
     path = "/v1/volumes/{volume_id}",
     params(("volume_id" = String, Path, description = "Volume ID")),
@@ -111,6 +114,7 @@ pub async fn get_volume(
 }
 
 #[utoipa::path(
+    description = "Update a workspace volume. Only provided fields are modified.",
     patch,
     path = "/v1/volumes/{volume_id}",
     params(("volume_id" = String, Path, description = "Volume ID")),
@@ -137,6 +141,7 @@ pub async fn update_volume(
 }
 
 #[utoipa::path(
+    description = "Trigger a synchronous sync of a volume now.",
     post,
     path = "/v1/volumes/{volume_id}/sync",
     params(("volume_id" = String, Path, description = "Volume ID")),
@@ -158,6 +163,7 @@ pub async fn sync_volume_now(
 }
 
 #[utoipa::path(
+    description = "Delete a workspace volume.",
     delete,
     path = "/v1/volumes/{volume_id}",
     params(("volume_id" = String, Path, description = "Volume ID")),

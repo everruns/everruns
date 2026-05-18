@@ -31,8 +31,10 @@ const MAX_LIMIT: u32 = 200;
 pub struct ListCapabilities {
     pub search: Option<String>,
     #[serde(default, deserialize_with = "deserialize_opt_u32_lenient")]
+    /// Zero-based offset into the result set.
     pub offset: Option<u32>,
     #[serde(default, deserialize_with = "deserialize_opt_u32_lenient")]
+    /// Maximum number of items returned in this page.
     pub limit: Option<u32>,
 }
 
@@ -96,6 +98,7 @@ inventory::submit! { CommandDescriptor::of::<ListCapabilities>() }
 /// Get a specific capability by ID.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct GetCapability {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: String,
 }
 
@@ -186,7 +189,7 @@ impl Command for CreateDeclarativeCapability {
                     display_name: definition.display_name.clone(),
                     description: definition.description.clone(),
                     definition: serde_json::to_value(&definition)
-                        .map_err(|error| CommandError::Internal(error.into()))?,
+                        .map_err(|error| CommandError::internal(error.into()))?,
                 },
             )
             .await
@@ -240,6 +243,7 @@ inventory::submit! { CommandDescriptor::of::<ListDeclarativeCapabilities>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct GetDeclarativeCapability {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: String,
 }
 
@@ -274,6 +278,7 @@ inventory::submit! { CommandDescriptor::of::<GetDeclarativeCapability>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateDeclarativeCapabilityCmd {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: String,
     #[serde(flatten)]
     pub req: UpdateDeclarativeCapabilityRequest,
@@ -303,7 +308,7 @@ impl Command for UpdateDeclarativeCapabilityCmd {
     async fn execute(self, ctx: &Ctx) -> Result<DeclarativeCapability, CommandError> {
         let existing = get_declarative_capability_by_public_id(ctx, &self.id).await?;
         if matches!(self.req.status.as_deref(), Some("deleted")) {
-            return Err(CommandError::Forbidden(
+            return Err(CommandError::forbidden(
                 "Setting status=deleted requires dangerous delete permission".to_string(),
             ));
         }
@@ -330,7 +335,7 @@ impl Command for UpdateDeclarativeCapabilityCmd {
             input.description = Some(definition.description.clone());
             input.definition = Some(
                 serde_json::to_value(&definition)
-                    .map_err(|error| CommandError::Internal(error.into()))?,
+                    .map_err(|error| CommandError::internal(error.into()))?,
             );
         }
         if let Some(status) = self.req.status {
@@ -352,6 +357,7 @@ inventory::submit! { CommandDescriptor::of::<UpdateDeclarativeCapabilityCmd>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct DeleteDeclarativeCapability {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: String,
 }
 
@@ -394,6 +400,7 @@ inventory::submit! { CommandDescriptor::of::<DeleteDeclarativeCapability>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct DestroyDeclarativeCapability {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: String,
 }
 

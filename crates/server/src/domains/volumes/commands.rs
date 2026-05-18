@@ -259,8 +259,10 @@ inventory::submit! { CommandDescriptor::of::<ListVolumes>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateVolume {
+    /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
     #[serde(default)]
+    /// Human-readable description. Safe to render in user-facing messages.
     pub description: Option<String>,
     #[serde(default)]
     pub source: Option<CreateVolumeSourceRequest>,
@@ -325,6 +327,7 @@ inventory::submit! { CommandDescriptor::of::<CreateVolume>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct GetVolume {
+    /// Workspace volume's prefixed public identifier.
     pub volume_id: String,
 }
 
@@ -369,6 +372,7 @@ inventory::submit! { CommandDescriptor::of::<GetVolume>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateVolumeCmd {
+    /// Workspace volume's prefixed public identifier.
     pub volume_id: String,
     #[serde(flatten)]
     pub request: UpdateVolumeRequest,
@@ -454,6 +458,7 @@ inventory::submit! { CommandDescriptor::of::<UpdateVolumeCmd>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SyncVolumeNow {
+    /// Workspace volume's prefixed public identifier.
     pub volume_id: String,
 }
 
@@ -518,6 +523,7 @@ inventory::submit! { CommandDescriptor::of::<SyncVolumeNow>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct DeleteVolume {
+    /// Workspace volume's prefixed public identifier.
     pub volume_id: String,
 }
 
@@ -707,7 +713,13 @@ mod tests {
         .run(&org_two)
         .await
         .expect_err("other org should not read volume");
-        assert!(matches!(err, CommandError::NotFound(_)));
+        assert!(matches!(
+            err,
+            CommandError {
+                kind: CommandErrorKind::NotFound(_),
+                ..
+            }
+        ));
     }
 
     #[tokio::test]
@@ -730,7 +742,13 @@ mod tests {
         .run(&ctx)
         .await
         .expect_err("duplicate name should fail");
-        assert!(matches!(err, CommandError::Conflict(_)));
+        assert!(matches!(
+            err,
+            CommandError {
+                kind: CommandErrorKind::Conflict(_),
+                ..
+            }
+        ));
     }
 
     #[tokio::test]
@@ -845,7 +863,13 @@ mod tests {
         .run(&ctx)
         .await
         .expect_err("manual volume cannot sync");
-        assert!(matches!(manual_err, CommandError::BadRequest(_)));
+        assert!(matches!(
+            manual_err,
+            CommandError {
+                kind: CommandErrorKind::BadRequest(_),
+                ..
+            }
+        ));
 
         let created = CreateVolume {
             name: "Repo".into(),
@@ -942,7 +966,13 @@ mod tests {
             .await
             .expect_err("secret-bearing URL should fail");
 
-            assert!(matches!(err, CommandError::BadRequest(_)));
+            assert!(matches!(
+                err,
+                CommandError {
+                    kind: CommandErrorKind::BadRequest(_),
+                    ..
+                }
+            ));
         }
     }
 
@@ -973,7 +1003,13 @@ mod tests {
             .await
             .expect_err("unsafe git URL should fail");
 
-            assert!(matches!(err, CommandError::BadRequest(_)));
+            assert!(matches!(
+                err,
+                CommandError {
+                    kind: CommandErrorKind::BadRequest(_),
+                    ..
+                }
+            ));
         }
     }
 }

@@ -334,33 +334,32 @@ mod tests {
 
     #[test]
     fn test_error_response_serialization() {
+        // RFC 9457 wire shape: `detail` carries the message.
         let error = ErrorResponse::new("Internal server error");
-        let json = serde_json::to_string(&error).expect("Failed to serialize");
-        assert_eq!(json, r#"{"error":"Internal server error"}"#);
+        let parsed: serde_json::Value = serde_json::to_value(&error).expect("Failed to serialize");
+        assert_eq!(parsed["detail"], "Internal server error");
     }
 
     #[test]
     fn test_error_response_internal_error_format() {
-        // Verify that internal error responses use the generic message
         let error = ErrorResponse::new("Internal server error");
         let parsed: serde_json::Value = serde_json::to_value(&error).expect("Failed to serialize");
-        assert_eq!(parsed["error"], "Internal server error");
+        assert_eq!(parsed["detail"], "Internal server error");
     }
 
     #[test]
     fn test_error_response_not_found_format() {
         let error = ErrorResponse::new("Provider not found");
         let parsed: serde_json::Value = serde_json::to_value(&error).expect("Failed to serialize");
-        assert_eq!(parsed["error"], "Provider not found");
+        assert_eq!(parsed["detail"], "Provider not found");
     }
 
     #[test]
     fn test_error_response_encryption_not_configured() {
-        // This error is safe to expose - it's a configuration issue, not internal details
         let error = ErrorResponse::new("Encryption not configured. Cannot store API key.");
         let parsed: serde_json::Value = serde_json::to_value(&error).expect("Failed to serialize");
         assert_eq!(
-            parsed["error"],
+            parsed["detail"],
             "Encryption not configured. Cannot store API key."
         );
     }

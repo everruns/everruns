@@ -135,14 +135,16 @@ pub struct RateLimitError;
 
 impl From<RateLimitError> for Response {
     fn from(_: RateLimitError) -> Self {
-        (
-            StatusCode::TOO_MANY_REQUESTS,
-            [("retry-after", "60")],
-            axum::Json(serde_json::json!({
-                "error": "Too many requests. Please try again later."
-            })),
-        )
-            .into_response()
+        let body =
+            crate::api::common::ErrorResponse::new("Too many requests. Please try again later.")
+                .with_code("rate_limited")
+                .with_retry_after(60)
+                .with_action(
+                    crate::api::common::AllowedAction::new("retry-later")
+                        .with_hint("Wait retry_after_seconds before retrying."),
+                );
+        let (status, json) = body.into_response(StatusCode::TOO_MANY_REQUESTS);
+        (status, [("retry-after", "60")], json).into_response()
     }
 }
 

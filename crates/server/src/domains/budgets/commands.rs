@@ -39,7 +39,7 @@ fn validate_limit(limit: f64, soft_limit: Option<f64>) -> Result<(), CommandErro
 fn require_budget_manage(ctx: &Ctx) -> Result<(), CommandError> {
     BUDGET_MANAGE
         .evaluate(&ctx.caller)
-        .map_err(|e| CommandError::Forbidden(e.message))
+        .map_err(|e| CommandError::forbidden(e.message))
 }
 
 #[derive(Debug, Serialize)]
@@ -186,9 +186,12 @@ inventory::submit! { CommandDescriptor::of::<GetBudget>() }
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateBudgetCmd {
     pub budget_id: String,
+    /// Maximum number of items returned in this page.
     pub limit: Option<f64>,
     pub soft_limit: Option<Option<f64>>,
+    /// Current lifecycle status.
     pub status: Option<String>,
+    /// Free-form metadata attached to this resource.
     pub metadata: Option<serde_json::Value>,
 }
 
@@ -284,6 +287,7 @@ inventory::submit! { CommandDescriptor::of::<DeleteBudget>() }
 pub struct TopUpBudget {
     pub budget_id: String,
     pub amount: f64,
+    /// Human-readable description. Safe to render in user-facing messages.
     pub description: Option<String>,
 }
 
@@ -351,8 +355,10 @@ inventory::submit! { CommandDescriptor::of::<TopUpBudget>() }
 pub struct ListBudgetLedger {
     pub budget_id: String,
     #[serde(default = "default_budget_ledger_limit")]
+    /// Maximum number of items returned in this page.
     pub limit: i64,
     #[serde(default)]
+    /// Zero-based offset into the result set.
     pub offset: i64,
 }
 
@@ -440,6 +446,7 @@ inventory::submit! { CommandDescriptor::of::<CheckBudget>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ListSessionBudgets {
+    /// Session's prefixed public identifier.
     pub session_id: String,
 }
 
@@ -478,6 +485,7 @@ inventory::submit! { CommandDescriptor::of::<ListSessionBudgets>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CheckSessionBudgets {
+    /// Session's prefixed public identifier.
     pub session_id: String,
 }
 
@@ -513,6 +521,7 @@ inventory::submit! { CommandDescriptor::of::<CheckSessionBudgets>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ResumeSessionBudgets {
+    /// Session's prefixed public identifier.
     pub session_id: String,
 }
 
@@ -565,6 +574,7 @@ inventory::submit! { CommandDescriptor::of::<ResumeSessionBudgets>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ListAppBudgets {
+    /// App's prefixed public identifier.
     pub app_id: String,
     /// When true include budgets attached to any of the app's channels
     /// (`app_channel:<id>`) in addition to the app itself.
@@ -696,7 +706,13 @@ mod tests {
         .execute(&ctx)
         .await
         .expect_err("member should be denied by BUDGET_MANAGE");
-        assert!(matches!(err, CommandError::Forbidden(_)));
+        assert!(matches!(
+            err,
+            CommandError {
+                kind: CommandErrorKind::Forbidden(_),
+                ..
+            }
+        ));
     }
 
     #[tokio::test]

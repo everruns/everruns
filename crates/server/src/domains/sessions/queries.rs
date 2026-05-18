@@ -11,13 +11,13 @@ pub fn session_service(
 ) -> Result<Arc<crate::domains::sessions::SessionService>, CommandError> {
     ctx.session_service
         .clone()
-        .ok_or_else(|| CommandError::Internal(anyhow::anyhow!("Session service not configured")))
+        .ok_or_else(|| CommandError::internal(anyhow::anyhow!("Session service not configured")))
 }
 
 pub fn runner(ctx: &Ctx) -> Result<Arc<dyn AgentRunner>, CommandError> {
     ctx.runner
         .clone()
-        .ok_or_else(|| CommandError::Internal(anyhow::anyhow!("Agent runner not configured")))
+        .ok_or_else(|| CommandError::internal(anyhow::anyhow!("Agent runner not configured")))
 }
 
 pub fn parse_session_id(

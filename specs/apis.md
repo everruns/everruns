@@ -4,6 +4,38 @@
 
 This document defines the HTTP API endpoints for Everruns v0.2.0 (M2).
 
+## AI-Friendly API
+
+The API is designed for both humans and LLM agents (hosted, OpenAPI tool
+callers, MCP, A2A). Six guidelines guide every endpoint:
+
+1. **Semantic operations** — business-intent endpoints with a stable
+   `operationId` on every `#[utoipa::path]`. utoipa auto-derives the
+   operationId from the handler fn name; the convention is lower_snake_case
+   matching the corresponding domain command name (e.g. `create_agent`),
+   which keeps the OpenAPI tool catalog aligned with the MCP `execute`
+   builtin set. `crates/server/tests/openapi_coverage_test.rs` enforces
+   that every annotated handler is registered in `openapi::ApiDoc` and
+   that every operationId is snake_case.
+2. **Self-sufficient OpenAPI** — every operation, schema, and field carries
+   a `description` (and ideally an `example` for non-trivial fields) so
+   agents can do "preflight thinking" from the spec alone.
+   `crates/server/tests/openapi_descriptions_test.rs` enforces ratcheting
+   coverage floors — each merge can only raise the percentage, never lower
+   it.
+3. **Domain language** — concepts from [`concepts.md`](concepts.md) used
+   consistently in field names and descriptions.
+4. **Actionable errors** — [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457)
+   *Problem Details* with stable `code`, `allowed_actions`, and
+   `retry_after_seconds`.
+5. **Hypermedia** — `self_url` / `view_url` on every entity; `config`
+   endpoints advertise allowed actions; enums backed by list endpoints.
+6. **Human representations** — system IDs (`agent_…`, `sess_…`, see
+   [`id-schema.md`](id-schema.md)) kept distinct from display fields
+   (`name`, `title`, `display_name`).
+
+Background and rationale: ["Towards AI-Friendly Web APIs"](https://chaliy.name/blog/towards-ai-friendly-web-apis/).
+
 ## Requirements
 
 ### Routing Layout
@@ -568,12 +600,29 @@ Returns `409 Conflict` when a limit is exceeded.
 
 ### Error Responses
 
+Errors follow [RFC 9457 Problem Details](https://www.rfc-editor.org/rfc/rfc9457)
+served as `application/problem+json`:
+
 ```json
 {
-  "error": "Error message",
-  "status": 400
+  "type": "https://errors.everruns.com/validation/agent-name-too-long",
+  "title": "Validation failed",
+  "status": 422,
+  "detail": "Agent name exceeds the 200-character limit.",
+  "instance": "/v1/agents",
+  "code": "agent_name_too_long",
+  "allowed_actions": [
+    { "rel": "retry", "operation_id": "create_agent", "hint": "Shorten 'name' to <= 200 chars." }
+  ],
+  "retry_after_seconds": null
 }
 ```
+
+Required: `title`, `status`. Optional: `type` (problem-type URI; defaults to
+`about:blank` per RFC 9457 when omitted), `detail` (sanitized per
+[`public-endpoints.md`](public-endpoints.md)), `code` (stable snake_case),
+`allowed_actions[]` (`{rel, operation_id, hint, href?}`),
+`retry_after_seconds` (on `429` / transient `503`), `instance` (request path).
 
 Standard HTTP status codes:
 - `400` - Bad Request (invalid input)

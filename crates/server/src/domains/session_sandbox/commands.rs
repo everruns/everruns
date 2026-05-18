@@ -59,6 +59,7 @@ fn manage_response_from_state(
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct GetSessionSandbox {
+    /// Session's prefixed public identifier.
     pub session_id: String,
 }
 
@@ -135,6 +136,7 @@ inventory::submit! { CommandDescriptor::of::<GetSessionSandbox>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ManageSessionSandbox {
+    /// Session's prefixed public identifier.
     pub session_id: String,
     pub action: SessionSandboxAction,
 }

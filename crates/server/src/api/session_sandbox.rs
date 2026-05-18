@@ -45,6 +45,7 @@ pub enum SessionSandboxAction {
     Delete,
 }
 
+/// Response body for the `get_session_sandbox` operation.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct GetSessionSandboxResponse {
     pub configured: bool,
@@ -56,27 +57,33 @@ pub struct GetSessionSandboxResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub external_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Human-readable display name. Safe to render in user-facing messages.
     pub display_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub workspace_path: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Object)]
+    /// Free-form metadata attached to this resource.
     pub metadata: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub init_completed_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_init_error: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Timestamp when this resource was created (RFC 3339).
     pub created_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Timestamp when this resource was last updated (RFC 3339).
     pub updated_at: Option<String>,
 }
 
+/// Request body for the `manage_session_sandbox` operation.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct ManageSessionSandboxRequest {
     pub action: SessionSandboxAction,
 }
 
+/// Response body for the `manage_session_sandbox` operation.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ManageSessionSandboxResponse {
     pub action: SessionSandboxAction,
@@ -89,6 +96,7 @@ pub struct ManageSessionSandboxResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub external_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Human-readable display name. Safe to render in user-facing messages.
     pub display_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub workspace_path: Option<String>,
@@ -141,6 +149,7 @@ pub fn routes(state: AppState) -> Router {
 }
 
 #[utoipa::path(
+    description = "Get the current session sandbox status (lease, runtime image, network access).",
     get,
     path = "/v1/sessions/{session_id}/sandbox",
     params(
@@ -165,6 +174,7 @@ pub async fn get_sandbox(
 }
 
 #[utoipa::path(
+    description = "Manage the session sandbox lifecycle (start, stop, reset).",
     post,
     path = "/v1/sessions/{session_id}/sandbox",
     params(

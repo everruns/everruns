@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 
+/// Request body for the `create_payment_account` operation.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreatePaymentAccountRequest {
     pub owner_type: String,
@@ -12,15 +13,19 @@ pub struct CreatePaymentAccountRequest {
     #[serde(default)]
     pub private_key: Option<String>,
     #[serde(default)]
+    /// Free-form metadata attached to this resource.
     pub metadata: Option<serde_json::Value>,
 }
 
+/// Request body for the `update_payment_account` operation.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct UpdatePaymentAccountRequest {
     pub label: Option<String>,
     pub public_address: Option<Option<String>>,
     pub private_key: Option<String>,
+    /// Current lifecycle status.
     pub status: Option<String>,
+    /// Free-form metadata attached to this resource.
     pub metadata: Option<serde_json::Value>,
 }
 
@@ -30,6 +35,7 @@ pub struct ListPaymentAccountsQuery {
     pub owner_id: Option<String>,
 }
 
+/// Request body for the `create_payment_policy` operation.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreatePaymentPolicyRequest {
     pub payment_account_id: String,
@@ -46,9 +52,11 @@ pub struct CreatePaymentPolicyRequest {
     pub max_amount_usd_per_day: Option<f64>,
     pub require_approval_above_usd: Option<f64>,
     #[serde(default)]
+    /// Free-form metadata attached to this resource.
     pub metadata: Option<serde_json::Value>,
 }
 
+/// Request body for the `update_payment_policy` operation.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct UpdatePaymentPolicyRequest {
     pub allowed_capabilities: Option<Vec<String>>,
@@ -58,7 +66,9 @@ pub struct UpdatePaymentPolicyRequest {
     pub max_amount_usd_per_turn: Option<Option<f64>>,
     pub max_amount_usd_per_day: Option<Option<f64>>,
     pub require_approval_above_usd: Option<Option<f64>>,
+    /// Current lifecycle status.
     pub status: Option<String>,
+    /// Free-form metadata attached to this resource.
     pub metadata: Option<serde_json::Value>,
 }
 

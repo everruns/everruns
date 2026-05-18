@@ -91,6 +91,7 @@ inventory::submit! { CommandDescriptor::of::<ListMemoryStores>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateMemoryStore {
+    /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
     #[serde(default)]
     pub is_default: bool,
@@ -164,6 +165,7 @@ inventory::submit! { CommandDescriptor::of::<CreateMemoryStore>() }
 pub struct UpdateMemoryStore {
     pub store_id: String,
     #[serde(default)]
+    /// Human-readable name. Safe to render in user-facing messages.
     pub name: Option<String>,
     #[serde(default)]
     pub is_default: Option<bool>,
@@ -320,12 +322,14 @@ pub struct ListMemoriesCmd {
     #[serde(default)]
     pub query: Option<String>,
     #[serde(default)]
+    /// Discriminator selecting the variant of this resource.
     pub kind: Option<String>,
     #[serde(default)]
     pub tag: Option<Vec<String>>,
     #[serde(default)]
     pub include_inactive: Option<bool>,
     #[serde(default)]
+    /// Maximum number of items returned in this page.
     pub limit: Option<usize>,
 }
 
@@ -396,6 +400,7 @@ inventory::submit! { CommandDescriptor::of::<ListMemoriesCmd>() }
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ForgetMemoryCmd {
     pub store_id: String,
+    /// Memory's prefixed public identifier.
     pub memory_id: String,
 }
 
@@ -649,7 +654,13 @@ mod tests {
             .run(&org_b)
             .await
             .expect_err("org B should not see store A");
-        assert!(matches!(err, CommandError::NotFound(_)));
+        assert!(matches!(
+            err,
+            CommandError {
+                kind: CommandErrorKind::NotFound(_),
+                ..
+            }
+        ));
 
         // Org B's backend recall returns nothing for org A's store_id.
         let (recalled, total) = backend_b
@@ -687,7 +698,13 @@ mod tests {
         .run(&org_b)
         .await
         .expect_err("other org should not see the store");
-        assert!(matches!(err, CommandError::NotFound(_)));
+        assert!(matches!(
+            err,
+            CommandError {
+                kind: CommandErrorKind::NotFound(_),
+                ..
+            }
+        ));
 
         // ListMemoryStores in other org should be empty.
         let listed = ListMemoryStores.run(&org_b).await.expect("list stores");
@@ -787,7 +804,13 @@ mod tests {
         .run(&ctx)
         .await
         .expect_err("rename should conflict");
-        assert!(matches!(err, CommandError::Conflict(_)));
+        assert!(matches!(
+            err,
+            CommandError {
+                kind: CommandErrorKind::Conflict(_),
+                ..
+            }
+        ));
     }
 
     #[tokio::test]
@@ -811,7 +834,13 @@ mod tests {
         .run(&ctx)
         .await
         .expect_err("demote-only-default should be rejected");
-        assert!(matches!(err, CommandError::BadRequest(_)));
+        assert!(matches!(
+            err,
+            CommandError {
+                kind: CommandErrorKind::BadRequest(_),
+                ..
+            }
+        ));
 
         let listed = ListMemoryStores.run(&ctx).await.expect("list stores");
         assert!(listed.iter().any(|s| s.id == only.id && s.is_default));
@@ -838,6 +867,12 @@ mod tests {
         .run(&ctx)
         .await
         .expect_err("empty update should fail");
-        assert!(matches!(err, CommandError::BadRequest(_)));
+        assert!(matches!(
+            err,
+            CommandError {
+                kind: CommandErrorKind::BadRequest(_),
+                ..
+            }
+        ));
     }
 }

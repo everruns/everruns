@@ -2,6 +2,7 @@
 // Split from grpc_service.rs for maintainability (EVE-101).
 
 use super::*;
+use crate::domains::common::CommandErrorKind;
 
 const COMMAND_API_VERSION_V1: &str = "v1";
 const MAX_EXECUTE_COMMAND_PARAMS_BYTES: usize = 1024 * 1024;
@@ -17,24 +18,20 @@ fn normalize_turn_context_message_limit(requested_limit: Option<i32>, default_li
 }
 
 fn command_error_kind(error: &crate::domains::common::CommandError) -> i32 {
-    match error {
-        crate::domains::common::CommandError::BadRequest(_) => 1,
-        crate::domains::common::CommandError::Unprocessable(_) => 1,
-        crate::domains::common::CommandError::Forbidden(_) => 2,
-        crate::domains::common::CommandError::NotFound(message)
-            if message.starts_with("Unknown command:") =>
-        {
-            1
-        }
-        crate::domains::common::CommandError::NotFound(_) => 3,
-        crate::domains::common::CommandError::Conflict(_) => 4,
-        crate::domains::common::CommandError::Internal(_) => 5,
+    match &error.kind {
+        CommandErrorKind::BadRequest(_) => 1,
+        CommandErrorKind::Unprocessable(_) => 1,
+        CommandErrorKind::Forbidden(_) => 2,
+        CommandErrorKind::NotFound(message) if message.starts_with("Unknown command:") => 1,
+        CommandErrorKind::NotFound(_) => 3,
+        CommandErrorKind::Conflict(_) => 4,
+        CommandErrorKind::Internal(_) => 5,
     }
 }
 
 fn command_error_to_proto(error: crate::domains::common::CommandError) -> ProtoCommandError {
-    let message = match &error {
-        crate::domains::common::CommandError::Internal(inner) => inner.to_string(),
+    let message = match &error.kind {
+        CommandErrorKind::Internal(inner) => inner.to_string(),
         _ => error.to_string(),
     };
 
@@ -45,23 +42,13 @@ fn command_error_to_proto(error: crate::domains::common::CommandError) -> ProtoC
 }
 
 fn command_error_to_status(error: crate::domains::common::CommandError) -> Status {
-    match error {
-        crate::domains::common::CommandError::BadRequest(message) => {
-            Status::invalid_argument(message)
-        }
-        crate::domains::common::CommandError::Unprocessable(message) => {
-            Status::failed_precondition(message)
-        }
-        crate::domains::common::CommandError::Forbidden(message) => {
-            Status::permission_denied(message)
-        }
-        crate::domains::common::CommandError::NotFound(message) => Status::not_found(message),
-        crate::domains::common::CommandError::Conflict(message) => {
-            Status::failed_precondition(message)
-        }
-        crate::domains::common::CommandError::Internal(inner) => {
-            Status::internal(inner.to_string())
-        }
+    match error.kind {
+        CommandErrorKind::BadRequest(message) => Status::invalid_argument(message),
+        CommandErrorKind::Unprocessable(message) => Status::failed_precondition(message),
+        CommandErrorKind::Forbidden(message) => Status::permission_denied(message),
+        CommandErrorKind::NotFound(message) => Status::not_found(message),
+        CommandErrorKind::Conflict(message) => Status::failed_precondition(message),
+        CommandErrorKind::Internal(inner) => Status::internal(inner.to_string()),
     }
 }
 

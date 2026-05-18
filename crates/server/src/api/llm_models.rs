@@ -351,24 +351,34 @@ mod tests {
 
     #[test]
     fn test_error_response_serialization() {
-        let error = ErrorResponse::new("Internal server error");
-        let json = serde_json::to_string(&error).expect("Failed to serialize");
-        assert_eq!(json, r#"{"error":"Internal server error"}"#);
+        // RFC 9457 Problem Details shape: detail carries the message,
+        // title/status are populated when the response is finalized.
+        let (_status, body) = ErrorResponse::new("Internal server error")
+            .into_response(axum::http::StatusCode::INTERNAL_SERVER_ERROR);
+        let parsed: serde_json::Value = serde_json::to_value(&body.0).expect("Failed to serialize");
+        assert_eq!(parsed["detail"], "Internal server error");
+        assert_eq!(parsed["title"], "Internal Server Error");
+        assert_eq!(parsed["status"], 500);
+        // Unset extensions stay out of the wire payload.
+        assert!(parsed.get("type").is_none());
+        assert!(parsed.get("allowed_actions").is_none());
     }
 
     #[test]
     fn test_error_response_internal_error_format() {
-        // Verify that internal error responses use the generic message
-        let error = ErrorResponse::new("Internal server error");
-        let parsed: serde_json::Value = serde_json::to_value(&error).expect("Failed to serialize");
-        assert_eq!(parsed["error"], "Internal server error");
+        // The canonical internal_error helper attaches the stable `code`.
+        let (_, body) = ErrorResponse::internal_error();
+        let parsed: serde_json::Value = serde_json::to_value(&body.0).expect("Failed to serialize");
+        assert_eq!(parsed["detail"], "Internal server error");
+        assert_eq!(parsed["code"], "internal_error");
+        assert_eq!(parsed["status"], 500);
     }
 
     #[test]
     fn test_error_response_not_found_format() {
         let error = ErrorResponse::new("Model not found");
         let parsed: serde_json::Value = serde_json::to_value(&error).expect("Failed to serialize");
-        assert_eq!(parsed["error"], "Model not found");
+        assert_eq!(parsed["detail"], "Model not found");
     }
 
     #[test]

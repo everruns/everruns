@@ -92,12 +92,8 @@ impl AppState {
         &self,
     ) -> Result<&Arc<dyn WorkflowEventStore + Send + Sync>, (StatusCode, Json<ErrorResponse>)> {
         self.store.as_ref().ok_or_else(|| {
-            (
-                StatusCode::SERVICE_UNAVAILABLE,
-                Json(ErrorResponse {
-                    error: "Durable execution store not available".to_string(),
-                }),
-            )
+            ErrorResponse::new("Durable execution store not available".to_string())
+                .into_response(StatusCode::SERVICE_UNAVAILABLE)
         })
     }
 
@@ -249,6 +245,7 @@ pub fn routes(state: AppState) -> Router {
 /// System health response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct HealthResponse {
+    /// Current lifecycle status.
     pub status: String,
     pub total_workers: usize,
     pub active_workers: usize,
@@ -350,23 +347,28 @@ impl HealthResponse {
 /// Worker response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct WorkerResponse {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub worker_group: Option<String>,
     pub activity_types: Vec<String>,
     pub max_concurrency: u32,
     pub current_load: u32,
+    /// Current lifecycle status.
     pub status: String,
     pub accepting_tasks: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub backpressure_reason: Option<String>,
+    /// Timestamp when this resource started, if any (RFC 3339).
     pub started_at: DateTime<Utc>,
     pub last_heartbeat_at: DateTime<Utc>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hostname: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Version number of this resource.
     pub version: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Free-form metadata attached to this resource.
     pub metadata: Option<serde_json::Value>,
     /// Total tasks completed by this worker
     pub tasks_completed: u64,
@@ -413,7 +415,9 @@ pub struct WorkersSummaryResponse {
 /// Workers list response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct WorkersListResponse {
+    /// Page of items returned by this query.
     pub data: Vec<WorkerResponse>,
+    /// Total number of items matching the query, across all pages.
     pub total: usize,
     pub summary: WorkersSummaryResponse,
 }
@@ -421,18 +425,24 @@ pub struct WorkersListResponse {
 /// Workflow response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct WorkflowResponse {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: Uuid,
     pub workflow_type: String,
+    /// Current lifecycle status.
     pub status: String,
     pub input: serde_json::Value,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub result: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Human-readable error message, populated when this resource is in a failed state.
     pub error: Option<serde_json::Value>,
+    /// Timestamp when this resource was created (RFC 3339).
     pub created_at: DateTime<Utc>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Timestamp when this resource started, if any (RFC 3339).
     pub started_at: Option<DateTime<Utc>>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Timestamp when this resource completed, if any (RFC 3339).
     pub completed_at: Option<DateTime<Utc>>,
 }
 
@@ -455,18 +465,23 @@ impl From<WorkflowInfoExtended> for WorkflowResponse {
 /// Workflows list response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct WorkflowsListResponse {
+    /// Page of items returned by this query.
     pub data: Vec<WorkflowResponse>,
+    /// Total number of items matching the query, across all pages.
     pub total: usize,
 }
 
 /// Workflow event response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct WorkflowEventResponse {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: i64,
+    /// Durable workflow's identifier.
     pub workflow_id: Uuid,
     pub sequence_num: i32,
     pub event_type: String,
     pub event_data: serde_json::Value,
+    /// Timestamp when this resource was created (RFC 3339).
     pub created_at: DateTime<Utc>,
 }
 
@@ -486,18 +501,23 @@ impl From<WorkflowEventInfo> for WorkflowEventResponse {
 /// Workflow events list response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct WorkflowEventsListResponse {
+    /// Page of items returned by this query.
     pub data: Vec<WorkflowEventResponse>,
+    /// Total number of items matching the query, across all pages.
     pub total: usize,
 }
 
 /// Task response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct TaskResponse {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: Uuid,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Durable workflow's identifier.
     pub workflow_id: Option<Uuid>,
     pub activity_id: String,
     pub activity_type: String,
+    /// Current lifecycle status.
     pub status: String,
     pub priority: i32,
     pub attempt: u32,
@@ -506,6 +526,7 @@ pub struct TaskResponse {
     pub claimed_by: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_error: Option<String>,
+    /// Timestamp when this resource was created (RFC 3339).
     pub created_at: DateTime<Utc>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub claimed_at: Option<DateTime<Utc>>,
@@ -542,16 +563,20 @@ impl From<TaskInfo> for TaskResponse {
 /// Tasks list response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct TasksListResponse {
+    /// Page of items returned by this query.
     pub data: Vec<TaskResponse>,
+    /// Total number of items matching the query, across all pages.
     pub total: usize,
 }
 
 /// DLQ entry response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct DlqEntryResponse {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: Uuid,
     pub original_task_id: Uuid,
     #[serde(skip_serializing_if = "Option::is_none")]
+    /// Durable workflow's identifier.
     pub workflow_id: Option<Uuid>,
     pub activity_id: String,
     pub activity_type: String,
@@ -582,7 +607,9 @@ impl From<DlqEntry> for DlqEntryResponse {
 /// DLQ list response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct DlqListResponse {
+    /// Page of items returned by this query.
     pub data: Vec<DlqEntryResponse>,
+    /// Total number of items matching the query, across all pages.
     pub total: usize,
 }
 
@@ -599,6 +626,7 @@ pub struct CircuitBreakerResponse {
     pub opened_at: Option<DateTime<Utc>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub half_open_at: Option<DateTime<Utc>>,
+    /// Timestamp when this resource was last updated (RFC 3339).
     pub updated_at: DateTime<Utc>,
 }
 
@@ -626,7 +654,9 @@ impl From<CircuitBreakerState> for CircuitBreakerResponse {
 /// Circuit breakers list response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct CircuitBreakersListResponse {
+    /// Page of items returned by this query.
     pub data: Vec<CircuitBreakerResponse>,
+    /// Total number of items matching the query, across all pages.
     pub total: usize,
 }
 
@@ -795,12 +825,8 @@ pub async fn get_health(
     let store = state.get_store()?;
     let health = store.get_system_health().await.map_err(|e| {
         tracing::error!("Failed to get system health: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Internal server error".to_string(),
-            }),
-        )
+        ErrorResponse::new("Internal server error".to_string())
+            .into_response(StatusCode::INTERNAL_SERVER_ERROR)
     })?;
 
     Ok(Json(
@@ -861,12 +887,8 @@ pub async fn list_workers(
 
     let workers = store.list_workers(filter).await.map_err(|e| {
         tracing::error!("Failed to list workers: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Internal server error".to_string(),
-            }),
-        )
+        ErrorResponse::new("Internal server error".to_string())
+            .into_response(StatusCode::INTERNAL_SERVER_ERROR)
     })?;
 
     let total = workers.len();
@@ -916,12 +938,8 @@ pub async fn drain_worker(
     let store = state.get_store()?;
     store.drain_worker(&worker_id).await.map_err(|e| {
         tracing::error!("Failed to drain worker: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Internal server error".to_string(),
-            }),
-        )
+        ErrorResponse::new("Internal server error".to_string())
+            .into_response(StatusCode::INTERNAL_SERVER_ERROR)
     })?;
 
     Ok(StatusCode::OK)
@@ -948,12 +966,8 @@ pub async fn resume_worker(
     let store = state.get_store()?;
     store.resume_worker(&worker_id).await.map_err(|e| {
         tracing::error!("Failed to resume worker: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Internal server error".to_string(),
-            }),
-        )
+        ErrorResponse::new("Internal server error".to_string())
+            .into_response(StatusCode::INTERNAL_SERVER_ERROR)
     })?;
 
     Ok(StatusCode::OK)
@@ -1006,12 +1020,8 @@ pub async fn list_workflows(
         .await
         .map_err(|e| {
             tracing::error!("Failed to list workflows: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Internal server error".to_string(),
-                }),
-            )
+            ErrorResponse::new("Internal server error".to_string())
+                .into_response(StatusCode::INTERNAL_SERVER_ERROR)
         })?;
 
     let total = workflows.len();
@@ -1047,19 +1057,13 @@ pub async fn get_workflow(
         .await
         .map_err(|e| {
             tracing::error!("Failed to get workflow {}: {}", workflow_id, e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Internal server error".to_string(),
-                }),
-            )
+            ErrorResponse::new("Internal server error".to_string())
+                .into_response(StatusCode::INTERNAL_SERVER_ERROR)
         })?
-        .ok_or((
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: "Workflow not found".to_string(),
-            }),
-        ))?;
+        .ok_or(
+            ErrorResponse::new("Workflow not found".to_string())
+                .into_response(StatusCode::NOT_FOUND),
+        )?;
 
     Ok(Json(WorkflowResponse::from(workflow)))
 }
@@ -1086,12 +1090,8 @@ pub async fn get_workflow_events(
     let store = state.get_store()?;
     let events = store.get_workflow_events(workflow_id).await.map_err(|e| {
         tracing::error!("Failed to get workflow events: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Internal server error".to_string(),
-            }),
-        )
+        ErrorResponse::new("Internal server error".to_string())
+            .into_response(StatusCode::INTERNAL_SERVER_ERROR)
     })?;
 
     let total = events.len();
@@ -1127,20 +1127,14 @@ pub async fn cancel_workflow(
         .cancel_workflow(workflow_id)
         .await
         .map_err(|e| match e {
-            everruns_durable::StoreError::WorkflowNotFound(_) => (
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse {
-                    error: "Workflow not found".to_string(),
-                }),
-            ),
+            everruns_durable::StoreError::WorkflowNotFound(_) => {
+                ErrorResponse::new("Workflow not found".to_string())
+                    .into_response(StatusCode::NOT_FOUND)
+            }
             _ => {
                 tracing::error!("Failed to cancel workflow: {}", e);
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(ErrorResponse {
-                        error: "Internal server error".to_string(),
-                    }),
-                )
+                ErrorResponse::new("Internal server error".to_string())
+                    .into_response(StatusCode::INTERNAL_SERVER_ERROR)
             }
         })?;
 
@@ -1177,12 +1171,8 @@ pub async fn send_signal(
 
     store.send_signal(workflow_id, signal).await.map_err(|e| {
         tracing::error!("Failed to send signal: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Internal server error".to_string(),
-            }),
-        )
+        ErrorResponse::new("Internal server error".to_string())
+            .into_response(StatusCode::INTERNAL_SERVER_ERROR)
     })?;
 
     Ok(StatusCode::OK)
@@ -1235,12 +1225,8 @@ pub async fn list_tasks(
 
     let tasks = store.list_tasks(filter, pagination).await.map_err(|e| {
         tracing::error!("Failed to list tasks: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Internal server error".to_string(),
-            }),
-        )
+        ErrorResponse::new("Internal server error".to_string())
+            .into_response(StatusCode::INTERNAL_SERVER_ERROR)
     })?;
 
     let total = tasks.len();
@@ -1273,6 +1259,7 @@ pub struct EnqueueTaskOptions {
 /// Response for enqueued task
 #[derive(Debug, Serialize, ToSchema)]
 pub struct EnqueueTaskResponse {
+    /// Durable task's identifier.
     pub task_id: Uuid,
 }
 
@@ -1315,12 +1302,8 @@ pub async fn enqueue_task(
 
     let task_id = store.enqueue_task(task).await.map_err(|e| {
         tracing::error!("Failed to enqueue standalone task: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: format!("Failed to enqueue task: {e}"),
-            }),
-        )
+        ErrorResponse::new(format!("Failed to enqueue task: {e}"))
+            .into_response(StatusCode::INTERNAL_SERVER_ERROR)
     })?;
 
     // Notify NATS subscribers (no-op for PG backend)
@@ -1365,12 +1348,8 @@ pub async fn list_dlq(
 
     let entries = store.list_dlq(filter, pagination).await.map_err(|e| {
         tracing::error!("Failed to list DLQ: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Internal server error".to_string(),
-            }),
-        )
+        ErrorResponse::new("Internal server error".to_string())
+            .into_response(StatusCode::INTERNAL_SERVER_ERROR)
     })?;
 
     let total = entries.len();
@@ -1400,20 +1379,14 @@ pub async fn retry_dlq(
 ) -> ApiResult<Uuid> {
     let store = state.get_store()?;
     let task_id = store.requeue_from_dlq(dlq_id).await.map_err(|e| match e {
-        everruns_durable::StoreError::TaskNotFound(_) => (
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: "DLQ entry not found".to_string(),
-            }),
-        ),
+        everruns_durable::StoreError::TaskNotFound(_) => {
+            ErrorResponse::new("DLQ entry not found".to_string())
+                .into_response(StatusCode::NOT_FOUND)
+        }
         _ => {
             tracing::error!("Failed to retry DLQ entry: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Internal server error".to_string(),
-                }),
-            )
+            ErrorResponse::new("Internal server error".to_string())
+                .into_response(StatusCode::INTERNAL_SERVER_ERROR)
         }
     })?;
 
@@ -1437,12 +1410,8 @@ pub async fn list_circuit_breakers(
     let store = state.get_store()?;
     let circuit_breakers = store.list_circuit_breakers().await.map_err(|e| {
         tracing::error!("Failed to list circuit breakers: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Internal server error".to_string(),
-            }),
-        )
+        ErrorResponse::new("Internal server error".to_string())
+            .into_response(StatusCode::INTERNAL_SERVER_ERROR)
     })?;
 
     let total = circuit_breakers.len();
@@ -1476,23 +1445,17 @@ pub async fn get_circuit_breaker(
     let store = state.get_store()?;
     let circuit_breakers = store.list_circuit_breakers().await.map_err(|e| {
         tracing::error!("Failed to list circuit breakers: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Internal server error".to_string(),
-            }),
-        )
+        ErrorResponse::new("Internal server error".to_string())
+            .into_response(StatusCode::INTERNAL_SERVER_ERROR)
     })?;
 
     let breaker = circuit_breakers
         .into_iter()
         .find(|cb| cb.key == key)
-        .ok_or((
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse {
-                error: "Circuit breaker not found".to_string(),
-            }),
-        ))?;
+        .ok_or(
+            ErrorResponse::new("Circuit breaker not found".to_string())
+                .into_response(StatusCode::NOT_FOUND),
+        )?;
 
     Ok(Json(CircuitBreakerResponse::from(breaker)))
 }
@@ -1518,12 +1481,8 @@ pub async fn force_open_circuit_breaker(
     let store = state.get_store()?;
     store.force_open_circuit_breaker(&key).await.map_err(|e| {
         tracing::error!("Failed to force open circuit breaker: {}", e);
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: "Internal server error".to_string(),
-            }),
-        )
+        ErrorResponse::new("Internal server error".to_string())
+            .into_response(StatusCode::INTERNAL_SERVER_ERROR)
     })?;
 
     tracing::info!(key = %key, "Force opened circuit breaker");
@@ -1554,20 +1513,14 @@ pub async fn force_close_circuit_breaker(
         .force_close_circuit_breaker(&key)
         .await
         .map_err(|e| match e {
-            everruns_durable::StoreError::CircuitBreakerNotFound(_) => (
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse {
-                    error: "Circuit breaker not found".to_string(),
-                }),
-            ),
+            everruns_durable::StoreError::CircuitBreakerNotFound(_) => {
+                ErrorResponse::new("Circuit breaker not found".to_string())
+                    .into_response(StatusCode::NOT_FOUND)
+            }
             _ => {
                 tracing::error!("Failed to force close circuit breaker: {}", e);
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(ErrorResponse {
-                        error: "Internal server error".to_string(),
-                    }),
-                )
+                ErrorResponse::new("Internal server error".to_string())
+                    .into_response(StatusCode::INTERNAL_SERVER_ERROR)
             }
         })?;
 
@@ -1599,20 +1552,14 @@ pub async fn delete_circuit_breaker(
         .delete_circuit_breaker(&key)
         .await
         .map_err(|e| match e {
-            everruns_durable::StoreError::CircuitBreakerNotFound(_) => (
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse {
-                    error: "Circuit breaker not found".to_string(),
-                }),
-            ),
+            everruns_durable::StoreError::CircuitBreakerNotFound(_) => {
+                ErrorResponse::new("Circuit breaker not found".to_string())
+                    .into_response(StatusCode::NOT_FOUND)
+            }
             _ => {
                 tracing::error!("Failed to delete circuit breaker: {}", e);
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(ErrorResponse {
-                        error: "Internal server error".to_string(),
-                    }),
-                )
+                ErrorResponse::new("Internal server error".to_string())
+                    .into_response(StatusCode::INTERNAL_SERVER_ERROR)
             }
         })?;
 

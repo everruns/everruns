@@ -22,6 +22,7 @@ pub struct DeclarativeCapability {
     #[schema(value_type = String, example = "cap_01933b5a000070008000000000000001")]
     pub public_id: DeclarativeCapabilityId,
     #[serde(skip, default = "Uuid::nil")]
+    /// Internal database UUID. Not part of the public identifier surface.
     pub internal_id: Uuid,
     /// Runtime capability reference. Agents and harnesses may use this or the plain unique name.
     #[schema(example = "declarative:research_pack")]
@@ -49,12 +50,17 @@ pub struct DeclarativeCapability {
         "mcp_servers": {}
     }))]
     pub definition: DeclarativeCapabilityDefinition,
+    /// Timestamp when this resource was created (RFC 3339).
     pub created_at: DateTime<Utc>,
+    /// Timestamp when this resource was last updated (RFC 3339).
     pub updated_at: DateTime<Utc>,
+    /// Timestamp when this resource was archived, if any (RFC 3339).
     pub archived_at: Option<DateTime<Utc>>,
+    /// Timestamp when this resource was soft-deleted, if any (RFC 3339).
     pub deleted_at: Option<DateTime<Utc>>,
 }
 
+/// Request body for the `create_declarative_capability` operation.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateDeclarativeCapabilityRequest {
     /// Definition for the new declarative capability. `name` must be unique per org and becomes the canonical `declarative:<name>` capability ref.
@@ -70,6 +76,7 @@ pub struct CreateDeclarativeCapabilityRequest {
     pub definition: DeclarativeCapabilityDefinition,
 }
 
+/// Request body for the `update_declarative_capability` operation.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct UpdateDeclarativeCapabilityRequest {
     /// Replacement declarative definition. Changing `name` updates the canonical capability ref after uniqueness validation.

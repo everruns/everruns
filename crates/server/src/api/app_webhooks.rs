@@ -18,7 +18,7 @@ use utoipa::ToSchema;
 
 use crate::api::common::ErrorResponse;
 use crate::domains::apps::{WebhookInvocationRequest, invoke_webhook_app_channel};
-use crate::domains::common::CommandError;
+use crate::domains::common::{CommandError, CommandErrorKind};
 use crate::domains::messages::MessageService;
 use crate::domains::sessions::SessionService;
 use crate::middleware::RequestId;
@@ -62,10 +62,12 @@ impl AppWebhookState {
     }
 }
 
+/// Response body for webhook invocation.
 #[derive(Debug, serde::Serialize, ToSchema)]
 pub struct WebhookInvocationResponse {
     pub accepted: bool,
     #[schema(value_type = String)]
+    /// Session's prefixed public identifier.
     pub session_id: everruns_core::typed_id::SessionId,
     pub created_session: bool,
 }
@@ -80,6 +82,7 @@ pub fn routes(state: AppWebhookState) -> Router {
 }
 
 #[utoipa::path(
+    description = "Invoke a webhook channel for a published App. The body is forwarded to the agent as a message.",
     post,
     path = "/v1/apps/{app_id}/webhooks/{channel_id}",
     params(
@@ -119,12 +122,8 @@ pub async fn invoke_webhook(
     let channel_id_typed = channel_id
         .parse::<everruns_core::typed_id::AppChannelId>()
         .map_err(|e| {
-            (
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse {
-                    error: format!("Invalid channel ID: {e}"),
-                }),
-            )
+            ErrorResponse::new(format!("Invalid channel ID: {e}"))
+                .into_response(StatusCode::BAD_REQUEST)
         })?;
     let channel = app.channel_by_id(&channel_id_typed).ok_or_else(not_found)?;
     if channel.channel_type != everruns_core::ChannelType::Webhook {
@@ -205,63 +204,53 @@ fn flatten_headers(headers: &HeaderMap) -> HashMap<String, String> {
 }
 
 fn bad_request(message: impl Into<String>) -> (StatusCode, Json<ErrorResponse>) {
-    (
-        StatusCode::BAD_REQUEST,
-        Json(ErrorResponse {
-            error: message.into(),
-        }),
-    )
+    ErrorResponse::new(message.into()).into_response(StatusCode::BAD_REQUEST)
 }
 
 fn forbidden(message: impl Into<String>) -> (StatusCode, Json<ErrorResponse>) {
-    (
-        StatusCode::FORBIDDEN,
-        Json(ErrorResponse {
-            error: message.into(),
-        }),
-    )
+    ErrorResponse::new(message.into()).into_response(StatusCode::FORBIDDEN)
 }
 
 fn unauthorized() -> (StatusCode, Json<ErrorResponse>) {
-    (
-        StatusCode::UNAUTHORIZED,
-        Json(ErrorResponse {
-            error: "Invalid or missing webhook token".to_string(),
-        }),
-    )
+    ErrorResponse::new("Invalid or missing webhook token".to_string())
+        .into_response(StatusCode::UNAUTHORIZED)
 }
 
 fn not_found() -> (StatusCode, Json<ErrorResponse>) {
-    (
-        StatusCode::NOT_FOUND,
-        Json(ErrorResponse {
-            error: "App channel not found".to_string(),
-        }),
-    )
+    ErrorResponse::new("App channel not found".to_string()).into_response(StatusCode::NOT_FOUND)
 }
 
 fn internal_error(error: anyhow::Error) -> (StatusCode, Json<ErrorResponse>) {
     tracing::error!(error = %error, "Failed to invoke app webhook");
-    (
-        StatusCode::INTERNAL_SERVER_ERROR,
-        Json(ErrorResponse {
-            error: "Internal server error".to_string(),
-        }),
-    )
+    ErrorResponse::new("Internal server error".to_string())
+        .into_response(StatusCode::INTERNAL_SERVER_ERROR)
 }
 
 fn command_error_response(error: CommandError) -> (StatusCode, Json<ErrorResponse>) {
     match error {
-        CommandError::BadRequest(message) => bad_request(message),
-        CommandError::Unprocessable(message) => (
-            StatusCode::UNPROCESSABLE_ENTITY,
-            Json(ErrorResponse { error: message }),
-        ),
-        CommandError::Forbidden(message) => forbidden(message),
-        CommandError::NotFound(_) => not_found(),
-        CommandError::Conflict(message) => {
-            (StatusCode::CONFLICT, Json(ErrorResponse { error: message }))
-        }
-        CommandError::Internal(error) => internal_error(error),
+        CommandError {
+            kind: CommandErrorKind::BadRequest(message),
+            ..
+        } => bad_request(message),
+        CommandError {
+            kind: CommandErrorKind::Unprocessable(message),
+            ..
+        } => ErrorResponse::new(message).into_response(StatusCode::UNPROCESSABLE_ENTITY),
+        CommandError {
+            kind: CommandErrorKind::Forbidden(message),
+            ..
+        } => forbidden(message),
+        CommandError {
+            kind: CommandErrorKind::NotFound(_),
+            ..
+        } => not_found(),
+        CommandError {
+            kind: CommandErrorKind::Conflict(message),
+            ..
+        } => ErrorResponse::new(message).into_response(StatusCode::CONFLICT),
+        CommandError {
+            kind: CommandErrorKind::Internal(error),
+            ..
+        } => internal_error(error),
     }
 }

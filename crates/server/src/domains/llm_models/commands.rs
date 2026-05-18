@@ -12,14 +12,18 @@ pub struct DeleteModelResult {
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateModel {
+    /// LLM provider's prefixed public identifier.
     pub provider_id: String,
+    /// LLM model's prefixed public identifier.
     pub model_id: String,
+    /// Human-readable display name. Safe to render in user-facing messages.
     pub display_name: String,
     #[serde(default)]
     pub capabilities: Vec<String>,
     // Bashkit's MCP flag parser forwards bools as JSON strings ("true"/"false"),
     // so the lenient deserializer is required to accept `--enabled true`.
     #[serde(default, deserialize_with = "deserialize_bool_lenient")]
+    /// Whether this resource is enabled.
     pub enabled: bool,
     #[serde(default, deserialize_with = "deserialize_bool_lenient")]
     pub is_favorite: bool,
@@ -65,6 +69,7 @@ inventory::submit! { CommandDescriptor::of::<CreateModel>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ListProviderModels {
+    /// LLM provider's prefixed public identifier.
     pub provider_id: String,
 }
 
@@ -146,6 +151,7 @@ inventory::submit! { CommandDescriptor::of::<ListModels>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct GetModel {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: String,
 }
 
@@ -184,14 +190,19 @@ inventory::submit! { CommandDescriptor::of::<GetModel>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateModel {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: String,
+    /// LLM provider's prefixed public identifier.
     pub provider_id: Option<String>,
+    /// LLM model's prefixed public identifier.
     pub model_id: Option<String>,
+    /// Human-readable display name. Safe to render in user-facing messages.
     pub display_name: Option<String>,
     pub capabilities: Option<Vec<String>>,
     // Bashkit's MCP flag parser forwards bools as JSON strings ("true"/"false"),
     // so the lenient deserializer is required to accept `--enabled true`.
     #[serde(default, deserialize_with = "deserialize_opt_bool_lenient")]
+    /// Whether this resource is enabled.
     pub enabled: Option<bool>,
     #[serde(default, deserialize_with = "deserialize_opt_bool_lenient")]
     pub is_favorite: Option<bool>,
@@ -244,6 +255,7 @@ inventory::submit! { CommandDescriptor::of::<UpdateModel>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct DeleteModel {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: String,
 }
 

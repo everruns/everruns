@@ -2012,7 +2012,10 @@ impl DirectPlatformStore {
             Ok(json) => serde_json::from_str(&json)
                 .map(Some)
                 .map_err(|e| store_error(format!("Failed to decode {name} response: {e}"))),
-            Err(crate::domains::common::CommandError::NotFound(_)) => Ok(None),
+            Err(crate::domains::common::CommandError {
+                kind: crate::domains::common::CommandErrorKind::NotFound(_),
+                ..
+            }) => Ok(None),
             Err(error) => Err(store_error(format!("Command {name} failed: {error}"))),
         }
     }

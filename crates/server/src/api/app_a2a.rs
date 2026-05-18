@@ -12,6 +12,7 @@
 // events. Other methods return JSON-RPC `-32601 Method not found`.
 // See `specs/a2a-channel.md`.
 
+use crate::domains::common::CommandErrorKind;
 use std::convert::Infallible;
 use std::sync::Arc;
 
@@ -860,7 +861,7 @@ async fn handle_message_stream(
                 let sub = event_delivery
                     .subscribe(session_id.uuid())
                     .await
-                    .map_err(crate::domains::common::CommandError::Internal)?;
+                    .map_err(crate::domains::common::CommandError::internal)?;
                 *slot.lock().await = Some(sub);
                 Ok(())
             }
@@ -894,12 +895,8 @@ async fn handle_message_stream(
     let sse_guard = match state.sse_tracker.try_acquire(auth.org_id, session_id_uuid) {
         Ok(guard) => guard,
         Err(rejection) => {
-            return (
-                StatusCode::TOO_MANY_REQUESTS,
-                Json(ErrorResponse {
-                    error: rejection.to_string(),
-                }),
-            )
+            return ErrorResponse::new(rejection.to_string())
+                .into_response(StatusCode::TOO_MANY_REQUESTS)
                 .into_response();
         }
     };
@@ -1068,17 +1065,30 @@ fn command_error_response(
     err: crate::domains::common::CommandError,
 ) -> (StatusCode, Json<ErrorResponse>) {
     match err {
-        crate::domains::common::CommandError::BadRequest(msg) => bad_request(msg),
-        crate::domains::common::CommandError::Forbidden(msg) => forbidden(msg),
-        crate::domains::common::CommandError::NotFound(_) => not_found(),
-        crate::domains::common::CommandError::Conflict(msg) => {
-            (StatusCode::CONFLICT, Json(ErrorResponse { error: msg }))
-        }
-        crate::domains::common::CommandError::Unprocessable(msg) => (
-            StatusCode::UNPROCESSABLE_ENTITY,
-            Json(ErrorResponse { error: msg }),
-        ),
-        crate::domains::common::CommandError::Internal(error) => internal_error(error),
+        crate::domains::common::CommandError {
+            kind: CommandErrorKind::BadRequest(msg),
+            ..
+        } => bad_request(msg),
+        crate::domains::common::CommandError {
+            kind: CommandErrorKind::Forbidden(msg),
+            ..
+        } => forbidden(msg),
+        crate::domains::common::CommandError {
+            kind: CommandErrorKind::NotFound(_),
+            ..
+        } => not_found(),
+        crate::domains::common::CommandError {
+            kind: CommandErrorKind::Conflict(msg),
+            ..
+        } => ErrorResponse::new(msg).into_response(StatusCode::CONFLICT),
+        crate::domains::common::CommandError {
+            kind: CommandErrorKind::Unprocessable(msg),
+            ..
+        } => ErrorResponse::new(msg).into_response(StatusCode::UNPROCESSABLE_ENTITY),
+        crate::domains::common::CommandError {
+            kind: CommandErrorKind::Internal(error),
+            ..
+        } => internal_error(error),
     }
 }
 
@@ -1296,39 +1306,20 @@ fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
 }
 
 fn bad_request(message: impl Into<String>) -> (StatusCode, Json<ErrorResponse>) {
-    (
-        StatusCode::BAD_REQUEST,
-        Json(ErrorResponse {
-            error: message.into(),
-        }),
-    )
+    ErrorResponse::new(message.into()).into_response(StatusCode::BAD_REQUEST)
 }
 
 fn forbidden(message: impl Into<String>) -> (StatusCode, Json<ErrorResponse>) {
-    (
-        StatusCode::FORBIDDEN,
-        Json(ErrorResponse {
-            error: message.into(),
-        }),
-    )
+    ErrorResponse::new(message.into()).into_response(StatusCode::FORBIDDEN)
 }
 
 fn unauthorized() -> (StatusCode, Json<ErrorResponse>) {
-    (
-        StatusCode::UNAUTHORIZED,
-        Json(ErrorResponse {
-            error: "Invalid or missing A2A API key".to_string(),
-        }),
-    )
+    ErrorResponse::new("Invalid or missing A2A API key".to_string())
+        .into_response(StatusCode::UNAUTHORIZED)
 }
 
 fn service_unavailable(message: impl Into<String>) -> (StatusCode, Json<ErrorResponse>) {
-    (
-        StatusCode::SERVICE_UNAVAILABLE,
-        Json(ErrorResponse {
-            error: message.into(),
-        }),
-    )
+    ErrorResponse::new(message.into()).into_response(StatusCode::SERVICE_UNAVAILABLE)
 }
 
 fn a2a_auth_error_response(error: AppEndpointAuthError) -> (StatusCode, Json<ErrorResponse>) {
@@ -1342,31 +1333,17 @@ fn a2a_auth_error_response(error: AppEndpointAuthError) -> (StatusCode, Json<Err
 }
 
 fn not_found() -> (StatusCode, Json<ErrorResponse>) {
-    (
-        StatusCode::NOT_FOUND,
-        Json(ErrorResponse {
-            error: "App channel not found".to_string(),
-        }),
-    )
+    ErrorResponse::new("App channel not found".to_string()).into_response(StatusCode::NOT_FOUND)
 }
 
 fn too_many_requests(message: &str) -> (StatusCode, Json<ErrorResponse>) {
-    (
-        StatusCode::TOO_MANY_REQUESTS,
-        Json(ErrorResponse {
-            error: message.to_string(),
-        }),
-    )
+    ErrorResponse::new(message.to_string()).into_response(StatusCode::TOO_MANY_REQUESTS)
 }
 
 fn internal_error(error: anyhow::Error) -> (StatusCode, Json<ErrorResponse>) {
     tracing::error!(error = %error, "Failed to invoke app A2A");
-    (
-        StatusCode::INTERNAL_SERVER_ERROR,
-        Json(ErrorResponse {
-            error: "Internal server error".to_string(),
-        }),
-    )
+    ErrorResponse::new("Internal server error".to_string())
+        .into_response(StatusCode::INTERNAL_SERVER_ERROR)
 }
 
 #[cfg(test)]

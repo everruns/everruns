@@ -145,24 +145,18 @@ fn validate_event_type_list(
     param_name: &str,
 ) -> Result<(), (StatusCode, Json<ErrorResponse>)> {
     if types.len() > MAX_EVENT_TYPE_FILTER_SIZE {
-        return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!(
-                    "{param_name}: too many values ({}, max {MAX_EVENT_TYPE_FILTER_SIZE})",
-                    types.len()
-                ),
-            }),
-        ));
+        return Err(ErrorResponse::new(format!(
+            "{param_name}: too many values ({}, max {MAX_EVENT_TYPE_FILTER_SIZE})",
+            types.len()
+        ))
+        .into_response(StatusCode::BAD_REQUEST));
     }
     for t in types {
         if !VALID_EVENT_TYPES.contains(&t.as_str()) {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse {
-                    error: format!("{param_name}: unknown event type '{t}'"),
-                }),
-            ));
+            return Err(
+                ErrorResponse::new(format!("{param_name}: unknown event type '{t}'"))
+                    .into_response(StatusCode::BAD_REQUEST),
+            );
         }
     }
     Ok(())
@@ -297,12 +291,8 @@ pub async fn stream_sse(
     query.validate()?;
 
     let session_id: SessionId = session_id.parse().map_err(|e| {
-        (
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse {
-                error: format!("Invalid session ID: {}", e),
-            }),
-        )
+        ErrorResponse::new(format!("Invalid session ID: {}", e))
+            .into_response(StatusCode::BAD_REQUEST)
     })?;
 
     // Verify session exists
@@ -312,20 +302,11 @@ pub async fn stream_sse(
         .await
         .map_err(|e| {
             tracing::error!("Failed to get session: {}", e);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: "Internal server error".to_string(),
-                }),
-            )
+            ErrorResponse::new("Internal server error".to_string())
+                .into_response(StatusCode::INTERNAL_SERVER_ERROR)
         })?
         .ok_or_else(|| {
-            (
-                StatusCode::NOT_FOUND,
-                Json(ErrorResponse {
-                    error: "Session not found".to_string(),
-                }),
-            )
+            ErrorResponse::new("Session not found".to_string()).into_response(StatusCode::NOT_FOUND)
         })?;
 
     let session_id = session_id.uuid();
@@ -341,12 +322,7 @@ pub async fn stream_sse(
                 reason = %rejection,
                 "SSE connection rejected"
             );
-            (
-                StatusCode::TOO_MANY_REQUESTS,
-                Json(ErrorResponse {
-                    error: rejection.to_string(),
-                }),
-            )
+            ErrorResponse::new(rejection.to_string()).into_response(StatusCode::TOO_MANY_REQUESTS)
         })?;
 
     tracing::info!(session_id = %session_id, since_id = ?query.since_id, types = ?query.types, exclude = ?query.exclude, "Starting event stream");
@@ -1096,8 +1072,10 @@ mod tests {
         };
         let err = query.validate().unwrap_err();
         assert_eq!(err.0, StatusCode::BAD_REQUEST);
-        assert!(err.1.error.contains("bogus.type"));
-        assert!(err.1.error.contains("types"));
+        let body = err.1.0;
+        let detail = body.detail.as_deref().unwrap_or("");
+        assert!(detail.contains("bogus.type"));
+        assert!(detail.contains("types"));
     }
 
     #[test]
@@ -1112,8 +1090,10 @@ mod tests {
         };
         let err = query.validate().unwrap_err();
         assert_eq!(err.0, StatusCode::BAD_REQUEST);
-        assert!(err.1.error.contains("not.a.real.type"));
-        assert!(err.1.error.contains("exclude"));
+        let body = err.1.0;
+        let detail = body.detail.as_deref().unwrap_or("");
+        assert!(detail.contains("not.a.real.type"));
+        assert!(detail.contains("exclude"));
     }
 
     #[test]
@@ -1131,7 +1111,7 @@ mod tests {
         };
         let err = query.validate().unwrap_err();
         assert_eq!(err.0, StatusCode::BAD_REQUEST);
-        assert!(err.1.error.contains("too many"));
+        assert!(err.1.0.detail.as_deref().unwrap_or("").contains("too many"));
     }
 
     #[test]
@@ -1149,7 +1129,7 @@ mod tests {
         };
         let err = query.validate().unwrap_err();
         assert_eq!(err.0, StatusCode::BAD_REQUEST);
-        assert!(err.1.error.contains("too many"));
+        assert!(err.1.0.detail.as_deref().unwrap_or("").contains("too many"));
     }
 
     #[test]

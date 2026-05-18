@@ -166,8 +166,10 @@ inventory::submit! { CommandDescriptor::of::<ListKnowledgeBases>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateKnowledgeBase {
+    /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
     #[serde(default)]
+    /// Human-readable description. Safe to render in user-facing messages.
     pub description: Option<String>,
 }
 
@@ -223,6 +225,7 @@ inventory::submit! { CommandDescriptor::of::<CreateKnowledgeBase>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct GetKnowledgeBase {
+    /// Knowledge base's prefixed public identifier.
     pub kb_id: String,
 }
 
@@ -267,6 +270,7 @@ inventory::submit! { CommandDescriptor::of::<GetKnowledgeBase>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateKnowledgeBaseCmd {
+    /// Knowledge base's prefixed public identifier.
     pub kb_id: String,
     #[serde(flatten)]
     pub request: UpdateKnowledgeBaseRequest,
@@ -339,6 +343,7 @@ inventory::submit! { CommandDescriptor::of::<UpdateKnowledgeBaseCmd>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct DeleteKnowledgeBase {
+    /// Knowledge base's prefixed public identifier.
     pub kb_id: String,
 }
 
@@ -411,10 +416,12 @@ async fn resolve_kb_internal_id(
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ListKnowledgeEntries {
+    /// Knowledge base's prefixed public identifier.
     pub kb_id: String,
     #[serde(default)]
     pub search: Option<String>,
     #[serde(default)]
+    /// Discriminator selecting the variant of this resource.
     pub kind: Option<String>,
 }
 
@@ -467,12 +474,16 @@ inventory::submit! { CommandDescriptor::of::<ListKnowledgeEntries>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateKnowledgeEntry {
+    /// Knowledge base's prefixed public identifier.
     pub kb_id: String,
+    /// Human-readable title. Safe to render in user-facing messages.
     pub title: String,
     pub body: String,
     #[serde(default)]
+    /// Discriminator selecting the variant of this resource.
     pub kind: Option<String>,
     #[serde(default)]
+    /// Free-form tags attached to this resource.
     pub tags: Option<Vec<String>>,
 }
 
@@ -535,7 +546,9 @@ inventory::submit! { CommandDescriptor::of::<CreateKnowledgeEntry>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct GetKnowledgeEntry {
+    /// Knowledge base's prefixed public identifier.
     pub kb_id: String,
+    /// Knowledge base entry's prefixed public identifier.
     pub entry_id: String,
 }
 
@@ -577,7 +590,9 @@ inventory::submit! { CommandDescriptor::of::<GetKnowledgeEntry>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateKnowledgeEntryCmd {
+    /// Knowledge base's prefixed public identifier.
     pub kb_id: String,
+    /// Knowledge base entry's prefixed public identifier.
     pub entry_id: String,
     #[serde(flatten)]
     pub request: UpdateKnowledgeEntryRequest,
@@ -650,7 +665,9 @@ inventory::submit! { CommandDescriptor::of::<UpdateKnowledgeEntryCmd>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct DeleteKnowledgeEntry {
+    /// Knowledge base's prefixed public identifier.
     pub kb_id: String,
+    /// Knowledge base entry's prefixed public identifier.
     pub entry_id: String,
 }
 
@@ -844,7 +861,13 @@ mod tests {
         .run(&ctx)
         .await
         .expect_err("invalid kind should fail");
-        assert!(matches!(err, CommandError::BadRequest(_)));
+        assert!(matches!(
+            err,
+            CommandError {
+                kind: CommandErrorKind::BadRequest(_),
+                ..
+            }
+        ));
 
         let oversize = "x".repeat(MAX_ENTRY_BODY_BYTES + 1);
         let err = CreateKnowledgeEntry {
@@ -857,7 +880,13 @@ mod tests {
         .run(&ctx)
         .await
         .expect_err("oversized body should fail");
-        assert!(matches!(err, CommandError::BadRequest(_)));
+        assert!(matches!(
+            err,
+            CommandError {
+                kind: CommandErrorKind::BadRequest(_),
+                ..
+            }
+        ));
     }
 
     #[tokio::test]
@@ -880,7 +909,13 @@ mod tests {
         .run(&org_two)
         .await
         .expect_err("other org should not read kb");
-        assert!(matches!(err, CommandError::NotFound(_)));
+        assert!(matches!(
+            err,
+            CommandError {
+                kind: CommandErrorKind::NotFound(_),
+                ..
+            }
+        ));
     }
 
     #[tokio::test]
@@ -901,7 +936,13 @@ mod tests {
         .run(&ctx)
         .await
         .expect_err("duplicate name should fail");
-        assert!(matches!(err, CommandError::Conflict(_)));
+        assert!(matches!(
+            err,
+            CommandError {
+                kind: CommandErrorKind::Conflict(_),
+                ..
+            }
+        ));
     }
 
     #[tokio::test]
@@ -956,7 +997,13 @@ mod tests {
         .run(&ctx)
         .await
         .expect_err("create on archived kb should fail");
-        assert!(matches!(err, CommandError::BadRequest(_)));
+        assert!(matches!(
+            err,
+            CommandError {
+                kind: CommandErrorKind::BadRequest(_),
+                ..
+            }
+        ));
 
         let err = UpdateKnowledgeEntryCmd {
             kb_id: kb.id.to_string(),
@@ -971,7 +1018,13 @@ mod tests {
         .run(&ctx)
         .await
         .expect_err("update on archived kb should fail");
-        assert!(matches!(err, CommandError::BadRequest(_)));
+        assert!(matches!(
+            err,
+            CommandError {
+                kind: CommandErrorKind::BadRequest(_),
+                ..
+            }
+        ));
 
         let err = DeleteKnowledgeEntry {
             kb_id: kb.id.to_string(),
@@ -980,7 +1033,13 @@ mod tests {
         .run(&ctx)
         .await
         .expect_err("delete on archived kb should fail");
-        assert!(matches!(err, CommandError::BadRequest(_)));
+        assert!(matches!(
+            err,
+            CommandError {
+                kind: CommandErrorKind::BadRequest(_),
+                ..
+            }
+        ));
 
         let err = UpdateKnowledgeBaseCmd {
             kb_id: kb.id.to_string(),
@@ -992,6 +1051,12 @@ mod tests {
         .run(&ctx)
         .await
         .expect_err("update on archived kb should fail");
-        assert!(matches!(err, CommandError::BadRequest(_)));
+        assert!(matches!(
+            err,
+            CommandError {
+                kind: CommandErrorKind::BadRequest(_),
+                ..
+            }
+        ));
     }
 }

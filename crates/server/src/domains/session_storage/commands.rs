@@ -6,6 +6,7 @@ use utoipa::ToSchema;
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ListSessionStorage {
+    /// Session's prefixed public identifier.
     pub session_id: String,
 }
 
@@ -62,6 +63,7 @@ inventory::submit! { CommandDescriptor::of::<ListSessionStorage>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ListSessionSecrets {
+    /// Session's prefixed public identifier.
     pub session_id: String,
 }
 
@@ -107,6 +109,7 @@ inventory::submit! { CommandDescriptor::of::<ListSessionSecrets>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct BatchSetSessionSecrets {
+    /// Session's prefixed public identifier.
     pub session_id: String,
     pub secrets: std::collections::HashMap<String, String>,
 }
@@ -154,7 +157,7 @@ impl Command for BatchSetSessionSecrets {
         for (name, value) in &self.secrets {
             let encrypted = encryption
                 .encrypt_string(value)
-                .map_err(CommandError::Internal)?;
+                .map_err(CommandError::internal)?;
             ctx.db
                 .upsert_session_secret(crate::storage::models::UpsertSessionSecret {
                     session_id,

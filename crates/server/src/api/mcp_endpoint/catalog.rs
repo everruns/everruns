@@ -359,18 +359,19 @@ fn property_is_aggregate(
     false
 }
 
-/// Stable, lower_snake_case label for a `CommandError` variant. Surfaced as
+/// Stable, lower_snake_case label for a `CommandError` kind. Surfaced as
 /// the leading token of the dispatch error string so MCP/bashkit consumers
 /// can tell whether a failure is a bad request, a forbidden call, a missing
 /// resource, or an internal exception without parsing free-form text.
 fn command_error_kind(err: &CommandError) -> &'static str {
-    match err {
-        CommandError::BadRequest(_) => "bad_request",
-        CommandError::Unprocessable(_) => "unprocessable",
-        CommandError::Forbidden(_) => "forbidden",
-        CommandError::NotFound(_) => "not_found",
-        CommandError::Conflict(_) => "conflict",
-        CommandError::Internal(_) => "internal",
+    use crate::domains::common::CommandErrorKind;
+    match &err.kind {
+        CommandErrorKind::BadRequest(_) => "bad_request",
+        CommandErrorKind::Unprocessable(_) => "unprocessable",
+        CommandErrorKind::Forbidden(_) => "forbidden",
+        CommandErrorKind::NotFound(_) => "not_found",
+        CommandErrorKind::Conflict(_) => "conflict",
+        CommandErrorKind::Internal(_) => "internal",
     }
 }
 
@@ -379,6 +380,11 @@ fn command_error_kind(err: &CommandError) -> &'static str {
 /// not duplicate it here. The result is the structured error contract for
 /// MCP-facing builtins; see the "Structured dispatch errors" section in
 /// `specs/domains.md` for the canonical contract and the kind token table.
+///
+/// Agent-actionable extensions (`code`, `allowed_actions`, `retry_after_seconds`)
+/// flow through `CommandError` but are intentionally not appended here — the
+/// `<kind>: <message>` wire is a documented contract. Surfacing extensions
+/// over MCP is tracked as an additive contract change.
 fn format_dispatch_error(err: &CommandError) -> String {
     format!("{}: {err}", command_error_kind(err))
 }
@@ -718,34 +724,31 @@ mod tests {
         // honest. The literal strings are part of the public MCP error
         // contract and should not change without a corresponding spec update.
         assert_eq!(
-            command_error_kind(&CommandError::BadRequest("x".into())),
+            command_error_kind(&CommandError::bad_request("x")),
             "bad_request"
         );
         assert_eq!(
-            command_error_kind(&CommandError::Unprocessable("x".into())),
+            command_error_kind(&CommandError::unprocessable("x")),
             "unprocessable"
         );
         assert_eq!(
-            command_error_kind(&CommandError::Forbidden("x".into())),
+            command_error_kind(&CommandError::forbidden("x")),
             "forbidden"
         );
         assert_eq!(
-            command_error_kind(&CommandError::NotFound("x".into())),
+            command_error_kind(&CommandError::not_found_msg("x")),
             "not_found"
         );
+        assert_eq!(command_error_kind(&CommandError::conflict("x")), "conflict");
         assert_eq!(
-            command_error_kind(&CommandError::Conflict("x".into())),
-            "conflict"
-        );
-        assert_eq!(
-            command_error_kind(&CommandError::Internal(anyhow!("boom"))),
+            command_error_kind(&CommandError::internal(anyhow!("boom"))),
             "internal"
         );
     }
 
     #[test]
     fn format_dispatch_error_prefixes_kind_before_message() {
-        let err = CommandError::BadRequest("invalid type: string \"true\", expected bool".into());
+        let err = CommandError::bad_request("invalid type: string \"true\", expected bool");
         assert_eq!(
             format_dispatch_error(&err),
             "bad_request: invalid type: string \"true\", expected bool"
@@ -757,7 +760,7 @@ mod tests {
         // Bashkit is responsible for the `<op>:` prefix. The dispatch layer
         // must not re-emit it, otherwise consumers see `update_model:
         // update_model: ...`.
-        let err = CommandError::NotFound("Model not found".into());
+        let err = CommandError::not_found_msg("Model not found");
         let formatted = format_dispatch_error(&err);
         assert!(formatted.starts_with("not_found:"));
         assert!(
@@ -769,10 +772,10 @@ mod tests {
     #[test]
     fn format_dispatch_error_distinguishes_internal_from_authz() {
         use anyhow::anyhow;
-        let internal = format_dispatch_error(&CommandError::Internal(anyhow!(
+        let internal = format_dispatch_error(&CommandError::internal(anyhow!(
             "database connection refused"
         )));
-        let forbidden = format_dispatch_error(&CommandError::Forbidden("permission denied".into()));
+        let forbidden = format_dispatch_error(&CommandError::forbidden("permission denied"));
         assert!(internal.starts_with("internal:"));
         assert!(forbidden.starts_with("forbidden:"));
         assert_ne!(internal, forbidden);

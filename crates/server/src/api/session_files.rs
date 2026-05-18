@@ -15,7 +15,7 @@
 // used for file creation or updates.
 
 use crate::auth::{AuthState, ResolvedOrg};
-use crate::domains::common::{Command, CommandError, Ctx};
+use crate::domains::common::{Command, CommandError, CommandErrorKind, Ctx};
 use crate::domains::session_files::{
     CopySessionFile, CreateSessionFile, DeleteSessionFile, GetSessionFile, GrepSessionFiles,
     ListSessionFiles, MoveSessionFile, SessionFileService, StatSessionFile, UpdateSessionFile,
@@ -183,7 +183,10 @@ impl_auth_state!(AppState);
 fn file_error(error: CommandError) -> (StatusCode, String) {
     let status = error.status();
     match error {
-        CommandError::Internal(inner) => {
+        CommandError {
+            kind: CommandErrorKind::Internal(inner),
+            ..
+        } => {
             tracing::error!("Session files command failed: {inner}");
             (status, "Internal server error".to_string())
         }

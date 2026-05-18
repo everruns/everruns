@@ -6,6 +6,7 @@ use utoipa::ToSchema;
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ListSessionResources {
+    /// Session's prefixed public identifier.
     pub session_id: String,
 }
 

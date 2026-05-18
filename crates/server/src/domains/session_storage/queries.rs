@@ -11,7 +11,7 @@ pub async fn verify_session_ownership(
 ) -> Result<(), CommandError> {
     db.get_session(org_id, session_id)
         .await
-        .map_err(CommandError::Internal)?
+        .map_err(CommandError::internal)?
         .ok_or_else(|| CommandError::not_found("Session"))?;
     Ok(())
 }

@@ -98,7 +98,7 @@ async fn check_high_risk_caps(
         .await
         .map_err(classify_anyhow)?;
     if !high.is_empty() {
-        return Err(CommandError::Forbidden(format!(
+        return Err(CommandError::forbidden(format!(
             "Admin role required to assign high-risk capabilities: {}",
             high.join(", ")
         )));
@@ -245,7 +245,9 @@ impl Command for CreateAgent {
                 .create_agent_with_id(ctx.org_id(), AgentId::from_uuid(internal_uuid), input)
                 .await
                 .map_err(classify_anyhow)?
-                .ok_or_else(|| CommandError::Conflict("Agent UUID collision".into()))?;
+                .ok_or_else(|| {
+                    CommandError::conflict("Agent UUID collision").with_code("agent_id_taken")
+                })?;
             (row, internal_uuid)
         };
 
@@ -267,8 +269,10 @@ pub struct ListAgents {
     #[serde(default, deserialize_with = "deserialize_bool_lenient")]
     pub include_archived: bool,
     #[serde(default, deserialize_with = "deserialize_opt_u32_lenient")]
+    /// Zero-based offset into the result set.
     pub offset: Option<u32>,
     #[serde(default, deserialize_with = "deserialize_opt_u32_lenient")]
+    /// Maximum number of items returned in this page.
     pub limit: Option<u32>,
 }
 
@@ -330,6 +334,7 @@ inventory::submit! { CommandDescriptor::of::<ListAgents>() }
 /// Get a single agent by ID or name.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct GetAgent {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: String,
 }
 
@@ -371,6 +376,7 @@ inventory::submit! { CommandDescriptor::of::<GetAgent>() }
 /// Update an agent. Only provided fields are changed.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateAgentCmd {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: String,
     #[serde(flatten)]
     pub req: UpdateAgentRequest,
@@ -410,7 +416,7 @@ impl Command for UpdateAgentCmd {
         }
         validate_update_limits(&req)?;
         if matches!(req.status, Some(AgentStatus::Deleted)) {
-            return Err(CommandError::Forbidden(
+            return Err(CommandError::forbidden(
                 "Setting status=deleted requires dangerous delete permission".to_string(),
             ));
         }
@@ -539,6 +545,7 @@ inventory::submit! { CommandDescriptor::of::<UpdateAgentCmd>() }
 /// Archive an agent (soft delete).
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct DeleteAgent {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: String,
 }
 
@@ -601,6 +608,7 @@ inventory::submit! { CommandDescriptor::of::<DeleteAgent>() }
 /// Upsert agent — create or update by ID.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpsertAgent {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: String,
     #[serde(flatten)]
     pub req: CreateAgentRequest,
@@ -717,6 +725,7 @@ inventory::submit! { CommandDescriptor::of::<UpsertAgent>() }
 /// Copy an agent. Generates a unique name ({name}-copy, -copy-2, etc.)
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CopyAgent {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: String,
 }
 
@@ -781,6 +790,7 @@ inventory::submit! { CommandDescriptor::of::<CopyAgent>() }
 /// Get agent data for export.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ExportAgent {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: String,
 }
 
@@ -1022,6 +1032,7 @@ async fn create_auto_snapshot_from_agent(
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ListAgentVersions {
+    /// Agent's prefixed public identifier.
     pub agent_id: String,
 }
 
@@ -1057,6 +1068,7 @@ inventory::submit! { CommandDescriptor::of::<ListAgentVersions>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateAgentVersionCmd {
+    /// Agent's prefixed public identifier.
     pub agent_id: String,
     pub req: CreateAgentVersionRequest,
 }
@@ -1097,6 +1109,7 @@ inventory::submit! { CommandDescriptor::of::<CreateAgentVersionCmd>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SetDefaultAgentVersion {
+    /// Agent's prefixed public identifier.
     pub agent_id: String,
     pub req: SetDefaultAgentVersionRequest,
 }
@@ -1157,7 +1170,9 @@ inventory::submit! { CommandDescriptor::of::<SetDefaultAgentVersion>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct RollbackAgentVersion {
+    /// Agent's prefixed public identifier.
     pub agent_id: String,
+    /// Agent version's prefixed public identifier.
     pub version_id: AgentVersionId,
     pub req: RollbackAgentVersionRequest,
 }
@@ -1245,6 +1260,7 @@ inventory::submit! { CommandDescriptor::of::<RollbackAgentVersion>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct DiffAgentVersions {
+    /// Agent's prefixed public identifier.
     pub agent_id: String,
     pub from_version_id: AgentVersionId,
     pub to_version_id: AgentVersionId,
@@ -1308,7 +1324,9 @@ inventory::submit! { CommandDescriptor::of::<DiffAgentVersions>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ForkAgentVersion {
+    /// Agent's prefixed public identifier.
     pub agent_id: String,
+    /// Agent version's prefixed public identifier.
     pub version_id: AgentVersionId,
     pub req: ForkAgentVersionRequest,
 }
@@ -1479,6 +1497,7 @@ inventory::submit! { CommandDescriptor::of::<PreviewAgent>() }
 /// Check whether an agent name is available.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CheckAgentName {
+    /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
     pub exclude_id: Option<String>,
 }
@@ -1824,7 +1843,13 @@ mod tests {
         .expect_err("member must not activate high-risk version");
 
         assert!(
-            matches!(err, CommandError::Forbidden(_)),
+            matches!(
+                err,
+                CommandError {
+                    kind: CommandErrorKind::Forbidden(_),
+                    ..
+                }
+            ),
             "expected Forbidden, got {err:?}"
         );
 
@@ -1860,7 +1885,13 @@ mod tests {
         .expect_err("member must not roll back to high-risk version");
 
         assert!(
-            matches!(err, CommandError::Forbidden(_)),
+            matches!(
+                err,
+                CommandError {
+                    kind: CommandErrorKind::Forbidden(_),
+                    ..
+                }
+            ),
             "expected Forbidden, got {err:?}"
         );
 
@@ -1885,6 +1916,7 @@ mod tests {
 /// Permanently delete an archived agent.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct DestroyAgent {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: String,
 }
 

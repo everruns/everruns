@@ -64,6 +64,7 @@ impl_dispatchable!(AppState);
 #[derive(Debug, Clone, Deserialize, IntoParams, ToSchema)]
 pub struct ProjectorRunQuery {
     #[serde(default = "default_projector_limit")]
+    /// Maximum number of items returned in this page.
     pub limit: i64,
 }
 
@@ -98,6 +99,7 @@ pub fn routes(state: AppState) -> Router {
 }
 
 #[utoipa::path(
+    description = "Return the available reporting datasets and their schemas.",
     get,
     path = "/v1/reports/catalog",
     responses(
@@ -114,6 +116,7 @@ pub async fn get_catalog(
 }
 
 #[utoipa::path(
+    description = "Run an ad-hoc reporting query against a registered dataset.",
     post,
     path = "/v1/reports/query",
     request_body = ReportQuery,
@@ -133,6 +136,7 @@ pub async fn run_query(
 }
 
 #[utoipa::path(
+    description = "Run an ad-hoc reporting query and stream the result as CSV.",
     post,
     path = "/v1/reports/query/export",
     request_body = ExportReportQueryRequest,
@@ -154,6 +158,7 @@ pub async fn export_query(
 }
 
 #[utoipa::path(
+    description = "List saved reports.",
     get,
     path = "/v1/reports/saved",
     responses(
@@ -172,6 +177,7 @@ pub async fn list_saved_reports(
 }
 
 #[utoipa::path(
+    description = "Create a new saved report.",
     post,
     path = "/v1/reports/saved",
     request_body = CreateSavedReportRequest,
@@ -194,6 +200,7 @@ pub async fn create_saved_report(
 }
 
 #[utoipa::path(
+    description = "Get a saved report by ID.",
     get,
     path = "/v1/reports/saved/{report_id}",
     params(("report_id" = Uuid, Path, description = "Saved report ID")),
@@ -215,6 +222,7 @@ pub async fn get_saved_report(
 }
 
 #[utoipa::path(
+    description = "Update a saved report. Only provided fields are modified.",
     patch,
     path = "/v1/reports/saved/{report_id}",
     params(("report_id" = Uuid, Path, description = "Saved report ID")),
@@ -241,6 +249,7 @@ pub async fn update_saved_report(
 }
 
 #[utoipa::path(
+    description = "Delete a saved report.",
     delete,
     path = "/v1/reports/saved/{report_id}",
     params(("report_id" = Uuid, Path, description = "Saved report ID")),
@@ -263,6 +272,7 @@ pub async fn delete_saved_report(
 }
 
 #[utoipa::path(
+    description = "Run a previously saved reporting query and return the result.",
     post,
     path = "/v1/reports/saved/{report_id}/run",
     params(("report_id" = Uuid, Path, description = "Saved report ID")),
@@ -284,6 +294,7 @@ pub async fn run_saved_report(
 }
 
 #[utoipa::path(
+    description = "Run a previously saved reporting query and stream the result as CSV.",
     post,
     path = "/v1/reports/saved/{report_id}/export",
     params(("report_id" = Uuid, Path, description = "Saved report ID")),
@@ -309,6 +320,7 @@ pub async fn export_saved_report(
 }
 
 #[utoipa::path(
+    description = "Return diagnostics for the reporting subsystem (operator view).",
     get,
     path = "/v1/reports/admin/diagnostics",
     responses(
@@ -325,6 +337,7 @@ pub async fn get_diagnostics(
 }
 
 #[utoipa::path(
+    description = "Run a reporting projector to refresh derived data (operator action).",
     post,
     path = "/v1/reports/admin/backfill",
     request_body = ReportingBackfillRequest,
@@ -347,6 +360,7 @@ pub async fn backfill_reporting(
 #[utoipa::path(
     post,
     path = "/v1/reports/projector/run",
+    description = "Run a reporting projector to refresh derived data (operator action).",
     params(ProjectorRunQuery),
     responses(
         (status = 200, description = "Reporting projector run result", body = ProjectorRunResult),

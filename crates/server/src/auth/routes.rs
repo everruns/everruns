@@ -134,6 +134,7 @@ pub struct LoginRequest {
 pub struct RegisterRequest {
     pub email: String,
     pub password: String,
+    /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
 }
 
@@ -150,7 +151,9 @@ pub struct TokenResponse {
 /// Organization membership in user response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct OrgMembershipResponse {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub public_id: String,
+    /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
     pub role: String,
 }
@@ -158,8 +161,10 @@ pub struct OrgMembershipResponse {
 /// User info response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct UserInfoResponse {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: String,
     pub email: String,
+    /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
     pub roles: Vec<String>,
     pub avatar_url: Option<String>,

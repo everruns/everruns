@@ -70,7 +70,7 @@ fn encrypt_wallet_key(
     let encryption = ctx
         .encryption
         .as_ref()
-        .ok_or_else(|| CommandError::Internal(anyhow::anyhow!("Encryption is not configured")))?;
+        .ok_or_else(|| CommandError::internal(anyhow::anyhow!("Encryption is not configured")))?;
     // THREAT[TM-CRYPTO-008]: Machine-payment wallet keys must not be stored in plaintext.
     // Mitigation: accept the key only at write time, encrypt it with the server envelope
     // encryption service, and never include it in payment account API responses.
@@ -78,7 +78,7 @@ fn encrypt_wallet_key(
         .encrypt_string(private_key.trim())
         .map(Some)
         .map_err(|error| {
-            CommandError::Internal(anyhow::anyhow!("Failed to encrypt wallet key: {error}"))
+            CommandError::internal(anyhow::anyhow!("Failed to encrypt wallet key: {error}"))
         })
 }
 
@@ -217,7 +217,9 @@ pub struct UpdatePaymentAccountCmd {
     pub label: Option<String>,
     pub public_address: Option<Option<String>>,
     pub private_key: Option<String>,
+    /// Current lifecycle status.
     pub status: Option<String>,
+    /// Free-form metadata attached to this resource.
     pub metadata: Option<serde_json::Value>,
 }
 
@@ -474,7 +476,9 @@ pub struct UpdatePaymentPolicyCmd {
     pub max_amount_usd_per_turn: Option<Option<f64>>,
     pub max_amount_usd_per_day: Option<Option<f64>>,
     pub require_approval_above_usd: Option<Option<f64>>,
+    /// Current lifecycle status.
     pub status: Option<String>,
+    /// Free-form metadata attached to this resource.
     pub metadata: Option<serde_json::Value>,
 }
 
@@ -583,7 +587,9 @@ inventory::submit! { CommandDescriptor::of::<DisablePaymentPolicy>() }
 
 #[derive(Debug, Default, Deserialize, ToSchema)]
 pub struct ListPaymentAttempts {
+    /// Session's prefixed public identifier.
     pub session_id: Option<String>,
+    /// Maximum number of items returned in this page.
     pub limit: i64,
 }
 
@@ -660,7 +666,7 @@ mod tests {
             .expect_err("x402 accounts must be backed by signing material");
 
         assert!(
-            matches!(err, CommandError::BadRequest(message) if message.contains("private_key"))
+            matches!(err, CommandError { kind: CommandErrorKind::BadRequest(message), .. } if message.contains("private_key"))
         );
     }
 

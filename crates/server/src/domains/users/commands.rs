@@ -25,8 +25,8 @@ impl Command for ListUsers {
 
     async fn execute(self, ctx: &Ctx) -> Result<ListUsersResponse, CommandError> {
         if ctx.caller.user_id.is_none() {
-            return Err(CommandError::Forbidden(
-                "Users require an authenticated user".into(),
+            return Err(CommandError::forbidden(
+                "Users require an authenticated user",
             ));
         }
 

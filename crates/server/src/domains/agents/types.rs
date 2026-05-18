@@ -133,6 +133,7 @@ pub struct UpdateAgentRequest {
     pub max_iterations: Option<usize>,
 }
 
+/// Request body for the `create_agent_version` operation.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateAgentVersionRequest {
     #[serde(default)]
@@ -141,6 +142,7 @@ pub struct CreateAgentVersionRequest {
     pub change_kind: Option<everruns_core::AgentVersionChangeKind>,
 }
 
+/// Request body for the `rollback_agent_version` operation.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct RollbackAgentVersionRequest {
     #[serde(default)]
@@ -149,20 +151,27 @@ pub struct RollbackAgentVersionRequest {
     pub summary: Option<String>,
 }
 
+/// Request body for the `set_default_agent_version` operation.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct SetDefaultAgentVersionRequest {
+    /// Agent version's prefixed public identifier.
     pub version_id: AgentVersionId,
 }
 
+/// Request body for the `fork_agent_version` operation.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct ForkAgentVersionRequest {
+    /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
     #[serde(default)]
+    /// Human-readable display name. Safe to render in user-facing messages.
     pub display_name: Option<String>,
     #[serde(default)]
+    /// Human-readable description. Safe to render in user-facing messages.
     pub description: Option<String>,
 }
 
+/// Response body for agent version diff.
 #[derive(Debug, Clone, serde::Serialize, ToSchema)]
 pub struct AgentVersionDiffResponse {
     pub from_version_id: AgentVersionId,

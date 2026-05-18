@@ -124,7 +124,14 @@ export async function throwApiError(response: Response): Promise<never> {
     if (text) {
       try {
         const errorBody = JSON.parse(text);
-        errorMessage = errorBody.error || errorBody.message || JSON.stringify(errorBody);
+        // Errors follow RFC 9457 Problem Details (`detail`/`title`/`code`).
+        // `error`/`message` fall back for legacy or third-party error bodies.
+        errorMessage =
+          errorBody.detail ||
+          errorBody.title ||
+          errorBody.error ||
+          errorBody.message ||
+          JSON.stringify(errorBody);
       } catch {
         // Not JSON — use the raw text as the error message
         errorMessage = text;

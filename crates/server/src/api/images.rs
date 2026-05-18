@@ -49,11 +49,14 @@ pub(crate) const ALLOWED_CONTENT_TYPES: &[&str] =
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ImageInfo {
     #[schema(value_type = String, example = "img_01933b5a00007000800000000000001")]
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: ImageId,
     pub filename: String,
     pub content_type: String,
     pub size_bytes: i64,
+    /// Free-form metadata attached to this resource.
     pub metadata: serde_json::Value,
+    /// Timestamp when this resource was created (RFC 3339).
     pub created_at: DateTime<Utc>,
 }
 
@@ -61,10 +64,12 @@ pub struct ImageInfo {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ImageUploadResponse {
     #[schema(value_type = String, example = "img_01933b5a00007000800000000000001")]
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: ImageId,
     pub filename: String,
     pub content_type: String,
     pub size_bytes: i64,
+    /// Timestamp when this resource was created (RFC 3339).
     pub created_at: DateTime<Utc>,
 }
 

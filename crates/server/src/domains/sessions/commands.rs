@@ -22,9 +22,17 @@ fn validation_error(
         axum::Json<crate::api::common::ErrorResponse>,
     ),
 ) -> CommandError {
+    let body = error.1.0;
+    let message = body.detail.unwrap_or_else(|| {
+        if body.title.is_empty() {
+            "Request failed".to_string()
+        } else {
+            body.title
+        }
+    });
     match error.0 {
-        axum::http::StatusCode::NOT_FOUND => CommandError::NotFound(error.1.0.error),
-        _ => CommandError::bad_request(error.1.0.error),
+        axum::http::StatusCode::NOT_FOUND => CommandError::not_found_msg(message),
+        _ => CommandError::bad_request(message),
     }
 }
 
@@ -79,7 +87,7 @@ impl Command for CreateSession {
                     .map_err(classify_anyhow)?;
                 req.harness_id = Some(settings.and_then(|row| row.default_harness_id).ok_or_else(
                     || {
-                        CommandError::NotFound(
+                        CommandError::not_found_msg(
                             "Default harness not configured for this organization".to_string(),
                         )
                     },
@@ -161,11 +169,14 @@ inventory::submit! { CommandDescriptor::of::<CreateSession>() }
 
 #[derive(Debug, Default, Deserialize, ToSchema)]
 pub struct ListSessions {
+    /// Agent's prefixed public identifier.
     pub agent_id: Option<AgentId>,
     pub search: Option<String>,
     #[serde(default, deserialize_with = "deserialize_opt_u32_lenient")]
+    /// Zero-based offset into the result set.
     pub offset: Option<u32>,
     #[serde(default, deserialize_with = "deserialize_opt_u32_lenient")]
+    /// Maximum number of items returned in this page.
     pub limit: Option<u32>,
 }
 
@@ -232,6 +243,7 @@ inventory::submit! { CommandDescriptor::of::<ListSessions>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct GetSession {
+    /// Session's prefixed public identifier.
     pub session_id: String,
 }
 
@@ -266,6 +278,7 @@ inventory::submit! { CommandDescriptor::of::<GetSession>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct GetSessionContextReport {
+    /// Session's prefixed public identifier.
     pub session_id: String,
 }
 
@@ -321,7 +334,7 @@ impl Command for GetSessionContextReport {
 
         let EventData::LlmGeneration(data) = deserialize_event_data(&row.event_type, row.data)
         else {
-            return Err(CommandError::Internal(anyhow::anyhow!(
+            return Err(CommandError::internal(anyhow::anyhow!(
                 "latest llm.generation event could not be decoded"
             )));
         };
@@ -365,6 +378,7 @@ inventory::submit! { CommandDescriptor::of::<GetSessionContextReport>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateSessionCmd {
+    /// Session's prefixed public identifier.
     pub session_id: String,
     #[serde(flatten)]
     pub req: UpdateSessionRequest,
@@ -404,6 +418,7 @@ inventory::submit! { CommandDescriptor::of::<UpdateSessionCmd>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct DeleteSession {
+    /// Session's prefixed public identifier.
     pub session_id: String,
 }
 
@@ -469,7 +484,9 @@ impl Command for GetOrCreateChatSession {
             .map_err(limit_validation_error)?;
         let user_id = ctx.caller.user_id.unwrap_or(ANONYMOUS_USER_ID);
         let chat_harness_name = ctx.chat_harness_name.clone().ok_or_else(|| {
-            CommandError::NotFound("Global chat is not configured for this platform".to_string())
+            CommandError::not_found_msg(
+                "Global chat is not configured for this platform".to_string(),
+            )
         })?;
         let chat_harness_id =
             q::resolve_named_built_in_harness_id(&ctx.db, ctx.org_id(), &chat_harness_name)
@@ -528,6 +545,7 @@ inventory::submit! { CommandDescriptor::of::<GetSessionStats>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct PinSession {
+    /// Session's prefixed public identifier.
     pub session_id: String,
 }
 
@@ -550,7 +568,7 @@ impl Command for PinSession {
 
     async fn execute(self, ctx: &Ctx) -> Result<bool, CommandError> {
         let user_id = ctx.caller.user_id.ok_or_else(|| {
-            CommandError::Forbidden("Authentication required to pin sessions".to_string())
+            CommandError::forbidden("Authentication required to pin sessions".to_string())
         })?;
         let session_id = q::parse_session_id(&self.session_id)?;
         q::session_service(ctx)?
@@ -565,6 +583,7 @@ inventory::submit! { CommandDescriptor::of::<PinSession>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UnpinSession {
+    /// Session's prefixed public identifier.
     pub session_id: String,
 }
 
@@ -587,7 +606,7 @@ impl Command for UnpinSession {
 
     async fn execute(self, ctx: &Ctx) -> Result<bool, CommandError> {
         let user_id = ctx.caller.user_id.ok_or_else(|| {
-            CommandError::Forbidden("Authentication required to unpin sessions".to_string())
+            CommandError::forbidden("Authentication required to unpin sessions".to_string())
         })?;
         let session_id = q::parse_session_id(&self.session_id)?;
         q::session_service(ctx)?
@@ -601,6 +620,7 @@ inventory::submit! { CommandDescriptor::of::<UnpinSession>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CancelSession {
+    /// Session's prefixed public identifier.
     pub session_id: String,
 }
 

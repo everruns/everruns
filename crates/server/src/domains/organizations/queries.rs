@@ -3,9 +3,9 @@ use crate::domains::common::{CommandError, Ctx, classify_anyhow};
 use crate::storage::{OrganizationRow, OrganizationWithRoleRow, StorageBackend};
 
 pub fn require_user_id(ctx: &Ctx) -> Result<uuid::Uuid, CommandError> {
-    ctx.caller.user_id.ok_or_else(|| {
-        CommandError::Forbidden("Organizations require an authenticated user".into())
-    })
+    ctx.caller
+        .user_id
+        .ok_or_else(|| CommandError::forbidden("Organizations require an authenticated user"))
 }
 
 pub async fn list_user_organizations(

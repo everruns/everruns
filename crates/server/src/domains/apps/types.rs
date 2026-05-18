@@ -121,32 +121,49 @@ pub struct ListAppsQuery {
     pub include_archived: Option<bool>,
 }
 
+/// Single app-channel invocation record (one run = one channel-side event).
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct AppRunEvent {
+    /// Prefixed public identifier of this run event.
     pub id: String,
+    /// App that received the invocation.
     pub app_id: String,
+    /// Channel that originated the invocation.
     pub channel_id: String,
+    /// Channel kind (slack, ag_ui, webhook, a2a, fcp).
     pub channel_type: ChannelType,
+    /// Human-readable channel name when set.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub channel_name: Option<String>,
+    /// Terminal status (`ok`, `err`, `running`).
     pub status: String,
+    /// Timestamp the run started (RFC 3339).
     pub created_at: DateTime<Utc>,
+    /// Timestamp the run finished, if any (RFC 3339).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub completed_at: Option<DateTime<Utc>>,
 }
 
+/// One bucket of the run-history histogram (per-hour aggregate).
 #[derive(Debug, Clone, Serialize, Default, ToSchema)]
 pub struct AppRunBucket {
+    /// Bucket start (top of the hour, RFC 3339).
     pub hour: DateTime<Utc>,
+    /// Count of runs that completed successfully in this bucket.
     pub ok: u32,
+    /// Count of runs that failed in this bucket.
     pub err: u32,
+    /// Count of runs still running when the bucket was queried.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub running: Option<u32>,
 }
 
+/// Paged response for the app run history endpoint, optionally including a per-hour histogram.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct AppRunListResponse {
+    /// Page of run events ordered newest first.
     pub data: Vec<AppRunEvent>,
+    /// Per-hour aggregate buckets when the caller asked for them.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub buckets: Option<Vec<AppRunBucket>>,
 }

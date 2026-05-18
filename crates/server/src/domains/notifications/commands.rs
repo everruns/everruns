@@ -6,13 +6,14 @@ use serde::Deserialize;
 use utoipa::ToSchema;
 
 fn require_user_id(ctx: &Ctx) -> Result<uuid::Uuid, CommandError> {
-    ctx.caller.user_id.ok_or_else(|| {
-        CommandError::Forbidden("Notifications require an authenticated user".into())
-    })
+    ctx.caller
+        .user_id
+        .ok_or_else(|| CommandError::forbidden("Notifications require an authenticated user"))
 }
 
 #[derive(Debug, Default, Deserialize, ToSchema)]
 pub struct ListNotifications {
+    /// Maximum number of items returned in this page.
     pub limit: Option<i64>,
 }
 
