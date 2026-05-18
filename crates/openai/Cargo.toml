@@ -40,7 +40,7 @@ tracing.workspace = true
 inventory.workspace = true
 
 # Internal dependencies
-everruns-core = { path = "../core", version = "0.8.31" }
+everruns-core.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }
