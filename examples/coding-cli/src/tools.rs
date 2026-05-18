@@ -93,12 +93,16 @@ impl Tool for BashTool {
         let timeout = std::time::Duration::from_secs(self.timeout_secs);
         let max_bytes = self.max_output_bytes;
 
+        // kill_on_drop ensures a timed-out command is reaped: if we drop the
+        // Child (via the timeout future being canceled) the OS process is
+        // killed and waited on by tokio's background reaper.
         let mut child = match Command::new("bash")
             .arg("-lc")
             .arg(&command)
             .current_dir(&root)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
+            .kill_on_drop(true)
             .spawn()
         {
             Ok(c) => c,
@@ -112,30 +116,28 @@ impl Tool for BashTool {
             let mut err_buf = Vec::with_capacity(4096);
             let mut o = vec![0u8; 4096];
             let mut e = vec![0u8; 4096];
-            loop {
+            // Track per-stream EOF so we stop polling a closed pipe instead
+            // of busy-looping on `Ok(0)` (which would starve the other stream).
+            let mut out_done = false;
+            let mut err_done = false;
+            while !(out_done && err_done) {
                 tokio::select! {
-                    n = stdout.read(&mut o) => match n {
-                        Ok(0) => break,
+                    // Bias the select toward stdout so we drain it first on
+                    // every wake — this keeps reasoning about ordering simple.
+                    biased;
+                    n = stdout.read(&mut o), if !out_done => match n {
+                        Ok(0) | Err(_) => out_done = true,
                         Ok(n) => out_buf.extend_from_slice(&o[..n]),
-                        Err(_) => break,
                     },
-                    n = stderr.read(&mut e) => match n {
-                        Ok(0) => {},
+                    n = stderr.read(&mut e), if !err_done => match n {
+                        Ok(0) | Err(_) => err_done = true,
                         Ok(n) => err_buf.extend_from_slice(&e[..n]),
-                        Err(_) => {},
                     },
                 }
                 if out_buf.len() + err_buf.len() > max_bytes * 2 {
+                    // Cap exceeded — kill the child and stop reading. The
+                    // remaining drain below is bounded by max_bytes.
                     let _ = child.start_kill();
-                    break;
-                }
-            }
-            while let Ok(n) = stderr.read(&mut e).await {
-                if n == 0 {
-                    break;
-                }
-                err_buf.extend_from_slice(&e[..n]);
-                if err_buf.len() > max_bytes {
                     break;
                 }
             }
@@ -145,6 +147,7 @@ impl Tool for BashTool {
         let (status, mut out_buf, mut err_buf) = match tokio::time::timeout(timeout, run).await {
             Ok(r) => r,
             Err(_) => {
+                // child (owned by `run`) is dropped here, kill_on_drop reaps.
                 return ToolExecutionResult::tool_error(format!(
                     "command timed out after {}s",
                     self.timeout_secs

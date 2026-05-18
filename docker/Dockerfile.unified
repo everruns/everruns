@@ -53,6 +53,9 @@ COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
 COPY crates crates
 COPY integrations integrations
 COPY docs docs
+# examples/ are workspace members so cargo metadata needs them present, even
+# though the server/worker targets below don't depend on any of them.
+COPY examples examples
 
 # ============================================================================
 # Stage 2: Build all Rust binaries in a single invocation

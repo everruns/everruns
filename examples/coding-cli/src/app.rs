@@ -138,7 +138,11 @@ impl App {
         });
     }
 
-    pub async fn run<B: Backend>(&mut self, terminal: &mut Terminal<B>) -> Result<()> {
+    pub async fn run<B>(&mut self, terminal: &mut Terminal<B>) -> Result<()>
+    where
+        B: Backend,
+        B::Error: std::error::Error + Send + Sync + 'static,
+    {
         loop {
             terminal.draw(|f| draw(f, self))?;
 
@@ -237,12 +241,45 @@ impl App {
             return;
         }
 
+        // Keys that always work, whether or not a turn is running:
+        // exit (Esc) and transcript scroll. Input editing is gated below.
+        match key.code {
+            KeyCode::Esc => {
+                self.should_quit = true;
+                return;
+            }
+            KeyCode::Up => {
+                self.scroll_by(1);
+                return;
+            }
+            KeyCode::Down => {
+                self.scroll_by(-1);
+                return;
+            }
+            KeyCode::PageUp => {
+                self.scroll_by(self.page_step() as i32);
+                return;
+            }
+            KeyCode::PageDown => {
+                self.scroll_by(-(self.page_step() as i32));
+                return;
+            }
+            KeyCode::Home => {
+                self.scroll_to_top();
+                return;
+            }
+            KeyCode::End => {
+                self.scroll = 0;
+                return;
+            }
+            _ => {}
+        }
+
         if self.busy {
-            // Ignore input while a turn is running (other than approvals above).
+            // Block only input editing while a turn is running.
             return;
         }
         match key.code {
-            KeyCode::Esc => self.should_quit = true,
             KeyCode::Backspace => {
                 self.input.pop();
             }
@@ -260,12 +297,6 @@ impl App {
                 self.push_user(text.clone());
                 self.start_turn(text);
             }
-            KeyCode::Up => self.scroll_by(1),
-            KeyCode::Down => self.scroll_by(-1),
-            KeyCode::PageUp => self.scroll_by(self.page_step() as i32),
-            KeyCode::PageDown => self.scroll_by(-(self.page_step() as i32)),
-            KeyCode::Home => self.scroll_to_top(),
-            KeyCode::End => self.scroll = 0,
             _ => {}
         }
     }
