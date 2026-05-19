@@ -8,8 +8,8 @@ use crate::backends::{
 };
 use crate::builders::SingleSessionBuilder;
 use crate::host::{
-    RuntimeHostAdapter, RuntimeHostTurnContext, execute_act_activity, execute_input_activity,
-    execute_reason_activity,
+    RuntimeHostAdapter, RuntimeHostTurnContext, RuntimeSessionLifecycle, execute_act_activity,
+    execute_input_activity, execute_reason_activity,
 };
 use crate::in_memory::InMemorySessionFileSystemFactory;
 use async_trait::async_trait;
@@ -44,9 +44,12 @@ use everruns_core::{
 };
 use std::sync::Arc;
 
-/// Placeholder org id used by the in-process runtime when calling host
-/// activity functions. The in-process runtime does not multi-tenant.
-const IN_PROCESS_ORG_ID: i64 = 0;
+/// Internal org id used by the in-process runtime when calling host
+/// activity functions. The in-process runtime does not multi-tenant; this
+/// matches `everruns_core::DEFAULT_ORG_ID` so the public-id mapping in
+/// `org_public_id_from_internal` resolves to `DEFAULT_ORG_PUBLIC_ID` and
+/// the org id `ActAtom` sees matches the prior (pre-host-activity) wiring.
+const IN_PROCESS_ORG_ID: i64 = everruns_core::DEFAULT_ORG_ID;
 
 #[derive(Debug, Clone)]
 pub struct TurnResult {
@@ -441,13 +444,11 @@ impl InProcessRuntime {
         let mut last_reason_result: Option<everruns_core::ReasonResult> = None;
 
         loop {
-            let base_context = AtomContext::new(
-                state_machine.context().session_id,
-                state_machine.context().turn_id,
-                state_machine.context().input_message_id,
-            );
             match state_machine.next_action() {
                 TurnAction::ExecuteInput => {
+                    let ctx = state_machine.context();
+                    let base_context =
+                        AtomContext::new(ctx.session_id, ctx.turn_id, ctx.input_message_id);
                     execute_input_activity(
                         self,
                         org_id,
@@ -459,6 +460,9 @@ impl InProcessRuntime {
                     state_machine.on_input_completed();
                 }
                 TurnAction::ExecuteReason => {
+                    let ctx = state_machine.context();
+                    let base_context =
+                        AtomContext::new(ctx.session_id, ctx.turn_id, ctx.input_message_id);
                     let reason_result = execute_reason_activity(
                         self,
                         org_id,
@@ -490,6 +494,9 @@ impl InProcessRuntime {
                     let reason_result = last_reason_result
                         .take()
                         .expect("ExecuteAct requires a prior ReasonResult");
+                    let ctx = state_machine.context();
+                    let base_context =
+                        AtomContext::new(ctx.session_id, ctx.turn_id, ctx.input_message_id);
                     execute_act_activity(
                         self,
                         ActInput {
@@ -508,10 +515,29 @@ impl InProcessRuntime {
                     state_machine.on_act_completed();
                 }
                 TurnAction::Complete(outcome) => {
-                    return Ok(TurnResult::from_outcome(
-                        outcome,
-                        state_machine.context().turn_id,
-                    ));
+                    let ctx = state_machine.context();
+                    let lifecycle =
+                        RuntimeSessionLifecycle::new(self.clone(), org_id, ctx.session_id);
+                    match &outcome {
+                        TurnOutcome::Success { iterations, .. }
+                        | TurnOutcome::MaxIterationsReached { iterations, .. } => {
+                            lifecycle
+                                .turn_completed(
+                                    ctx.turn_id,
+                                    ctx.input_message_id,
+                                    *iterations as u32,
+                                    None,
+                                    None,
+                                )
+                                .await;
+                        }
+                        TurnOutcome::Failed { error, .. } => {
+                            lifecycle
+                                .turn_failed(ctx.turn_id, ctx.input_message_id, error, None)
+                                .await;
+                        }
+                    }
+                    return Ok(TurnResult::from_outcome(outcome, ctx.turn_id));
                 }
             }
         }
