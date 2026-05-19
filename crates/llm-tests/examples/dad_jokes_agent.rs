@@ -8,7 +8,7 @@
 //! Prerequisites:
 //! - Set ANTHROPIC_API_KEY environment variable
 //!
-//! Run with: cargo run -p everruns-core --example dad_jokes_agent
+//! Run with: cargo run -p everruns-llm-tests --example dad_jokes_agent
 
 use everruns_core::capabilities::CurrentTimeCapability;
 use everruns_core::in_memory_loop::InMemoryAgenticLoop;

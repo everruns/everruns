@@ -20,7 +20,7 @@
 //! Prerequisites:
 //! - Set OPENAI_API_KEY or ANTHROPIC_API_KEY environment variable
 //!
-//! Run with: cargo run -p everruns-core --example turn_based_execution
+//! Run with: cargo run -p everruns-llm-tests --example turn_based_execution
 
 use chrono::Utc;
 use everruns_core::{
