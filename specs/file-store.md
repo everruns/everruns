@@ -278,13 +278,49 @@ See the runnable examples for the full wiring against a real
   `file_system` capability tools (`read_file`, `write_file`,
   `list_directory`) operate against a real-disk root.
 
+## Policy Decorators
+
+Embedders that need to apply policy to LLM-driven writes can compose
+`SessionFileSystem` decorators on top of a base store. Two are shipped in
+`everruns-runtime`:
+
+- `WriteBlocklistFileStore` — rejects `write_file`, `delete_file`,
+  `create_directory`, `seed_initial_file`, and
+  `write_file_if_content_matches` whose path contains any blocked directory
+  component (`.git`, `node_modules`, `target`, …) at any depth. Reads,
+  listings, stats, and greps pass through. The blocklist defaults to
+  [`DEFAULT_WRITE_BLOCKLIST`] and is fully overridable via
+  `WriteBlocklistFileStore::with_blocklist(inner, custom)`.
+- `ApprovalGatingFileStore` — gates `write_file`, `delete_file`, and the
+  inner write inside `write_file_if_content_matches` through an embedder
+  supplied `FileApprovalGate`. The trait has two async methods,
+  `approve_write(path, before, after)` and
+  `approve_delete(path, recursive)`. Reads pass through; `create_directory`
+  and `seed_initial_file` are intentionally not gated (the subsequent
+  `write_file` inside the new directory triggers the prompt, and seed
+  files are embedder-supplied, not LLM-driven). Writes always read the
+  inner store's existing content first so the embedder can render a diff.
+
+The intended composition is
+`ApprovalGatingFileStore::new(WriteBlocklistFileStore::new(RealDiskFileStore::new(root)), gate)`.
+Reads short-circuit through both layers; only the destructive paths take
+the policy decisions. Each layer holds `Arc<dyn SessionFileSystem>` rather
+than a generic inner so decorator stacks compose without coherence
+gymnastics.
+
+Smell to acknowledge: this puts policy in the storage layer rather than the
+tool layer. The trade-off is uniformity — every built-in capability that
+calls `ToolContext.file_store` / `SystemPromptContext.file_store` (today:
+`file_system`, `agent_instructions`, `skills`, `web_fetch`,
+`tool_output_persistence`) picks the policy up for free. The alternative
+(tool-layer policy) would require every capability to wire its own gate and
+its own blocklist, which the [examples/coding-cli][cli] prototype
+demonstrated is the wrong default.
+
+[cli]: ../examples/coding-cli/
+
 ## Non-goals
 
-- **Policy decorators (write blocklists, approval gating, etc.).** These
-  are deferred. Embedders that need them today can wrap the trait
-  themselves; the foundational seam is enough to unblock the use cases on
-  the table. Decorators can land alongside a concrete embedder that needs
-  them.
 - **Multi-tenant `RealDiskFileStore`.** A future variant could carve
   per-session subdirectories under the root and use `session_id` as part
   of the path. The CLI use case does not need it; the spec keeps the door
@@ -321,6 +357,8 @@ When the mount-overlay resolver lands, the migration path is:
 - `crates/core/src/session_file.rs` — `SessionFile`, `FileInfo`,
   `FileStat`, `GrepMatch`, `InitialFile`
 - `crates/runtime/src/backends.rs` — `RuntimeBackends`
+- `crates/runtime/src/file_store_decorators.rs` — `WriteBlocklistFileStore`,
+  `ApprovalGatingFileStore`, `FileApprovalGate`, `DEFAULT_WRITE_BLOCKLIST`
 - `crates/runtime/src/in_memory.rs` — `InMemorySessionFileStore`
 - `crates/runtime/src/real_disk.rs` — `RealDiskFileStore`
 - `crates/runtime/examples/real_disk_agent_instructions.rs` — wiring

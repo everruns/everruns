@@ -88,6 +88,7 @@
 
 mod backends;
 mod builders;
+mod file_store_decorators;
 mod host;
 mod in_memory;
 mod real_disk;
@@ -100,6 +101,9 @@ pub use backends::{
 };
 pub use builders::{AgentBuilder, HarnessBuilder, SessionBuilder, SingleSessionBuilder};
 pub use everruns_core::AssembledTurnContext;
+pub use file_store_decorators::{
+    ApprovalGatingFileStore, DEFAULT_WRITE_BLOCKLIST, FileApprovalGate, WriteBlocklistFileStore,
+};
 pub use host::{
     RuntimeHostAdapter, RuntimeHostTurnContext, RuntimeSessionLifecycle, detect_dependency_blocker,
     execute_act_activity, execute_input_activity, execute_reason_activity,
