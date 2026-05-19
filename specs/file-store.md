@@ -289,7 +289,7 @@ Embedders that need to apply policy to LLM-driven writes can compose
   `write_file_if_content_matches` whose path contains any blocked directory
   component (`.git`, `node_modules`, `target`, …) at any depth. Reads,
   listings, stats, and greps pass through. The blocklist defaults to
-  [`DEFAULT_WRITE_BLOCKLIST`] and is fully overridable via
+  `DEFAULT_WRITE_BLOCKLIST` and is fully overridable via
   `WriteBlocklistFileStore::with_blocklist(inner, custom)`.
 - `ApprovalGatingFileStore` — gates `write_file`, `delete_file`, and the
   inner write inside `write_file_if_content_matches` through an embedder
@@ -301,8 +301,17 @@ Embedders that need to apply policy to LLM-driven writes can compose
   files are embedder-supplied, not LLM-driven). Writes always read the
   inner store's existing content first so the embedder can render a diff.
 
-The intended composition is
-`ApprovalGatingFileStore::new(WriteBlocklistFileStore::new(RealDiskFileStore::new(root)), gate)`.
+The intended composition (eliding boilerplate):
+
+```rust,ignore
+let disk: Arc<dyn SessionFileSystem> =
+    Arc::new(RealDiskFileStore::new(&workspace_root)?);
+let blocklisted: Arc<dyn SessionFileSystem> =
+    Arc::new(WriteBlocklistFileStore::new(disk));
+let gated: Arc<dyn SessionFileSystem> =
+    Arc::new(ApprovalGatingFileStore::new(blocklisted, gate));
+```
+
 Reads short-circuit through both layers; only the destructive paths take
 the policy decisions. Each layer holds `Arc<dyn SessionFileSystem>` rather
 than a generic inner so decorator stacks compose without coherence

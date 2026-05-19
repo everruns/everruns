@@ -83,7 +83,7 @@ impl WriteBlocklistFileStore {
                 let s = name.to_string_lossy();
                 if self.blocklist.iter().any(|b| b == s.as_ref()) {
                     return Err(AgentLoopError::tool(format!(
-                        "writes into `{s}/` are blocked; the workspace write blocklist rejected `{path}`"
+                        "writes into `{s}/` are blocked; write blocklist rejected `{path}`"
                     )));
                 }
             }
@@ -208,6 +208,29 @@ impl ApprovalGatingFileStore {
     pub fn new(inner: Arc<dyn SessionFileSystem>, gate: Arc<dyn FileApprovalGate>) -> Self {
         Self { inner, gate }
     }
+
+    /// Internal helper: gate a write given an already-known `before` content,
+    /// then write through the inner store. Used by `write_file_if_content_matches`
+    /// to avoid re-reading the file when the caller already has the content
+    /// in hand from the CAS check.
+    async fn gated_write_with_before(
+        &self,
+        session_id: SessionId,
+        path: &str,
+        before: Option<String>,
+        content: &str,
+        encoding: &str,
+    ) -> Result<SessionFile> {
+        let approved = self.gate.approve_write(path, before, content).await;
+        if !approved {
+            return Err(AgentLoopError::tool(format!(
+                "user denied write to `{path}`"
+            )));
+        }
+        self.inner
+            .write_file(session_id, path, content, encoding)
+            .await
+    }
 }
 
 #[async_trait]
@@ -223,21 +246,15 @@ impl SessionFileSystem for ApprovalGatingFileStore {
         content: &str,
         encoding: &str,
     ) -> Result<SessionFile> {
+        // Propagate inner read errors instead of silently treating them as
+        // "no prior content" — a permission error or transient I/O fault
+        // should surface, not be hidden behind the approval prompt.
         let before = self
             .inner
             .read_file(session_id, path)
-            .await
-            .ok()
-            .flatten()
+            .await?
             .and_then(|f| f.content);
-        let approved = self.gate.approve_write(path, before, content).await;
-        if !approved {
-            return Err(AgentLoopError::tool(format!(
-                "user denied write to `{path}`"
-            )));
-        }
-        self.inner
-            .write_file(session_id, path, content, encoding)
+        self.gated_write_with_before(session_id, path, before, content, encoding)
             .await
     }
 
@@ -250,8 +267,9 @@ impl SessionFileSystem for ApprovalGatingFileStore {
         content: &str,
         encoding: &str,
     ) -> Result<Option<SessionFile>> {
-        // Read existing, compare, then delegate to `write_file` (which gates).
-        // One approval per actual write.
+        // Read existing, compare, then gate using the already-fetched content
+        // for the approval `before`. Avoids a second `read_file` on the
+        // successful-write path.
         let Some(existing) = self.inner.read_file(session_id, path).await? else {
             return Ok(None);
         };
@@ -262,7 +280,7 @@ impl SessionFileSystem for ApprovalGatingFileStore {
         if current != expected_content || existing.encoding != expected_encoding {
             return Ok(None);
         }
-        self.write_file(session_id, path, content, encoding)
+        self.gated_write_with_before(session_id, path, Some(current), content, encoding)
             .await
             .map(Some)
     }
