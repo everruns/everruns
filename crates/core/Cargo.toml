@@ -26,7 +26,6 @@ async-trait.workspace = true
 # Async runtime
 # Note: "rt" is needed for tokio::spawn in event listener isolation
 tokio = { workspace = true, features = ["sync", "rt", "process", "time"] }
-tokio-stream.workspace = true
 futures.workspace = true
 
 # Serialization
@@ -98,7 +97,7 @@ eventsource-stream = "0.2"
 inventory.workspace = true
 
 # LLM simulation for testing
-llmsim = "0.2.1"
+llmsim = "0.3.0"
 
 # OpenUI component definitions and prompt generator
 everruns-openui = { path = "../openui", version = "0.8.31", optional = true }
@@ -126,7 +125,6 @@ llm-tests = []  # LLM integration tests (requires API keys)
 tokio = { workspace = true, features = ["full", "test-util"] }
 tracing-subscriber.workspace = true
 wiremock = "0.6"
-rstest.workspace = true
 # Snapshot testing for contract tests
 insta = { version = "1.40", features = ["json", "redactions"] }
 a2a-server.workspace = true

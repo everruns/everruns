@@ -15,8 +15,6 @@ description = "Anthropic Claude provider implementation for Everruns"
 
 [dependencies]
 # Core dependencies
-anyhow.workspace = true
-thiserror.workspace = true
 async-trait.workspace = true
 
 # Async runtime
@@ -42,4 +40,3 @@ everruns-core.workspace = true
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }
-tracing-subscriber.workspace = true

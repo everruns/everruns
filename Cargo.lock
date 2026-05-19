@@ -1803,27 +1803,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "env_filter"
-version = "1.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "32e90c2accc4b07a8456ea0debdc2e7587bdd890680d71173a15d4ae604f6eef"
-dependencies = [
- "log",
-]
-
-[[package]]
-name = "env_logger"
-version = "0.11.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0621c04f2196ac3f488dd583365b9c09be011a4ab8b9f37248ffcc8f6198b56a"
-dependencies = [
- "anstream",
- "anstyle",
- "env_filter",
- "log",
-]
-
-[[package]]
 name = "equivalent"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2015,7 +1994,6 @@ version = "0.8.31"
 name = "everruns-anthropic"
 version = "0.8.31"
 dependencies = [
- "anyhow",
  "async-trait",
  "chrono",
  "eventsource-stream",
@@ -2024,10 +2002,8 @@ dependencies = [
  "reqwest 0.13.3",
  "serde",
  "serde_json",
- "thiserror 2.0.18",
  "tokio",
  "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -2053,7 +2029,7 @@ dependencies = [
  "sha2 0.10.9",
  "tempfile",
  "tokio",
- "toml",
+ "toml 0.8.23",
  "webbrowser",
 ]
 
@@ -2063,7 +2039,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
- "chrono",
  "clap",
  "crossterm",
  "everruns-anthropic",
@@ -2071,17 +2046,12 @@ dependencies = [
  "everruns-integrations-duckduckgo",
  "everruns-openai",
  "everruns-runtime",
- "ignore",
  "ratatui",
- "regex",
- "serde",
  "serde_json",
  "similar",
  "textwrap",
  "tokio",
- "tracing",
  "tracing-subscriber",
- "uuid 1.23.1",
 ]
 
 [[package]]
@@ -2109,7 +2079,6 @@ dependencies = [
  "tokio",
  "tracing",
  "urlencoding",
- "wiremock",
 ]
 
 [[package]]
@@ -2142,7 +2111,6 @@ dependencies = [
  "rand 0.9.4",
  "regex",
  "reqwest 0.13.3",
- "rstest",
  "rustls",
  "serde",
  "serde_json",
@@ -2152,7 +2120,6 @@ dependencies = [
  "sqlx",
  "thiserror 2.0.18",
  "tokio",
- "tokio-stream",
  "tracing",
  "tracing-opentelemetry",
  "tracing-subscriber",
@@ -2172,32 +2139,22 @@ version = "0.8.31"
 dependencies = [
  "anyhow",
  "async-trait",
- "axum",
  "chrono",
  "cron",
- "dashmap",
  "fail",
- "futures",
  "hostname",
  "indicatif",
  "minijinja",
- "opentelemetry",
- "opentelemetry_sdk",
  "parking_lot",
  "rand 0.9.4",
  "serde",
  "serde_json",
  "sqlx",
  "sysinfo 0.38.4",
- "test-log",
  "thiserror 2.0.18",
  "tokio",
- "tokio-test",
  "tokio-util",
- "tower",
  "tracing",
- "tracing-opentelemetry",
- "utoipa",
  "uuid 1.23.1",
 ]
 
@@ -2205,18 +2162,14 @@ dependencies = [
 name = "everruns-gemini"
 version = "0.8.31"
 dependencies = [
- "anyhow",
  "async-trait",
- "chrono",
  "everruns-core",
  "futures",
  "reqwest 0.13.3",
  "serde",
  "serde_json",
- "thiserror 2.0.18",
  "tokio",
  "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -2308,7 +2261,6 @@ dependencies = [
  "tokio-tungstenite",
  "tracing",
  "urlencoding",
- "wiremock",
 ]
 
 [[package]]
@@ -2345,7 +2297,6 @@ dependencies = [
 name = "everruns-integrations-e2b"
 version = "0.8.31"
 dependencies = [
- "anyhow",
  "async-trait",
  "buffa",
  "chrono",
@@ -2363,7 +2314,6 @@ dependencies = [
  "rustls-native-certs",
  "serde",
  "serde_json",
- "thiserror 2.0.18",
  "tokio",
  "tracing",
  "urlencoding",
@@ -2380,21 +2330,6 @@ dependencies = [
  "reqwest 0.13.3",
  "serde_json",
  "tokio",
-]
-
-[[package]]
-name = "everruns-integrations-pi"
-version = "0.8.31"
-dependencies = [
- "async-trait",
- "chrono",
- "everruns-core",
- "inventory",
- "serde",
- "serde_json",
- "tokio",
- "tracing",
- "uuid 1.23.1",
 ]
 
 [[package]]
@@ -2453,10 +2388,8 @@ dependencies = [
 name = "everruns-macros"
 version = "0.8.31"
 dependencies = [
- "proc-macro2",
  "quote",
  "syn 2.0.117",
- "tokio",
 ]
 
 [[package]]
@@ -2474,10 +2407,8 @@ dependencies = [
  "reqwest 0.13.3",
  "serde",
  "serde_json",
- "thiserror 2.0.18",
  "tokio",
  "tracing",
- "tracing-subscriber",
  "wiremock",
 ]
 
@@ -2554,10 +2485,8 @@ dependencies = [
  "everruns-integrations-duckduckgo",
  "everruns-integrations-e2b",
  "everruns-integrations-parallel",
- "everruns-integrations-pi",
  "everruns-integrations-sprites",
  "everruns-internal-protocol",
- "everruns-macros",
  "everruns-sdk",
  "everruns-session-sqldb",
  "everruns-worker",
@@ -2579,7 +2508,6 @@ dependencies = [
  "mime_guess",
  "moka",
  "parking_lot",
- "prost",
  "prost-types",
  "rand 0.9.4",
  "regex",
@@ -2615,14 +2543,12 @@ dependencies = [
 name = "everruns-session-sqldb"
 version = "0.8.31"
 dependencies = [
- "anyhow",
  "async-trait",
  "base64 0.22.1",
  "chrono",
  "everruns-core",
  "parking_lot",
  "rusqlite",
- "serde",
  "serde_json",
  "thiserror 2.0.18",
  "tokio",
@@ -2653,26 +2579,19 @@ dependencies = [
  "everruns-integrations-duckduckgo",
  "everruns-integrations-e2b",
  "everruns-integrations-parallel",
- "everruns-integrations-pi",
  "everruns-integrations-sprites",
  "everruns-internal-protocol",
  "everruns-openai",
  "everruns-runtime",
- "futures",
- "hex",
  "prost-types",
  "reqwest 0.13.3",
  "serde",
  "serde_json",
- "sha2 0.10.9",
  "sqlx",
- "thiserror 2.0.18",
  "tokio",
  "tonic",
  "tracing",
- "tracing-subscriber",
  "turmoil",
- "url",
  "uuid 1.23.1",
 ]
 
@@ -2711,11 +2630,11 @@ dependencies = [
 
 [[package]]
 name = "fancy-regex"
-version = "0.13.0"
+version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "531e46835a22af56d1e3b66f04844bed63158bc094a628bec1d321d9b4c44bf2"
+checksum = "72cf461f865c862bb7dc573f643dd6a2b6842f7c30b07882b56bd148cc2761b8"
 dependencies = [
- "bit-set 0.5.3",
+ "bit-set 0.8.0",
  "regex-automata",
  "regex-syntax",
 ]
@@ -4330,31 +4249,25 @@ checksum = "11d3d7f243d5c5a8b9bb5d6dd2b1602c0cb0b9db1621bafc7ed66e35ff9fe092"
 
 [[package]]
 name = "llmsim"
-version = "0.2.3"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c11f7bad1bed2978afdd2670412e1af1503a024367ca6369bb0a7f368ea241a0"
+checksum = "bd8de8212fda25a8c24b7b487be7ee790190b6402a13acd8613b2fc4998c9a41"
 dependencies = [
  "async-stream",
  "axum",
- "chrono",
  "clap",
- "crossterm",
- "futures",
- "rand 0.9.4",
- "rand_distr",
- "ratatui",
- "reqwest 0.13.3",
+ "futures-core",
+ "futures-util",
+ "rand 0.10.1",
  "serde",
  "serde_json",
- "serde_yaml",
  "thiserror 2.0.18",
  "tiktoken-rs",
  "tokio",
- "tower",
+ "toml 1.1.2+spec-1.1.0",
  "tower-http",
  "tracing",
  "tracing-subscriber",
- "uuid 1.23.1",
 ]
 
 [[package]]
@@ -6826,6 +6739,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_spanned"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6662b5879511e06e8999a8a235d848113e942c9124f211511b16466ee2995f26"
+dependencies = [
+ "serde_core",
+]
+
+[[package]]
 name = "serde_urlencoded"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7578,38 +7500,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "test-log"
-version = "0.2.20"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2f46bf474f0a4afebf92f076d54fd5e63423d9438b8c278a3d2ccb0f47f7cdb3"
-dependencies = [
- "env_logger",
- "test-log-macros",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "test-log-core"
-version = "0.2.20"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "37d4d41320b48bc4a211a9021678fcc0c99569b594ea31c93735b8e517102b4c"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.117",
-]
-
-[[package]]
-name = "test-log-macros"
-version = "0.2.20"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9beb9249a81e430dffd42400a49019bcf548444f1968ff23080a625de0d4d320"
-dependencies = [
- "syn 2.0.117",
- "test-log-core",
-]
-
-[[package]]
 name = "textwrap"
 version = "0.16.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7671,14 +7561,14 @@ dependencies = [
 
 [[package]]
 name = "tiktoken-rs"
-version = "0.9.1"
+version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3a19830747d9034cd9da43a60eaa8e552dfda7712424aebf187b7a60126bae0d"
+checksum = "fac4a168cfc1d8ed65bf17a6ee0843ad9a68f863c63c0fb2fa7eab67838782ee"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
  "bstr",
- "fancy-regex 0.13.0",
+ "fancy-regex 0.17.0",
  "lazy_static",
  "regex",
  "rustc-hash 1.1.0",
@@ -7811,17 +7701,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tokio-test"
-version = "0.4.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f6d24790a10a7af737693a3e8f1d03faef7e6ca0cc99aae5066f533766de545"
-dependencies = [
- "futures-core",
- "tokio",
- "tokio-stream",
-]
-
-[[package]]
 name = "tokio-tungstenite"
 version = "0.29.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7879,9 +7758,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dc1beb996b9d83529a9e75c17a1686767d148d70663143c7854d8b4a09ced362"
 dependencies = [
  "serde",
- "serde_spanned",
+ "serde_spanned 0.6.9",
  "toml_datetime 0.6.11",
  "toml_edit 0.22.27",
+]
+
+[[package]]
+name = "toml"
+version = "1.1.2+spec-1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "81f3d15e84cbcd896376e6730314d59fb5a87f31e4b038454184435cd57defee"
+dependencies = [
+ "indexmap",
+ "serde_core",
+ "serde_spanned 1.1.1",
+ "toml_datetime 1.1.1+spec-1.1.0",
+ "toml_parser",
+ "toml_writer",
+ "winnow 1.0.3",
 ]
 
 [[package]]
@@ -7910,7 +7804,7 @@ checksum = "41fe8c660ae4257887cf66394862d21dbca4a6ddd26f04a3560410406a2f819a"
 dependencies = [
  "indexmap",
  "serde",
- "serde_spanned",
+ "serde_spanned 0.6.9",
  "toml_datetime 0.6.11",
  "toml_write",
  "winnow 0.7.15",
@@ -7942,6 +7836,12 @@ name = "toml_write"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5d99f8c9a7727884afe522e9bd5edbfc91a3312b36a77b5fb8926e4c31a41801"
+
+[[package]]
+name = "toml_writer"
+version = "1.1.1+spec-1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "756daf9b1013ebe47a8776667b466417e2d4c5679d441c26230efd9ef78692db"
 
 [[package]]
 name = "tonic"

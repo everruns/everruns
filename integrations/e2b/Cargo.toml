@@ -13,7 +13,6 @@ inventory.workspace = true
 reqwest = { workspace = true, features = ["multipart"] }
 serde.workspace = true
 serde_json.workspace = true
-thiserror.workspace = true
 tracing.workspace = true
 urlencoding = "2"
 http = "1"
@@ -23,9 +22,11 @@ connectrpc = { version = "0.2.1", features = ["client", "client-tls"] }
 buffa = "0.2.0"
 rustls.workspace = true
 rustls-native-certs = "0.8"
-anyhow.workspace = true
 
 everruns-core = { path = "../../crates/core" }
+
+[package.metadata.cargo-machete]
+ignored = ["connectrpc-build", "futures", "http-body", "prost", "protox"]
 
 [build-dependencies]
 connectrpc-build = "0.2.0"
