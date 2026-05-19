@@ -7,15 +7,15 @@ use crate::backends::{
     RuntimeProviderStore, RuntimeSessionStore,
 };
 use crate::builders::SingleSessionBuilder;
+use crate::host::{
+    RuntimeHostAdapter, RuntimeHostTurnContext, execute_act_activity, execute_input_activity,
+    execute_reason_activity,
+};
 use crate::in_memory::InMemorySessionFileSystemFactory;
 use async_trait::async_trait;
 use everruns_core::agent::Agent;
-use everruns_core::atoms::{
-    ActAtom, ActInput, Atom, AtomContext, InputAtom, InputAtomInput, ReasonAtom, ReasonInput,
-};
-use everruns_core::capabilities::{
-    Capability, CapabilityRegistry, SystemPromptContext, collect_capabilities_with_configs,
-};
+use everruns_core::atoms::{ActInput, AtomContext, InputAtomInput, ReasonInput};
+use everruns_core::capabilities::{Capability, CapabilityRegistry};
 use everruns_core::config_layer::AgentConfigOverlay;
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::events::{
@@ -28,23 +28,25 @@ use everruns_core::llm_models::LlmProviderType;
 use everruns_core::llmsim_driver::{LlmSimConfig, LlmSimDriver};
 use everruns_core::message::{ContentPart, Message};
 use everruns_core::platform_definition::PlatformDefinition;
-use everruns_core::runtime_context::{
-    AssembledTurnContext, assemble_turn_context, inspect_turn_context,
-};
-use everruns_core::session::Session;
+use everruns_core::runtime_context::{AssembledTurnContext, inspect_turn_context};
+use everruns_core::session::{Session, SessionStatus};
 use everruns_core::session_file::{InitialFile, SessionFile};
-use everruns_core::tools::{ToolRegistry, ToolResultImage};
+use everruns_core::tools::ToolResultImage;
 use everruns_core::traits::{
     AgentStore, EventEmitter, HarnessStore, LlmProviderStore, ModelWithProvider, SessionMutator,
     SessionStorageStore, SessionStore,
 };
 use everruns_core::turn::{TurnAction, TurnContext, TurnOutcome, TurnStateMachine};
-use everruns_core::typed_id::{AgentId, OrgId, SessionId};
+use everruns_core::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_core::{
     InputMessage, MemoryStoreBackend, MessageRetriever, SessionFileSystem,
     SessionFileSystemFactoryContext,
 };
 use std::sync::Arc;
+
+/// Placeholder org id used by the in-process runtime when calling host
+/// activity functions. The in-process runtime does not multi-tenant.
+const IN_PROCESS_ORG_ID: i64 = 0;
 
 #[derive(Debug, Clone)]
 pub struct TurnResult {
@@ -407,6 +409,10 @@ impl InProcessRuntime {
             .await?
             .ok_or_else(|| AgentLoopError::store(format!("session not found: {session_id}")))?;
 
+        // Input message is recorded directly (and emitted via the raw bus so
+        // that PersistingEventEmitter does not double-store it). All
+        // subsequent activity-emitted events flow through the persisting
+        // emitter the adapter hands out.
         let input_message = self
             .message_store
             .add_input_message(session_id, input.into())
@@ -418,148 +424,60 @@ impl InProcessRuntime {
                 InputMessageData::new(input_message.clone()),
             ))
             .await?;
-        let assembled = self
-            .load_execution_context_with_ids(session_id, session.harness_id, session.agent_id)
-            .await?;
-        let session = assembled.session.clone();
-        let capability_registry = self.platform_definition.capability_registry().clone();
-        let driver_registry = self.platform_definition.driver_registry().clone();
-        let system_prompt_ctx = SystemPromptContext {
-            session_id,
-            locale: assembled.resolved_locale.clone(),
-            file_store: Some(self.file_store.clone()),
-        };
-        let collected = collect_capabilities_with_configs(
-            &assembled.resolved_capability_configs,
-            &capability_registry,
-            &system_prompt_ctx,
-        )
-        .await;
-        let post_tool_hooks = assembled
-            .resolved_capability_configs
-            .iter()
-            .flat_map(|config| {
-                capability_registry
-                    .get(config.capability_id())
-                    .map(|capability| capability.post_tool_exec_hooks())
-                    .unwrap_or_default()
-            })
-            .collect::<Vec<_>>();
-        let tool_call_hooks = assembled
-            .resolved_capability_configs
-            .iter()
-            .flat_map(|config| {
-                capability_registry
-                    .get(config.capability_id())
-                    .map(|capability| capability.tool_call_hooks())
-                    .unwrap_or_default()
-            })
-            .collect::<Vec<_>>();
 
-        let tool_registry = build_tool_registry(collected.tools);
+        let assembled = self
+            .inspect_context_with_ids(session_id, session.harness_id, session.agent_id)
+            .await?;
         let synthetic_agent_id = session
             .agent_id
             .unwrap_or_else(|| AgentId::from_uuid(session.id.uuid()));
-        let org_id = 0;
-        let org_public_id = session
-            .organization_id
-            .parse::<OrgId>()
-            .unwrap_or_else(|_| {
-                everruns_core::DEFAULT_ORG_PUBLIC_ID
-                    .parse()
-                    .expect("valid org id")
-            });
-
-        // Upcast each runtime-extended store to the core reader trait the
-        // atoms accept. Blanket `Arc<T>: T` impls in core forward the call.
-        let harness_for_atom: Arc<dyn HarnessStore> = self.harness_store.clone();
-        let agent_for_atom: Arc<dyn AgentStore> = self.agent_store.clone();
-        let session_for_atom: Arc<dyn SessionStore> = self.session_store.clone();
-        let message_for_atom: Arc<dyn MessageRetriever> = self.message_store.clone();
-        let provider_for_atom: Arc<dyn LlmProviderStore> = self.provider_store.clone();
-        let session_mutator_for_atom: Arc<dyn SessionMutator> = self.session_store.clone();
-
-        let input_atom = InputAtom::new(message_for_atom.clone());
-        let reason_atom = ReasonAtom::new(
-            harness_for_atom,
-            agent_for_atom,
-            session_for_atom.clone(),
-            message_for_atom,
-            provider_for_atom,
-            capability_registry.clone(),
-            driver_registry,
-            self.persisting_emitter.clone(),
-        )
-        .with_file_store(self.file_store.clone());
-
-        let act_atom = ActAtom::with_file_store(
-            tool_registry.clone(),
-            self.persisting_emitter.clone(),
-            self.file_store.clone(),
-        )
-        .with_tool_registry(Arc::new(tool_registry.clone()))
-        .with_storage_store(self.storage_store.clone())
-        .with_session_store(session_for_atom)
-        .with_session_mutator(session_mutator_for_atom)
-        .with_memory_store(self.memory_store.clone())
-        .with_org_id(org_public_id)
-        .with_capability_registry(capability_registry)
-        .with_post_tool_hooks(post_tool_hooks)
-        .with_tool_call_hooks(tool_call_hooks);
-
-        let mut previous_response_id: Option<String> = None;
-        let mut last_reason_result: Option<everruns_core::ReasonResult> = None;
-        let mut first_reason_context = Some(assembled.clone());
+        let org_id: i64 = IN_PROCESS_ORG_ID;
         let mut state_machine = TurnStateMachine::new(
             TurnContext::new(session_id, input_message.id, synthetic_agent_id, org_id),
             assembled.runtime_agent.max_iterations,
         );
 
+        let mut previous_response_id: Option<String> = None;
+        let mut last_reason_result: Option<everruns_core::ReasonResult> = None;
+
         loop {
+            let base_context = AtomContext::new(
+                state_machine.context().session_id,
+                state_machine.context().turn_id,
+                state_machine.context().input_message_id,
+            );
             match state_machine.next_action() {
                 TurnAction::ExecuteInput => {
-                    let base_context = AtomContext::new(
-                        state_machine.context().session_id,
-                        state_machine.context().turn_id,
-                        state_machine.context().input_message_id,
-                    );
-                    input_atom
-                        .execute(InputAtomInput {
+                    execute_input_activity(
+                        self,
+                        org_id,
+                        InputAtomInput {
                             context: base_context,
-                        })
-                        .await?;
+                        },
+                    )
+                    .await?;
                     state_machine.on_input_completed();
                 }
                 TurnAction::ExecuteReason => {
-                    let base_context = AtomContext::new(
-                        state_machine.context().session_id,
-                        state_machine.context().turn_id,
-                        state_machine.context().input_message_id,
-                    );
-                    let reason_input = ReasonInput {
-                        context: base_context.next_exec(),
-                        harness_id: session.harness_id,
-                        agent_id: session.agent_id,
+                    let reason_result = execute_reason_activity(
+                        self,
                         org_id,
-                        mcp_tool_definitions: vec![],
-                        previous_response_id: previous_response_id.take(),
-                        iteration: state_machine.current_iteration() as u32 + 1,
-                    };
-                    let reason_result = match first_reason_context.take() {
-                        Some(assembled) => {
-                            reason_atom
-                                .execute_with_assembled_context(reason_input, assembled)
-                                .await?
-                        }
-                        None => reason_atom.execute(reason_input).await?,
-                    };
-
-                    let tool_call_count = reason_result.tool_calls.len();
+                        ReasonInput {
+                            context: base_context.next_exec(),
+                            harness_id: session.harness_id,
+                            agent_id: session.agent_id,
+                            org_id,
+                            mcp_tool_definitions: vec![],
+                            previous_response_id: previous_response_id.take(),
+                            iteration: state_machine.current_iteration() as u32 + 1,
+                        },
+                    )
+                    .await?;
                     previous_response_id = reason_result.response_id.clone();
                     state_machine.on_reason_completed(
                         reason_result.text.clone(),
                         reason_result.has_tool_calls,
-                        tool_call_count,
+                        reason_result.tool_calls.len(),
                         reason_result.success,
                         reason_result.error.clone(),
                         false,
@@ -572,13 +490,9 @@ impl InProcessRuntime {
                     let reason_result = last_reason_result
                         .take()
                         .expect("ExecuteAct requires a prior ReasonResult");
-                    let base_context = AtomContext::new(
-                        state_machine.context().session_id,
-                        state_machine.context().turn_id,
-                        state_machine.context().input_message_id,
-                    );
-                    act_atom
-                        .execute(ActInput {
+                    execute_act_activity(
+                        self,
+                        ActInput {
                             org_id: Some(org_id),
                             context: base_context.next_exec(),
                             harness_id: session.harness_id,
@@ -588,8 +502,9 @@ impl InProcessRuntime {
                             locale: reason_result.locale,
                             blueprint_id: None,
                             network_access: reason_result.network_access,
-                        })
-                        .await?;
+                        },
+                    )
+                    .await?;
                     state_machine.on_act_completed();
                 }
                 TurnAction::Complete(outcome) => {
@@ -643,28 +558,6 @@ impl InProcessRuntime {
         Ok(self.event_bus.collected_events().await)
     }
 
-    async fn load_execution_context_with_ids(
-        &self,
-        session_id: SessionId,
-        harness_id: everruns_core::HarnessId,
-        agent_id: Option<AgentId>,
-    ) -> Result<AssembledTurnContext> {
-        assemble_turn_context(
-            self.harness_store.as_ref(),
-            self.agent_store.as_ref(),
-            self.session_store.as_ref(),
-            self.message_store.as_ref(),
-            self.provider_store.as_ref(),
-            self.platform_definition.capability_registry(),
-            session_id,
-            harness_id,
-            agent_id,
-            &[],
-            Some(self.file_store.clone()),
-        )
-        .await
-    }
-
     async fn inspect_context_with_ids(
         &self,
         session_id: SessionId,
@@ -685,6 +578,106 @@ impl InProcessRuntime {
             Some(self.file_store.clone()),
         )
         .await
+    }
+}
+
+#[async_trait]
+impl RuntimeHostAdapter for InProcessRuntime {
+    async fn get_agent(&self, _org_id: i64, agent_id: AgentId) -> Result<Option<Agent>> {
+        self.agent_store.get_agent(agent_id).await
+    }
+
+    async fn get_harness(&self, _org_id: i64, harness_id: HarnessId) -> Result<Option<Harness>> {
+        let chain = self.harness_store.get_harness_chain(harness_id).await?;
+        Ok(chain.into_iter().last())
+    }
+
+    async fn set_session_status(
+        &self,
+        _org_id: i64,
+        session_id: SessionId,
+        _status: SessionStatus,
+    ) -> Result<Session> {
+        // The in-process runtime does not persist status. Lifecycle callers
+        // still emit their events; downstream consumers in-process don't
+        // observe session.status.
+        self.session_store
+            .get_session(session_id)
+            .await?
+            .ok_or_else(|| AgentLoopError::store(format!("session not found: {session_id}")))
+    }
+
+    async fn load_turn_context(
+        &self,
+        _org_id: i64,
+        session_id: SessionId,
+    ) -> Result<RuntimeHostTurnContext> {
+        let session = self
+            .session_store
+            .get_session(session_id)
+            .await?
+            .ok_or_else(|| AgentLoopError::store(format!("session not found: {session_id}")))?;
+        let agent = match session.agent_id {
+            Some(agent_id) => self.agent_store.get_agent(agent_id).await?,
+            None => None,
+        };
+        let messages = self.message_store.load(session_id).await?;
+        let model = self.provider_store.get_default_model().await?;
+        Ok(RuntimeHostTurnContext {
+            agent,
+            session,
+            messages,
+            model,
+            mcp_tool_definitions: vec![],
+        })
+    }
+
+    fn capability_registry(&self) -> CapabilityRegistry {
+        self.platform_definition.capability_registry().clone()
+    }
+
+    fn driver_registry(&self) -> DriverRegistry {
+        self.platform_definition.driver_registry().clone()
+    }
+
+    fn harness_store(&self, _org_id: i64) -> Arc<dyn HarnessStore> {
+        self.harness_store.clone()
+    }
+
+    fn agent_store(&self, _org_id: i64) -> Arc<dyn AgentStore> {
+        self.agent_store.clone()
+    }
+
+    fn session_store(&self, _org_id: i64) -> Arc<dyn SessionStore> {
+        self.session_store.clone()
+    }
+
+    fn session_mutator(&self, _org_id: i64) -> Arc<dyn SessionMutator> {
+        self.session_store.clone()
+    }
+
+    fn provider_store(&self, _org_id: i64) -> Arc<dyn LlmProviderStore> {
+        self.provider_store.clone()
+    }
+
+    fn message_store(&self) -> Arc<dyn MessageRetriever> {
+        self.message_store.clone()
+    }
+
+    fn event_emitter(&self) -> Arc<dyn EventEmitter> {
+        Arc::new(self.persisting_emitter.clone())
+    }
+
+    fn file_store(&self) -> Arc<dyn SessionFileSystem> {
+        self.file_store.clone()
+    }
+
+    fn storage_store(&self) -> Option<Arc<dyn SessionStorageStore>> {
+        Some(self.storage_store.clone())
+    }
+
+    fn memory_store(&self, _org_id: i64) -> Option<Arc<dyn MemoryStoreBackend>> {
+        Some(self.memory_store.clone())
     }
 }
 
@@ -757,14 +750,6 @@ async fn seed_runtime_initial_files(
         file_store.seed_initial_file(session.id, file).await?;
     }
     Ok(())
-}
-
-fn build_tool_registry(tools: Vec<Box<dyn everruns_core::tools::Tool>>) -> ToolRegistry {
-    let mut registry = ToolRegistry::with_defaults();
-    for tool in tools {
-        registry.register_boxed(tool);
-    }
-    registry
 }
 
 fn message_from_event(data: &EventData) -> Option<Message> {

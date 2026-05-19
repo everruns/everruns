@@ -32,110 +32,6 @@ use everruns_core::{
 use std::sync::Arc;
 use tracing::warn;
 
-#[derive(Clone)]
-struct HostAgentStore(Arc<dyn AgentStore>);
-
-#[async_trait]
-impl AgentStore for HostAgentStore {
-    async fn get_agent(&self, agent_id: AgentId) -> everruns_core::error::Result<Option<Agent>> {
-        self.0.get_agent(agent_id).await
-    }
-}
-
-#[derive(Clone)]
-struct HostHarnessStore(Arc<dyn HarnessStore>);
-
-#[async_trait]
-impl HarnessStore for HostHarnessStore {
-    async fn get_harness_chain(
-        &self,
-        harness_id: HarnessId,
-    ) -> everruns_core::error::Result<Vec<Harness>> {
-        self.0.get_harness_chain(harness_id).await
-    }
-}
-
-#[derive(Clone)]
-struct HostSessionStore(Arc<dyn SessionStore>);
-
-#[async_trait]
-impl SessionStore for HostSessionStore {
-    async fn get_session(
-        &self,
-        session_id: SessionId,
-    ) -> everruns_core::error::Result<Option<Session>> {
-        self.0.get_session(session_id).await
-    }
-}
-
-#[derive(Clone)]
-struct HostMessageStore(Arc<dyn MessageRetriever>);
-
-#[async_trait]
-impl MessageRetriever for HostMessageStore {
-    async fn get(
-        &self,
-        session_id: SessionId,
-        message_id: MessageId,
-    ) -> everruns_core::error::Result<Option<Message>> {
-        self.0.get(session_id, message_id).await
-    }
-
-    async fn load(&self, session_id: SessionId) -> everruns_core::error::Result<Vec<Message>> {
-        self.0.load(session_id).await
-    }
-
-    async fn load_filtered(
-        &self,
-        query: everruns_core::message_filter::MessageQuery,
-    ) -> everruns_core::error::Result<Vec<Message>> {
-        self.0.load_filtered(query).await
-    }
-
-    async fn load_page(
-        &self,
-        session_id: SessionId,
-        offset: usize,
-        limit: usize,
-    ) -> everruns_core::error::Result<Vec<Message>> {
-        self.0.load_page(session_id, offset, limit).await
-    }
-
-    async fn count(&self, session_id: SessionId) -> everruns_core::error::Result<usize> {
-        self.0.count(session_id).await
-    }
-}
-
-#[derive(Clone)]
-struct HostProviderStore(Arc<dyn LlmProviderStore>);
-
-#[async_trait]
-impl LlmProviderStore for HostProviderStore {
-    async fn get_model_with_provider(
-        &self,
-        model_id: everruns_core::typed_id::ModelId,
-    ) -> everruns_core::error::Result<Option<ModelWithProvider>> {
-        self.0.get_model_with_provider(model_id).await
-    }
-
-    async fn get_default_model(&self) -> everruns_core::error::Result<Option<ModelWithProvider>> {
-        self.0.get_default_model().await
-    }
-}
-
-#[derive(Clone)]
-struct HostEventEmitter(Arc<dyn EventEmitter>);
-
-#[async_trait]
-impl EventEmitter for HostEventEmitter {
-    async fn emit(
-        &self,
-        request: EventRequest,
-    ) -> everruns_core::error::Result<everruns_core::events::Event> {
-        self.0.emit(request).await
-    }
-}
-
 /// Turn context loaded in one batched call for runtime host execution.
 #[derive(Debug, Clone)]
 pub struct RuntimeHostTurnContext {
@@ -646,7 +542,7 @@ pub async fn execute_input_activity<A: RuntimeHostAdapter>(
         .turn_started(input.context.turn_id, input.context.input_message_id)
         .await;
 
-    let atom = InputAtom::new(HostMessageStore(adapter.message_store()));
+    let atom = InputAtom::new(adapter.message_store());
     atom.execute(input).await
 }
 
@@ -685,14 +581,14 @@ pub async fn execute_reason_activity<A: RuntimeHostAdapter>(
         .await?;
 
     let mut atom = ReasonAtom::new(
-        HostHarnessStore(adapter.harness_store(org_id)),
-        HostAgentStore(adapter.agent_store(org_id)),
-        HostSessionStore(adapter.session_store(org_id)),
-        HostMessageStore(adapter.message_store()),
-        HostProviderStore(adapter.provider_store(org_id)),
+        adapter.harness_store(org_id),
+        adapter.agent_store(org_id),
+        adapter.session_store(org_id),
+        adapter.message_store(),
+        adapter.provider_store(org_id),
         adapter.capability_registry(),
         adapter.driver_registry(),
-        HostEventEmitter(adapter.event_emitter()),
+        adapter.event_emitter(),
     )
     .with_file_store(adapter.file_store());
     if let Some(image_resolver) = adapter.image_resolver(org_id) {
@@ -751,23 +647,20 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
     let tool_registry = execution_capabilities.tool_registry;
     let builtin_tool_registry = Arc::new(tool_registry.clone());
 
-    let mut atom = ActAtom::with_file_store(
-        tool_registry,
-        HostEventEmitter(adapter.event_emitter()),
-        adapter.file_store(),
-    )
-    .with_session_store(adapter.session_store(org_id))
-    .with_session_mutator(adapter.session_mutator(org_id))
-    .with_agent_store(adapter.agent_store(org_id))
-    .with_tool_registry(builtin_tool_registry)
-    .with_org_id(
-        org_public_id_from_internal(org_id)
-            .parse()
-            .expect("internal org id converts to valid public org id"),
-    )
-    .with_capability_registry(adapter.capability_registry())
-    .with_post_tool_hooks(execution_capabilities.post_tool_hooks)
-    .with_tool_call_hooks(execution_capabilities.tool_call_hooks);
+    let mut atom =
+        ActAtom::with_file_store(tool_registry, adapter.event_emitter(), adapter.file_store())
+            .with_session_store(adapter.session_store(org_id))
+            .with_session_mutator(adapter.session_mutator(org_id))
+            .with_agent_store(adapter.agent_store(org_id))
+            .with_tool_registry(builtin_tool_registry)
+            .with_org_id(
+                org_public_id_from_internal(org_id)
+                    .parse()
+                    .expect("internal org id converts to valid public org id"),
+            )
+            .with_capability_registry(adapter.capability_registry())
+            .with_post_tool_hooks(execution_capabilities.post_tool_hooks)
+            .with_tool_call_hooks(execution_capabilities.tool_call_hooks);
 
     if let Some(storage_store) = adapter.storage_store() {
         atom = atom.with_storage_store(storage_store);
