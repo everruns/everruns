@@ -49,6 +49,21 @@ See `specs/release-process.md` for the full release process specification.
    version = "X.Y.Z"
    ```
 
+   **Sub-crate path-dependency pins** - Several sub-crates pin sibling crates
+   by exact version (e.g. `crates/core/Cargo.toml` pins `everruns-config`,
+   `everruns-openui`, `everruns-a2ui`). These must match the workspace version
+   or the `publish-crates` workflow rejects the tag. Run the helper after
+   bumping the workspace version:
+
+   ```bash
+   python3 scripts/sync-publish-pin-versions.py            # rewrite drift
+   python3 scripts/sync-publish-pin-versions.py --check    # CI-style verify
+   ```
+
+   The helper's pin map mirrors `dependency_versions` in
+   `.github/workflows/publish-crates.yml`; keep both in lockstep when adding
+   new path-pinned crates.
+
    **apps/ui/package.json** - Update `version`:
    ```json
    {
