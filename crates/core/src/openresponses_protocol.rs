@@ -43,6 +43,8 @@ use crate::openresponses_types::{self as types, StreamingEvent};
 use crate::tool_types::{ToolCall, ToolDefinition};
 
 const DEFAULT_API_URL: &str = "https://api.openai.com/v1/responses";
+const OPENAI_PROMPT_CACHE_KEY_MAX_LEN: usize = 64;
+const PROMPT_CACHE_KEY_PREFIX: &str = "everruns:";
 
 /// Open Responses Protocol Driver (OpenAI implementation)
 ///
@@ -331,7 +333,12 @@ impl OpenResponsesProtocolLlmDriver {
             "tools": tools,
         });
         let payload = serde_json::to_vec(&fingerprint).ok()?;
-        Some(format!("everruns:{:x}", Sha256::digest(payload)))
+        let digest = format!("{:x}", Sha256::digest(payload));
+        let digest_len = OPENAI_PROMPT_CACHE_KEY_MAX_LEN - PROMPT_CACHE_KEY_PREFIX.len();
+        Some(format!(
+            "{PROMPT_CACHE_KEY_PREFIX}{}",
+            &digest[..digest_len]
+        ))
     }
 
     /// Compact a conversation to reduce context size
@@ -1869,6 +1876,45 @@ mod tests {
 
         assert!(key.is_some());
         assert!(key.unwrap().starts_with("everruns:"));
+    }
+
+    #[test]
+    fn test_build_prompt_cache_key_stays_within_openai_limit() {
+        let config = LlmCallConfig {
+            model: "gpt-5.5".to_string(),
+            temperature: None,
+            max_tokens: None,
+            tools: vec![],
+            reasoning_effort: None,
+            metadata: std::collections::HashMap::new(),
+            previous_response_id: None,
+            tool_search: None,
+            prompt_cache: Some(crate::llm_driver_registry::PromptCacheConfig {
+                enabled: true,
+                strategy: crate::llm_driver_registry::PromptCacheStrategy::Auto,
+                gemini_cached_content: None,
+            }),
+        };
+        let input = vec![ResponsesInputItem::Message {
+            r#type: "message".to_string(),
+            role: "user".to_string(),
+            content: ResponsesContent::Text("fetch chalyi.name for me".to_string()),
+            phase: None,
+        }];
+
+        let key = OpenResponsesProtocolLlmDriver::build_prompt_cache_key(
+            &config,
+            &input,
+            &Some("You are helpful".to_string()),
+            &None,
+        )
+        .unwrap();
+
+        assert!(
+            key.len() <= 64,
+            "OpenAI prompt_cache_key limit is 64 characters, got {}",
+            key.len()
+        );
     }
 
     #[test]
