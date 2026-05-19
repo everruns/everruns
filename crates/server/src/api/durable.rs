@@ -245,26 +245,43 @@ pub fn routes(state: AppState) -> Router {
 /// System health response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct HealthResponse {
-    /// Current lifecycle status.
+    /// Aggregate system status: `healthy`, `degraded`, or `unhealthy`. Derived from worker availability, load, and queue depths.
     pub status: String,
+    /// Total number of workers registered (heartbeating in the last window).
     pub total_workers: usize,
+    /// Number of workers in the `running` state, ready to claim tasks.
     pub active_workers: usize,
+    /// Number of workers currently accepting new task assignments (subset of `active_workers`; drains/backpressure excluded).
     pub workers_accepting: usize,
+    /// Sum of `max_concurrency` across all workers (the upper bound on concurrent task execution).
     pub total_capacity: usize,
+    /// Total tasks currently in flight across all workers.
     pub current_load: usize,
+    /// `current_load / total_capacity * 100`. 0.0 when no workers are registered.
     pub load_percentage: f64,
+    /// Tasks waiting to be claimed (gauge).
     pub pending_tasks: usize,
+    /// Tasks currently claimed by a worker (gauge).
     pub claimed_tasks: usize,
+    /// Cumulative count of tasks that completed successfully (monotonic counter).
     pub completed_tasks: usize,
+    /// Cumulative count of tasks that failed terminally or were sent to the DLQ (monotonic counter).
     pub failed_tasks: usize,
+    /// Cumulative count of tasks claimed at least once (monotonic counter).
     pub started_tasks: usize,
+    /// Workflows currently executing (gauge).
     pub running_workflows: usize,
+    /// Workflows waiting to be claimed (gauge).
     pub pending_workflows: usize,
+    /// Cumulative count of workflows that completed successfully (monotonic counter).
     pub completed_workflows: usize,
+    /// Cumulative count of workflows that ended in failure (monotonic counter).
     pub failed_workflows: usize,
+    /// Cumulative count of workflows that started (monotonic counter).
     pub started_workflows: usize,
+    /// Size of the dead-letter queue (gauge). High values indicate stuck activities.
     pub dlq_size: usize,
-    /// Event delivery backend: "nats" or "in_memory"
+    /// Event-delivery backend in use: `nats` for distributed deployments, `in_memory` for single-instance. `None` if the field was omitted by an older server.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub event_delivery: Option<String>,
 }

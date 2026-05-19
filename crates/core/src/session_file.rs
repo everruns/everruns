@@ -15,14 +15,23 @@ use utoipa::ToSchema;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct FileInfo {
+    /// Internal database UUID for this file entry.
     pub id: Uuid,
+    /// UUID of the owning session.
     pub session_id: Uuid,
+    /// Absolute path within the session workspace (e.g. `/notes.md`).
     pub path: String,
+    /// File or directory name (the last segment of `path`).
     pub name: String,
+    /// `true` when this entry represents a directory; `false` for a regular file.
     pub is_directory: bool,
+    /// Whether the entry was marked read-only at creation. Read-only entries cannot be edited or deleted by the session.
     pub is_readonly: bool,
+    /// File size in bytes. `0` for directories.
     pub size_bytes: i64,
+    /// Timestamp when this entry was created (RFC 3339).
     pub created_at: DateTime<Utc>,
+    /// Timestamp when this entry was last updated (RFC 3339).
     pub updated_at: DateTime<Utc>,
 }
 
@@ -51,20 +60,29 @@ impl FileInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct SessionFile {
+    /// Internal database UUID for this file entry.
     pub id: Uuid,
+    /// UUID of the owning session.
     pub session_id: Uuid,
+    /// Absolute path within the session workspace (e.g. `/notes.md`).
     pub path: String,
+    /// File or directory name (the last segment of `path`).
     pub name: String,
-    /// Base64-encoded content for binary files, plain text for text files
+    /// File content. Encoding is controlled by the `encoding` field: plain UTF-8 text for `text`, base64-encoded bytes for `base64`. `None` for directories and when this is a metadata-only listing.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
-    /// Content encoding: "text" or "base64"
+    /// Content encoding for the `content` field: `text` (UTF-8) or `base64` (binary).
     #[serde(default = "default_encoding")]
     pub encoding: String,
+    /// `true` when this entry represents a directory; `false` for a regular file.
     pub is_directory: bool,
+    /// Whether the entry was marked read-only at creation. Read-only entries cannot be edited or deleted by the session.
     pub is_readonly: bool,
+    /// File size in bytes. `0` for directories.
     pub size_bytes: i64,
+    /// Timestamp when this entry was created (RFC 3339).
     pub created_at: DateTime<Utc>,
+    /// Timestamp when this entry was last updated (RFC 3339).
     pub updated_at: DateTime<Utc>,
 }
 
@@ -121,12 +139,19 @@ impl SessionFile {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct FileStat {
+    /// Absolute path within the session workspace.
     pub path: String,
+    /// File or directory name (last segment of `path`).
     pub name: String,
+    /// `true` when this entry represents a directory.
     pub is_directory: bool,
+    /// Whether the entry is read-only.
     pub is_readonly: bool,
+    /// File size in bytes. `0` for directories.
     pub size_bytes: i64,
+    /// Timestamp when this entry was created (RFC 3339).
     pub created_at: DateTime<Utc>,
+    /// Timestamp when this entry was last updated (RFC 3339).
     pub updated_at: DateTime<Utc>,
 }
 

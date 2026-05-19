@@ -36,20 +36,35 @@ pub type ApiResult<T> = Result<Json<T>, (StatusCode, Json<ErrorResponse>)>;
 /// Response body for resource stats.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct ResourceStatsResponse {
+    /// Total number of sessions ever created for this resource.
     pub session_count: u64,
+    /// Sessions in a running state right now.
     pub active_session_count: u64,
+    /// Sessions in an idle state right now (created but no recent activity).
     pub idle_session_count: u64,
+    /// Sessions that have started at least one turn.
     pub started_session_count: u64,
+    /// Sessions currently paused waiting for client-side tool results.
     pub waiting_for_tool_results_session_count: u64,
+    /// Total number of agent executions (turns) recorded across all sessions for this resource.
     pub execution_count: u64,
+    /// Cumulative session wall-clock duration in milliseconds across all sessions.
     pub total_session_duration_ms: u64,
+    /// Average session duration in milliseconds. `None` when `session_count` is 0.
     pub avg_session_duration_ms: Option<u64>,
+    /// Cumulative LLM input tokens billed across all sessions.
     pub total_input_tokens: u64,
+    /// Cumulative LLM output tokens billed across all sessions.
     pub total_output_tokens: u64,
+    /// Cumulative cache-read tokens across all sessions (where the provider supports prompt caching).
     pub total_cache_read_tokens: u64,
+    /// Cumulative cache-write tokens across all sessions (charged when first writing a cache entry).
     pub total_cache_creation_tokens: u64,
+    /// Timestamp of the first session for this resource (RFC 3339). `None` if no sessions exist.
     pub first_session_at: Option<DateTime<Utc>>,
+    /// Timestamp of the most recent session for this resource (RFC 3339). `None` if no sessions exist.
     pub last_session_at: Option<DateTime<Utc>>,
+    /// Timestamp of the most recent execution (turn) for this resource (RFC 3339). `None` if no executions exist.
     pub last_execution_at: Option<DateTime<Utc>>,
 }
 

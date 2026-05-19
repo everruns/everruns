@@ -189,37 +189,59 @@ pub struct VoiceEndRequest {
 /// Response body for voice client secret.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct VoiceClientSecretResponse {
+    /// Prefixed public identifier of the voice connection (see `specs/id-schema.md`).
     pub voice_connection_id: String,
+    /// Realtime provider routing this connection (e.g. `openai`).
     pub provider: String,
+    /// Provider-side model identifier used for the realtime session.
     pub model: String,
+    /// Realtime voice preset selected for the connection (provider-specific).
     pub voice: String,
+    /// Reasoning effort tier for thinking-capable models (`none`, `minimal`, `low`, `medium`, `high`).
     pub reasoning_effort: String,
+    /// Timestamp when the client secret expires (RFC 3339). The client must establish the realtime connection before this.
     pub expires_at: chrono::DateTime<chrono::Utc>,
+    /// Provider-specific ephemeral credential payload the client uses to authenticate the realtime connection.
     pub client_secret: Value,
 }
 
 /// Response body for voice call.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct VoiceCallResponse {
+    /// Prefixed public identifier of the voice connection.
     pub voice_connection_id: String,
+    /// Provider-side call identifier once issued. `None` until the realtime call is established.
     pub provider_call_id: Option<String>,
+    /// Realtime provider routing this connection.
     pub provider: String,
+    /// Provider-side model identifier used for the realtime session.
     pub model: String,
+    /// Realtime voice preset selected for the connection.
     pub voice: String,
+    /// Reasoning effort tier for thinking-capable models.
     pub reasoning_effort: String,
+    /// Timestamp when the call's lease expires (RFC 3339).
     pub expires_at: chrono::DateTime<chrono::Utc>,
+    /// Server-generated SDP answer to send back to the client to complete the WebRTC handshake.
     pub answer_sdp: String,
 }
 
 /// Response body for voice attach.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct VoiceAttachResponse {
+    /// Prefixed public identifier of the voice connection.
     pub voice_connection_id: String,
+    /// Provider-side call identifier of the connected realtime call.
     pub provider_call_id: String,
+    /// Realtime provider routing this connection.
     pub provider: String,
+    /// Provider-side model identifier used for the realtime session.
     pub model: String,
+    /// Realtime voice preset selected for the connection.
     pub voice: String,
+    /// Reasoning effort tier for thinking-capable models.
     pub reasoning_effort: String,
+    /// Timestamp when the connection's lease expires (RFC 3339).
     pub expires_at: chrono::DateTime<chrono::Utc>,
 }
 
