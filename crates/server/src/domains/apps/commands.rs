@@ -2034,32 +2034,43 @@ impl Command for ListAppRuns {
 inventory::submit! { CommandDescriptor::of::<ListAppRuns>() }
 
 fn parse_run_history_window(window: Option<&str>) -> Result<Duration, CommandError> {
+    const MAX_WINDOW_DAYS: i64 = 30;
+    const MAX_WINDOW_MINUTES: i64 = MAX_WINDOW_DAYS * 24 * 60;
+
     let Some(window) = window else {
         return Ok(Duration::hours(24));
     };
-    if window.len() < 2 {
+    if window.len() < 2 || !window.is_ascii() {
         return Err(CommandError::bad_request(
             "window must use m, h, or d units, such as 24h",
         ));
     }
-    let (amount, unit) = window.split_at(window.len() - 1);
+    let (amount, unit) = window.split_at(window.len().saturating_sub(1));
     let value: i64 = amount
         .parse()
         .map_err(|_| CommandError::bad_request("window must use a positive integer amount"))?;
     if value <= 0 {
         return Err(CommandError::bad_request("window must be positive"));
     }
-    let duration = match unit {
-        "m" => Duration::minutes(value),
-        "h" => Duration::hours(value),
-        "d" => Duration::days(value),
+    let max_for_unit = match unit {
+        "m" => MAX_WINDOW_MINUTES,
+        "h" => MAX_WINDOW_DAYS * 24,
+        "d" => MAX_WINDOW_DAYS,
         _ => {
             return Err(CommandError::bad_request(
                 "window must use m, h, or d units, such as 24h",
             ));
         }
     };
-    Ok(duration.min(Duration::days(30)))
+    let clamped_value = value.min(max_for_unit);
+    let duration = match unit {
+        "m" => Duration::try_minutes(clamped_value),
+        "h" => Duration::try_hours(clamped_value),
+        "d" => Duration::try_days(clamped_value),
+        _ => unreachable!("unit already validated"),
+    }
+    .ok_or_else(|| CommandError::bad_request("window is out of range"))?;
+    Ok(duration)
 }
 
 fn schedule_execution_status(status: &ScheduleExecutionStatus) -> &'static str {
@@ -3344,5 +3355,18 @@ mod tests {
         // but had no consumer; the metadata bag uses the same `_app_id`
         // convention as the AG-UI and Slack ingress paths.
         assert!(!metadata.contains_key("app_id"));
+    }
+
+    #[test]
+    fn parse_run_history_window_rejects_unicode_unit() {
+        let err = parse_run_history_window(Some("1µ")).expect_err("unicode unit should fail");
+        assert_eq!(err.code, "bad_request");
+    }
+
+    #[test]
+    fn parse_run_history_window_rejects_overflowing_amount() {
+        let err = parse_run_history_window(Some("9223372036854775807d"))
+            .expect_err("overflowing window should fail");
+        assert_eq!(err.code, "bad_request");
     }
 }
