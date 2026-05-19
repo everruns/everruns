@@ -76,9 +76,10 @@ The workflow will extract release notes from CHANGELOG.md and create the GitHub 
 3. Release body: Extracted from CHANGELOG.md section for that version
 4. Docker images tagged with version (triggered via `workflow_dispatch` from Release workflow)
 5. Pre-built CLI binaries attached as release assets (triggered via `workflow_dispatch` from Release workflow)
+6. crates.io packages published from the trusted release commit (triggered via `repository_dispatch` from Release workflow)
 
 > **Note:** Tags created by `GITHUB_TOKEN` don't trigger other workflows (GitHub anti-recursion).
-> The Release workflow explicitly dispatches Docker Publish and CLI Binaries after creating the release.
+> The Release workflow explicitly dispatches Docker Publish, CLI Binaries, and crates.io publishing after creating the release. Crate publishing validates that the tag is a strict semver tag, resolves to the expected release SHA when dispatched internally, and is reachable from `origin/main` before the crates.io token is used.
 
 ### CLI Binary Assets
 
