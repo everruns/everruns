@@ -162,6 +162,12 @@ impl App {
         ));
         self.push_system(format!("model: {}", self.bundle.provider_label()));
         self.push_system(format!("tools: {}", self.bundle.tool_names.join(", ")));
+        self.push_system(format!(
+            "session: {} (log: {}; {} prior event(s) replayed)",
+            self.bundle.session_id,
+            self.bundle.session_log_path.display(),
+            self.bundle.replayed_events,
+        ));
         if !self.bundle.instruction_files.is_empty() {
             self.push_system(format!(
                 "instructions: {} (live-reloaded each turn)",

@@ -17,6 +17,7 @@ use everruns_core::capabilities::{
 use everruns_core::llm_driver_registry::DriverRegistry;
 use everruns_core::llm_models::LlmProviderType;
 use everruns_core::llmsim_driver::LlmSimConfig;
+use everruns_core::memory::InMemoryMessageRetriever;
 use everruns_core::tools::Tool;
 use everruns_core::typed_id::SessionId;
 use everruns_core::{
@@ -25,9 +26,12 @@ use everruns_core::{
 };
 use everruns_integrations_duckduckgo::DuckDuckGoCapability;
 use everruns_runtime::{
-    ApprovalGatingFileStore, FileApprovalGate, InProcessRuntime, InProcessRuntimeBuilder,
-    RealDiskFileStore, RuntimeBackends, RuntimeProviderStore, WriteBlocklistFileStore,
+    AgentBuilder, ApprovalGatingFileStore, FileApprovalGate, HarnessBuilder, InProcessRuntime,
+    InProcessRuntimeBuilder, RealDiskFileStore, RuntimeBackends, RuntimeProviderStore,
+    SessionBuilder, WriteBlocklistFileStore,
 };
+
+use crate::session_log::{JsonlEventEmitter, replay, session_log_path};
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
@@ -318,6 +322,12 @@ pub struct RuntimeBundle {
     pub workspace_root: PathBuf,
     pub instruction_files: Vec<String>,
     pub tool_names: Vec<String>,
+    /// On-disk JSONL log for this session. Populated even for fresh ids
+    /// so the startup banner can show where new events are being written.
+    pub session_log_path: PathBuf,
+    /// How many events were replayed from disk into the new session.
+    /// Zero for fresh sessions; used by the startup banner.
+    pub replayed_events: usize,
     provider: RwLock<ProviderChoice>,
     provider_store: Arc<dyn RuntimeProviderStore>,
 }
@@ -357,14 +367,46 @@ pub async fn build(
     workspace_root: PathBuf,
     provider: ProviderChoice,
     gate: Arc<ApprovalGate>,
+    resume_session_id: Option<SessionId>,
+    session_storage_dir: PathBuf,
 ) -> Result<RuntimeBundle> {
     let canonical_root = std::fs::canonicalize(&workspace_root)
         .with_context(|| format!("canonicalize workspace: {}", workspace_root.display()))?;
     let workspace = Workspace::new(canonical_root.clone());
 
-    // Non-filesystem backends stay in memory; the session filesystem is owned
-    // by the platform factory below.
-    let backends = RuntimeBackends::in_memory();
+    // Pin the SessionId so resume can re-attach to the same JSONL file
+    // (filename is the session id).
+    let session_id = resume_session_id.unwrap_or_default();
+    let log_path = session_log_path(&session_storage_dir, session_id);
+
+    // Replay anything already on disk for this id. Missing file → empty.
+    // Pass `session_id` so events for any other session get skipped
+    // rather than seeded — defends against mixed/copied logs.
+    let replayed = replay(&log_path, session_id)?;
+    let replayed_events_count = replayed.events.len();
+    let next_sequence = replayed.max_sequence.map(|m| m + 1).unwrap_or(1);
+
+    // JsonlEventEmitter is the EventBus: emits to memory + appends
+    // replay-relevant lines to the per-session JSONL file. `next_sequence`
+    // carries the sequence counter across resumes so `Event.sequence`
+    // stays monotonic within a session.
+    let event_bus = Arc::new(JsonlEventEmitter::open(&log_path, next_sequence)?);
+
+    // Pre-seed the message store with anything reconstructed from disk
+    // so the agent sees prior conversation in its first context assembly.
+    let message_store = Arc::new(InMemoryMessageRetriever::new());
+    if !replayed.messages.is_empty() {
+        message_store
+            .seed(session_id, replayed.messages.clone())
+            .await;
+    }
+
+    // Non-filesystem backends: in-memory for everything except the
+    // JsonlEventEmitter (so events also land on disk) and the
+    // pre-seeded message store (so replayed history is available).
+    let backends = RuntimeBackends::in_memory()
+        .with_event_bus(event_bus)
+        .with_message_store(message_store);
     let provider_store = backends.provider_store.clone();
 
     // Register a curated set of built-in capabilities (no opinionated bundle
@@ -422,54 +464,57 @@ pub async fn build(
         }))
         .build();
 
-    // SingleSessionBuilder bundles the harness/agent/session shape with
-    // defaults that runtime owns — keeps this example small and absorbs
-    // future core-struct fields automatically.
+    // Per-type builders (not `single_session`) so we can pin the
+    // SessionId — the resume path needs the filename and the in-memory
+    // session to share an id.
     let session_title = format!("coding-cli @ {}", canonical_root.display());
-    let harness_capabilities: Vec<AgentCapabilityConfig> = vec![
-        // Configured to also pick up CLAUDE.md and .agents.md alongside the
-        // default AGENTS.md. All three are re-read every turn (live-reload).
-        AgentCapabilityConfig::with_config(
+    let harness = HarnessBuilder::new("coding-cli", HARNESS_PROMPT)
+        .display_name("Coding CLI")
+        .description("Embedded terminal coding agent.")
+        .tag("example")
+        .tag("coding")
+        .capability(AgentCapabilityConfig::with_config(
+            // Pick up CLAUDE.md / .agents.md alongside AGENTS.md, live-reloaded.
             AGENT_INSTRUCTIONS_CAPABILITY_ID,
             serde_json::json!({ "files": ["AGENTS.md", "CLAUDE.md", ".agents.md"] }),
-        ),
-        AgentCapabilityConfig::new("session_file_system"),
-        AgentCapabilityConfig::new(SKILLS_CAPABILITY_ID),
-        AgentCapabilityConfig::new(INFINITY_CONTEXT_CAPABILITY_ID),
-        AgentCapabilityConfig::new("stateless_todo_list"),
-        AgentCapabilityConfig::new("loop_detection"),
-        AgentCapabilityConfig::new(PROMPT_CACHING_CAPABILITY_ID),
-        AgentCapabilityConfig::new("duckduckgo"),
-        // enable_file_download=true: saved responses land on disk through the
-        // platform filesystem stack, so the blocklist and approval gate apply.
-        AgentCapabilityConfig::with_config(
+        ))
+        .capability(AgentCapabilityConfig::new("session_file_system"))
+        .capability(AgentCapabilityConfig::new(SKILLS_CAPABILITY_ID))
+        .capability(AgentCapabilityConfig::new(INFINITY_CONTEXT_CAPABILITY_ID))
+        .capability(AgentCapabilityConfig::new("stateless_todo_list"))
+        .capability(AgentCapabilityConfig::new("loop_detection"))
+        .capability(AgentCapabilityConfig::new(PROMPT_CACHING_CAPABILITY_ID))
+        .capability(AgentCapabilityConfig::new("duckduckgo"))
+        // enable_file_download=true: saved responses land on disk through
+        // the platform filesystem stack, so the blocklist + approval gate apply.
+        .capability(AgentCapabilityConfig::with_config(
             "web_fetch",
             serde_json::json!({ "enable_file_download": true }),
-        ),
-        AgentCapabilityConfig::new("coding_cli_bash"),
-    ];
+        ))
+        .capability(AgentCapabilityConfig::new("coding_cli_bash"))
+        .build();
+    let agent = AgentBuilder::new("coding-agent", AGENT_PROMPT)
+        .display_name("Coding Agent")
+        .description("Reads, edits, and runs commands inside a project workspace.")
+        .max_iterations(20)
+        .tag("example")
+        .build();
+    let session = SessionBuilder::new(harness.id)
+        .id(session_id)
+        .agent(agent.public_id)
+        .title(session_title)
+        .tag("coding-cli")
+        .build();
 
     let mut builder = InProcessRuntimeBuilder::new()
         .platform_definition(platform)
         .default_model(default_model)
         .backends(backends)
-        .single_session(move |s| {
-            let mut s = s
-                .harness("coding-cli", HARNESS_PROMPT)
-                .harness_display_name("Coding CLI")
-                .harness_description("Embedded terminal coding agent.")
-                .agent("coding-agent", AGENT_PROMPT)
-                .agent_display_name("Coding Agent")
-                .agent_description("Reads, edits, and runs commands inside a project workspace.")
-                .agent_max_iterations(20)
-                .session_title(session_title.clone())
-                .tag("example")
-                .tag("coding");
-            for cap in harness_capabilities {
-                s = s.harness_capability(cap);
-            }
-            s
-        });
+        .harness(harness)
+        .agent(agent)
+        .session(session);
+    // Always register the llmsim driver so the `/model llmsim` switch works
+    // mid-session, even if the user started with anthropic or openai.
     builder = builder.llm_sim(
         LlmSimConfig::fixed(
             "I'm running in offline mode (llmsim — no API key set). \
@@ -478,9 +523,6 @@ pub async fn build(
         .with_model("llmsim-coding-cli"),
     );
     let runtime = builder.build().await?;
-    let session_id = runtime
-        .default_session_id()
-        .expect("single_session sets the default session id");
 
     let context = runtime.load_context(session_id).await?;
     let tool_names = context
@@ -505,6 +547,8 @@ pub async fn build(
         workspace_root: canonical_root,
         instruction_files,
         tool_names,
+        session_log_path: log_path,
+        replayed_events: replayed_events_count,
         provider: RwLock::new(provider),
         provider_store,
     })

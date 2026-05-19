@@ -6,6 +6,7 @@ mod app;
 mod approval;
 mod diff;
 mod runtime;
+mod session_log;
 mod tools;
 
 use anyhow::Result;
@@ -54,6 +55,20 @@ struct Cli {
     /// (one-shot runs always auto-approve since there's no interactive terminal).
     #[arg(long)]
     ask: bool,
+
+    /// Resume an existing session. Reads the JSONL log for this id and
+    /// seeds the message history; the new run continues appending to the
+    /// same file. If no log exists, a new session starts with this id.
+    /// Without `--session`, a fresh id is generated each run.
+    #[arg(long)]
+    session: Option<String>,
+
+    /// Directory where session JSONL logs are stored. Default: the
+    /// platform-native user data directory (`$XDG_DATA_HOME/ercode/sessions/`
+    /// on Linux, `~/Library/Application Support/ercode/sessions/` on macOS,
+    /// `%APPDATA%\ercode\sessions\` on Windows).
+    #[arg(long)]
+    session_dir: Option<PathBuf>,
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy)]
@@ -111,7 +126,18 @@ async fn main() -> Result<()> {
     } else {
         ApprovalGate::auto()
     };
-    let bundle = runtime::build(cwd, provider, gate).await?;
+    let resume_session_id = match cli.session.as_deref() {
+        Some(raw) => Some(
+            raw.parse()
+                .map_err(|e| anyhow::anyhow!("invalid --session id `{raw}`: {e}"))?,
+        ),
+        None => None,
+    };
+    let session_dir = match cli.session_dir.clone() {
+        Some(p) => p,
+        None => session_log::default_storage_dir()?,
+    };
+    let bundle = runtime::build(cwd, provider, gate, resume_session_id, session_dir).await?;
     let bundle = Arc::new(bundle);
 
     if let Some(prompt) = cli.print {
@@ -150,6 +176,12 @@ async fn run_print_mode(bundle: Arc<RuntimeBundle>, prompt: String) -> Result<()
     println!("[workspace] {}", bundle.workspace_root.display());
     println!("[provider]  {}", bundle.provider_label());
     println!("[tools]     {}", bundle.tool_names.join(", "));
+    println!(
+        "[session]   {} ({}; {} prior event(s))",
+        bundle.session_id,
+        bundle.session_log_path.display(),
+        bundle.replayed_events,
+    );
     if !bundle.instruction_files.is_empty() {
         println!(
             "[instructions] {} (loaded dynamically via agent_instructions)",
