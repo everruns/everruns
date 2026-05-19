@@ -2062,11 +2062,15 @@ fn parse_run_history_window(window: Option<&str>) -> Result<Duration, CommandErr
             ));
         }
     };
-    let clamped_value = value.min(max_for_unit);
+    if value > max_for_unit {
+        return Err(CommandError::bad_request(
+            "window exceeds the 30-day maximum",
+        ));
+    }
     let duration = match unit {
-        "m" => Duration::try_minutes(clamped_value),
-        "h" => Duration::try_hours(clamped_value),
-        "d" => Duration::try_days(clamped_value),
+        "m" => Duration::try_minutes(value),
+        "h" => Duration::try_hours(value),
+        "d" => Duration::try_days(value),
         _ => unreachable!("unit already validated"),
     }
     .ok_or_else(|| CommandError::bad_request("window is out of range"))?;
@@ -3360,13 +3364,13 @@ mod tests {
     #[test]
     fn parse_run_history_window_rejects_unicode_unit() {
         let err = parse_run_history_window(Some("1µ")).expect_err("unicode unit should fail");
-        assert_eq!(err.code, "bad_request");
+        assert!(matches!(err.kind, CommandErrorKind::BadRequest(_)));
     }
 
     #[test]
     fn parse_run_history_window_rejects_overflowing_amount() {
         let err = parse_run_history_window(Some("9223372036854775807d"))
             .expect_err("overflowing window should fail");
-        assert_eq!(err.code, "bad_request");
+        assert!(matches!(err.kind, CommandErrorKind::BadRequest(_)));
     }
 }
