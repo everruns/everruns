@@ -588,6 +588,35 @@ impl InProcessRuntime {
         Ok(self.event_bus.collected_events().await)
     }
 
+    /// List slash commands available for a session.
+    ///
+    /// Resolves the session's harness/agent capability chain and aggregates
+    /// commands declared via [`Capability::commands`]. Duplicates by name are
+    /// kept in first-seen order. This is the embedded equivalent of the
+    /// server's `GET /v1/sessions/{id}/commands` system-commands list — skill
+    /// commands are not included here because skills are discovered via the
+    /// platform filesystem rather than the capability registry.
+    pub async fn list_commands(
+        &self,
+        session_id: SessionId,
+    ) -> Result<Vec<everruns_core::command::CommandDescriptor>> {
+        let ctx = self.load_context(session_id).await?;
+        let registry = self.platform_definition.capability_registry();
+        let mut seen = std::collections::HashSet::new();
+        let mut commands = Vec::new();
+        for config in &ctx.resolved_capability_configs {
+            let Some(capability) = registry.get(config.capability_id()) else {
+                continue;
+            };
+            for command in capability.commands() {
+                if seen.insert(command.name.clone()) {
+                    commands.push(command);
+                }
+            }
+        }
+        Ok(commands)
+    }
+
     async fn inspect_context_with_ids(
         &self,
         session_id: SessionId,

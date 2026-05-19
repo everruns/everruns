@@ -177,6 +177,14 @@ async fn run_print_mode(bundle: Arc<RuntimeBundle>, prompt: String) -> Result<()
         bundle.session_log_path.display(),
         bundle.replayed_events,
     );
+    if !bundle.capability_commands.is_empty() {
+        let names: Vec<String> = bundle
+            .capability_commands
+            .iter()
+            .map(|c| format!("/{}", c.name))
+            .collect();
+        println!("[commands] {} (from capabilities)", names.join(", "));
+    }
     println!("[prompt] {prompt}\n");
 
     let before_events = bundle.runtime.events().await.map(|e| e.len()).unwrap_or(0);

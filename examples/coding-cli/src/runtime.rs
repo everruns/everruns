@@ -9,11 +9,13 @@ use crate::tools::{BashTool, Workspace};
 use anyhow::{Context, Result, anyhow};
 use async_trait::async_trait;
 use everruns_core::capabilities::{
-    AGENT_INSTRUCTIONS_CAPABILITY_ID, AgentInstructionsCapability, Capability, CapabilityStatus,
-    FileSystemCapability, INFINITY_CONTEXT_CAPABILITY_ID, InfinityContextCapability,
-    LoopDetectionCapability, PROMPT_CACHING_CAPABILITY_ID, PromptCachingCapability,
-    SKILLS_CAPABILITY_ID, SkillsCapability, StatelessTodoListCapability, WebFetchCapability,
+    AGENT_INSTRUCTIONS_CAPABILITY_ID, AgentInstructionsCapability, BTW_CAPABILITY_ID,
+    BtwCapability, Capability, CapabilityStatus, FileSystemCapability,
+    INFINITY_CONTEXT_CAPABILITY_ID, InfinityContextCapability, LoopDetectionCapability,
+    PROMPT_CACHING_CAPABILITY_ID, PromptCachingCapability, SKILLS_CAPABILITY_ID, SkillsCapability,
+    StatelessTodoListCapability, WebFetchCapability,
 };
+use everruns_core::command::CommandDescriptor;
 use everruns_core::llm_driver_registry::DriverRegistry;
 use everruns_core::llm_models::LlmProviderType;
 use everruns_core::llmsim_driver::LlmSimConfig;
@@ -320,6 +322,11 @@ pub struct RuntimeBundle {
     pub session_id: SessionId,
     pub workspace_root: PathBuf,
     pub tool_names: Vec<String>,
+    /// Slash commands contributed by registered capabilities (via
+    /// `Capability::commands()`). Resolved once at startup against this
+    /// session's harness/agent chain; surfaced in the TUI's command palette
+    /// alongside the CLI's built-in `/help`, `/model`, etc.
+    pub capability_commands: Vec<CommandDescriptor>,
     /// On-disk JSONL log for this session. Populated even for fresh ids
     /// so the startup banner can show where new events are being written.
     pub session_log_path: PathBuf,
@@ -438,6 +445,10 @@ pub async fn build(
     capabilities.register(PromptCachingCapability::new());
     capabilities.register(DuckDuckGoCapability);
     capabilities.register(WebFetchCapability::from_env());
+    // BTW exposes `/btw` as a capability-provided slash command. Registering
+    // it here exercises the same `Capability::commands()` path the server
+    // uses and demonstrates capability-sourced commands in the CLI palette.
+    capabilities.register(BtwCapability);
     capabilities.register(CodingBashCapability {
         workspace: workspace.clone(),
         gate: gate.clone(),
@@ -490,6 +501,7 @@ pub async fn build(
             "web_fetch",
             serde_json::json!({ "enable_file_download": true }),
         ),
+        AgentCapabilityConfig::new(BTW_CAPABILITY_ID),
         AgentCapabilityConfig::new("coding_cli_bash"),
     ];
 
@@ -533,12 +545,14 @@ pub async fn build(
         .iter()
         .map(|t| t.name().to_string())
         .collect();
+    let capability_commands = runtime.list_commands(session_id).await?;
 
     Ok(RuntimeBundle {
         runtime: Arc::new(runtime),
         session_id,
         workspace_root: canonical_root,
         tool_names,
+        capability_commands,
         session_log_path: log_path,
         replayed_events: replayed_events_count,
         provider: RwLock::new(provider),

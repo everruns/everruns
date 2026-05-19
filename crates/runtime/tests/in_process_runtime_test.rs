@@ -483,3 +483,38 @@ async fn runtime_exposes_assembled_context() {
         "assembled context should expose effective capability tools",
     );
 }
+
+#[tokio::test]
+async fn list_commands_returns_capability_commands_for_session() {
+    use everruns_core::capabilities::BtwCapability;
+    use everruns_core::command::CommandSource;
+
+    let mut capabilities = CapabilityRegistry::new();
+    capabilities.register(TestMathCapability);
+    capabilities.register(BtwCapability);
+    let platform = PlatformDefinition::new(capabilities, DriverRegistry::new());
+
+    let runtime = InProcessRuntimeBuilder::new()
+        .platform_definition(platform)
+        .llm_sim(LlmSimConfig::fixed("ok"))
+        .single_session(|s| {
+            s.harness("math", "You are a math assistant.")
+                .with_capability("test_math")
+                .with_capability("btw")
+                .agent("math-agent", "Use tools when needed.")
+        })
+        .build()
+        .await
+        .unwrap();
+
+    let session_id = runtime.default_session_id().expect("default session id");
+    let commands = runtime.list_commands(session_id).await.unwrap();
+
+    let btw = commands
+        .iter()
+        .find(|c| c.name == "btw")
+        .expect("btw command surfaced");
+    assert_eq!(btw.source, CommandSource::System);
+    assert_eq!(btw.args.len(), 1);
+    assert!(btw.args[0].required);
+}
