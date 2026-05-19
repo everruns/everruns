@@ -42,6 +42,7 @@ rather than duplicate.
 | Sandbox (Daytona, E2B, Deno) | `LeasedResourceStore.upsert_resource` | `sandbox`         | Leased resource public ID  |
 | Browser (Browserless)        | `LeasedResourceStore.upsert_resource` | `browser_session` | Leased resource public ID  |
 | Subagents                    | `spawn_subagent` tool                 | `subagent`        | Child session public ID    |
+| Agent handoff                | `start_agent_handoff` tool            | `agent_handoff`   | Child session public ID    |
 | Background tool runs         | `spawn_background` tool              | `background_run`  | Generated background run ID |
 | Sprites                      | `LeasedResourceStore.upsert_resource` | `sprite`          | Leased resource public ID  |
 | Voice Connections            | Voice bootstrap endpoints             | `voice_connection` | Voice connection public ID |

@@ -661,14 +661,17 @@ pub mod tests {
         }
         async fn create_session(
             &self,
-            _hid: HarnessId,
-            _aid: Option<crate::typed_id::AgentId>,
+            hid: HarnessId,
+            aid: Option<crate::typed_id::AgentId>,
             title: Option<&str>,
             locale: Option<&str>,
             blueprint_id: Option<&str>,
             blueprint_config: Option<&serde_json::Value>,
         ) -> Result<Session> {
             let mut s = self.session.clone();
+            s.id = SessionId::new();
+            s.harness_id = hid;
+            s.agent_id = aid;
             s.title = title.map(|t| t.to_string());
             s.locale = locale.map(|value| value.to_string());
             s.blueprint_id = blueprint_id.map(|b| b.to_string());

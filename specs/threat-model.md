@@ -442,6 +442,7 @@ fn authorizer(action: AuthAction) -> Authorization {
 | TM-TOOL-018 | MCP server SSRF via configured server URL | High | MCP server URLs are validated on create/update and re-validated at execution time; private/internal hosts and metadata endpoints blocked | MITIGATED |
 | TM-TOOL-019 | MCP `query`/`execute` positional-arg rewrite injection | Low | Rewriter only inserts compile-time `--<flag>` tokens at statement-start boundaries, respects quotes/escapes/comments, and never modifies or reorders user bytes. Flag names come from the command registry, not user input. See EVE-323. | MITIGATED |
 | TM-TOOL-020 | Skill `` !`command` `` activation RCE on worker host | High | `ActivateSkillFromVfsTool::execute_with_context` never invokes `preprocess_command_injections` — the trust gate is forced off because no non-user-spoofable provenance signal exists on `SessionFile` today. Expansion is also capped at `MAX_COMMAND_PLACEHOLDERS_PER_SKILL` (32) with concurrency ≤ 4 in the expansion function itself. See EVE-388. | MITIGATED |
+| TM-TOOL-021 | Agent handoff credential leakage or unauthorized target delegation | High | `agent_handoff` delegates only to configured target Agent ids, requires server-side `UserConnectionResolver` checks before start, never accepts credentials in tool args/config/resource metadata, records only non-secret provider/scope labels in `session_resources`, and rejects follow-up messages unless the child session belongs to the current parent session. Provider tools must still enforce scoped grants before real external writes. | MITIGATED |
 
 ### Mitigation Details
 
@@ -471,6 +472,23 @@ SKILL.md content may contain `` !`command` `` placeholders that, if expanded by 
 6. Command execution MUST target the session sandbox (virtual bash via `bashkit`) against the session virtual filesystem, not the worker host shell. The current `ProcessCommandExecutor` (which spawns host `bash -c`) is dormant scaffolding only; re-enabling command substitution without also routing it through the session sandbox would still be RCE against the worker host. Any re-enable PR must both (a) introduce the provenance signal in (1) AND (b) replace host-bash execution with a sandbox-backed executor before flipping the gate.
 
 Follow-up work (tracked on EVE-388): (a) add a platform-controlled provenance field — e.g. a `mount_capability_id` column on `session_files` populated only by mount application code and rejected on all user-facing API paths, AND (b) replace `ProcessCommandExecutor` with a session-sandbox-backed executor (`bashkit` / managed session sandbox) so execution is confined to the session VFS. Both must land before the gate is flipped. See `specs/skills-registry.md` "Activation Substitution Pipeline" for the source/outcome matrix.
+
+**TM-TOOL-021 — Agent Handoff Delegation Gate:**
+`agent_handoff` is a high-risk orchestration tool because one agent can start a
+child session using another configured Agent's tools and data. The mitigation is
+to keep authority explicit and non-secret:
+
+1. Source agents can only target ids listed in their `agent_handoff` config.
+2. Required provider connections are resolved server-side through
+   `UserConnectionResolver`; bearer tokens are never accepted in tool arguments,
+   capability config, system prompt context, or session resource metadata.
+3. Handoff resources store only non-secret target id, target agent id, provider
+   ids, scope labels, and mode. Full task text and credentials are excluded.
+4. `message_agent_handoff` verifies the child session's `parent_session_id`
+   matches the current session before sending follow-up input.
+5. This gate proves the user has the required connection before delegation.
+   Real provider write tools still need scoped grant enforcement before mutating
+   external infrastructure.
 
 **TM-TOOL-011/012 — Skill Archive Validation:**
 ZIP archive extraction in `SkillService::create_from_archive()` enforces:

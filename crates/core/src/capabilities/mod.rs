@@ -80,6 +80,7 @@ pub use crate::capability_types::{
 mod a2a_delegation;
 #[cfg(feature = "ui-capabilities")]
 mod a2ui;
+mod agent_handoff;
 mod agent_instructions;
 pub mod attach_skill;
 mod btw;
@@ -133,6 +134,10 @@ pub use a2a_delegation::{
 };
 #[cfg(feature = "ui-capabilities")]
 pub use a2ui::{A2UI_CAPABILITY_ID, A2UiCapability};
+pub use agent_handoff::{
+    AGENT_HANDOFF_CAPABILITY_ID, AgentHandoffCapability, GetAgentHandoffsTool,
+    MessageAgentHandoffTool, StartAgentHandoffTool,
+};
 pub use agent_instructions::{
     AGENT_INSTRUCTIONS_CAPABILITY_ID, AGENTS_MD_PATH, AgentInstructionsCapability,
     AgentInstructionsConfig, DEFAULT_AGENT_INSTRUCTIONS_FILE, MAX_AGENT_INSTRUCTIONS_FILES,
@@ -816,6 +821,7 @@ impl CapabilityRegistry {
 
         // Subagents (spawn child agent sessions, all environments)
         registry.register(SubagentCapability);
+        registry.register(AgentHandoffCapability);
         registry.register(A2aAgentDelegationCapability);
 
         // System commands (/clear, /status, /compact, /model)
@@ -1834,6 +1840,7 @@ mod tests {
             "prompt_caching",
             "skills",
             "subagents",
+            "agent_handoff",
             "a2a_agent_delegation",
             "system_commands",
             "sample_data",
