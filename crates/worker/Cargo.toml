@@ -10,9 +10,7 @@ serde.workspace = true
 serde_json.workspace = true
 uuid.workspace = true
 anyhow.workspace = true
-thiserror.workspace = true
 tracing.workspace = true
-tracing-subscriber.workspace = true
 
 everruns-config = { path = "../config" }
 everruns-core = { path = "../core", features = ["embedded-platform-docs", "tree-sitter-outlines", "ui-capabilities"] }
@@ -27,7 +25,6 @@ everruns-integrations-browserless = { path = "../../integrations/browserless" }
 everruns-integrations-e2b = { path = "../../integrations/e2b" }
 everruns-integrations-sprites = { path = "../../integrations/sprites" }
 everruns-container-sandbox = { path = "../container-sandbox" }
-everruns-integrations-pi = { path = "../../integrations/pi" }
 everruns-openai = { path = "../openai" }
 everruns-anthropic = { path = "../anthropic" }
 everruns-gemini = { path = "../gemini" }
@@ -40,12 +37,8 @@ sqlx.workspace = true
 
 chrono.workspace = true
 async-trait.workspace = true
-futures.workspace = true
 reqwest.workspace = true
 base64.workspace = true
-sha2.workspace = true
-hex.workspace = true
-url = "2.5"
 
 # gRPC dependencies
 tonic.workspace = true

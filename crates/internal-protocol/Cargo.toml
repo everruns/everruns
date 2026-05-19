@@ -18,6 +18,9 @@ license.workspace = true
 authors.workspace = true
 description = "Internal gRPC protocol for Everruns worker-control plane communication"
 
+[package.metadata.cargo-machete]
+ignored = ["prost", "protox", "tonic-prost", "tonic-prost-build"]
+
 [dependencies]
 # gRPC
 tonic.workspace = true
