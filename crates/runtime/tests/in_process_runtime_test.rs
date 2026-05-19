@@ -3,18 +3,13 @@ use chrono::{TimeZone, Utc};
 use everruns_core::capabilities::TestMathCapability;
 use everruns_core::llm_driver_registry::DriverRegistry;
 use everruns_core::llmsim_driver::LlmSimConfig;
-use everruns_core::memory::{
-    InMemoryAgentStore, InMemoryEventEmitter, InMemoryHarnessStore, InMemoryLlmProviderStore,
-    InMemoryMemoryStore, InMemoryMessageRetriever,
-};
 use everruns_core::{
     Agent, CapabilityRegistry, Harness, InitialFile, LlmProviderType, MessageRole,
     ModelWithProvider, PlatformDefinition, Session, SessionFileSystem, SessionFileSystemFactory,
     SessionFileSystemFactoryContext, ToolCall,
 };
 use everruns_runtime::{
-    AgentBuilder, HarnessBuilder, InMemorySessionFileStore, InMemorySessionStorageStore,
-    InMemorySessionStore, InProcessRuntimeBuilder, RealDiskFileStore, RuntimeBackends,
+    AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, RealDiskFileStore, RuntimeBackends,
     SessionBuilder,
 };
 use std::path::PathBuf;
@@ -295,21 +290,9 @@ async fn runtime_accepts_explicit_backend_bundle() {
     let agent_id = "agent_00000000000000000000000000000051".parse().unwrap();
     let session_id = "session_00000000000000000000000000000051".parse().unwrap();
 
-    let event_emitter = InMemoryEventEmitter::new();
     let runtime = InProcessRuntimeBuilder::new()
         .platform_definition(minimal_platform())
-        .backends(RuntimeBackends {
-            harness_store: Arc::new(InMemoryHarnessStore::new()),
-            agent_store: Arc::new(InMemoryAgentStore::new()),
-            session_store: Arc::new(InMemorySessionStore::new()),
-            message_store: Arc::new(InMemoryMessageRetriever::new()),
-            provider_store: Arc::new(InMemoryLlmProviderStore::new()),
-            event_emitter: Arc::new(event_emitter.clone()),
-            event_collector: Some(Arc::new(event_emitter)),
-            file_store: Arc::new(InMemorySessionFileStore::new()),
-            storage_store: Arc::new(InMemorySessionStorageStore::new()),
-            memory_store: Arc::new(InMemoryMemoryStore::new()),
-        })
+        .backends(RuntimeBackends::in_memory())
         .llm_sim(LlmSimConfig::fixed("Custom backend bundle works"))
         .default_model(ModelWithProvider {
             model: "llmsim-model".into(),

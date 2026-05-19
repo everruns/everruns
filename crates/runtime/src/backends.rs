@@ -1,27 +1,30 @@
 // Public backend contract for the embedded runtime.
 // Decision: runtime extends core's read-only traits with the minimal write
-// operations needed for seeding and message persistence.
+// operations needed for seeding and message persistence. Trait upcasting +
+// blanket `Arc<T>: T` impls in core let the runtime forward to atoms without
+// shim wrappers.
 
-use crate::in_memory::InMemorySessionStore;
+use crate::in_memory::{
+    InMemorySessionFileStore, InMemorySessionStorageStore, InMemorySessionStore,
+};
 use async_trait::async_trait;
 use everruns_core::agent::Agent;
 use everruns_core::error::Result;
-use everruns_core::events::{Event, EventRequest};
+use everruns_core::events::Event;
 use everruns_core::harness::Harness;
 use everruns_core::memory::{
     InMemoryAgentStore, InMemoryEventEmitter, InMemoryHarnessStore, InMemoryLlmProviderStore,
-    InMemoryMessageRetriever,
+    InMemoryMemoryStore, InMemoryMessageRetriever,
 };
 use everruns_core::memory_store::MemoryStoreBackend;
 use everruns_core::message::Message;
 use everruns_core::message_retriever::{InputMessage, MessageRetriever};
 use everruns_core::session::Session;
-use everruns_core::session_file::SessionFile;
 use everruns_core::traits::{
     AgentStore, EventEmitter, HarnessStore, LlmProviderStore, ModelWithProvider, SessionFileSystem,
     SessionMutator, SessionStorageStore, SessionStore,
 };
-use everruns_core::typed_id::{AgentId, HarnessId, MessageId, ModelId, SessionId};
+use everruns_core::typed_id::SessionId;
 use std::sync::Arc;
 
 /// Agent store contract for runtime seeding and lookup.
@@ -69,17 +72,33 @@ pub trait RuntimeProviderStore: LlmProviderStore + Send + Sync {
     async fn set_default_model(&self, model: ModelWithProvider) -> Result<()>;
 }
 
-/// Optional event collector for embedders that want to inspect emitted events.
+/// Event sink that supports emission and optional collection.
+///
+/// Every `EventBus` is an `EventEmitter`. Embedders that want to inspect
+/// emitted events override `collected_events`; production hosts inherit the
+/// no-op default.
 #[async_trait]
-pub trait RuntimeEventCollector: Send + Sync {
-    /// Return all collected events.
-    async fn events(&self) -> Vec<Event>;
+pub trait EventBus: EventEmitter {
+    /// Return all collected events. Defaults to an empty `Vec` for buses
+    /// that do not retain events.
+    async fn collected_events(&self) -> Vec<Event> {
+        Vec::new()
+    }
+}
+
+#[async_trait]
+impl<T: EventBus + ?Sized> EventBus for Arc<T> {
+    async fn collected_events(&self) -> Vec<Event> {
+        (**self).collected_events().await
+    }
 }
 
 /// Backend bundle supplied to the embedded runtime.
 ///
 /// Use this when you want the public runtime orchestration but your own store
-/// implementations instead of the built-in in-memory ones.
+/// implementations instead of the built-in in-memory ones. For an
+/// all-in-memory baseline plus targeted overrides, use
+/// [`RuntimeBackends::in_memory`] followed by `with_*` setters.
 #[derive(Clone)]
 pub struct RuntimeBackends {
     /// Harness definitions available to the runtime.
@@ -92,10 +111,8 @@ pub struct RuntimeBackends {
     pub message_store: Arc<dyn RuntimeMessageStore>,
     /// Model/provider resolution and default-model configuration.
     pub provider_store: Arc<dyn RuntimeProviderStore>,
-    /// Event sink used during turn execution.
-    pub event_emitter: Arc<dyn EventEmitter>,
-    /// Optional collector for `InProcessRuntime::events()`.
-    pub event_collector: Option<Arc<dyn RuntimeEventCollector>>,
+    /// Event sink (emit + optional collection).
+    pub event_bus: Arc<dyn EventBus>,
     /// Session filesystem backend.
     pub file_store: Arc<dyn SessionFileSystem>,
     /// Session key/value + secret storage backend.
@@ -104,184 +121,69 @@ pub struct RuntimeBackends {
     pub memory_store: Arc<dyn MemoryStoreBackend>,
 }
 
-#[derive(Clone)]
-pub(crate) struct DynAgentStore(pub Arc<dyn RuntimeAgentStore>);
-
-#[async_trait]
-impl AgentStore for DynAgentStore {
-    async fn get_agent(&self, agent_id: AgentId) -> Result<Option<Agent>> {
-        self.0.get_agent(agent_id).await
-    }
-}
-
-#[derive(Clone)]
-pub(crate) struct DynHarnessStore(pub Arc<dyn RuntimeHarnessStore>);
-
-#[async_trait]
-impl HarnessStore for DynHarnessStore {
-    async fn get_harness_chain(&self, harness_id: HarnessId) -> Result<Vec<Harness>> {
-        self.0.get_harness_chain(harness_id).await
-    }
-}
-
-#[derive(Clone)]
-pub(crate) struct DynSessionStore(pub Arc<dyn RuntimeSessionStore>);
-
-#[async_trait]
-impl SessionStore for DynSessionStore {
-    async fn get_session(&self, session_id: SessionId) -> Result<Option<Session>> {
-        self.0.get_session(session_id).await
-    }
-}
-
-#[async_trait]
-impl SessionMutator for DynSessionStore {
-    async fn update_session_title(&self, session_id: SessionId, title: String) -> Result<Session> {
-        self.0.update_session_title(session_id, title).await
-    }
-}
-
-#[derive(Clone)]
-pub(crate) struct DynMessageStore(pub Arc<dyn RuntimeMessageStore>);
-
-#[async_trait]
-impl MessageRetriever for DynMessageStore {
-    async fn get(&self, session_id: SessionId, message_id: MessageId) -> Result<Option<Message>> {
-        self.0.get(session_id, message_id).await
+impl RuntimeBackends {
+    /// Backend bundle with in-memory implementations for every store.
+    ///
+    /// Suitable for tests, examples, and the default runtime configuration.
+    /// Use the chainable `with_*` setters to override individual stores.
+    pub fn in_memory() -> Self {
+        let event_bus = Arc::new(InMemoryEventEmitter::new());
+        Self {
+            harness_store: Arc::new(InMemoryHarnessStore::new()),
+            agent_store: Arc::new(InMemoryAgentStore::new()),
+            session_store: Arc::new(InMemorySessionStore::new()),
+            message_store: Arc::new(InMemoryMessageRetriever::new()),
+            provider_store: Arc::new(InMemoryLlmProviderStore::new()),
+            event_bus,
+            file_store: Arc::new(InMemorySessionFileStore::new()),
+            storage_store: Arc::new(InMemorySessionStorageStore::new()),
+            memory_store: Arc::new(InMemoryMemoryStore::new()),
+        }
     }
 
-    async fn load(&self, session_id: SessionId) -> Result<Vec<Message>> {
-        self.0.load(session_id).await
+    pub fn with_harness_store(mut self, store: Arc<dyn RuntimeHarnessStore>) -> Self {
+        self.harness_store = store;
+        self
     }
 
-    async fn load_filtered(
-        &self,
-        query: everruns_core::message_filter::MessageQuery,
-    ) -> Result<Vec<Message>> {
-        self.0.load_filtered(query).await
+    pub fn with_agent_store(mut self, store: Arc<dyn RuntimeAgentStore>) -> Self {
+        self.agent_store = store;
+        self
     }
 
-    async fn load_page(
-        &self,
-        session_id: SessionId,
-        offset: usize,
-        limit: usize,
-    ) -> Result<Vec<Message>> {
-        self.0.load_page(session_id, offset, limit).await
+    pub fn with_session_store(mut self, store: Arc<dyn RuntimeSessionStore>) -> Self {
+        self.session_store = store;
+        self
     }
 
-    async fn count(&self, session_id: SessionId) -> Result<usize> {
-        self.0.count(session_id).await
-    }
-}
-
-#[derive(Clone)]
-pub(crate) struct DynFileStore(pub Arc<dyn SessionFileSystem>);
-
-#[async_trait]
-impl SessionFileSystem for DynFileStore {
-    async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
-        self.0.read_file(session_id, path).await
+    pub fn with_message_store(mut self, store: Arc<dyn RuntimeMessageStore>) -> Self {
+        self.message_store = store;
+        self
     }
 
-    async fn write_file(
-        &self,
-        session_id: SessionId,
-        path: &str,
-        content: &str,
-        encoding: &str,
-    ) -> Result<SessionFile> {
-        self.0.write_file(session_id, path, content, encoding).await
+    pub fn with_provider_store(mut self, store: Arc<dyn RuntimeProviderStore>) -> Self {
+        self.provider_store = store;
+        self
     }
 
-    async fn delete_file(
-        &self,
-        session_id: SessionId,
-        path: &str,
-        recursive: bool,
-    ) -> Result<bool> {
-        self.0.delete_file(session_id, path, recursive).await
+    pub fn with_event_bus(mut self, bus: Arc<dyn EventBus>) -> Self {
+        self.event_bus = bus;
+        self
     }
 
-    async fn list_directory(
-        &self,
-        session_id: SessionId,
-        path: &str,
-    ) -> Result<Vec<everruns_core::session_file::FileInfo>> {
-        self.0.list_directory(session_id, path).await
+    pub fn with_file_store(mut self, store: Arc<dyn SessionFileSystem>) -> Self {
+        self.file_store = store;
+        self
     }
 
-    async fn stat_file(
-        &self,
-        session_id: SessionId,
-        path: &str,
-    ) -> Result<Option<everruns_core::session_file::FileStat>> {
-        self.0.stat_file(session_id, path).await
+    pub fn with_storage_store(mut self, store: Arc<dyn SessionStorageStore>) -> Self {
+        self.storage_store = store;
+        self
     }
 
-    async fn grep_files(
-        &self,
-        session_id: SessionId,
-        pattern: &str,
-        path_pattern: Option<&str>,
-    ) -> Result<Vec<everruns_core::session_file::GrepMatch>> {
-        self.0.grep_files(session_id, pattern, path_pattern).await
-    }
-
-    async fn create_directory(
-        &self,
-        session_id: SessionId,
-        path: &str,
-    ) -> Result<everruns_core::session_file::FileInfo> {
-        self.0.create_directory(session_id, path).await
-    }
-
-    async fn write_file_if_content_matches(
-        &self,
-        session_id: SessionId,
-        path: &str,
-        expected_content: &str,
-        expected_encoding: &str,
-        content: &str,
-        encoding: &str,
-    ) -> Result<Option<SessionFile>> {
-        self.0
-            .write_file_if_content_matches(
-                session_id,
-                path,
-                expected_content,
-                expected_encoding,
-                content,
-                encoding,
-            )
-            .await
-    }
-}
-
-#[derive(Clone)]
-pub(crate) struct DynProviderStore(pub Arc<dyn RuntimeProviderStore>);
-
-#[async_trait]
-impl LlmProviderStore for DynProviderStore {
-    async fn get_model_with_provider(
-        &self,
-        model_id: ModelId,
-    ) -> Result<Option<ModelWithProvider>> {
-        self.0.get_model_with_provider(model_id).await
-    }
-
-    async fn get_default_model(&self) -> Result<Option<ModelWithProvider>> {
-        self.0.get_default_model().await
-    }
-}
-
-#[derive(Clone)]
-pub(crate) struct DynEventEmitter(pub Arc<dyn EventEmitter>);
-
-#[async_trait]
-impl EventEmitter for DynEventEmitter {
-    async fn emit(&self, request: EventRequest) -> Result<Event> {
-        self.0.emit(request).await
+    pub fn with_memory_store(mut self, store: Arc<dyn MemoryStoreBackend>) -> Self {
+        self.memory_store = store;
+        self
     }
 }
 
@@ -325,7 +227,6 @@ impl RuntimeMessageStore for InMemoryMessageRetriever {
 }
 
 #[async_trait]
-#[async_trait]
 impl RuntimeProviderStore for InMemoryLlmProviderStore {
     async fn set_default_model(&self, model: ModelWithProvider) -> Result<()> {
         InMemoryLlmProviderStore::set_default_model(self, model).await;
@@ -334,8 +235,8 @@ impl RuntimeProviderStore for InMemoryLlmProviderStore {
 }
 
 #[async_trait]
-impl RuntimeEventCollector for InMemoryEventEmitter {
-    async fn events(&self) -> Vec<Event> {
+impl EventBus for InMemoryEventEmitter {
+    async fn collected_events(&self) -> Vec<Event> {
         InMemoryEventEmitter::events(self).await
     }
 }

@@ -124,3 +124,31 @@ pub trait MessageRetriever: Send + Sync {
         Ok(self.load(session_id).await?.len())
     }
 }
+
+#[async_trait]
+impl<T: MessageRetriever + ?Sized> MessageRetriever for std::sync::Arc<T> {
+    async fn get(&self, session_id: SessionId, message_id: MessageId) -> Result<Option<Message>> {
+        (**self).get(session_id, message_id).await
+    }
+
+    async fn load(&self, session_id: SessionId) -> Result<Vec<Message>> {
+        (**self).load(session_id).await
+    }
+
+    async fn load_filtered(&self, query: MessageQuery) -> Result<Vec<Message>> {
+        (**self).load_filtered(query).await
+    }
+
+    async fn load_page(
+        &self,
+        session_id: SessionId,
+        offset: usize,
+        limit: usize,
+    ) -> Result<Vec<Message>> {
+        (**self).load_page(session_id, offset, limit).await
+    }
+
+    async fn count(&self, session_id: SessionId) -> Result<usize> {
+        (**self).count(session_id).await
+    }
+}
