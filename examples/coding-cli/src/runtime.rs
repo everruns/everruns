@@ -26,9 +26,8 @@ use everruns_core::{
 };
 use everruns_integrations_duckduckgo::DuckDuckGoCapability;
 use everruns_runtime::{
-    AgentBuilder, ApprovalGatingFileStore, FileApprovalGate, HarnessBuilder, InProcessRuntime,
-    InProcessRuntimeBuilder, RealDiskFileStore, RuntimeBackends, RuntimeProviderStore,
-    SessionBuilder, WriteBlocklistFileStore,
+    ApprovalGatingFileStore, FileApprovalGate, InProcessRuntime, InProcessRuntimeBuilder,
+    RealDiskFileStore, RuntimeBackends, RuntimeProviderStore, WriteBlocklistFileStore,
 };
 
 use crate::session_log::{JsonlEventEmitter, replay, session_log_path};
@@ -464,55 +463,54 @@ pub async fn build(
         }))
         .build();
 
-    // Per-type builders (not `single_session`) so we can pin the
-    // SessionId — the resume path needs the filename and the in-memory
-    // session to share an id.
+    // SingleSessionBuilder bundles harness/agent/session with defaults the
+    // runtime owns. `session_id(...)` pins the id so resume can re-attach
+    // to the same JSONL log (filename encodes the id).
     let session_title = format!("coding-cli @ {}", canonical_root.display());
-    let harness = HarnessBuilder::new("coding-cli", HARNESS_PROMPT)
-        .display_name("Coding CLI")
-        .description("Embedded terminal coding agent.")
-        .tag("example")
-        .tag("coding")
-        .capability(AgentCapabilityConfig::with_config(
-            // Pick up CLAUDE.md / .agents.md alongside AGENTS.md, live-reloaded.
+    let harness_capabilities: Vec<AgentCapabilityConfig> = vec![
+        // Pick up CLAUDE.md / .agents.md alongside AGENTS.md, live-reloaded.
+        AgentCapabilityConfig::with_config(
             AGENT_INSTRUCTIONS_CAPABILITY_ID,
             serde_json::json!({ "files": ["AGENTS.md", "CLAUDE.md", ".agents.md"] }),
-        ))
-        .capability(AgentCapabilityConfig::new("session_file_system"))
-        .capability(AgentCapabilityConfig::new(SKILLS_CAPABILITY_ID))
-        .capability(AgentCapabilityConfig::new(INFINITY_CONTEXT_CAPABILITY_ID))
-        .capability(AgentCapabilityConfig::new("stateless_todo_list"))
-        .capability(AgentCapabilityConfig::new("loop_detection"))
-        .capability(AgentCapabilityConfig::new(PROMPT_CACHING_CAPABILITY_ID))
-        .capability(AgentCapabilityConfig::new("duckduckgo"))
+        ),
+        AgentCapabilityConfig::new("session_file_system"),
+        AgentCapabilityConfig::new(SKILLS_CAPABILITY_ID),
+        AgentCapabilityConfig::new(INFINITY_CONTEXT_CAPABILITY_ID),
+        AgentCapabilityConfig::new("stateless_todo_list"),
+        AgentCapabilityConfig::new("loop_detection"),
+        AgentCapabilityConfig::new(PROMPT_CACHING_CAPABILITY_ID),
+        AgentCapabilityConfig::new("duckduckgo"),
         // enable_file_download=true: saved responses land on disk through
         // the platform filesystem stack, so the blocklist + approval gate apply.
-        .capability(AgentCapabilityConfig::with_config(
+        AgentCapabilityConfig::with_config(
             "web_fetch",
             serde_json::json!({ "enable_file_download": true }),
-        ))
-        .capability(AgentCapabilityConfig::new("coding_cli_bash"))
-        .build();
-    let agent = AgentBuilder::new("coding-agent", AGENT_PROMPT)
-        .display_name("Coding Agent")
-        .description("Reads, edits, and runs commands inside a project workspace.")
-        .max_iterations(20)
-        .tag("example")
-        .build();
-    let session = SessionBuilder::new(harness.id)
-        .id(session_id)
-        .agent(agent.public_id)
-        .title(session_title)
-        .tag("coding-cli")
-        .build();
+        ),
+        AgentCapabilityConfig::new("coding_cli_bash"),
+    ];
 
     let mut builder = InProcessRuntimeBuilder::new()
         .platform_definition(platform)
         .default_model(default_model)
         .backends(backends)
-        .harness(harness)
-        .agent(agent)
-        .session(session);
+        .single_session(move |s| {
+            let mut s = s
+                .harness("coding-cli", HARNESS_PROMPT)
+                .harness_display_name("Coding CLI")
+                .harness_description("Embedded terminal coding agent.")
+                .agent("coding-agent", AGENT_PROMPT)
+                .agent_display_name("Coding Agent")
+                .agent_description("Reads, edits, and runs commands inside a project workspace.")
+                .agent_max_iterations(20)
+                .session_id(session_id)
+                .session_title(session_title.clone())
+                .tag("example")
+                .tag("coding");
+            for cap in harness_capabilities {
+                s = s.harness_capability(cap);
+            }
+            s
+        });
     // Always register the llmsim driver so the `/model llmsim` switch works
     // mid-session, even if the user started with anthropic or openai.
     builder = builder.llm_sim(

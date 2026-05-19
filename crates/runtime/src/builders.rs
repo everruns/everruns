@@ -801,8 +801,15 @@ impl SingleSessionBuilder {
         self.agent.agent_id()
     }
 
-    pub fn session_id(&self) -> SessionId {
-        self.session.session_id()
+    /// Pin the seeded session's id. When unset, the underlying
+    /// `SessionBuilder` generates a fresh `SessionId` at build time.
+    ///
+    /// Useful for embedders that need the id ahead of build — e.g. the
+    /// `examples/coding-cli` JSONL session log uses `<id>.jsonl` as the
+    /// filename and must open the file before the runtime exists.
+    pub fn session_id(mut self, id: SessionId) -> Self {
+        self.session = self.session.id(id);
+        self
     }
 
     pub(crate) fn build(self) -> (Harness, Agent, Session, SessionId) {
