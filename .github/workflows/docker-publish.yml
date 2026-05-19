@@ -24,7 +24,7 @@ on:
   # push SHA-tagged images to GHCR (pre-existing behavior) — these are
   # traceability artifacts, not a consumer-facing channel.
   pull_request:
-    types: [opened, reopened, synchronize]
+    types: [opened, reopened, synchronize, labeled, unlabeled]
     paths:
       - 'docker/**'
       - 'apps/ui/Dockerfile'
@@ -46,6 +46,7 @@ jobs:
   build-rust-images:
     name: Build Rust Images
     runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || (((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'ci:skip-docker') && !contains(github.event.pull_request.labels.*.name, 'ci:skip-docker'))
     permissions:
       contents: read
       packages: write
@@ -198,6 +199,7 @@ jobs:
   build-ui-image:
     name: Build UI Image
     runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || (((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'ci:skip-docker') && !contains(github.event.pull_request.labels.*.name, 'ci:skip-docker'))
     permissions:
       contents: read
       packages: write

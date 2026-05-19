@@ -27,7 +27,14 @@ Use this skill when the user asks to:
 1. The branch state is safe.
    - Do not ship from `main` or `master`.
    - The working tree must be clean before the final push.
-   - Rebase onto the latest `origin/main` before merge.
+   - Prefer rebasing onto the latest `origin/main` before merge.
+   - Merging without the latest rebase is acceptable when saving another CI cycle is more valuable and migration risk is absent. Before doing this, fetch `origin/main` and check that neither `origin/main` nor the PR changed `crates/server/migrations/` since their merge base. If either side changed migrations, rebase and run `bash scripts/lib/check-migration-ordering.sh`.
+     ```bash
+     git fetch origin main
+     base="$(git merge-base HEAD origin/main)"
+     git diff --name-only "$base"..HEAD -- crates/server/migrations/
+     git diff --name-only "$base"..origin/main -- crates/server/migrations/
+     ```
    - **After rebasing**, run `bash scripts/lib/check-migration-ordering.sh` to verify `crates/server/migrations/` numbers are strictly sequential. Migrations are the most common conflict source — multiple branches often add the same next number, and rebase silently keeps both. If the check fails, renumber your migration to the next available number.
    - **Immediately before `gh pr merge`** (after CI is green and review threads are resolved), re-run `bash scripts/lib/check-migration-ordering.sh`. Other PRs may have merged a colliding number while yours was in review.
 2. The requested goal is achieved with evidence.
@@ -55,6 +62,8 @@ Use this skill when the user asks to:
 7. The PR is mergeable and merged safely.
    - Push the branch.
    - Create or update the PR with `.github/pull_request_template.md`.
+   - Temporary CI opt-out labels (`ci:skip-docker`, `ci:skip-slow-rust`, `ci:skip-postgres-integration`, `ci:skip-sdk-compat`, `ci:skip-ui-e2e`, `ci:skip-docs-notebooks`, `ci:skip-integration-workflows`) may be used only for interim pushes after checking the skipped surface is not useful for that iteration.
+   - Before final merge readiness, remove any `ci:skip-*` label that suppresses CI affected by the PR diff and rerun CI on the latest PR commit. The `CI Opt-Out Policy` job must pass; do not merge with affected CI still skipped by opt-out.
    - Check the PR conversation, review threads, and review state from all reviewers, including bots.
    - After each push and again after CI turns green, wait at least 2 minutes for async reviewer bots to finish, then re-check for new comments before merge.
    - **Address every review comment** — including low-confidence suggestions, nits, non-blocking ones (COMMENTED state), and bot suggestions. Non-blocking comments often contain valid improvements (UX, robustness, doc clarity). For each comment: analyze the concern, reason about whether a code change is warranted, and either apply the fix or reply with a clear explanation of why the current code is correct. Do not dismiss comments without reasoning.
@@ -62,6 +71,7 @@ Use this skill when the user asks to:
    - Do not merge while any review comment is unresolved. Every thread must be explicitly addressed (code change or written resolution) before merge.
    - Wait for CI to go green.
    - Merge with squash only after CI is green, all review threads are resolved, and the final review/comment sweep above is clean.
+   - After merging, monitor main CI for the merge commit. If it fails, treat it as an active shipping regression and fix or revert promptly.
 
 ## Operating Model
 
@@ -69,6 +79,7 @@ Use this skill when the user asks to:
 - Choose the highest-signal path first: targeted diff review, focused tests, relevant builds, then smoke tests if gaps remain.
 - "Fix and ship" means implement first, then switch into shipping mode.
 - Docs or config-only changes can skip code tests when you explain why and run the relevant docs, lint, or build proof.
+- CI is slow enough that reducing unnecessary cycles is important. Use CI opt-out labels only to conserve interim CI time, not to weaken merge evidence. Prefer `ci:skip-docker` while iterating on non-container changes that still touch Rust/UI paths, `ci:skip-slow-rust` for early pushes where local targeted Rust evidence already covers the change, `ci:skip-postgres-integration` when only the PostgreSQL integration job is low-signal for the current push, `ci:skip-sdk-compat` when SDK contracts are unaffected, `ci:skip-ui-e2e` when UI smoke coverage is not relevant to the push, `ci:skip-docs-notebooks` when executable tutorial behavior is unchanged, and `ci:skip-integration-workflows` when the standalone integration workflow surface is unaffected. Before merge, remove opt-outs that suppress affected checks and rerun CI.
 - Do not use auto-merge or `gh pr merge --auto`; merge manually only after the final review sweep is clean because async review bots can post after the last push or after CI turns green.
 - If `just fmt` can auto-fix a failing formatting check, use it once and retry.
 - Stop only for blockers you cannot safely resolve alone: merge conflicts, missing credentials, ambiguous product intent, or CI failures you cannot reproduce or fix.
@@ -132,6 +143,7 @@ Pick only what matches the changed surface:
 - In the PR body, explain what changed, why it changed, how it was validated, notable risks, and an explicit **Follow-ups** section (or "No follow-ups." if none). Prefer implementing follow-ups in this PR; only defer when the work is genuinely out of scope or too large, and say so per item.
 - Use `gh pr view --json url` to detect an existing PR.
 - Create a PR with `gh pr create` if needed.
+- Use `gh pr edit --add-label <label>` only for interim CI opt-outs, and `gh pr edit --remove-label <label>` before final CI. If label removal does not trigger the expected workflow, rerun the workflow or push an empty final commit only after confirming that is the repo's intended practice.
 - Use `gh pr view --comments` to inspect the PR conversation, including bot comments.
 - Use `gh pr view --json reviews,latestReviews` to inspect reviewer state.
 - If review-thread status is unclear, inspect the review threads in the GitHub UI or via `gh api graphql` before merge.

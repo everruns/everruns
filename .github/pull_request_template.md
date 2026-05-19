@@ -22,4 +22,5 @@ List anything intentionally deferred with a one-line rationale, or write "No fol
 - [ ] Tests added or updated
 - [ ] Backward compatibility considered
 - [ ] Security review performed against relevant threat model categories
+- [ ] Final CI ran checks affected by this PR
 - [ ] All review comments addressed (code change or written reasoning)

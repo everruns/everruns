@@ -32,13 +32,13 @@ Relevant references:
 
 **Every shipped change MUST satisfy ALL of these outcomes. These are mandatory requirements, not optional suggestions. Do not skip or weaken any requirement.**
 
-1. Safe branch state: no shipping from `main` or `master`; working tree clean before final push; rebased onto the latest `origin/main` before merge. After rebasing, run `bash scripts/lib/check-migration-ordering.sh` to verify `crates/server/migrations/` numbers are strictly sequential — migrations are the most common conflict source. Re-run the same check immediately before `gh pr merge`, since other PRs may have merged a colliding number while yours was in review. Renumber your migration if a conflict exists.
+1. Safe branch state: no shipping from `main` or `master`; working tree clean before final push; prefer rebasing onto the latest `origin/main` before merge. Merging without the latest rebase is allowed when saving another CI cycle is more valuable and migration risk is absent: fetch `origin/main`, verify neither `origin/main` nor the PR changed `crates/server/migrations/` since their merge base, and monitor main CI after merge. If either side changed migrations, rebase and run `bash scripts/lib/check-migration-ordering.sh` to verify migration numbers are strictly sequential. Re-run the same check immediately before `gh pr merge`, since other PRs may have merged a colliding number while yours was in review. Renumber your migration if a conflict exists.
 2. Goal achieved with evidence: the requested behavior is implemented and validated with proof that matches the risk.
 3. Merge-ready code: touched code is reviewed for avoidable complexity and performance risk. A structured security review is performed against the relevant threat model categories from `specs/threat-model.md` (see the Security Review section in the ship skill). Issues found during review are addressed or explicitly blocked.
 4. Synced artifacts: only the affected artifacts are updated, including specs, threat model, docs, OpenAPI, test cases, and agent instructions when relevant. Specs touched by the change must not contain implementation details that duplicate code (struct fields, enum variants, exhaustive tables, code snippets) — replace with links to source files per the spec content principle in `AGENTS.md`.
 5. Smoke test impacted functionality: always smoke test the flows affected by the change end-to-end. This is mandatory, not conditional on risk assessment. Docs-only or config-only changes that do not affect runtime behavior may skip smoke testing with explicit justification.
 6. Follow-ups surfaced: the agent actively looks for in-scope work that risks being silently dropped (TODOs, partial fixes, declined suggestions, missed edge cases, spec/doc drift) and prefers to implement them in this PR. Anything deferred is listed under a **Follow-ups** section in the PR body with a one-line rationale; if nothing is deferred, the PR body must explicitly state "No follow-ups." so readers can distinguish completeness from omission.
-7. Safe merge: the PR uses the repo template, CI is green, **every** review comment from all reviewers (including async bot reviewers and low-confidence suggestions) is explicitly analyzed, reasoned about, and resolved — either with a code change or a written explanation — after a final post-green sweep, and merge happens with squash only.
+7. Safe merge: the PR uses the repo template, CI is green, no temporary `ci:skip-*` opt-out label suppresses CI affected by the PR diff, **every** review comment from all reviewers (including async bot reviewers and low-confidence suggestions) is explicitly analyzed, reasoned about, and resolved — either with a code change or a written explanation — after a final post-green sweep, merge happens with squash only, and main CI is monitored after merge.
 
 ## Constraints
 
@@ -46,6 +46,8 @@ Relevant references:
 - Validation should start with the smallest high-signal proof and deepen only when risk or weak signals require it.
 - Bug fixes should prefer a failing test before the fix when practical, but the validation strategy may vary when a smaller or stronger proof exists.
 - Docs-only or config-only changes may skip code tests if that choice is justified and the relevant docs or build checks were run.
+- CI is slow enough that reducing unnecessary cycles is important. Temporary CI opt-out labels may skip expensive interim PR checks to conserve CI capacity, but they are not merge evidence for affected surfaces. Before merge, opt-outs must not suppress CI checks affected by the PR diff, and merge must wait for those affected checks to pass.
+- A latest-main rebase is preferred but not mandatory when migration risk is absent. If merging without it, explicitly verify no migration changes exist on either side since the merge base and watch main CI after merge.
 - Security review is mandatory for all code, configuration, and infrastructure changes. The review must identify relevant threat model categories, check the diff against them, and document findings. Perceived low risk does not justify skipping the review.
 - Every review comment must be explicitly addressed before merge — including low-confidence suggestions, nits, and bot comments. For each comment, the agent must analyze the concern, reason about whether a change is warranted, and either apply a fix or reply with a clear explanation. Dismissing or ignoring comments without reasoning is not permitted.
 - Auto-merge must not bypass the final review pass; shipping should give async reviewer bots time to comment after the last push and after CI turns green, then re-check before merge.
@@ -58,7 +60,8 @@ Shipping output should make it easy to evaluate readiness:
 - what changed
 - what evidence was gathered
 - security review: which threat categories were checked, any findings, and how they were resolved
-- what was skipped and why
+- what was skipped during iteration and why, plus confirmation that final merge CI ran the checks affected by the PR diff
+- whether the PR was rebased onto latest main; if not, the migration-change check and main-CI monitoring outcome
 - review comments: how each comment was addressed (code change or written reasoning)
 - follow-ups: what was deferred and why (or an explicit "No follow-ups." statement)
 - what blockers or residual risks remain
