@@ -518,10 +518,10 @@ pub struct PaginatedResponse<T> {
     pub offset: u32,
     /// Maximum number of items per page.
     pub limit: u32,
-    /// Absolute URL for the next page, with `offset` advanced by `limit`. `null` when this is the last page.
+    /// Absolute URL for the next page, with `offset` advanced by `limit`. Omitted from the response (field absent) when this is the last page.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub next_url: Option<String>,
-    /// Absolute URL for the previous page, with `offset` rolled back by `limit`. `null` when this is the first page.
+    /// Absolute URL for the previous page, with `offset` rolled back by `limit`. Omitted from the response (field absent) when this is the first page.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prev_url: Option<String>,
 }
@@ -720,32 +720,19 @@ fn inject_pagination_links(value: &mut Value, api_base: &str, path_and_query: &s
             let mut changed = false;
             if let (Some(total), Some(offset), Some(limit)) = (total, offset, limit)
                 && limit > 0
-                && !map.contains_key("next_url")
-                && !map.contains_key("prev_url")
             {
-                let next = if offset.saturating_add(limit) < total {
-                    Some(build_paginated_url(
-                        api_base,
-                        path_and_query,
-                        offset.saturating_add(limit),
-                    ))
-                } else {
-                    None
-                };
-                let prev = if offset > 0 {
-                    Some(build_paginated_url(
-                        api_base,
-                        path_and_query,
-                        offset.saturating_sub(limit),
-                    ))
-                } else {
-                    None
-                };
-                if let Some(next) = next {
+                // Decorate each link field independently so a handler that
+                // pre-populates one (e.g. cursor-based `next_url`) doesn't
+                // block the middleware from filling the other.
+                if !map.contains_key("next_url") && offset.saturating_add(limit) < total {
+                    let next =
+                        build_paginated_url(api_base, path_and_query, offset.saturating_add(limit));
                     map.insert("next_url".to_string(), Value::String(next));
                     changed = true;
                 }
-                if let Some(prev) = prev {
+                if !map.contains_key("prev_url") && offset > 0 {
+                    let prev =
+                        build_paginated_url(api_base, path_and_query, offset.saturating_sub(limit));
                     map.insert("prev_url".to_string(), Value::String(prev));
                     changed = true;
                 }
@@ -1523,6 +1510,54 @@ mod tests {
         let changed = inject_pagination_links(&mut value, "https://x", "/y");
         assert!(!changed);
         assert!(value.get("next_url").is_none());
+    }
+
+    #[test]
+    fn inject_pagination_links_preserves_handler_supplied_next_url() {
+        let mut value = serde_json::json!({
+            "data": [],
+            "total": 100,
+            "offset": 20,
+            "limit": 10,
+            "next_url": "https://custom/cursor-based-link"
+        });
+        let changed = inject_pagination_links(
+            &mut value,
+            "https://api.example/api",
+            "/v1/agents?offset=20&limit=10",
+        );
+        assert!(changed);
+        // Handler-supplied next_url is preserved.
+        assert_eq!(value["next_url"], "https://custom/cursor-based-link");
+        // prev_url is still filled in by the middleware.
+        assert_eq!(
+            value["prev_url"],
+            "https://api.example/api/v1/agents?offset=10&limit=10"
+        );
+    }
+
+    #[test]
+    fn inject_pagination_links_preserves_handler_supplied_prev_url() {
+        let mut value = serde_json::json!({
+            "data": [],
+            "total": 100,
+            "offset": 20,
+            "limit": 10,
+            "prev_url": "https://custom/cursor-based-link"
+        });
+        let changed = inject_pagination_links(
+            &mut value,
+            "https://api.example/api",
+            "/v1/agents?offset=20&limit=10",
+        );
+        assert!(changed);
+        // Handler-supplied prev_url is preserved.
+        assert_eq!(value["prev_url"], "https://custom/cursor-based-link");
+        // next_url is still filled in by the middleware.
+        assert_eq!(
+            value["next_url"],
+            "https://api.example/api/v1/agents?offset=30&limit=10"
+        );
     }
 
     #[test]

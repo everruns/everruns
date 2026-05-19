@@ -21829,7 +21829,7 @@
               "string",
               "null"
             ],
-            "description": "Absolute URL for the next page, with `offset` advanced by `limit`. `null` when this is the last page."
+            "description": "Absolute URL for the next page, with `offset` advanced by `limit`. Omitted from the response (field absent) when this is the last page."
           },
           "offset": {
             "type": "integer",
@@ -21842,7 +21842,7 @@
               "string",
               "null"
             ],
-            "description": "Absolute URL for the previous page, with `offset` rolled back by `limit`. `null` when this is the first page."
+            "description": "Absolute URL for the previous page, with `offset` rolled back by `limit`. Omitted from the response (field absent) when this is the first page."
           },
           "total": {
             "type": "integer",
@@ -22013,7 +22013,7 @@
               "string",
               "null"
             ],
-            "description": "Absolute URL for the next page, with `offset` advanced by `limit`. `null` when this is the last page."
+            "description": "Absolute URL for the next page, with `offset` advanced by `limit`. Omitted from the response (field absent) when this is the last page."
           },
           "offset": {
             "type": "integer",
@@ -22026,7 +22026,7 @@
               "string",
               "null"
             ],
-            "description": "Absolute URL for the previous page, with `offset` rolled back by `limit`. `null` when this is the first page."
+            "description": "Absolute URL for the previous page, with `offset` rolled back by `limit`. Omitted from the response (field absent) when this is the first page."
           },
           "total": {
             "type": "integer",
@@ -22287,7 +22287,7 @@
               "string",
               "null"
             ],
-            "description": "Absolute URL for the next page, with `offset` advanced by `limit`. `null` when this is the last page."
+            "description": "Absolute URL for the next page, with `offset` advanced by `limit`. Omitted from the response (field absent) when this is the last page."
           },
           "offset": {
             "type": "integer",
@@ -22300,7 +22300,7 @@
               "string",
               "null"
             ],
-            "description": "Absolute URL for the previous page, with `offset` rolled back by `limit`. `null` when this is the first page."
+            "description": "Absolute URL for the previous page, with `offset` rolled back by `limit`. Omitted from the response (field absent) when this is the first page."
           },
           "total": {
             "type": "integer",
@@ -22662,7 +22662,7 @@
               "string",
               "null"
             ],
-            "description": "Absolute URL for the next page, with `offset` advanced by `limit`. `null` when this is the last page."
+            "description": "Absolute URL for the next page, with `offset` advanced by `limit`. Omitted from the response (field absent) when this is the last page."
           },
           "offset": {
             "type": "integer",
@@ -22675,7 +22675,7 @@
               "string",
               "null"
             ],
-            "description": "Absolute URL for the previous page, with `offset` rolled back by `limit`. `null` when this is the first page."
+            "description": "Absolute URL for the previous page, with `offset` rolled back by `limit`. Omitted from the response (field absent) when this is the first page."
           },
           "total": {
             "type": "integer",
