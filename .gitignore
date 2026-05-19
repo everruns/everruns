@@ -29,6 +29,7 @@ Thumbs.db
 
 # Logs
 *.log
+MANUAL_TEST_RESULTS_*
 
 # Node (for dashboard)
 node_modules/
