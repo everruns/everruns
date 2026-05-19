@@ -85,11 +85,9 @@ jobs:
               - 'docs/tutorials/**'
             docker:
               - 'docker/**'
-              - 'crates/**'
-              - 'integrations/**'
-              - 'Cargo.toml'
-              - 'Cargo.lock'
+              - '.dockerignore'
               - '.github/workflows/ci.yml'
+              - '.github/workflows/docker-publish.yml'
 
       # Exclusion filters need `predicate-quantifier: every`; with the default
       # `some`, a rule like `!integrations/foo/**/*.md` matches almost every
