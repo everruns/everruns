@@ -70,6 +70,11 @@ impl HarnessBuilder {
         self.id
     }
 
+    pub fn name(mut self, name: impl Into<String>) -> Self {
+        self.name = name.into();
+        self
+    }
+
     pub fn display_name(mut self, display_name: impl Into<String>) -> Self {
         self.display_name = Some(display_name.into());
         self
@@ -244,6 +249,11 @@ impl AgentBuilder {
     /// Return the id currently assigned to this builder.
     pub fn agent_id(&self) -> AgentId {
         self.id
+    }
+
+    pub fn name(mut self, name: impl Into<String>) -> Self {
+        self.name = name.into();
+        self
     }
 
     pub fn display_name(mut self, display_name: impl Into<String>) -> Self {
@@ -637,18 +647,22 @@ impl Default for SingleSessionBuilder {
 }
 
 impl SingleSessionBuilder {
-    /// Configure the seeded harness.
+    /// Configure the seeded harness. Mutates the existing `HarnessBuilder`
+    /// in place so previously configured fields (e.g. `network_access`) are
+    /// preserved regardless of call order.
     pub fn harness(mut self, name: impl Into<String>, system_prompt: impl Into<String>) -> Self {
         let harness_id = self.harness.harness_id();
-        self.harness = HarnessBuilder::new(name, system_prompt).id(harness_id);
+        self.harness = self.harness.name(name).system_prompt(system_prompt);
         self.session = self.session.harness(harness_id);
         self
     }
 
-    /// Configure the seeded agent.
+    /// Configure the seeded agent. Mutates the existing `AgentBuilder` in
+    /// place so previously configured fields (e.g. `network_access`) are
+    /// preserved regardless of call order.
     pub fn agent(mut self, name: impl Into<String>, system_prompt: impl Into<String>) -> Self {
         let agent_id = self.agent.agent_id();
-        self.agent = AgentBuilder::new(name, system_prompt).id(agent_id);
+        self.agent = self.agent.name(name).system_prompt(system_prompt);
         self.session = self.session.agent(agent_id);
         self
     }

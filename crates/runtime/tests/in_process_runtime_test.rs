@@ -3,6 +3,7 @@ use chrono::{TimeZone, Utc};
 use everruns_core::capabilities::TestMathCapability;
 use everruns_core::llm_driver_registry::DriverRegistry;
 use everruns_core::llmsim_driver::LlmSimConfig;
+use everruns_core::network_access::NetworkAccessList;
 use everruns_core::{
     Agent, CapabilityRegistry, Harness, InitialFile, LlmProviderType, MessageRole,
     ModelWithProvider, PlatformDefinition, Session, SessionFileSystem, SessionFileSystemFactory,
@@ -206,6 +207,56 @@ async fn single_session_builder_seeds_runnable_runtime() {
         .await
         .unwrap();
     assert!(result.success);
+}
+
+#[tokio::test]
+async fn single_session_builder_preserves_harness_acl_when_order_changes() {
+    let runtime = InProcessRuntimeBuilder::new()
+        .platform_definition(minimal_platform())
+        .llm_sim(LlmSimConfig::fixed("ok"))
+        .single_session(|s| {
+            s.harness_network_access(NetworkAccessList::allow_only(["example.com"]))
+                .harness("math", "You are a math assistant.")
+        })
+        .build()
+        .await
+        .unwrap();
+
+    let session_id = runtime.default_session_id().expect("default session id");
+    let context = runtime.load_context(session_id).await.unwrap();
+    assert_eq!(
+        context
+            .harness_chain
+            .last()
+            .and_then(|h| h.network_access.as_ref())
+            .map(|acl| acl.allowed.clone()),
+        Some(vec!["example.com".to_string()])
+    );
+}
+
+#[tokio::test]
+async fn single_session_builder_preserves_agent_acl_when_order_changes() {
+    let runtime = InProcessRuntimeBuilder::new()
+        .platform_definition(minimal_platform())
+        .llm_sim(LlmSimConfig::fixed("ok"))
+        .single_session(|s| {
+            s.agent_network_access(NetworkAccessList::allow_only(["example.com"]))
+                .agent("math-agent", "Use tools when needed.")
+        })
+        .build()
+        .await
+        .unwrap();
+
+    let session_id = runtime.default_session_id().expect("default session id");
+    let context = runtime.load_context(session_id).await.unwrap();
+    assert_eq!(
+        context
+            .agent
+            .as_ref()
+            .and_then(|a| a.network_access.as_ref())
+            .map(|acl| acl.allowed.clone()),
+        Some(vec!["example.com".to_string()])
+    );
 }
 
 #[tokio::test]
