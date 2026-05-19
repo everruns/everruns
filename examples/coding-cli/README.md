@@ -52,7 +52,12 @@ and OpenAI both do). No capability needed.
   `ANTHROPIC_API_KEY` → Anthropic (`claude-sonnet-4-5`), otherwise falls back
   to `llmsim` (offline). OpenAI is preferred when both keys are present so the
   default model stays `gpt-5.5`.
-- **Slash commands** (TUI): `/help`, `/tools`, `/cwd`, `/model`, `/clear`, `/quit`
+- **Slash commands** (TUI): `/help`, `/tools`, `/cwd`, `/model <provider>/<id>`, `/clear`, `/quit`.
+  Typing `/` opens suggestions; Tab accepts the first suggestion. `/model`
+  with no argument shows the current model and suggested model IDs, while
+  `/model openai/gpt-5.5`, `/model anthropic/claude-sonnet-4-5`, or
+  `/model llmsim/llmsim-coding-cli` changes the active provider/model for
+  subsequent turns. Bare model IDs still target the current provider.
 - **`--print`** one-shot mode for CI smoke tests
 
 ## Install
@@ -94,7 +99,7 @@ doppler run -- ercode -p "Show me the runtime spec."
 Offline (no API key required):
 
 ```bash
-ercode --provider sim -p "hi"
+ercode --provider llmsim -p "hi"
 ```
 
 ## Flags
@@ -102,7 +107,7 @@ ercode --provider sim -p "hi"
 | Flag                       | Description                                                          |
 | -------------------------- | -------------------------------------------------------------------- |
 | `-C, --cwd <PATH>`         | Workspace root (default: current dir)                                |
-| `--provider <P>`           | Force `anthropic`, `openai`, or `sim` (default: env-detected)        |
+| `--provider <P>`           | Force `anthropic`, `openai`, or `llmsim` (default: env-detected)     |
 | `-m, --model <ID>`         | Override the model id for the chosen provider                        |
 | `-p, --print <PROMPT>`     | Run one prompt non-interactively and print the result                |
 | `--ask`                    | Prompt before every destructive tool call (off by default)           |

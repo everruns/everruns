@@ -66,6 +66,52 @@ struct PendingApproval {
     responder: oneshot::Sender<bool>,
 }
 
+#[derive(Clone, Copy)]
+struct CommandSpec {
+    name: &'static str,
+    usage: &'static str,
+    description: &'static str,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct CommandSuggestion {
+    completion: String,
+    label: String,
+}
+
+const COMMANDS: &[CommandSpec] = &[
+    CommandSpec {
+        name: "help",
+        usage: "/help",
+        description: "show commands",
+    },
+    CommandSpec {
+        name: "tools",
+        usage: "/tools",
+        description: "list available tools",
+    },
+    CommandSpec {
+        name: "cwd",
+        usage: "/cwd",
+        description: "show workspace root",
+    },
+    CommandSpec {
+        name: "model",
+        usage: "/model <provider>/<id>",
+        description: "show or change the active provider/model",
+    },
+    CommandSpec {
+        name: "clear",
+        usage: "/clear",
+        description: "clear transcript",
+    },
+    CommandSpec {
+        name: "quit",
+        usage: "/quit",
+        description: "exit",
+    },
+];
+
 pub struct App {
     bundle: Arc<RuntimeBundle>,
     pub lines: Vec<ChatLine>,
@@ -114,7 +160,7 @@ impl App {
             "workspace: {}",
             self.bundle.workspace_root.display()
         ));
-        self.push_system(format!("model: {}", self.bundle.provider_label));
+        self.push_system(format!("model: {}", self.bundle.provider_label()));
         self.push_system(format!("tools: {}", self.bundle.tool_names.join(", ")));
         if !self.bundle.instruction_files.is_empty() {
             self.push_system(format!(
@@ -283,6 +329,11 @@ impl App {
             KeyCode::Backspace => {
                 self.input.pop();
             }
+            KeyCode::Tab => {
+                if let Some(suggestion) = self.suggestions().first() {
+                    self.input = suggestion.completion.clone();
+                }
+            }
             KeyCode::Char(c) => self.input.push(c),
             KeyCode::Enter => {
                 let text = std::mem::take(&mut self.input);
@@ -291,7 +342,7 @@ impl App {
                     return;
                 }
                 if let Some(rest) = text.strip_prefix('/') {
-                    self.handle_command(rest);
+                    self.handle_command(rest).await;
                     return;
                 }
                 self.push_user(text.clone());
@@ -327,12 +378,24 @@ impl App {
         self.last_total_lines.saturating_sub(self.last_chat_height)
     }
 
-    fn handle_command(&mut self, cmd: &str) {
-        let parts: Vec<&str> = cmd.splitn(2, ' ').collect();
-        let head = parts[0];
+    fn suggestions(&self) -> Vec<CommandSuggestion> {
+        command_suggestions(&self.input, self.bundle.model_suggestions())
+    }
+
+    async fn handle_command(&mut self, cmd: &str) {
+        let cmd = cmd.trim();
+        let mut parts = cmd.splitn(2, char::is_whitespace);
+        let head = parts.next().unwrap_or_default();
+        let arg = parts.next().unwrap_or_default().trim();
         match head {
             "help" => {
-                self.push_system("/help · /tools · /cwd · /model · /clear · /quit".into());
+                self.push_system(
+                    COMMANDS
+                        .iter()
+                        .map(|cmd| cmd.usage)
+                        .collect::<Vec<_>>()
+                        .join(" · "),
+                );
                 self.push_system(
                     "scroll: ↑/↓ line · PgUp/PgDn half-page · Home/End top/bottom · mouse wheel"
                         .into(),
@@ -349,7 +412,18 @@ impl App {
                 ));
             }
             "model" => {
-                self.push_system(format!("model: {}", self.bundle.provider_label));
+                if arg.is_empty() {
+                    self.push_system(format!("model: {}", self.bundle.provider_label()));
+                    self.push_system(format!(
+                        "usage: /model <provider>/<id>; suggestions: {}",
+                        self.bundle.model_suggestions().join(", ")
+                    ));
+                } else {
+                    match self.bundle.set_model(arg).await {
+                        Ok(label) => self.push_system(format!("model changed: {label}")),
+                        Err(err) => self.push_system(format!("model change failed: {err}")),
+                    }
+                }
             }
             "clear" => {
                 self.lines.clear();
@@ -461,6 +535,46 @@ impl App {
     }
 }
 
+fn command_suggestions(input: &str, model_suggestions: &[&str]) -> Vec<CommandSuggestion> {
+    let Some(rest) = input.strip_prefix('/') else {
+        return Vec::new();
+    };
+
+    if let Some(model_prefix) = rest.strip_prefix("model ") {
+        return model_suggestions
+            .iter()
+            .filter(|model| model.starts_with(model_prefix.trim_start()))
+            .take(5)
+            .map(|model| CommandSuggestion {
+                completion: format!("/model {model}"),
+                label: format!("/model {model}    change active provider/model"),
+            })
+            .collect();
+    }
+
+    if rest == "model" {
+        return vec![CommandSuggestion {
+            completion: "/model ".to_string(),
+            label: "/model <provider>/<id>    show or change the active provider/model".to_string(),
+        }];
+    }
+
+    COMMANDS
+        .iter()
+        .filter(|cmd| cmd.name.starts_with(rest))
+        .take(5)
+        .map(|cmd| CommandSuggestion {
+            completion: cmd
+                .usage
+                .split_whitespace()
+                .next()
+                .unwrap_or(cmd.usage)
+                .to_string(),
+            label: format!("{}    {}", cmd.usage, cmd.description),
+        })
+        .collect()
+}
+
 // ---------- helpers for surfacing tool results ----------
 
 fn result_value(data: &ToolCompletedData) -> Option<Value> {
@@ -565,12 +679,22 @@ fn first_line(s: &str, max: usize) -> String {
 
 fn draw(f: &mut ratatui::Frame, app: &mut App) {
     let has_approval = app.pending.is_some();
+    let suggestions = if !app.busy && !has_approval {
+        app.suggestions()
+    } else {
+        Vec::new()
+    };
+    let has_suggestions = !suggestions.is_empty();
     let input_height: u16 = 3;
     let approval_height: u16 = if has_approval { 3 } else { 0 };
+    let suggestions_height: u16 = if has_suggestions { 3 } else { 0 };
 
     let mut constraints = vec![Constraint::Min(3)];
     if has_approval {
         constraints.push(Constraint::Length(approval_height));
+    }
+    if has_suggestions {
+        constraints.push(Constraint::Length(suggestions_height));
     }
     constraints.push(Constraint::Length(input_height));
     constraints.push(Constraint::Length(1));
@@ -585,6 +709,10 @@ fn draw(f: &mut ratatui::Frame, app: &mut App) {
     idx += 1;
     if has_approval {
         draw_approval(f, chunks[idx], &*app);
+        idx += 1;
+    }
+    if has_suggestions {
+        draw_suggestions(f, chunks[idx], &suggestions);
         idx += 1;
     }
     draw_input(f, chunks[idx], &*app);
@@ -666,6 +794,22 @@ fn draw_approval(f: &mut ratatui::Frame, area: Rect, app: &App) {
     f.render_widget(para, area);
 }
 
+fn draw_suggestions(f: &mut ratatui::Frame, area: Rect, suggestions: &[CommandSuggestion]) {
+    let text = suggestions
+        .iter()
+        .map(|suggestion| suggestion.label.as_str())
+        .collect::<Vec<_>>()
+        .join("  ·  ");
+    let para = Paragraph::new(text)
+        .style(Style::default().fg(Color::LightBlue))
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(" suggestions (Tab to accept) "),
+        );
+    f.render_widget(para, area);
+}
+
 fn draw_input(f: &mut ratatui::Frame, area: Rect, app: &App) {
     let title = if app.pending.is_some() {
         " approval pending — answer y / n above "
@@ -687,10 +831,57 @@ fn draw_input(f: &mut ratatui::Frame, area: Rect, app: &App) {
 fn draw_status(f: &mut ratatui::Frame, area: Rect, app: &App) {
     let status = format!(
         " {} · {} · {}msgs ",
-        app.bundle.provider_label,
+        app.bundle.provider_label(),
         app.bundle.workspace_root.display(),
         app.lines.len()
     );
     let para = Paragraph::new(Span::styled(status, Style::default().fg(Color::DarkGray)));
     f.render_widget(para, area);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn command_suggestions_list_commands_for_slash() {
+        let suggestions = command_suggestions("/", &["openai/gpt-5.5"]);
+
+        assert!(suggestions.iter().any(|s| s.completion == "/help"));
+        assert!(suggestions.iter().any(|s| s.completion == "/model"));
+    }
+
+    #[test]
+    fn command_suggestions_complete_model_command_before_args() {
+        let suggestions = command_suggestions("/model", &["openai/gpt-5.5"]);
+
+        assert_eq!(
+            suggestions,
+            vec![CommandSuggestion {
+                completion: "/model ".to_string(),
+                label: "/model <provider>/<id>    show or change the active provider/model"
+                    .to_string(),
+            }]
+        );
+    }
+
+    #[test]
+    fn command_suggestions_filter_models_by_prefix() {
+        let suggestions = command_suggestions(
+            "/model openai/gpt-5.",
+            &[
+                "openai/gpt-5.5",
+                "openai/gpt-5.4-mini",
+                "anthropic/claude-sonnet-4-5",
+            ],
+        );
+
+        assert_eq!(
+            suggestions
+                .iter()
+                .map(|s| s.completion.as_str())
+                .collect::<Vec<_>>(),
+            vec!["/model openai/gpt-5.5", "/model openai/gpt-5.4-mini"]
+        );
+    }
 }
