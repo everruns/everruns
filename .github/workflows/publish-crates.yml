@@ -66,6 +66,7 @@ jobs:
 
           workspace = load("Cargo.toml")
           workspace_version = workspace["workspace"]["package"]["version"]
+          workspace_dependencies = workspace["workspace"].get("dependencies", {})
           if workspace_version != expected:
               raise SystemExit(
                   f"Tag version ({expected}) does not match workspace package version ({workspace_version})"
@@ -80,6 +81,15 @@ jobs:
               "crates/runtime/Cargo.toml": [
                   "everruns-core",
               ],
+              "crates/openai/Cargo.toml": [
+                  "everruns-core",
+              ],
+              "crates/anthropic/Cargo.toml": [
+                  "everruns-core",
+              ],
+              "integrations/duckduckgo/Cargo.toml": [
+                  "everruns-core",
+              ],
           }
 
           for manifest_path, dependency_names in dependency_versions.items():
@@ -87,7 +97,15 @@ jobs:
               dependencies = manifest.get("dependencies", {})
               for dependency_name in dependency_names:
                   dependency = dependencies[dependency_name]
-                  version = dependency.get("version") if isinstance(dependency, dict) else dependency
+                  if isinstance(dependency, dict) and dependency.get("workspace"):
+                      workspace_dependency = workspace_dependencies[dependency_name]
+                      version = (
+                          workspace_dependency.get("version")
+                          if isinstance(workspace_dependency, dict)
+                          else workspace_dependency
+                      )
+                  else:
+                      version = dependency.get("version") if isinstance(dependency, dict) else dependency
                   if version != expected:
                       raise SystemExit(
                           f"{manifest_path} dependency {dependency_name} version ({version}) does not match tag ({expected})"
@@ -106,6 +124,9 @@ jobs:
             everruns-openui
             everruns-a2ui
             everruns-core
+            everruns-openai
+            everruns-anthropic
+            everruns-integrations-duckduckgo
             everruns-runtime
           )
 

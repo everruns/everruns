@@ -2128,10 +2128,7 @@ dependencies = [
  "ed25519-dalek",
  "eventsource-stream",
  "everruns-a2ui",
- "everruns-anthropic",
  "everruns-config",
- "everruns-gemini",
- "everruns-openai",
  "everruns-openui",
  "fetchkit",
  "futures",
@@ -2430,6 +2427,25 @@ dependencies = [
  "tonic",
  "tonic-prost",
  "tonic-prost-build",
+ "uuid 1.23.1",
+]
+
+[[package]]
+name = "everruns-llm-tests"
+version = "0.8.31"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "chrono",
+ "everruns-anthropic",
+ "everruns-core",
+ "everruns-gemini",
+ "everruns-openai",
+ "rstest",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
  "uuid 1.23.1",
 ]
 

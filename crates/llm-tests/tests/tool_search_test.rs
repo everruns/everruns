@@ -6,7 +6,7 @@
 // Includes a real GPT-5.4 integration test that exercises tool_search end-to-end.
 //
 // Run all:
-//   cargo test -p everruns-core --test tool_search_test --features llm-tests
+//   cargo test -p everruns-llm-tests --test tool_search_test --features llm-tests
 //
 // Required env vars (tests skip gracefully if missing):
 //   OPENAI_API_KEY

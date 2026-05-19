@@ -14,6 +14,7 @@ concurrency:
 
 permissions:
   contents: read
+  pull-requests: read
 
 env:
   CARGO_TERM_COLOR: always
@@ -491,11 +492,11 @@ jobs:
         # Gemini cases chronically hit 429 `RESOURCE_EXHAUSTED` on the shared
         # CI key regardless of the 2 in-test retries. Skip the `gemini` provider
         # via the existing `SKIP_LLM_INTEGRATION_TESTS_PROVIDERS` hatch in
-        # `crates/core/tests/llm_test_matrix/mod.rs` so CI reflects real
+        # `crates/llm-tests/tests/llm_test_matrix/mod.rs` so CI reflects real
         # regressions, not upstream quota pressure. Revisit when quota is raised.
         env:
           SKIP_LLM_INTEGRATION_TESTS_PROVIDERS: gemini
-        run: cargo test -p everruns-core --test agent_run_basic --test agent_run_with_thinking --all-features
+        run: cargo test -p everruns-llm-tests --test agent_run_basic --test agent_run_with_thinking --all-features
 
   # Build release binaries and upload as artifacts for E2E jobs and openapi-check
   build-binaries:
