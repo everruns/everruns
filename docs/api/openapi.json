@@ -21506,7 +21506,7 @@
       },
       "PaginatedResponse_Session": {
         "type": "object",
-        "description": "Response wrapper for paginated list endpoints.\nIncludes pagination metadata along with the data array.",
+        "description": "Response wrapper for paginated list endpoints.\nIncludes pagination metadata along with the data array.\n\n`next_url` and `prev_url` are populated by the [`decorate_pagination_links`]\nmiddleware after the handler returns, so handlers don't need to thread the\nrequest URL into every construction site.",
         "required": [
           "data",
           "total",
@@ -21824,11 +21824,25 @@
             "description": "Maximum number of items per page.",
             "minimum": 0
           },
+          "next_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Absolute URL for the next page, with `offset` advanced by `limit`. `null` when this is the last page."
+          },
           "offset": {
             "type": "integer",
             "format": "int32",
             "description": "Current offset (starting position).",
             "minimum": 0
+          },
+          "prev_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Absolute URL for the previous page, with `offset` rolled back by `limit`. `null` when this is the first page."
           },
           "total": {
             "type": "integer",
@@ -21840,7 +21854,7 @@
       },
       "PaginatedResponse_WithUrls_CapabilityInfo": {
         "type": "object",
-        "description": "Response wrapper for paginated list endpoints.\nIncludes pagination metadata along with the data array.",
+        "description": "Response wrapper for paginated list endpoints.\nIncludes pagination metadata along with the data array.\n\n`next_url` and `prev_url` are populated by the [`decorate_pagination_links`]\nmiddleware after the handler returns, so handlers don't need to thread the\nrequest URL into every construction site.",
         "required": [
           "data",
           "total",
@@ -21994,11 +22008,25 @@
             "description": "Maximum number of items per page.",
             "minimum": 0
           },
+          "next_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Absolute URL for the next page, with `offset` advanced by `limit`. `null` when this is the last page."
+          },
           "offset": {
             "type": "integer",
             "format": "int32",
             "description": "Current offset (starting position).",
             "minimum": 0
+          },
+          "prev_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Absolute URL for the previous page, with `offset` rolled back by `limit`. `null` when this is the first page."
           },
           "total": {
             "type": "integer",
@@ -22010,7 +22038,7 @@
       },
       "PaginatedResponse_WithUrls_ResourceWithCounts_Agent": {
         "type": "object",
-        "description": "Response wrapper for paginated list endpoints.\nIncludes pagination metadata along with the data array.",
+        "description": "Response wrapper for paginated list endpoints.\nIncludes pagination metadata along with the data array.\n\n`next_url` and `prev_url` are populated by the [`decorate_pagination_links`]\nmiddleware after the handler returns, so handlers don't need to thread the\nrequest URL into every construction site.",
         "required": [
           "data",
           "total",
@@ -22254,11 +22282,25 @@
             "description": "Maximum number of items per page.",
             "minimum": 0
           },
+          "next_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Absolute URL for the next page, with `offset` advanced by `limit`. `null` when this is the last page."
+          },
           "offset": {
             "type": "integer",
             "format": "int32",
             "description": "Current offset (starting position).",
             "minimum": 0
+          },
+          "prev_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Absolute URL for the previous page, with `offset` rolled back by `limit`. `null` when this is the first page."
           },
           "total": {
             "type": "integer",
@@ -22270,7 +22312,7 @@
       },
       "PaginatedResponse_WithUrls_Session": {
         "type": "object",
-        "description": "Response wrapper for paginated list endpoints.\nIncludes pagination metadata along with the data array.",
+        "description": "Response wrapper for paginated list endpoints.\nIncludes pagination metadata along with the data array.\n\n`next_url` and `prev_url` are populated by the [`decorate_pagination_links`]\nmiddleware after the handler returns, so handlers don't need to thread the\nrequest URL into every construction site.",
         "required": [
           "data",
           "total",
@@ -22615,11 +22657,25 @@
             "description": "Maximum number of items per page.",
             "minimum": 0
           },
+          "next_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Absolute URL for the next page, with `offset` advanced by `limit`. `null` when this is the last page."
+          },
           "offset": {
             "type": "integer",
             "format": "int32",
             "description": "Current offset (starting position).",
             "minimum": 0
+          },
+          "prev_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Absolute URL for the previous page, with `offset` rolled back by `limit`. `null` when this is the first page."
           },
           "total": {
             "type": "integer",

@@ -504,6 +504,10 @@ impl<T> From<Vec<T>> for ListResponse<T> {
 
 /// Response wrapper for paginated list endpoints.
 /// Includes pagination metadata along with the data array.
+///
+/// `next_url` and `prev_url` are populated by the [`decorate_pagination_links`]
+/// middleware after the handler returns, so handlers don't need to thread the
+/// request URL into every construction site.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct PaginatedResponse<T> {
     /// Array of items returned by the list operation.
@@ -514,6 +518,12 @@ pub struct PaginatedResponse<T> {
     pub offset: u32,
     /// Maximum number of items per page.
     pub limit: u32,
+    /// Absolute URL for the next page, with `offset` advanced by `limit`. `null` when this is the last page.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_url: Option<String>,
+    /// Absolute URL for the previous page, with `offset` rolled back by `limit`. `null` when this is the first page.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prev_url: Option<String>,
 }
 
 impl<T> PaginatedResponse<T> {
@@ -523,6 +533,8 @@ impl<T> PaginatedResponse<T> {
             total,
             offset,
             limit,
+            next_url: None,
+            prev_url: None,
         }
     }
 }
@@ -637,6 +649,164 @@ pub async fn decorate_json_response_links(
             tracing::warn!(error = %err, "failed to serialize link-decorated JSON response");
             Response::from_parts(parts, Body::from(bytes))
         }
+    }
+}
+
+/// Middleware that adds `next_url` / `prev_url` fields to JSON responses
+/// shaped like [`PaginatedResponse`] (containing `total`, `offset`, `limit`).
+///
+/// Recomputes the navigation URLs from the request path + query each time, so
+/// handlers don't need to know the request URL. The middleware preserves all
+/// other query parameters (filters, search, etc.) and only mutates the
+/// `offset` value. `next_url` is omitted when the current page is the last
+/// page; `prev_url` is omitted when this is the first page.
+pub async fn decorate_pagination_links(builder: UrlBuilder, req: Request, next: Next) -> Response {
+    let uri_path_and_query = req
+        .uri()
+        .path_and_query()
+        .map(|p| p.as_str().to_string())
+        .unwrap_or_else(|| req.uri().path().to_string());
+
+    let response = next.run(req).await;
+    if !response.status().is_success()
+        || !response_is_json(&response)
+        || !response_within_link_decoration_limit(&response)
+    {
+        return response;
+    }
+
+    let (mut parts, body) = response.into_parts();
+    let bytes = match to_bytes(body, LINK_DECORATION_MAX_RESPONSE_BYTES as usize).await {
+        Ok(bytes) => bytes,
+        Err(err) => {
+            tracing::warn!(error = %err, "failed to read JSON response body for pagination links");
+            return ErrorResponse::internal_error().into_response();
+        }
+    };
+    if bytes.is_empty() {
+        return Response::from_parts(parts, Body::from(bytes));
+    }
+
+    let mut value = match serde_json::from_slice::<Value>(&bytes) {
+        Ok(value) => value,
+        Err(_) => return Response::from_parts(parts, Body::from(bytes)),
+    };
+
+    if !inject_pagination_links(&mut value, &builder.api_base, &uri_path_and_query) {
+        return Response::from_parts(parts, Body::from(bytes));
+    }
+
+    match serde_json::to_vec(&value) {
+        Ok(body) => {
+            parts.headers.remove(header::CONTENT_LENGTH);
+            Response::from_parts(parts, Body::from(body))
+        }
+        Err(err) => {
+            tracing::warn!(error = %err, "failed to serialize pagination-decorated JSON response");
+            Response::from_parts(parts, Body::from(bytes))
+        }
+    }
+}
+
+/// Recursively walk `value` and inject `next_url` / `prev_url` on any object
+/// that looks like a paginated response (has `total`, `offset`, and `limit`
+/// numeric fields). Returns `true` if at least one object was decorated.
+fn inject_pagination_links(value: &mut Value, api_base: &str, path_and_query: &str) -> bool {
+    match value {
+        Value::Object(map) => {
+            let total = map.get("total").and_then(Value::as_u64);
+            let offset = map.get("offset").and_then(Value::as_u64);
+            let limit = map.get("limit").and_then(Value::as_u64);
+            let mut changed = false;
+            if let (Some(total), Some(offset), Some(limit)) = (total, offset, limit)
+                && limit > 0
+                && !map.contains_key("next_url")
+                && !map.contains_key("prev_url")
+            {
+                let next = if offset.saturating_add(limit) < total {
+                    Some(build_paginated_url(
+                        api_base,
+                        path_and_query,
+                        offset.saturating_add(limit),
+                    ))
+                } else {
+                    None
+                };
+                let prev = if offset > 0 {
+                    Some(build_paginated_url(
+                        api_base,
+                        path_and_query,
+                        offset.saturating_sub(limit),
+                    ))
+                } else {
+                    None
+                };
+                if let Some(next) = next {
+                    map.insert("next_url".to_string(), Value::String(next));
+                    changed = true;
+                }
+                if let Some(prev) = prev {
+                    map.insert("prev_url".to_string(), Value::String(prev));
+                    changed = true;
+                }
+            }
+            for child in map.values_mut() {
+                changed |= inject_pagination_links(child, api_base, path_and_query);
+            }
+            changed
+        }
+        Value::Array(items) => {
+            let mut changed = false;
+            for item in items {
+                changed |= inject_pagination_links(item, api_base, path_and_query);
+            }
+            changed
+        }
+        _ => false,
+    }
+}
+
+/// Rebuild an absolute URL by replacing or appending the `offset` query
+/// parameter. Other query parameters are preserved verbatim.
+fn build_paginated_url(api_base: &str, path_and_query: &str, new_offset: u64) -> String {
+    let (path, query) = match path_and_query.split_once('?') {
+        Some((p, q)) => (p, Some(q)),
+        None => (path_and_query, None),
+    };
+    let mut rebuilt = String::new();
+    let mut found_offset = false;
+    if let Some(query) = query {
+        for (i, pair) in query.split('&').enumerate() {
+            if i > 0 {
+                rebuilt.push('&');
+            }
+            if let Some((k, _v)) = pair.split_once('=')
+                && k == "offset"
+            {
+                rebuilt.push_str("offset=");
+                rebuilt.push_str(&new_offset.to_string());
+                found_offset = true;
+            } else if pair == "offset" {
+                rebuilt.push_str("offset=");
+                rebuilt.push_str(&new_offset.to_string());
+                found_offset = true;
+            } else {
+                rebuilt.push_str(pair);
+            }
+        }
+    }
+    if !found_offset {
+        if !rebuilt.is_empty() {
+            rebuilt.push('&');
+        }
+        rebuilt.push_str("offset=");
+        rebuilt.push_str(&new_offset.to_string());
+    }
+    let base = api_base.trim_end_matches('/');
+    if rebuilt.is_empty() {
+        format!("{base}{path}")
+    } else {
+        format!("{base}{path}?{rebuilt}")
     }
 }
 
@@ -925,6 +1095,8 @@ impl<T: ResourceUrlable + Serialize> PaginatedResponse<T> {
             total: self.total,
             offset: self.offset,
             limit: self.limit,
+            next_url: self.next_url,
+            prev_url: self.prev_url,
         }
     }
 }
@@ -1266,6 +1438,91 @@ mod tests {
         assert_eq!(parsed["total"], 50);
         assert_eq!(parsed["offset"], 10);
         assert_eq!(parsed["limit"], 5);
+        // next_url / prev_url are absent until the middleware fills them in.
+        assert!(parsed.get("next_url").is_none());
+        assert!(parsed.get("prev_url").is_none());
+    }
+
+    #[test]
+    fn inject_pagination_links_adds_next_and_prev_on_middle_page() {
+        let api_base = "https://api.example/api";
+        let mut value =
+            serde_json::json!({"data": [1,2,3], "total": 100, "offset": 20, "limit": 10});
+        let changed =
+            inject_pagination_links(&mut value, api_base, "/v1/agents?offset=20&limit=10");
+        assert!(changed);
+        assert_eq!(
+            value["next_url"],
+            "https://api.example/api/v1/agents?offset=30&limit=10"
+        );
+        assert_eq!(
+            value["prev_url"],
+            "https://api.example/api/v1/agents?offset=10&limit=10"
+        );
+    }
+
+    #[test]
+    fn inject_pagination_links_omits_next_on_last_page() {
+        let mut value = serde_json::json!({"data": [], "total": 25, "offset": 20, "limit": 10});
+        let changed = inject_pagination_links(
+            &mut value,
+            "https://api.example/api",
+            "/v1/agents?offset=20&limit=10",
+        );
+        assert!(changed);
+        assert!(value.get("next_url").is_none());
+        assert!(value.get("prev_url").is_some());
+    }
+
+    #[test]
+    fn inject_pagination_links_omits_prev_on_first_page() {
+        let mut value = serde_json::json!({"data": [], "total": 25, "offset": 0, "limit": 10});
+        let changed = inject_pagination_links(
+            &mut value,
+            "https://api.example/api",
+            "/v1/agents?offset=0&limit=10",
+        );
+        assert!(changed);
+        assert!(value.get("next_url").is_some());
+        assert!(value.get("prev_url").is_none());
+    }
+
+    #[test]
+    fn inject_pagination_links_preserves_other_query_params() {
+        let mut value = serde_json::json!({"data": [], "total": 100, "offset": 10, "limit": 10});
+        let changed = inject_pagination_links(
+            &mut value,
+            "https://api.example/api",
+            "/v1/agents?search=foo&offset=10&limit=10&include_archived=true",
+        );
+        assert!(changed);
+        assert_eq!(
+            value["next_url"],
+            "https://api.example/api/v1/agents?search=foo&offset=20&limit=10&include_archived=true"
+        );
+    }
+
+    #[test]
+    fn inject_pagination_links_appends_offset_when_missing_from_query() {
+        let mut value = serde_json::json!({"data": [], "total": 100, "offset": 0, "limit": 10});
+        let changed = inject_pagination_links(
+            &mut value,
+            "https://api.example/api",
+            "/v1/agents?search=foo",
+        );
+        assert!(changed);
+        assert_eq!(
+            value["next_url"],
+            "https://api.example/api/v1/agents?search=foo&offset=10"
+        );
+    }
+
+    #[test]
+    fn inject_pagination_links_skips_objects_without_pagination_fields() {
+        let mut value = serde_json::json!({"data": [1,2,3]});
+        let changed = inject_pagination_links(&mut value, "https://x", "/y");
+        assert!(!changed);
+        assert!(value.get("next_url").is_none());
     }
 
     #[test]

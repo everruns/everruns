@@ -1189,9 +1189,18 @@ impl ServerAppBuilder {
         // TM-DOS: Global per-IP API rate limiting (applied to API routes only,
         // not /health or /metrics). Set RATE_LIMIT_API_REQUESTS_PER_MINUTE=0 to disable.
         let link_builder = api::common::UrlBuilder::from_auth_config(&auth_state.config);
+        let pagination_builder = link_builder.clone();
         let api_routes = api_routes.layer(axum::middleware::from_fn(move |req, next| {
             let link_builder = link_builder.clone();
             api::common::decorate_json_response_links(link_builder, req, next)
+        }));
+
+        // AI-friendly: add `next_url` / `prev_url` to paginated list responses.
+        // Layered after entity-link decoration so both can run; only mutates
+        // objects shaped like PaginatedResponse.
+        let api_routes = api_routes.layer(axum::middleware::from_fn(move |req, next| {
+            let builder = pagination_builder.clone();
+            api::common::decorate_pagination_links(builder, req, next)
         }));
 
         // RFC 9457: rewrite Content-Type on JSON error responses (4xx/5xx) to
