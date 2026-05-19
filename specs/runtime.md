@@ -95,6 +95,12 @@ These APIs own phase-local orchestration, atom wiring, dependency blocker
 handling, lifecycle event emission, and generic turn-strategy planning for
 server-backed hosts.
 
+`InProcessRuntime` implements `RuntimeHostAdapter` and drives its own turn
+loop by calling these activity functions directly. Atom construction lives
+in one place — host-side — so any improvement (tool-registry caching,
+error semantics, hook ordering) flows to both embedded and durable hosts
+automatically.
+
 Host planning APIs:
 
 - `RuntimeTurnState`
