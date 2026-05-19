@@ -62,7 +62,7 @@ similar = "2"
 url = "2"
 
 # Web fetching
-fetchkit = { version = "0.3.0", features = ["bot-auth"] }
+fetchkit = { version = "0.2.0", features = ["bot-auth"] }
 
 # Ed25519 key derivation (bot-auth public key registration)
 ed25519-dalek = { version = "2", features = ["rand_core"] }
