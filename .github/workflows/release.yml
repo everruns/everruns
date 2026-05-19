@@ -145,7 +145,11 @@ jobs:
         run: |
           TAG="v${{ steps.version.outputs.version }}"
           echo "Triggering crates.io publish for tag $TAG..."
-          gh workflow run publish-crates.yml --ref "$TAG" -f "tag=$TAG"
+          gh api "repos/${{ github.repository }}/dispatches" \
+            --method POST \
+            --field event_type=publish-crates \
+            --field "client_payload[tag]=$TAG" \
+            --field "client_payload[sha]=${{ github.sha }}"
           echo "crates.io publish triggered for $TAG"
 
       - name: Trigger server & worker binary builds for release tag
