@@ -1019,7 +1019,10 @@ async fn create_auto_snapshot_from_agent(
             .await
         {
             Ok(version) => return Ok(version),
-            Err(CommandError::Conflict(message)) => {
+            Err(CommandError {
+                kind: CommandErrorKind::Conflict(message),
+                ..
+            }) => {
                 last_conflict = Some(message);
             }
             Err(error) => return Err(error),
@@ -1781,7 +1784,13 @@ mod tests {
         .expect_err("manual publish cannot use automatic change kind");
 
         assert!(
-            matches!(err, CommandError::BadRequest(_)),
+            matches!(
+                err,
+                CommandError {
+                    kind: CommandErrorKind::BadRequest(_),
+                    ..
+                }
+            ),
             "expected BadRequest, got {err:?}"
         );
     }
@@ -1819,7 +1828,13 @@ mod tests {
         .expect_err("draft snapshot cannot become default");
 
         assert!(
-            matches!(err, CommandError::BadRequest(_)),
+            matches!(
+                err,
+                CommandError {
+                    kind: CommandErrorKind::BadRequest(_),
+                    ..
+                }
+            ),
             "expected BadRequest, got {err:?}"
         );
     }

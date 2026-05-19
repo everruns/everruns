@@ -349,32 +349,40 @@ impl HealthResponse {
 pub struct WorkerResponse {
     /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: String,
+    /// Logical group this worker belongs to (used for routing). `None` for ungrouped workers.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub worker_group: Option<String>,
+    /// Activity types this worker accepts. Tasks with other activity types skip this worker.
     pub activity_types: Vec<String>,
+    /// Maximum number of tasks the worker will run concurrently.
     pub max_concurrency: u32,
+    /// Number of tasks currently executing on this worker.
     pub current_load: u32,
-    /// Current lifecycle status.
+    /// Current lifecycle status (`running`, `draining`, `stopped`, etc.).
     pub status: String,
+    /// Whether the worker is currently accepting new task assignments. Disabled briefly during drains or backpressure.
     pub accepting_tasks: bool,
+    /// Human-readable reason the worker is rejecting tasks, when `accepting_tasks` is `false`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub backpressure_reason: Option<String>,
-    /// Timestamp when this resource started, if any (RFC 3339).
+    /// Timestamp when this worker started accepting tasks (RFC 3339).
     pub started_at: DateTime<Utc>,
+    /// Timestamp of the most recent heartbeat from this worker (RFC 3339).
     pub last_heartbeat_at: DateTime<Utc>,
+    /// Hostname / pod name the worker is running on. Operator hint; not used for routing.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hostname: Option<String>,
+    /// Build version of the worker binary.
     #[serde(skip_serializing_if = "Option::is_none")]
-    /// Version number of this resource.
     pub version: Option<String>,
+    /// Free-form worker-reported metadata (deployment, capabilities flag set, etc.).
     #[serde(skip_serializing_if = "Option::is_none")]
-    /// Free-form metadata attached to this resource.
     pub metadata: Option<serde_json::Value>,
-    /// Total tasks completed by this worker
+    /// Total tasks this worker has completed successfully.
     pub tasks_completed: u64,
-    /// Total tasks failed by this worker
+    /// Total tasks this worker has failed (including retries that were ultimately abandoned).
     pub tasks_failed: u64,
-    /// Average task duration in milliseconds
+    /// Average task duration in milliseconds across recent activity.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub avg_task_duration_ms: Option<u64>,
 }
@@ -512,22 +520,30 @@ pub struct WorkflowEventsListResponse {
 pub struct TaskResponse {
     /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: Uuid,
+    /// Owning workflow's identifier. `None` for one-off tasks not tied to a workflow.
     #[serde(skip_serializing_if = "Option::is_none")]
-    /// Durable workflow's identifier.
     pub workflow_id: Option<Uuid>,
+    /// Stable per-workflow activity ID (used for deduplication within a workflow run).
     pub activity_id: String,
+    /// Activity type name, used by workers to route the task.
     pub activity_type: String,
-    /// Current lifecycle status.
+    /// Current lifecycle status (`pending`, `claimed`, `completed`, `failed`, `dead`, `cancelled`).
     pub status: String,
+    /// Priority; higher values run first within the same activity type.
     pub priority: i32,
+    /// Attempt counter. `0` before the task has ever been claimed; incremented to `1` on the first claim and once more per retry.
     pub attempt: u32,
+    /// Maximum number of attempts before the task is sent to the DLQ.
     pub max_attempts: u32,
+    /// Worker ID that holds the current claim; `None` if pending or terminal.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub claimed_by: Option<String>,
+    /// Last error message recorded by the worker; `None` if the task has never failed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_error: Option<String>,
-    /// Timestamp when this resource was created (RFC 3339).
+    /// Timestamp when this task was enqueued (RFC 3339).
     pub created_at: DateTime<Utc>,
+    /// Timestamp when this task was last claimed by a worker (RFC 3339). `None` if never claimed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub claimed_at: Option<DateTime<Utc>>,
 }
@@ -574,16 +590,24 @@ pub struct TasksListResponse {
 pub struct DlqEntryResponse {
     /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: Uuid,
+    /// Task ID that was originally retried and ultimately failed (matches the `tasks` record before its move to the DLQ).
     pub original_task_id: Uuid,
+    /// Owning workflow's identifier, if the task was part of one.
     #[serde(skip_serializing_if = "Option::is_none")]
-    /// Durable workflow's identifier.
     pub workflow_id: Option<Uuid>,
+    /// Per-workflow activity ID of the failed task.
     pub activity_id: String,
+    /// Activity type name of the failed task.
     pub activity_type: String,
+    /// Task input payload at the time of failure (used for inspection and replay).
     pub input: serde_json::Value,
+    /// Number of attempts made before the task was sent to the DLQ.
     pub attempts: u32,
+    /// Most recent error message (the one that pushed the task to the DLQ).
     pub last_error: String,
+    /// Full ordered history of error messages, one per attempt.
     pub error_history: Vec<String>,
+    /// Timestamp when the task was moved to the DLQ (RFC 3339).
     pub dead_at: DateTime<Utc>,
 }
 
@@ -616,17 +640,24 @@ pub struct DlqListResponse {
 /// Circuit breaker response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct CircuitBreakerResponse {
+    /// Stable key identifying the dependency the breaker guards (e.g. provider URL or activity type).
     pub key: String,
+    /// Current breaker state (`closed`, `open`, or `half_open`).
     pub state: String,
+    /// Count of consecutive failures observed within the current rolling window.
     pub failure_count: u32,
+    /// Count of consecutive successes observed within the current rolling window.
     pub success_count: u32,
+    /// Timestamp of the most recent failure recorded against this breaker (RFC 3339).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_failure_at: Option<DateTime<Utc>>,
+    /// Timestamp the breaker last transitioned to `open` (RFC 3339).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub opened_at: Option<DateTime<Utc>>,
+    /// Timestamp the breaker is eligible to transition to `half_open` and probe again (RFC 3339).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub half_open_at: Option<DateTime<Utc>>,
-    /// Timestamp when this resource was last updated (RFC 3339).
+    /// Timestamp when this breaker state was last updated (RFC 3339).
     pub updated_at: DateTime<Utc>,
 }
 
@@ -663,23 +694,33 @@ pub struct CircuitBreakersListResponse {
 /// Single metrics data point
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct MetricsPoint {
+    /// Sampling timestamp for this data point (RFC 3339).
     pub timestamp: DateTime<Utc>,
-    // Workflow gauges
+    /// Number of workflows currently executing (gauge).
     pub running_workflows: usize,
+    /// Number of workflows waiting to be claimed by a worker (gauge).
     pub pending_workflows: usize,
-    // Task gauges
+    /// Number of tasks waiting to be claimed by a worker (gauge).
     pub pending_tasks: usize,
+    /// Number of tasks currently claimed by a worker (gauge).
     pub claimed_tasks: usize,
-    // System gauges
+    /// Number of workers actively heartbeating (gauge).
     pub active_workers: usize,
+    /// Aggregate worker load as a percentage of total `max_concurrency` (0.0-100.0).
     pub load_percentage: f64,
+    /// Size of the dead-letter queue (gauge).
     pub dlq_size: usize,
-    // Cumulative totals (for computing deltas / rates on frontend)
+    /// Cumulative count of tasks completed successfully since process start (monotonic counter).
     pub tasks_completed_total: u64,
+    /// Cumulative count of tasks that failed or were sent to the DLQ (monotonic counter).
     pub tasks_failed_total: u64,
+    /// Cumulative count of tasks claimed at least once (monotonic counter).
     pub tasks_started_total: u64,
+    /// Cumulative count of workflows that completed successfully (monotonic counter).
     pub workflows_completed_total: u64,
+    /// Cumulative count of workflows that ended in failure (monotonic counter).
     pub workflows_failed_total: u64,
+    /// Cumulative count of workflows that started (monotonic counter).
     pub workflows_started_total: u64,
 }
 

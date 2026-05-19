@@ -16,7 +16,7 @@ use utoipa::OpenApi;
 /// Lowest acceptable coverage. Bump up when you fix a batch.
 const MIN_OP_DESC_PCT: u32 = 100;
 const MIN_SCHEMA_DESC_PCT: u32 = 88;
-const MIN_FIELD_DESC_PCT: u32 = 58;
+const MIN_FIELD_DESC_PCT: u32 = 67;
 
 fn spec_value() -> serde_json::Value {
     serde_json::from_str(&ApiDoc::openapi().to_pretty_json().unwrap())

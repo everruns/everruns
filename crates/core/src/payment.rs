@@ -141,58 +141,101 @@ impl From<&str> for PaymentStatus {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct PaymentAccount {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: PaymentAccountId,
+    /// Owning organization's prefixed public identifier.
     pub organization_id: String,
+    /// Principal class that owns this account (user, agent identity, or organization).
     pub owner_type: PaymentOwnerType,
+    /// Prefixed identifier of the owning principal (e.g. `user_…`, `agent_…`, `org_…`).
     pub owner_id: String,
+    /// Settlement rail this account operates on.
     pub rail: PaymentRail,
+    /// Human-readable label for this account. Safe to render in user-facing messages.
     pub label: String,
+    /// Public address on the rail (chain address, account number, etc.). Optional; `None` until provisioning completes.
     pub public_address: Option<String>,
+    /// Current lifecycle status of this account.
     pub status: PaymentStatus,
+    /// Free-form metadata attached to this account (caller-defined; opaque to the platform).
     pub metadata: serde_json::Value,
+    /// Timestamp when this account was created (RFC 3339).
     pub created_at: DateTime<Utc>,
+    /// Timestamp when this account was last updated (RFC 3339).
     pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct PaymentPolicy {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: PaymentPolicyId,
+    /// Owning organization's prefixed public identifier.
     pub organization_id: String,
+    /// Payment account this policy authorizes spending from.
     pub payment_account_id: PaymentAccountId,
+    /// Class of subject this policy binds to (e.g. `agent_identity`, `session`).
     pub subject_type: String,
+    /// Prefixed identifier of the bound subject.
     pub subject_id: String,
+    /// Capability IDs this policy permits paid calls for. Empty list means no capability gating.
     pub allowed_capabilities: Vec<String>,
+    /// HTTP host allowlist for paid outbound calls. Empty list means no host gating.
     pub allowed_hosts: Vec<String>,
+    /// Preferred settlement rails in priority order; the authority picks the first available.
     pub rail_preference: Vec<PaymentRail>,
+    /// Maximum amount (USD) any single paid request may settle for. **Enforced** by the payment authority at policy selection. `None` means no per-request cap.
     pub max_amount_usd_per_request: Option<f64>,
+    /// Maximum cumulative amount (USD) per agent turn. **Advisory only — not yet enforced.** Stored on the policy for forward compatibility; the payment authority currently checks only `max_amount_usd_per_request`. `None` means no per-turn cap.
     pub max_amount_usd_per_turn: Option<f64>,
+    /// Maximum cumulative amount (USD) per UTC day. **Advisory only — not yet enforced.** Stored on the policy for forward compatibility; the payment authority currently checks only `max_amount_usd_per_request`. `None` means no per-day cap.
     pub max_amount_usd_per_day: Option<f64>,
+    /// Threshold (USD) above which a request would require explicit human approval. **Advisory only — not yet enforced.** Stored on the policy for forward compatibility; no approval gate is wired up yet. `None` disables the (future) gate.
     pub require_approval_above_usd: Option<f64>,
+    /// Current lifecycle status of this policy.
     pub status: PaymentStatus,
+    /// Free-form metadata attached to this policy.
     pub metadata: serde_json::Value,
+    /// Timestamp when this policy was created (RFC 3339).
     pub created_at: DateTime<Utc>,
+    /// Timestamp when this policy was last updated (RFC 3339).
     pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct PaymentAttempt {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     pub id: PaymentAttemptId,
+    /// Owning organization's prefixed public identifier.
     pub organization_id: String,
+    /// Payment account that settled (or attempted to settle) this attempt. `None` if no account could be resolved.
     pub payment_account_id: Option<PaymentAccountId>,
+    /// Session that initiated the paid call, if any.
     pub session_id: Option<String>,
+    /// Capability ID that originated this paid call.
     pub capability: String,
+    /// Capability-specific operation name that originated this paid call.
     pub operation: String,
+    /// Settlement rail actually used. `None` if the attempt failed before rail selection.
     pub rail: Option<PaymentRail>,
+    /// Amount actually charged (USD).
     pub amount_usd: f64,
+    /// ISO 4217 currency code for the charge (typically `USD`).
     pub currency: String,
+    /// Destination URL of the paid outbound call.
     pub target_url: String,
+    /// Stable hash of the outbound request used to detect replays. `None` when not applicable.
     pub request_hash: Option<String>,
+    /// Current lifecycle status of this attempt.
     pub status: PaymentStatus,
+    /// Human-readable error message when `status` is `failed`; `None` otherwise.
     pub error_message: Option<String>,
+    /// Rail-specific receipt payload (transaction id, block reference, signature, etc.).
     pub receipt: serde_json::Value,
+    /// Timestamp when this attempt was created (RFC 3339).
     pub created_at: DateTime<Utc>,
+    /// Timestamp when this attempt was last updated (RFC 3339).
     pub updated_at: DateTime<Utc>,
 }
 
