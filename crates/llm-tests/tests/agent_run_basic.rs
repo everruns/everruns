@@ -5,10 +5,10 @@
 // automatically cover it.
 //
 // Run all:
-//   cargo test -p everruns-core --test agent_run_basic
+//   cargo test -p everruns-llm-tests --test agent_run_basic
 //
 // Run single provider:
-//   cargo test -p everruns-core --test agent_run_basic -- anthropic
+//   cargo test -p everruns-llm-tests --test agent_run_basic -- anthropic
 //
 // Required env vars (tests skip gracefully if missing):
 //   ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY
