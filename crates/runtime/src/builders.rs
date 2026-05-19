@@ -640,7 +640,9 @@ impl SingleSessionBuilder {
     /// Configure the seeded harness.
     pub fn harness(mut self, name: impl Into<String>, system_prompt: impl Into<String>) -> Self {
         let harness_id = self.harness.harness_id();
-        self.harness = HarnessBuilder::new(name, system_prompt).id(harness_id);
+        self.harness.id = harness_id;
+        self.harness.name = name.into();
+        self.harness.system_prompt = system_prompt.into();
         self.session = self.session.harness(harness_id);
         self
     }
@@ -648,7 +650,9 @@ impl SingleSessionBuilder {
     /// Configure the seeded agent.
     pub fn agent(mut self, name: impl Into<String>, system_prompt: impl Into<String>) -> Self {
         let agent_id = self.agent.agent_id();
-        self.agent = AgentBuilder::new(name, system_prompt).id(agent_id);
+        self.agent.id = agent_id;
+        self.agent.name = name.into();
+        self.agent.system_prompt = system_prompt.into();
         self.session = self.session.agent(agent_id);
         self
     }
