@@ -42,12 +42,13 @@ Fix root cause. Unsure: read more code; if stuck, ask w/ short options. Unrecogn
 
 ### Branch Base
 
-Always make sure you are working on top of latest main from remote.
+Start from latest main by default.
 
 - Start by syncing: `git fetch origin main`
 - Branch or rebase onto `origin/main` before edits, especially before shipping
 - In worktrees, do not assume `HEAD` tracks a branch; verify with `git status --branch` or `git worktree list`
 - **After every rebase**, check `crates/server/migrations/` for duplicate version numbers. Migrations are the most common conflict source — multiple branches often add the next sequential number. Renumber your migration to the next available number if a conflict exists. See [`specs/migrations.md`](specs/migrations.md) for the full migration process.
+- Before merge, prefer rebasing onto latest `origin/main`. It is acceptable to merge without the latest rebase when avoiding another CI cycle is more valuable and migration risk is absent: check that neither `origin/main` nor the PR changed `crates/server/migrations/` since their merge base. If either side changed migrations, rebase and run `bash scripts/lib/check-migration-ordering.sh`. If merging without latest rebase, monitor main CI after merge and fix any regression immediately.
 
 ### Principles
 
@@ -184,7 +185,7 @@ behavioral change. See `docs/sre/environment-variables.md` for `NATS_URL` detail
 
 #### Worktrees
 
-Always make sure you are working on top of latest main from remote.
+Start worktrees from latest main by default.
 
 Worktrees are often detached or stale. Before making changes, start from the latest remote base:
 
@@ -237,6 +238,20 @@ cd apps/ui
 
 If checks fail, auto-fix with `just fmt`, then re-run `just pre-push`.
 
+### CI Opt-Out Labels
+
+Long CI jobs can be skipped on interim PR pushes with temporary labels:
+
+- `ci:skip-docker` skips PR Docker image builds.
+- `ci:skip-slow-rust` skips PostgreSQL integration tests, release binary builds, workflow tests, CLI E2E, OpenAPI freshness, and dependent SDK checks.
+- `ci:skip-postgres-integration` skips only the main PostgreSQL integration test job.
+- `ci:skip-sdk-compat` skips SDK compatibility checks only.
+- `ci:skip-ui-e2e` skips Playwright smoke tests; UI build/lint/unit tests still run.
+- `ci:skip-docs-notebooks` skips executable docs notebooks; docs check/build still run.
+- `ci:skip-integration-workflows` skips the standalone PR integration workflows for Brave Search, DuckDuckGo, and Parallel MCP.
+
+CI is slow enough that reducing unnecessary cycles matters. Use these labels to save iteration time after deciding the skipped surface is low-signal for the current push. The `CI Opt-Out Policy` job fails only when an opt-out label suppresses CI affected by the PR diff. Before merge, remove any CI opt-out label that blocks affected checks and rerun CI on the final PR commit so the affected checks run green.
+
 ### Shipping
 
 "Ship" means: achieve the requested goal, produce enough evidence that it works, perform a structured security review, create a mergeable PR, address every review comment, and merge only after CI is green.
@@ -259,7 +274,7 @@ Use the smallest set that gives high confidence. `/ship` should pick from this m
 4. `npm run lint` and `npm run build` in `apps/ui/` for UI changes
 5. `./scripts/export-openapi.sh` when API surface changes
 6. `npm run build` in `apps/docs/` when docs change
-7. `git fetch origin main && git rebase origin/main` before merge
+7. Prefer `git fetch origin main && git rebase origin/main` before merge; if skipping the final rebase, verify no migration changes exist on either side since the merge base and monitor main CI after merge
 8. Smoke test impacted flows in `just start-dev` or `just start-all` as risk dictates
 9. Review performance impact: indexes, scans, N+1 patterns, pagination, and bounded result sets
 10. Capture UI screenshots for UI changes in validation or PR comments only

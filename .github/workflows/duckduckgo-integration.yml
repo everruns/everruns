@@ -7,6 +7,7 @@ on:
       - 'integrations/duckduckgo/**'
   pull_request:
     branches: [main]
+    types: [opened, reopened, synchronize, labeled, unlabeled]
     paths:
       - 'integrations/duckduckgo/**'
 
@@ -26,6 +27,7 @@ jobs:
   integration-test:
     name: DuckDuckGo API Tests
     runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || (((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'ci:skip-integration-workflows') && !contains(github.event.pull_request.labels.*.name, 'ci:skip-integration-workflows'))
     timeout-minutes: 5
 
     steps:

@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    types: [opened, reopened, synchronize, labeled, unlabeled]
 
 # Cancel in-progress runs for the same PR/branch on new pushes.
 # On main, let every run finish so merged commits aren't silently skipped.
@@ -27,6 +28,7 @@ jobs:
     name: Detect Changes
     runs-on: ubuntu-latest
     outputs:
+      run_ci: ${{ steps.ci_event.outputs.run_ci }}
       rust: ${{ steps.core_filter.outputs.rust }}
       daytona: ${{ steps.live_filter.outputs.daytona }}
       deno: ${{ steps.live_filter.outputs.deno }}
@@ -39,8 +41,69 @@ jobs:
       docs: ${{ steps.core_filter.outputs.docs }}
       docs_notebooks: ${{ steps.core_filter.outputs.docs_notebooks }}
       docker: ${{ steps.core_filter.outputs.docker }}
+      brave_search_integration: ${{ steps.core_filter.outputs.brave_search_integration }}
+      duckduckgo_integration: ${{ steps.core_filter.outputs.duckduckgo_integration }}
+      parallel_integration: ${{ steps.core_filter.outputs.parallel_integration }}
+      skip_slow_rust: ${{ steps.ci_opt_outs.outputs.skip_slow_rust }}
+      skip_postgres_integration: ${{ steps.ci_opt_outs.outputs.skip_postgres_integration }}
+      skip_sdk_compat: ${{ steps.ci_opt_outs.outputs.skip_sdk_compat }}
+      skip_ui_e2e: ${{ steps.ci_opt_outs.outputs.skip_ui_e2e }}
+      skip_docs_notebooks: ${{ steps.ci_opt_outs.outputs.skip_docs_notebooks }}
+      skip_docker: ${{ steps.ci_opt_outs.outputs.skip_docker }}
+      skip_integration_workflows: ${{ steps.ci_opt_outs.outputs.skip_integration_workflows }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Resolve CI event gate
+        id: ci_event
+        env:
+          EVENT_ACTION: ${{ github.event.action }}
+          LABEL_NAME: ${{ github.event.label.name }}
+        run: |
+          set -euo pipefail
+
+          if [ "${GITHUB_EVENT_NAME}" = "pull_request" ] && \
+             { [ "${EVENT_ACTION}" = "labeled" ] || [ "${EVENT_ACTION}" = "unlabeled" ]; }; then
+            case "${LABEL_NAME}" in
+              ci:skip-docker|ci:skip-slow-rust|ci:skip-postgres-integration|ci:skip-sdk-compat|ci:skip-ui-e2e|ci:skip-docs-notebooks|ci:skip-integration-workflows)
+                echo "run_ci=true" >> "$GITHUB_OUTPUT"
+                ;;
+              *)
+                echo "run_ci=false" >> "$GITHUB_OUTPUT"
+                ;;
+            esac
+          else
+            echo "run_ci=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Resolve CI opt-out labels
+        id: ci_opt_outs
+        env:
+          LABELS_JSON: ${{ toJson(github.event.pull_request.labels.*.name) }}
+        run: |
+          set -euo pipefail
+
+          has_label() {
+            [[ "$LABELS_JSON" == *"\"$1\""* ]]
+          }
+
+          set_output() {
+            local name="$1"
+            local label="$2"
+            if has_label "$label"; then
+              echo "$name=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "$name=false" >> "$GITHUB_OUTPUT"
+            fi
+          }
+
+          set_output skip_slow_rust "ci:skip-slow-rust"
+          set_output skip_postgres_integration "ci:skip-postgres-integration"
+          set_output skip_sdk_compat "ci:skip-sdk-compat"
+          set_output skip_ui_e2e "ci:skip-ui-e2e"
+          set_output skip_docs_notebooks "ci:skip-docs-notebooks"
+          set_output skip_docker "ci:skip-docker"
+          set_output skip_integration_workflows "ci:skip-integration-workflows"
 
       - uses: dorny/paths-filter@v3
         id: core_filter
@@ -88,6 +151,12 @@ jobs:
               - '.dockerignore'
               - '.github/workflows/ci.yml'
               - '.github/workflows/docker-publish.yml'
+            brave_search_integration:
+              - 'integrations/brave-search/**'
+            duckduckgo_integration:
+              - 'integrations/duckduckgo/**'
+            parallel_integration:
+              - 'integrations/parallel/**'
 
       # Exclusion filters need `predicate-quantifier: every`; with the default
       # `some`, a rule like `!integrations/foo/**/*.md` matches almost every
@@ -122,7 +191,7 @@ jobs:
     name: Format Check
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.rust == 'true'
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -138,7 +207,7 @@ jobs:
     name: Lockfile Check
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.rust == 'true'
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -151,7 +220,8 @@ jobs:
   migration-immutability:
     name: Migration Immutability
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true' && github.event_name == 'pull_request'
 
     steps:
       - uses: actions/checkout@v4
@@ -165,7 +235,7 @@ jobs:
     name: Clippy Lints
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.rust == 'true'
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
 
     steps:
       - uses: actions/checkout@v4
@@ -189,7 +259,7 @@ jobs:
     name: Unit Tests (Pure)
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.rust == 'true'
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
 
     steps:
       - uses: actions/checkout@v4
@@ -225,7 +295,7 @@ jobs:
     name: Worker Tests (Durable Execution)
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.rust == 'true'
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
 
     steps:
       - uses: actions/checkout@v4
@@ -245,7 +315,7 @@ jobs:
     name: Shell Tests (Repo Scripts)
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.shell == 'true'
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.shell == 'true'
 
     steps:
       - uses: actions/checkout@v4
@@ -281,7 +351,7 @@ jobs:
     name: Daytona Live API Tests
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.daytona == 'true' && github.event_name == 'push'
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.daytona == 'true' && github.event_name == 'push'
     timeout-minutes: 10
 
     steps:
@@ -306,7 +376,7 @@ jobs:
     name: Browserless Live API Tests
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.browserless == 'true' && github.event_name == 'push'
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.browserless == 'true' && github.event_name == 'push'
     timeout-minutes: 10
 
     steps:
@@ -331,7 +401,7 @@ jobs:
     name: E2B Live API Tests
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.e2b == 'true' && github.event_name == 'push'
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.e2b == 'true' && github.event_name == 'push'
     timeout-minutes: 10
 
     steps:
@@ -356,7 +426,7 @@ jobs:
     name: Deno Live API Tests
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.deno == 'true' && github.event_name == 'push'
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.deno == 'true' && github.event_name == 'push'
     timeout-minutes: 10
     env:
       DENO_SANDBOX_REGION: ams
@@ -384,7 +454,7 @@ jobs:
     name: Integration Tests (PostgreSQL)
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.rust == 'true'
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true' && needs.changes.outputs.skip_slow_rust != 'true' && needs.changes.outputs.skip_postgres_integration != 'true'
     services:
       postgres:
         image: postgres:17-alpine
@@ -501,7 +571,7 @@ jobs:
     name: Build Release Binaries
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.rust == 'true'
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true' && needs.changes.outputs.skip_slow_rust != 'true'
 
     steps:
       - uses: actions/checkout@v4
@@ -548,7 +618,10 @@ jobs:
   workflow-test:
     name: Workflow Tests (Server + Worker)
     runs-on: ubuntu-latest
-    needs: build-binaries
+    needs:
+      - changes
+      - build-binaries
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true' && needs.changes.outputs.skip_slow_rust != 'true'
     services:
       postgres:
         image: postgres:17-alpine
@@ -673,7 +746,10 @@ jobs:
   cli-e2e-test:
     name: CLI E2E Tests
     runs-on: ubuntu-latest
-    needs: build-binaries
+    needs:
+      - changes
+      - build-binaries
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true' && needs.changes.outputs.skip_slow_rust != 'true'
     timeout-minutes: 10
 
     env:
@@ -737,7 +813,7 @@ jobs:
     name: SDK Compat Matrix
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.sdk_compat == 'true'
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.sdk_compat == 'true' && needs.changes.outputs.skip_sdk_compat != 'true' && needs.changes.outputs.skip_slow_rust != 'true'
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
@@ -754,7 +830,7 @@ jobs:
       - changes
       - build-binaries
       - sdk-compat-matrix
-    if: needs.changes.outputs.sdk_compat == 'true'
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.sdk_compat == 'true' && needs.changes.outputs.skip_sdk_compat != 'true' && needs.changes.outputs.skip_slow_rust != 'true'
     timeout-minutes: 20
     strategy:
       fail-fast: false
@@ -831,7 +907,10 @@ jobs:
   openapi-check:
     name: OpenAPI Spec Freshness
     runs-on: ubuntu-latest
-    needs: build-binaries
+    needs:
+      - changes
+      - build-binaries
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true' && needs.changes.outputs.skip_slow_rust != 'true'
 
     steps:
       - uses: actions/checkout@v4
@@ -866,7 +945,7 @@ jobs:
     name: UI Build, Lint & Test
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.ui == 'true'
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.ui == 'true'
 
     defaults:
       run:
@@ -913,7 +992,7 @@ jobs:
     name: UI Playwright Smoke
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.ui == 'true'
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.ui == 'true' && needs.changes.outputs.skip_ui_e2e != 'true'
 
     defaults:
       run:
@@ -961,7 +1040,7 @@ jobs:
     name: Docs Build & Check
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.docs == 'true'
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.docs == 'true'
 
     defaults:
       run:
@@ -1000,7 +1079,7 @@ jobs:
         run: npm run prepare-content
 
       - name: Execute notebook tutorials
-        if: needs.changes.outputs.docs_notebooks == 'true'
+        if: needs.changes.outputs.docs_notebooks == 'true' && needs.changes.outputs.skip_docs_notebooks != 'true'
         working-directory: .
         env:
           ADDR: 127.0.0.1:9301
@@ -1048,7 +1127,7 @@ jobs:
     name: Docker Build
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.docker == 'true'
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.docker == 'true' && needs.changes.outputs.skip_docker != 'true'
 
     steps:
       - uses: actions/checkout@v4
@@ -1078,6 +1157,63 @@ jobs:
           cache-from: type=gha,scope=docker-rust
           cache-to: type=gha,mode=max,scope=docker-rust
 
+  ci-opt-out-policy:
+    name: CI Opt-Out Policy
+    runs-on: ubuntu-latest
+    if: needs.changes.outputs.run_ci == 'true' && github.event_name == 'pull_request'
+    needs: changes
+    steps:
+      - name: Require affected CI before merge
+        run: |
+          set -euo pipefail
+
+          blocked=0
+
+          require_if_affected() {
+            local label="$1"
+            local label_present="$2"
+            local affected="$3"
+            local check_name="$4"
+
+            if [ "$label_present" = "true" ] && [ "$affected" = "true" ]; then
+              echo "::error title=Affected CI skipped::$label suppresses affected CI: $check_name"
+              blocked=1
+            fi
+          }
+
+          if [ "${{ needs.changes.outputs.rust }}" = "true" ] || [ "${{ needs.changes.outputs.sdk_compat }}" = "true" ]; then
+            slow_rust_affected=true
+          else
+            slow_rust_affected=false
+          fi
+
+          if [ "${{ needs.changes.outputs.brave_search_integration }}" = "true" ] || \
+             [ "${{ needs.changes.outputs.duckduckgo_integration }}" = "true" ] || \
+             [ "${{ needs.changes.outputs.parallel_integration }}" = "true" ]; then
+            standalone_integration_affected=true
+          else
+            standalone_integration_affected=false
+          fi
+
+          require_if_affected "ci:skip-slow-rust" "${{ needs.changes.outputs.skip_slow_rust }}" "$slow_rust_affected" "slow Rust, release-binary-dependent, OpenAPI, and SDK checks"
+          require_if_affected "ci:skip-postgres-integration" "${{ needs.changes.outputs.skip_postgres_integration }}" "${{ needs.changes.outputs.rust }}" "PostgreSQL integration tests"
+          require_if_affected "ci:skip-sdk-compat" "${{ needs.changes.outputs.skip_sdk_compat }}" "${{ needs.changes.outputs.sdk_compat }}" "SDK compatibility checks"
+          require_if_affected "ci:skip-ui-e2e" "${{ needs.changes.outputs.skip_ui_e2e }}" "${{ needs.changes.outputs.ui }}" "UI Playwright smoke"
+          require_if_affected "ci:skip-docs-notebooks" "${{ needs.changes.outputs.skip_docs_notebooks }}" "${{ needs.changes.outputs.docs_notebooks }}" "docs notebook execution"
+          require_if_affected "ci:skip-docker" "${{ needs.changes.outputs.skip_docker }}" "${{ needs.changes.outputs.docker }}" "Docker image build validation"
+          require_if_affected "ci:skip-integration-workflows" "${{ needs.changes.outputs.skip_integration_workflows }}" "$standalone_integration_affected" "standalone Brave Search, DuckDuckGo, or Parallel MCP integration workflows"
+
+          if [ "$blocked" -ne 0 ]; then
+            cat <<'MSG'
+          Opt-outs are allowed for interim pushes to save CI time, but before
+          merge they must not suppress CI checks affected by this PR. Remove the
+          relevant ci:skip-* label(s) and rerun CI on the final PR commit.
+          MSG
+            exit "$blocked"
+          fi
+
+          echo "No CI opt-out labels suppress affected checks."
+
   # Aggregation gate for branch protection.
   ci-success:
     name: Build Check
@@ -1102,6 +1238,7 @@ jobs:
       - ui-e2e
       - docs-build
       - docker-build
+      - ci-opt-out-policy
       - browserless-live-test
       - daytona-live-test
       - e2b-live-test
