@@ -520,16 +520,22 @@ pub enum AppEndpointAuthProviderConfig {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct AppEndpointAuthRequirements {
+    /// JWT `aud` values to require on inbound tokens. Empty list disables audience checking.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub audiences: Vec<String>,
+    /// OAuth scope strings to require (space-delimited per scope entry). Empty list disables scope checking.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub scopes: Vec<String>,
+    /// Arbitrary claim equality predicates. Empty map disables claim filtering.
     #[serde(default, skip_serializing_if = "serde_json::Map::is_empty")]
     pub claims: serde_json::Map<String, serde_json::Value>,
+    /// Allowlist of `sub` claim values. Empty list disables subject filtering.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub subjects: Vec<String>,
+    /// Allowlist of group memberships (from `groups` claim). Empty list disables group filtering.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub groups: Vec<String>,
+    /// Allowlist of email/identifier domains. Empty list disables domain filtering.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub domains: Vec<String>,
 }

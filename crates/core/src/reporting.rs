@@ -27,16 +27,23 @@ pub struct ReportTimeRange {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ReportQuery {
+    /// Dataset name to query (see `GET /v1/reports/catalog` for the list of available datasets).
     pub dataset: String,
+    /// Time window for the query. The dataset selects which timestamp column the range applies to.
     pub time_range: ReportTimeRange,
+    /// Columns to group by. Empty list returns one aggregate row.
     #[serde(default)]
     pub dimensions: Vec<String>,
+    /// Aggregations to compute (count, sum, avg, etc.). Empty list returns row counts only.
     #[serde(default)]
     pub measures: Vec<String>,
+    /// Predicate filters applied before aggregation.
     #[serde(default)]
     pub filters: Vec<ReportFilter>,
+    /// Sort spec applied after aggregation. Empty list yields unspecified order.
     #[serde(default)]
     pub order_by: Vec<ReportOrderBy>,
+    /// Maximum number of rows to return (defaults to 100).
     #[serde(default = "default_report_limit")]
     pub limit: u32,
 }

@@ -430,10 +430,15 @@ impl From<WorkerInfo> for WorkerResponse {
 /// Workers summary stats
 #[derive(Debug, Serialize, ToSchema)]
 pub struct WorkersSummaryResponse {
+    /// Workers in `running` state, accepting tasks.
     pub active: usize,
+    /// Workers in `draining` state, finishing in-flight tasks but not accepting new ones.
     pub draining: usize,
+    /// Workers in `stopped` state, neither running nor draining.
     pub stopped: usize,
+    /// Sum of `max_concurrency` across all `active` + `draining` workers.
     pub total_capacity: usize,
+    /// Total tasks currently in flight across all workers.
     pub total_load: usize,
 }
 

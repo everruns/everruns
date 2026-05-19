@@ -70,21 +70,27 @@ pub struct UpdateHarnessRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     /// Human-readable description. Safe to render in user-facing messages.
     pub description: Option<String>,
+    /// New system prompt the harness contributes to sessions; omit to leave unchanged.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub system_prompt: Option<String>,
+    /// New parent harness for inheritance. Outer `None` leaves unchanged; inner `None` removes inheritance (becomes a root harness).
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>, nullable = true)]
     pub parent_harness_id: Option<Option<HarnessId>>,
+    /// New default model selected when sessions inherit from this harness; omit to leave unchanged.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>)]
     pub default_model_id: Option<ModelId>,
+    /// Replace the tag list entirely; omit to leave unchanged.
     #[serde(skip_serializing_if = "Option::is_none")]
-    /// Free-form tags attached to this resource.
     pub tags: Option<Vec<String>>,
+    /// Replace the capability list entirely; omit to leave unchanged.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub capabilities: Option<Vec<AgentCapabilityConfig>>,
+    /// Replace the initial-files list entirely; omit to leave unchanged.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub initial_files: Option<Vec<InitialFile>>,
+    /// Replace the scoped MCP server set entirely; omit to leave unchanged.
     #[serde(
         default,
         rename = "mcpServers",

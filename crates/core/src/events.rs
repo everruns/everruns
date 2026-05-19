@@ -776,14 +776,20 @@ pub enum CapabilityUsageKind {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct CapabilityUsageRecord {
+    /// Capability id (prefixed or namespaced) attributing this usage.
     pub capability_id: String,
+    /// Capability display name for UI. `None` when the capability is unnamed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub capability_name: Option<String>,
+    /// Discriminator for the kind of usage being recorded (e.g. `tool_call`, `subagent_spawn`).
     pub usage_kind: CapabilityUsageKind,
+    /// Concrete tool name when `usage_kind` is `tool_call`. `None` for non-tool usage kinds.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_name: Option<String>,
+    /// Number of distinct usages recorded in this record (count-style records). `None` for duration-style records.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub usage_count: Option<u64>,
+    /// Total wall-clock duration of the usage in milliseconds (duration-style records). `None` for count-style records.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub duration_ms: Option<u64>,
 }
@@ -1906,15 +1912,21 @@ pub struct VoiceSessionStartedData {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct VoiceTranscriptData {
+    /// Prefixed voice connection identifier this transcript belongs to.
     pub voice_connection_id: String,
+    /// Provider-specific identifier of the conversation item being transcribed. `None` when not yet assigned.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub item_id: Option<String>,
+    /// Provider-specific identifier of the response stream emitting this transcript. `None` for user-side transcripts.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub response_id: Option<String>,
+    /// Transcript phase: `user_partial`, `user_final`, `assistant_partial`, `assistant_final`. `None` when not yet classified.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub phase: Option<String>,
+    /// Newly transcribed text chunk delivered in this event. Empty for "final" events that only mark completion.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub delta: String,
+    /// Full transcript accumulated for this item up to and including `delta`.
     pub accumulated: String,
 }
 

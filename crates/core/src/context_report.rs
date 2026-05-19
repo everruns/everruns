@@ -9,31 +9,46 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ContextReportSection {
+    /// Stable section key (e.g. `system_prompt`, `tools`, `history`). Used as a join key for contributions.
     pub key: String,
+    /// Human-readable section label suitable for UI display.
     pub label: String,
+    /// Total tokens this section contributes to the assembled context.
     pub tokens: u32,
+    /// Number of items this section comprises (messages, tool defs, etc.).
     pub items: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ContextReportContribution {
+    /// Section this contribution rolls up into; matches `ContextReportSection.key`.
     pub section_key: String,
+    /// Stable id of the contributing source (capability id, tool name, message id, etc.).
     pub source_id: String,
+    /// Human-readable label suitable for UI display.
     pub label: String,
+    /// Tokens this single source contributes to the assembled context.
     pub tokens: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SessionContextReport {
+    /// Prefixed session identifier this report describes.
     pub session_id: String,
+    /// Model identifier the report's token estimates target (used to scope context-window math).
     pub model: String,
+    /// Total context window size in tokens for `model`. `None` if the model's profile lacks limits data.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub context_window_tokens: Option<u32>,
+    /// Estimated number of input tokens consumed by the next generation given the current context.
     pub estimated_input_tokens: u32,
+    /// Logical sections of the assembled context (system prompt, tool defs, message history, etc.) for inspection.
     pub sections: Vec<ContextReportSection>,
+    /// Per-source token contributions (per-tool, per-capability, per-message) for attribution.
     pub contributions: Vec<ContextReportContribution>,
+    /// Cumulative LLM usage observed across the session so far (token + cost rollup).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cumulative_usage: Option<TokenUsage>,
 }
