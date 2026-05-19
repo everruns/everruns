@@ -182,7 +182,7 @@ domain stores:
 - `RuntimeSessionStore`
 - `RuntimeMessageStore`
 - `RuntimeProviderStore`
-- optional `RuntimeEventCollector`
+- `EventBus` (extends `EventEmitter`; default `collected_events` returns empty)
 
 These extend the corresponding core traits with the minimal write operations the
 embedded runtime needs for:
@@ -191,6 +191,10 @@ embedded runtime needs for:
 - storing input messages
 - persisting assistant and tool-result messages from emitted events
 - configuring the runtime default model
+
+Use `RuntimeBackends::in_memory()` for the all-in-memory default, then chain
+`.with_file_store(...)`, `.with_message_store(...)`, etc. to override individual
+stores.
 
 Session files are a platform service: `PlatformDefinition` carries a
 `SessionFileSystemFactory`, and the runtime resolves it when no explicit

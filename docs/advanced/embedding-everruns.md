@@ -217,18 +217,12 @@ Pass them through `RuntimeBackends` on the builder:
 use everruns_runtime::{InProcessRuntimeBuilder, RuntimeBackends};
 
 let runtime = InProcessRuntimeBuilder::new()
-    .backends(RuntimeBackends {
-        harness_store: my_harness_store,
-        agent_store: my_agent_store,
-        session_store: my_session_store,
-        message_store: my_message_store,
-        provider_store: my_provider_store,
-        event_emitter: my_event_emitter,
-        event_collector: None,
-        file_store: my_file_store,
-        storage_store: my_storage_store,
-        memory_store: my_memory_store,
-    })
+    .backends(
+        RuntimeBackends::in_memory()
+            .with_file_store(my_file_store)
+            .with_message_store(my_message_store),
+        // Add other `.with_*` overrides as needed; defaults stay in-memory.
+    )
     .build()
     .await?;
 ```
