@@ -9,6 +9,75 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.8.32] - 2026-05-19
+
+### Highlights
+
+- **Reporting product surface** - Completes the async reporting subsystem with finalized analytics, saved reports, and export flows.
+- **Agent versions with automatic draft snapshots** - Immutable agent configuration snapshots are now captured automatically as drafts to enable audit, rollback, forks, and pinned App deployments.
+- **RFC 9457 Problem Details API errors** - HTTP error responses now follow RFC 9457 with structured `CommandError` extensions ([#1834](https://github.com/everruns/everruns/pull/1834)).
+- **Coding-cli example** - New TUI coding agent example built on `everruns-runtime` with JSONL session log, `--session` resume, and proper harness system prompt ([#1839](https://github.com/everruns/everruns/pull/1839), [#1870](https://github.com/everruns/everruns/pull/1870), [#1871](https://github.com/everruns/everruns/pull/1871)).
+- **Runtime FileSystem policy decorators** - Filesystem access in the runtime now ships with composable policy decorators for ACL enforcement and pluggable real-disk `SessionFileStore` (EVE-478) ([#1857](https://github.com/everruns/everruns/pull/1857), [#1886](https://github.com/everruns/everruns/pull/1886)).
+- **OpenAPI surface expansion** - Health, agent versions, skills, schedules ([#1873](https://github.com/everruns/everruns/pull/1873)), and payments/LLM/durable field descriptions ([#1851](https://github.com/everruns/everruns/pull/1851)) are now documented in the OpenAPI spec.
+
+### What's Changed
+
+- feat(examples): coding-cli — JSONL session log + --session resume ([#1871](https://github.com/everruns/everruns/pull/1871)) by [@chaliy](https://github.com/chaliy)
+- feat(examples): coding-cli — proper system prompt for the harness ([#1870](https://github.com/everruns/everruns/pull/1870)) by [@chaliy](https://github.com/chaliy)
+- chore(ci): add affected CI opt-out labels ([#1887](https://github.com/everruns/everruns/pull/1887)) by [@chaliy](https://github.com/chaliy)
+- chore(test-cases): ignore manual test results by [@chaliy](https://github.com/chaliy)
+- feat(runtime): ship FileSystem policy decorators (EVE-478) ([#1886](https://github.com/everruns/everruns/pull/1886)) by [@chaliy](https://github.com/chaliy)
+- fix(runtime): reject symlink workspace paths ([#1876](https://github.com/everruns/everruns/pull/1876)) by [@chaliy](https://github.com/chaliy)
+- fix(core): pin fetchkit to 0.2.0 to enforce egress ACL ([#1881](https://github.com/everruns/everruns/pull/1881)) by [@chaliy](https://github.com/chaliy)
+- fix(server): harden app run history window parsing ([#1878](https://github.com/everruns/everruns/pull/1878)) by [@chaliy](https://github.com/chaliy)
+- fix(openai): cap prompt cache key length by [@chaliy](https://github.com/chaliy)
+- fix(runtime): preserve ACLs in single-session builder ([#1877](https://github.com/everruns/everruns/pull/1877)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): remove unused integration dependencies by [@chaliy](https://github.com/chaliy)
+- feat(agents): add authenticated agent handoff by [@chaliy](https://github.com/chaliy)
+- ci: narrow docker build trigger by [@chaliy](https://github.com/chaliy)
+- refactor(runtime): resolve filesystem from platform by [@chaliy](https://github.com/chaliy)
+- feat(openapi): health + agent versions + skills + schedules ([#1873](https://github.com/everruns/everruns/pull/1873)) by [@chaliy](https://github.com/chaliy)
+- refactor(runtime): InProcessRuntime drives turns via host activity functions ([#1874](https://github.com/everruns/everruns/pull/1874)) by [@chaliy](https://github.com/chaliy)
+- fix(ci): harden crates publish ref validation by [@chaliy](https://github.com/chaliy)
+- feat(coding-cli): add model command suggestions by [@chaliy](https://github.com/chaliy)
+- chore(release): publish provider crates by [@chaliy](https://github.com/chaliy)
+- refactor(runtime): drop store shim wrappers, add EventBus + in_memory() ([#1872](https://github.com/everruns/everruns/pull/1872)) by [@chaliy](https://github.com/chaliy)
+- feat(openapi): payments + LLM + durable field descriptions ([#1851](https://github.com/everruns/everruns/pull/1851)) by [@chaliy](https://github.com/chaliy)
+- feat(api): RFC 9457 Problem Details + CommandError extensions ([#1834](https://github.com/everruns/everruns/pull/1834)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump fetchkit to 0.3.0 ([#1865](https://github.com/everruns/everruns/pull/1865)) by [@chaliy](https://github.com/chaliy)
+- feat(examples): add coding-cli — TUI coding agent on everruns-runtime ([#1839](https://github.com/everruns/everruns/pull/1839)) by [@chaliy](https://github.com/chaliy)
+- feat(agents): add automatic draft snapshots by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump brace-expansion from 5.0.5 to 5.0.6 in /.deepsec ([#1864](https://github.com/everruns/everruns/pull/1864)) by [@dependabot](https://github.com/dependabot)
+- refactor(runtime): add session filesystem factory by [@chaliy](https://github.com/chaliy)
+- feat(core): configure agent instruction files by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump bashkit to 0.6.0 by [@chaliy](https://github.com/chaliy)
+- feat(runtime): add embedder builders by [@chaliy](https://github.com/chaliy)
+- feat(runtime): pluggable real-disk SessionFileStore + capability examples ([#1857](https://github.com/everruns/everruns/pull/1857)) by [@chaliy](https://github.com/chaliy)
+- chore(release): publish public crates by [@chaliy](https://github.com/chaliy)
+- fix(fcp): resume sessions by cookie id ([#1840](https://github.com/everruns/everruns/pull/1840)) by [@chaliy](https://github.com/chaliy)
+- fix(apps): add app run history endpoint by [@chaliy](https://github.com/chaliy)
+- fix(a2a): bind signing HMAC to app channel scope ([#1830](https://github.com/everruns/everruns/pull/1830)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump typescript to 6 in apps/docs ([#1855](https://github.com/everruns/everruns/pull/1855)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump marked to 18 ([#1854](https://github.com/everruns/everruns/pull/1854)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump lucide-react to 1.16 ([#1853](https://github.com/everruns/everruns/pull/1853)) by [@chaliy](https://github.com/chaliy)
+- chore(specs): remove dash-gap-analysis.md ([#1852](https://github.com/everruns/everruns/pull/1852)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump tokio-tungstenite to 0.29 ([#1847](https://github.com/everruns/everruns/pull/1847)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump @openuidev/react-{lang,ui} to 0.2 / 0.11 ([#1850](https://github.com/everruns/everruns/pull/1850)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump governor to 0.10 ([#1848](https://github.com/everruns/everruns/pull/1848)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump rstest to 0.26 ([#1845](https://github.com/everruns/everruns/pull/1845)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump async-nats to 0.48 ([#1844](https://github.com/everruns/everruns/pull/1844)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump a2a stack to 0.3 ([#1842](https://github.com/everruns/everruns/pull/1842)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): refresh Cargo.lock within semver ([#1836](https://github.com/everruns/everruns/pull/1836)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump @astrojs/starlight to 0.39.2 ([#1837](https://github.com/everruns/everruns/pull/1837)) by [@chaliy](https://github.com/chaliy)
+- chore: index 6 missing specs in AGENTS.md ([#1838](https://github.com/everruns/everruns/pull/1838)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): override @anthropic-ai/sdk to 0.91.1+ in .deepsec ([#1835](https://github.com/everruns/everruns/pull/1835)) by [@chaliy](https://github.com/chaliy)
+- feat(reporting): complete reporting product surface by [@chaliy](https://github.com/chaliy)
+- fix(ui): standardize organization label by [@chaliy](https://github.com/chaliy)
+- fix(memory): wire memory store for grpc workers by [@chaliy](https://github.com/chaliy)
+- chore(specs): add maintenance completeness checks by [@chaliy](https://github.com/chaliy)
+- docs(railway): update release template guidance by [@chaliy](https://github.com/chaliy)
+- feat(ui): add provider model counts and edit page by [@chaliy](https://github.com/chaliy)
+
 ## [0.8.31] - 2026-05-17
 
 ### Highlights
