@@ -52,7 +52,7 @@ jobs:
             command: cargo test -p everruns-integrations-brave-search --features integration
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Doppler CLI
         uses: dopplerhq/cli-action@v3
@@ -87,7 +87,7 @@ jobs:
             command: cargo test -p everruns-integrations-parallel --features integration
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -118,7 +118,7 @@ jobs:
       CONTAINER_SANDBOX_DOCKER_HOST: http://localhost:2375
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable

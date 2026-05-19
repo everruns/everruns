@@ -52,7 +52,7 @@ jobs:
       skip_docker: ${{ steps.ci_opt_outs.outputs.skip_docker }}
       skip_integration_workflows: ${{ steps.ci_opt_outs.outputs.skip_integration_workflows }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Resolve CI event gate
         id: ci_event
@@ -193,7 +193,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -209,7 +209,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -224,7 +224,7 @@ jobs:
     if: needs.changes.outputs.run_ci == 'true' && github.event_name == 'pull_request'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -238,7 +238,7 @@ jobs:
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -262,7 +262,7 @@ jobs:
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -298,7 +298,7 @@ jobs:
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -318,7 +318,7 @@ jobs:
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.shell == 'true'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install shell test dependencies
         run: |
@@ -355,7 +355,7 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Doppler CLI
         uses: dopplerhq/cli-action@v3
@@ -380,7 +380,7 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Doppler CLI
         uses: dopplerhq/cli-action@v3
@@ -405,7 +405,7 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Doppler CLI
         uses: dopplerhq/cli-action@v3
@@ -432,7 +432,7 @@ jobs:
       DENO_SANDBOX_REGION: ams
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Doppler CLI
         uses: dopplerhq/cli-action@v3
@@ -478,7 +478,7 @@ jobs:
       SECRETS_ENCRYPTION_KEY: kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -574,7 +574,7 @@ jobs:
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true' && needs.changes.outputs.skip_slow_rust != 'true'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -648,7 +648,7 @@ jobs:
       RATE_LIMIT_API_REQUESTS_PER_MINUTE: "0"
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -764,7 +764,7 @@ jobs:
       RATE_LIMIT_API_REQUESTS_PER_MINUTE: "0"
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install jq
         run: sudo apt-get update && sudo apt-get install -y jq
@@ -817,7 +817,7 @@ jobs:
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Resolve SDK version matrix
         id: matrix
@@ -846,7 +846,7 @@ jobs:
       EVERRUNS_BASE_URL: http://localhost:9000
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup Node.js
         if: matrix.language == 'typescript'
@@ -913,7 +913,7 @@ jobs:
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true' && needs.changes.outputs.skip_slow_rust != 'true'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Download export-openapi binary
         uses: actions/download-artifact@v4
@@ -952,7 +952,7 @@ jobs:
         working-directory: apps/ui
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -999,7 +999,7 @@ jobs:
         working-directory: apps/ui
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -1047,7 +1047,7 @@ jobs:
         working-directory: apps/docs
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -1130,7 +1130,7 @@ jobs:
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.docker == 'true' && needs.changes.outputs.skip_docker != 'true'
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
