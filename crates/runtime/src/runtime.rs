@@ -3,15 +3,11 @@
 // and capability resolution path as the durable worker so behavior stays close.
 
 use crate::backends::{
-    DynAgentStore, DynEventEmitter, DynFileStore, DynHarnessStore, DynMessageStore,
-    DynProviderStore, DynSessionStore, RuntimeAgentStore, RuntimeBackends, RuntimeEventCollector,
-    RuntimeHarnessStore, RuntimeMessageStore, RuntimeProviderStore, RuntimeSessionStore,
+    EventBus, RuntimeAgentStore, RuntimeBackends, RuntimeHarnessStore, RuntimeMessageStore,
+    RuntimeProviderStore, RuntimeSessionStore,
 };
 use crate::builders::SingleSessionBuilder;
-use crate::in_memory::{
-    InMemorySessionFileStore, InMemorySessionFileSystemFactory, InMemorySessionStorageStore,
-    InMemorySessionStore,
-};
+use crate::in_memory::InMemorySessionFileSystemFactory;
 use async_trait::async_trait;
 use everruns_core::agent::Agent;
 use everruns_core::atoms::{
@@ -30,10 +26,6 @@ use everruns_core::harness::Harness;
 use everruns_core::llm_driver_registry::{DriverRegistry, ProviderType};
 use everruns_core::llm_models::LlmProviderType;
 use everruns_core::llmsim_driver::{LlmSimConfig, LlmSimDriver};
-use everruns_core::memory::{
-    InMemoryAgentStore, InMemoryEventEmitter, InMemoryHarnessStore, InMemoryLlmProviderStore,
-    InMemoryMemoryStore, InMemoryMessageRetriever,
-};
 use everruns_core::message::{ContentPart, Message};
 use everruns_core::platform_definition::PlatformDefinition;
 use everruns_core::runtime_context::{
@@ -42,11 +34,15 @@ use everruns_core::runtime_context::{
 use everruns_core::session::Session;
 use everruns_core::session_file::{InitialFile, SessionFile};
 use everruns_core::tools::{ToolRegistry, ToolResultImage};
-use everruns_core::traits::{EventEmitter, ModelWithProvider, SessionStorageStore};
+use everruns_core::traits::{
+    AgentStore, EventEmitter, HarnessStore, LlmProviderStore, ModelWithProvider, SessionMutator,
+    SessionStorageStore, SessionStore,
+};
 use everruns_core::turn::{TurnAction, TurnContext, TurnOutcome, TurnStateMachine};
 use everruns_core::typed_id::{AgentId, OrgId, SessionId};
 use everruns_core::{
-    InputMessage, MemoryStoreBackend, SessionFileSystem, SessionFileSystemFactoryContext,
+    InputMessage, MemoryStoreBackend, MessageRetriever, SessionFileSystem,
+    SessionFileSystemFactoryContext,
 };
 use std::sync::Arc;
 
@@ -270,11 +266,17 @@ impl InProcessRuntimeBuilder {
         let backends = match self.backends.take() {
             Some(backends) => backends,
             None => {
-                default_in_memory_backends(
-                    &self.platform_definition,
-                    self.session_file_system_factory_context.clone(),
-                )
-                .await?
+                let factory = self.platform_definition.session_file_system_factory();
+                let file_store: Arc<dyn SessionFileSystem> = if factory.is_disabled() {
+                    Arc::new(crate::in_memory::InMemorySessionFileStore::new())
+                } else {
+                    factory
+                        .create_session_file_system(
+                            self.session_file_system_factory_context.clone(),
+                        )
+                        .await?
+                };
+                RuntimeBackends::in_memory().with_file_store(file_store)
             }
         };
 
@@ -336,10 +338,8 @@ impl InProcessRuntimeBuilder {
                 .await?;
         }
 
-        let event_emitter = PersistingEventEmitter::new(
-            backends.event_emitter.clone(),
-            backends.message_store.clone(),
-        );
+        let persisting_emitter =
+            PersistingEventEmitter::new(backends.event_bus.clone(), backends.message_store.clone());
 
         Ok(InProcessRuntime {
             platform_definition: Arc::new(self.platform_definition),
@@ -349,51 +349,13 @@ impl InProcessRuntimeBuilder {
             default_session_id: self.default_session_id,
             message_store: backends.message_store,
             provider_store: backends.provider_store,
-            event_emitter,
-            raw_event_emitter: backends.event_emitter,
-            event_collector: backends.event_collector,
+            event_bus: backends.event_bus,
+            persisting_emitter,
             file_store: backends.file_store,
             storage_store: backends.storage_store,
             memory_store: backends.memory_store,
         })
     }
-}
-
-async fn default_in_memory_backends(
-    platform_definition: &PlatformDefinition,
-    file_system_factory_context: SessionFileSystemFactoryContext,
-) -> Result<RuntimeBackends> {
-    let harness_store: Arc<dyn RuntimeHarnessStore> = Arc::new(InMemoryHarnessStore::new());
-    let agent_store: Arc<dyn RuntimeAgentStore> = Arc::new(InMemoryAgentStore::new());
-    let session_store: Arc<dyn RuntimeSessionStore> = Arc::new(InMemorySessionStore::new());
-    let message_store: Arc<dyn RuntimeMessageStore> = Arc::new(InMemoryMessageRetriever::new());
-    let file_system_factory = platform_definition.session_file_system_factory();
-    let file_store: Arc<dyn SessionFileSystem> = if file_system_factory.is_disabled() {
-        Arc::new(InMemorySessionFileStore::new())
-    } else {
-        file_system_factory
-            .create_session_file_system(file_system_factory_context)
-            .await?
-    };
-    let storage_store: Arc<dyn SessionStorageStore> = Arc::new(InMemorySessionStorageStore::new());
-    let memory_store: Arc<dyn MemoryStoreBackend> = Arc::new(InMemoryMemoryStore::new());
-    let provider_store: Arc<dyn RuntimeProviderStore> = Arc::new(InMemoryLlmProviderStore::new());
-    let event_emitter_impl = InMemoryEventEmitter::new();
-    let event_emitter: Arc<dyn EventEmitter> = Arc::new(event_emitter_impl.clone());
-    let event_collector: Arc<dyn RuntimeEventCollector> = Arc::new(event_emitter_impl);
-
-    Ok(RuntimeBackends {
-        harness_store,
-        agent_store,
-        session_store,
-        message_store,
-        provider_store,
-        event_emitter,
-        event_collector: Some(event_collector),
-        file_store,
-        storage_store,
-        memory_store,
-    })
 }
 
 #[derive(Clone)]
@@ -410,9 +372,8 @@ pub struct InProcessRuntime {
     default_session_id: Option<SessionId>,
     message_store: Arc<dyn RuntimeMessageStore>,
     provider_store: Arc<dyn RuntimeProviderStore>,
-    event_emitter: PersistingEventEmitter,
-    raw_event_emitter: Arc<dyn EventEmitter>,
-    event_collector: Option<Arc<dyn RuntimeEventCollector>>,
+    event_bus: Arc<dyn EventBus>,
+    persisting_emitter: PersistingEventEmitter,
     file_store: Arc<dyn SessionFileSystem>,
     storage_store: Arc<dyn SessionStorageStore>,
     memory_store: Arc<dyn MemoryStoreBackend>,
@@ -450,7 +411,7 @@ impl InProcessRuntime {
             .message_store
             .add_input_message(session_id, input.into())
             .await?;
-        self.raw_event_emitter
+        self.event_bus
             .emit(EventRequest::new(
                 session_id,
                 EventContext::empty(),
@@ -466,7 +427,7 @@ impl InProcessRuntime {
         let system_prompt_ctx = SystemPromptContext {
             session_id,
             locale: assembled.resolved_locale.clone(),
-            file_store: Some(Arc::new(DynFileStore(self.file_store.clone()))),
+            file_store: Some(self.file_store.clone()),
         };
         let collected = collect_capabilities_with_configs(
             &assembled.resolved_capability_configs,
@@ -509,28 +470,37 @@ impl InProcessRuntime {
                     .expect("valid org id")
             });
 
-        let input_atom = InputAtom::new(DynMessageStore(self.message_store.clone()));
+        // Upcast each runtime-extended store to the core reader trait the
+        // atoms accept. Blanket `Arc<T>: T` impls in core forward the call.
+        let harness_for_atom: Arc<dyn HarnessStore> = self.harness_store.clone();
+        let agent_for_atom: Arc<dyn AgentStore> = self.agent_store.clone();
+        let session_for_atom: Arc<dyn SessionStore> = self.session_store.clone();
+        let message_for_atom: Arc<dyn MessageRetriever> = self.message_store.clone();
+        let provider_for_atom: Arc<dyn LlmProviderStore> = self.provider_store.clone();
+        let session_mutator_for_atom: Arc<dyn SessionMutator> = self.session_store.clone();
+
+        let input_atom = InputAtom::new(message_for_atom.clone());
         let reason_atom = ReasonAtom::new(
-            DynHarnessStore(self.harness_store.clone()),
-            DynAgentStore(self.agent_store.clone()),
-            DynSessionStore(self.session_store.clone()),
-            DynMessageStore(self.message_store.clone()),
-            DynProviderStore(self.provider_store.clone()),
+            harness_for_atom,
+            agent_for_atom,
+            session_for_atom.clone(),
+            message_for_atom,
+            provider_for_atom,
             capability_registry.clone(),
             driver_registry,
-            DynEventEmitter(Arc::new(self.event_emitter.clone())),
+            self.persisting_emitter.clone(),
         )
-        .with_file_store(Arc::new(DynFileStore(self.file_store.clone())));
+        .with_file_store(self.file_store.clone());
 
         let act_atom = ActAtom::with_file_store(
             tool_registry.clone(),
-            DynEventEmitter(Arc::new(self.event_emitter.clone())),
-            Arc::new(DynFileStore(self.file_store.clone())),
+            self.persisting_emitter.clone(),
+            self.file_store.clone(),
         )
         .with_tool_registry(Arc::new(tool_registry.clone()))
         .with_storage_store(self.storage_store.clone())
-        .with_session_store(Arc::new(DynSessionStore(self.session_store.clone())))
-        .with_session_mutator(Arc::new(DynSessionStore(self.session_store.clone())))
+        .with_session_store(session_for_atom)
+        .with_session_mutator(session_mutator_for_atom)
         .with_memory_store(self.memory_store.clone())
         .with_org_id(org_public_id)
         .with_capability_registry(capability_registry)
@@ -665,12 +635,12 @@ impl InProcessRuntime {
             .await
     }
 
-    /// Return all emitted events when the backend exposes an event collector.
+    /// Return all collected events from the runtime event bus.
+    ///
+    /// Event buses that do not retain events return an empty `Vec` (see
+    /// [`EventBus::collected_events`]).
     pub async fn events(&self) -> Result<Vec<Event>> {
-        let collector = self.event_collector.as_ref().ok_or_else(|| {
-            AgentLoopError::config("events are not available for this runtime backend")
-        })?;
-        Ok(collector.events().await)
+        Ok(self.event_bus.collected_events().await)
     }
 
     async fn load_execution_context_with_ids(
@@ -690,7 +660,7 @@ impl InProcessRuntime {
             harness_id,
             agent_id,
             &[],
-            Some(Arc::new(DynFileStore(self.file_store.clone()))),
+            Some(self.file_store.clone()),
         )
         .await
     }
@@ -712,7 +682,7 @@ impl InProcessRuntime {
             harness_id,
             agent_id,
             &[],
-            Some(Arc::new(DynFileStore(self.file_store.clone()))),
+            Some(self.file_store.clone()),
         )
         .await
     }
@@ -720,12 +690,12 @@ impl InProcessRuntime {
 
 #[derive(Clone)]
 struct PersistingEventEmitter {
-    inner: Arc<dyn EventEmitter>,
+    inner: Arc<dyn EventBus>,
     message_store: Arc<dyn RuntimeMessageStore>,
 }
 
 impl PersistingEventEmitter {
-    fn new(inner: Arc<dyn EventEmitter>, message_store: Arc<dyn RuntimeMessageStore>) -> Self {
+    fn new(inner: Arc<dyn EventBus>, message_store: Arc<dyn RuntimeMessageStore>) -> Self {
         Self {
             inner,
             message_store,

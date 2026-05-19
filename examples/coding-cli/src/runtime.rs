@@ -17,10 +17,6 @@ use everruns_core::capabilities::{
 use everruns_core::llm_driver_registry::DriverRegistry;
 use everruns_core::llm_models::LlmProviderType;
 use everruns_core::llmsim_driver::LlmSimConfig;
-use everruns_core::memory::{
-    InMemoryAgentStore, InMemoryEventEmitter, InMemoryHarnessStore, InMemoryLlmProviderStore,
-    InMemoryMemoryStore, InMemoryMessageRetriever,
-};
 use everruns_core::tools::Tool;
 use everruns_core::typed_id::SessionId;
 use everruns_core::{
@@ -28,8 +24,7 @@ use everruns_core::{
 };
 use everruns_integrations_duckduckgo::DuckDuckGoCapability;
 use everruns_runtime::{
-    InMemorySessionStorageStore, InMemorySessionStore, InProcessRuntime, InProcessRuntimeBuilder,
-    RealDiskFileStore, RuntimeBackends, RuntimeFileStore,
+    InProcessRuntime, InProcessRuntimeBuilder, RealDiskFileStore, RuntimeBackends, RuntimeFileStore,
 };
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -149,19 +144,7 @@ pub async fn build(
     let file_store = gated;
 
     // The rest of the backends stay in memory.
-    let event_emitter = InMemoryEventEmitter::new();
-    let backends = RuntimeBackends {
-        harness_store: Arc::new(InMemoryHarnessStore::new()),
-        agent_store: Arc::new(InMemoryAgentStore::new()),
-        session_store: Arc::new(InMemorySessionStore::new()),
-        message_store: Arc::new(InMemoryMessageRetriever::new()),
-        provider_store: Arc::new(InMemoryLlmProviderStore::new()),
-        event_emitter: Arc::new(event_emitter.clone()),
-        event_collector: Some(Arc::new(event_emitter)),
-        file_store,
-        storage_store: Arc::new(InMemorySessionStorageStore::new()),
-        memory_store: Arc::new(InMemoryMemoryStore::new()),
-    };
+    let backends = RuntimeBackends::in_memory().with_file_store(file_store);
 
     // Register a curated set of built-in capabilities (no opinionated bundle
     // — we want a tight, predictable surface for the coding-CLI) plus our

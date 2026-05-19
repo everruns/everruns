@@ -41,6 +41,13 @@ pub trait AgentStore: Send + Sync {
     async fn get_agent(&self, agent_id: AgentId) -> Result<Option<Agent>>;
 }
 
+#[async_trait]
+impl<T: AgentStore + ?Sized> AgentStore for std::sync::Arc<T> {
+    async fn get_agent(&self, agent_id: AgentId) -> Result<Option<Agent>> {
+        (**self).get_agent(agent_id).await
+    }
+}
+
 // ============================================================================
 // HarnessStore - For retrieving harness configurations
 // ============================================================================
@@ -64,6 +71,13 @@ pub trait HarnessStore: Send + Sync {
     async fn get_harness_chain(&self, harness_id: HarnessId) -> Result<Vec<Harness>>;
 }
 
+#[async_trait]
+impl<T: HarnessStore + ?Sized> HarnessStore for std::sync::Arc<T> {
+    async fn get_harness_chain(&self, harness_id: HarnessId) -> Result<Vec<Harness>> {
+        (**self).get_harness_chain(harness_id).await
+    }
+}
+
 // ============================================================================
 // SessionStore - For retrieving session information
 // ============================================================================
@@ -82,11 +96,25 @@ pub trait SessionStore: Send + Sync {
     async fn get_session(&self, session_id: SessionId) -> Result<Option<Session>>;
 }
 
+#[async_trait]
+impl<T: SessionStore + ?Sized> SessionStore for std::sync::Arc<T> {
+    async fn get_session(&self, session_id: SessionId) -> Result<Option<Session>> {
+        (**self).get_session(session_id).await
+    }
+}
+
 /// Trait for updating mutable session metadata.
 #[async_trait]
 pub trait SessionMutator: Send + Sync {
     /// Update a session's human-readable title.
     async fn update_session_title(&self, session_id: SessionId, title: String) -> Result<Session>;
+}
+
+#[async_trait]
+impl<T: SessionMutator + ?Sized> SessionMutator for std::sync::Arc<T> {
+    async fn update_session_title(&self, session_id: SessionId, title: String) -> Result<Session> {
+        (**self).update_session_title(session_id, title).await
+    }
 }
 
 // ============================================================================
@@ -128,6 +156,20 @@ pub trait LlmProviderStore: Send + Sync {
     ///
     /// Returns the system default model when an agent has no default_model_id set.
     async fn get_default_model(&self) -> Result<Option<ModelWithProvider>>;
+}
+
+#[async_trait]
+impl<T: LlmProviderStore + ?Sized> LlmProviderStore for std::sync::Arc<T> {
+    async fn get_model_with_provider(
+        &self,
+        model_id: ModelId,
+    ) -> Result<Option<ModelWithProvider>> {
+        (**self).get_model_with_provider(model_id).await
+    }
+
+    async fn get_default_model(&self) -> Result<Option<ModelWithProvider>> {
+        (**self).get_default_model().await
+    }
 }
 
 // ============================================================================
@@ -370,6 +412,80 @@ pub trait SessionFileSystem: Send + Sync {
         self.write_file(session_id, &file.path, &file.content, &file.encoding)
             .await?;
         Ok(())
+    }
+}
+
+#[async_trait]
+impl<T: SessionFileSystem + ?Sized> SessionFileSystem for std::sync::Arc<T> {
+    async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
+        (**self).read_file(session_id, path).await
+    }
+
+    async fn write_file(
+        &self,
+        session_id: SessionId,
+        path: &str,
+        content: &str,
+        encoding: &str,
+    ) -> Result<SessionFile> {
+        (**self)
+            .write_file(session_id, path, content, encoding)
+            .await
+    }
+
+    async fn write_file_if_content_matches(
+        &self,
+        session_id: SessionId,
+        path: &str,
+        expected_content: &str,
+        expected_encoding: &str,
+        content: &str,
+        encoding: &str,
+    ) -> Result<Option<SessionFile>> {
+        (**self)
+            .write_file_if_content_matches(
+                session_id,
+                path,
+                expected_content,
+                expected_encoding,
+                content,
+                encoding,
+            )
+            .await
+    }
+
+    async fn delete_file(
+        &self,
+        session_id: SessionId,
+        path: &str,
+        recursive: bool,
+    ) -> Result<bool> {
+        (**self).delete_file(session_id, path, recursive).await
+    }
+
+    async fn list_directory(&self, session_id: SessionId, path: &str) -> Result<Vec<FileInfo>> {
+        (**self).list_directory(session_id, path).await
+    }
+
+    async fn stat_file(&self, session_id: SessionId, path: &str) -> Result<Option<FileStat>> {
+        (**self).stat_file(session_id, path).await
+    }
+
+    async fn grep_files(
+        &self,
+        session_id: SessionId,
+        pattern: &str,
+        path_pattern: Option<&str>,
+    ) -> Result<Vec<GrepMatch>> {
+        (**self).grep_files(session_id, pattern, path_pattern).await
+    }
+
+    async fn create_directory(&self, session_id: SessionId, path: &str) -> Result<FileInfo> {
+        (**self).create_directory(session_id, path).await
+    }
+
+    async fn seed_initial_file(&self, session_id: SessionId, file: &InitialFile) -> Result<()> {
+        (**self).seed_initial_file(session_id, file).await
     }
 }
 

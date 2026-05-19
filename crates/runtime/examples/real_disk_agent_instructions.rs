@@ -17,18 +17,11 @@ use chrono::Utc;
 use everruns_core::capabilities::AgentInstructionsCapability;
 use everruns_core::llm_driver_registry::DriverRegistry;
 use everruns_core::llmsim_driver::LlmSimConfig;
-use everruns_core::memory::{
-    InMemoryAgentStore, InMemoryEventEmitter, InMemoryHarnessStore, InMemoryLlmProviderStore,
-    InMemoryMemoryStore, InMemoryMessageRetriever,
-};
 use everruns_core::{
     Agent, AgentCapabilityConfig, AgentStatus, CapabilityRegistry, Harness, HarnessStatus,
     LlmProviderType, ModelWithProvider, PlatformDefinition, Session, SessionStatus,
 };
-use everruns_runtime::{
-    InMemorySessionStorageStore, InMemorySessionStore, InProcessRuntimeBuilder, RealDiskFileStore,
-    RuntimeBackends,
-};
+use everruns_runtime::{InProcessRuntimeBuilder, RealDiskFileStore, RuntimeBackends};
 use tempfile::TempDir;
 use uuid::Uuid;
 
@@ -46,19 +39,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 3. Build a RuntimeBackends with the real-disk file_store. Everything
     //    else stays in memory — only the workspace surface is real.
-    let event_emitter = InMemoryEventEmitter::new();
-    let backends = RuntimeBackends {
-        harness_store: Arc::new(InMemoryHarnessStore::new()),
-        agent_store: Arc::new(InMemoryAgentStore::new()),
-        session_store: Arc::new(InMemorySessionStore::new()),
-        message_store: Arc::new(InMemoryMessageRetriever::new()),
-        provider_store: Arc::new(InMemoryLlmProviderStore::new()),
-        event_emitter: Arc::new(event_emitter.clone()),
-        event_collector: Some(Arc::new(event_emitter)),
-        file_store: Arc::new(RealDiskFileStore::new(workspace.path())?),
-        storage_store: Arc::new(InMemorySessionStorageStore::new()),
-        memory_store: Arc::new(InMemoryMemoryStore::new()),
-    };
+    let backends = RuntimeBackends::in_memory()
+        .with_file_store(Arc::new(RealDiskFileStore::new(workspace.path())?));
 
     // 4. Register AgentInstructionsCapability and a no-op math capability so
     //    the harness has something to assemble.

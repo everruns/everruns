@@ -182,7 +182,7 @@ domain stores:
 - `RuntimeSessionStore`
 - `RuntimeMessageStore`
 - `RuntimeProviderStore`
-- optional `RuntimeEventCollector`
+- `EventBus` (extends `EventEmitter`; default `collected_events` returns empty)
 
 These extend the corresponding core traits with the minimal write operations the
 embedded runtime needs for:
@@ -192,14 +192,23 @@ embedded runtime needs for:
 - persisting assistant and tool-result messages from emitted events
 - configuring the runtime default model
 
+Use `RuntimeBackends::in_memory()` for the all-in-memory default, then chain
+`.with_file_store(...)`, `.with_message_store(...)`, etc. to override individual
+stores.
+
 Session files are a platform service: `PlatformDefinition` carries a
-`SessionFileSystemFactory`, and the runtime resolves it when no explicit
-`RuntimeBackends.file_store` is supplied. Embedders can choose
+`SessionFileSystemFactory`, and the runtime consults it only when the
+builder falls back to its default backends — i.e., when the embedder does
+not call `InProcessRuntimeBuilder::backends(...)`. A custom `RuntimeBackends`
+bundle always carries its own `file_store` (including the one
+`RuntimeBackends::in_memory()` installs), and that value wins; the platform
+factory is not consulted to override it. Embedders can choose
 `InMemorySessionFileSystemFactory` (default), `RealDiskSessionFileSystemFactory`
 (rooted at a host directory; honours `.gitignore` for grep), or a custom future
-factory such as S3. See `specs/file-store.md` for the trait contract, path
-namespace, and the rule that capabilities should consume the seam rather than
-touching `std::fs` directly.
+factory such as S3 — or skip the factory and supply an explicit `file_store`
+via `.with_file_store(...)`. See `specs/file-store.md` for the trait contract,
+path namespace, and the rule that capabilities should consume the seam rather
+than touching `std::fs` directly.
 
 Factories that depend on host values receive them through
 `SessionFileSystemFactoryContext`; the in-process builder accepts this context

@@ -95,8 +95,8 @@ mod runtime;
 mod turn_strategy;
 
 pub use backends::{
-    RuntimeAgentStore, RuntimeBackends, RuntimeEventCollector, RuntimeFileStore,
-    RuntimeHarnessStore, RuntimeMessageStore, RuntimeProviderStore, RuntimeSessionStore,
+    EventBus, RuntimeAgentStore, RuntimeBackends, RuntimeFileStore, RuntimeHarnessStore,
+    RuntimeMessageStore, RuntimeProviderStore, RuntimeSessionStore,
 };
 pub use builders::{AgentBuilder, HarnessBuilder, SessionBuilder, SingleSessionBuilder};
 pub use everruns_core::AssembledTurnContext;
