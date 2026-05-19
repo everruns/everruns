@@ -5,7 +5,6 @@
 // instead of running against the VFS.
 
 use crate::approval::ApprovalGate;
-use crate::file_store_decorators::{ApprovalGatingFileStore, WriteBlocklistFileStore};
 use crate::tools::{BashTool, Workspace};
 use anyhow::{Context, Result, anyhow};
 use async_trait::async_trait;
@@ -26,8 +25,8 @@ use everruns_core::{
 };
 use everruns_integrations_duckduckgo::DuckDuckGoCapability;
 use everruns_runtime::{
-    InProcessRuntime, InProcessRuntimeBuilder, RealDiskFileStore, RuntimeBackends,
-    RuntimeProviderStore,
+    ApprovalGatingFileStore, FileApprovalGate, InProcessRuntime, InProcessRuntimeBuilder,
+    RealDiskFileStore, RuntimeBackends, RuntimeProviderStore, WriteBlocklistFileStore,
 };
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
@@ -92,10 +91,8 @@ impl SessionFileSystemFactory for CodingCliSessionFileSystemFactory {
     ) -> everruns_core::Result<Arc<dyn SessionFileSystem>> {
         let disk: Arc<dyn SessionFileSystem> = Arc::new(RealDiskFileStore::new(&self.root)?);
         let blocklisted: Arc<dyn SessionFileSystem> = Arc::new(WriteBlocklistFileStore::new(disk));
-        Ok(Arc::new(ApprovalGatingFileStore::new(
-            blocklisted,
-            self.gate.clone(),
-        )))
+        let gate: Arc<dyn FileApprovalGate> = self.gate.clone();
+        Ok(Arc::new(ApprovalGatingFileStore::new(blocklisted, gate)))
     }
 }
 

@@ -5,7 +5,6 @@
 mod app;
 mod approval;
 mod diff;
-mod file_store_decorators;
 mod runtime;
 mod tools;
 

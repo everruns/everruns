@@ -5,6 +5,8 @@
 // grep) run free. The TUI installs an interactive gate, the `--print`
 // one-shot mode installs auto-approve. `--yes` overrides interactive.
 
+use async_trait::async_trait;
+use everruns_runtime::FileApprovalGate;
 use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
 
@@ -97,5 +99,25 @@ impl ApprovalGate {
                 orx.await.unwrap_or(false)
             }
         }
+    }
+}
+
+#[async_trait]
+impl FileApprovalGate for ApprovalGate {
+    async fn approve_write(&self, path: &str, before: Option<String>, after: &str) -> bool {
+        self.approve(ApprovalRequest::FileWrite {
+            path: path.to_string(),
+            before,
+            after: after.to_string(),
+        })
+        .await
+    }
+
+    async fn approve_delete(&self, path: &str, recursive: bool) -> bool {
+        self.approve(ApprovalRequest::FileDelete {
+            path: path.to_string(),
+            recursive,
+        })
+        .await
     }
 }
