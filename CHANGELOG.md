@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.8.33] - 2026-05-19
+
+### What's Changed
+
+- chore(release): align `crates/core/Cargo.toml` path-dep version pins (`everruns-config`, `everruns-openui`, `everruns-a2ui`) with the workspace version so the crates-publish workflow accepts the release tag. Add `scripts/sync-publish-pin-versions.py` helper and wire it into the prepare-release flow so future releases stay in sync. By [@chaliy](https://github.com/chaliy)
+
 ## [0.8.32] - 2026-05-19
 
 ### Highlights

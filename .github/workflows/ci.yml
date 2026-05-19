@@ -217,6 +217,9 @@ jobs:
       - name: Check Cargo.lock is up to date
         run: cargo fetch --locked
 
+      - name: Check publish-pin versions match workspace
+        run: python3 scripts/sync-publish-pin-versions.py --check
+
   migration-immutability:
     name: Migration Immutability
     runs-on: ubuntu-latest
