@@ -116,22 +116,22 @@ ercode --provider llmsim -p "hi"
 
 ## How it's wired
 
-- `src/runtime.rs` — plugs `RealDiskFileStore` (from `everruns-runtime`)
-  rooted at the workspace, wrapped by two policy decorators
-  (`WriteBlocklistFileStore` and `ApprovalGatingFileStore`), into
-  `RuntimeBackends.file_store`. Registers the built-in
+- `src/runtime.rs` — registers a platform `SessionFileSystemFactory` that
+  creates a `RealDiskFileStore` (from `everruns-runtime`) rooted at the
+  workspace and wraps it with two policy decorators
+  (`WriteBlocklistFileStore` and `ApprovalGatingFileStore`). Registers the built-in
   `AgentInstructionsCapability` (live-reloads AGENTS.md every turn),
   `FileSystemCapability` (read/write/edit/list/grep/delete/stat tools on real
-  disk via the FileStore stack), and a tiny custom `CodingBashCapability` for
+  disk via the platform session filesystem stack), and a tiny custom `CodingBashCapability` for
   the shell tool. Picks a driver (Anthropic / OpenAI / llmsim).
 - `src/file_store_decorators.rs` — `WriteBlocklistFileStore` and
-  `ApprovalGatingFileStore`. Both implement `SessionFileStore +
-  RuntimeFileStore` and compose freely. EVE-478 plans to ship these in
-  `everruns-runtime`; until then they live here.
+  `ApprovalGatingFileStore`. Both implement `SessionFileSystem` and compose
+  freely. EVE-478 plans to ship these in `everruns-runtime`; until then they
+  live here.
 - `src/tools.rs` — `BashTool` only. Built-in `virtual_bash` runs against the
   VFS, not the real workspace, so the shell tool stays custom.
 - `src/approval.rs` — `ApprovalGate` and the request enum; the gate is shared
-  between the bash tool and the FileStore decorator.
+  between the bash tool and the session filesystem approval decorator.
 - `src/app.rs` + `src/main.rs` — ratatui TUI and one-shot CLI driver.
 
 ## Caveats

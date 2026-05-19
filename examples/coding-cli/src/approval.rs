@@ -1,5 +1,5 @@
 // Approval gate for destructive operations.
-// Decision: writes/deletes flow through SessionFileStore decorators; bash
+// Decision: writes/deletes flow through SessionFileSystem decorators; bash
 // goes through the BashTool directly. Both await an explicit yes from the
 // human via a oneshot channel. Read-only ops (read_file, list_directory,
 // grep) run free. The TUI installs an interactive gate, the `--print`

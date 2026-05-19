@@ -1,8 +1,8 @@
 // Bash tool for the coding CLI.
 //
 // Read/write/edit/list/grep/stat all live in the built-in `file_system`
-// capability now that ercode plugs `RealDiskFileStore` as the runtime
-// FileStore. The bash tool stays custom because the built-in `virtual_bash`
+// capability now that ercode selects `RealDiskFileStore` through its platform
+// filesystem factory. The bash tool stays custom because the built-in `virtual_bash`
 // runs commands against the VFS, not against the real workspace, and the
 // security model for unsandboxed shell-on-host needs ercode-specific policy
 // (timeout, output cap, approval gate). See EVE-478 for the eventual
@@ -19,7 +19,7 @@ use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 
 /// Workspace context for the bash tool. Just the root path — path
-/// resolution for file ops now lives inside `RealDiskFileStore`.
+/// resolution for file ops now lives inside the configured session filesystem.
 #[derive(Clone)]
 pub struct Workspace {
     root: Arc<PathBuf>,
