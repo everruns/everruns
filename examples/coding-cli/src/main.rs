@@ -61,6 +61,7 @@ struct Cli {
 enum ProviderArg {
     Anthropic,
     Openai,
+    #[value(name = "llmsim", alias = "sim")]
     Sim,
 }
 
@@ -148,7 +149,7 @@ async fn run_tui(
 
 async fn run_print_mode(bundle: Arc<RuntimeBundle>, prompt: String) -> Result<()> {
     println!("[workspace] {}", bundle.workspace_root.display());
-    println!("[provider]  {}", bundle.provider_label);
+    println!("[provider]  {}", bundle.provider_label());
     println!("[tools]     {}", bundle.tool_names.join(", "));
     if !bundle.instruction_files.is_empty() {
         println!(

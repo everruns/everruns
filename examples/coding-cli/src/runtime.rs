@@ -24,10 +24,11 @@ use everruns_core::{
 };
 use everruns_integrations_duckduckgo::DuckDuckGoCapability;
 use everruns_runtime::{
-    InProcessRuntime, InProcessRuntimeBuilder, RealDiskFileStore, RuntimeBackends, RuntimeFileStore,
+    InProcessRuntime, InProcessRuntimeBuilder, RealDiskFileStore, RuntimeBackends,
+    RuntimeFileStore, RuntimeProviderStore,
 };
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 const HARNESS_PROMPT: &str = "You are a precise, terse coding assistant. \
     Make minimal, surgical changes. Always explain non-obvious decisions briefly.";
@@ -111,7 +112,101 @@ impl ProviderChoice {
         match self {
             Self::Anthropic { model } => format!("anthropic/{model}"),
             Self::OpenAi { model } => format!("openai/{model}"),
-            Self::Sim => "llmsim (no API key)".to_string(),
+            Self::Sim => "llmsim/llmsim-coding-cli".to_string(),
+        }
+    }
+
+    pub fn model_suggestions() -> &'static [&'static str] {
+        &[
+            "openai/gpt-5.5",
+            "openai/gpt-5.4",
+            "openai/gpt-5.4-mini",
+            "openai/gpt-5.3-codex",
+            "openai/gpt-5.2",
+            "anthropic/claude-sonnet-4-5",
+            "anthropic/claude-opus-4-5",
+            "anthropic/claude-haiku-4-5",
+            "anthropic/claude-sonnet-4-6",
+            "anthropic/claude-opus-4-6",
+            "llmsim/llmsim-coding-cli",
+        ]
+    }
+
+    fn resolve_model_spec(&self, spec: &str) -> Result<Self> {
+        let spec = spec.trim();
+        if let Some((provider, model)) = spec.split_once('/') {
+            return Self::from_provider_model(provider, model);
+        }
+        self.with_current_provider_model(spec.to_string())
+    }
+
+    fn from_provider_model(provider: &str, model: &str) -> Result<Self> {
+        let model = model.trim();
+        if model.is_empty() {
+            return Err(anyhow!("model id is required"));
+        }
+        match provider.trim().to_ascii_lowercase().as_str() {
+            "anthropic" => Ok(Self::Anthropic {
+                model: model.to_string(),
+            }),
+            "openai" => Ok(Self::OpenAi {
+                model: model.to_string(),
+            }),
+            "llmsim" | "sim" => {
+                if model == "llmsim-coding-cli" {
+                    Ok(Self::Sim)
+                } else {
+                    Err(anyhow!("offline llmsim only supports llmsim-coding-cli"))
+                }
+            }
+            other => Err(anyhow!(
+                "unknown provider {other}; expected openai, anthropic, or llmsim"
+            )),
+        }
+    }
+
+    fn with_current_provider_model(&self, model: String) -> Result<Self> {
+        match self {
+            Self::Anthropic { .. } => Ok(Self::Anthropic { model }),
+            Self::OpenAi { .. } => Ok(Self::OpenAi { model }),
+            Self::Sim => {
+                if model == "llmsim-coding-cli" {
+                    Ok(Self::Sim)
+                } else {
+                    Err(anyhow!("offline llmsim only supports llmsim-coding-cli"))
+                }
+            }
+        }
+    }
+
+    fn model_with_provider(&self) -> Result<ModelWithProvider> {
+        match self {
+            ProviderChoice::Anthropic { model } => {
+                let key = std::env::var("ANTHROPIC_API_KEY")
+                    .map_err(|_| anyhow!("ANTHROPIC_API_KEY not set"))?;
+                Ok(ModelWithProvider {
+                    model: model.clone(),
+                    provider_type: LlmProviderType::Anthropic,
+                    api_key: Some(key),
+                    base_url: None,
+                })
+            }
+            ProviderChoice::OpenAi { model } => {
+                let key = std::env::var("OPENAI_API_KEY")
+                    .map_err(|_| anyhow!("OPENAI_API_KEY not set"))?;
+                Ok(ModelWithProvider {
+                    model: model.clone(),
+                    provider_type: LlmProviderType::Openai,
+                    api_key: Some(key),
+                    base_url: None,
+                })
+            }
+            ProviderChoice::Sim => Ok(ModelWithProvider {
+                model: "llmsim-coding-cli".into(),
+                provider_type: LlmProviderType::LlmSim,
+                api_key: Some("fake-key".into()),
+                base_url: None,
+            }),
         }
     }
 }
@@ -122,9 +217,41 @@ pub struct RuntimeBundle {
     pub runtime: Arc<InProcessRuntime>,
     pub session_id: SessionId,
     pub workspace_root: PathBuf,
-    pub provider_label: String,
     pub instruction_files: Vec<String>,
     pub tool_names: Vec<String>,
+    provider: RwLock<ProviderChoice>,
+    provider_store: Arc<dyn RuntimeProviderStore>,
+}
+
+impl RuntimeBundle {
+    pub fn provider_label(&self) -> String {
+        self.provider
+            .read()
+            .expect("provider lock poisoned")
+            .label()
+    }
+
+    pub fn model_suggestions(&self) -> &'static [&'static str] {
+        ProviderChoice::model_suggestions()
+    }
+
+    pub async fn set_model(&self, model: &str) -> Result<String> {
+        let model = model.trim();
+        if model.is_empty() {
+            return Err(anyhow!("model id is required"));
+        }
+        let next = self
+            .provider
+            .read()
+            .expect("provider lock poisoned")
+            .resolve_model_spec(model)?;
+        self.provider_store
+            .set_default_model(next.model_with_provider()?)
+            .await?;
+        let label = next.label();
+        *self.provider.write().expect("provider lock poisoned") = next;
+        Ok(label)
+    }
 }
 
 pub async fn build(
@@ -145,6 +272,7 @@ pub async fn build(
 
     // The rest of the backends stay in memory.
     let backends = RuntimeBackends::in_memory().with_file_store(file_store);
+    let provider_store = backends.provider_store.clone();
 
     // Register a curated set of built-in capabilities (no opinionated bundle
     // — we want a tight, predictable surface for the coding-CLI) plus our
@@ -178,45 +306,18 @@ pub async fn build(
     });
 
     let mut driver_registry = DriverRegistry::new();
-    let mut llm_sim: Option<LlmSimConfig> = None;
+    everruns_anthropic::register_driver(&mut driver_registry);
+    everruns_openai::register_driver(&mut driver_registry);
     let default_model = match &provider {
-        ProviderChoice::Anthropic { model } => {
-            let key = std::env::var("ANTHROPIC_API_KEY")
-                .map_err(|_| anyhow!("ANTHROPIC_API_KEY not set"))?;
-            everruns_anthropic::register_driver(&mut driver_registry);
-            ModelWithProvider {
-                model: model.clone(),
-                provider_type: LlmProviderType::Anthropic,
-                api_key: Some(key),
-                base_url: None,
-            }
+        ProviderChoice::Anthropic { .. } | ProviderChoice::OpenAi { .. } => {
+            provider.model_with_provider()?
         }
-        ProviderChoice::OpenAi { model } => {
-            let key =
-                std::env::var("OPENAI_API_KEY").map_err(|_| anyhow!("OPENAI_API_KEY not set"))?;
-            everruns_openai::register_driver(&mut driver_registry);
-            ModelWithProvider {
-                model: model.clone(),
-                provider_type: LlmProviderType::Openai,
-                api_key: Some(key),
-                base_url: None,
-            }
-        }
-        ProviderChoice::Sim => {
-            llm_sim = Some(
-                LlmSimConfig::fixed(
-                    "I'm running in offline mode (llmsim — no API key set). \
-                     Set ANTHROPIC_API_KEY or OPENAI_API_KEY for real responses.",
-                )
-                .with_model("llmsim-coding-cli"),
-            );
-            ModelWithProvider {
-                model: "llmsim-coding-cli".into(),
-                provider_type: LlmProviderType::LlmSim,
-                api_key: Some("fake-key".into()),
-                base_url: None,
-            }
-        }
+        ProviderChoice::Sim => ModelWithProvider {
+            model: "llmsim-coding-cli".into(),
+            provider_type: LlmProviderType::LlmSim,
+            api_key: Some("fake-key".into()),
+            base_url: None,
+        },
     };
 
     let platform = PlatformDefinition::new(capabilities, driver_registry);
@@ -269,9 +370,13 @@ pub async fn build(
             }
             s
         });
-    if let Some(cfg) = llm_sim {
-        builder = builder.llm_sim(cfg);
-    }
+    builder = builder.llm_sim(
+        LlmSimConfig::fixed(
+            "I'm running in offline mode (llmsim — no API key set). \
+             Set ANTHROPIC_API_KEY or OPENAI_API_KEY for real responses.",
+        )
+        .with_model("llmsim-coding-cli"),
+    );
     let runtime = builder.build().await?;
     let session_id = runtime
         .default_session_id()
@@ -298,8 +403,56 @@ pub async fn build(
         runtime: Arc::new(runtime),
         session_id,
         workspace_root: canonical_root,
-        provider_label: provider.label(),
         instruction_files,
         tool_names,
+        provider: RwLock::new(provider),
+        provider_store,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn model_spec_can_switch_to_openai() {
+        let provider = ProviderChoice::Sim;
+        let next = provider.resolve_model_spec("openai/gpt-5.5").unwrap();
+
+        assert_eq!(next.label(), "openai/gpt-5.5");
+    }
+
+    #[test]
+    fn model_spec_can_switch_to_anthropic() {
+        let provider = ProviderChoice::OpenAi {
+            model: "gpt-5.5".to_string(),
+        };
+        let next = provider
+            .resolve_model_spec("anthropic/claude-sonnet-4-5")
+            .unwrap();
+
+        assert_eq!(next.label(), "anthropic/claude-sonnet-4-5");
+    }
+
+    #[test]
+    fn model_spec_uses_current_provider_without_prefix() {
+        let provider = ProviderChoice::OpenAi {
+            model: "gpt-5.5".to_string(),
+        };
+        let next = provider.resolve_model_spec("gpt-5.4").unwrap();
+
+        assert_eq!(next.label(), "openai/gpt-5.4");
+    }
+
+    #[test]
+    fn model_spec_accepts_llmsim_provider_name() {
+        let provider = ProviderChoice::OpenAi {
+            model: "gpt-5.5".to_string(),
+        };
+        let next = provider
+            .resolve_model_spec("llmsim/llmsim-coding-cli")
+            .unwrap();
+
+        assert_eq!(next.label(), "llmsim/llmsim-coding-cli");
+    }
 }
