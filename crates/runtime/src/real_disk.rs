@@ -121,7 +121,9 @@ impl RealDiskFileStore {
     /// Resolve a capability-facing path to an absolute host path.
     ///
     /// Returns an error if the input contains a `..` segment or if joining
-    /// produces a path outside the root.
+    /// produces a path outside the root. Symlink containment is checked by
+    /// `reject_symlink_path` at each filesystem access so missing write
+    /// targets can still be created safely.
     fn resolve(&self, path: &str) -> Result<PathBuf> {
         let normalized = normalize_path(path);
         if normalized == "/" {
@@ -149,15 +151,58 @@ impl RealDiskFileStore {
         }
 
         let absolute = self.root.join(candidate);
-        // Final containment check on the lexical path — symlinks inside the
-        // user's workspace are their concern; the input string itself must
-        // not escape.
         if !absolute.starts_with(&self.root) {
             return Err(AgentLoopError::tool(format!(
                 "path escapes workspace root: {path}"
             )));
         }
         Ok(absolute)
+    }
+
+    /// Reject symlinks anywhere in the resolved path before performing real
+    /// disk I/O. File operations are LLM-controlled in embedded runtimes, so
+    /// following workspace symlinks would bypass the workspace boundary and
+    /// any lexical write policies layered above this store. Missing components
+    /// are allowed so callers can create new files/directories after all
+    /// existing ancestors have been checked.
+    async fn reject_symlink_path(&self, absolute: &Path) -> Result<()> {
+        let relative = absolute.strip_prefix(&self.root).map_err(|_| {
+            AgentLoopError::tool(format!(
+                "path is outside workspace root: {}",
+                absolute.display()
+            ))
+        })?;
+
+        let mut current = self.root.clone();
+        for component in relative.components() {
+            match component {
+                Component::Normal(segment) => current.push(segment),
+                _ => {
+                    return Err(AgentLoopError::tool(format!(
+                        "unexpected path component in {}",
+                        absolute.display()
+                    )));
+                }
+            }
+
+            match tokio::fs::symlink_metadata(&current).await {
+                Ok(metadata) if metadata.file_type().is_symlink() => {
+                    return Err(AgentLoopError::tool(format!(
+                        "symlink paths are not allowed in real-disk workspace access: {}",
+                        current.display()
+                    )));
+                }
+                Ok(_) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+                Err(e) => {
+                    return Err(AgentLoopError::tool(format!(
+                        "lstat failed for {}: {e}",
+                        current.display()
+                    )));
+                }
+            }
+        }
+        Ok(())
     }
 
     fn relative_capability_path(&self, absolute: &Path) -> Result<String> {
@@ -205,6 +250,7 @@ impl SessionFileSystem for RealDiskFileStore {
         // Clear any prior readonly mark so seeding always wins over a
         // previous starter-file declaration with the same path.
         let absolute = self.resolve(&file.path)?;
+        self.reject_symlink_path(&absolute).await?;
         let canonical = self.relative_capability_path(&absolute)?;
         self.mark_readonly(canonical.clone(), false).await;
 
@@ -218,6 +264,7 @@ impl SessionFileSystem for RealDiskFileStore {
 
     async fn read_file(&self, session_id: SessionId, path: &str) -> Result<Option<SessionFile>> {
         let absolute = self.resolve(path)?;
+        self.reject_symlink_path(&absolute).await?;
         let metadata = match tokio::fs::metadata(&absolute).await {
             Ok(m) => m,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -281,6 +328,7 @@ impl SessionFileSystem for RealDiskFileStore {
         encoding: &str,
     ) -> Result<SessionFile> {
         let absolute = self.resolve(path)?;
+        self.reject_symlink_path(&absolute).await?;
         let canonical_path = self.relative_capability_path(&absolute)?;
         if self.is_readonly(&canonical_path).await {
             return Err(AgentLoopError::tool(format!(
@@ -340,6 +388,7 @@ impl SessionFileSystem for RealDiskFileStore {
         recursive: bool,
     ) -> Result<bool> {
         let absolute = self.resolve(path)?;
+        self.reject_symlink_path(&absolute).await?;
         if absolute == self.root {
             return Err(AgentLoopError::tool(
                 "cannot delete workspace root".to_string(),
@@ -402,6 +451,7 @@ impl SessionFileSystem for RealDiskFileStore {
 
     async fn list_directory(&self, session_id: SessionId, path: &str) -> Result<Vec<FileInfo>> {
         let absolute = self.resolve(path)?;
+        self.reject_symlink_path(&absolute).await?;
         let metadata = match tokio::fs::metadata(&absolute).await {
             Ok(m) => m,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(vec![]),
@@ -428,7 +478,8 @@ impl SessionFileSystem for RealDiskFileStore {
         })? {
             let entry_path = entry.path();
             let canonical = self.relative_capability_path(&entry_path)?;
-            let entry_meta = match entry.metadata().await {
+            let entry_meta = match tokio::fs::symlink_metadata(&entry_path).await {
+                Ok(m) if m.file_type().is_symlink() => continue,
                 Ok(m) => m,
                 Err(_) => continue,
             };
@@ -456,6 +507,7 @@ impl SessionFileSystem for RealDiskFileStore {
 
     async fn stat_file(&self, _session_id: SessionId, path: &str) -> Result<Option<FileStat>> {
         let absolute = self.resolve(path)?;
+        self.reject_symlink_path(&absolute).await?;
         let metadata = match tokio::fs::metadata(&absolute).await {
             Ok(m) => m,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -581,6 +633,7 @@ impl SessionFileSystem for RealDiskFileStore {
 
     async fn create_directory(&self, session_id: SessionId, path: &str) -> Result<FileInfo> {
         let absolute = self.resolve(path)?;
+        self.reject_symlink_path(&absolute).await?;
         tokio::fs::create_dir_all(&absolute).await.map_err(|e| {
             AgentLoopError::tool(format!(
                 "create_dir_all failed for {}: {e}",
@@ -764,6 +817,77 @@ mod tests {
             .expect_err("must reject traversal");
         let msg = format!("{err}");
         assert!(msg.contains("traversal"), "got: {msg}");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn read_file_rejects_symlink_to_outside_workspace() {
+        let (store, dir) = make_store();
+        let outside = TempDir::new().expect("outside tempdir");
+        std::fs::write(outside.path().join("secret.txt"), "secret").unwrap();
+        std::fs::create_dir(dir.path().join("docs")).unwrap();
+        std::os::unix::fs::symlink(outside.path(), dir.path().join("docs/secret")).unwrap();
+
+        let err = store
+            .read_file(sid(), "/docs/secret/secret.txt")
+            .await
+            .expect_err("symlink read must be rejected");
+        let msg = format!("{err}");
+        assert!(msg.contains("symlink"), "got: {msg}");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn list_directory_rejects_symlink_to_outside_workspace() {
+        let (store, dir) = make_store();
+        let outside = TempDir::new().expect("outside tempdir");
+        std::fs::write(outside.path().join("secret.txt"), "secret").unwrap();
+        std::os::unix::fs::symlink(outside.path(), dir.path().join("secret_dir")).unwrap();
+
+        let err = store
+            .list_directory(sid(), "/secret_dir")
+            .await
+            .expect_err("symlink list must be rejected");
+        let msg = format!("{err}");
+        assert!(msg.contains("symlink"), "got: {msg}");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn write_file_rejects_symlink_parent() {
+        let (store, dir) = make_store();
+        let outside = TempDir::new().expect("outside tempdir");
+        std::os::unix::fs::symlink(outside.path(), dir.path().join("outlink")).unwrap();
+
+        let err = store
+            .write_file(sid(), "/outlink/owned.txt", "owned", "text")
+            .await
+            .expect_err("symlink write must be rejected");
+        let msg = format!("{err}");
+        assert!(msg.contains("symlink"), "got: {msg}");
+        assert!(!outside.path().join("owned.txt").exists());
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn list_directory_skips_symlink_children() {
+        let (store, dir) = make_store();
+        let outside = TempDir::new().expect("outside tempdir");
+        std::fs::write(outside.path().join("secret.txt"), "secret").unwrap();
+        std::os::unix::fs::symlink(
+            outside.path().join("secret.txt"),
+            dir.path().join("link.txt"),
+        )
+        .unwrap();
+        store
+            .write_file(sid(), "/safe.txt", "safe", "text")
+            .await
+            .unwrap();
+
+        let entries = store.list_directory(sid(), "/").await.unwrap();
+        let paths: Vec<&str> = entries.iter().map(|entry| entry.path.as_str()).collect();
+        assert!(paths.contains(&"/safe.txt"));
+        assert!(!paths.contains(&"/link.txt"));
     }
 
     #[tokio::test]
