@@ -37,19 +37,36 @@ use everruns_core::traits::{
     SessionStorageStore, SessionStore,
 };
 use everruns_core::turn::{TurnAction, TurnContext, TurnOutcome, TurnStateMachine};
-use everruns_core::typed_id::{AgentId, HarnessId, SessionId};
+use everruns_core::typed_id::{AgentId, HarnessId, OrgId, SessionId};
 use everruns_core::{
     InputMessage, MemoryStoreBackend, MessageRetriever, SessionFileSystem,
     SessionFileSystemFactoryContext,
 };
 use std::sync::Arc;
 
-/// Internal org id used by the in-process runtime when calling host
-/// activity functions. The in-process runtime does not multi-tenant; this
-/// matches `everruns_core::DEFAULT_ORG_ID` so the public-id mapping in
-/// `org_public_id_from_internal` resolves to `DEFAULT_ORG_PUBLIC_ID` and
-/// the org id `ActAtom` sees matches the prior (pre-host-activity) wiring.
-const IN_PROCESS_ORG_ID: i64 = everruns_core::DEFAULT_ORG_ID;
+/// Internal org id fallback used by the in-process runtime when a session
+/// org id is absent or invalid.
+const IN_PROCESS_ORG_ID_FALLBACK: i64 = everruns_core::DEFAULT_ORG_ID;
+
+fn in_process_internal_org_id(public_org_id: &str) -> i64 {
+    if public_org_id == everruns_core::DEFAULT_ORG_PUBLIC_ID {
+        return everruns_core::DEFAULT_ORG_ID;
+    }
+
+    if public_org_id.parse::<OrgId>().is_err() {
+        return IN_PROCESS_ORG_ID_FALLBACK;
+    }
+
+    let Some(hex) = public_org_id.strip_prefix("org_") else {
+        return IN_PROCESS_ORG_ID_FALLBACK;
+    };
+    let Ok(raw) = u128::from_str_radix(hex, 16) else {
+        return IN_PROCESS_ORG_ID_FALLBACK;
+    };
+
+    // Stable deterministic fold to positive i64; reserve 1 for default org.
+    ((raw % ((i64::MAX - 1) as u128)) as i64) + 2
+}
 
 #[derive(Debug, Clone)]
 pub struct TurnResult {
@@ -438,7 +455,7 @@ impl InProcessRuntime {
         let synthetic_agent_id = session
             .agent_id
             .unwrap_or_else(|| AgentId::from_uuid(session.id.uuid()));
-        let org_id: i64 = IN_PROCESS_ORG_ID;
+        let org_id = in_process_internal_org_id(&session.organization_id);
         let mut state_machine = TurnStateMachine::new(
             TurnContext::new(session_id, input_message.id, synthetic_agent_id, org_id),
             assembled.runtime_agent.max_iterations,
