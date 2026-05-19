@@ -1,0 +1,1180 @@
+// Agent handoff capability.
+//
+// Decision: handoff starts a real configured Agent in a child session instead
+// of using a code-defined blueprint. The source agent gets only handoff tools;
+// the target agent owns its own tools, capabilities, data, and runtime prompt.
+// Credentials are never accepted as tool arguments or config. Required
+// provider connections are resolved server-side before the child session starts.
+
+use super::{Capability, CapabilityStatus, RiskLevel, SystemPromptContext};
+use crate::platform_store::PlatformStore;
+use crate::session::SubagentStatus;
+use crate::session_resource::{
+    RegisterSessionResource, SessionResourceFilter, SessionResourceStatus,
+};
+use crate::tool_types::ToolHints;
+use crate::tools::{Tool, ToolExecutionResult};
+use crate::traits::{SessionResourceRegistry, ToolContext};
+use crate::typed_id::AgentId;
+use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
+use serde_json::{Value, json};
+
+pub const AGENT_HANDOFF_CAPABILITY_ID: &str = "agent_handoff";
+const AGENT_HANDOFF_RESOURCE_KIND: &str = "agent_handoff";
+const DEFAULT_WAIT_TIMEOUT_SECS: u64 = 300;
+
+pub struct AgentHandoffCapability;
+
+#[async_trait]
+impl Capability for AgentHandoffCapability {
+    fn id(&self) -> &str {
+        AGENT_HANDOFF_CAPABILITY_ID
+    }
+
+    fn name(&self) -> &str {
+        "Agent Handoff"
+    }
+
+    fn description(&self) -> &str {
+        "Delegate work to configured first-party agents through an authenticated handoff gate."
+    }
+
+    fn status(&self) -> CapabilityStatus {
+        CapabilityStatus::Available
+    }
+
+    fn icon(&self) -> Option<&str> {
+        Some("user-round-check")
+    }
+
+    fn category(&self) -> Option<&str> {
+        Some("Orchestration")
+    }
+
+    fn features(&self) -> Vec<&'static str> {
+        vec!["agent_handoffs"]
+    }
+
+    fn risk_level(&self) -> RiskLevel {
+        RiskLevel::High
+    }
+
+    fn config_schema(&self) -> Option<Value> {
+        Some(json!({
+            "type": "object",
+            "properties": {
+                "targets": {
+                    "type": "array",
+                    "description": "Configured agents this agent may hand work off to.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": {
+                                "type": "string",
+                                "description": "Stable target key used in start_agent_handoff."
+                            },
+                            "name": { "type": "string" },
+                            "description": { "type": "string" },
+                            "agent_id": {
+                                "type": "string",
+                                "description": "Public id of the configured target agent."
+                            },
+                            "required_connections": {
+                                "type": "array",
+                                "items": { "type": "string" },
+                                "description": "Provider connections required before handoff starts."
+                            },
+                            "required_scopes": {
+                                "type": "array",
+                                "items": { "type": "string" },
+                                "description": "Non-secret scope labels recorded for audit and resource metadata."
+                            }
+                        },
+                        "required": ["id", "name", "agent_id"],
+                        "additionalProperties": false
+                    },
+                    "default": []
+                }
+            },
+            "additionalProperties": false
+        }))
+    }
+
+    fn validate_config(&self, config: &Value) -> std::result::Result<(), String> {
+        let parsed = AgentHandoffConfig::from_value(config).map_err(|e| e.to_string())?;
+        parsed.validate()
+    }
+
+    fn tools_with_config(&self, config: &Value) -> Vec<Box<dyn Tool>> {
+        let config = AgentHandoffConfig::from_value(config).unwrap_or_default();
+        vec![
+            Box::new(StartAgentHandoffTool::new(config.clone())),
+            Box::new(GetAgentHandoffsTool),
+            Box::new(MessageAgentHandoffTool),
+        ]
+    }
+
+    fn tools(&self) -> Vec<Box<dyn Tool>> {
+        self.tools_with_config(&Value::Null)
+    }
+
+    async fn system_prompt_contribution_with_config(
+        &self,
+        _ctx: &SystemPromptContext,
+        config: &Value,
+    ) -> Option<String> {
+        let config = AgentHandoffConfig::from_value(config).unwrap_or_default();
+        let targets = config
+            .targets
+            .iter()
+            .map(|target| {
+                format!(
+                    "- {} ({}) — {}",
+                    target.name,
+                    target.id,
+                    target
+                        .description
+                        .as_deref()
+                        .unwrap_or("Configured handoff target")
+                )
+            })
+            .collect::<Vec<_>>();
+
+        Some(format!(
+            "<capability id=\"{}\">\n\
+Use start_agent_handoff to delegate work to configured first-party agents.\n\
+Never ask the user to paste provider tokens into chat or pass credentials in tool arguments.\n\
+If a required provider connection is missing, the handoff tool will return a connection_required result and the client should collect credentials through the Connections flow.\n\
+Available handoff targets:\n{}\n\
+</capability>",
+            self.id(),
+            if targets.is_empty() {
+                "- none configured".to_string()
+            } else {
+                targets.join("\n")
+            }
+        ))
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+struct AgentHandoffConfig {
+    #[serde(default)]
+    targets: Vec<AgentHandoffTargetConfig>,
+}
+
+impl AgentHandoffConfig {
+    fn from_value(value: &Value) -> serde_json::Result<Self> {
+        if value.is_null() {
+            Ok(Self::default())
+        } else {
+            serde_json::from_value(value.clone())
+        }
+    }
+
+    fn validate(&self) -> std::result::Result<(), String> {
+        let mut seen = std::collections::HashSet::new();
+        for target in &self.targets {
+            target.validate()?;
+            if !seen.insert(target.id.as_str()) {
+                return Err(format!("Duplicate handoff target id: {}", target.id));
+            }
+        }
+        Ok(())
+    }
+
+    fn target(&self, id: &str) -> Option<&AgentHandoffTargetConfig> {
+        self.targets.iter().find(|target| target.id == id)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct AgentHandoffTargetConfig {
+    id: String,
+    name: String,
+    #[serde(default)]
+    description: Option<String>,
+    agent_id: AgentId,
+    #[serde(default)]
+    required_connections: Vec<String>,
+    #[serde(default)]
+    required_scopes: Vec<String>,
+}
+
+impl AgentHandoffTargetConfig {
+    fn validate(&self) -> std::result::Result<(), String> {
+        if self.id.trim().is_empty() {
+            return Err("Agent handoff target id cannot be empty".to_string());
+        }
+        if self.name.trim().is_empty() {
+            return Err(format!(
+                "Agent handoff target {} name cannot be empty",
+                self.id
+            ));
+        }
+        for provider in &self.required_connections {
+            if provider.trim().is_empty() {
+                return Err(format!(
+                    "Agent handoff target {} has an empty required connection",
+                    self.id
+                ));
+            }
+        }
+        for scope in &self.required_scopes {
+            if scope.trim().is_empty() {
+                return Err(format!(
+                    "Agent handoff target {} has an empty required scope",
+                    self.id
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+enum AgentHandoffMode {
+    Wait,
+}
+
+impl AgentHandoffMode {
+    fn parse(value: Option<&str>) -> std::result::Result<Self, String> {
+        match value.unwrap_or("wait") {
+            "wait" => Ok(Self::Wait),
+            other => Err(format!("Invalid mode: {other}. Only wait is supported")),
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Wait => "wait",
+        }
+    }
+}
+
+fn get_platform_store(context: &ToolContext) -> Result<&dyn PlatformStore, ToolExecutionResult> {
+    context
+        .platform_store
+        .as_ref()
+        .map(|store| store.as_ref())
+        .ok_or_else(|| {
+            ToolExecutionResult::tool_error("Agent handoff tools require platform_store context.")
+        })
+}
+
+fn require_str<'a>(args: &'a Value, field: &str) -> Result<&'a str, ToolExecutionResult> {
+    args.get(field)
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| {
+            ToolExecutionResult::tool_error(format!("Missing required parameter: {field}"))
+        })
+}
+
+fn child_task(task: &str, public_context: Option<&Value>) -> String {
+    let Some(public_context) = public_context else {
+        return task.to_string();
+    };
+    format!(
+        "{task}\n\n<public_handoff_context>\n{}\n</public_handoff_context>",
+        serde_json::to_string_pretty(public_context).unwrap_or_else(|_| "{}".to_string())
+    )
+}
+
+fn last_agent_message(messages: &[crate::platform_store::PlatformMessage]) -> Option<String> {
+    messages
+        .iter()
+        .rfind(|message| message.role == "agent" || message.role == "assistant")
+        .map(|message| message.content.clone())
+}
+
+async fn require_connections(
+    context: &ToolContext,
+    target: &AgentHandoffTargetConfig,
+) -> Result<(), ToolExecutionResult> {
+    if target.required_connections.is_empty() {
+        return Ok(());
+    }
+
+    let Some(resolver) = &context.connection_resolver else {
+        return Err(ToolExecutionResult::internal_error_msg(
+            "Agent handoff connection resolution is not available in this execution context.",
+        ));
+    };
+
+    for provider in &target.required_connections {
+        match resolver
+            .get_connection_token(context.session_id, provider)
+            .await
+        {
+            Ok(Some(_token)) => {}
+            Ok(None) => return Err(ToolExecutionResult::connection_required(provider.clone())),
+            Err(error) => return Err(ToolExecutionResult::internal_error(error)),
+        }
+    }
+    Ok(())
+}
+
+async fn register_handoff_resource(
+    registry: Option<&std::sync::Arc<dyn SessionResourceRegistry>>,
+    parent_session_id: crate::typed_id::SessionId,
+    child_session_id: crate::typed_id::SessionId,
+    target: &AgentHandoffTargetConfig,
+    mode: AgentHandoffMode,
+    status: SessionResourceStatus,
+) {
+    let Some(registry) = registry else {
+        return;
+    };
+    let _ = registry
+        .register(RegisterSessionResource {
+            session_id: parent_session_id,
+            resource_id: child_session_id.to_string(),
+            kind: AGENT_HANDOFF_RESOURCE_KIND.to_string(),
+            display_name: target.name.clone(),
+            status,
+            metadata: json!({
+                "target": target.id,
+                "target_agent_id": target.agent_id,
+                "required_connections": target.required_connections,
+                "required_scopes": target.required_scopes,
+                "mode": mode.as_str(),
+            }),
+        })
+        .await;
+}
+
+pub struct StartAgentHandoffTool {
+    config: AgentHandoffConfig,
+}
+
+impl StartAgentHandoffTool {
+    fn new(config: AgentHandoffConfig) -> Self {
+        Self { config }
+    }
+}
+
+#[async_trait]
+impl Tool for StartAgentHandoffTool {
+    fn name(&self) -> &str {
+        "start_agent_handoff"
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some("Start Agent Handoff")
+    }
+
+    fn description(&self) -> &str {
+        "Start an authenticated handoff to a configured first-party target agent. Credentials are resolved through Connections, never passed as arguments."
+    }
+
+    fn parameters_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "target": {
+                    "type": "string",
+                    "description": "Configured handoff target id."
+                },
+                "task": {
+                    "type": "string",
+                    "description": "Work request for the target agent. Do not include credentials or bearer tokens."
+                },
+                "public_context": {
+                    "type": "object",
+                    "description": "Non-secret structured context to include with the task."
+                }
+            },
+            "required": ["target", "task"],
+            "additionalProperties": false
+        })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default().with_long_running(true)
+    }
+
+    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
+        ToolExecutionResult::tool_error(
+            "start_agent_handoff requires context. This tool must be executed with session context.",
+        )
+    }
+
+    async fn execute_with_context(
+        &self,
+        arguments: Value,
+        context: &ToolContext,
+    ) -> ToolExecutionResult {
+        let store = match get_platform_store(context) {
+            Ok(store) => store,
+            Err(error) => return error,
+        };
+
+        let target_id = match require_str(&arguments, "target") {
+            Ok(value) => value,
+            Err(error) => return error,
+        };
+        let task = match require_str(&arguments, "task") {
+            Ok(value) => value,
+            Err(error) => return error,
+        };
+        let mode = match AgentHandoffMode::parse(arguments.get("mode").and_then(Value::as_str)) {
+            Ok(mode) => mode,
+            Err(error) => return ToolExecutionResult::tool_error(error),
+        };
+
+        let Some(target) = self.config.target(target_id) else {
+            return ToolExecutionResult::tool_error(format!(
+                "Unknown handoff target: \"{target_id}\". Check configured targets."
+            ));
+        };
+
+        if let Err(error) = require_connections(context, target).await {
+            return error;
+        }
+
+        let parent_session = match store.get_session_by_id(context.session_id).await {
+            Ok(Some(session)) => session,
+            Ok(None) => return ToolExecutionResult::tool_error("Current session not found"),
+            Err(error) => return ToolExecutionResult::internal_error(error),
+        };
+
+        if parent_session.parent_session_id.is_some() {
+            return ToolExecutionResult::tool_error(
+                "Agent handoffs cannot be started from child sessions.",
+            );
+        }
+
+        let child_session = match store
+            .create_session(
+                parent_session.harness_id,
+                Some(target.agent_id),
+                Some(&target.name),
+                parent_session.locale.as_deref(),
+                None,
+                None,
+            )
+            .await
+        {
+            Ok(session) => session,
+            Err(error) => return ToolExecutionResult::internal_error(error),
+        };
+
+        let handoff_task = child_task(task, arguments.get("public_context"));
+        let child_session = match store
+            .set_subagent_metadata(
+                child_session.id,
+                context.session_id,
+                &target.name,
+                &handoff_task,
+                SubagentStatus::Running,
+            )
+            .await
+        {
+            Ok(session) => session,
+            Err(error) => return ToolExecutionResult::internal_error(error),
+        };
+
+        register_handoff_resource(
+            context.session_resource_registry.as_ref(),
+            context.session_id,
+            child_session.id,
+            target,
+            mode,
+            SessionResourceStatus::Active,
+        )
+        .await;
+
+        if let Err(error) = store.send_message(child_session.id, &handoff_task).await {
+            return ToolExecutionResult::internal_error(error);
+        }
+
+        let status = match store
+            .wait_for_idle(child_session.id, Some(DEFAULT_WAIT_TIMEOUT_SECS))
+            .await
+        {
+            Ok(status) => status,
+            Err(error) => {
+                if let Some(registry) = &context.session_resource_registry {
+                    let _ = registry
+                        .update_status(
+                            context.session_id,
+                            &child_session.id.to_string(),
+                            SessionResourceStatus::Failed,
+                        )
+                        .await;
+                }
+                return ToolExecutionResult::success(json!({
+                    "handoff_id": child_session.id.to_string(),
+                    "target": target.id,
+                    "target_agent_id": target.agent_id,
+                    "name": target.name,
+                    "status": "failed",
+                    "error": error.to_string(),
+                    "mode": "wait",
+                }));
+            }
+        };
+
+        let messages = match store.get_messages(child_session.id, Some(5)).await {
+            Ok(messages) => messages,
+            Err(error) => return ToolExecutionResult::internal_error(error),
+        };
+        let result = last_agent_message(&messages)
+            .unwrap_or_else(|| format!("Handoff completed with status: {status}"));
+
+        if let Some(registry) = &context.session_resource_registry {
+            let terminal = if status == "error" {
+                SessionResourceStatus::Failed
+            } else {
+                SessionResourceStatus::Completed
+            };
+            let _ = registry
+                .update_status(context.session_id, &child_session.id.to_string(), terminal)
+                .await;
+        }
+
+        let _ = store
+            .set_subagent_metadata(
+                child_session.id,
+                context.session_id,
+                &target.name,
+                &handoff_task,
+                if status == "error" {
+                    SubagentStatus::Failed
+                } else {
+                    SubagentStatus::Completed
+                },
+            )
+            .await;
+
+        ToolExecutionResult::success(json!({
+            "handoff_id": child_session.id.to_string(),
+            "target": target.id,
+            "target_agent_id": target.agent_id,
+            "name": target.name,
+            "status": status,
+            "result": result,
+            "mode": "wait",
+        }))
+    }
+
+    fn requires_context(&self) -> bool {
+        true
+    }
+}
+
+pub struct GetAgentHandoffsTool;
+
+#[async_trait]
+impl Tool for GetAgentHandoffsTool {
+    fn name(&self) -> &str {
+        "get_agent_handoffs"
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some("Get Agent Handoffs")
+    }
+
+    fn description(&self) -> &str {
+        "List agent handoffs started by the current session."
+    }
+
+    fn parameters_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "handoff_id": {
+                    "type": "string",
+                    "description": "Optional child session id to retrieve."
+                }
+            },
+            "additionalProperties": false
+        })
+    }
+
+    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
+        ToolExecutionResult::tool_error(
+            "get_agent_handoffs requires context. This tool must be executed with session context.",
+        )
+    }
+
+    async fn execute_with_context(
+        &self,
+        arguments: Value,
+        context: &ToolContext,
+    ) -> ToolExecutionResult {
+        if let Some(registry) = &context.session_resource_registry {
+            let filter = SessionResourceFilter {
+                kind: Some(AGENT_HANDOFF_RESOURCE_KIND.to_string()),
+                status: None,
+            };
+            let mut entries = match registry.list(context.session_id, Some(&filter)).await {
+                Ok(entries) => entries,
+                Err(error) => return ToolExecutionResult::internal_error(error),
+            };
+            if let Some(handoff_id) = arguments.get("handoff_id").and_then(Value::as_str) {
+                entries.retain(|entry| entry.resource_id == handoff_id);
+            }
+            return ToolExecutionResult::success(json!({ "handoffs": entries }));
+        }
+
+        let store = match get_platform_store(context) {
+            Ok(store) => store,
+            Err(error) => return error,
+        };
+        let sessions = match store.list_sessions(Some(100), None).await {
+            Ok(sessions) => sessions,
+            Err(error) => return ToolExecutionResult::internal_error(error),
+        };
+        let handoff_id = arguments.get("handoff_id").and_then(Value::as_str);
+        let handoffs = sessions
+            .into_iter()
+            .filter(|session| session.parent_session_id == Some(context.session_id))
+            .filter(|session| handoff_id.is_none_or(|id| session.id.to_string() == id))
+            .map(|session| {
+                json!({
+                    "handoff_id": session.id.to_string(),
+                    "name": session.subagent_name,
+                    "status": session.subagent_status,
+                    "target_agent_id": session.agent_id,
+                    "created_at": session.created_at,
+                    "updated_at": session.updated_at,
+                })
+            })
+            .collect::<Vec<_>>();
+        ToolExecutionResult::success(json!({ "handoffs": handoffs }))
+    }
+
+    fn requires_context(&self) -> bool {
+        true
+    }
+}
+
+pub struct MessageAgentHandoffTool;
+
+#[async_trait]
+impl Tool for MessageAgentHandoffTool {
+    fn name(&self) -> &str {
+        "message_agent_handoff"
+    }
+
+    fn display_name(&self) -> Option<&str> {
+        Some("Message Agent Handoff")
+    }
+
+    fn description(&self) -> &str {
+        "Send follow-up input to an existing agent handoff child session."
+    }
+
+    fn parameters_schema(&self) -> Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "handoff_id": {
+                    "type": "string",
+                    "description": "Child session id returned by start_agent_handoff."
+                },
+                "message": {
+                    "type": "string",
+                    "description": "Follow-up message. Do not include credentials or bearer tokens."
+                }
+            },
+            "required": ["handoff_id", "message"],
+            "additionalProperties": false
+        })
+    }
+
+    fn hints(&self) -> ToolHints {
+        ToolHints::default().with_long_running(true)
+    }
+
+    async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
+        ToolExecutionResult::tool_error(
+            "message_agent_handoff requires context. This tool must be executed with session context.",
+        )
+    }
+
+    async fn execute_with_context(
+        &self,
+        arguments: Value,
+        context: &ToolContext,
+    ) -> ToolExecutionResult {
+        let store = match get_platform_store(context) {
+            Ok(store) => store,
+            Err(error) => return error,
+        };
+        let handoff_id = match require_str(&arguments, "handoff_id") {
+            Ok(value) => value,
+            Err(error) => return error,
+        };
+        let message = match require_str(&arguments, "message") {
+            Ok(value) => value,
+            Err(error) => return error,
+        };
+        let child_id = match handoff_id.parse::<crate::typed_id::SessionId>() {
+            Ok(id) => id,
+            Err(_) => {
+                return ToolExecutionResult::tool_error(format!(
+                    "Invalid handoff_id: {handoff_id}"
+                ));
+            }
+        };
+
+        let child = match store.get_session_by_id(child_id).await {
+            Ok(Some(session)) => session,
+            Ok(None) => return ToolExecutionResult::tool_error("Agent handoff not found"),
+            Err(error) => return ToolExecutionResult::internal_error(error),
+        };
+        if child.parent_session_id != Some(context.session_id) {
+            return ToolExecutionResult::tool_error(
+                "Agent handoff does not belong to the current session.",
+            );
+        }
+
+        if let Err(error) = store.send_message(child_id, message).await {
+            return ToolExecutionResult::internal_error(error);
+        }
+        let status = match store
+            .wait_for_idle(child_id, Some(DEFAULT_WAIT_TIMEOUT_SECS))
+            .await
+        {
+            Ok(status) => status,
+            Err(error) => return ToolExecutionResult::internal_error(error),
+        };
+        let messages = match store.get_messages(child_id, Some(5)).await {
+            Ok(messages) => messages,
+            Err(error) => return ToolExecutionResult::internal_error(error),
+        };
+        let result = last_agent_message(&messages)
+            .unwrap_or_else(|| format!("Handoff processed message with status: {status}"));
+
+        ToolExecutionResult::success(json!({
+            "handoff_id": child_id.to_string(),
+            "status": status,
+            "result": result,
+        }))
+    }
+
+    fn requires_context(&self) -> bool {
+        true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Result;
+    use crate::platform_store::tests::MockPlatformStore;
+    use crate::session_resource::{SessionResourceEntry, SessionResourceFilter};
+    use crate::tools::{Tool, ToolExecutionResult};
+    use crate::traits::{SessionResourceRegistry, UserConnectionResolver};
+    use crate::typed_id::SessionId;
+    use std::collections::{HashMap, HashSet};
+    use std::sync::{Arc, Mutex};
+    use uuid::Uuid;
+
+    fn target_config(agent_id: AgentId, required_connections: Vec<&str>) -> Value {
+        json!({
+            "targets": [
+                {
+                    "id": "aws_operator",
+                    "name": "AWS Operator",
+                    "description": "Manage fake AWS infrastructure",
+                    "agent_id": agent_id,
+                    "required_connections": required_connections,
+                    "required_scopes": ["fake_aws:rds:create"]
+                }
+            ]
+        })
+    }
+
+    fn start_tool(config: Value) -> Box<dyn Tool> {
+        AgentHandoffCapability
+            .tools_with_config(&config)
+            .into_iter()
+            .find(|tool| tool.name() == "start_agent_handoff")
+            .expect("start_agent_handoff tool")
+    }
+
+    fn get_tool(config: Value) -> Box<dyn Tool> {
+        AgentHandoffCapability
+            .tools_with_config(&config)
+            .into_iter()
+            .find(|tool| tool.name() == "get_agent_handoffs")
+            .expect("get_agent_handoffs tool")
+    }
+
+    fn message_tool(config: Value) -> Box<dyn Tool> {
+        AgentHandoffCapability
+            .tools_with_config(&config)
+            .into_iter()
+            .find(|tool| tool.name() == "message_agent_handoff")
+            .expect("message_agent_handoff tool")
+    }
+
+    struct TestConnectionResolver {
+        providers: HashSet<String>,
+    }
+
+    #[async_trait]
+    impl UserConnectionResolver for TestConnectionResolver {
+        async fn get_connection_token(
+            &self,
+            _session_id: SessionId,
+            provider: &str,
+        ) -> Result<Option<String>> {
+            Ok(self
+                .providers
+                .contains(provider)
+                .then(|| "server-side-secret-token".to_string()))
+        }
+
+        async fn get_connection_user(
+            &self,
+            _session_id: SessionId,
+            _provider: &str,
+        ) -> Result<Option<Uuid>> {
+            Ok(None)
+        }
+
+        async fn get_connection_token_for_user(
+            &self,
+            _user_id: Uuid,
+            _provider: &str,
+        ) -> Result<Option<String>> {
+            Ok(None)
+        }
+    }
+
+    #[derive(Default)]
+    struct TestResourceRegistry {
+        entries: Mutex<HashMap<(SessionId, String), SessionResourceEntry>>,
+    }
+
+    #[async_trait]
+    impl SessionResourceRegistry for TestResourceRegistry {
+        async fn register(&self, entry: RegisterSessionResource) -> Result<SessionResourceEntry> {
+            let now = chrono::Utc::now();
+            let record = SessionResourceEntry {
+                resource_id: entry.resource_id,
+                session_id: entry.session_id,
+                kind: entry.kind,
+                display_name: entry.display_name,
+                status: entry.status,
+                metadata: entry.metadata,
+                created_at: now,
+                updated_at: now,
+            };
+            self.entries.lock().expect("registry mutex").insert(
+                (record.session_id, record.resource_id.clone()),
+                record.clone(),
+            );
+            Ok(record)
+        }
+
+        async fn update_status(
+            &self,
+            session_id: SessionId,
+            resource_id: &str,
+            status: SessionResourceStatus,
+        ) -> Result<Option<SessionResourceEntry>> {
+            let mut entries = self.entries.lock().expect("registry mutex");
+            let Some(entry) = entries.get_mut(&(session_id, resource_id.to_string())) else {
+                return Ok(None);
+            };
+            entry.status = status;
+            entry.updated_at = chrono::Utc::now();
+            Ok(Some(entry.clone()))
+        }
+
+        async fn get(
+            &self,
+            session_id: SessionId,
+            resource_id: &str,
+        ) -> Result<Option<SessionResourceEntry>> {
+            Ok(self
+                .entries
+                .lock()
+                .expect("registry mutex")
+                .get(&(session_id, resource_id.to_string()))
+                .cloned())
+        }
+
+        async fn list(
+            &self,
+            session_id: SessionId,
+            filter: Option<&SessionResourceFilter>,
+        ) -> Result<Vec<SessionResourceEntry>> {
+            let mut entries = self
+                .entries
+                .lock()
+                .expect("registry mutex")
+                .values()
+                .filter(|entry| entry.session_id == session_id)
+                .filter(|entry| {
+                    filter
+                        .and_then(|f| f.kind.as_ref())
+                        .is_none_or(|kind| &entry.kind == kind)
+                })
+                .filter(|entry| {
+                    filter
+                        .and_then(|f| f.status)
+                        .is_none_or(|status| entry.status == status)
+                })
+                .cloned()
+                .collect::<Vec<_>>();
+            entries.sort_by(|a, b| a.resource_id.cmp(&b.resource_id));
+            Ok(entries)
+        }
+
+        async fn deregister(&self, session_id: SessionId, resource_id: &str) -> Result<bool> {
+            Ok(self
+                .entries
+                .lock()
+                .expect("registry mutex")
+                .remove(&(session_id, resource_id.to_string()))
+                .is_some())
+        }
+    }
+
+    fn context(
+        store: Arc<MockPlatformStore>,
+        resolver: Option<Arc<dyn UserConnectionResolver>>,
+        registry: Option<Arc<dyn SessionResourceRegistry>>,
+    ) -> ToolContext {
+        let mut context = ToolContext::new(store.session.id);
+        context.platform_store = Some(store);
+        context.connection_resolver = resolver;
+        context.session_resource_registry = registry;
+        context
+    }
+
+    #[test]
+    fn capability_metadata_and_schema() {
+        let cap = AgentHandoffCapability;
+        assert_eq!(cap.id(), AGENT_HANDOFF_CAPABILITY_ID);
+        assert_eq!(cap.status(), CapabilityStatus::Available);
+        assert_eq!(cap.risk_level(), RiskLevel::High);
+        assert_eq!(cap.features(), vec!["agent_handoffs"]);
+
+        let schema = cap.config_schema().expect("config schema");
+        assert_eq!(schema["properties"]["targets"]["type"], "array");
+    }
+
+    #[test]
+    fn validate_config_rejects_duplicate_targets() {
+        let agent_id = AgentId::new();
+        let config = json!({
+            "targets": [
+                { "id": "dup", "name": "One", "agent_id": agent_id },
+                { "id": "dup", "name": "Two", "agent_id": AgentId::new() }
+            ]
+        });
+
+        let error = AgentHandoffCapability
+            .validate_config(&config)
+            .expect_err("duplicate targets should fail");
+        assert!(error.contains("Duplicate handoff target id"));
+    }
+
+    #[tokio::test]
+    async fn start_handoff_requires_configured_connection() {
+        let store = Arc::new(MockPlatformStore::new());
+        let config = target_config(store.agent.public_id, vec!["fake_aws"]);
+        let tool = start_tool(config);
+        let resolver = Arc::new(TestConnectionResolver {
+            providers: HashSet::new(),
+        });
+        let context = context(store, Some(resolver), None);
+
+        let result = tool
+            .execute_with_context(
+                json!({
+                    "target": "aws_operator",
+                    "task": "Create an RDS database named app-db"
+                }),
+                &context,
+            )
+            .await;
+
+        assert!(matches!(
+            result,
+            ToolExecutionResult::ConnectionRequired { provider } if provider == "fake_aws"
+        ));
+    }
+
+    #[tokio::test]
+    async fn start_handoff_without_connection_resolver_is_internal_error() {
+        let store = Arc::new(MockPlatformStore::new());
+        let config = target_config(store.agent.public_id, vec!["fake_aws"]);
+        let tool = start_tool(config);
+        let context = context(store, None, None);
+
+        let result = tool
+            .execute_with_context(
+                json!({
+                    "target": "aws_operator",
+                    "task": "Create an RDS database named app-db"
+                }),
+                &context,
+            )
+            .await;
+
+        assert!(matches!(result, ToolExecutionResult::InternalError(_)));
+    }
+
+    #[tokio::test]
+    async fn start_handoff_creates_child_session_for_target_agent() {
+        let store = Arc::new(MockPlatformStore::new());
+        let registry = Arc::new(TestResourceRegistry::default());
+        let resolver = Arc::new(TestConnectionResolver {
+            providers: HashSet::from(["fake_aws".to_string()]),
+        });
+        let config = target_config(store.agent.public_id, vec!["fake_aws"]);
+        let tool = start_tool(config);
+        let context = context(store.clone(), Some(resolver), Some(registry.clone()));
+
+        let result = tool
+            .execute_with_context(
+                json!({
+                    "target": "aws_operator",
+                    "task": "Create an RDS database named app-db",
+                    "public_context": { "region": "us-east-1" }
+                }),
+                &context,
+            )
+            .await;
+
+        let ToolExecutionResult::Success(value) = result else {
+            panic!("expected success, got {result:?}");
+        };
+        assert_eq!(value["target"], "aws_operator");
+        assert_eq!(value["target_agent_id"], json!(store.agent.public_id));
+        assert_eq!(value["result"], "Hi!");
+
+        let handoff_id = value["handoff_id"].as_str().expect("handoff_id");
+        let entry = registry
+            .get(context.session_id, handoff_id)
+            .await
+            .expect("registry get")
+            .expect("handoff resource");
+        assert_eq!(entry.kind, AGENT_HANDOFF_RESOURCE_KIND);
+        assert_eq!(entry.status, SessionResourceStatus::Completed);
+        assert_eq!(entry.metadata["target"], "aws_operator");
+        assert_eq!(entry.metadata["required_connections"], json!(["fake_aws"]));
+        assert_eq!(
+            entry.metadata["required_scopes"],
+            json!(["fake_aws:rds:create"])
+        );
+    }
+
+    #[tokio::test]
+    async fn get_handoffs_lists_registered_handoff_resources() {
+        let store = Arc::new(MockPlatformStore::new());
+        let registry = Arc::new(TestResourceRegistry::default());
+        let config = target_config(store.agent.public_id, vec![]);
+        let start = start_tool(config.clone());
+        let get = get_tool(config);
+        let context = context(store, None, Some(registry));
+
+        let start_result = start
+            .execute_with_context(
+                json!({
+                    "target": "aws_operator",
+                    "task": "Create an RDS database named app-db"
+                }),
+                &context,
+            )
+            .await;
+        assert!(start_result.is_success());
+
+        let result = get.execute_with_context(json!({}), &context).await;
+        let ToolExecutionResult::Success(value) = result else {
+            panic!("expected success, got {result:?}");
+        };
+        assert_eq!(value["handoffs"].as_array().expect("handoffs").len(), 1);
+        assert_eq!(value["handoffs"][0]["kind"], AGENT_HANDOFF_RESOURCE_KIND);
+        assert_eq!(value["handoffs"][0]["status"], "completed");
+    }
+
+    #[tokio::test]
+    async fn message_handoff_rejects_invalid_handoff_id() {
+        let store = Arc::new(MockPlatformStore::new());
+        let tool = message_tool(json!({}));
+        let context = context(store, None, None);
+
+        let result = tool
+            .execute_with_context(
+                json!({
+                    "handoff_id": "not-a-session-id",
+                    "message": "List RDS databases"
+                }),
+                &context,
+            )
+            .await;
+
+        assert!(
+            matches!(result, ToolExecutionResult::ToolError(message) if message.contains("Invalid handoff_id"))
+        );
+    }
+
+    #[tokio::test]
+    async fn message_handoff_rejects_non_child_session() {
+        let parent_id = SessionId::new();
+        let child_id = SessionId::new();
+        let mut store_value = MockPlatformStore::new();
+        store_value.session.id = child_id;
+        store_value.session.parent_session_id = None;
+        let store = Arc::new(store_value);
+        let tool = message_tool(json!({}));
+        let mut context = ToolContext::new(parent_id);
+        context.platform_store = Some(store);
+
+        let result = tool
+            .execute_with_context(
+                json!({
+                    "handoff_id": child_id.to_string(),
+                    "message": "List RDS databases"
+                }),
+                &context,
+            )
+            .await;
+
+        assert!(
+            matches!(result, ToolExecutionResult::ToolError(message) if message.contains("does not belong"))
+        );
+    }
+
+    #[tokio::test]
+    async fn message_handoff_sends_followup_to_owned_child_session() {
+        let parent_id = SessionId::new();
+        let child_id = SessionId::new();
+        let mut store_value = MockPlatformStore::new();
+        store_value.session.id = child_id;
+        store_value.session.parent_session_id = Some(parent_id);
+        let store = Arc::new(store_value);
+        let tool = message_tool(json!({}));
+        let mut context = ToolContext::new(parent_id);
+        context.platform_store = Some(store);
+
+        let result = tool
+            .execute_with_context(
+                json!({
+                    "handoff_id": child_id.to_string(),
+                    "message": "List RDS databases"
+                }),
+                &context,
+            )
+            .await;
+
+        let ToolExecutionResult::Success(value) = result else {
+            panic!("expected success, got {result:?}");
+        };
+        assert_eq!(value["handoff_id"], child_id.to_string());
+        assert_eq!(value["status"], "idle");
+        assert_eq!(value["result"], "Hi!");
+    }
+}

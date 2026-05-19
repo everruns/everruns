@@ -20,6 +20,10 @@
 
 use super::{Capability, CapabilityStatus};
 use crate::SessionId;
+use crate::connection_provider::{
+    ConnectionFormSchema, ConnectionProvider, ConnectionProviderPlugin, ConnectionType,
+    ConnectionValidation, FieldType, FormField,
+};
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::{SessionFileSystem, ToolContext};
@@ -28,6 +32,71 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::sync::OnceLock;
 use std::time::Duration;
+
+inventory::submit! {
+    ConnectionProviderPlugin {
+        experimental_only: true,
+        factory: || Box::new(FakeAwsConnectionProvider),
+    }
+}
+
+/// API-key style connection provider for the fake AWS tools.
+///
+/// The key is intentionally opaque to agents: it is captured through the normal
+/// Connections flow and resolved server-side by handoff gates or tools.
+pub struct FakeAwsConnectionProvider;
+
+#[async_trait]
+impl ConnectionProvider for FakeAwsConnectionProvider {
+    fn provider_id(&self) -> &str {
+        "fake_aws"
+    }
+
+    fn display_name(&self) -> &str {
+        "Fake AWS"
+    }
+
+    fn description(&self) -> &str {
+        "Demo AWS-style connection for authenticated handoff examples."
+    }
+
+    fn icon(&self) -> &str {
+        "cloud"
+    }
+
+    fn connection_type(&self) -> ConnectionType {
+        ConnectionType::ApiKey
+    }
+
+    fn form_schema(&self) -> Option<ConnectionFormSchema> {
+        Some(ConnectionFormSchema {
+            fields: vec![FormField {
+                name: "api_key".to_string(),
+                label: "Fake AWS API key".to_string(),
+                field_type: FieldType::Password,
+                required: true,
+                placeholder: Some("fake_aws_...".to_string()),
+                help_text: Some("Any non-empty value is accepted for local fake AWS testing.".to_string()),
+            }],
+            instructions_markdown:
+                "Use any non-empty value for local fake AWS handoff testing. Real providers should validate credentials against their upstream API."
+                    .to_string(),
+        })
+    }
+
+    async fn validate(&self, credential: &str) -> Result<ConnectionValidation, String> {
+        if credential.trim().is_empty() {
+            return Err("Fake AWS API key cannot be empty".to_string());
+        }
+        Ok(ConnectionValidation {
+            provider_username: Some("fake-aws-account".to_string()),
+            provider_metadata: Some(json!({
+                "account_alias": "fake-aws-account",
+                "provider": "fake_aws"
+            })),
+        })
+    }
+}
 
 // ============================================================================
 // Latency simulation

@@ -75,6 +75,14 @@ A Capability is an abstraction that defines added functionality for an Agent:
 2. **Tool Provision**: Tools made available to the agent during execution
 3. **Behavior Modification**: Influence on tool invocation and execution (future)
 
+### Agent Handoff Capability
+
+`agent_handoff` is a high-risk orchestration capability for delegating from one
+configured Agent to another configured Agent through an allowlist and connection
+gate. It is distinct from subagents and blueprints because the target is a
+normal Agent resource, not inherited runtime config and not a code-defined
+template. See [agent-handoff.md](agent-handoff.md).
+
 ### Architecture
 
 Capabilities are defined in **everruns-core** and resolved at the **API layer**:
