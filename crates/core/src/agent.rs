@@ -87,38 +87,54 @@ impl From<&str> for AgentVersionChangeKind {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct AgentVersion {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     #[serde(rename = "id")]
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "agentver_01933b5a000070008000000000000001"))]
     pub public_id: AgentVersionId,
+    /// Internal database UUID. Not part of the public identifier surface; skipped during serialization.
     #[serde(skip, default = "uuid::Uuid::nil")]
     pub internal_id: uuid::Uuid,
+    /// Owning agent's prefixed public identifier.
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "agent_01933b5a000070008000000000000001"))]
     pub agent_id: AgentId,
+    /// Monotonic per-agent version sequence number (1, 2, 3, ...). Increments on every snapshot.
     pub version_number: i32,
+    /// Semantic version major component.
     pub semver_major: i32,
+    /// Semantic version minor component.
     pub semver_minor: i32,
+    /// Semantic version patch component.
     pub semver_patch: i32,
+    /// Combined semver string for display (e.g. `1.4.2`).
     pub version: String,
-    /// Published versions are user-controlled semver releases. Unpublished rows
-    /// are automatic draft snapshots kept for audit and rollback.
+    /// Whether this version was explicitly published by a user. Published versions are user-controlled semver releases; unpublished rows are automatic draft snapshots kept for audit and rollback.
     pub is_published: bool,
+    /// Version this one was forked or branched from, if any.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>))]
     pub parent_version_id: Option<AgentVersionId>,
+    /// When this version is a copy of another version (e.g. a manual rollback), the original source. `None` for ordinary snapshots.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>))]
     pub source_version_id: Option<AgentVersionId>,
+    /// Identity of the principal (user or agent identity) that created this version. `None` for system-generated snapshots.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[cfg_attr(feature = "openapi", schema(value_type = Option<String>))]
     pub created_by_principal_id: Option<PrincipalId>,
+    /// Classification of why this version was created (manual publish, automatic draft, rollback, fork, etc.).
     pub change_kind: AgentVersionChangeKind,
+    /// Human-readable summary of changes in this version (release notes). `None` if not provided.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub summary: Option<String>,
+    /// Stable hash of `resolved_config` used to deduplicate adjacent identical snapshots.
     pub config_hash: String,
+    /// User-authored agent configuration JSON, exactly as submitted. Capabilities, MCP refs, model selection live here.
     #[cfg_attr(feature = "openapi", schema(value_type = Object))]
     pub authored_config: serde_json::Value,
+    /// Resolved configuration after applying harness, capability, and platform layers. This is what the runtime executes against.
     #[cfg_attr(feature = "openapi", schema(value_type = Object))]
     pub resolved_config: serde_json::Value,
+    /// Timestamp when this version was created (RFC 3339).
     pub created_at: DateTime<Utc>,
 }
 

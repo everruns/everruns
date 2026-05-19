@@ -89,36 +89,50 @@ impl From<&str> for SkillStatus {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct Skill {
+    /// Prefixed public identifier (see `specs/id-schema.md`).
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "skill_01933b5a00007000800000000000001"))]
     pub id: SkillId,
+    /// Stable kebab-case slug used to invoke the skill (e.g. `/pdf-processing` in chat). Safe to render in user-facing messages.
     #[cfg_attr(feature = "openapi", schema(example = "pdf-processing"))]
     pub name: String,
+    /// Short, agent- and user-readable summary of what the skill does and when to use it.
     #[cfg_attr(
         feature = "openapi",
         schema(example = "Extract text and tables from PDF files.")
     )]
     pub description: String,
+    /// License string as declared by the skill author (e.g. `MIT`, `Apache-2.0`). Informational; not enforced.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub license: Option<String>,
+    /// Compatibility marker describing host-runtime requirements declared by the skill (e.g. min platform version). Informational.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub compatibility: Option<String>,
+    /// Free-form metadata declared by the skill author.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub metadata: HashMap<String, serde_json::Value>,
+    /// Comma-separated list of tool patterns this skill may invoke. `None` means inherit from the harness.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub allowed_tools: Option<String>,
+    /// How the skill content is sourced (filesystem, URL, embedded). Determines reload semantics.
     pub source_type: SkillSourceType,
+    /// Current lifecycle status (`active`, `archived`, `deleted`).
     pub status: SkillStatus,
+    /// Semver string declared by the skill author. Free-form; sorted lexicographically when comparing.
     pub version: String,
-    /// Whether this skill appears as a /slash command for users
+    /// Whether this skill appears as a `/`-prefixed slash command for end users in chat UIs.
     #[serde(default = "default_true")]
     pub user_invocable: bool,
-    /// Whether the model is prevented from auto-invoking this skill
+    /// When `true`, the LLM is prevented from auto-invoking this skill; only the user can trigger it explicitly.
     #[serde(default)]
     pub disable_model_invocation: bool,
+    /// Timestamp when this skill was created (RFC 3339).
     pub created_at: DateTime<Utc>,
+    /// Timestamp when this skill was last updated (RFC 3339).
     pub updated_at: DateTime<Utc>,
+    /// Timestamp when this skill was archived, if any (RFC 3339). Archived skills are hidden from default list views.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub archived_at: Option<DateTime<Utc>>,
+    /// Timestamp when this skill was hard-deleted, if any (RFC 3339).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub deleted_at: Option<DateTime<Utc>>,
 }

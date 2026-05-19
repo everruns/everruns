@@ -218,20 +218,29 @@ pub struct ScheduleResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     /// Human-readable description. Safe to render in user-facing messages.
     pub description: Option<String>,
+    /// Cron expression in the standard `min hour day-of-month month day-of-week` form (6 fields with seconds optional). Evaluated in `timezone`.
     pub cron_expression: String,
+    /// IANA timezone name used to interpret `cron_expression` (e.g. `UTC`, `America/New_York`).
     pub timezone: String,
+    /// What the schedule invokes when it fires (a session, an agent, an app channel, etc.).
     pub target: ScheduleTargetResponse,
-    /// Whether this resource is enabled.
+    /// When `false`, the schedule is paused — kept in storage but never fires until re-enabled.
     pub enabled: bool,
+    /// Maximum number of overlapping executions allowed. `None` means no limit beyond the worker pool's concurrency.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_concurrent: Option<u32>,
+    /// When `true`, missed fires (while the scheduler was down, paused, or unreachable) are queued and run after recovery, subject to `max_catch_up`.
     pub catch_up_missed: bool,
+    /// Maximum number of missed fires to replay when `catch_up_missed` is `true`. Older missed fires are dropped. `None` means no cap.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_catch_up: Option<u32>,
+    /// Optional retry policy for failed runs (provider-specific JSON; see the durable engine's `RetryPolicy`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub retry_policy: Option<serde_json::Value>,
+    /// Timestamp of the most recent fire (RFC 3339). `None` if never triggered.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_triggered_at: Option<DateTime<Utc>>,
+    /// Timestamp of the next scheduled fire (RFC 3339). `None` when the schedule is disabled or the cron expression has no upcoming match.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub next_trigger_at: Option<DateTime<Utc>>,
     /// Timestamp when this resource was created (RFC 3339).
@@ -359,12 +368,18 @@ pub struct ScheduleExecutionsListResponse {
 /// Schedule stats response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ScheduleStatsResponse {
+    /// Total number of executions recorded for this schedule (sum of successful + failed + skipped).
     pub total_executions: u64,
+    /// Count of executions that completed successfully.
     pub successful_executions: u64,
+    /// Count of executions that ended in failure (after exhausting retries).
     pub failed_executions: u64,
+    /// Count of fires that were intentionally skipped (e.g. blocked by `max_concurrent` or disabled mid-fire).
     pub skipped_executions: u64,
+    /// Average execution duration in milliseconds across `total_executions`. `None` when no executions exist yet.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub avg_duration_ms: Option<u64>,
+    /// Status of the most recent execution (`succeeded`, `failed`, `skipped`, `running`). `None` if the schedule has never fired.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_execution_status: Option<String>,
 }

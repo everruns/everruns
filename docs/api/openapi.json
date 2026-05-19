@@ -11675,74 +11675,90 @@
         "properties": {
           "agent_id": {
             "type": "string",
+            "description": "Owning agent's prefixed public identifier.",
             "example": "agent_01933b5a000070008000000000000001"
           },
           "authored_config": {
-            "type": "object"
+            "type": "object",
+            "description": "User-authored agent configuration JSON, exactly as submitted. Capabilities, MCP refs, model selection live here."
           },
           "change_kind": {
-            "$ref": "#/components/schemas/AgentVersionChangeKind"
+            "$ref": "#/components/schemas/AgentVersionChangeKind",
+            "description": "Classification of why this version was created (manual publish, automatic draft, rollback, fork, etc.)."
           },
           "config_hash": {
-            "type": "string"
+            "type": "string",
+            "description": "Stable hash of `resolved_config` used to deduplicate adjacent identical snapshots."
           },
           "created_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this version was created (RFC 3339)."
           },
           "created_by_principal_id": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Identity of the principal (user or agent identity) that created this version. `None` for system-generated snapshots."
           },
           "id": {
             "type": "string",
+            "description": "Prefixed public identifier (see `specs/id-schema.md`).",
             "example": "agentver_01933b5a000070008000000000000001"
           },
           "is_published": {
             "type": "boolean",
-            "description": "Published versions are user-controlled semver releases. Unpublished rows\nare automatic draft snapshots kept for audit and rollback."
+            "description": "Whether this version was explicitly published by a user. Published versions are user-controlled semver releases; unpublished rows are automatic draft snapshots kept for audit and rollback."
           },
           "parent_version_id": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Version this one was forked or branched from, if any."
           },
           "resolved_config": {
-            "type": "object"
+            "type": "object",
+            "description": "Resolved configuration after applying harness, capability, and platform layers. This is what the runtime executes against."
           },
           "semver_major": {
             "type": "integer",
-            "format": "int32"
+            "format": "int32",
+            "description": "Semantic version major component."
           },
           "semver_minor": {
             "type": "integer",
-            "format": "int32"
+            "format": "int32",
+            "description": "Semantic version minor component."
           },
           "semver_patch": {
             "type": "integer",
-            "format": "int32"
+            "format": "int32",
+            "description": "Semantic version patch component."
           },
           "source_version_id": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "When this version is a copy of another version (e.g. a manual rollback), the original source. `None` for ordinary snapshots."
           },
           "summary": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Human-readable summary of changes in this version (release notes). `None` if not provided."
           },
           "version": {
-            "type": "string"
+            "type": "string",
+            "description": "Combined semver string for display (e.g. `1.4.2`)."
           },
           "version_number": {
             "type": "integer",
-            "format": "int32"
+            "format": "int32",
+            "description": "Monotonic per-agent version sequence number (1, 2, 3, ...). Increments on every snapshot."
           }
         }
       },
@@ -15517,35 +15533,44 @@
         "properties": {
           "created_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this entry was created (RFC 3339)."
           },
           "id": {
             "type": "string",
-            "format": "uuid"
+            "format": "uuid",
+            "description": "Internal database UUID for this file entry."
           },
           "is_directory": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "`true` when this entry represents a directory; `false` for a regular file."
           },
           "is_readonly": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether the entry was marked read-only at creation. Read-only entries cannot be edited or deleted by the session."
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "File or directory name (the last segment of `path`)."
           },
           "path": {
-            "type": "string"
+            "type": "string",
+            "description": "Absolute path within the session workspace (e.g. `/notes.md`)."
           },
           "session_id": {
             "type": "string",
-            "format": "uuid"
+            "format": "uuid",
+            "description": "UUID of the owning session."
           },
           "size_bytes": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "File size in bytes. `0` for directories."
           },
           "updated_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this entry was last updated (RFC 3339)."
           }
         }
       },
@@ -15564,27 +15589,34 @@
         "properties": {
           "created_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this entry was created (RFC 3339)."
           },
           "is_directory": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "`true` when this entry represents a directory."
           },
           "is_readonly": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether the entry is read-only."
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "File or directory name (last segment of `path`)."
           },
           "path": {
-            "type": "string"
+            "type": "string",
+            "description": "Absolute path within the session workspace."
           },
           "size_bytes": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "File size in bytes. `0` for directories."
           },
           "updated_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this entry was last updated (RFC 3339)."
           }
         }
       },
@@ -16311,26 +16343,32 @@
         "properties": {
           "active_workers": {
             "type": "integer",
+            "description": "Number of workers in the `running` state, ready to claim tasks.",
             "minimum": 0
           },
           "claimed_tasks": {
             "type": "integer",
+            "description": "Tasks currently claimed by a worker (gauge).",
             "minimum": 0
           },
           "completed_tasks": {
             "type": "integer",
+            "description": "Cumulative count of tasks that completed successfully (monotonic counter).",
             "minimum": 0
           },
           "completed_workflows": {
             "type": "integer",
+            "description": "Cumulative count of workflows that completed successfully (monotonic counter).",
             "minimum": 0
           },
           "current_load": {
             "type": "integer",
+            "description": "Total tasks currently in flight across all workers.",
             "minimum": 0
           },
           "dlq_size": {
             "type": "integer",
+            "description": "Size of the dead-letter queue (gauge). High values indicate stuck activities.",
             "minimum": 0
           },
           "event_delivery": {
@@ -16338,54 +16376,65 @@
               "string",
               "null"
             ],
-            "description": "Event delivery backend: \"nats\" or \"in_memory\""
+            "description": "Event-delivery backend in use: `nats` for distributed deployments, `in_memory` for single-instance. `None` if the field was omitted by an older server."
           },
           "failed_tasks": {
             "type": "integer",
+            "description": "Cumulative count of tasks that failed terminally or were sent to the DLQ (monotonic counter).",
             "minimum": 0
           },
           "failed_workflows": {
             "type": "integer",
+            "description": "Cumulative count of workflows that ended in failure (monotonic counter).",
             "minimum": 0
           },
           "load_percentage": {
             "type": "number",
-            "format": "double"
+            "format": "double",
+            "description": "`current_load / total_capacity * 100`. 0.0 when no workers are registered."
           },
           "pending_tasks": {
             "type": "integer",
+            "description": "Tasks waiting to be claimed (gauge).",
             "minimum": 0
           },
           "pending_workflows": {
             "type": "integer",
+            "description": "Workflows waiting to be claimed (gauge).",
             "minimum": 0
           },
           "running_workflows": {
             "type": "integer",
+            "description": "Workflows currently executing (gauge).",
             "minimum": 0
           },
           "started_tasks": {
             "type": "integer",
+            "description": "Cumulative count of tasks claimed at least once (monotonic counter).",
             "minimum": 0
           },
           "started_workflows": {
             "type": "integer",
+            "description": "Cumulative count of workflows that started (monotonic counter).",
             "minimum": 0
           },
           "status": {
             "type": "string",
-            "description": "Current lifecycle status."
+            "description": "Aggregate system status: `healthy`, `degraded`, or `unhealthy`. Derived from worker availability, load, and queue depths."
           },
           "total_capacity": {
             "type": "integer",
+            "description": "Sum of `max_concurrency` across all workers (the upper bound on concurrent task execution).",
             "minimum": 0
           },
           "total_workers": {
             "type": "integer",
+            "description": "Total number of workers registered (heartbeating in the last window).",
             "minimum": 0
           },
           "workers_accepting": {
             "type": "integer",
+            "description": "Number of workers currently accepting new task assignments (subset of `active_workers`; drains/backpressure excluded).",
             "minimum": 0
           }
         }
@@ -17518,35 +17567,44 @@
               "properties": {
                 "created_at": {
                   "type": "string",
-                  "format": "date-time"
+                  "format": "date-time",
+                  "description": "Timestamp when this entry was created (RFC 3339)."
                 },
                 "id": {
                   "type": "string",
-                  "format": "uuid"
+                  "format": "uuid",
+                  "description": "Internal database UUID for this file entry."
                 },
                 "is_directory": {
-                  "type": "boolean"
+                  "type": "boolean",
+                  "description": "`true` when this entry represents a directory; `false` for a regular file."
                 },
                 "is_readonly": {
-                  "type": "boolean"
+                  "type": "boolean",
+                  "description": "Whether the entry was marked read-only at creation. Read-only entries cannot be edited or deleted by the session."
                 },
                 "name": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "File or directory name (the last segment of `path`)."
                 },
                 "path": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "Absolute path within the session workspace (e.g. `/notes.md`)."
                 },
                 "session_id": {
                   "type": "string",
-                  "format": "uuid"
+                  "format": "uuid",
+                  "description": "UUID of the owning session."
                 },
                 "size_bytes": {
                   "type": "integer",
-                  "format": "int64"
+                  "format": "int64",
+                  "description": "File size in bytes. `0` for directories."
                 },
                 "updated_at": {
                   "type": "string",
-                  "format": "date-time"
+                  "format": "date-time",
+                  "description": "Timestamp when this entry was last updated (RFC 3339)."
                 }
               }
             },
@@ -18350,52 +18408,61 @@
                   "type": [
                     "string",
                     "null"
-                  ]
+                  ],
+                  "description": "Comma-separated list of tool patterns this skill may invoke. `None` means inherit from the harness."
                 },
                 "archived_at": {
                   "type": [
                     "string",
                     "null"
                   ],
-                  "format": "date-time"
+                  "format": "date-time",
+                  "description": "Timestamp when this skill was archived, if any (RFC 3339). Archived skills are hidden from default list views."
                 },
                 "compatibility": {
                   "type": [
                     "string",
                     "null"
-                  ]
+                  ],
+                  "description": "Compatibility marker describing host-runtime requirements declared by the skill (e.g. min platform version). Informational."
                 },
                 "created_at": {
                   "type": "string",
-                  "format": "date-time"
+                  "format": "date-time",
+                  "description": "Timestamp when this skill was created (RFC 3339)."
                 },
                 "deleted_at": {
                   "type": [
                     "string",
                     "null"
                   ],
-                  "format": "date-time"
+                  "format": "date-time",
+                  "description": "Timestamp when this skill was hard-deleted, if any (RFC 3339)."
                 },
                 "description": {
                   "type": "string",
+                  "description": "Short, agent- and user-readable summary of what the skill does and when to use it.",
                   "example": "Extract text and tables from PDF files."
                 },
                 "disable_model_invocation": {
                   "type": "boolean",
-                  "description": "Whether the model is prevented from auto-invoking this skill"
+                  "description": "When `true`, the LLM is prevented from auto-invoking this skill; only the user can trigger it explicitly."
                 },
                 "id": {
                   "type": "string",
+                  "description": "Prefixed public identifier (see `specs/id-schema.md`).",
                   "example": "skill_01933b5a00007000800000000000001"
                 },
                 "license": {
                   "type": [
                     "string",
                     "null"
-                  ]
+                  ],
+                  "description": "License string as declared by the skill author (e.g. `MIT`, `Apache-2.0`). Informational; not enforced."
                 },
                 "metadata": {
                   "type": "object",
+                  "description": "Free-form metadata declared by the skill author.",
                   "additionalProperties": {},
                   "propertyNames": {
                     "type": "string"
@@ -18403,24 +18470,29 @@
                 },
                 "name": {
                   "type": "string",
+                  "description": "Stable kebab-case slug used to invoke the skill (e.g. `/pdf-processing` in chat). Safe to render in user-facing messages.",
                   "example": "pdf-processing"
                 },
                 "source_type": {
-                  "$ref": "#/components/schemas/SkillSourceType"
+                  "$ref": "#/components/schemas/SkillSourceType",
+                  "description": "How the skill content is sourced (filesystem, URL, embedded). Determines reload semantics."
                 },
                 "status": {
-                  "$ref": "#/components/schemas/SkillStatus"
+                  "$ref": "#/components/schemas/SkillStatus",
+                  "description": "Current lifecycle status (`active`, `archived`, `deleted`)."
                 },
                 "updated_at": {
                   "type": "string",
-                  "format": "date-time"
+                  "format": "date-time",
+                  "description": "Timestamp when this skill was last updated (RFC 3339)."
                 },
                 "user_invocable": {
                   "type": "boolean",
-                  "description": "Whether this skill appears as a /slash command for users"
+                  "description": "Whether this skill appears as a `/`-prefixed slash command for end users in chat UIs."
                 },
                 "version": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "Semver string declared by the skill author. Free-form; sorted lexicographically when comparing."
                 }
               }
             },
@@ -19588,52 +19660,61 @@
                       "type": [
                         "string",
                         "null"
-                      ]
+                      ],
+                      "description": "Comma-separated list of tool patterns this skill may invoke. `None` means inherit from the harness."
                     },
                     "archived_at": {
                       "type": [
                         "string",
                         "null"
                       ],
-                      "format": "date-time"
+                      "format": "date-time",
+                      "description": "Timestamp when this skill was archived, if any (RFC 3339). Archived skills are hidden from default list views."
                     },
                     "compatibility": {
                       "type": [
                         "string",
                         "null"
-                      ]
+                      ],
+                      "description": "Compatibility marker describing host-runtime requirements declared by the skill (e.g. min platform version). Informational."
                     },
                     "created_at": {
                       "type": "string",
-                      "format": "date-time"
+                      "format": "date-time",
+                      "description": "Timestamp when this skill was created (RFC 3339)."
                     },
                     "deleted_at": {
                       "type": [
                         "string",
                         "null"
                       ],
-                      "format": "date-time"
+                      "format": "date-time",
+                      "description": "Timestamp when this skill was hard-deleted, if any (RFC 3339)."
                     },
                     "description": {
                       "type": "string",
+                      "description": "Short, agent- and user-readable summary of what the skill does and when to use it.",
                       "example": "Extract text and tables from PDF files."
                     },
                     "disable_model_invocation": {
                       "type": "boolean",
-                      "description": "Whether the model is prevented from auto-invoking this skill"
+                      "description": "When `true`, the LLM is prevented from auto-invoking this skill; only the user can trigger it explicitly."
                     },
                     "id": {
                       "type": "string",
+                      "description": "Prefixed public identifier (see `specs/id-schema.md`).",
                       "example": "skill_01933b5a00007000800000000000001"
                     },
                     "license": {
                       "type": [
                         "string",
                         "null"
-                      ]
+                      ],
+                      "description": "License string as declared by the skill author (e.g. `MIT`, `Apache-2.0`). Informational; not enforced."
                     },
                     "metadata": {
                       "type": "object",
+                      "description": "Free-form metadata declared by the skill author.",
                       "additionalProperties": {},
                       "propertyNames": {
                         "type": "string"
@@ -19641,24 +19722,29 @@
                     },
                     "name": {
                       "type": "string",
+                      "description": "Stable kebab-case slug used to invoke the skill (e.g. `/pdf-processing` in chat). Safe to render in user-facing messages.",
                       "example": "pdf-processing"
                     },
                     "source_type": {
-                      "$ref": "#/components/schemas/SkillSourceType"
+                      "$ref": "#/components/schemas/SkillSourceType",
+                      "description": "How the skill content is sourced (filesystem, URL, embedded). Determines reload semantics."
                     },
                     "status": {
-                      "$ref": "#/components/schemas/SkillStatus"
+                      "$ref": "#/components/schemas/SkillStatus",
+                      "description": "Current lifecycle status (`active`, `archived`, `deleted`)."
                     },
                     "updated_at": {
                       "type": "string",
-                      "format": "date-time"
+                      "format": "date-time",
+                      "description": "Timestamp when this skill was last updated (RFC 3339)."
                     },
                     "user_invocable": {
                       "type": "boolean",
-                      "description": "Whether this skill appears as a /slash command for users"
+                      "description": "Whether this skill appears as a `/`-prefixed slash command for end users in chat UIs."
                     },
                     "version": {
-                      "type": "string"
+                      "type": "string",
+                      "description": "Semver string declared by the skill author. Free-form; sorted lexicographically when comparing."
                     }
                   }
                 },
@@ -23584,6 +23670,7 @@
           "active_session_count": {
             "type": "integer",
             "format": "int64",
+            "description": "Sessions in a running state right now.",
             "minimum": 0
           },
           "avg_session_duration_ms": {
@@ -23592,11 +23679,13 @@
               "null"
             ],
             "format": "int64",
+            "description": "Average session duration in milliseconds. `None` when `session_count` is 0.",
             "minimum": 0
           },
           "execution_count": {
             "type": "integer",
             "format": "int64",
+            "description": "Total number of agent executions (turns) recorded across all sessions for this resource.",
             "minimum": 0
           },
           "first_session_at": {
@@ -23604,11 +23693,13 @@
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp of the first session for this resource (RFC 3339). `None` if no sessions exist."
           },
           "idle_session_count": {
             "type": "integer",
             "format": "int64",
+            "description": "Sessions in an idle state right now (created but no recent activity).",
             "minimum": 0
           },
           "last_execution_at": {
@@ -23616,53 +23707,63 @@
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp of the most recent execution (turn) for this resource (RFC 3339). `None` if no executions exist."
           },
           "last_session_at": {
             "type": [
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp of the most recent session for this resource (RFC 3339). `None` if no sessions exist."
           },
           "session_count": {
             "type": "integer",
             "format": "int64",
+            "description": "Total number of sessions ever created for this resource.",
             "minimum": 0
           },
           "started_session_count": {
             "type": "integer",
             "format": "int64",
+            "description": "Sessions that have started at least one turn.",
             "minimum": 0
           },
           "total_cache_creation_tokens": {
             "type": "integer",
             "format": "int64",
+            "description": "Cumulative cache-write tokens across all sessions (charged when first writing a cache entry).",
             "minimum": 0
           },
           "total_cache_read_tokens": {
             "type": "integer",
             "format": "int64",
+            "description": "Cumulative cache-read tokens across all sessions (where the provider supports prompt caching).",
             "minimum": 0
           },
           "total_input_tokens": {
             "type": "integer",
             "format": "int64",
+            "description": "Cumulative LLM input tokens billed across all sessions.",
             "minimum": 0
           },
           "total_output_tokens": {
             "type": "integer",
             "format": "int64",
+            "description": "Cumulative LLM output tokens billed across all sessions.",
             "minimum": 0
           },
           "total_session_duration_ms": {
             "type": "integer",
             "format": "int64",
+            "description": "Cumulative session wall-clock duration in milliseconds across all sessions.",
             "minimum": 0
           },
           "waiting_for_tool_results_session_count": {
             "type": "integer",
             "format": "int64",
+            "description": "Sessions currently paused waiting for client-side tool results.",
             "minimum": 0
           }
         }
@@ -23892,7 +23993,8 @@
         ],
         "properties": {
           "catch_up_missed": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "When `true`, missed fires (while the scheduler was down, paused, or unreachable) are queued and run after recovery, subject to `max_catch_up`."
           },
           "created_at": {
             "type": "string",
@@ -23900,7 +24002,8 @@
             "description": "Timestamp when this resource was created (RFC 3339)."
           },
           "cron_expression": {
-            "type": "string"
+            "type": "string",
+            "description": "Cron expression in the standard `min hour day-of-month month day-of-week` form (6 fields with seconds optional). Evaluated in `timezone`."
           },
           "description": {
             "type": [
@@ -23911,7 +24014,7 @@
           },
           "enabled": {
             "type": "boolean",
-            "description": "Whether this resource is enabled."
+            "description": "When `false`, the schedule is paused — kept in storage but never fires until re-enabled."
           },
           "id": {
             "type": "string",
@@ -23923,7 +24026,8 @@
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp of the most recent fire (RFC 3339). `None` if never triggered."
           },
           "max_catch_up": {
             "type": [
@@ -23931,6 +24035,7 @@
               "null"
             ],
             "format": "int32",
+            "description": "Maximum number of missed fires to replay when `catch_up_missed` is `true`. Older missed fires are dropped. `None` means no cap.",
             "minimum": 0
           },
           "max_concurrent": {
@@ -23939,6 +24044,7 @@
               "null"
             ],
             "format": "int32",
+            "description": "Maximum number of overlapping executions allowed. `None` means no limit beyond the worker pool's concurrency.",
             "minimum": 0
           },
           "name": {
@@ -23950,14 +24056,19 @@
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp of the next scheduled fire (RFC 3339). `None` when the schedule is disabled or the cron expression has no upcoming match."
           },
-          "retry_policy": {},
+          "retry_policy": {
+            "description": "Optional retry policy for failed runs (provider-specific JSON; see the durable engine's `RetryPolicy`)."
+          },
           "target": {
-            "$ref": "#/components/schemas/ScheduleTargetResponse"
+            "$ref": "#/components/schemas/ScheduleTargetResponse",
+            "description": "What the schedule invokes when it fires (a session, an agent, an app channel, etc.)."
           },
           "timezone": {
-            "type": "string"
+            "type": "string",
+            "description": "IANA timezone name used to interpret `cron_expression` (e.g. `UTC`, `America/New_York`)."
           },
           "updated_at": {
             "type": "string",
@@ -23982,32 +24093,38 @@
               "null"
             ],
             "format": "int64",
+            "description": "Average execution duration in milliseconds across `total_executions`. `None` when no executions exist yet.",
             "minimum": 0
           },
           "failed_executions": {
             "type": "integer",
             "format": "int64",
+            "description": "Count of executions that ended in failure (after exhausting retries).",
             "minimum": 0
           },
           "last_execution_status": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Status of the most recent execution (`succeeded`, `failed`, `skipped`, `running`). `None` if the schedule has never fired."
           },
           "skipped_executions": {
             "type": "integer",
             "format": "int64",
+            "description": "Count of fires that were intentionally skipped (e.g. blocked by `max_concurrent` or disabled mid-fire).",
             "minimum": 0
           },
           "successful_executions": {
             "type": "integer",
             "format": "int64",
+            "description": "Count of executions that completed successfully.",
             "minimum": 0
           },
           "total_executions": {
             "type": "integer",
             "format": "int64",
+            "description": "Total number of executions recorded for this schedule (sum of successful + failed + skipped).",
             "minimum": 0
           }
         }
@@ -24521,43 +24638,52 @@
               "string",
               "null"
             ],
-            "description": "Base64-encoded content for binary files, plain text for text files"
+            "description": "File content. Encoding is controlled by the `encoding` field: plain UTF-8 text for `text`, base64-encoded bytes for `base64`. `None` for directories and when this is a metadata-only listing."
           },
           "created_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this entry was created (RFC 3339)."
           },
           "encoding": {
             "type": "string",
-            "description": "Content encoding: \"text\" or \"base64\""
+            "description": "Content encoding for the `content` field: `text` (UTF-8) or `base64` (binary)."
           },
           "id": {
             "type": "string",
-            "format": "uuid"
+            "format": "uuid",
+            "description": "Internal database UUID for this file entry."
           },
           "is_directory": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "`true` when this entry represents a directory; `false` for a regular file."
           },
           "is_readonly": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether the entry was marked read-only at creation. Read-only entries cannot be edited or deleted by the session."
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "File or directory name (the last segment of `path`)."
           },
           "path": {
-            "type": "string"
+            "type": "string",
+            "description": "Absolute path within the session workspace (e.g. `/notes.md`)."
           },
           "session_id": {
             "type": "string",
-            "format": "uuid"
+            "format": "uuid",
+            "description": "UUID of the owning session."
           },
           "size_bytes": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "File size in bytes. `0` for directories."
           },
           "updated_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this entry was last updated (RFC 3339)."
           }
         }
       },
@@ -24781,52 +24907,61 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Comma-separated list of tool patterns this skill may invoke. `None` means inherit from the harness."
           },
           "archived_at": {
             "type": [
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this skill was archived, if any (RFC 3339). Archived skills are hidden from default list views."
           },
           "compatibility": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Compatibility marker describing host-runtime requirements declared by the skill (e.g. min platform version). Informational."
           },
           "created_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this skill was created (RFC 3339)."
           },
           "deleted_at": {
             "type": [
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this skill was hard-deleted, if any (RFC 3339)."
           },
           "description": {
             "type": "string",
+            "description": "Short, agent- and user-readable summary of what the skill does and when to use it.",
             "example": "Extract text and tables from PDF files."
           },
           "disable_model_invocation": {
             "type": "boolean",
-            "description": "Whether the model is prevented from auto-invoking this skill"
+            "description": "When `true`, the LLM is prevented from auto-invoking this skill; only the user can trigger it explicitly."
           },
           "id": {
             "type": "string",
+            "description": "Prefixed public identifier (see `specs/id-schema.md`).",
             "example": "skill_01933b5a00007000800000000000001"
           },
           "license": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "License string as declared by the skill author (e.g. `MIT`, `Apache-2.0`). Informational; not enforced."
           },
           "metadata": {
             "type": "object",
+            "description": "Free-form metadata declared by the skill author.",
             "additionalProperties": {},
             "propertyNames": {
               "type": "string"
@@ -24834,24 +24969,29 @@
           },
           "name": {
             "type": "string",
+            "description": "Stable kebab-case slug used to invoke the skill (e.g. `/pdf-processing` in chat). Safe to render in user-facing messages.",
             "example": "pdf-processing"
           },
           "source_type": {
-            "$ref": "#/components/schemas/SkillSourceType"
+            "$ref": "#/components/schemas/SkillSourceType",
+            "description": "How the skill content is sourced (filesystem, URL, embedded). Determines reload semantics."
           },
           "status": {
-            "$ref": "#/components/schemas/SkillStatus"
+            "$ref": "#/components/schemas/SkillStatus",
+            "description": "Current lifecycle status (`active`, `archived`, `deleted`)."
           },
           "updated_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this skill was last updated (RFC 3339)."
           },
           "user_invocable": {
             "type": "boolean",
-            "description": "Whether this skill appears as a /slash command for users"
+            "description": "Whether this skill appears as a `/`-prefixed slash command for end users in chat UIs."
           },
           "version": {
-            "type": "string"
+            "type": "string",
+            "description": "Semver string declared by the skill author. Free-form; sorted lexicographically when comparing."
           }
         }
       },
@@ -27033,25 +27173,32 @@
         "properties": {
           "expires_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when the connection's lease expires (RFC 3339)."
           },
           "model": {
-            "type": "string"
+            "type": "string",
+            "description": "Provider-side model identifier used for the realtime session."
           },
           "provider": {
-            "type": "string"
+            "type": "string",
+            "description": "Realtime provider routing this connection."
           },
           "provider_call_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Provider-side call identifier of the connected realtime call."
           },
           "reasoning_effort": {
-            "type": "string"
+            "type": "string",
+            "description": "Reasoning effort tier for thinking-capable models."
           },
           "voice": {
-            "type": "string"
+            "type": "string",
+            "description": "Realtime voice preset selected for the connection."
           },
           "voice_connection_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Prefixed public identifier of the voice connection."
           }
         }
       },
@@ -27088,32 +27235,40 @@
         ],
         "properties": {
           "answer_sdp": {
-            "type": "string"
+            "type": "string",
+            "description": "Server-generated SDP answer to send back to the client to complete the WebRTC handshake."
           },
           "expires_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when the call's lease expires (RFC 3339)."
           },
           "model": {
-            "type": "string"
+            "type": "string",
+            "description": "Provider-side model identifier used for the realtime session."
           },
           "provider": {
-            "type": "string"
+            "type": "string",
+            "description": "Realtime provider routing this connection."
           },
           "provider_call_id": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Provider-side call identifier once issued. `None` until the realtime call is established."
           },
           "reasoning_effort": {
-            "type": "string"
+            "type": "string",
+            "description": "Reasoning effort tier for thinking-capable models."
           },
           "voice": {
-            "type": "string"
+            "type": "string",
+            "description": "Realtime voice preset selected for the connection."
           },
           "voice_connection_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Prefixed public identifier of the voice connection."
           }
         }
       },
@@ -27138,25 +27293,33 @@
           "client_secret"
         ],
         "properties": {
-          "client_secret": {},
+          "client_secret": {
+            "description": "Provider-specific ephemeral credential payload the client uses to authenticate the realtime connection."
+          },
           "expires_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when the client secret expires (RFC 3339). The client must establish the realtime connection before this."
           },
           "model": {
-            "type": "string"
+            "type": "string",
+            "description": "Provider-side model identifier used for the realtime session."
           },
           "provider": {
-            "type": "string"
+            "type": "string",
+            "description": "Realtime provider routing this connection (e.g. `openai`)."
           },
           "reasoning_effort": {
-            "type": "string"
+            "type": "string",
+            "description": "Reasoning effort tier for thinking-capable models (`none`, `minimal`, `low`, `medium`, `high`)."
           },
           "voice": {
-            "type": "string"
+            "type": "string",
+            "description": "Realtime voice preset selected for the connection (provider-specific)."
           },
           "voice_connection_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Prefixed public identifier of the voice connection (see `specs/id-schema.md`)."
           }
         }
       },
@@ -27284,32 +27447,40 @@
             ],
             "properties": {
               "answer_sdp": {
-                "type": "string"
+                "type": "string",
+                "description": "Server-generated SDP answer to send back to the client to complete the WebRTC handshake."
               },
               "expires_at": {
                 "type": "string",
-                "format": "date-time"
+                "format": "date-time",
+                "description": "Timestamp when the call's lease expires (RFC 3339)."
               },
               "model": {
-                "type": "string"
+                "type": "string",
+                "description": "Provider-side model identifier used for the realtime session."
               },
               "provider": {
-                "type": "string"
+                "type": "string",
+                "description": "Realtime provider routing this connection."
               },
               "provider_call_id": {
                 "type": [
                   "string",
                   "null"
-                ]
+                ],
+                "description": "Provider-side call identifier once issued. `None` until the realtime call is established."
               },
               "reasoning_effort": {
-                "type": "string"
+                "type": "string",
+                "description": "Reasoning effort tier for thinking-capable models."
               },
               "voice": {
-                "type": "string"
+                "type": "string",
+                "description": "Realtime voice preset selected for the connection."
               },
               "voice_connection_id": {
-                "type": "string"
+                "type": "string",
+                "description": "Prefixed public identifier of the voice connection."
               }
             }
           }
@@ -29499,52 +29670,61 @@
                 "type": [
                   "string",
                   "null"
-                ]
+                ],
+                "description": "Comma-separated list of tool patterns this skill may invoke. `None` means inherit from the harness."
               },
               "archived_at": {
                 "type": [
                   "string",
                   "null"
                 ],
-                "format": "date-time"
+                "format": "date-time",
+                "description": "Timestamp when this skill was archived, if any (RFC 3339). Archived skills are hidden from default list views."
               },
               "compatibility": {
                 "type": [
                   "string",
                   "null"
-                ]
+                ],
+                "description": "Compatibility marker describing host-runtime requirements declared by the skill (e.g. min platform version). Informational."
               },
               "created_at": {
                 "type": "string",
-                "format": "date-time"
+                "format": "date-time",
+                "description": "Timestamp when this skill was created (RFC 3339)."
               },
               "deleted_at": {
                 "type": [
                   "string",
                   "null"
                 ],
-                "format": "date-time"
+                "format": "date-time",
+                "description": "Timestamp when this skill was hard-deleted, if any (RFC 3339)."
               },
               "description": {
                 "type": "string",
+                "description": "Short, agent- and user-readable summary of what the skill does and when to use it.",
                 "example": "Extract text and tables from PDF files."
               },
               "disable_model_invocation": {
                 "type": "boolean",
-                "description": "Whether the model is prevented from auto-invoking this skill"
+                "description": "When `true`, the LLM is prevented from auto-invoking this skill; only the user can trigger it explicitly."
               },
               "id": {
                 "type": "string",
+                "description": "Prefixed public identifier (see `specs/id-schema.md`).",
                 "example": "skill_01933b5a00007000800000000000001"
               },
               "license": {
                 "type": [
                   "string",
                   "null"
-                ]
+                ],
+                "description": "License string as declared by the skill author (e.g. `MIT`, `Apache-2.0`). Informational; not enforced."
               },
               "metadata": {
                 "type": "object",
+                "description": "Free-form metadata declared by the skill author.",
                 "additionalProperties": {},
                 "propertyNames": {
                   "type": "string"
@@ -29552,24 +29732,29 @@
               },
               "name": {
                 "type": "string",
+                "description": "Stable kebab-case slug used to invoke the skill (e.g. `/pdf-processing` in chat). Safe to render in user-facing messages.",
                 "example": "pdf-processing"
               },
               "source_type": {
-                "$ref": "#/components/schemas/SkillSourceType"
+                "$ref": "#/components/schemas/SkillSourceType",
+                "description": "How the skill content is sourced (filesystem, URL, embedded). Determines reload semantics."
               },
               "status": {
-                "$ref": "#/components/schemas/SkillStatus"
+                "$ref": "#/components/schemas/SkillStatus",
+                "description": "Current lifecycle status (`active`, `archived`, `deleted`)."
               },
               "updated_at": {
                 "type": "string",
-                "format": "date-time"
+                "format": "date-time",
+                "description": "Timestamp when this skill was last updated (RFC 3339)."
               },
               "user_invocable": {
                 "type": "boolean",
-                "description": "Whether this skill appears as a /slash command for users"
+                "description": "Whether this skill appears as a `/`-prefixed slash command for end users in chat UIs."
               },
               "version": {
-                "type": "string"
+                "type": "string",
+                "description": "Semver string declared by the skill author. Free-form; sorted lexicographically when comparing."
               }
             }
           },
