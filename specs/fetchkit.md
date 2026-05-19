@@ -1,6 +1,6 @@
 # fetchkit
 
-External library ([github.com/everruns/fetchkit](https://github.com/everruns/fetchkit)) powering the `web_fetch` capability. Provides HTTP fetching, HTML-to-markdown conversion, SSRF protection, file download, and source-specific fetchers.
+External library ([github.com/everruns/fetchkit](https://github.com/everruns/fetchkit)) powering the `web_fetch` capability. Provides HTTP fetching, HTML-to-markdown conversion, SSRF protection, and file download.
 
 ## Integration
 
@@ -9,14 +9,6 @@ External library ([github.com/everruns/fetchkit](https://github.com/everruns/fet
 - All metadata (description, system prompt, input schema) comes from `fetchkit::ToolBuilder`, not constants
 - SSRF: `DnsPolicy::block_private_ips()` (default) blocks loopback, RFC1918, link-local, cloud metadata
 - See `crates/core/src/capabilities/web_fetch.rs`
-
-## Specialized fetchers
-
-`fetchkit::Tool` auto-registers a `FetcherRegistry::with_defaults()` chain at execute time. URLs are matched in priority order, falling back to `DefaultFetcher` for anything unmatched. Built-ins (v0.3+):
-
-GitHub code/issue/repo → Twitter/X → Stack Exchange → package registries (PyPI, crates.io, npm) → Wikipedia → YouTube → ArXiv → Hacker News → RSS/Atom → llms.txt / docs sites → `DefaultFetcher` (generic HTML → markdown).
-
-Specialized fetchers produce cleaner, AI-friendly extracts (e.g. Q&A structure for Stack Exchange, README + metadata for GitHub repos) without any caller code change. SSRF protection is uniform: every fetcher resolves through the same `DnsPolicy`.
 
 ## File download (`FileSaver`)
 
