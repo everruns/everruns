@@ -111,8 +111,67 @@ ercode --provider llmsim -p "hi"
 | `-m, --model <ID>`         | Override the model id for the chosen provider                        |
 | `-p, --print <PROMPT>`     | Run one prompt non-interactively and print the result                |
 | `--ask`                    | Prompt before every destructive tool call (off by default)           |
+| `--session <ID>`           | Resume a previous session by id (its JSONL log is replayed)          |
+| `--session-dir <PATH>`     | Override the session-log directory (default: XDG data dir)           |
 
 `RUST_LOG` is honored for the underlying tracing layer (writes to stderr).
+
+## Session persistence
+
+Every run appends replay-relevant emitted events to a JSONL file under
+the platform-native user data directory:
+
+| OS      | Default location                                                 |
+|---------|------------------------------------------------------------------|
+| Linux   | `$XDG_DATA_HOME/ercode/sessions/<session_id>.jsonl` (typically `~/.local/share/…`) |
+| macOS   | `~/Library/Application Support/ercode/sessions/<session_id>.jsonl` |
+| Windows | `%APPDATA%\ercode\sessions\<session_id>.jsonl`                   |
+
+One serialized `Event` per line, flushed after every write. On Unix the
+file is created with `0o600` (owner-only) because session logs contain
+user prompts, tool arguments, and tool output. The session id is
+generated fresh on every plain `ercode` invocation and printed in the
+startup banner (`[session] session_… (log: …)`).
+
+Only the event types that round-trip into the conversation are persisted
+(`input.message`, `output.message.completed`, `tool.completed`).
+Streaming `*.delta` events are dropped from the log — they carry the
+accumulated text so far and would inflate the file O(n²) without adding
+resume value.
+
+To continue a previous conversation, pass `--session <id>`:
+
+```bash
+ercode --session session_019e3db018a17450aba5407af5777237
+```
+
+On resume the log is replayed, messages are reconstructed from the
+recorded events and seeded into the in-memory message store, then the
+agent picks up where it left off. Events tagged with a different
+`session_id` (e.g., from a tampered or copied log) are skipped with a
+warning. The same JSONL file is then re-opened in append mode for the
+new run; `Event.sequence` continues monotonically past the highest
+replayed value.
+
+`--session-dir <PATH>` overrides the storage location (useful for
+keeping per-workspace session histories in
+`<workspace>/.ercode/sessions/`).
+
+### Sensitivity
+
+**Treat session logs as you would shell history.** Each line is the
+serialized `Event` that fired during a turn, which may include:
+
+- Every prompt you typed.
+- Tool call arguments — including paths and any string the agent passed
+  to `bash`, `write_file`, `edit_file`, `web_fetch`, etc.
+- Tool output — `bash` stdout/stderr, file contents, HTTP response
+  bodies (capped per-tool but not redacted).
+
+There is no retention policy or rotation — files grow until you delete
+them. If you'd rather a session not be persisted, point `--session-dir`
+at a path you can wipe (e.g., a `tmpfs`) or delete the JSONL after the
+run.
 
 ## How it's wired
 
@@ -138,8 +197,9 @@ ercode --provider llmsim -p "hi"
 - Single-turn rendering: assistant messages appear after the turn completes
   rather than streaming token-by-token (the runtime emits delta events; wiring
   them to the UI is a follow-up).
-- No conversation persistence: the in-memory runtime drops history when the
-  binary exits.
+- Persistence is event-log only: messages are reconstructed from events on
+  resume. There's no separate snapshot of agent state (skills cache, todos,
+  budget counters); each new run rebuilds in-memory state from scratch.
 - Bash tool has a 120s timeout and a 64KiB stdout cap. Long-running jobs aren't
   yet supported as background tools.
 - The bash approval prompt shows the command string only — sub-commands
