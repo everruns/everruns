@@ -3,12 +3,22 @@ name: Publish Crates
 on:
   repository_dispatch:
     types: [publish-crates]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to publish (e.g. v0.8.33)'
+        required: true
+        type: string
+      sha:
+        description: '40-char commit SHA the tag must resolve to'
+        required: true
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
-  group: publish-crates-${{ github.event.client_payload.tag || github.ref }}
+  group: publish-crates-${{ github.event.client_payload.tag || github.event.inputs.tag || github.ref }}
   cancel-in-progress: false
 
 env:
@@ -22,13 +32,13 @@ jobs:
       - name: Resolve release tag
         id: release
         env:
-          DISPATCH_SHA: ${{ github.event.client_payload.sha || '' }}
-          DISPATCH_TAG: ${{ github.event.client_payload.tag || '' }}
+          DISPATCH_SHA: ${{ github.event.client_payload.sha || github.event.inputs.sha || '' }}
+          DISPATCH_TAG: ${{ github.event.client_payload.tag || github.event.inputs.tag || '' }}
           EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
 
-          if [ "$EVENT_NAME" != "repository_dispatch" ]; then
+          if [ "$EVENT_NAME" != "repository_dispatch" ] && [ "$EVENT_NAME" != "workflow_dispatch" ]; then
             echo "::error::Unsupported event for crates publish: $EVENT_NAME"
             exit 1
           fi
@@ -233,6 +243,25 @@ jobs:
             return 1
           }
 
+          publish_one() {
+            # Retries on transient crates.io errors (esp. new-crate rate limit:
+            # 5 new crates / 10 min on a default token). Each retry waits
+            # ~11 minutes to clear the window before re-trying.
+            local crate="$1"
+            for attempt in 1 2 3; do
+              if CARGO_REGISTRY_TOKEN="${{ secrets.CARGO_REGISTRY_TOKEN }}" \
+                cargo publish --locked -p "$crate"; then
+                return 0
+              fi
+              if [ "$attempt" -lt 3 ]; then
+                echo "::warning::cargo publish $crate failed (attempt $attempt/3); sleeping 11 min before retry (covers new-crate rate-limit window)"
+                sleep 660
+              fi
+            done
+            echo "::error::cargo publish $crate failed after 3 attempts"
+            return 1
+          }
+
           for crate in "${CRATES[@]}"; do
             status="$(initial_publish_status "$crate" "$VERSION")"
             if [ "$status" = "published" ]; then
@@ -240,7 +269,7 @@ jobs:
             elif [ "$status" = "missing" ]; then
               echo "Publishing $crate $VERSION"
               cargo package --locked -p "$crate"
-              CARGO_REGISTRY_TOKEN="${{ secrets.CARGO_REGISTRY_TOKEN }}" cargo publish --locked -p "$crate"
+              publish_one "$crate"
             else
               echo "::error::Unexpected crates.io lookup status for $crate $VERSION: $status"
               exit 1
