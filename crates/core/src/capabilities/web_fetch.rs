@@ -211,9 +211,7 @@ impl Capability for WebFetchCapability {
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
         let body = if enable_file_download {
-            "`web_fetch` fetches one URL (GET/HEAD); it is not a search engine. \
-             For large or binary responses, pass `save_to_file` to write the body to the workspace \
-             instead of inlining it."
+            "`web_fetch` fetches one URL (GET/HEAD); it is not a search engine. For large or binary responses, pass `save_to_file` to write the body to the workspace instead of inlining it."
         } else {
             "`web_fetch` fetches one URL (GET/HEAD); it is not a search engine."
         };

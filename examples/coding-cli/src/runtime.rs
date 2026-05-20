@@ -52,7 +52,9 @@ commands on the host. There is no sandbox.
 
 Read before editing. Test after changing behavior. When a command fails,
 read the full output, fix the root cause, and re-run — do not retry the
-identical command. If stuck after two attempts, explain and ask.
+identical command. If stuck after two attempts, explain and ask. If a
+tool returns `user denied`, the user rejected the action — stop and ask
+what to change rather than retrying with a trivial tweak.
 
 ## Tools at a glance
 
@@ -704,10 +706,11 @@ mod tests {
     /// Harness prompt is paid on every turn — keep it small enough that the
     /// first-turn input does not balloon for trivial requests. Bump
     /// intentionally and document why in the commit message; never raise
-    /// silently.
+    /// silently. The current cap accommodates the approval-denied guidance
+    /// (~70 bytes) that prevents agent retry loops in `--ask` mode.
     #[test]
     fn harness_prompt_within_budget() {
-        const MAX_BYTES: usize = 2_000;
+        const MAX_BYTES: usize = 2_100;
         assert!(
             HARNESS_PROMPT.len() <= MAX_BYTES,
             "HARNESS_PROMPT is {} bytes (~{} tokens), cap is {} bytes",
