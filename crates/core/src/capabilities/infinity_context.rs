@@ -111,21 +111,6 @@ impl Default for InfinityContextConfig {
     }
 }
 
-/// Estimate message limit based on token budget.
-fn calculate_message_limit(budget_tokens: usize, min_recent_messages: usize) -> usize {
-    const AVG_TOKENS_PER_MESSAGE: usize = 250;
-    (budget_tokens / AVG_TOKENS_PER_MESSAGE).max(min_recent_messages)
-}
-
-fn resolve_message_limit(config: &InfinityContextConfig) -> usize {
-    let estimated =
-        calculate_message_limit(config.context_budget_tokens, config.min_recent_messages);
-    config
-        .max_recent_messages
-        .map(|max| estimated.min(max.max(1)))
-        .unwrap_or(estimated)
-}
-
 struct InfinityContextFilterProvider;
 
 impl MessageFilterProvider for InfinityContextFilterProvider {
@@ -133,13 +118,105 @@ impl MessageFilterProvider for InfinityContextFilterProvider {
         let config: InfinityContextConfig =
             serde_json::from_value(config.clone()).unwrap_or_default();
 
-        query.limit = Some(resolve_message_limit(&config) as i64);
-        query.prepend_transform = Some(Arc::new(ExcludedNoticeTransform::infinity_context()));
+        if let Some(max_recent_messages) = config.max_recent_messages {
+            query.limit = Some(max_recent_messages.max(1) as i64);
+            query.prepend_transform = Some(Arc::new(ExcludedNoticeTransform::infinity_context()));
+        }
+    }
+
+    fn post_load(&self, messages: &mut Vec<Message>, config: &Value) {
+        let config: InfinityContextConfig =
+            serde_json::from_value(config.clone()).unwrap_or_default();
+        let excluded_count = trim_messages_to_token_budget(messages, &config);
+        if excluded_count > 0 {
+            messages.insert(
+                0,
+                Message::system(
+                    ExcludedNoticeTransform::infinity_context()
+                        .format
+                        .replace("{}", &excluded_count.to_string()),
+                ),
+            );
+        }
     }
 
     fn priority(&self) -> i32 {
         100
     }
+}
+
+fn estimate_message_tokens(message: &Message) -> usize {
+    const TOKEN_CHARS: usize = 4;
+    let role_overhead = message.role.to_string().len() + 8;
+    let content_len: usize = message
+        .content
+        .iter()
+        .map(|part| match part {
+            ContentPart::Text(text) => text.text.len(),
+            ContentPart::Image(image) => {
+                image.url.as_ref().map_or(0, String::len)
+                    + image.base64.as_ref().map_or(50, String::len)
+                    + image.media_type.as_ref().map_or(0, String::len)
+            }
+            ContentPart::ImageFile(file) => {
+                file.image_id.to_string().len() + file.filename.as_ref().map_or(0, String::len)
+            }
+            ContentPart::ToolCall(call) => {
+                call.id.len() + call.name.len() + call.arguments.to_string().len() + 20
+            }
+            ContentPart::ToolResult(result) => {
+                result.tool_call_id.len()
+                    + result
+                        .result
+                        .as_ref()
+                        .map_or(0, |value| value.to_string().len())
+                    + result.error.as_ref().map_or(0, String::len)
+                    + 20
+            }
+        })
+        .sum();
+    (role_overhead + content_len) / TOKEN_CHARS
+}
+
+fn trim_messages_to_token_budget(
+    messages: &mut Vec<Message>,
+    config: &InfinityContextConfig,
+) -> usize {
+    if messages.is_empty() {
+        return 0;
+    }
+
+    let original_count = messages.len();
+    if let Some(max_recent_messages) = config.max_recent_messages {
+        let max_recent_messages = max_recent_messages.max(1);
+        if messages.len() > max_recent_messages {
+            let drop_count = messages.len() - max_recent_messages;
+            messages.drain(0..drop_count);
+        }
+    }
+
+    let capped_count = messages.len();
+    let min_recent_start = capped_count.saturating_sub(config.min_recent_messages);
+    let mut selected = Vec::new();
+    let mut selected_tokens = 0usize;
+
+    for (idx, message) in messages.iter().enumerate().skip(min_recent_start) {
+        selected.push((idx, message.clone()));
+        selected_tokens = selected_tokens.saturating_add(estimate_message_tokens(message));
+    }
+
+    let mut remaining_budget = config.context_budget_tokens.saturating_sub(selected_tokens);
+    for (idx, message) in messages[..min_recent_start].iter().enumerate().rev() {
+        let tokens = estimate_message_tokens(message);
+        if tokens <= remaining_budget {
+            selected.push((idx, message.clone()));
+            remaining_budget -= tokens;
+        }
+    }
+
+    selected.sort_by_key(|(idx, _)| *idx);
+    *messages = selected.into_iter().map(|(_, message)| message).collect();
+    original_count.saturating_sub(messages.len())
 }
 
 /// Tool for querying earlier conversation history.
@@ -431,23 +508,6 @@ mod tests {
     use crate::typed_id::SessionId;
 
     #[test]
-    fn test_calculate_message_limit_respects_budget_and_floor() {
-        assert_eq!(calculate_message_limit(10_000, 5), 40);
-        assert_eq!(calculate_message_limit(100, 50), 50);
-    }
-
-    #[test]
-    fn test_resolve_message_limit_respects_hard_cap() {
-        let config = InfinityContextConfig {
-            context_budget_tokens: 10_000,
-            min_recent_messages: 10,
-            max_recent_messages: Some(30),
-        };
-
-        assert_eq!(resolve_message_limit(&config), 30);
-    }
-
-    #[test]
     fn test_capability_metadata() {
         let capability = InfinityContextCapability;
 
@@ -460,7 +520,7 @@ mod tests {
     }
 
     #[test]
-    fn test_filter_provider_sets_limit_and_notice() {
+    fn test_filter_provider_leaves_loading_unbounded_without_hard_cap() {
         let mut query = MessageQuery::new(SessionId::new());
         let provider = InfinityContextFilterProvider;
         provider.apply_filters(
@@ -468,8 +528,8 @@ mod tests {
             &json!({"context_budget_tokens": 1_000, "min_recent_messages": 3}),
         );
 
-        assert_eq!(query.limit, Some(4));
-        assert!(query.prepend_transform.is_some());
+        assert_eq!(query.limit, None);
+        assert!(query.prepend_transform.is_none());
     }
 
     #[test]
@@ -498,8 +558,59 @@ mod tests {
             &json!({"context_budget_tokens": "not-a-number"}),
         );
 
-        assert_eq!(query.limit, Some(400));
-        assert!(query.prepend_transform.is_some());
+        assert_eq!(query.limit, None);
+        assert!(query.prepend_transform.is_none());
+    }
+
+    #[test]
+    fn test_filter_provider_trims_loaded_messages_by_token_budget() {
+        let provider = InfinityContextFilterProvider;
+        let mut messages = vec![
+            Message::user("old tiny"),
+            Message::assistant("old ".repeat(400)),
+            Message::user("recent one"),
+            Message::assistant("recent two"),
+        ];
+
+        provider.post_load(
+            &mut messages,
+            &json!({"context_budget_tokens": 1, "min_recent_messages": 2}),
+        );
+
+        assert_eq!(messages.len(), 3);
+        assert!(
+            extract_text_content(&messages[0])
+                .contains("earlier messages are NOT visible in this context")
+        );
+        assert_eq!(extract_text_content(&messages[1]), "recent one");
+        assert_eq!(extract_text_content(&messages[2]), "recent two");
+    }
+
+    #[test]
+    fn test_filter_provider_applies_hard_cap_after_loading() {
+        let provider = InfinityContextFilterProvider;
+        let mut messages = vec![
+            Message::user("one"),
+            Message::assistant("two"),
+            Message::user("three"),
+        ];
+
+        provider.post_load(
+            &mut messages,
+            &json!({
+                "context_budget_tokens": 10_000,
+                "min_recent_messages": 10,
+                "max_recent_messages": 2
+            }),
+        );
+
+        assert_eq!(messages.len(), 3);
+        assert!(
+            extract_text_content(&messages[0])
+                .contains("earlier messages are NOT visible in this context")
+        );
+        assert_eq!(extract_text_content(&messages[1]), "two");
+        assert_eq!(extract_text_content(&messages[2]), "three");
     }
 
     #[test]
