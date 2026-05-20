@@ -245,6 +245,18 @@ impl JsonlEventEmitter {
             file: Arc::new(Mutex::new(file)),
         })
     }
+
+    /// Push events read back from disk into the in-memory vec that
+    /// `EventBus::collected_events()` returns. Does NOT re-write them to
+    /// the JSONL file (they're already there) — purely a seeding step so
+    /// `runtime.events()` after resume returns the full session history
+    /// instead of starting empty.
+    pub async fn seed_replayed(&self, events: Vec<Event>) {
+        if events.is_empty() {
+            return;
+        }
+        self.events.write().await.extend(events);
+    }
 }
 
 #[async_trait]
@@ -340,5 +352,72 @@ fn tool_completed_to_message(data: everruns_core::events::ToolCompletedData) -> 
         Message::tool_result(&data.tool_call_id, result, data.error)
     } else {
         Message::tool_result_with_images(&data.tool_call_id, result, images)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use everruns_core::events::{EventContext, InputMessageData};
+    use everruns_core::message::Message;
+
+    fn input_event(session_id: SessionId, text: &str) -> Event {
+        Event::new(
+            session_id,
+            EventContext::default(),
+            InputMessageData::new(Message::user(text)),
+        )
+    }
+
+    #[tokio::test]
+    async fn seed_replayed_populates_collected_events_without_rewrite() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let session_id = SessionId::from_seed(482);
+        let path = session_log_path(dir.path(), session_id);
+
+        let emitter = JsonlEventEmitter::open(&path, 1).expect("open");
+        let prior = vec![
+            input_event(session_id, "first prior turn"),
+            input_event(session_id, "second prior turn"),
+        ];
+        emitter.seed_replayed(prior.clone()).await;
+
+        // Acceptance: collected_events() returns the seeded events.
+        let collected = emitter.collected_events().await;
+        assert_eq!(collected.len(), prior.len());
+        assert_eq!(collected[0].id, prior[0].id);
+        assert_eq!(collected[1].id, prior[1].id);
+
+        // Acceptance: seeding must NOT re-write to the JSONL file.
+        // The file was opened fresh and nothing was emitted; it should
+        // still be empty on disk.
+        let on_disk = std::fs::read_to_string(&path).expect("read");
+        assert!(
+            on_disk.is_empty(),
+            "seed_replayed must not re-persist; found: {on_disk:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn seed_replayed_then_emit_keeps_order() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let session_id = SessionId::from_seed(4820);
+        let path = session_log_path(dir.path(), session_id);
+
+        let emitter = JsonlEventEmitter::open(&path, 3).expect("open");
+        let prior = vec![input_event(session_id, "a"), input_event(session_id, "b")];
+        emitter.seed_replayed(prior.clone()).await;
+
+        let req = EventRequest::new(
+            session_id,
+            EventContext::default(),
+            InputMessageData::new(Message::user("new")),
+        );
+        let _new = emitter.emit(req).await.expect("emit");
+
+        let collected = emitter.collected_events().await;
+        assert_eq!(collected.len(), 3, "seeded + 1 new");
+        // New event sequence continues from start_sequence we opened with.
+        assert_eq!(collected[2].sequence, Some(3));
     }
 }
