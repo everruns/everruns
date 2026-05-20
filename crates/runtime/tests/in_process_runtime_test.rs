@@ -210,6 +210,29 @@ async fn single_session_builder_seeds_runnable_runtime() {
 }
 
 #[tokio::test]
+async fn single_session_builder_pins_session_id_when_set() {
+    // Embedders that need the id ahead of build (e.g. a JSONL session log
+    // whose filename encodes the id) must be able to pin it.
+    let expected = everruns_core::SessionId::from_seed(481);
+    let runtime = InProcessRuntimeBuilder::new()
+        .platform_definition(minimal_platform())
+        .llm_sim(LlmSimConfig::fixed("pinned id works"))
+        .single_session(|s| {
+            s.harness("h", "h")
+                .agent("a", "a")
+                .session_id(expected)
+                .session_title("Pinned")
+        })
+        .build()
+        .await
+        .unwrap();
+
+    assert_eq!(runtime.default_session_id(), Some(expected));
+    let context = runtime.load_context(expected).await.unwrap();
+    assert_eq!(context.session.id, expected);
+}
+
+#[tokio::test]
 async fn single_session_builder_preserves_harness_acl_when_order_changes() {
     let runtime = InProcessRuntimeBuilder::new()
         .platform_definition(minimal_platform())
