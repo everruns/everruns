@@ -8,9 +8,10 @@ use crate::approval::ApprovalRequest;
 use crate::runtime::RuntimeBundle;
 use anyhow::Result;
 use crossterm::event::{
-    self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEvent, MouseEventKind,
+    self, Event as CrosstermEvent, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEvent,
+    MouseEventKind,
 };
-use everruns_core::events::{EventData, ToolCompletedData};
+use everruns_core::events::{Event as RuntimeEvent, EventData, ToolCompletedData};
 use everruns_core::message::{ContentPart, MessageRole};
 use ratatui::Terminal;
 use ratatui::backend::Backend;
@@ -19,6 +20,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use serde_json::Value;
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{mpsc, oneshot};
@@ -28,6 +30,7 @@ pub enum Author {
     User,
     Assistant,
     Tool,
+    Process,
     Diff,
     System,
 }
@@ -38,6 +41,7 @@ impl Author {
             Author::User => "you",
             Author::Assistant => "agent",
             Author::Tool => "tool",
+            Author::Process => "proc",
             Author::Diff => "diff",
             Author::System => "system",
         }
@@ -47,6 +51,7 @@ impl Author {
             Author::User => Color::LightCyan,
             Author::Assistant => Color::LightGreen,
             Author::Tool => Color::Yellow,
+            Author::Process => Color::LightBlue,
             Author::Diff => Color::Magenta,
             Author::System => Color::DarkGray,
         }
@@ -124,6 +129,7 @@ pub struct App {
     pub last_total_lines: u32,
     /// Last rendered visible-line height for the chat area, used for page jumps.
     pub last_chat_height: u32,
+    busy_frame: u64,
     rx: Option<mpsc::UnboundedReceiver<TurnEvent>>,
     approval_rx: ApprovalRx,
     pending: Option<PendingApproval>,
@@ -147,6 +153,7 @@ impl App {
             scroll: 0,
             last_total_lines: 0,
             last_chat_height: 0,
+            busy_frame: 0,
             rx: None,
             approval_rx,
             pending: None,
@@ -168,12 +175,6 @@ impl App {
             self.bundle.session_log_path.display(),
             self.bundle.replayed_events,
         ));
-        if !self.bundle.instruction_files.is_empty() {
-            self.push_system(format!(
-                "instructions: {} (live-reloaded each turn)",
-                self.bundle.instruction_files.join(", ")
-            ));
-        }
         self.push_system("type /help for commands, Esc or Ctrl-D to exit; approvals: y / n".into());
     }
 
@@ -196,6 +197,9 @@ impl App {
         B::Error: std::error::Error + Send + Sync + 'static,
     {
         loop {
+            if self.busy {
+                self.busy_frame = self.busy_frame.wrapping_add(1);
+            }
             terminal.draw(|f| draw(f, self))?;
 
             // 1) drain background turn events
@@ -207,11 +211,13 @@ impl App {
                     }
                     Ok(TurnEvent::Done) => {
                         self.busy = false;
+                        self.busy_frame = 0;
                         self.rx = None;
                         continue;
                     }
                     Ok(TurnEvent::Failed(err)) => {
                         self.busy = false;
+                        self.busy_frame = 0;
                         self.rx = None;
                         self.push_system(format!("turn failed: {err}"));
                         continue;
@@ -243,13 +249,13 @@ impl App {
             // 3) keystrokes / mouse
             if event::poll(Duration::from_millis(80))? {
                 match event::read()? {
-                    Event::Key(key) => {
+                    CrosstermEvent::Key(key) => {
                         if key.kind == KeyEventKind::Release {
                             continue;
                         }
                         self.handle_key(key).await;
                     }
-                    Event::Mouse(m) => self.handle_mouse(m),
+                    CrosstermEvent::Mouse(m) => self.handle_mouse(m),
                     _ => {}
                 }
             }
@@ -461,7 +467,23 @@ impl App {
                 Err(_) => 0,
             };
 
-            let result = bundle.runtime.run_text_turn(session_id, prompt).await;
+            let runtime = bundle.runtime.clone();
+            let turn = tokio::spawn(async move { runtime.run_text_turn(session_id, prompt).await });
+            let mut emitted_events = HashSet::new();
+            while !turn.is_finished() {
+                emit_new_process_lines(&bundle, events_before, &mut emitted_events, &tx).await;
+                tokio::time::sleep(Duration::from_millis(120)).await;
+            }
+
+            let result = match turn.await {
+                Ok(result) => result,
+                Err(e) => {
+                    let _ = tx.send(TurnEvent::Failed(format!("turn task: {e}")));
+                    let _ = tx.send(TurnEvent::Done);
+                    return;
+                }
+            };
+            emit_new_process_lines(&bundle, events_before, &mut emitted_events, &tx).await;
             let response = match result {
                 Ok(r) => r,
                 Err(e) => {
@@ -479,32 +501,11 @@ impl App {
             let events = bundle.runtime.events().await.unwrap_or_default();
 
             let mut out = Vec::new();
-            // Tool calls executed during this turn surface as new events.
+            // Catch any final tool events missed by the polling loop.
             for event in events.iter().skip(events_before) {
-                if let EventData::ToolCompleted(data) = &event.data {
-                    let marker = if data.success { "✓" } else { "✗" };
-                    let summary = summarize_tool_result(data);
-                    let line = if summary.is_empty() {
-                        format!("{} {marker}", data.tool_name)
-                    } else {
-                        format!("{} {marker}  {summary}", data.tool_name)
-                    };
-                    out.push(ChatLine {
-                        author: Author::Tool,
-                        text: line,
-                    });
-                    // For edits, also surface the diff inline so the operator
-                    // can see exactly what changed.
-                    if data.tool_name == "edit_file"
-                        && let Some(diff) = extract_field(data, "diff")
-                    {
-                        for line in diff.lines().take(40) {
-                            out.push(ChatLine {
-                                author: Author::Diff,
-                                text: line.to_string(),
-                            });
-                        }
-                    }
+                let event_id = event.id.to_string();
+                if emitted_events.insert(event_id) {
+                    out.extend(process_lines_for_event(event));
                 }
             }
             // Assistant text from the turn.
@@ -538,6 +539,132 @@ impl App {
             let _ = tx.send(TurnEvent::Lines(out));
             let _ = tx.send(TurnEvent::Done);
         });
+    }
+}
+
+async fn emit_new_process_lines(
+    bundle: &RuntimeBundle,
+    events_before: usize,
+    emitted_events: &mut HashSet<String>,
+    tx: &mpsc::UnboundedSender<TurnEvent>,
+) {
+    let events = bundle.runtime.events().await.unwrap_or_default();
+    let mut lines = Vec::new();
+    for event in events.iter().skip(events_before) {
+        let event_id = event.id.to_string();
+        if emitted_events.insert(event_id) {
+            lines.extend(process_lines_for_event(event));
+        }
+    }
+    if !lines.is_empty() {
+        let _ = tx.send(TurnEvent::Lines(lines));
+    }
+}
+
+fn process_lines_for_event(event: &RuntimeEvent) -> Vec<ChatLine> {
+    match &event.data {
+        EventData::ReasonStarted(_) => vec![process_line("thinking")],
+        EventData::ReasonCompleted(data) => {
+            if !data.success {
+                let err = data.error.as_deref().unwrap_or("reasoning failed");
+                return vec![process_line(format!(
+                    "reasoning failed: {}",
+                    first_line(err, 100)
+                ))];
+            }
+            if data.has_tool_calls {
+                vec![process_line(format!(
+                    "planned {} tool call(s)",
+                    data.tool_call_count
+                ))]
+            } else {
+                vec![process_line("response ready")]
+            }
+        }
+        EventData::ActStarted(data) => {
+            let text = data
+                .headline
+                .clone()
+                .unwrap_or_else(|| format!("running {} tool(s)", data.tool_calls.len()));
+            vec![process_line(text)]
+        }
+        EventData::ActCompleted(data) => {
+            let text = data.headline.clone().unwrap_or_else(|| {
+                format!(
+                    "tools finished: {} ok, {} failed",
+                    data.success_count, data.error_count
+                )
+            });
+            vec![process_line(text)]
+        }
+        EventData::ToolStarted(data) => vec![process_line(format!(
+            "→ {}",
+            data.narration
+                .as_deref()
+                .or(data.display_name.as_deref())
+                .unwrap_or(data.tool_call.name.as_str())
+        ))],
+        EventData::ToolProgress(data) => vec![process_line(format!(
+            "… {}: {}",
+            data.display_name
+                .as_deref()
+                .unwrap_or(data.tool_name.as_str()),
+            first_line(&data.message, 100)
+        ))],
+        EventData::ToolCompleted(data) => {
+            let marker = if data.success { "✓" } else { "✗" };
+            let label = data
+                .narration
+                .as_deref()
+                .or(data.display_name.as_deref())
+                .unwrap_or(data.tool_name.as_str());
+            let summary = summarize_tool_result(data);
+            let mut lines = vec![ChatLine {
+                author: Author::Tool,
+                text: if summary.is_empty() {
+                    format!("{marker} {label}")
+                } else {
+                    format!("{marker} {label}  {summary}")
+                },
+            }];
+            if data.tool_name == "edit_file"
+                && let Some(diff) = extract_field(data, "diff")
+            {
+                for line in diff.lines().take(40) {
+                    lines.push(ChatLine {
+                        author: Author::Diff,
+                        text: line.to_string(),
+                    });
+                }
+            }
+            lines
+        }
+        EventData::ToolCallRequested(data) => vec![process_line(format!(
+            "waiting for {} client tool result(s)",
+            data.tool_calls.len()
+        ))],
+        EventData::OutputMessageStarted(data) => {
+            let suffix = data
+                .iteration
+                .filter(|iteration| *iteration > 1)
+                .map(|iteration| format!(" (iteration {iteration})"))
+                .unwrap_or_default();
+            vec![process_line(format!("writing response{suffix}"))]
+        }
+        EventData::ReasonThinkingStarted(_) => vec![process_line("thinking deeply")],
+        EventData::TurnCancelled(_) => vec![process_line("turn cancelled")],
+        EventData::TurnFailed(data) => vec![process_line(format!(
+            "turn failed: {}",
+            first_line(&data.error, 100)
+        ))],
+        _ => Vec::new(),
+    }
+}
+
+fn process_line(text: impl Into<String>) -> ChatLine {
+    ChatLine {
+        author: Author::Process,
+        text: text.into(),
     }
 }
 
@@ -817,13 +944,7 @@ fn draw_suggestions(f: &mut ratatui::Frame, area: Rect, suggestions: &[CommandSu
 }
 
 fn draw_input(f: &mut ratatui::Frame, area: Rect, app: &App) {
-    let title = if app.pending.is_some() {
-        " approval pending — answer y / n above "
-    } else if app.busy {
-        " thinking… (input disabled) "
-    } else {
-        " message (Enter to send) "
-    };
+    let title = input_title(app);
     let para = Paragraph::new(app.input.as_str())
         .block(Block::default().borders(Borders::ALL).title(title));
     f.render_widget(para, area);
@@ -832,6 +953,43 @@ fn draw_input(f: &mut ratatui::Frame, area: Rect, app: &App) {
         let y = area.y + 1;
         f.set_cursor_position((x, y));
     }
+}
+
+fn input_title(app: &App) -> Line<'static> {
+    if app.pending.is_some() {
+        return Line::from(" approval pending — answer y / n above ");
+    }
+    if app.busy {
+        return thinking_title(app.busy_frame);
+    }
+    Line::from(" message (Enter to send) ")
+}
+
+fn thinking_title(frame: u64) -> Line<'static> {
+    const TEXT: &str = "thinking...";
+    const COLORS: [Color; 5] = [
+        Color::LightCyan,
+        Color::Cyan,
+        Color::LightBlue,
+        Color::Magenta,
+        Color::LightMagenta,
+    ];
+
+    let offset = ((frame / 2) as usize) % COLORS.len();
+    let mut spans = Vec::with_capacity(TEXT.len() + 2);
+    spans.push(Span::raw(" "));
+    for (i, ch) in TEXT.chars().enumerate() {
+        let color = COLORS[(i + offset) % COLORS.len()];
+        spans.push(Span::styled(
+            ch.to_string(),
+            Style::default().fg(color).add_modifier(Modifier::BOLD),
+        ));
+    }
+    spans.push(Span::styled(
+        " (input disabled) ",
+        Style::default().fg(Color::DarkGray),
+    ));
+    Line::from(spans)
 }
 
 fn draw_status(f: &mut ratatui::Frame, area: Rect, app: &App) {
