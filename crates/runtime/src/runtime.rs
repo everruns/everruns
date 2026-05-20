@@ -593,9 +593,10 @@ impl InProcessRuntime {
     /// Looks up the first capability whose `commands()` includes the named
     /// command (in capability-resolution order) and delegates to its
     /// `execute_command`. Returns an error if no capability declares the
-    /// requested name. The CLI uses this so `/model`, `/clear`, and other
-    /// slash commands defined by capabilities run through the capability's
-    /// own handler instead of CLI-local branches.
+    /// requested name. The coding-CLI example uses this for `/model`
+    /// (provided by `ModelSwitcherCapability`) so the dispatch path stays
+    /// inside the capability instead of the TUI's local `handle_command`
+    /// branches.
     pub async fn execute_command(
         &self,
         session_id: SessionId,
@@ -621,9 +622,10 @@ impl InProcessRuntime {
     /// List slash commands available for a session.
     ///
     /// Resolves the session's harness/agent capability chain and aggregates
-    /// commands declared via [`Capability::commands`]. Duplicates by name are
-    /// kept in first-seen order. This is the embedded equivalent of the
-    /// server's `GET /v1/sessions/{id}/commands` system-commands list — skill
+    /// commands declared via [`Capability::commands`], deduplicated by name
+    /// (first occurrence wins, matching the order of resolved capabilities).
+    /// This is the embedded equivalent of the server's
+    /// `GET /v1/sessions/{id}/commands` system-commands list — skill
     /// commands are not included here because skills are discovered via the
     /// platform filesystem rather than the capability registry.
     pub async fn list_commands(

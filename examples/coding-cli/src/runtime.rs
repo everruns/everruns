@@ -9,11 +9,10 @@ use crate::tools::{BashTool, Workspace};
 use anyhow::{Context, Result, anyhow};
 use async_trait::async_trait;
 use everruns_core::capabilities::{
-    AGENT_INSTRUCTIONS_CAPABILITY_ID, AgentInstructionsCapability, BTW_CAPABILITY_ID,
-    BtwCapability, Capability, CapabilityStatus, FileSystemCapability,
-    INFINITY_CONTEXT_CAPABILITY_ID, InfinityContextCapability, LoopDetectionCapability,
-    PROMPT_CACHING_CAPABILITY_ID, PromptCachingCapability, SKILLS_CAPABILITY_ID, SkillsCapability,
-    StatelessTodoListCapability, WebFetchCapability,
+    AGENT_INSTRUCTIONS_CAPABILITY_ID, AgentInstructionsCapability, Capability, CapabilityStatus,
+    FileSystemCapability, INFINITY_CONTEXT_CAPABILITY_ID, InfinityContextCapability,
+    LoopDetectionCapability, PROMPT_CACHING_CAPABILITY_ID, PromptCachingCapability,
+    SKILLS_CAPABILITY_ID, SkillsCapability, StatelessTodoListCapability, WebFetchCapability,
 };
 use everruns_core::command::{
     CommandArg, CommandDescriptor, CommandExecutionContext, CommandResult, CommandSource,
@@ -452,7 +451,8 @@ pub struct RuntimeBundle {
     /// Slash commands contributed by registered capabilities (via
     /// `Capability::commands()`). Resolved once at startup against this
     /// session's harness/agent chain; surfaced in the TUI's command palette
-    /// alongside the CLI's built-in `/help`, `/model`, etc.
+    /// alongside the CLI's built-in `/help`, `/tools`, `/cwd`, `/clear`,
+    /// `/quit` (which remain CLI-local).
     pub capability_commands: Vec<CommandDescriptor>,
     /// On-disk JSONL log for this session. Populated even for fresh ids
     /// so the startup banner can show where new events are being written.
@@ -555,10 +555,13 @@ pub async fn build(
     capabilities.register(PromptCachingCapability::new());
     capabilities.register(DuckDuckGoCapability);
     capabilities.register(WebFetchCapability::from_env());
-    // BTW exposes `/btw` as a capability-provided slash command. Registering
-    // it here exercises the same `Capability::commands()` path the server
-    // uses and demonstrates capability-sourced commands in the CLI palette.
-    capabilities.register(BtwCapability);
+    // `/model` (below) is the example's capability-sourced slash command —
+    // it implements `Capability::execute_command` end to end. We deliberately
+    // do NOT register `BtwCapability` here: the server's `/btw` flow has its
+    // own bespoke executor in `SessionCommandService::execute_btw` (see
+    // crates/server/src/domains/session_commands/service.rs) and the
+    // capability does not implement `execute_command`, so dispatching it
+    // through the embedded runtime would error.
     capabilities.register(ModelSwitcherCapability {
         provider: provider_state.clone(),
         provider_store: provider_store.clone(),
@@ -615,7 +618,6 @@ pub async fn build(
             "web_fetch",
             serde_json::json!({ "enable_file_download": true }),
         ),
-        AgentCapabilityConfig::new(BTW_CAPABILITY_ID),
         AgentCapabilityConfig::new(MODEL_SWITCHER_CAPABILITY_ID),
         AgentCapabilityConfig::new("coding_cli_bash"),
     ];
