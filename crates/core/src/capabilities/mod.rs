@@ -94,6 +94,7 @@ mod fake_crm;
 mod fake_financial;
 mod fake_warehouse;
 mod file_system;
+mod goal;
 mod human_intent;
 mod infinity_context;
 mod knowledge_base;
@@ -190,6 +191,10 @@ pub use fake_warehouse::{
 pub use file_system::{
     DeleteFileTool, EditFileTool, FileSystemCapability, GrepFilesTool, ListDirectoryTool,
     ReadFileTool, StatFileTool, WriteFileTool,
+};
+pub use goal::{
+    GOAL_CAPABILITY_ID, GoalCapability, GoalRecord, GoalStatus, MAX_GOAL_OBJECTIVE_LEN,
+    agent_visible_goal_path, goal_dir, goal_file_path,
 };
 pub use human_intent::{HUMAN_INTENT_CAPABILITY_ID, HumanIntentCapability};
 pub use infinity_context::{
@@ -805,6 +810,7 @@ impl CapabilityRegistry {
         registry.register(VirtualBashCapability);
         registry.register(SessionScheduleCapability);
         registry.register(BtwCapability);
+        registry.register(GoalCapability);
         registry.register(InfinityContextCapability);
         registry.register(budgeting::BudgetingCapability);
         registry.register(SelfBudgetCapability);

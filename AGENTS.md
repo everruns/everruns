@@ -165,6 +165,7 @@ Start from latest main by default.
 - `specs/voice.md` - Voice Sessions (Realtime API transport over a durable Everruns session)
 - `specs/volumes.md` - Workspace Volumes (org-scoped persistent filesystem trees mounted into sessions)
 - `specs/machine-payments.md` - Capability-side payments to external paid services during agent execution
+- `specs/goal.md` - Long-running per-session goal (`/goal` lifecycle commands, VFS storage, system-prompt injection)
 
 ### Test Cases
 

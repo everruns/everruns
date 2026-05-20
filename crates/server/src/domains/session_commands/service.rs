@@ -12,6 +12,7 @@ use crate::errors::{BadRequestError, ResourceNotFoundError};
 use crate::services::{EventService, LlmResolverService};
 use crate::storage::StorageBackend;
 use anyhow::{Result, anyhow};
+use everruns_core::capabilities::{GoalRecord, GoalStatus, MAX_GOAL_OBJECTIVE_LEN, goal_file_path};
 use everruns_core::command::{CommandDescriptor, CommandResult, ExecuteCommandRequest};
 use everruns_core::llm_driver_registry::{
     LlmCallConfigBuilder, LlmMessage, LlmMessageContent, LlmMessageRole, ProviderConfig,
@@ -34,6 +35,7 @@ use uuid::Uuid;
 
 const BTW_COMMAND_NAME: &str = "btw";
 const BTW_SYSTEM_PROMPT: &str = "You are answering an ephemeral side question about the current session. Use the existing conversation as context, answer exactly once, and do not call tools or ask follow-up questions.";
+const GOAL_COMMAND_NAME: &str = "goal";
 
 pub struct SessionCommandService {
     db: Arc<StorageBackend>,
@@ -128,11 +130,105 @@ impl SessionCommandService {
 
         match command.name.as_str() {
             BTW_COMMAND_NAME => self.execute_btw(caller.org_id, session_id, req).await,
+            GOAL_COMMAND_NAME => self.execute_goal(session_id, req).await,
             _ => Err(BadRequestError::new(format!(
                 "Unsupported system command: /{}",
                 command.name
             ))
             .into()),
+        }
+    }
+
+    async fn execute_goal(
+        &self,
+        session_id: SessionId,
+        req: ExecuteCommandRequest,
+    ) -> Result<CommandResult> {
+        let adapters = self.adapters();
+        let file_store = AdapterSessionFileStore::new(adapters);
+        let path = goal_file_path(session_id);
+        let arg = req
+            .arguments
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+
+        let existing = read_goal_record(&file_store, session_id, &path).await?;
+
+        let action = parse_goal_action(arg);
+        match action {
+            GoalAction::Show => Ok(goal_show_result(existing.as_ref())),
+            GoalAction::Set(objective) => {
+                if objective.len() > MAX_GOAL_OBJECTIVE_LEN {
+                    return Err(BadRequestError::new(format!(
+                        "Goal objective exceeds {MAX_GOAL_OBJECTIVE_LEN}-character limit"
+                    ))
+                    .into());
+                }
+                let now = chrono::Utc::now().to_rfc3339();
+                let (set_at, version) = match &existing {
+                    Some(prev) => (prev.set_at.clone(), prev.version),
+                    None => (now.clone(), 0),
+                };
+                let record = GoalRecord {
+                    objective: objective.clone(),
+                    status: GoalStatus::Active,
+                    version: version.saturating_add(1),
+                    set_at,
+                    updated_at: now,
+                };
+                write_goal_record(&file_store, session_id, &path, &record).await?;
+                Ok(CommandResult {
+                    success: true,
+                    message: format!(
+                        "Goal set:\n\n> {objective}\n\nThe agent will treat this as durable context across turns. Use `/goal` to view, `/goal pause`, `/goal resume`, or `/goal clear`."
+                    ),
+                    error_code: None,
+                    error_fields: None,
+                })
+            }
+            GoalAction::Pause | GoalAction::Resume | GoalAction::Clear => {
+                let Some(mut record) = existing else {
+                    return Ok(CommandResult {
+                        success: false,
+                        message:
+                            "No goal is set for this session. Use `/goal <objective>` to set one."
+                                .to_string(),
+                        error_code: None,
+                        error_fields: None,
+                    });
+                };
+                let new_status = match action {
+                    GoalAction::Pause => GoalStatus::Paused,
+                    GoalAction::Resume => GoalStatus::Active,
+                    GoalAction::Clear => GoalStatus::Cleared,
+                    _ => unreachable!(),
+                };
+                if record.status == new_status {
+                    return Ok(CommandResult {
+                        success: true,
+                        message: format!("Goal already in state `{}`.", status_label(new_status)),
+                        error_code: None,
+                        error_fields: None,
+                    });
+                }
+                record.status = new_status;
+                record.version = record.version.saturating_add(1);
+                record.updated_at = chrono::Utc::now().to_rfc3339();
+                write_goal_record(&file_store, session_id, &path, &record).await?;
+                let verb = match new_status {
+                    GoalStatus::Paused => "paused",
+                    GoalStatus::Active => "resumed",
+                    GoalStatus::Cleared => "cleared",
+                    GoalStatus::Completed => "marked completed",
+                };
+                Ok(CommandResult {
+                    success: true,
+                    message: format!("Goal {verb}.\n\nObjective: {}", record.objective),
+                    error_code: None,
+                    error_fields: None,
+                })
+            }
         }
     }
 
@@ -341,6 +437,90 @@ impl SessionCommandService {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum GoalAction {
+    Show,
+    Set(String),
+    Pause,
+    Resume,
+    Clear,
+}
+
+fn parse_goal_action(arg: Option<&str>) -> GoalAction {
+    let Some(text) = arg else {
+        return GoalAction::Show;
+    };
+    match text.to_ascii_lowercase().as_str() {
+        "show" | "status" => GoalAction::Show,
+        "pause" => GoalAction::Pause,
+        "resume" => GoalAction::Resume,
+        "clear" | "cancel" | "stop" => GoalAction::Clear,
+        _ => GoalAction::Set(text.to_string()),
+    }
+}
+
+fn status_label(status: GoalStatus) -> &'static str {
+    match status {
+        GoalStatus::Active => "active",
+        GoalStatus::Paused => "paused",
+        GoalStatus::Completed => "completed",
+        GoalStatus::Cleared => "cleared",
+    }
+}
+
+fn goal_show_result(existing: Option<&GoalRecord>) -> CommandResult {
+    let message = match existing {
+        Some(record) => format!(
+            "Goal status: {status}\n\n> {objective}\n\nSet at {set_at}, updated {updated_at}.",
+            status = status_label(record.status),
+            objective = record.objective,
+            set_at = record.set_at,
+            updated_at = record.updated_at,
+        ),
+        None => "No goal is set for this session. Use `/goal <objective>` to set one.".to_string(),
+    };
+    CommandResult {
+        success: true,
+        message,
+        error_code: None,
+        error_fields: None,
+    }
+}
+
+async fn read_goal_record(
+    file_store: &dyn everruns_core::traits::SessionFileSystem,
+    session_id: SessionId,
+    path: &str,
+) -> Result<Option<GoalRecord>> {
+    let Some(file) = file_store.read_file(session_id, path).await? else {
+        return Ok(None);
+    };
+    let Some(content) = file.content else {
+        return Ok(None);
+    };
+    match serde_json::from_str::<GoalRecord>(&content) {
+        Ok(record) => Ok(Some(record)),
+        Err(error) => {
+            tracing::warn!(%error, %session_id, "Failed to parse goal.json, treating as missing");
+            Ok(None)
+        }
+    }
+}
+
+async fn write_goal_record(
+    file_store: &dyn everruns_core::traits::SessionFileSystem,
+    session_id: SessionId,
+    path: &str,
+    record: &GoalRecord,
+) -> Result<()> {
+    let content = serde_json::to_string_pretty(record)
+        .map_err(|e| anyhow!("Failed to serialise goal record: {e}"))?;
+    file_store
+        .write_file(session_id, path, &content, "utf-8")
+        .await?;
+    Ok(())
+}
+
 async fn run_btw_completion(
     driver_registry: &DriverRegistry,
     provider: &ProviderConfig,
@@ -497,6 +677,54 @@ mod tests {
 
         assert!(!result.success);
         assert_eq!(result.error_code.as_deref(), Some("processing_error"));
+    }
+
+    #[test]
+    fn parse_goal_action_empty_arg_is_show() {
+        assert_eq!(parse_goal_action(None), GoalAction::Show);
+    }
+
+    #[test]
+    fn parse_goal_action_lifecycle_keywords() {
+        assert_eq!(parse_goal_action(Some("show")), GoalAction::Show);
+        assert_eq!(parse_goal_action(Some("status")), GoalAction::Show);
+        assert_eq!(parse_goal_action(Some("pause")), GoalAction::Pause);
+        assert_eq!(parse_goal_action(Some("Pause")), GoalAction::Pause);
+        assert_eq!(parse_goal_action(Some("resume")), GoalAction::Resume);
+        assert_eq!(parse_goal_action(Some("clear")), GoalAction::Clear);
+        assert_eq!(parse_goal_action(Some("cancel")), GoalAction::Clear);
+        assert_eq!(parse_goal_action(Some("stop")), GoalAction::Clear);
+    }
+
+    #[test]
+    fn parse_goal_action_arbitrary_text_is_set() {
+        assert_eq!(
+            parse_goal_action(Some("ship the migration safely")),
+            GoalAction::Set("ship the migration safely".to_string())
+        );
+    }
+
+    #[test]
+    fn goal_show_result_handles_missing_goal() {
+        let result = goal_show_result(None);
+        assert!(result.success);
+        assert!(result.message.contains("No goal"));
+    }
+
+    #[test]
+    fn goal_show_result_renders_active_goal() {
+        let record = GoalRecord {
+            objective: "finish the rebase".to_string(),
+            status: GoalStatus::Active,
+            version: 3,
+            set_at: "2026-05-20T10:00:00Z".to_string(),
+            updated_at: "2026-05-20T11:00:00Z".to_string(),
+        };
+        let result = goal_show_result(Some(&record));
+        assert!(result.success);
+        assert!(result.message.contains("active"));
+        assert!(result.message.contains("finish the rebase"));
+        assert!(result.message.contains("2026-05-20T10:00:00Z"));
     }
 
     #[test]
