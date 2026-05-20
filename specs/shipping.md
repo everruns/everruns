@@ -53,6 +53,38 @@ Relevant references:
 - Auto-merge must not bypass the final review pass; shipping should give async reviewer bots time to comment after the last push and after CI turns green, then re-check before merge.
 - If a blocker cannot be resolved safely by the agent alone, shipping must stop and report the blocker rather than guess.
 
+## Validation Menu
+
+Use the smallest set that gives high confidence. The ship skill should pick from this menu based on the changed surface, not run every item mechanically.
+
+1. `just pre-push` before `git push`.
+2. `just pre-pr` for a full local quality pass.
+3. `cargo fmt --check`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo test --all-features` for Rust changes.
+4. `npm run lint` and `npm run build` in `apps/ui/` for UI changes.
+5. `./scripts/export-openapi.sh` when API surface changes.
+6. `npm run build` in `apps/docs/` when docs change.
+7. Prefer `git fetch origin main && git rebase origin/main` before merge; if skipping the final rebase, verify no migration changes exist on either side since the merge base and monitor main CI after merge.
+8. Smoke test impacted flows in `just start-dev` or `just start-all` as risk dictates.
+9. Review performance impact: indexes, scans, N+1 patterns, pagination, and bounded result sets.
+10. Capture UI screenshots for UI changes in validation or PR comments only.
+11. Ensure test coverage proves the fix or acceptance criteria, including important negative paths.
+12. Update relevant specs, docs, test cases, threat model, OpenAPI, and `AGENTS.md`.
+13. Merge only with green CI and a final clean PR comment sweep, including async reviewer bots.
+
+## CI Opt-Out Labels
+
+Long CI jobs can be skipped on interim PR pushes with temporary labels:
+
+- `ci:skip-docker` skips PR Docker image builds.
+- `ci:skip-slow-rust` skips PostgreSQL integration tests, release binary builds, workflow tests, CLI E2E, OpenAPI freshness, and dependent SDK checks.
+- `ci:skip-postgres-integration` skips only the main PostgreSQL integration test job.
+- `ci:skip-sdk-compat` skips SDK compatibility checks only.
+- `ci:skip-ui-e2e` skips Playwright smoke tests; UI build/lint/unit tests still run.
+- `ci:skip-docs-notebooks` skips executable docs notebooks; docs check/build still run.
+- `ci:skip-integration-workflows` skips the standalone PR integration workflows for Brave Search, DuckDuckGo, and Parallel MCP.
+
+Use these labels to save iteration time after deciding the skipped surface is low-signal for the current push. The CI Opt-Out Policy job fails only when an opt-out label suppresses CI affected by the PR diff. Before merge, remove any CI opt-out label that blocks affected checks and rerun CI on the final PR commit so the affected checks run green.
+
 ## Reporting Standard
 
 Shipping output should make it easy to evaluate readiness:
