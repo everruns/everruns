@@ -31,28 +31,28 @@ pub enum Author {
     User,
     Assistant,
     Tool,
-    Process,
+    ToolDetail,
     Diff,
     System,
 }
 
 impl Author {
-    fn label(&self) -> &'static str {
+    pub fn label(&self) -> &'static str {
         match self {
             Author::User => "you",
             Author::Assistant => "agent",
             Author::Tool => "tool",
-            Author::Process => "proc",
+            Author::ToolDetail => "",
             Author::Diff => "diff",
             Author::System => "system",
         }
     }
-    fn color(&self) -> Color {
+    pub fn color(&self) -> Color {
         match self {
             Author::User => Color::LightCyan,
             Author::Assistant => Color::LightGreen,
             Author::Tool => Color::Yellow,
-            Author::Process => Color::LightBlue,
+            Author::ToolDetail => Color::Gray,
             Author::Diff => Color::Magenta,
             Author::System => Color::DarkGray,
         }
@@ -126,14 +126,22 @@ pub struct App {
     /// Last rendered visible-line height for the chat area, used for page jumps.
     pub last_chat_height: u32,
     busy_frame: u64,
+    turn_activity: Option<String>,
     rx: Option<mpsc::UnboundedReceiver<TurnEvent>>,
     approval_rx: ApprovalRx,
     pending: Option<PendingApproval>,
 }
 
+#[derive(Clone, Debug)]
+pub struct ActivityStatus {
+    pub text: String,
+    fallback: bool,
+}
+
 #[derive(Debug)]
 enum TurnEvent {
     Lines(Vec<ChatLine>),
+    Activity(ActivityStatus),
     Done,
     Failed(String),
 }
@@ -150,6 +158,7 @@ impl App {
             last_total_lines: 0,
             last_chat_height: 0,
             busy_frame: 0,
+            turn_activity: None,
             rx: None,
             approval_rx,
             pending: None,
@@ -214,15 +223,23 @@ impl App {
                         self.lines.extend(lines);
                         continue;
                     }
+                    Ok(TurnEvent::Activity(activity)) => {
+                        if !activity.fallback || self.turn_activity.is_none() {
+                            self.turn_activity = Some(activity.text);
+                        }
+                        continue;
+                    }
                     Ok(TurnEvent::Done) => {
                         self.busy = false;
                         self.busy_frame = 0;
+                        self.turn_activity = None;
                         self.rx = None;
                         continue;
                     }
                     Ok(TurnEvent::Failed(err)) => {
                         self.busy = false;
                         self.busy_frame = 0;
+                        self.turn_activity = None;
                         self.rx = None;
                         self.push_system(format!("turn failed: {err}"));
                         continue;
@@ -230,6 +247,7 @@ impl App {
                     Err(mpsc::error::TryRecvError::Empty) => {}
                     Err(mpsc::error::TryRecvError::Disconnected) => {
                         self.busy = false;
+                        self.turn_activity = None;
                         self.rx = None;
                     }
                 }
@@ -529,6 +547,7 @@ impl App {
         let (tx, rx) = mpsc::unbounded_channel::<TurnEvent>();
         self.rx = Some(rx);
         self.busy = true;
+        self.turn_activity = None;
 
         tokio::spawn(async move {
             let session_id = bundle.session_id;
@@ -545,11 +564,12 @@ impl App {
                 Err(_) => 0,
             };
 
+            let input = bundle.input_message(prompt);
             let runtime = bundle.runtime.clone();
-            let turn = tokio::spawn(async move { runtime.run_text_turn(session_id, prompt).await });
+            let turn = tokio::spawn(async move { runtime.run_turn(session_id, input).await });
             let mut emitted_events = HashSet::new();
             while !turn.is_finished() {
-                emit_new_process_lines(&bundle, events_before, &mut emitted_events, &tx).await;
+                emit_new_turn_events(&bundle, events_before, &mut emitted_events, &tx).await;
                 tokio::time::sleep(Duration::from_millis(120)).await;
             }
 
@@ -561,7 +581,7 @@ impl App {
                     return;
                 }
             };
-            emit_new_process_lines(&bundle, events_before, &mut emitted_events, &tx).await;
+            emit_new_turn_events(&bundle, events_before, &mut emitted_events, &tx).await;
             let response = match result {
                 Ok(r) => r,
                 Err(e) => {
@@ -583,12 +603,16 @@ impl App {
             for event in events.iter().skip(events_before) {
                 let event_id = event.id.to_string();
                 if emitted_events.insert(event_id) {
-                    out.extend(process_lines_for_event(event));
+                    if let Some(activity) = status_for_event(event) {
+                        let _ = tx.send(TurnEvent::Activity(activity));
+                    }
+                    out.extend(lines_for_event(event));
                 }
             }
             // Assistant text from the turn.
             for msg in messages.iter().skip(before) {
                 if msg.role == MessageRole::Agent
+                    && !msg.has_tool_calls()
                     && let Some(text) = msg.text()
                 {
                     let trimmed = text.trim();
@@ -620,7 +644,7 @@ impl App {
     }
 }
 
-async fn emit_new_process_lines(
+async fn emit_new_turn_events(
     bundle: &RuntimeBundle,
     events_before: usize,
     emitted_events: &mut HashSet<String>,
@@ -631,7 +655,10 @@ async fn emit_new_process_lines(
     for event in events.iter().skip(events_before) {
         let event_id = event.id.to_string();
         if emitted_events.insert(event_id) {
-            lines.extend(process_lines_for_event(event));
+            if let Some(activity) = status_for_event(event) {
+                let _ = tx.send(TurnEvent::Activity(activity));
+            }
+            lines.extend(lines_for_event(event));
         }
     }
     if !lines.is_empty() {
@@ -639,57 +666,33 @@ async fn emit_new_process_lines(
     }
 }
 
-fn process_lines_for_event(event: &RuntimeEvent) -> Vec<ChatLine> {
+pub fn lines_for_event(event: &RuntimeEvent) -> Vec<ChatLine> {
     match &event.data {
-        EventData::ReasonStarted(_) => vec![process_line("thinking")],
+        EventData::ReasonStarted(_) => Vec::new(),
         EventData::ReasonCompleted(data) => {
-            if !data.success {
-                let err = data.error.as_deref().unwrap_or("reasoning failed");
-                return vec![process_line(format!(
-                    "reasoning failed: {}",
-                    first_line(err, 100)
-                ))];
-            }
-            if data.has_tool_calls {
-                vec![process_line(format!(
-                    "planned {} tool call(s)",
-                    data.tool_call_count
-                ))]
+            if data.success && data.has_tool_calls {
+                let mut lines = Vec::new();
+                if let Some(text) = data
+                    .text_preview
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|text| !text.is_empty())
+                {
+                    lines.push(ChatLine {
+                        author: Author::Assistant,
+                        text: text.to_string(),
+                    });
+                }
+                lines
             } else {
-                vec![process_line("response ready")]
+                Vec::new()
             }
         }
-        EventData::ActStarted(data) => {
-            let text = data
-                .headline
-                .clone()
-                .unwrap_or_else(|| format!("running {} tool(s)", data.tool_calls.len()));
-            vec![process_line(text)]
-        }
-        EventData::ActCompleted(data) => {
-            let text = data.headline.clone().unwrap_or_else(|| {
-                format!(
-                    "tools finished: {} ok, {} failed",
-                    data.success_count, data.error_count
-                )
-            });
-            vec![process_line(text)]
-        }
-        EventData::ToolStarted(data) => vec![process_line(format!(
-            "→ {}",
-            data.narration
-                .as_deref()
-                .or(data.display_name.as_deref())
-                .unwrap_or(data.tool_call.name.as_str())
-        ))],
-        EventData::ToolProgress(data) => vec![process_line(format!(
-            "… {}: {}",
-            data.display_name
-                .as_deref()
-                .unwrap_or(data.tool_name.as_str()),
-            first_line(&data.message, 100)
-        ))],
+        EventData::OutputMessageCompleted(data) => thinking_lines_for_message(&data.message),
         EventData::ToolCompleted(data) => {
+            if data.tool_name == "write_todos" {
+                return todo_lines_for_result(data);
+            }
             let marker = if data.success { "✓" } else { "✗" };
             let label = data
                 .narration
@@ -717,32 +720,102 @@ fn process_lines_for_event(event: &RuntimeEvent) -> Vec<ChatLine> {
             }
             lines
         }
-        EventData::ToolCallRequested(data) => vec![process_line(format!(
-            "waiting for {} client tool result(s)",
-            data.tool_calls.len()
-        ))],
-        EventData::OutputMessageStarted(data) => {
-            let suffix = data
-                .iteration
-                .filter(|iteration| *iteration > 1)
-                .map(|iteration| format!(" (iteration {iteration})"))
-                .unwrap_or_default();
-            vec![process_line(format!("writing response{suffix}"))]
-        }
-        EventData::ReasonThinkingStarted(_) => vec![process_line("thinking deeply")],
-        EventData::TurnCancelled(_) => vec![process_line("turn cancelled")],
-        EventData::TurnFailed(data) => vec![process_line(format!(
-            "turn failed: {}",
-            first_line(&data.error, 100)
-        ))],
         _ => Vec::new(),
     }
 }
 
-fn process_line(text: impl Into<String>) -> ChatLine {
-    ChatLine {
-        author: Author::Process,
+fn thinking_lines_for_message(message: &everruns_core::Message) -> Vec<ChatLine> {
+    if message.role != MessageRole::Agent || !message.has_tool_calls() {
+        return Vec::new();
+    }
+    message
+        .thinking
+        .as_deref()
+        .map(str::trim)
+        .filter(|thinking| !thinking.is_empty())
+        .map(|thinking| {
+            vec![ChatLine {
+                author: Author::Assistant,
+                text: thinking.to_string(),
+            }]
+        })
+        .unwrap_or_default()
+}
+
+pub fn status_for_event(event: &RuntimeEvent) -> Option<ActivityStatus> {
+    match &event.data {
+        EventData::ReasonStarted(_) => Some(fallback_status("thinking")),
+        EventData::ReasonCompleted(data) => {
+            if !data.success {
+                let err = data.error.as_deref().unwrap_or("reasoning failed");
+                return Some(activity_status(format!(
+                    "reasoning failed: {}",
+                    first_line(err, 100)
+                )));
+            }
+            data.has_tool_calls
+                .then(|| activity_status(format!("planned {} tool call(s)", data.tool_call_count)))
+        }
+        EventData::ActStarted(data) => data
+            .headline
+            .clone()
+            .or_else(|| Some(format!("running {} tool(s)", data.tool_calls.len())))
+            .map(activity_status),
+        EventData::ActCompleted(data) => data
+            .headline
+            .clone()
+            .or_else(|| {
+                Some(format!(
+                    "tools finished: {} ok, {} failed",
+                    data.success_count, data.error_count
+                ))
+            })
+            .map(activity_status),
+        EventData::ToolStarted(data) => Some(activity_status(format!(
+            "→ {}",
+            data.narration
+                .as_deref()
+                .or(data.display_name.as_deref())
+                .unwrap_or(data.tool_call.name.as_str())
+        ))),
+        EventData::ToolProgress(data) => Some(activity_status(format!(
+            "… {}: {}",
+            data.display_name
+                .as_deref()
+                .unwrap_or(data.tool_name.as_str()),
+            first_line(&data.message, 100)
+        ))),
+        EventData::ToolCallRequested(data) => Some(activity_status(format!(
+            "waiting for {} client tool result(s)",
+            data.tool_calls.len()
+        ))),
+        EventData::OutputMessageStarted(data) => {
+            let iteration = data.iteration.unwrap_or(1);
+            Some(activity_status(format!(
+                "iteration {iteration}: writing response"
+            )))
+        }
+        EventData::ReasonThinkingStarted(_) => Some(fallback_status("thinking deeply")),
+        EventData::TurnCancelled(_) => Some(activity_status("turn cancelled")),
+        EventData::TurnFailed(data) => Some(activity_status(format!(
+            "turn failed: {}",
+            first_line(&data.error, 100)
+        ))),
+        _ => None,
+    }
+}
+
+fn activity_status(text: impl Into<String>) -> ActivityStatus {
+    ActivityStatus {
         text: text.into(),
+        fallback: false,
+    }
+}
+
+fn fallback_status(text: impl Into<String>) -> ActivityStatus {
+    ActivityStatus {
+        text: text.into(),
+        fallback: true,
     }
 }
 
@@ -858,6 +931,64 @@ fn extract_field(data: &ToolCompletedData, field: &str) -> Option<String> {
     v.get(field).and_then(|s| s.as_str()).map(str::to_string)
 }
 
+fn todo_lines_for_result(data: &ToolCompletedData) -> Vec<ChatLine> {
+    let Some(v) = result_value(data) else {
+        return vec![ChatLine {
+            author: Author::Tool,
+            text: format!(
+                "✓ {}",
+                data.display_name.as_deref().unwrap_or("Write Todos")
+            ),
+        }];
+    };
+    let Some(todos) = v.get("todos").and_then(Value::as_array) else {
+        return vec![ChatLine {
+            author: Author::Tool,
+            text: summarize_tool_result(data),
+        }];
+    };
+
+    let total = todos.len();
+    let completed = todos
+        .iter()
+        .filter(|todo| todo.get("status").and_then(Value::as_str) == Some("completed"))
+        .count();
+    let mut lines = vec![ChatLine {
+        author: Author::Tool,
+        text: format!("{completed} of {total} todos completed"),
+    }];
+
+    for todo in todos {
+        let status = todo
+            .get("status")
+            .and_then(Value::as_str)
+            .unwrap_or("pending");
+        let content = todo.get("content").and_then(Value::as_str).unwrap_or("");
+        let active_form = todo
+            .get("activeForm")
+            .and_then(Value::as_str)
+            .unwrap_or(content);
+        let (marker, text) = match status {
+            "completed" => ("[x]", content),
+            "in_progress" => ("[>]", active_form),
+            _ => ("[ ]", content),
+        };
+        lines.push(ChatLine {
+            author: Author::ToolDetail,
+            text: format!("{marker} {text}"),
+        });
+    }
+
+    if let Some(warning) = v.get("warning").and_then(Value::as_str) {
+        lines.push(ChatLine {
+            author: Author::ToolDetail,
+            text: format!("warning: {warning}"),
+        });
+    }
+
+    lines
+}
+
 /// One-line summary of a tool result, used in the transcript and `--print` output.
 pub fn summarize_tool_result(data: &ToolCompletedData) -> String {
     let Some(v) = result_value(data) else {
@@ -869,6 +1000,11 @@ pub fn summarize_tool_result(data: &ToolCompletedData) -> String {
     // Field names match the built-in `session_file_system` capability's
     // result shapes. See crates/core/src/capabilities/file_system.rs.
     match data.tool_name.as_str() {
+        "write_todos" => {
+            let completed = v.get("completed").and_then(Value::as_u64).unwrap_or(0);
+            let total = v.get("total_tasks").and_then(Value::as_u64).unwrap_or(0);
+            format!("{completed}/{total} completed")
+        }
         "read_file" => {
             let path = v.get("path").and_then(Value::as_str).unwrap_or("");
             let total = v.get("total_lines").and_then(Value::as_u64).unwrap_or(0);
@@ -988,28 +1124,7 @@ fn draw_chat(f: &mut ratatui::Frame, area: Rect, app: &mut App) {
     let inner_width = area.width.saturating_sub(2).max(10) as usize;
     let mut lines: Vec<Line> = Vec::new();
     for chat in &app.lines {
-        let header = Span::styled(
-            format!("{} › ", chat.author.label()),
-            Style::default()
-                .fg(chat.author.color())
-                .add_modifier(Modifier::BOLD),
-        );
-        let wrapped = textwrap::wrap(&chat.text, inner_width.saturating_sub(8).max(20));
-        let mut first = true;
-        for piece in wrapped {
-            if first {
-                lines.push(Line::from(vec![
-                    header.clone(),
-                    Span::raw(piece.into_owned()),
-                ]));
-                first = false;
-            } else {
-                lines.push(Line::from(vec![
-                    Span::raw("        "),
-                    Span::raw(piece.into_owned()),
-                ]));
-            }
-        }
+        append_chat_lines(&mut lines, chat, inner_width);
         lines.push(Line::from(""));
     }
     let height = area.height.saturating_sub(2) as usize;
@@ -1033,6 +1148,307 @@ fn draw_chat(f: &mut ratatui::Frame, area: Rect, app: &mut App) {
     let block = Block::default().borders(Borders::ALL).title(title);
     let para = Paragraph::new(view).block(block).wrap(Wrap { trim: false });
     f.render_widget(para, area);
+}
+
+fn append_chat_lines<'a>(lines: &mut Vec<Line<'a>>, chat: &ChatLine, inner_width: usize) {
+    if matches!(chat.author, Author::ToolDetail) {
+        append_wrapped_plain(
+            lines,
+            "           ",
+            Style::default().fg(Color::Gray),
+            &chat.text,
+            inner_width,
+        );
+        return;
+    }
+
+    let header_text = format!("{} › ", chat.author.label());
+    let header_style = Style::default()
+        .fg(chat.author.color())
+        .add_modifier(Modifier::BOLD);
+    if matches!(chat.author, Author::Assistant) {
+        append_markdown_lines(lines, &header_text, header_style, &chat.text, inner_width);
+    } else {
+        append_wrapped_plain(lines, &header_text, header_style, &chat.text, inner_width);
+    }
+}
+
+fn append_wrapped_plain<'a>(
+    lines: &mut Vec<Line<'a>>,
+    first_prefix: &str,
+    prefix_style: Style,
+    text: &str,
+    inner_width: usize,
+) {
+    let continuation = " ".repeat(first_prefix.chars().count());
+    let wrap_width = inner_width
+        .saturating_sub(first_prefix.chars().count())
+        .max(20);
+    let mut emitted = false;
+    for raw in text.lines() {
+        let wrapped = textwrap::wrap(raw, wrap_width);
+        if wrapped.is_empty() {
+            let prefix = if emitted {
+                continuation.as_str()
+            } else {
+                first_prefix
+            };
+            lines.push(Line::from(vec![Span::styled(
+                prefix.to_string(),
+                prefix_style,
+            )]));
+            emitted = true;
+            continue;
+        }
+        for piece in wrapped {
+            let prefix = if emitted {
+                continuation.as_str()
+            } else {
+                first_prefix
+            };
+            lines.push(Line::from(vec![
+                Span::styled(prefix.to_string(), prefix_style),
+                Span::raw(piece.into_owned()),
+            ]));
+            emitted = true;
+        }
+    }
+    if !emitted {
+        lines.push(Line::from(vec![Span::styled(
+            first_prefix.to_string(),
+            prefix_style,
+        )]));
+    }
+}
+
+fn append_markdown_lines<'a>(
+    lines: &mut Vec<Line<'a>>,
+    first_prefix: &str,
+    prefix_style: Style,
+    text: &str,
+    inner_width: usize,
+) {
+    let continuation = " ".repeat(first_prefix.chars().count());
+    let wrap_width = inner_width
+        .saturating_sub(first_prefix.chars().count())
+        .max(20);
+    let mut first = true;
+    let mut in_code = false;
+
+    for raw in text.lines() {
+        let trimmed = raw.trim_end();
+        if let Some(lang) = trimmed.trim_start().strip_prefix("```") {
+            in_code = !in_code;
+            let code_lang = lang.trim();
+            let label = if in_code {
+                if code_lang.is_empty() {
+                    "code".to_string()
+                } else {
+                    format!("code: {code_lang}")
+                }
+            } else {
+                String::new()
+            };
+            push_markdown_line(
+                lines,
+                first_prefix,
+                &continuation,
+                prefix_style,
+                &mut first,
+                vec![Span::styled(
+                    label,
+                    Style::default()
+                        .fg(Color::DarkGray)
+                        .add_modifier(Modifier::ITALIC),
+                )],
+            );
+            continue;
+        }
+
+        let content_spans = if in_code {
+            markdown_code_spans(trimmed)
+        } else {
+            markdown_text_spans(trimmed)
+        };
+        let plain = spans_plain_text(&content_spans);
+        let wrapped = textwrap::wrap(&plain, wrap_width);
+        if wrapped.is_empty() {
+            push_markdown_line(
+                lines,
+                first_prefix,
+                &continuation,
+                prefix_style,
+                &mut first,
+                vec![],
+            );
+            continue;
+        }
+        if content_spans.len() == 1 {
+            let style = content_spans[0].style;
+            for piece in wrapped {
+                push_markdown_line(
+                    lines,
+                    first_prefix,
+                    &continuation,
+                    prefix_style,
+                    &mut first,
+                    vec![Span::styled(piece.into_owned(), style)],
+                );
+            }
+        } else {
+            push_markdown_line(
+                lines,
+                first_prefix,
+                &continuation,
+                prefix_style,
+                &mut first,
+                content_spans,
+            );
+        }
+    }
+}
+
+fn push_markdown_line<'a>(
+    lines: &mut Vec<Line<'a>>,
+    first_prefix: &str,
+    continuation: &str,
+    prefix_style: Style,
+    first: &mut bool,
+    mut spans: Vec<Span<'a>>,
+) {
+    let prefix = if *first { first_prefix } else { continuation };
+    let mut line_spans = vec![Span::styled(prefix.to_string(), prefix_style)];
+    line_spans.append(&mut spans);
+    lines.push(Line::from(line_spans));
+    *first = false;
+}
+
+fn markdown_text_spans(text: &str) -> Vec<Span<'static>> {
+    let trimmed = text.trim_start();
+    if trimmed.starts_with('#') {
+        let heading = trimmed.trim_start_matches('#').trim_start();
+        return vec![Span::styled(
+            heading.to_string(),
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        )];
+    }
+    if let Some(rest) = trimmed.strip_prefix("> ") {
+        return vec![
+            Span::styled("| ", Style::default().fg(Color::DarkGray)),
+            Span::styled(rest.to_string(), Style::default().fg(Color::Gray)),
+        ];
+    }
+    if let Some(rest) = trimmed
+        .strip_prefix("- ")
+        .or_else(|| trimmed.strip_prefix("* "))
+    {
+        return vec![
+            Span::styled("- ", Style::default().fg(Color::Gray)),
+            Span::raw(rest.to_string()),
+        ];
+    }
+    if let Some((marker, rest)) = numbered_marker(trimmed) {
+        return vec![
+            Span::styled(marker, Style::default().fg(Color::Gray)),
+            Span::raw(rest.to_string()),
+        ];
+    }
+    inline_code_spans(text)
+}
+
+fn markdown_code_spans(text: &str) -> Vec<Span<'static>> {
+    let mut spans = vec![Span::styled("    ", Style::default().fg(Color::DarkGray))];
+    spans.extend(simple_code_highlight(text));
+    spans
+}
+
+fn inline_code_spans(text: &str) -> Vec<Span<'static>> {
+    let mut spans = Vec::new();
+    let mut rest = text;
+    let mut code = false;
+    while let Some((before, after_tick)) = rest.split_once('`') {
+        if !before.is_empty() {
+            spans.push(Span::raw(before.to_string()));
+        }
+        if let Some((inside, after)) = after_tick.split_once('`') {
+            spans.push(Span::styled(
+                inside.to_string(),
+                Style::default().fg(Color::White).bg(Color::Black),
+            ));
+            rest = after;
+            code = true;
+        } else {
+            spans.push(Span::raw("`".to_string()));
+            rest = after_tick;
+            break;
+        }
+    }
+    if !rest.is_empty() {
+        spans.push(Span::raw(rest.to_string()));
+    }
+    if spans.is_empty() || !code {
+        vec![Span::raw(text.to_string())]
+    } else {
+        spans
+    }
+}
+
+fn simple_code_highlight(text: &str) -> Vec<Span<'static>> {
+    let keywords = [
+        "async", "await", "const", "enum", "fn", "impl", "let", "match", "pub", "return", "struct",
+        "use",
+    ];
+    let mut spans = Vec::new();
+    let mut token = String::new();
+    for ch in text.chars() {
+        if ch.is_alphanumeric() || ch == '_' {
+            token.push(ch);
+            continue;
+        }
+        if !token.is_empty() {
+            let style = if keywords.contains(&token.as_str()) {
+                Style::default()
+                    .fg(Color::White)
+                    .add_modifier(Modifier::BOLD)
+            } else if token.chars().all(|c| c.is_ascii_digit()) {
+                Style::default().fg(Color::Gray)
+            } else {
+                Style::default().fg(Color::LightCyan)
+            };
+            spans.push(Span::styled(std::mem::take(&mut token), style));
+        }
+        spans.push(Span::styled(
+            ch.to_string(),
+            Style::default().fg(Color::Gray),
+        ));
+    }
+    if !token.is_empty() {
+        let style = if keywords.contains(&token.as_str()) {
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD)
+        } else if token.chars().all(|c| c.is_ascii_digit()) {
+            Style::default().fg(Color::Gray)
+        } else {
+            Style::default().fg(Color::LightCyan)
+        };
+        spans.push(Span::styled(token, style));
+    }
+    spans
+}
+
+fn numbered_marker(text: &str) -> Option<(String, &str)> {
+    let dot = text.find(". ")?;
+    if dot == 0 || !text[..dot].chars().all(|ch| ch.is_ascii_digit()) {
+        return None;
+    }
+    Some((text[..dot + 2].to_string(), &text[dot + 2..]))
+}
+
+fn spans_plain_text(spans: &[Span]) -> String {
+    spans.iter().map(|span| span.content.as_ref()).collect()
 }
 
 fn draw_approval(f: &mut ratatui::Frame, area: Rect, app: &App) {
@@ -1091,35 +1507,28 @@ fn input_title(app: &App) -> Line<'static> {
         return Line::from(" approval pending — answer y / n above ");
     }
     if app.busy {
-        return thinking_title(app.busy_frame);
+        return thinking_title(
+            app.busy_frame,
+            app.turn_activity.as_deref().unwrap_or("thinking"),
+        );
     }
     Line::from(" message (Enter to send) ")
 }
 
-fn thinking_title(frame: u64) -> Line<'static> {
-    const TEXT: &str = "thinking...";
-    const COLORS: [Color; 5] = [
-        Color::LightCyan,
-        Color::Cyan,
-        Color::LightBlue,
-        Color::Magenta,
-        Color::LightMagenta,
+fn thinking_title(frame: u64, activity: &str) -> Line<'static> {
+    const SPINNER: [&str; 4] = ["-", "\\", "|", "/"];
+    let spinner = SPINNER[((frame / 2) as usize) % SPINNER.len()];
+    let text = format!("{activity}...");
+    let text_style = Style::default()
+        .fg(Color::Gray)
+        .add_modifier(Modifier::BOLD);
+    let spans = vec![
+        Span::raw(" "),
+        Span::styled(spinner.to_string(), text_style),
+        Span::raw(" "),
+        Span::styled(text, text_style),
+        Span::styled(" (input disabled) ", Style::default().fg(Color::DarkGray)),
     ];
-
-    let offset = ((frame / 2) as usize) % COLORS.len();
-    let mut spans = Vec::with_capacity(TEXT.len() + 2);
-    spans.push(Span::raw(" "));
-    for (i, ch) in TEXT.chars().enumerate() {
-        let color = COLORS[(i + offset) % COLORS.len()];
-        spans.push(Span::styled(
-            ch.to_string(),
-            Style::default().fg(color).add_modifier(Modifier::BOLD),
-        ));
-    }
-    spans.push(Span::styled(
-        " (input disabled) ",
-        Style::default().fg(Color::DarkGray),
-    ));
     Line::from(spans)
 }
 
@@ -1137,6 +1546,11 @@ fn draw_status(f: &mut ratatui::Frame, area: Rect, app: &App) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use everruns_core::events::{
+        EventContext, OutputMessageCompletedData, OutputMessageStartedData, ReasonCompletedData,
+    };
+    use everruns_core::tool_types::ToolCall;
+    use everruns_core::{SessionId, TurnId};
 
     use everruns_core::command::{CommandArg, CommandDescriptor, CommandSource};
 
@@ -1256,5 +1670,142 @@ mod tests {
             .collect();
         assert_eq!(help_entries.len(), 1);
         assert_eq!(help_entries[0].completion, "/help");
+    }
+
+    #[test]
+    fn lines_for_event_surfaces_tool_call_monologue() {
+        let event = RuntimeEvent::new(
+            SessionId::new(),
+            EventContext::empty(),
+            ReasonCompletedData::success("I'll check the manifests first.", true, 2, None, None),
+        );
+
+        let lines = lines_for_event(&event);
+
+        assert_eq!(lines.len(), 1);
+        assert!(matches!(lines[0].author, Author::Assistant));
+        assert_eq!(lines[0].text, "I'll check the manifests first.");
+        assert_eq!(
+            status_for_event(&event)
+                .map(|status| status.text)
+                .as_deref(),
+            Some("planned 2 tool call(s)")
+        );
+    }
+
+    #[test]
+    fn lines_for_event_surfaces_output_message_thinking() {
+        let mut message = everruns_core::Message::assistant_with_tools(
+            "",
+            vec![ToolCall {
+                id: "call_read".to_string(),
+                name: "read_file".to_string(),
+                arguments: serde_json::json!({ "path": "/workspace/Cargo.toml" }),
+            }],
+        );
+        message.thinking = Some(
+            "**Inspecting package files**\n\nI should read the package manifest first.".to_string(),
+        );
+        let event = RuntimeEvent::new(
+            SessionId::new(),
+            EventContext::empty(),
+            OutputMessageCompletedData::new(message),
+        );
+
+        let lines = lines_for_event(&event);
+
+        assert_eq!(lines.len(), 1);
+        assert!(matches!(lines[0].author, Author::Assistant));
+        assert_eq!(
+            lines[0].text,
+            "**Inspecting package files**\n\nI should read the package manifest first."
+        );
+    }
+
+    #[test]
+    fn status_for_event_labels_output_iteration() {
+        let event = RuntimeEvent::new(
+            SessionId::new(),
+            EventContext::empty(),
+            OutputMessageStartedData {
+                turn_id: TurnId::new(),
+                model: None,
+                iteration: Some(3),
+            },
+        );
+
+        assert!(lines_for_event(&event).is_empty());
+        assert_eq!(
+            status_for_event(&event)
+                .map(|status| status.text)
+                .as_deref(),
+            Some("iteration 3: writing response")
+        );
+    }
+
+    #[test]
+    fn lines_for_event_renders_write_todos_items() {
+        let event = RuntimeEvent::new(
+            SessionId::new(),
+            EventContext::empty(),
+            ToolCompletedData::success(
+                "call_todos".to_string(),
+                "write_todos".to_string(),
+                vec![ContentPart::text(
+                    serde_json::json!({
+                        "success": true,
+                        "total_tasks": 3,
+                        "pending": 1,
+                        "in_progress": 1,
+                        "completed": 1,
+                        "todos": [
+                            {
+                                "content": "Read current CLI renderer",
+                                "activeForm": "Reading current CLI renderer",
+                                "status": "completed"
+                            },
+                            {
+                                "content": "Render todos in transcript",
+                                "activeForm": "Rendering todos in transcript",
+                                "status": "in_progress"
+                            },
+                            {
+                                "content": "Run focused tests",
+                                "activeForm": "Running focused tests",
+                                "status": "pending"
+                            }
+                        ]
+                    })
+                    .to_string(),
+                )],
+                None,
+            ),
+        );
+
+        let lines = lines_for_event(&event)
+            .into_iter()
+            .map(|line| (line.author, line.text))
+            .collect::<Vec<_>>();
+
+        assert!(matches!(lines[0].0, Author::Tool));
+        assert_eq!(lines[0].1, "1 of 3 todos completed");
+        assert!(
+            lines
+                .iter()
+                .any(|(author, line)| matches!(author, Author::ToolDetail)
+                    && line == "[x] Read current CLI renderer")
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|(author, line)| matches!(author, Author::ToolDetail)
+                    && line == "[>] Rendering todos in transcript")
+        );
+        assert!(
+            lines
+                .iter()
+                .any(|(author, line)| matches!(author, Author::ToolDetail)
+                    && line == "[ ] Run focused tests")
+        );
     }
 }
