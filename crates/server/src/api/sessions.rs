@@ -77,10 +77,12 @@ pub struct CreateSessionRequest {
     /// Session-level capabilities (additive to agent capabilities).
     /// Applied after agent capabilities when building RuntimeAgent.
     #[serde(default)]
+    #[schema(example = json!([{"ref": "current_time", "config": {}}, {"ref": "web_fetch", "config": {}}]))]
     pub capabilities: Vec<AgentCapabilityConfig>,
     /// Client-side tools for this session (additive to agent tools).
     /// These tools are sent to the LLM but executed by the client.
     #[serde(default, deserialize_with = "deserialize_client_side_tools")]
+    #[schema(example = json!([{"type": "client_side", "name": "open_url", "description": "Open URL in the user's browser", "input_schema": {"type": "object", "properties": {"url": {"type": "string"}}, "required": ["url"]}}]))]
     pub tools: Vec<ToolDefinition>,
     /// Remote MCP servers scoped to this session only.
     #[serde(default, rename = "mcpServers", alias = "mcp_servers")]
@@ -88,25 +90,29 @@ pub struct CreateSessionRequest {
     /// Optional session-level system prompt override.
     /// Prepended to the agent's system prompt when building RuntimeAgent.
     #[serde(default)]
+    #[schema(
+        example = "You are debugging a production incident. Be concise and cite log lines verbatim."
+    )]
     pub system_prompt: Option<String>,
     /// Session-level initial files (additive to agent initial_files).
     /// Files with matching paths override agent/harness files; new paths are appended.
     #[serde(default)]
+    #[schema(example = json!([{"path": "README.md", "content": "# Project notes\n"}]))]
     pub initial_files: Vec<everruns_core::InitialFile>,
     /// Session-level client hints — arbitrary key-value pairs that tell the
     /// server what the client can handle. These are defaults for every turn;
     /// per-message `controls.hints` override these key-by-key (shallow merge).
-    ///
-    /// Examples: `{"setup_connection": true, "rich_media": true}`
     #[serde(default)]
-    #[schema(value_type = Option<Object>)]
+    #[schema(example = json!({"setup_connection": true, "rich_media": true}))]
     pub hints: Option<std::collections::HashMap<String, serde_json::Value>>,
     /// Network access list controlling which hosts/URLs this session can reach.
     /// Merged with harness and agent layers (allowed: intersect, blocked: union).
+    /// Example shape is defined on `NetworkAccessList`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub network_access: Option<everruns_core::network_access::NetworkAccessList>,
     /// Maximum number of LLM iterations per turn for this session.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = 20)]
     pub max_iterations: Option<usize>,
 }
 

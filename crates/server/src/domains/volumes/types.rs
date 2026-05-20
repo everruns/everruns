@@ -54,10 +54,13 @@ pub struct VolumeResponse {
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateVolumeRequest {
     /// Human-readable name. Safe to render in user-facing messages.
+    #[schema(example = "design-docs")]
     pub name: String,
     #[serde(default)]
     /// Human-readable description. Safe to render in user-facing messages.
+    #[schema(example = "Living design documents synced from GitHub")]
     pub description: Option<String>,
+    /// Source configuration. Example shape is defined on `CreateVolumeSourceRequest`.
     #[serde(default)]
     pub source: Option<CreateVolumeSourceRequest>,
 }
@@ -87,6 +90,7 @@ pub struct ListVolumesQuery {
 /// Request body for the `create_volume_source` operation.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 #[serde(tag = "type", rename_all = "lowercase")]
+#[schema(example = json!({"type": "github", "repository": "acme/design-docs", "branch": "main", "root_folder": "docs/"}))]
 pub enum CreateVolumeSourceRequest {
     Github(GitHubVolumeSourceRequest),
     Git(GitVolumeSourceRequest),
