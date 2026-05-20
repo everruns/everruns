@@ -18,7 +18,9 @@
 //!
 //! Each capability is in its own file with collocated tools.
 
-use crate::command::CommandDescriptor;
+use crate::command::{
+    CommandDescriptor, CommandExecutionContext, CommandResult, ExecuteCommandRequest,
+};
 use crate::deployment::DeploymentGrade;
 use crate::mcp_server::{ScopedMcpServers, merge_scoped_mcp_servers};
 use crate::message_filter::MessageFilterProvider;
@@ -595,6 +597,31 @@ pub trait Capability: Send + Sync {
     /// By default, returns an empty vector (no commands).
     fn commands(&self) -> Vec<CommandDescriptor> {
         vec![]
+    }
+
+    /// Execute a system command declared by [`Self::commands`].
+    ///
+    /// Capabilities that declare commands MUST override this. The default
+    /// implementation returns an error so that misconfigurations surface at
+    /// invocation time rather than silently succeeding. Capabilities should
+    /// match on `request.name`, validate `request.arguments`, and use the
+    /// references they captured at construction time to mutate any external
+    /// state (provider store, file system, etc.).
+    ///
+    /// The server's `/btw` flow does not route through this method — it has
+    /// its own bespoke executor because it needs to construct an out-of-band
+    /// LLM call with the session's prompt context. This hook is for
+    /// commands that can execute purely from the capability's own state.
+    async fn execute_command(
+        &self,
+        request: &ExecuteCommandRequest,
+        _ctx: &CommandExecutionContext,
+    ) -> crate::error::Result<CommandResult> {
+        Err(crate::error::AgentLoopError::config(format!(
+            "capability {} declared command /{} but does not implement execute_command",
+            self.id(),
+            request.name,
+        )))
     }
 
     /// Returns agent blueprints contributed by this capability.

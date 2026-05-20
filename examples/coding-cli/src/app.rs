@@ -11,6 +11,7 @@ use crossterm::event::{
     self, Event as CrosstermEvent, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEvent,
     MouseEventKind,
 };
+use everruns_core::command::{CommandDescriptor, CommandSource};
 use everruns_core::events::{Event as RuntimeEvent, EventData, ToolCompletedData};
 use everruns_core::message::{ContentPart, MessageRole};
 use ratatui::Terminal;
@@ -101,11 +102,6 @@ const COMMANDS: &[CommandSpec] = &[
         description: "show workspace root",
     },
     CommandSpec {
-        name: "model",
-        usage: "/model <provider>/<id>",
-        description: "show or change the active provider/model",
-    },
-    CommandSpec {
         name: "clear",
         usage: "/clear",
         description: "clear transcript",
@@ -175,6 +171,15 @@ impl App {
             self.bundle.session_log_path.display(),
             self.bundle.replayed_events,
         ));
+        if !self.bundle.capability_commands.is_empty() {
+            let names: Vec<String> = self
+                .bundle
+                .capability_commands
+                .iter()
+                .map(|c| format!("/{}", c.name))
+                .collect();
+            self.push_system(format!("capability commands: {}", names.join(", ")));
+        }
         self.push_system("type /help for commands, Esc or Ctrl-D to exit; approvals: y / n".into());
     }
 
@@ -391,7 +396,7 @@ impl App {
     }
 
     fn suggestions(&self) -> Vec<CommandSuggestion> {
-        command_suggestions(&self.input, self.bundle.model_suggestions())
+        command_suggestions(&self.input, &self.bundle.capability_commands)
     }
 
     async fn handle_command(&mut self, cmd: &str) {
@@ -408,6 +413,16 @@ impl App {
                         .collect::<Vec<_>>()
                         .join(" · "),
                 );
+                if !self.bundle.capability_commands.is_empty() {
+                    let caps = self
+                        .bundle
+                        .capability_commands
+                        .iter()
+                        .map(capability_command_usage)
+                        .collect::<Vec<_>>()
+                        .join(" · ");
+                    self.push_system(format!("capability commands: {caps}"));
+                }
                 self.push_system(
                     "scroll: ↑/↓ line · PgUp/PgDn half-page · Home/End top/bottom · mouse wheel"
                         .into(),
@@ -423,26 +438,89 @@ impl App {
                     self.bundle.workspace_root.display()
                 ));
             }
-            "model" => {
-                if arg.is_empty() {
-                    self.push_system(format!("model: {}", self.bundle.provider_label()));
-                    self.push_system(format!(
-                        "usage: /model <provider>/<id>; suggestions: {}",
-                        self.bundle.model_suggestions().join(", ")
-                    ));
-                } else {
-                    match self.bundle.set_model(arg).await {
-                        Ok(label) => self.push_system(format!("model changed: {label}")),
-                        Err(err) => self.push_system(format!("model change failed: {err}")),
-                    }
-                }
-            }
             "clear" => {
                 self.lines.clear();
                 self.emit_system_banner();
             }
             "quit" | "exit" => self.should_quit = true,
-            other => self.push_system(format!("unknown command: /{other}")),
+            other => {
+                if let Some(descriptor) = self
+                    .bundle
+                    .capability_commands
+                    .iter()
+                    .find(|c| c.name == other)
+                    .cloned()
+                {
+                    self.invoke_capability_command(descriptor, arg.to_string())
+                        .await;
+                } else {
+                    self.push_system(format!("unknown command: /{other}"));
+                }
+            }
+        }
+    }
+
+    /// Dispatch a capability-provided slash command.
+    ///
+    /// `System` commands execute through `runtime.execute_command` — the
+    /// capability's own handler runs and the result is rendered inline. This
+    /// is the path `/model` now takes. `Skill` commands match the web UI's
+    /// behavior: the literal `/name args` text is sent as a chat message so
+    /// the LLM activates the skill.
+    async fn invoke_capability_command(&mut self, descriptor: CommandDescriptor, args: String) {
+        let trimmed = args.trim();
+        let required_missing = descriptor
+            .args
+            .iter()
+            .any(|a| a.required && trimmed.is_empty());
+        if required_missing {
+            let needed: Vec<&str> = descriptor
+                .args
+                .iter()
+                .filter(|a| a.required)
+                .map(|a| a.name.as_str())
+                .collect();
+            self.push_system(format!(
+                "/{} requires: {}",
+                descriptor.name,
+                needed.join(", ")
+            ));
+            return;
+        }
+
+        match descriptor.source {
+            CommandSource::System => {
+                let request = everruns_core::command::ExecuteCommandRequest {
+                    name: descriptor.name.clone(),
+                    arguments: if trimmed.is_empty() {
+                        None
+                    } else {
+                        Some(trimmed.to_string())
+                    },
+                    controls: None,
+                };
+                let result = self
+                    .bundle
+                    .runtime
+                    .execute_command(self.bundle.session_id, request)
+                    .await;
+                match result {
+                    Ok(result) => {
+                        let prefix = if result.success { "" } else { "error: " };
+                        self.push_system(format!("{prefix}{}", result.message));
+                    }
+                    Err(err) => self.push_system(format!("/{} failed: {err}", descriptor.name)),
+                }
+            }
+            CommandSource::Skill => {
+                let text = if trimmed.is_empty() {
+                    format!("/{}", descriptor.name)
+                } else {
+                    format!("/{} {trimmed}", descriptor.name)
+                };
+                self.push_user(text.clone());
+                self.start_turn(text);
+            }
         }
     }
 
@@ -668,34 +746,40 @@ fn process_line(text: impl Into<String>) -> ChatLine {
     }
 }
 
-fn command_suggestions(input: &str, model_suggestions: &[&str]) -> Vec<CommandSuggestion> {
+fn command_suggestions(
+    input: &str,
+    capability_commands: &[CommandDescriptor],
+) -> Vec<CommandSuggestion> {
     let Some(rest) = input.strip_prefix('/') else {
         return Vec::new();
     };
 
-    if let Some(model_prefix) = rest.strip_prefix("model ") {
-        return model_suggestions
+    // If the user already typed a command name and a space, surface the
+    // first-arg suggestions declared by the matching capability. This is
+    // fully declarative — the capability populates `CommandArg::suggestions`
+    // when it builds its `CommandDescriptor`, so the UI never has to call
+    // back into the capability between keystrokes.
+    if let Some((head, arg_prefix)) = rest.split_once(' ')
+        && let Some(descriptor) = capability_commands.iter().find(|c| c.name == head)
+        && let Some(arg) = descriptor.args.first()
+        && !arg.suggestions.is_empty()
+    {
+        let prefix = arg_prefix.trim_start();
+        return arg
+            .suggestions
             .iter()
-            .filter(|model| model.starts_with(model_prefix.trim_start()))
-            .take(5)
-            .map(|model| CommandSuggestion {
-                completion: format!("/model {model}"),
-                label: format!("/model {model}    change active provider/model"),
+            .filter(|s| s.starts_with(prefix))
+            .take(8)
+            .map(|s| CommandSuggestion {
+                completion: format!("/{} {s}", descriptor.name),
+                label: format!("/{} {s}    {}", descriptor.name, descriptor.description),
             })
             .collect();
     }
 
-    if rest == "model" {
-        return vec![CommandSuggestion {
-            completion: "/model ".to_string(),
-            label: "/model <provider>/<id>    show or change the active provider/model".to_string(),
-        }];
-    }
-
-    COMMANDS
+    let mut out: Vec<CommandSuggestion> = COMMANDS
         .iter()
         .filter(|cmd| cmd.name.starts_with(rest))
-        .take(5)
         .map(|cmd| CommandSuggestion {
             completion: cmd
                 .usage
@@ -705,7 +789,54 @@ fn command_suggestions(input: &str, model_suggestions: &[&str]) -> Vec<CommandSu
                 .to_string(),
             label: format!("{}    {}", cmd.usage, cmd.description),
         })
-        .collect()
+        .collect();
+
+    // Capability-provided commands. Names that collide with a built-in CLI
+    // command are skipped (built-in wins) so the local handler keeps running.
+    let builtin_names: std::collections::HashSet<&str> = COMMANDS.iter().map(|c| c.name).collect();
+    for descriptor in capability_commands {
+        if !descriptor.name.starts_with(rest) {
+            continue;
+        }
+        if builtin_names.contains(descriptor.name.as_str()) {
+            continue;
+        }
+        let usage = capability_command_usage(descriptor);
+        // If the command takes args, leave a trailing space so the user can
+        // start typing immediately after accepting the suggestion.
+        let completion = if descriptor.args.is_empty() {
+            format!("/{}", descriptor.name)
+        } else {
+            format!("/{} ", descriptor.name)
+        };
+        out.push(CommandSuggestion {
+            completion,
+            label: format!("{usage}    {}", descriptor.description),
+        });
+    }
+
+    out.truncate(8);
+    out
+}
+
+fn capability_command_usage(descriptor: &CommandDescriptor) -> String {
+    if descriptor.args.is_empty() {
+        format!("/{}", descriptor.name)
+    } else {
+        let args = descriptor
+            .args
+            .iter()
+            .map(|a| {
+                if a.required {
+                    format!("<{}>", a.name)
+                } else {
+                    format!("[{}]", a.name)
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" ");
+        format!("/{} {args}", descriptor.name)
+    }
 }
 
 // ---------- helpers for surfacing tool results ----------
@@ -1007,38 +1138,50 @@ fn draw_status(f: &mut ratatui::Frame, area: Rect, app: &App) {
 mod tests {
     use super::*;
 
+    use everruns_core::command::{CommandArg, CommandDescriptor, CommandSource};
+
+    fn model_capability_command() -> CommandDescriptor {
+        // Mirrors what `ModelSwitcherCapability::commands()` returns: the
+        // arg carries its own static suggestion list so the renderer can
+        // surface autocomplete entries straight from the descriptor.
+        CommandDescriptor {
+            name: "model".to_string(),
+            description: "Show or change the active provider/model.".to_string(),
+            source: CommandSource::System,
+            args: vec![CommandArg {
+                name: "spec".to_string(),
+                description: "<provider>/<id>".to_string(),
+                required: false,
+                suggestions: vec![
+                    "openai/gpt-5.5".to_string(),
+                    "openai/gpt-5.4-mini".to_string(),
+                    "anthropic/claude-sonnet-4-5".to_string(),
+                ],
+            }],
+        }
+    }
+
     #[test]
     fn command_suggestions_list_commands_for_slash() {
-        let suggestions = command_suggestions("/", &["openai/gpt-5.5"]);
+        let caps = vec![model_capability_command()];
+        let suggestions = command_suggestions("/", &caps);
 
         assert!(suggestions.iter().any(|s| s.completion == "/help"));
-        assert!(suggestions.iter().any(|s| s.completion == "/model"));
-    }
-
-    #[test]
-    fn command_suggestions_complete_model_command_before_args() {
-        let suggestions = command_suggestions("/model", &["openai/gpt-5.5"]);
-
-        assert_eq!(
-            suggestions,
-            vec![CommandSuggestion {
-                completion: "/model ".to_string(),
-                label: "/model <provider>/<id>    show or change the active provider/model"
-                    .to_string(),
-            }]
+        assert!(
+            suggestions
+                .iter()
+                .any(|s| s.completion == "/model" || s.completion == "/model "),
+            "capability-provided /model should appear in suggestions: {suggestions:?}"
         );
     }
 
     #[test]
-    fn command_suggestions_filter_models_by_prefix() {
-        let suggestions = command_suggestions(
-            "/model openai/gpt-5.",
-            &[
-                "openai/gpt-5.5",
-                "openai/gpt-5.4-mini",
-                "anthropic/claude-sonnet-4-5",
-            ],
-        );
+    fn command_suggestions_filter_first_arg_by_prefix() {
+        // After `/model <prefix>`, the suggestion source must be the arg's
+        // declared `suggestions` — read straight from the descriptor with
+        // no extra plumbing.
+        let caps = vec![model_capability_command()];
+        let suggestions = command_suggestions("/model openai/gpt-5.", &caps);
 
         assert_eq!(
             suggestions
@@ -1047,5 +1190,71 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["/model openai/gpt-5.5", "/model openai/gpt-5.4-mini"]
         );
+    }
+
+    #[test]
+    fn command_suggestions_no_arg_suggestions_means_free_form() {
+        // A capability command whose first arg has no suggestions returns an
+        // empty list once the user types past the command name — the renderer
+        // should fall back to plain text entry instead of fabricating items.
+        let caps = vec![CommandDescriptor {
+            name: "echo".to_string(),
+            description: "echo".to_string(),
+            source: CommandSource::System,
+            args: vec![CommandArg {
+                name: "text".to_string(),
+                description: "text".to_string(),
+                required: true,
+                suggestions: vec![],
+            }],
+        }];
+
+        let suggestions = command_suggestions("/echo hello", &caps);
+        assert!(suggestions.is_empty(), "got: {suggestions:?}");
+    }
+
+    #[test]
+    fn capability_commands_appear_in_suggestions() {
+        let caps = vec![CommandDescriptor {
+            name: "btw".to_string(),
+            description: "Ask a side question.".to_string(),
+            source: CommandSource::System,
+            args: vec![CommandArg {
+                name: "question".to_string(),
+                description: "the question".to_string(),
+                required: true,
+                suggestions: vec![],
+            }],
+        }];
+
+        let suggestions = command_suggestions("/b", &caps);
+
+        let btw = suggestions
+            .iter()
+            .find(|s| s.completion == "/btw ")
+            .expect("capability command surfaced in suggestions");
+        assert!(btw.label.starts_with("/btw <question>"));
+    }
+
+    #[test]
+    fn builtin_commands_win_over_capability_with_same_name() {
+        // A capability that accidentally declares /help must not shadow the
+        // built-in handler: the built-in suggestion (no trailing space, no
+        // args) should be the only one returned for that name.
+        let caps = vec![CommandDescriptor {
+            name: "help".to_string(),
+            description: "shadow help".to_string(),
+            source: CommandSource::System,
+            args: vec![],
+        }];
+
+        let suggestions = command_suggestions("/help", &caps);
+
+        let help_entries: Vec<_> = suggestions
+            .iter()
+            .filter(|s| s.completion.starts_with("/help"))
+            .collect();
+        assert_eq!(help_entries.len(), 1);
+        assert_eq!(help_entries[0].completion, "/help");
     }
 }

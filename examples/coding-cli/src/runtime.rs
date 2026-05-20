@@ -14,6 +14,10 @@ use everruns_core::capabilities::{
     LoopDetectionCapability, PROMPT_CACHING_CAPABILITY_ID, PromptCachingCapability,
     SKILLS_CAPABILITY_ID, SkillsCapability, StatelessTodoListCapability, WebFetchCapability,
 };
+use everruns_core::command::{
+    CommandArg, CommandDescriptor, CommandExecutionContext, CommandResult, CommandSource,
+    ExecuteCommandRequest,
+};
 use everruns_core::llm_driver_registry::DriverRegistry;
 use everruns_core::llm_models::LlmProviderType;
 use everruns_core::llmsim_driver::LlmSimConfig;
@@ -150,6 +154,130 @@ impl Capability for CodingBashCapability {
             self.workspace.clone(),
             self.gate.clone(),
         ))]
+    }
+}
+
+// ---------- /model as a capability ----------
+//
+// Demonstrates the `Capability::execute_command` hook: `/model` lives entirely
+// outside the TUI's `handle_command` branches now. The capability owns the
+// runtime provider store and shares an Arc<RwLock<ProviderChoice>> with the
+// `RuntimeBundle` so the banner label stays in sync after a switch.
+
+pub(crate) const MODEL_SWITCHER_CAPABILITY_ID: &str = "coding_cli_model_switcher";
+
+pub(crate) struct ModelSwitcherCapability {
+    pub(crate) provider: Arc<RwLock<ProviderChoice>>,
+    pub(crate) provider_store: Arc<dyn RuntimeProviderStore>,
+}
+
+#[async_trait]
+impl Capability for ModelSwitcherCapability {
+    fn id(&self) -> &str {
+        MODEL_SWITCHER_CAPABILITY_ID
+    }
+    fn name(&self) -> &str {
+        "Coding CLI Model Switcher"
+    }
+    fn description(&self) -> &str {
+        "Show or change the active provider/model via /model."
+    }
+    fn status(&self) -> CapabilityStatus {
+        CapabilityStatus::Available
+    }
+    fn category(&self) -> Option<&str> {
+        Some("Examples")
+    }
+    fn system_prompt_addition(&self) -> Option<&str> {
+        None
+    }
+    fn commands(&self) -> Vec<CommandDescriptor> {
+        vec![CommandDescriptor {
+            name: "model".to_string(),
+            description: "Show or change the active provider/model.".to_string(),
+            source: CommandSource::System,
+            args: vec![CommandArg {
+                name: "spec".to_string(),
+                description: "<provider>/<id> — omit to print the current model.".to_string(),
+                required: false,
+                // Declarative completions so renderers can populate the
+                // autocomplete dropdown directly from the descriptor — no
+                // per-keystroke callback into the capability.
+                suggestions: ProviderChoice::model_suggestions()
+                    .iter()
+                    .map(|s| (*s).to_string())
+                    .collect(),
+            }],
+        }]
+    }
+
+    async fn execute_command(
+        &self,
+        request: &ExecuteCommandRequest,
+        _ctx: &CommandExecutionContext,
+    ) -> everruns_core::Result<CommandResult> {
+        if request.name != "model" {
+            return Err(everruns_core::AgentLoopError::config(format!(
+                "{} cannot execute /{}",
+                self.id(),
+                request.name
+            )));
+        }
+        let raw = request.arguments.as_deref().unwrap_or("").trim();
+        if raw.is_empty() {
+            let label = self
+                .provider
+                .read()
+                .expect("provider lock poisoned")
+                .label();
+            return Ok(CommandResult {
+                success: true,
+                message: format!(
+                    "model: {label}; suggestions: {}",
+                    ProviderChoice::model_suggestions().join(", ")
+                ),
+                error_code: None,
+                error_fields: None,
+            });
+        }
+
+        let current = self
+            .provider
+            .read()
+            .expect("provider lock poisoned")
+            .clone();
+        let next = match current.resolve_model_spec(raw) {
+            Ok(n) => n,
+            Err(err) => {
+                return Ok(failed_result(format!("model change failed: {err}")));
+            }
+        };
+        let mw = match next.model_with_provider() {
+            Ok(m) => m,
+            Err(err) => {
+                return Ok(failed_result(format!("model change failed: {err}")));
+            }
+        };
+        if let Err(err) = self.provider_store.set_default_model(mw).await {
+            return Ok(failed_result(format!("model change failed: {err}")));
+        }
+        let label = next.label();
+        *self.provider.write().expect("provider lock poisoned") = next;
+        Ok(CommandResult {
+            success: true,
+            message: format!("model changed: {label}"),
+            error_code: None,
+            error_fields: None,
+        })
+    }
+}
+
+fn failed_result(message: String) -> CommandResult {
+    CommandResult {
+        success: false,
+        message,
+        error_code: None,
+        error_fields: None,
     }
 }
 
@@ -320,14 +448,22 @@ pub struct RuntimeBundle {
     pub session_id: SessionId,
     pub workspace_root: PathBuf,
     pub tool_names: Vec<String>,
+    /// Slash commands contributed by registered capabilities (via
+    /// `Capability::commands()`). Resolved once at startup against this
+    /// session's harness/agent chain; surfaced in the TUI's command palette
+    /// alongside the CLI's built-in `/help`, `/tools`, `/cwd`, `/clear`,
+    /// `/quit` (which remain CLI-local).
+    pub capability_commands: Vec<CommandDescriptor>,
     /// On-disk JSONL log for this session. Populated even for fresh ids
     /// so the startup banner can show where new events are being written.
     pub session_log_path: PathBuf,
     /// How many events were replayed from disk into the new session.
     /// Zero for fresh sessions; used by the startup banner.
     pub replayed_events: usize,
-    provider: RwLock<ProviderChoice>,
-    provider_store: Arc<dyn RuntimeProviderStore>,
+    /// Shared with [`ModelSwitcherCapability`] so a successful `/model`
+    /// invocation through `runtime.execute_command` immediately updates the
+    /// banner label.
+    provider: Arc<RwLock<ProviderChoice>>,
 }
 
 impl RuntimeBundle {
@@ -336,28 +472,6 @@ impl RuntimeBundle {
             .read()
             .expect("provider lock poisoned")
             .label()
-    }
-
-    pub fn model_suggestions(&self) -> &'static [&'static str] {
-        ProviderChoice::model_suggestions()
-    }
-
-    pub async fn set_model(&self, model: &str) -> Result<String> {
-        let model = model.trim();
-        if model.is_empty() {
-            return Err(anyhow!("model id is required"));
-        }
-        let next = self
-            .provider
-            .read()
-            .expect("provider lock poisoned")
-            .resolve_model_spec(model)?;
-        self.provider_store
-            .set_default_model(next.model_with_provider()?)
-            .await?;
-        let label = next.label();
-        *self.provider.write().expect("provider lock poisoned") = next;
-        Ok(label)
     }
 }
 
@@ -410,6 +524,9 @@ pub async fn build(
     let backends = RuntimeBackends::in_memory()
         .with_event_bus(event_bus)
         .with_message_store(message_store);
+    // Shared between the bundle (for banner labels) and the
+    // ModelSwitcherCapability (which mutates it on a successful `/model`).
+    let provider_state = Arc::new(RwLock::new(provider.clone()));
     let provider_store = backends.provider_store.clone();
 
     // Register a curated set of built-in capabilities (no opinionated bundle
@@ -438,6 +555,17 @@ pub async fn build(
     capabilities.register(PromptCachingCapability::new());
     capabilities.register(DuckDuckGoCapability);
     capabilities.register(WebFetchCapability::from_env());
+    // `/model` (below) is the example's capability-sourced slash command —
+    // it implements `Capability::execute_command` end to end. We deliberately
+    // do NOT register `BtwCapability` here: the server's `/btw` flow has its
+    // own bespoke executor in `SessionCommandService::execute_btw` (see
+    // crates/server/src/domains/session_commands/service.rs) and the
+    // capability does not implement `execute_command`, so dispatching it
+    // through the embedded runtime would error.
+    capabilities.register(ModelSwitcherCapability {
+        provider: provider_state.clone(),
+        provider_store: provider_store.clone(),
+    });
     capabilities.register(CodingBashCapability {
         workspace: workspace.clone(),
         gate: gate.clone(),
@@ -490,6 +618,7 @@ pub async fn build(
             "web_fetch",
             serde_json::json!({ "enable_file_download": true }),
         ),
+        AgentCapabilityConfig::new(MODEL_SWITCHER_CAPABILITY_ID),
         AgentCapabilityConfig::new("coding_cli_bash"),
     ];
 
@@ -533,16 +662,17 @@ pub async fn build(
         .iter()
         .map(|t| t.name().to_string())
         .collect();
+    let capability_commands = runtime.list_commands(session_id).await?;
 
     Ok(RuntimeBundle {
         runtime: Arc::new(runtime),
         session_id,
         workspace_root: canonical_root,
         tool_names,
+        capability_commands,
         session_log_path: log_path,
         replayed_events: replayed_events_count,
-        provider: RwLock::new(provider),
-        provider_store,
+        provider: provider_state,
     })
 }
 
