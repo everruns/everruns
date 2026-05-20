@@ -12,10 +12,11 @@ use crate::tools::Workspace;
 use anyhow::{Context, Result, anyhow};
 use async_trait::async_trait;
 use everruns_core::capabilities::{
-    AGENT_INSTRUCTIONS_CAPABILITY_ID, AgentInstructionsCapability, FileSystemCapability,
-    INFINITY_CONTEXT_CAPABILITY_ID, InfinityContextCapability, LoopDetectionCapability,
-    PROMPT_CACHING_CAPABILITY_ID, PromptCachingCapability, SKILLS_CAPABILITY_ID, SkillsCapability,
-    StatelessTodoListCapability, ToolOutputPersistenceCapability, WebFetchCapability,
+    AGENT_INSTRUCTIONS_CAPABILITY_ID, AgentInstructionsCapability, COMPACTION_CAPABILITY_ID,
+    CompactionCapability, FileSystemCapability, INFINITY_CONTEXT_CAPABILITY_ID,
+    InfinityContextCapability, LoopDetectionCapability, PROMPT_CACHING_CAPABILITY_ID,
+    PromptCachingCapability, SKILLS_CAPABILITY_ID, SkillsCapability, StatelessTodoListCapability,
+    ToolOutputPersistenceCapability, WebFetchCapability,
 };
 use everruns_core::command::CommandDescriptor;
 use everruns_core::llm_driver_registry::DriverRegistry;
@@ -65,8 +66,23 @@ Always do step 1 before step 2. Always do step 3 when you change behavior.
 - **Run commands:** `bash` for tests, builds, linters, git, package managers, formatters. Use the `output` argument for verbosity. Large outputs are summarized inline and saved under `/.outputs/` for `read_file`; the command is killed if combined output exceeds 2 MiB or the run exceeds 120s.
 - **Web:** `duckduckgo_search` for docs lookups; `web_fetch` for specific URLs (GET/HEAD only; can save to workspace).
 - **Skills:** `list_skills` then `activate_skill` to consult project-supplied SKILL.md files under `/.agents/skills/`.
-- **Multi-step work:** `write_todos` to publish a visible task list for anything that takes more than a couple of tool calls.
+- **Multi-step work:** `write_todos` to publish a visible task list for non-trivial implementation work. Do not use it for greetings, simple questions, or short read-only checks.
 - **History:** `query_history` when you need older turns the live prompt has trimmed.
+
+## Read-only status checks
+
+For broad read-only questions like dependency freshness, test status, git
+state, or repo health, prefer one targeted `bash` script that discovers the
+relevant files and runs the needed read-only commands over many sequential
+`list_directory`, `grep_files`, and `read_file` calls. The script must stay
+generic to the project: detect common manifests and lockfiles, avoid generated
+directories such as `node_modules` and `target`, and use quiet/JSON flags where
+available.
+
+After a successful targeted command provides enough evidence to answer, stop
+and answer. Do not inspect unrelated manifests or retry with more tools just to
+increase confidence. If the command output is too large or inconclusive, run
+one narrower follow-up command or explain the uncertainty.
 
 ## Code quality
 
@@ -367,6 +383,18 @@ fn coding_harness_capabilities() -> Vec<AgentCapabilityConfig> {
         AgentCapabilityConfig::new("session_file_system"),
         AgentCapabilityConfig::new(SKILLS_CAPABILITY_ID),
         AgentCapabilityConfig::new(INFINITY_CONTEXT_CAPABILITY_ID),
+        AgentCapabilityConfig::with_config(
+            COMPACTION_CAPABILITY_ID,
+            serde_json::json!({
+                "strategy": "auto",
+                "proactive": true,
+                "budget_percent": 0.20,
+                "observation_masking": {
+                    "keep_recent_tool_outputs": 1,
+                    "summary_format": "one_line"
+                }
+            }),
+        ),
         AgentCapabilityConfig::new("stateless_todo_list"),
         AgentCapabilityConfig::new("loop_detection"),
         AgentCapabilityConfig::new(PROMPT_CACHING_CAPABILITY_ID),
@@ -508,6 +536,7 @@ pub async fn build(
     //
     // Non-filesystem, but useful for a coding agent:
     //   * infinity_context     — keeps long sessions usable; adds query_history
+    //   * compaction           — proactively masks older large tool outputs
     //   * stateless_todo_list  — write_todos tool for multi-step tasks
     //   * loop_detection       — safety net against repeated identical tool calls
     //   * prompt_caching       — Anthropic prompt caching; free token savings
@@ -517,6 +546,7 @@ pub async fn build(
     capabilities.register(FileSystemCapability);
     capabilities.register(SkillsCapability);
     capabilities.register(InfinityContextCapability);
+    capabilities.register(CompactionCapability);
     capabilities.register(StatelessTodoListCapability);
     capabilities.register(LoopDetectionCapability);
     capabilities.register(PromptCachingCapability::new());
