@@ -556,6 +556,7 @@ async fn execute_command_dispatches_to_capability_handler() {
                     name: "text".to_string(),
                     description: "text to echo".to_string(),
                     required: true,
+                    suggestions: vec![],
                 }],
             }]
         }

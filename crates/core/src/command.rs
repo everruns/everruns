@@ -55,6 +55,14 @@ pub struct CommandArg {
     /// Whether the argument is required
     #[serde(default)]
     pub required: bool,
+    /// Static list of suggested values for this argument. Captured when
+    /// `Capability::commands()` is collected so renderers can surface
+    /// autocomplete entries without round-tripping back to the capability
+    /// on every keystroke. Empty means free-form input. Renderers should
+    /// treat the list as suggestions, not constraints — the capability's
+    /// `execute_command` is still the authority on what's accepted.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub suggestions: Vec<String>,
 }
 
 /// Request payload for executing a system command

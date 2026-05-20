@@ -396,11 +396,7 @@ impl App {
     }
 
     fn suggestions(&self) -> Vec<CommandSuggestion> {
-        command_suggestions(
-            &self.input,
-            self.bundle.model_suggestions(),
-            &self.bundle.capability_commands,
-        )
+        command_suggestions(&self.input, &self.bundle.capability_commands)
     }
 
     async fn handle_command(&mut self, cmd: &str) {
@@ -752,30 +748,33 @@ fn process_line(text: impl Into<String>) -> ChatLine {
 
 fn command_suggestions(
     input: &str,
-    model_suggestions: &[&str],
     capability_commands: &[CommandDescriptor],
 ) -> Vec<CommandSuggestion> {
     let Some(rest) = input.strip_prefix('/') else {
         return Vec::new();
     };
 
-    if let Some(model_prefix) = rest.strip_prefix("model ") {
-        return model_suggestions
+    // If the user already typed a command name and a space, surface the
+    // first-arg suggestions declared by the matching capability. This is
+    // fully declarative — the capability populates `CommandArg::suggestions`
+    // when it builds its `CommandDescriptor`, so the UI never has to call
+    // back into the capability between keystrokes.
+    if let Some((head, arg_prefix)) = rest.split_once(' ')
+        && let Some(descriptor) = capability_commands.iter().find(|c| c.name == head)
+        && let Some(arg) = descriptor.args.first()
+        && !arg.suggestions.is_empty()
+    {
+        let prefix = arg_prefix.trim_start();
+        return arg
+            .suggestions
             .iter()
-            .filter(|model| model.starts_with(model_prefix.trim_start()))
-            .take(5)
-            .map(|model| CommandSuggestion {
-                completion: format!("/model {model}"),
-                label: format!("/model {model}    change active provider/model"),
+            .filter(|s| s.starts_with(prefix))
+            .take(8)
+            .map(|s| CommandSuggestion {
+                completion: format!("/{} {s}", descriptor.name),
+                label: format!("/{} {s}    {}", descriptor.name, descriptor.description),
             })
             .collect();
-    }
-
-    if rest == "model" {
-        return vec![CommandSuggestion {
-            completion: "/model ".to_string(),
-            label: "/model <provider>/<id>    show or change the active provider/model".to_string(),
-        }];
     }
 
     let mut out: Vec<CommandSuggestion> = COMMANDS
@@ -1142,9 +1141,9 @@ mod tests {
     use everruns_core::command::{CommandArg, CommandDescriptor, CommandSource};
 
     fn model_capability_command() -> CommandDescriptor {
-        // Mirrors what `ModelSwitcherCapability::commands()` returns; the
-        // suggestion code applies a special-case enrichment for `/model` so
-        // model ids autocomplete after the command name.
+        // Mirrors what `ModelSwitcherCapability::commands()` returns: the
+        // arg carries its own static suggestion list so the renderer can
+        // surface autocomplete entries straight from the descriptor.
         CommandDescriptor {
             name: "model".to_string(),
             description: "Show or change the active provider/model.".to_string(),
@@ -1153,6 +1152,11 @@ mod tests {
                 name: "spec".to_string(),
                 description: "<provider>/<id>".to_string(),
                 required: false,
+                suggestions: vec![
+                    "openai/gpt-5.5".to_string(),
+                    "openai/gpt-5.4-mini".to_string(),
+                    "anthropic/claude-sonnet-4-5".to_string(),
+                ],
             }],
         }
     }
@@ -1160,7 +1164,7 @@ mod tests {
     #[test]
     fn command_suggestions_list_commands_for_slash() {
         let caps = vec![model_capability_command()];
-        let suggestions = command_suggestions("/", &["openai/gpt-5.5"], &caps);
+        let suggestions = command_suggestions("/", &caps);
 
         assert!(suggestions.iter().any(|s| s.completion == "/help"));
         assert!(
@@ -1172,31 +1176,12 @@ mod tests {
     }
 
     #[test]
-    fn command_suggestions_complete_model_command_before_args() {
+    fn command_suggestions_filter_first_arg_by_prefix() {
+        // After `/model <prefix>`, the suggestion source must be the arg's
+        // declared `suggestions` — read straight from the descriptor with
+        // no extra plumbing.
         let caps = vec![model_capability_command()];
-        let suggestions = command_suggestions("/model", &["openai/gpt-5.5"], &caps);
-
-        assert_eq!(
-            suggestions,
-            vec![CommandSuggestion {
-                completion: "/model ".to_string(),
-                label: "/model <provider>/<id>    show or change the active provider/model"
-                    .to_string(),
-            }]
-        );
-    }
-
-    #[test]
-    fn command_suggestions_filter_models_by_prefix() {
-        let suggestions = command_suggestions(
-            "/model openai/gpt-5.",
-            &[
-                "openai/gpt-5.5",
-                "openai/gpt-5.4-mini",
-                "anthropic/claude-sonnet-4-5",
-            ],
-            &[],
-        );
+        let suggestions = command_suggestions("/model openai/gpt-5.", &caps);
 
         assert_eq!(
             suggestions
@@ -1205,6 +1190,27 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["/model openai/gpt-5.5", "/model openai/gpt-5.4-mini"]
         );
+    }
+
+    #[test]
+    fn command_suggestions_no_arg_suggestions_means_free_form() {
+        // A capability command whose first arg has no suggestions returns an
+        // empty list once the user types past the command name — the renderer
+        // should fall back to plain text entry instead of fabricating items.
+        let caps = vec![CommandDescriptor {
+            name: "echo".to_string(),
+            description: "echo".to_string(),
+            source: CommandSource::System,
+            args: vec![CommandArg {
+                name: "text".to_string(),
+                description: "text".to_string(),
+                required: true,
+                suggestions: vec![],
+            }],
+        }];
+
+        let suggestions = command_suggestions("/echo hello", &caps);
+        assert!(suggestions.is_empty(), "got: {suggestions:?}");
     }
 
     #[test]
@@ -1217,10 +1223,11 @@ mod tests {
                 name: "question".to_string(),
                 description: "the question".to_string(),
                 required: true,
+                suggestions: vec![],
             }],
         }];
 
-        let suggestions = command_suggestions("/b", &[], &caps);
+        let suggestions = command_suggestions("/b", &caps);
 
         let btw = suggestions
             .iter()
@@ -1241,7 +1248,7 @@ mod tests {
             args: vec![],
         }];
 
-        let suggestions = command_suggestions("/help", &[], &caps);
+        let suggestions = command_suggestions("/help", &caps);
 
         let help_entries: Vec<_> = suggestions
             .iter()

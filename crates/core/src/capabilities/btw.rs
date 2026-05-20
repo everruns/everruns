@@ -46,6 +46,7 @@ impl Capability for BtwCapability {
                 name: "question".to_string(),
                 description: "The side question to answer.".to_string(),
                 required: true,
+                suggestions: vec![],
             }],
         }]
     }

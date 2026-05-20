@@ -201,6 +201,13 @@ impl Capability for ModelSwitcherCapability {
                 name: "spec".to_string(),
                 description: "<provider>/<id> — omit to print the current model.".to_string(),
                 required: false,
+                // Declarative completions so renderers can populate the
+                // autocomplete dropdown directly from the descriptor — no
+                // per-keystroke callback into the capability.
+                suggestions: ProviderChoice::model_suggestions()
+                    .iter()
+                    .map(|s| (*s).to_string())
+                    .collect(),
             }],
         }]
     }
@@ -465,10 +472,6 @@ impl RuntimeBundle {
             .read()
             .expect("provider lock poisoned")
             .label()
-    }
-
-    pub fn model_suggestions(&self) -> &'static [&'static str] {
-        ProviderChoice::model_suggestions()
     }
 }
 
