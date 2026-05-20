@@ -48,23 +48,36 @@ use std::sync::Arc;
 /// org id is absent or invalid.
 const IN_PROCESS_ORG_ID_FALLBACK: i64 = everruns_core::DEFAULT_ORG_ID;
 
+/// Derive an internal `i64` org id from the public `org_<32hex>` form on a
+/// [`Session`].
+///
+/// Round-trip with [`everruns_core::org_public_id_from_internal`]: when the
+/// public id was produced by that helper (i.e. the upper bits are zero and
+/// the value fits in a positive `i64`), this returns the original internal
+/// id unchanged. High-entropy UUID-style ids that do not fit in `i64` are
+/// folded deterministically into `[2, i64::MAX]`, leaving `1` reserved for
+/// [`everruns_core::DEFAULT_ORG_ID`].
 fn in_process_internal_org_id(public_org_id: &str) -> i64 {
     if public_org_id == everruns_core::DEFAULT_ORG_PUBLIC_ID {
         return everruns_core::DEFAULT_ORG_ID;
     }
 
-    if public_org_id.parse::<OrgId>().is_err() {
+    let Ok(parsed) = public_org_id.parse::<OrgId>() else {
+        return IN_PROCESS_ORG_ID_FALLBACK;
+    };
+    let raw: u128 = parsed.uuid().as_u128();
+    if raw == 0 {
         return IN_PROCESS_ORG_ID_FALLBACK;
     }
 
-    let Some(hex) = public_org_id.strip_prefix("org_") else {
-        return IN_PROCESS_ORG_ID_FALLBACK;
-    };
-    let Ok(raw) = u128::from_str_radix(hex, 16) else {
-        return IN_PROCESS_ORG_ID_FALLBACK;
-    };
+    // Synthetic ids from `org_public_id_from_internal(i64)` always fit here,
+    // so the in-process runtime sees the same `org_id` the server used.
+    if raw <= i64::MAX as u128 {
+        return raw as i64;
+    }
 
-    // Stable deterministic fold to positive i64; reserve 1 for default org.
+    // UUID-style ids exceed `i64`; fold deterministically into [2, i64::MAX].
+    // We avoid `0` (invalid) and `1` (DEFAULT_ORG_ID, handled above).
     ((raw % ((i64::MAX - 1) as u128)) as i64) + 2
 }
 
@@ -905,5 +918,92 @@ fn tool_completed_to_message(data: ToolCompletedData) -> Message {
         Message::tool_result(&data.tool_call_id, result, data.error)
     } else {
         Message::tool_result_with_images(&data.tool_call_id, result, images)
+    }
+}
+
+#[cfg(test)]
+mod org_id_mapping_tests {
+    use super::*;
+    use everruns_core::{DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, org_public_id_from_internal};
+
+    #[test]
+    fn default_public_id_maps_to_default_org() {
+        assert_eq!(
+            in_process_internal_org_id(DEFAULT_ORG_PUBLIC_ID),
+            DEFAULT_ORG_ID
+        );
+    }
+
+    #[test]
+    fn invalid_public_id_falls_back_to_default() {
+        for invalid in [
+            "",
+            "not-an-org",
+            "org_short",
+            "org_ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ",
+            "ORG_00000000000000000000000000000001",
+        ] {
+            assert_eq!(
+                in_process_internal_org_id(invalid),
+                IN_PROCESS_ORG_ID_FALLBACK,
+                "invalid input {invalid:?} should fall back"
+            );
+        }
+    }
+
+    #[test]
+    fn zero_public_id_falls_back_to_default() {
+        // org_public_id_from_internal never produces this; a hand-crafted
+        // all-zeros id is treated as invalid (raw == 0).
+        assert_eq!(
+            in_process_internal_org_id("org_00000000000000000000000000000000"),
+            IN_PROCESS_ORG_ID_FALLBACK
+        );
+    }
+
+    #[test]
+    fn synthetic_public_id_round_trips_with_internal_helper() {
+        for internal in [1_i64, 2, 42, 1_000_000, i64::MAX - 1, i64::MAX] {
+            let public = org_public_id_from_internal(internal);
+            assert_eq!(
+                in_process_internal_org_id(&public),
+                internal,
+                "round-trip failed for internal={internal}"
+            );
+        }
+    }
+
+    #[test]
+    fn distinct_synthetic_ids_map_to_distinct_internal_ids() {
+        let a = org_public_id_from_internal(7);
+        let b = org_public_id_from_internal(8);
+        assert_ne!(a, b);
+        assert_ne!(
+            in_process_internal_org_id(&a),
+            in_process_internal_org_id(&b)
+        );
+    }
+
+    #[test]
+    fn high_entropy_uuid_style_id_folds_into_reserved_range() {
+        // First valid UUID-style id whose raw u128 exceeds i64::MAX
+        // (top bit of the u128 set). It must fold to a positive i64 that
+        // is neither 0 nor DEFAULT_ORG_ID.
+        let high = "org_80000000000000000000000000000000";
+        let mapped = in_process_internal_org_id(high);
+        assert!(mapped >= 2, "folded id {mapped} must be >= 2");
+        assert_ne!(mapped, DEFAULT_ORG_ID);
+
+        // Mapping is deterministic.
+        assert_eq!(mapped, in_process_internal_org_id(high));
+    }
+
+    #[test]
+    fn high_entropy_ids_are_isolated_from_each_other() {
+        let a = in_process_internal_org_id("org_80000000000000000000000000000001");
+        let b = in_process_internal_org_id("org_80000000000000000000000000000002");
+        assert_ne!(a, b);
+        assert_ne!(a, DEFAULT_ORG_ID);
+        assert_ne!(b, DEFAULT_ORG_ID);
     }
 }
