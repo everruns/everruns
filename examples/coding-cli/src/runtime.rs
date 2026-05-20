@@ -162,8 +162,8 @@ impl Capability for CodingBashCapability {
 //
 // Demonstrates the `Capability::execute_command` hook: `/model` lives entirely
 // outside the TUI's `handle_command` branches now. The capability owns the
-// runtime provider store and shares an Arc<RwLock<ProviderChoice>> with the
-// `RuntimeBundle` so the banner label stays in sync after a switch.
+// runtime provider store and shares provider state with the UI-facing
+// `ModelState` so the banner label stays in sync after a switch.
 
 pub(crate) const MODEL_SWITCHER_CAPABILITY_ID: &str = "coding_cli_model_switcher";
 
@@ -519,11 +519,21 @@ fn normalize_openai_reasoning_effort(reasoning_effort: Option<String>) -> Option
     )
 }
 
-// ---------- runtime bundle ----------
+// ---------- runtime wiring result ----------
 
-pub struct RuntimeBundle {
+pub struct BuiltRuntime {
+    pub handles: RuntimeHandles,
+    pub startup: StartupInfo,
+    pub model: ModelState,
+}
+
+#[derive(Clone)]
+pub struct RuntimeHandles {
     pub runtime: Arc<InProcessRuntime>,
     pub session_id: SessionId,
+}
+
+pub struct StartupInfo {
     pub workspace_root: PathBuf,
     pub tool_names: Vec<String>,
     /// Slash commands contributed by registered capabilities (via
@@ -538,13 +548,21 @@ pub struct RuntimeBundle {
     /// How many events were replayed from disk into the new session.
     /// Zero for fresh sessions; used by the startup banner.
     pub replayed_events: usize,
+}
+
+#[derive(Clone)]
+pub struct ModelState {
     /// Shared with [`ModelSwitcherCapability`] so a successful `/model`
     /// invocation through `runtime.execute_command` immediately updates the
     /// banner label.
     provider: Arc<RwLock<ProviderChoice>>,
 }
 
-impl RuntimeBundle {
+impl ModelState {
+    fn new(provider: Arc<RwLock<ProviderChoice>>) -> Self {
+        Self { provider }
+    }
+
     pub fn provider_label(&self) -> String {
         self.provider
             .read()
@@ -566,7 +584,7 @@ pub async fn build(
     gate: Arc<ApprovalGate>,
     resume_session_id: Option<SessionId>,
     session_storage_dir: PathBuf,
-) -> Result<RuntimeBundle> {
+) -> Result<BuiltRuntime> {
     let canonical_root = std::fs::canonicalize(&workspace_root)
         .with_context(|| format!("canonicalize workspace: {}", workspace_root.display()))?;
     let workspace = Workspace::new(canonical_root.clone());
@@ -609,8 +627,8 @@ pub async fn build(
     let backends = RuntimeBackends::in_memory()
         .with_event_bus(event_bus)
         .with_message_store(message_store);
-    // Shared between the bundle (for banner labels) and the
-    // ModelSwitcherCapability (which mutates it on a successful `/model`).
+    // Shared between `ModelState` (for banner labels) and
+    // `ModelSwitcherCapability` (which mutates it on a successful `/model`).
     let provider_state = Arc::new(RwLock::new(provider.clone()));
     let provider_store = backends.provider_store.clone();
 
@@ -749,15 +767,19 @@ pub async fn build(
         .collect();
     let capability_commands = runtime.list_commands(session_id).await?;
 
-    Ok(RuntimeBundle {
-        runtime: Arc::new(runtime),
-        session_id,
-        workspace_root: canonical_root,
-        tool_names,
-        capability_commands,
-        session_log_path: log_path,
-        replayed_events: replayed_events_count,
-        provider: provider_state,
+    Ok(BuiltRuntime {
+        handles: RuntimeHandles {
+            runtime: Arc::new(runtime),
+            session_id,
+        },
+        startup: StartupInfo {
+            workspace_root: canonical_root,
+            tool_names,
+            capability_commands,
+            session_log_path: log_path,
+            replayed_events: replayed_events_count,
+        },
+        model: ModelState::new(provider_state),
     })
 }
 

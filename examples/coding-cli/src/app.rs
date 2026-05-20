@@ -5,7 +5,7 @@
 // channel so the UI stays responsive while the model is thinking.
 
 use crate::approval::ApprovalRequest;
-use crate::runtime::RuntimeBundle;
+use crate::runtime::{BuiltRuntime, ModelState, RuntimeHandles, StartupInfo};
 use anyhow::Result;
 use crossterm::event::{
     self, Event as CrosstermEvent, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEvent,
@@ -22,7 +22,6 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use serde_json::Value;
 use std::collections::HashSet;
-use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{mpsc, oneshot};
 
@@ -114,7 +113,9 @@ const COMMANDS: &[CommandSpec] = &[
 ];
 
 pub struct App {
-    bundle: Arc<RuntimeBundle>,
+    handles: RuntimeHandles,
+    startup: StartupInfo,
+    model: ModelState,
     pub lines: Vec<ChatLine>,
     pub input: String,
     pub busy: bool,
@@ -147,9 +148,11 @@ enum TurnEvent {
 }
 
 impl App {
-    pub fn new(bundle: Arc<RuntimeBundle>, approval_rx: ApprovalRx) -> Self {
+    pub fn new(runtime: BuiltRuntime, approval_rx: ApprovalRx) -> Self {
         let mut app = Self {
-            bundle,
+            handles: runtime.handles,
+            startup: runtime.startup,
+            model: runtime.model,
             lines: Vec::new(),
             input: String::new(),
             busy: false,
@@ -170,19 +173,19 @@ impl App {
     fn emit_system_banner(&mut self) {
         self.push_system(format!(
             "workspace: {}",
-            self.bundle.workspace_root.display()
+            self.startup.workspace_root.display()
         ));
-        self.push_system(format!("model: {}", self.bundle.provider_label()));
-        self.push_system(format!("tools: {}", self.bundle.tool_names.join(", ")));
+        self.push_system(format!("model: {}", self.model.provider_label()));
+        self.push_system(format!("tools: {}", self.startup.tool_names.join(", ")));
         self.push_system(format!(
             "session: {} (log: {}; {} prior event(s) replayed)",
-            self.bundle.session_id,
-            self.bundle.session_log_path.display(),
-            self.bundle.replayed_events,
+            self.handles.session_id,
+            self.startup.session_log_path.display(),
+            self.startup.replayed_events,
         ));
-        if !self.bundle.capability_commands.is_empty() {
+        if !self.startup.capability_commands.is_empty() {
             let names: Vec<String> = self
-                .bundle
+                .startup
                 .capability_commands
                 .iter()
                 .map(|c| format!("/{}", c.name))
@@ -414,7 +417,7 @@ impl App {
     }
 
     fn suggestions(&self) -> Vec<CommandSuggestion> {
-        command_suggestions(&self.input, &self.bundle.capability_commands)
+        command_suggestions(&self.input, &self.startup.capability_commands)
     }
 
     async fn handle_command(&mut self, cmd: &str) {
@@ -431,9 +434,9 @@ impl App {
                         .collect::<Vec<_>>()
                         .join(" · "),
                 );
-                if !self.bundle.capability_commands.is_empty() {
+                if !self.startup.capability_commands.is_empty() {
                     let caps = self
-                        .bundle
+                        .startup
                         .capability_commands
                         .iter()
                         .map(capability_command_usage)
@@ -448,12 +451,12 @@ impl App {
                 self.push_system("approvals: y allow · n / Esc deny · exit: Esc / Ctrl-D".into());
             }
             "tools" => {
-                self.push_system(format!("tools: {}", self.bundle.tool_names.join(", ")));
+                self.push_system(format!("tools: {}", self.startup.tool_names.join(", ")));
             }
             "cwd" => {
                 self.push_system(format!(
                     "workspace root: {}",
-                    self.bundle.workspace_root.display()
+                    self.startup.workspace_root.display()
                 ));
             }
             "clear" => {
@@ -463,7 +466,7 @@ impl App {
             "quit" | "exit" => self.should_quit = true,
             other => {
                 if let Some(descriptor) = self
-                    .bundle
+                    .startup
                     .capability_commands
                     .iter()
                     .find(|c| c.name == other)
@@ -518,9 +521,9 @@ impl App {
                     controls: None,
                 };
                 let result = self
-                    .bundle
+                    .handles
                     .runtime
-                    .execute_command(self.bundle.session_id, request)
+                    .execute_command(self.handles.session_id, request)
                     .await;
                 match result {
                     Ok(result) => {
@@ -543,15 +546,16 @@ impl App {
     }
 
     fn start_turn(&mut self, prompt: String) {
-        let bundle = self.bundle.clone();
+        let handles = self.handles.clone();
+        let model = self.model.clone();
         let (tx, rx) = mpsc::unbounded_channel::<TurnEvent>();
         self.rx = Some(rx);
         self.busy = true;
         self.turn_activity = None;
 
         tokio::spawn(async move {
-            let session_id = bundle.session_id;
-            let before = match bundle.runtime.messages(session_id).await {
+            let session_id = handles.session_id;
+            let before = match handles.runtime.messages(session_id).await {
                 Ok(m) => m.len(),
                 Err(e) => {
                     let _ = tx.send(TurnEvent::Failed(format!("load history: {e}")));
@@ -559,17 +563,17 @@ impl App {
                     return;
                 }
             };
-            let events_before = match bundle.runtime.events().await {
+            let events_before = match handles.runtime.events().await {
                 Ok(e) => e.len(),
                 Err(_) => 0,
             };
 
-            let input = bundle.input_message(prompt);
-            let runtime = bundle.runtime.clone();
+            let input = model.input_message(prompt);
+            let runtime = handles.runtime.clone();
             let turn = tokio::spawn(async move { runtime.run_turn(session_id, input).await });
             let mut emitted_events = HashSet::new();
             while !turn.is_finished() {
-                emit_new_turn_events(&bundle, events_before, &mut emitted_events, &tx).await;
+                emit_new_turn_events(&handles, events_before, &mut emitted_events, &tx).await;
                 tokio::time::sleep(Duration::from_millis(120)).await;
             }
 
@@ -581,7 +585,7 @@ impl App {
                     return;
                 }
             };
-            emit_new_turn_events(&bundle, events_before, &mut emitted_events, &tx).await;
+            emit_new_turn_events(&handles, events_before, &mut emitted_events, &tx).await;
             let response = match result {
                 Ok(r) => r,
                 Err(e) => {
@@ -591,12 +595,12 @@ impl App {
                 }
             };
 
-            let messages = bundle
+            let messages = handles
                 .runtime
                 .messages(session_id)
                 .await
                 .unwrap_or_default();
-            let events = bundle.runtime.events().await.unwrap_or_default();
+            let events = handles.runtime.events().await.unwrap_or_default();
 
             let mut out = Vec::new();
             // Catch any final tool events missed by the polling loop.
@@ -645,12 +649,12 @@ impl App {
 }
 
 async fn emit_new_turn_events(
-    bundle: &RuntimeBundle,
+    handles: &RuntimeHandles,
     events_before: usize,
     emitted_events: &mut HashSet<String>,
     tx: &mpsc::UnboundedSender<TurnEvent>,
 ) {
-    let events = bundle.runtime.events().await.unwrap_or_default();
+    let events = handles.runtime.events().await.unwrap_or_default();
     let mut lines = Vec::new();
     for event in events.iter().skip(events_before) {
         let event_id = event.id.to_string();
@@ -1535,8 +1539,8 @@ fn thinking_title(frame: u64, activity: &str) -> Line<'static> {
 fn draw_status(f: &mut ratatui::Frame, area: Rect, app: &App) {
     let status = format!(
         " {} · {} · {}msgs ",
-        app.bundle.provider_label(),
-        app.bundle.workspace_root.display(),
+        app.model.provider_label(),
+        app.startup.workspace_root.display(),
         app.lines.len()
     );
     let para = Paragraph::new(Span::styled(status, Style::default().fg(Color::DarkGray)));

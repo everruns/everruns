@@ -20,10 +20,9 @@ use crossterm::terminal::{
 use everruns_core::message::MessageRole;
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
-use runtime::{ProviderChoice, RuntimeBundle};
+use runtime::{BuiltRuntime, ProviderChoice};
 use std::io::{self, IsTerminal};
 use std::path::PathBuf;
-use std::sync::Arc;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -165,17 +164,16 @@ async fn main() -> Result<()> {
         Some(p) => p,
         None => session_log::default_storage_dir()?,
     };
-    let bundle = runtime::build(cwd, provider, gate, resume_session_id, session_dir).await?;
-    let bundle = Arc::new(bundle);
+    let runtime = runtime::build(cwd, provider, gate, resume_session_id, session_dir).await?;
 
     if let Some(prompt) = cli.print {
-        return run_print_mode(bundle, prompt).await;
+        return run_print_mode(runtime, prompt).await;
     }
-    run_tui(bundle, approval_rx).await
+    run_tui(runtime, approval_rx).await
 }
 
 async fn run_tui(
-    bundle: Arc<RuntimeBundle>,
+    runtime: BuiltRuntime,
     approval_rx: tokio::sync::mpsc::UnboundedReceiver<(
         approval::ApprovalRequest,
         tokio::sync::oneshot::Sender<bool>,
@@ -187,7 +185,7 @@ async fn run_tui(
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
-    let mut app = App::new(bundle, approval_rx);
+    let mut app = App::new(runtime, approval_rx);
     let result = app.run(&mut terminal).await;
 
     disable_raw_mode()?;
@@ -196,34 +194,39 @@ async fn run_tui(
     result
 }
 
-async fn run_print_mode(bundle: Arc<RuntimeBundle>, prompt: String) -> Result<()> {
+async fn run_print_mode(runtime: BuiltRuntime, prompt: String) -> Result<()> {
+    let BuiltRuntime {
+        handles,
+        startup,
+        model,
+    } = runtime;
     let color = io::stdout().is_terminal();
     println!("{}", paint(color, "90", &format!("› {prompt}")));
     println!();
     println!(
         "{} {}",
         paint(color, "90", "workspace"),
-        bundle.workspace_root.display()
+        startup.workspace_root.display()
     );
     println!(
         "{}  {}",
         paint(color, "90", "provider"),
-        paint(color, "96", &bundle.provider_label())
+        paint(color, "96", &model.provider_label())
     );
     println!(
         "{}     {}",
         paint(color, "90", "tools"),
-        bundle.tool_names.join(", ")
+        startup.tool_names.join(", ")
     );
     println!(
         "{}   {} ({}; {} prior event(s))",
         paint(color, "90", "session"),
-        bundle.session_id,
-        bundle.session_log_path.display(),
-        bundle.replayed_events,
+        handles.session_id,
+        startup.session_log_path.display(),
+        startup.replayed_events,
     );
-    if !bundle.capability_commands.is_empty() {
-        let names: Vec<String> = bundle
+    if !startup.capability_commands.is_empty() {
+        let names: Vec<String> = startup
             .capability_commands
             .iter()
             .map(|c| format!("/{}", c.name))
@@ -232,20 +235,20 @@ async fn run_print_mode(bundle: Arc<RuntimeBundle>, prompt: String) -> Result<()
     }
     println!();
 
-    let before_events = bundle.runtime.events().await.map(|e| e.len()).unwrap_or(0);
-    let before_msgs = bundle
+    let before_events = handles.runtime.events().await.map(|e| e.len()).unwrap_or(0);
+    let before_msgs = handles
         .runtime
-        .messages(bundle.session_id)
+        .messages(handles.session_id)
         .await
         .map(|m| m.len())
         .unwrap_or(0);
 
-    let input = bundle.input_message(prompt);
-    let result = bundle.runtime.run_turn(bundle.session_id, input).await?;
-    let events = bundle.runtime.events().await.unwrap_or_default();
-    let messages = bundle
+    let input = model.input_message(prompt);
+    let result = handles.runtime.run_turn(handles.session_id, input).await?;
+    let events = handles.runtime.events().await.unwrap_or_default();
+    let messages = handles
         .runtime
-        .messages(bundle.session_id)
+        .messages(handles.session_id)
         .await
         .unwrap_or_default();
 
