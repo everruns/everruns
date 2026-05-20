@@ -190,7 +190,7 @@ impl SessionCommandService {
             GoalAction::Pause | GoalAction::Resume | GoalAction::Clear => {
                 let Some(mut record) = existing else {
                     return Ok(CommandResult {
-                        success: false,
+                        success: true,
                         message:
                             "No goal is set for this session. Use `/goal <objective>` to set one."
                                 .to_string(),

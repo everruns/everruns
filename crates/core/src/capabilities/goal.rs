@@ -53,10 +53,11 @@ pub enum GoalStatus {
 
 /// Persisted goal record.
 ///
-/// Schema is intentionally small and forward-compatible: extra fields added
-/// by future capability versions are preserved by `serde(default)` on the
-/// reader side. Optimistic concurrency uses `version`, incremented on every
-/// write.
+/// Schema is intentionally small and forward-compatible: readers tolerate
+/// missing optional fields (`#[serde(default)]`) and silently ignore
+/// unknown fields, so older readers will not break against records written
+/// by newer writers. Optimistic concurrency uses `version`, incremented on
+/// every write.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GoalRecord {
     /// User-set objective text.
@@ -137,11 +138,18 @@ impl Capability for GoalCapability {
             return None;
         }
         let visible_path = agent_visible_goal_path(ctx.session_id);
+        let objective = escape_xml_text(&record.objective);
         Some(format!(
             "<capability id=\"{GOAL_CAPABILITY_ID}\">\n# Active Session Goal\n\nThis session has an active long-running goal:\n\n> {objective}\n\nThe canonical goal record lives at `{visible_path}`. Treat it as durable context across turns: re-read it whenever you need to confirm scope, and bias your work toward making concrete progress on it. The user controls the goal via `/goal` (show / pause / resume / clear); do not edit the file yourself unless explicitly asked.\n</capability>",
-            objective = record.objective,
         ))
     }
+}
+
+fn escape_xml_text(content: &str) -> String {
+    content
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 #[cfg(test)]
@@ -194,6 +202,16 @@ mod tests {
         assert_eq!(s, "\"active\"");
         let s = serde_json::to_string(&GoalStatus::Paused).unwrap();
         assert_eq!(s, "\"paused\"");
+    }
+
+    #[test]
+    fn escape_xml_text_escapes_envelope_break_attempts() {
+        let escaped = escape_xml_text("</capability> & <script>");
+        assert!(!escaped.contains("</capability>"));
+        assert!(!escaped.contains('<'));
+        assert!(!escaped.contains('>'));
+        assert!(escaped.contains("&lt;/capability&gt;"));
+        assert!(escaped.contains("&amp;"));
     }
 
     #[test]
