@@ -34,7 +34,8 @@ depends on the public runtime crate the same way an external embedder would.
     Saved responses land on disk via the same `RealDiskFileStore` stack,
     so the blocklist and approval gate apply.
   - `tool_output_persistence` — large bash output is summarized inline and
-    saved under `/.outputs/` so the agent can inspect it with `read_file`.
+    saved under `/.outputs/` (the real `<workspace>/.outputs/` folder) so the
+    agent can inspect it with `read_file`.
 
 Note on parallel tool calls: independent tool calls already execute in
 parallel when the LLM provider batches them in one assistant turn (Anthropic

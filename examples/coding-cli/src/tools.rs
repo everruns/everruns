@@ -210,7 +210,7 @@ mod tests {
     use super::*;
     use everruns_core::capabilities::{Capability, ToolOutputPersistenceCapability};
     use everruns_core::{ToolCall, ToolContext};
-    use everruns_runtime::InMemorySessionFileStore;
+    use everruns_runtime::RealDiskFileStore;
 
     #[test]
     fn bash_tool_requests_output_persistence() {
@@ -251,7 +251,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn bash_tool_output_persistence_hook_saves_full_output() {
+    async fn bash_tool_output_persistence_hook_saves_full_output_to_workspace_folder() {
         let dir = tempfile::tempdir().unwrap();
         let tool = BashTool::new(
             Workspace::new(dir.path().to_path_buf()),
@@ -269,7 +269,7 @@ mod tests {
             .execute(call.arguments.clone())
             .await
             .into_tool_result(&call.id, &call.name);
-        let file_store = Arc::new(InMemorySessionFileStore::new());
+        let file_store = Arc::new(RealDiskFileStore::new(dir.path()).unwrap());
         let context = ToolContext::with_file_store(Default::default(), file_store.clone());
         let tool_def = tool.to_definition();
 
@@ -290,10 +290,9 @@ mod tests {
             Some("/workspace/.outputs/call-persist.stdout")
         );
 
-        let saved = file_store
-            .read_text(context.session_id, "/.outputs/call-persist.stdout")
+        let saved = tokio::fs::read_to_string(dir.path().join(".outputs/call-persist.stdout"))
             .await
-            .expect("persisted stdout should be readable");
+            .expect("persisted stdout should be readable from the workspace outputs folder");
         assert!(saved.contains("saved-line-3000"));
     }
 }
