@@ -319,7 +319,6 @@ pub struct RuntimeBundle {
     pub runtime: Arc<InProcessRuntime>,
     pub session_id: SessionId,
     pub workspace_root: PathBuf,
-    pub instruction_files: Vec<String>,
     pub tool_names: Vec<String>,
     /// On-disk JSONL log for this session. Populated even for fresh ids
     /// so the startup banner can show where new events are being written.
@@ -535,20 +534,10 @@ pub async fn build(
         .map(|t| t.name().to_string())
         .collect();
 
-    // Probe for AGENTS.md / CLAUDE.md / .agents.md on disk for the startup
-    // banner only — the agent itself sees content via AgentInstructionsCapability,
-    // which re-reads /AGENTS.md every turn through the session filesystem.
-    let instruction_files = ["AGENTS.md", "CLAUDE.md", ".agents.md"]
-        .iter()
-        .filter(|f| canonical_root.join(f).exists())
-        .map(|s| s.to_string())
-        .collect();
-
     Ok(RuntimeBundle {
         runtime: Arc::new(runtime),
         session_id,
         workspace_root: canonical_root,
-        instruction_files,
         tool_names,
         session_log_path: log_path,
         replayed_events: replayed_events_count,

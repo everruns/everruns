@@ -13,7 +13,6 @@ use anyhow::Result;
 use app::App;
 use approval::ApprovalGate;
 use clap::Parser;
-use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
 use crossterm::execute;
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
@@ -155,7 +154,7 @@ async fn run_tui(
 ) -> Result<()> {
     enable_raw_mode()?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture)?;
+    execute!(stdout, EnterAlternateScreen)?;
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
 
@@ -163,11 +162,7 @@ async fn run_tui(
     let result = app.run(&mut terminal).await;
 
     disable_raw_mode()?;
-    execute!(
-        terminal.backend_mut(),
-        DisableMouseCapture,
-        LeaveAlternateScreen
-    )?;
+    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
     terminal.show_cursor()?;
     result
 }
@@ -182,12 +177,6 @@ async fn run_print_mode(bundle: Arc<RuntimeBundle>, prompt: String) -> Result<()
         bundle.session_log_path.display(),
         bundle.replayed_events,
     );
-    if !bundle.instruction_files.is_empty() {
-        println!(
-            "[instructions] {} (loaded dynamically via agent_instructions)",
-            bundle.instruction_files.join(", ")
-        );
-    }
     println!("[prompt] {prompt}\n");
 
     let before_events = bundle.runtime.events().await.map(|e| e.len()).unwrap_or(0);
