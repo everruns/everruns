@@ -1839,6 +1839,7 @@ mod tests {
             "virtual_bash",
             "session_schedule",
             "btw",
+            "goal",
             "infinity_context",
             "compaction",
             "memory",
