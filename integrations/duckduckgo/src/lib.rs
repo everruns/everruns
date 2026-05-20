@@ -118,9 +118,11 @@ mod tests {
     fn test_capability_has_system_prompt() {
         let cap = DuckDuckGoCapability;
         let prompt = cap.system_prompt_addition().unwrap();
+        // Tool name and behavioral distinction (instant answers, not full
+        // web search) are the only things the prompt needs to convey —
+        // the rest lives in the tool description.
         assert!(prompt.contains("duckduckgo_search"));
-        assert!(prompt.contains("DuckDuckGo"));
-        assert!(prompt.contains("Experimental"));
+        assert!(prompt.contains("instant answers"));
     }
 
     #[test]
