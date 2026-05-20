@@ -15,7 +15,9 @@ depends on the public runtime crate the same way an external embedder would.
   on top of `RealDiskFileStore`: `read_file`, `write_file`, `edit_file`,
   `list_directory`, `grep_files`, `delete_file`, `stat_file`.
 - **Plus a custom `bash`** tool that runs `bash -lc` from the workspace root.
-- **Curated built-in capabilities** wired beyond filesystem:
+- **Curated built-in and CLI-owned capabilities** wired beyond filesystem:
+  - `coding_cli_environment_context` — CLI-owned context injection for the
+    current workspace root, shell, local date/timezone, and Git identity/branch.
   - `agent_instructions` — re-reads `AGENTS.md` every turn (live reload).
   - `skills` — discovers `SKILL.md` files under `/.agents/skills/{name}/`;
     exposes `list_skills` / `activate_skill`.

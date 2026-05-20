@@ -6,7 +6,8 @@
 
 use crate::approval::ApprovalGate;
 use crate::capabilities::{
-    CodingBashCapability, MODEL_SWITCHER_CAPABILITY_ID, ModelSwitcherCapability,
+    CodingBashCapability, CodingCliEnvironmentCapability, ENVIRONMENT_CONTEXT_CAPABILITY_ID,
+    MODEL_SWITCHER_CAPABILITY_ID, ModelSwitcherCapability,
 };
 use crate::tools::Workspace;
 use anyhow::{Context, Result, anyhow};
@@ -375,6 +376,7 @@ fn normalize_openai_reasoning_effort(reasoning_effort: Option<String>) -> Option
 
 fn coding_harness_capabilities() -> Vec<AgentCapabilityConfig> {
     vec![
+        AgentCapabilityConfig::new(ENVIRONMENT_CONTEXT_CAPABILITY_ID),
         // Pick up CLAUDE.md / .agents.md alongside AGENTS.md, live-reloaded.
         AgentCapabilityConfig::with_config(
             AGENT_INSTRUCTIONS_CAPABILITY_ID,
@@ -553,6 +555,7 @@ pub async fn build(
     capabilities.register(ToolOutputPersistenceCapability);
     capabilities.register(DuckDuckGoCapability);
     capabilities.register(WebFetchCapability::from_env());
+    capabilities.register(CodingCliEnvironmentCapability::new(canonical_root.clone()));
     // `/model` (below) is the example's capability-sourced slash command —
     // it implements `Capability::execute_command` end to end. We deliberately
     // do NOT register `BtwCapability` here: the server's `/btw` flow has its
