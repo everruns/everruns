@@ -555,9 +555,7 @@ pub async fn build(
     capabilities.register(ToolOutputPersistenceCapability);
     capabilities.register(DuckDuckGoCapability);
     capabilities.register(WebFetchCapability::from_env());
-    capabilities.register(CodingCliEnvironmentCapability {
-        workspace_root: canonical_root.clone(),
-    });
+    capabilities.register(CodingCliEnvironmentCapability::new(canonical_root.clone()));
     // `/model` (below) is the example's capability-sourced slash command —
     // it implements `Capability::execute_command` end to end. We deliberately
     // do NOT register `BtwCapability` here: the server's `/btw` flow has its

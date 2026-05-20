@@ -25,7 +25,15 @@ use std::sync::{Arc, RwLock};
 pub(crate) const ENVIRONMENT_CONTEXT_CAPABILITY_ID: &str = "coding_cli_environment_context";
 
 pub(crate) struct CodingCliEnvironmentCapability {
-    pub(crate) workspace_root: PathBuf,
+    base: EnvironmentContextBase,
+}
+
+impl CodingCliEnvironmentCapability {
+    pub(crate) fn new(workspace_root: PathBuf) -> Self {
+        Self {
+            base: EnvironmentContextBase::collect(workspace_root),
+        }
+    }
 }
 
 #[async_trait]
@@ -46,14 +54,51 @@ impl Capability for CodingCliEnvironmentCapability {
         Some("Examples")
     }
     async fn system_prompt_contribution(&self, _ctx: &SystemPromptContext) -> Option<String> {
-        Some(render_environment_context(&EnvironmentContext::collect(
-            &self.workspace_root,
+        Some(render_environment_context(&EnvironmentContext::from_base(
+            &self.base,
         )))
     }
     fn system_prompt_preview(&self) -> Option<String> {
-        Some(render_environment_context(&EnvironmentContext::collect(
-            &self.workspace_root,
-        )))
+        Some(
+            "\
+<environment_context>
+  <cwd>/path/to/workspace</cwd>
+  <shell>zsh</shell>
+  <current_date>YYYY-MM-DD</current_date>
+  <timezone>Region/City</timezone>
+  <git_repo>git remote or workspace root</git_repo>
+  <git_user>Git user name</git_user>
+  <git_email>Git user email</git_email>
+  <git_current_branch>branch or short commit</git_current_branch>
+</environment_context>"
+                .to_string(),
+        )
+    }
+}
+
+#[derive(Debug)]
+struct EnvironmentContextBase {
+    cwd: String,
+    shell: String,
+    timezone: String,
+    git_repo: Option<String>,
+    git_user: Option<String>,
+    git_email: Option<String>,
+    workspace_root: PathBuf,
+}
+
+impl EnvironmentContextBase {
+    fn collect(workspace_root: PathBuf) -> Self {
+        Self {
+            cwd: workspace_root.display().to_string(),
+            shell: shell_name(),
+            timezone: local_timezone(),
+            git_repo: git_output(&workspace_root, &["config", "--get", "remote.origin.url"])
+                .or_else(|| git_output(&workspace_root, &["rev-parse", "--show-toplevel"])),
+            git_user: git_output(&workspace_root, &["config", "--get", "user.name"]),
+            git_email: git_output(&workspace_root, &["config", "--get", "user.email"]),
+            workspace_root,
+        }
     }
 }
 
@@ -70,17 +115,16 @@ struct EnvironmentContext {
 }
 
 impl EnvironmentContext {
-    fn collect(workspace_root: &Path) -> Self {
+    fn from_base(base: &EnvironmentContextBase) -> Self {
         Self {
-            cwd: workspace_root.display().to_string(),
-            shell: shell_name(),
+            cwd: base.cwd.clone(),
+            shell: base.shell.clone(),
             current_date: Local::now().format("%Y-%m-%d").to_string(),
-            timezone: local_timezone(),
-            git_repo: git_output(workspace_root, &["config", "--get", "remote.origin.url"])
-                .or_else(|| git_output(workspace_root, &["rev-parse", "--show-toplevel"])),
-            git_user: git_output(workspace_root, &["config", "--get", "user.name"]),
-            git_email: git_output(workspace_root, &["config", "--get", "user.email"]),
-            git_current_branch: git_current_branch(workspace_root),
+            timezone: base.timezone.clone(),
+            git_repo: base.git_repo.clone(),
+            git_user: base.git_user.clone(),
+            git_email: base.git_email.clone(),
+            git_current_branch: git_current_branch(&base.workspace_root),
         }
     }
 }
@@ -141,7 +185,7 @@ fn local_timezone() -> String {
     if let Ok(tz) = std::env::var("TZ")
         && !tz.trim().is_empty()
     {
-        return tz;
+        return tz.trim().to_string();
     }
     if let Ok(target) = std::fs::read_link("/etc/localtime") {
         let target = target.to_string_lossy();
