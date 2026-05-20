@@ -1328,7 +1328,7 @@ Both the SSE (`/v1/sessions/{id}/sse`) and JSON (`/v1/sessions/{id}/events`) end
 
 **Examples:**
 - Only turn lifecycle: `?types=turn.started&types=turn.completed`
-- Everything except deltas: `?exclude=output.message.delta&exclude=reason.thinking.delta`
+- Everything except deltas: `?exclude=output.message.delta&exclude=reason.thinking.delta&exclude=tool.output.delta&exclude=voice.input_transcript.delta&exclude=voice.output_transcript.delta`
 - Turn events but not failures: `?types=turn.started&types=turn.completed&types=turn.failed&exclude=turn.failed`
 
 **Validation:**

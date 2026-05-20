@@ -4015,7 +4015,7 @@ async fn test_agent_execution_multiple_tool_calls() {
 /// This test verifies that:
 /// 1. `output.message.started` event is emitted when LLM starts generating (durable, persisted)
 /// 2. `output.message.delta` events are ephemeral (may not appear in PG events list)
-/// 3. `llm.generation` events are ephemeral (may not appear in PG events list)
+/// 3. `llm.generation` events are durable and appear in PG events list
 ///
 /// Note: This test uses LlmSim which simulates streaming but does not produce
 /// extended thinking events (reason.thinking.delta, reason.thinking.completed).
@@ -4302,14 +4302,14 @@ async fn test_streaming_events_emitted() {
     );
 
     // Check for llm.generation event with time_to_first_token_ms
-    // Note: llm.generation is ephemeral (skip PG persistence). May be absent from PG events.
     let llm_events: Vec<_> = events
         .iter()
         .filter(|e| e["type"] == "llm.generation")
         .collect();
-    println!(
-        "Found {} llm.generation events (ephemeral — may be 0 in PG)",
-        llm_events.len()
+    println!("Found {} llm.generation events", llm_events.len());
+    assert!(
+        !llm_events.is_empty(),
+        "Expected at least one durable llm.generation event"
     );
 
     if let Some(llm_event) = llm_events.first() {

@@ -4,9 +4,9 @@
 // This service is the central entry point for event ingestion from both
 // HTTP API and gRPC service.
 //
-// Decision: Ephemeral events (deltas, LLM generation) skip PostgreSQL
-// only when NATS-backed EventDelivery is active (NATS_URL set). Without
-// NATS, all events persist to PG as before — zero behavioral change.
+// Decision: Ephemeral delta events skip PostgreSQL only when NATS-backed
+// EventDelivery is active (NATS_URL set). Without NATS, all events persist
+// to PG as before — zero behavioral change.
 // Durable events always go to PG AND EventDelivery.
 // SSE streams subscribe to EventDelivery instead of polling PG.
 //
@@ -137,7 +137,7 @@ impl EventService {
     /// Emit a typed event request.
     ///
     /// Routing:
-    /// - **Ephemeral** events (deltas, LLM generation) when NATS is active:
+    /// - **Ephemeral** delta events when NATS is active:
     ///   published to EventDelivery only. No PG write, no sequence allocation.
     /// - **All events** when NATS is not active (InMemory mode): stored in PG
     ///   as before. No behavioral change without explicit NATS opt-in.
@@ -151,7 +151,7 @@ impl EventService {
         self.attach_agent_version_metadata(&mut request).await;
         Self::validate_event_type_consistency(&request)?;
 
-        // Only skip PG for ephemeral events when the delivery backend supports it
+        // Only skip PG for delta events when the delivery backend supports it
         // (NATS provides durable pub/sub with replay). InMemory mode persists
         // everything to PG — zero behavioral change without NATS_URL.
         if request.is_ephemeral() && self.event_delivery.supports_ephemeral_skip() {
@@ -283,7 +283,7 @@ impl EventService {
     }
 
     /// Emit a batch of typed event requests.
-    /// Ephemeral events skip PG only when NATS is active; otherwise all go to PG.
+    /// Ephemeral delta events skip PG only when NATS is active; otherwise all go to PG.
     /// Returns the count of successfully processed events.
     ///
     /// # Errors

@@ -78,7 +78,6 @@ fn is_ephemeral_event_type(event_type: &str) -> bool {
         OUTPUT_MESSAGE_DELTA
             | REASON_THINKING_DELTA
             | TOOL_OUTPUT_DELTA
-            | LLM_GENERATION
             | VOICE_INPUT_TRANSCRIPT_DELTA
             | VOICE_OUTPUT_TRANSCRIPT_DELTA
     )
@@ -388,7 +387,7 @@ impl Event {
         self.event_type == INPUT_MESSAGE || self.event_type == OUTPUT_MESSAGE_COMPLETED
     }
 
-    /// Whether this event is ephemeral. Ephemeral events may be delivered to
+    /// Whether this event is ephemeral. Delta events may be delivered to
     /// listeners without ever being inserted into the `events` table, so any
     /// downstream storage that holds an FK to `events.id` must treat the
     /// reference as best-effort and skip it for ephemeral sources.
@@ -2452,9 +2451,9 @@ impl EventRequest {
         self
     }
 
-    /// Whether this event is ephemeral (high-frequency streaming data that
-    /// doesn't need durable storage). Ephemeral events are delivered via
-    /// pub/sub only — they skip PostgreSQL INSERT entirely.
+    /// Whether this event is ephemeral (high-frequency streaming deltas that
+    /// don't need durable storage). Delivery backends that support ephemeral
+    /// routing can publish these events without inserting them into PostgreSQL.
     ///
     /// The authoritative content lives in the corresponding "completed" event
     /// (e.g. `output.message.completed` has the full text), so missing a delta
@@ -2759,6 +2758,65 @@ mod tests {
 
         let event_data: EventData = data.into();
         assert_eq!(event_data.event_type(), LLM_GENERATION);
+    }
+
+    #[test]
+    fn test_llm_generation_is_durable_not_ephemeral() {
+        let session_id = SessionId::new();
+        let data = LlmGenerationData::success(
+            vec![Message::user("test")],
+            vec![],
+            Some("response".to_string()),
+            vec![],
+            "model".to_string(),
+            None,
+            None,
+            None,
+            None,
+        );
+
+        let request = EventRequest::new(session_id, EventContext::empty(), data);
+        assert!(!request.is_ephemeral());
+    }
+
+    #[test]
+    fn test_delta_events_are_ephemeral() {
+        let session_id = SessionId::new();
+        let turn_id = TurnId::new();
+
+        let output_delta = EventRequest::new(
+            session_id,
+            EventContext::empty(),
+            OutputMessageDeltaData {
+                turn_id,
+                delta: "hel".to_string(),
+                accumulated: "hel".to_string(),
+            },
+        );
+        assert!(output_delta.is_ephemeral());
+
+        let thinking_delta = EventRequest::new(
+            session_id,
+            EventContext::empty(),
+            ReasonThinkingDeltaData {
+                turn_id,
+                delta: "step".to_string(),
+                accumulated: "step".to_string(),
+            },
+        );
+        assert!(thinking_delta.is_ephemeral());
+
+        let tool_delta = EventRequest::new(
+            session_id,
+            EventContext::empty(),
+            ToolOutputDeltaData {
+                tool_call_id: "call_123".to_string(),
+                tool_name: "bash".to_string(),
+                delta: "line".to_string(),
+                stream: "stdout".to_string(),
+            },
+        );
+        assert!(tool_delta.is_ephemeral());
     }
 
     #[test]
