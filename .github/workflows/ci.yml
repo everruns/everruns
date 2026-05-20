@@ -41,6 +41,7 @@ jobs:
       docs: ${{ steps.core_filter.outputs.docs }}
       docs_notebooks: ${{ steps.core_filter.outputs.docs_notebooks }}
       docker: ${{ steps.core_filter.outputs.docker }}
+      postgres_integration: ${{ steps.core_filter.outputs.postgres_integration }}
       brave_search_integration: ${{ steps.core_filter.outputs.brave_search_integration }}
       duckduckgo_integration: ${{ steps.core_filter.outputs.duckduckgo_integration }}
       parallel_integration: ${{ steps.core_filter.outputs.parallel_integration }}
@@ -151,6 +152,24 @@ jobs:
               - '.dockerignore'
               - '.github/workflows/ci.yml'
               - '.github/workflows/docker-publish.yml'
+            # PostgreSQL integration tests cover the server persistence/API
+            # surface, durable engine stores, and provider live tests that
+            # currently run inside the same CI job. Keep this narrower than the
+            # general Rust filter so unrelated crates do not start PostgreSQL.
+            postgres_integration:
+              - 'crates/server/**'
+              - 'crates/durable/**'
+              - 'crates/core/**'
+              - 'crates/config/**'
+              - 'crates/session-sqldb/**'
+              - 'crates/llm-tests/**'
+              - 'crates/openai/**'
+              - 'crates/anthropic/**'
+              - 'crates/gemini/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'rust-toolchain.toml'
+              - '.github/workflows/ci.yml'
             brave_search_integration:
               - 'integrations/brave-search/**'
             duckduckgo_integration:
@@ -457,7 +476,7 @@ jobs:
     name: Integration Tests (PostgreSQL)
     runs-on: ubuntu-latest
     needs: changes
-    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true' && needs.changes.outputs.skip_slow_rust != 'true' && needs.changes.outputs.skip_postgres_integration != 'true'
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.postgres_integration == 'true' && needs.changes.outputs.skip_slow_rust != 'true' && needs.changes.outputs.skip_postgres_integration != 'true'
     services:
       postgres:
         image: postgres:17-alpine
@@ -1199,7 +1218,7 @@ jobs:
           fi
 
           require_if_affected "ci:skip-slow-rust" "${{ needs.changes.outputs.skip_slow_rust }}" "$slow_rust_affected" "slow Rust, release-binary-dependent, OpenAPI, and SDK checks"
-          require_if_affected "ci:skip-postgres-integration" "${{ needs.changes.outputs.skip_postgres_integration }}" "${{ needs.changes.outputs.rust }}" "PostgreSQL integration tests"
+          require_if_affected "ci:skip-postgres-integration" "${{ needs.changes.outputs.skip_postgres_integration }}" "${{ needs.changes.outputs.postgres_integration }}" "PostgreSQL integration tests"
           require_if_affected "ci:skip-sdk-compat" "${{ needs.changes.outputs.skip_sdk_compat }}" "${{ needs.changes.outputs.sdk_compat }}" "SDK compatibility checks"
           require_if_affected "ci:skip-ui-e2e" "${{ needs.changes.outputs.skip_ui_e2e }}" "${{ needs.changes.outputs.ui }}" "UI Playwright smoke"
           require_if_affected "ci:skip-docs-notebooks" "${{ needs.changes.outputs.skip_docs_notebooks }}" "${{ needs.changes.outputs.docs_notebooks }}" "docs notebook execution"

@@ -73,6 +73,10 @@ Tests are organized by dependency requirements and execution speed:
 | CLI E2E | `cli-e2e-test` | Server (DEV_MODE) | ~2min | `./scripts/cli-e2e-test.sh` |
 | LLM | (manual) | API keys | varies | `just test-llm` |
 
+`integration-test` is path-filtered in CI and runs when PostgreSQL-backed
+surfaces, provider live-test crates bundled into that job, workspace dependency
+files, the Rust toolchain pin, or the CI workflow itself change.
+
 ### Unit Tests (Pure)
 
 **Goal:** Fast feedback on logic errors without infrastructure.
