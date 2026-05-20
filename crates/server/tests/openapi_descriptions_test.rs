@@ -17,6 +17,12 @@ use utoipa::OpenApi;
 const MIN_OP_DESC_PCT: u32 = 100;
 const MIN_SCHEMA_DESC_PCT: u32 = 88;
 const MIN_FIELD_DESC_PCT: u32 = 85;
+/// Field example coverage is an AI-friendliness signal in its own right:
+/// even an accurately described `Vec<ToolDefinition>` is far easier for an
+/// LLM to populate when it has seen one concrete instance. The floor starts
+/// low because the codebase only recently began adding `#[schema(example = …)]`
+/// — bump it as new annotations land, same rules as the description floors.
+const MIN_FIELD_EXAMPLE_PCT: u32 = 11;
 
 fn spec_value() -> serde_json::Value {
     serde_json::from_str(&ApiDoc::openapi().to_pretty_json().unwrap())
@@ -105,6 +111,45 @@ fn field_description_coverage(spec: &serde_json::Value) -> (u32, u32) {
     (with_desc, total)
 }
 
+/// A field counts as having an example when one is present at the property
+/// root or on any `oneOf` / `anyOf` / `allOf` branch (same utoipa rendering
+/// quirk as `field_has_description`).
+fn field_has_example(field: &serde_json::Value) -> bool {
+    if field.get("example").is_some() {
+        return true;
+    }
+    for key in ["oneOf", "anyOf", "allOf"] {
+        if let Some(branches) = field.get(key).and_then(|v| v.as_array()) {
+            for branch in branches {
+                if branch.get("example").is_some() {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+fn field_example_coverage(spec: &serde_json::Value) -> (u32, u32) {
+    let mut total = 0u32;
+    let mut with_ex = 0u32;
+    let schemas = spec
+        .pointer("/components/schemas")
+        .and_then(|v| v.as_object());
+    for schema in schemas.iter().flat_map(|s| s.values()) {
+        let Some(props) = schema.get("properties").and_then(|p| p.as_object()) else {
+            continue;
+        };
+        for field in props.values() {
+            total += 1;
+            if field_has_example(field) {
+                with_ex += 1;
+            }
+        }
+    }
+    (with_ex, total)
+}
+
 fn pct(num: u32, denom: u32) -> u32 {
     if denom == 0 {
         return 100;
@@ -149,5 +194,20 @@ fn field_description_coverage_does_not_regress() {
         "Field description coverage regressed: {with_desc}/{total} = {coverage}%; \
          floor is {MIN_FIELD_DESC_PCT}%. Add `///` doc comments above struct \
          fields; utoipa surfaces them as schema field descriptions."
+    );
+}
+
+#[test]
+fn field_example_coverage_does_not_regress() {
+    let spec = spec_value();
+    let (with_ex, total) = field_example_coverage(&spec);
+    let coverage = pct(with_ex, total);
+    assert!(
+        coverage >= MIN_FIELD_EXAMPLE_PCT,
+        "Field example coverage regressed: {with_ex}/{total} = {coverage}%; \
+         floor is {MIN_FIELD_EXAMPLE_PCT}%. Add `#[schema(example = …)]` \
+         (or `example = \"…\"`) to struct fields, especially on Create*/Update* \
+         request types — concrete examples are what let an LLM populate the \
+         payload without reverse-engineering the shape."
     );
 }

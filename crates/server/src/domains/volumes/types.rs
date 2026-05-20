@@ -54,11 +54,14 @@ pub struct VolumeResponse {
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateVolumeRequest {
     /// Human-readable name. Safe to render in user-facing messages.
+    #[schema(example = "design-docs")]
     pub name: String,
     #[serde(default)]
     /// Human-readable description. Safe to render in user-facing messages.
+    #[schema(example = "Living design documents synced from GitHub")]
     pub description: Option<String>,
     #[serde(default)]
+    #[schema(example = json!({"type": "github", "repository": "acme/design-docs", "branch": "main", "root_folder": "docs/"}))]
     pub source: Option<CreateVolumeSourceRequest>,
 }
 

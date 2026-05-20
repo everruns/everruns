@@ -13434,7 +13434,13 @@
             "items": {
               "$ref": "#/components/schemas/InitialFile"
             },
-            "description": "Starter files copied into each new session for this agent."
+            "description": "Starter files copied into each new session for this agent.",
+            "example": [
+              {
+                "content": "Always respond in formal English.\n",
+                "path": "INSTRUCTIONS.md"
+              }
+            ]
           },
           "max_iterations": {
             "type": [
@@ -13442,6 +13448,7 @@
               "null"
             ],
             "description": "Maximum number of LLM iterations per turn for this agent.",
+            "example": 20,
             "minimum": 0
           },
           "mcpServers": {
@@ -13485,7 +13492,25 @@
             "items": {
               "$ref": "#/components/schemas/ToolDefinition"
             },
-            "description": "Client-side tools for this agent.\nThese tools are sent to the LLM but executed by the client, not the server."
+            "description": "Client-side tools for this agent.\nThese tools are sent to the LLM but executed by the client, not the server.",
+            "example": [
+              {
+                "description": "Open URL in the user's browser",
+                "input_schema": {
+                  "properties": {
+                    "url": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "url"
+                  ],
+                  "type": "object"
+                },
+                "name": "open_url",
+                "type": "client_side"
+              }
+            ]
           }
         }
       },
@@ -13546,7 +13571,11 @@
             "$ref": "#/components/schemas/AgentVersionPolicy"
           },
           "channel_config": {
-            "description": "Initial channel configuration."
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Initial channel configuration. Shape depends on `channel_type` (e.g. webhook token, schedule cron)."
           },
           "channel_type": {
             "oneOf": [
@@ -13902,7 +13931,8 @@
               "string",
               "null"
             ],
-            "description": "API key for authentication (optional)."
+            "description": "API key for authentication (optional). Sent with each request; never echoed in responses.",
+            "example": "sk-mcp-redacted-1234567890abcdef"
           },
           "auth_mode": {
             "oneOf": [
@@ -13934,6 +13964,9 @@
             },
             "propertyNames": {
               "type": "string"
+            },
+            "example": {
+              "X-Atlassian-Cloud-Id": "00000000-0000-0000-0000-000000000000"
             }
           },
           "name": {
@@ -14006,10 +14039,14 @@
               "object",
               "null"
             ],
-            "description": "Request-level metadata",
+            "description": "Request-level metadata. Arbitrary key/value pairs persisted with the message\nfor downstream filtering and analytics. Not interpreted by the agent.",
             "additionalProperties": {},
             "propertyNames": {
               "type": "string"
+            },
+            "example": {
+              "source": "slack",
+              "thread_ts": "1715000000.123456"
             }
           },
           "tags": {
@@ -14020,7 +14057,11 @@
             "items": {
               "type": "string"
             },
-            "description": "Tags for the message"
+            "description": "Tags for the message. Free-form labels used for grouping and filtering.",
+            "example": [
+              "bug-report",
+              "from-slack"
+            ]
           }
         }
       },
@@ -14284,7 +14325,17 @@
             "items": {
               "$ref": "#/components/schemas/AgentCapabilityConfig"
             },
-            "description": "Session-level capabilities (additive to agent capabilities).\nApplied after agent capabilities when building RuntimeAgent."
+            "description": "Session-level capabilities (additive to agent capabilities).\nApplied after agent capabilities when building RuntimeAgent.",
+            "example": [
+              {
+                "config": {},
+                "ref": "current_time"
+              },
+              {
+                "config": {},
+                "ref": "web_fetch"
+              }
+            ]
           },
           "harness_id": {
             "type": [
@@ -14307,14 +14358,20 @@
               "object",
               "null"
             ],
-            "description": "Session-level client hints — arbitrary key-value pairs that tell the\nserver what the client can handle. These are defaults for every turn;\nper-message `controls.hints` override these key-by-key (shallow merge).\n\nExamples: `{\"setup_connection\": true, \"rich_media\": true}`"
+            "description": "Session-level client hints — arbitrary key-value pairs that tell the\nserver what the client can handle. These are defaults for every turn;\nper-message `controls.hints` override these key-by-key (shallow merge)."
           },
           "initial_files": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/InitialFile"
             },
-            "description": "Session-level initial files (additive to agent initial_files).\nFiles with matching paths override agent/harness files; new paths are appended."
+            "description": "Session-level initial files (additive to agent initial_files).\nFiles with matching paths override agent/harness files; new paths are appended.",
+            "example": [
+              {
+                "content": "# Project notes\n",
+                "path": "README.md"
+              }
+            ]
           },
           "locale": {
             "type": [
@@ -14330,6 +14387,7 @@
               "null"
             ],
             "description": "Maximum number of LLM iterations per turn for this session.",
+            "example": 20,
             "minimum": 0
           },
           "mcpServers": {
@@ -14360,7 +14418,8 @@
               "string",
               "null"
             ],
-            "description": "Optional session-level system prompt override.\nPrepended to the agent's system prompt when building RuntimeAgent."
+            "description": "Optional session-level system prompt override.\nPrepended to the agent's system prompt when building RuntimeAgent.",
+            "example": "You are debugging a production incident. Be concise and cite log lines verbatim."
           },
           "tags": {
             "type": "array",
@@ -14386,7 +14445,25 @@
             "items": {
               "$ref": "#/components/schemas/ToolDefinition"
             },
-            "description": "Client-side tools for this session (additive to agent tools).\nThese tools are sent to the LLM but executed by the client."
+            "description": "Client-side tools for this session (additive to agent tools).\nThese tools are sent to the LLM but executed by the client.",
+            "example": [
+              {
+                "description": "Open URL in the user's browser",
+                "input_schema": {
+                  "properties": {
+                    "url": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "url"
+                  ],
+                  "type": "object"
+                },
+                "name": "open_url",
+                "type": "client_side"
+              }
+            ]
           }
         }
       },
@@ -14416,11 +14493,13 @@
               "string",
               "null"
             ],
-            "description": "Human-readable description. Safe to render in user-facing messages."
+            "description": "Human-readable description. Safe to render in user-facing messages.",
+            "example": "Living design documents synced from GitHub"
           },
           "name": {
             "type": "string",
-            "description": "Human-readable name. Safe to render in user-facing messages."
+            "description": "Human-readable name. Safe to render in user-facing messages.",
+            "example": "design-docs"
           },
           "source": {
             "oneOf": [
