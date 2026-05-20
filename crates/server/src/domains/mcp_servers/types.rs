@@ -71,9 +71,11 @@ pub struct UpdateMcpServerRequest {
     pub status: Option<McpServerStatus>,
     /// API key for authentication. Set to update.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "sk-mcp-redacted-1234567890abcdef")]
     pub api_key: Option<String>,
     /// Additional HTTP headers for authentication.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = json!({"X-Atlassian-Cloud-Id": "00000000-0000-0000-0000-000000000000"}))]
     pub headers: Option<HashMap<String, String>>,
 }
 

@@ -61,18 +61,21 @@ pub struct CreateAppRequest {
 pub struct UpdateAppRequest {
     /// Display name of the app.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "Support Bot")]
     pub name: Option<String>,
     /// Description of what the app does.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "Customer support bot connected to Slack")]
     pub description: Option<String>,
     /// ID of the harness to use.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[schema(value_type = Option<String>)]
+    #[schema(value_type = Option<String>, example = "harness_01933b5a00007000800000000000001")]
     pub harness_id: Option<HarnessId>,
     /// ID of the agent to use.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[schema(value_type = Option<String>)]
+    #[schema(value_type = Option<String>, example = "agent_01933b5a00007000800000000000001")]
     pub agent_id: Option<AgentId>,
+    /// How the App resolves the agent version. Example shape is defined on `AgentVersionPolicy`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub agent_version_policy: Option<AgentVersionPolicy>,
     #[serde(default, deserialize_with = "deserialize_nullable_update_field")]

@@ -69,9 +69,11 @@ pub struct UpdateHarnessRequest {
     pub display_name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     /// Human-readable description. Safe to render in user-facing messages.
+    #[schema(example = "Research harness with web tools")]
     pub description: Option<String>,
     /// New system prompt the harness contributes to sessions; omit to leave unchanged.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "You are a research assistant. Cite sources verbatim.")]
     pub system_prompt: Option<String>,
     /// New parent harness for inheritance. Outer `None` leaves unchanged; inner `None` removes inheritance (becomes a root harness).
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -79,16 +81,19 @@ pub struct UpdateHarnessRequest {
     pub parent_harness_id: Option<Option<HarnessId>>,
     /// New default model selected when sessions inherit from this harness; omit to leave unchanged.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[schema(value_type = Option<String>)]
+    #[schema(value_type = Option<String>, example = "model_01933b5a00007000800000000000001")]
     pub default_model_id: Option<ModelId>,
     /// Replace the tag list entirely; omit to leave unchanged.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = json!(["research", "web-tools"]))]
     pub tags: Option<Vec<String>>,
     /// Replace the capability list entirely; omit to leave unchanged.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = json!([{"ref": "current_time", "config": {}}, {"ref": "web_fetch", "config": {}}]))]
     pub capabilities: Option<Vec<AgentCapabilityConfig>>,
     /// Replace the initial-files list entirely; omit to leave unchanged.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = json!([{"path": "INSTRUCTIONS.md", "content": "Cite sources verbatim.\n"}]))]
     pub initial_files: Option<Vec<InitialFile>>,
     /// Replace the scoped MCP server set entirely; omit to leave unchanged.
     #[serde(
@@ -99,10 +104,11 @@ pub struct UpdateHarnessRequest {
     )]
     pub mcp_servers: Option<ScopedMcpServers>,
     /// Network access list. Send `{}` (empty object) to clear. Omit to leave unchanged.
+    /// Example shape is defined on `NetworkAccessList`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub network_access: Option<everruns_core::network_access::NetworkAccessList>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    /// Current lifecycle status.
+    /// Current lifecycle status. Example shape is defined on `HarnessStatus`.
     pub status: Option<HarnessStatus>,
 }
 

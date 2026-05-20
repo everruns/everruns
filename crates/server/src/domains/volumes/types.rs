@@ -70,11 +70,13 @@ pub struct CreateVolumeRequest {
 pub struct UpdateVolumeRequest {
     #[serde(default)]
     /// Human-readable name. Safe to render in user-facing messages.
+    #[schema(example = "design-docs")]
     pub name: Option<String>,
     #[serde(default, deserialize_with = "deserialize_nullable_update_field")]
     #[schema(value_type = Option<String>, nullable = true)]
     /// Human-readable description. Safe to render in user-facing messages.
     pub description: UpdateField<String>,
+    /// Source configuration. Example shape is defined on `CreateVolumeSourceRequest`.
     #[serde(default)]
     pub source: Option<CreateVolumeSourceRequest>,
 }
