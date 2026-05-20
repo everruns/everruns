@@ -19,6 +19,10 @@
 //   (`input.message`, `output.message.completed`, `tool.completed`).
 //   Streaming `*.delta` events have no replay value and would otherwise
 //   inflate the log O(n²) for long streamed responses.
+// * Assistant `thinking` / `thinking_signature` fields are stripped before
+//   JSONL persistence. The CLI keeps the live runtime event unchanged, but
+//   session logs are user-facing durable history and must not expose hidden
+//   model reasoning material.
 // * Replay rejects events whose `session_id` doesn't match the resumed
 //   session — guards against accidentally merging logs across sessions.
 // * On open, if the file does not end with `\n` (previous run crashed
@@ -43,7 +47,7 @@ use everruns_core::events::{
     Event, EventData, EventRequest, INPUT_MESSAGE, OUTPUT_MESSAGE_COMPLETED,
     OutputMessageCompletedData, TOOL_COMPLETED,
 };
-use everruns_core::message::{ContentPart, Message};
+use everruns_core::message::{ContentPart, Message, MessageRole};
 use everruns_core::tools::ToolResultImage;
 use everruns_core::traits::EventEmitter;
 use everruns_core::typed_id::EventId;
@@ -278,7 +282,8 @@ impl EventEmitter for JsonlEventEmitter {
         self.events.write().await.push(event.clone());
 
         if is_replay_relevant(&event.event_type) {
-            let line = serde_json::to_string(&event).map_err(|e| {
+            let persisted_event = event_for_session_log(&event);
+            let line = serde_json::to_string(&persisted_event).map_err(|e| {
                 AgentLoopError::config(format!("serialize event for session log: {e}"))
             })?;
             let mut file = self.file.lock().await;
@@ -288,6 +293,21 @@ impl EventEmitter for JsonlEventEmitter {
                 .map_err(|e| AgentLoopError::config(format!("flush session log: {e}")))?;
         }
         Ok(event)
+    }
+}
+
+fn event_for_session_log(event: &Event) -> Event {
+    let mut persisted = event.clone();
+    if let EventData::OutputMessageCompleted(data) = &mut persisted.data {
+        strip_hidden_thinking(&mut data.message);
+    }
+    persisted
+}
+
+fn strip_hidden_thinking(message: &mut Message) {
+    if message.role == MessageRole::Agent {
+        message.thinking = None;
+        message.thinking_signature = None;
     }
 }
 
@@ -358,7 +378,7 @@ fn tool_completed_to_message(data: everruns_core::events::ToolCompletedData) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_core::events::{EventContext, InputMessageData};
+    use everruns_core::events::{EventContext, InputMessageData, OutputMessageCompletedData};
     use everruns_core::message::Message;
 
     fn input_event(session_id: SessionId, text: &str) -> Event {
@@ -419,5 +439,49 @@ mod tests {
         assert_eq!(collected.len(), 3, "seeded + 1 new");
         // New event sequence continues from start_sequence we opened with.
         assert_eq!(collected[2].sequence, Some(3));
+    }
+
+    #[tokio::test]
+    async fn output_message_thinking_is_not_written_to_session_log() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let session_id = SessionId::from_seed(4821);
+        let path = session_log_path(dir.path(), session_id);
+        let emitter = JsonlEventEmitter::open(&path, 1).expect("open");
+
+        let mut message = Message::assistant("I will inspect the files.");
+        message.thinking = Some("private model reasoning".to_string());
+        message.thinking_signature = Some("encrypted-thinking-token".to_string());
+        let req = EventRequest::new(
+            session_id,
+            EventContext::default(),
+            OutputMessageCompletedData::new(message),
+        );
+
+        emitter.emit(req).await.expect("emit");
+
+        let on_disk = std::fs::read_to_string(&path).expect("read");
+        assert!(
+            !on_disk.contains("private model reasoning"),
+            "session log must not persist assistant thinking: {on_disk}"
+        );
+        assert!(
+            !on_disk.contains("thinking_signature"),
+            "session log must not persist thinking signatures: {on_disk}"
+        );
+        let replayed = replay(&path, session_id).expect("replay");
+        let replayed_message = replayed.messages.first().expect("message replayed");
+        assert!(replayed_message.thinking.is_none());
+        assert!(replayed_message.thinking_signature.is_none());
+
+        let collected = emitter.collected_events().await;
+        match &collected[0].data {
+            EventData::OutputMessageCompleted(data) => {
+                assert_eq!(
+                    data.message.thinking.as_deref(),
+                    Some("private model reasoning")
+                );
+            }
+            other => panic!("unexpected event data: {other:?}"),
+        }
     }
 }
