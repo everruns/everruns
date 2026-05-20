@@ -25,8 +25,9 @@ use everruns_core::memory::InMemoryMessageRetriever;
 use everruns_core::tools::Tool;
 use everruns_core::typed_id::SessionId;
 use everruns_core::{
-    AgentCapabilityConfig, CapabilityRegistry, ModelWithProvider, PlatformDefinition,
-    SessionFileSystem, SessionFileSystemFactory, SessionFileSystemFactoryContext,
+    AgentCapabilityConfig, CapabilityRegistry, Controls, InputMessage, ModelWithProvider,
+    PlatformDefinition, ReasoningConfig, SessionFileSystem, SessionFileSystemFactory,
+    SessionFileSystemFactoryContext,
 };
 use everruns_integrations_duckduckgo::DuckDuckGoCapability;
 use everruns_runtime::{
@@ -305,10 +306,19 @@ impl SessionFileSystemFactory for CodingCliSessionFileSystemFactory {
 
 // ---------- provider selection ----------
 
+const DEFAULT_OPENAI_MODEL: &str = "gpt-5.5";
+const DEFAULT_OPENAI_REASONING_EFFORT: &str = "medium";
+const DEFAULT_ANTHROPIC_MODEL: &str = "claude-sonnet-4-5";
+
 #[derive(Clone, Debug)]
 pub enum ProviderChoice {
-    Anthropic { model: String },
-    OpenAi { model: String },
+    Anthropic {
+        model: String,
+    },
+    OpenAi {
+        model: String,
+        reasoning_effort: Option<String>,
+    },
     Sim,
 }
 
@@ -323,7 +333,11 @@ impl ProviderChoice {
         {
             return Self::OpenAi {
                 model: std::env::var("EVERRUNS_CLI_MODEL")
-                    .unwrap_or_else(|_| "gpt-5.5".to_string()),
+                    .unwrap_or_else(|_| DEFAULT_OPENAI_MODEL.to_string()),
+                reasoning_effort: Some(
+                    std::env::var("EVERRUNS_CLI_REASONING_EFFORT")
+                        .unwrap_or_else(|_| DEFAULT_OPENAI_REASONING_EFFORT.to_string()),
+                ),
             };
         }
         if std::env::var("ANTHROPIC_API_KEY")
@@ -332,7 +346,7 @@ impl ProviderChoice {
         {
             return Self::Anthropic {
                 model: std::env::var("EVERRUNS_CLI_MODEL")
-                    .unwrap_or_else(|_| "claude-sonnet-4-5".to_string()),
+                    .unwrap_or_else(|_| DEFAULT_ANTHROPIC_MODEL.to_string()),
             };
         }
         Self::Sim
@@ -341,14 +355,20 @@ impl ProviderChoice {
     pub fn label(&self) -> String {
         match self {
             Self::Anthropic { model } => format!("anthropic/{model}"),
-            Self::OpenAi { model } => format!("openai/{model}"),
+            Self::OpenAi {
+                model,
+                reasoning_effort,
+            } => match reasoning_effort {
+                Some(effort) => format!("openai/{model} {effort}"),
+                None => format!("openai/{model}"),
+            },
             Self::Sim => "llmsim/llmsim-coding-cli".to_string(),
         }
     }
 
     pub fn model_suggestions() -> &'static [&'static str] {
         &[
-            "openai/gpt-5.5",
+            "openai/gpt-5.5 medium",
             "openai/gpt-5.4",
             "openai/gpt-5.4-mini",
             "openai/gpt-5.3-codex",
@@ -364,13 +384,25 @@ impl ProviderChoice {
 
     fn resolve_model_spec(&self, spec: &str) -> Result<Self> {
         let spec = spec.trim();
-        if let Some((provider, model)) = spec.split_once('/') {
-            return Self::from_provider_model(provider, model);
+        let mut parts = spec.split_whitespace();
+        let model_spec = parts.next().unwrap_or_default();
+        let reasoning_effort = parts.next().map(str::to_string);
+        if parts.next().is_some() {
+            return Err(anyhow!(
+                "too many model arguments; use `/model openai/gpt-5.5 medium`"
+            ));
         }
-        self.with_current_provider_model(spec.to_string())
+        if let Some((provider, model)) = model_spec.split_once('/') {
+            return Self::from_provider_model(provider, model, reasoning_effort);
+        }
+        self.with_current_provider_model(model_spec.to_string(), reasoning_effort)
     }
 
-    fn from_provider_model(provider: &str, model: &str) -> Result<Self> {
+    fn from_provider_model(
+        provider: &str,
+        model: &str,
+        reasoning_effort: Option<String>,
+    ) -> Result<Self> {
         let model = model.trim();
         if model.is_empty() {
             return Err(anyhow!("model id is required"));
@@ -381,8 +413,12 @@ impl ProviderChoice {
             }),
             "openai" => Ok(Self::OpenAi {
                 model: model.to_string(),
+                reasoning_effort: normalize_openai_reasoning_effort(reasoning_effort),
             }),
             "llmsim" | "sim" => {
+                if reasoning_effort.is_some() {
+                    return Err(anyhow!("offline llmsim does not support reasoning effort"));
+                }
                 if model == "llmsim-coding-cli" {
                     Ok(Self::Sim)
                 } else {
@@ -395,11 +431,28 @@ impl ProviderChoice {
         }
     }
 
-    fn with_current_provider_model(&self, model: String) -> Result<Self> {
+    fn with_current_provider_model(
+        &self,
+        model: String,
+        reasoning_effort: Option<String>,
+    ) -> Result<Self> {
         match self {
-            Self::Anthropic { .. } => Ok(Self::Anthropic { model }),
-            Self::OpenAi { .. } => Ok(Self::OpenAi { model }),
+            Self::Anthropic { .. } => {
+                if reasoning_effort.is_some() {
+                    return Err(anyhow!(
+                        "anthropic model switching does not accept reasoning effort"
+                    ));
+                }
+                Ok(Self::Anthropic { model })
+            }
+            Self::OpenAi { .. } => Ok(Self::OpenAi {
+                model,
+                reasoning_effort: normalize_openai_reasoning_effort(reasoning_effort),
+            }),
             Self::Sim => {
+                if reasoning_effort.is_some() {
+                    return Err(anyhow!("offline llmsim does not support reasoning effort"));
+                }
                 if model == "llmsim-coding-cli" {
                     Ok(Self::Sim)
                 } else {
@@ -421,7 +474,7 @@ impl ProviderChoice {
                     base_url: None,
                 })
             }
-            ProviderChoice::OpenAi { model } => {
+            ProviderChoice::OpenAi { model, .. } => {
                 let key = std::env::var("OPENAI_API_KEY")
                     .map_err(|_| anyhow!("OPENAI_API_KEY not set"))?;
                 Ok(ModelWithProvider {
@@ -439,6 +492,31 @@ impl ProviderChoice {
             }),
         }
     }
+
+    fn input_message(&self, text: impl Into<String>) -> InputMessage {
+        let mut input = InputMessage::user(text);
+        if let Self::OpenAi {
+            reasoning_effort: Some(effort),
+            ..
+        } = self
+        {
+            input.controls = Some(Controls {
+                reasoning: Some(ReasoningConfig {
+                    effort: Some(effort.clone()),
+                }),
+                ..Default::default()
+            });
+        }
+        input
+    }
+}
+
+fn normalize_openai_reasoning_effort(reasoning_effort: Option<String>) -> Option<String> {
+    Some(
+        reasoning_effort
+            .filter(|effort| !effort.trim().is_empty())
+            .unwrap_or_else(|| DEFAULT_OPENAI_REASONING_EFFORT.to_string()),
+    )
 }
 
 // ---------- runtime bundle ----------
@@ -472,6 +550,13 @@ impl RuntimeBundle {
             .read()
             .expect("provider lock poisoned")
             .label()
+    }
+
+    pub fn input_message(&self, text: impl Into<String>) -> InputMessage {
+        self.provider
+            .read()
+            .expect("provider lock poisoned")
+            .input_message(text)
     }
 }
 
@@ -685,13 +770,14 @@ mod tests {
         let provider = ProviderChoice::Sim;
         let next = provider.resolve_model_spec("openai/gpt-5.5").unwrap();
 
-        assert_eq!(next.label(), "openai/gpt-5.5");
+        assert_eq!(next.label(), "openai/gpt-5.5 medium");
     }
 
     #[test]
     fn model_spec_can_switch_to_anthropic() {
         let provider = ProviderChoice::OpenAi {
             model: "gpt-5.5".to_string(),
+            reasoning_effort: Some("medium".to_string()),
         };
         let next = provider
             .resolve_model_spec("anthropic/claude-sonnet-4-5")
@@ -704,21 +790,49 @@ mod tests {
     fn model_spec_uses_current_provider_without_prefix() {
         let provider = ProviderChoice::OpenAi {
             model: "gpt-5.5".to_string(),
+            reasoning_effort: Some("medium".to_string()),
         };
         let next = provider.resolve_model_spec("gpt-5.4").unwrap();
 
-        assert_eq!(next.label(), "openai/gpt-5.4");
+        assert_eq!(next.label(), "openai/gpt-5.4 medium");
     }
 
     #[test]
     fn model_spec_accepts_llmsim_provider_name() {
         let provider = ProviderChoice::OpenAi {
             model: "gpt-5.5".to_string(),
+            reasoning_effort: Some("medium".to_string()),
         };
         let next = provider
             .resolve_model_spec("llmsim/llmsim-coding-cli")
             .unwrap();
 
         assert_eq!(next.label(), "llmsim/llmsim-coding-cli");
+    }
+
+    #[test]
+    fn model_spec_accepts_openai_reasoning_effort() {
+        let provider = ProviderChoice::Sim;
+        let next = provider.resolve_model_spec("openai/gpt-5.5 high").unwrap();
+
+        assert_eq!(next.label(), "openai/gpt-5.5 high");
+    }
+
+    #[test]
+    fn openai_input_message_carries_reasoning_effort() {
+        let provider = ProviderChoice::OpenAi {
+            model: "gpt-5.5".to_string(),
+            reasoning_effort: Some("medium".to_string()),
+        };
+
+        let input = provider.input_message("hello");
+
+        assert_eq!(
+            input
+                .controls
+                .and_then(|controls| controls.reasoning)
+                .and_then(|reasoning| reasoning.effort),
+            Some("medium".to_string())
+        );
     }
 }

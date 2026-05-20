@@ -17,12 +17,11 @@ use crossterm::execute;
 use crossterm::terminal::{
     EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
-use everruns_core::events::EventData;
 use everruns_core::message::MessageRole;
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use runtime::{ProviderChoice, RuntimeBundle};
-use std::io;
+use std::io::{self, IsTerminal};
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -44,6 +43,10 @@ struct Cli {
     /// Override the model id
     #[arg(short, long)]
     model: Option<String>,
+
+    /// OpenAI reasoning effort for model calls (default: medium)
+    #[arg(long)]
+    reasoning_effort: Option<String>,
 
     /// Run a single prompt non-interactively and print the result. Useful for CI smoke tests.
     #[arg(short = 'p', long)]
@@ -85,13 +88,39 @@ fn pick_provider(cli: &Cli) -> ProviderChoice {
         },
         Some(ProviderArg::Openai) => ProviderChoice::OpenAi {
             model: "gpt-5.5".into(),
+            reasoning_effort: Some(
+                cli.reasoning_effort
+                    .clone()
+                    .unwrap_or_else(|| "medium".to_string()),
+            ),
         },
         Some(ProviderArg::Sim) => ProviderChoice::Sim,
         None => ProviderChoice::from_env(),
     };
-    match (base, cli.model.clone()) {
+    let selected = match (base, cli.model.clone()) {
         (ProviderChoice::Anthropic { .. }, Some(m)) => ProviderChoice::Anthropic { model: m },
-        (ProviderChoice::OpenAi { .. }, Some(m)) => ProviderChoice::OpenAi { model: m },
+        (
+            ProviderChoice::OpenAi {
+                reasoning_effort, ..
+            },
+            Some(m),
+        ) => ProviderChoice::OpenAi {
+            model: m,
+            reasoning_effort: cli.reasoning_effort.clone().or(reasoning_effort),
+        },
+        (other, _) => other,
+    };
+    match (selected, cli.reasoning_effort.clone()) {
+        (
+            ProviderChoice::OpenAi {
+                model,
+                reasoning_effort,
+            },
+            effort,
+        ) => ProviderChoice::OpenAi {
+            model,
+            reasoning_effort: effort.or(reasoning_effort),
+        },
         (other, _) => other,
     }
 }
@@ -168,11 +197,27 @@ async fn run_tui(
 }
 
 async fn run_print_mode(bundle: Arc<RuntimeBundle>, prompt: String) -> Result<()> {
-    println!("[workspace] {}", bundle.workspace_root.display());
-    println!("[provider]  {}", bundle.provider_label());
-    println!("[tools]     {}", bundle.tool_names.join(", "));
+    let color = io::stdout().is_terminal();
+    println!("{}", paint(color, "90", &format!("› {prompt}")));
+    println!();
     println!(
-        "[session]   {} ({}; {} prior event(s))",
+        "{} {}",
+        paint(color, "90", "workspace"),
+        bundle.workspace_root.display()
+    );
+    println!(
+        "{}  {}",
+        paint(color, "90", "provider"),
+        paint(color, "96", &bundle.provider_label())
+    );
+    println!(
+        "{}     {}",
+        paint(color, "90", "tools"),
+        bundle.tool_names.join(", ")
+    );
+    println!(
+        "{}   {} ({}; {} prior event(s))",
+        paint(color, "90", "session"),
         bundle.session_id,
         bundle.session_log_path.display(),
         bundle.replayed_events,
@@ -183,9 +228,9 @@ async fn run_print_mode(bundle: Arc<RuntimeBundle>, prompt: String) -> Result<()
             .iter()
             .map(|c| format!("/{}", c.name))
             .collect();
-        println!("[commands] {} (from capabilities)", names.join(", "));
+        println!("{} {}", paint(color, "90", "commands"), names.join(", "));
     }
-    println!("[prompt] {prompt}\n");
+    println!();
 
     let before_events = bundle.runtime.events().await.map(|e| e.len()).unwrap_or(0);
     let before_msgs = bundle
@@ -195,10 +240,8 @@ async fn run_print_mode(bundle: Arc<RuntimeBundle>, prompt: String) -> Result<()
         .map(|m| m.len())
         .unwrap_or(0);
 
-    let result = bundle
-        .runtime
-        .run_text_turn(bundle.session_id, prompt)
-        .await?;
+    let input = bundle.input_message(prompt);
+    let result = bundle.runtime.run_turn(bundle.session_id, input).await?;
     let events = bundle.runtime.events().await.unwrap_or_default();
     let messages = bundle
         .runtime
@@ -207,29 +250,37 @@ async fn run_print_mode(bundle: Arc<RuntimeBundle>, prompt: String) -> Result<()
         .unwrap_or_default();
 
     for event in events.iter().skip(before_events) {
-        if let EventData::ToolCompleted(data) = &event.data {
-            let status = if data.success { "✓" } else { "✗" };
-            let summary = app::summarize_tool_result(data);
-            if summary.is_empty() {
-                println!("[tool {status}] {}", data.tool_name);
-            } else {
-                println!("[tool {status}] {} — {summary}", data.tool_name);
-            }
+        if let Some(status) = app::status_for_event(event) {
+            print_status_line(&status.text, color);
+        }
+        for line in app::lines_for_event(event) {
+            print_transcript_line(&line, color);
         }
     }
     for msg in messages.iter().skip(before_msgs) {
         if msg.role == MessageRole::Agent
+            && !msg.has_tool_calls()
             && let Some(text) = msg.text()
         {
             let t = text.trim();
             if !t.is_empty() {
-                println!("\n[agent]\n{t}");
+                println!();
+                print_transcript_line(
+                    &app::ChatLine {
+                        author: app::Author::Assistant,
+                        text: t.to_string(),
+                    },
+                    color,
+                );
             }
         }
     }
     println!(
-        "\n[done] success={} iterations={} tool_calls={}",
-        result.success, result.iterations, result.tool_calls_count
+        "\n{} success={} iterations={} tool_calls={}",
+        paint(color, if result.success { "92" } else { "91" }, "done"),
+        result.success,
+        result.iterations,
+        result.tool_calls_count
     );
     if !result.success
         && let Some(err) = result.error
@@ -238,4 +289,46 @@ async fn run_print_mode(bundle: Arc<RuntimeBundle>, prompt: String) -> Result<()
         std::process::exit(1);
     }
     Ok(())
+}
+
+fn print_transcript_line(line: &app::ChatLine, color: bool) {
+    match line.author {
+        app::Author::Assistant => {
+            println!("{} {}", paint(color, "90", "•"), line.text);
+        }
+        app::Author::Tool => {
+            println!(
+                "{} {} {}",
+                paint(color, "92", "•"),
+                paint(color, "93", line.author.label()),
+                line.text
+            );
+        }
+        app::Author::ToolDetail => {
+            println!("           {}", line.text);
+        }
+        app::Author::Diff => {
+            println!("  {}", paint(color, "95", &line.text));
+        }
+        app::Author::System | app::Author::User => {
+            println!(
+                "{} {} {}",
+                paint(color, "90", "•"),
+                paint(color, "90", line.author.label()),
+                line.text
+            );
+        }
+    }
+}
+
+fn print_status_line(text: &str, color: bool) {
+    println!("{} {}", paint(color, "94", "•"), text);
+}
+
+fn paint(enabled: bool, code: &str, text: &str) -> String {
+    if enabled {
+        format!("\x1b[{code}m{text}\x1b[0m")
+    } else {
+        text.to_string()
+    }
 }
