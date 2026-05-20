@@ -25,11 +25,17 @@ use uuid::Uuid;
 /// A commit entry in the log
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct GitCommitInfo {
+    /// Full git object identifier (40-char hex SHA-1).
     pub oid: String,
+    /// Commit message as authored.
     pub message: String,
+    /// Author display name from the commit.
     pub author_name: String,
+    /// Author email from the commit.
     pub author_email: String,
+    /// Commit timestamp (RFC 3339, normalised to UTC).
     pub timestamp: DateTime<Utc>,
+    /// Parent commit object identifiers. Length 0 for the initial commit, 1 for ordinary commits, 2+ for merge commits.
     pub parent_oids: Vec<String>,
 }
 

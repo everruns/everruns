@@ -19,12 +19,18 @@ pub struct VolumeResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     /// Human-readable description. Safe to render in user-facing messages.
     pub description: Option<String>,
+    /// Source kind discriminator (`manual`, `git`, `github`). Determines which `source` variant is populated.
     pub source_type: String,
+    /// Source-specific configuration (git remote, github repo, manual upload).
     pub source: VolumeSourceResponse,
+    /// Whether the volume is mounted read-only into sessions. Read-only volumes accept no writes from the session sandbox.
     pub is_readonly: bool,
+    /// Current sync status (`idle`, `syncing`, `succeeded`, `failed`). Only meaningful when `source_type` is `git` or `github`.
     pub sync_status: String,
+    /// Timestamp of the most recent successful sync (RFC 3339). `None` if never synced.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_synced_at: Option<DateTime<Utc>>,
+    /// Most recent sync error message; cleared on the next successful sync.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_sync_error: Option<String>,
     #[serde(skip)]

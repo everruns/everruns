@@ -48,56 +48,72 @@ pub enum SessionSandboxAction {
 /// Response body for the `get_session_sandbox` operation.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct GetSessionSandboxResponse {
+    /// Whether the session's harness opts in to a managed sandbox at all.
     pub configured: bool,
+    /// Whether a sandbox instance currently exists for this session (within its lease).
     pub exists: bool,
+    /// Sandbox provider (`daytona`, `e2b`, `docker`, etc.) when one is configured.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub provider: Option<String>,
+    /// Current sandbox lifecycle status (`starting`, `ready`, `error`, `released`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session_status: Option<SessionSandboxStatusValue>,
+    /// Provider-side sandbox identifier (workspace ID, container ID, etc.).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub external_id: Option<String>,
+    /// Human-readable sandbox label. Safe to render in user-facing messages.
     #[serde(skip_serializing_if = "Option::is_none")]
-    /// Human-readable display name. Safe to render in user-facing messages.
     pub display_name: Option<String>,
+    /// Absolute path of the sandbox workspace root (used to scope file operations).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub workspace_path: Option<String>,
+    /// Provider-specific metadata (URLs, ports, credentials envelopes).
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Object)]
-    /// Free-form metadata attached to this resource.
     pub metadata: Option<serde_json::Value>,
+    /// Timestamp when sandbox initialization finished (RFC 3339); absent while still starting.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub init_completed_at: Option<String>,
+    /// Most recent initialization error message; cleared on successful re-init.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_init_error: Option<String>,
+    /// Timestamp when this sandbox record was created (RFC 3339).
     #[serde(skip_serializing_if = "Option::is_none")]
-    /// Timestamp when this resource was created (RFC 3339).
     pub created_at: Option<String>,
+    /// Timestamp when this sandbox record was last updated (RFC 3339).
     #[serde(skip_serializing_if = "Option::is_none")]
-    /// Timestamp when this resource was last updated (RFC 3339).
     pub updated_at: Option<String>,
 }
 
 /// Request body for the `manage_session_sandbox` operation.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct ManageSessionSandboxRequest {
+    /// Action to take on the sandbox (`reset`, `delete`, etc.).
     pub action: SessionSandboxAction,
 }
 
 /// Response body for the `manage_session_sandbox` operation.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ManageSessionSandboxResponse {
+    /// Action that was taken.
     pub action: SessionSandboxAction,
+    /// Whether a sandbox instance still exists after the action.
     pub exists: bool,
+    /// Whether the action deleted the sandbox (`true` after a successful `delete`).
     pub deleted: bool,
+    /// Sandbox provider (`daytona`, `e2b`, `docker`, etc.).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub provider: Option<String>,
+    /// Current sandbox lifecycle status after the action.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session_status: Option<SessionSandboxStatusValue>,
+    /// Provider-side sandbox identifier.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub external_id: Option<String>,
+    /// Human-readable sandbox label.
     #[serde(skip_serializing_if = "Option::is_none")]
-    /// Human-readable display name. Safe to render in user-facing messages.
     pub display_name: Option<String>,
+    /// Absolute path of the sandbox workspace root.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub workspace_path: Option<String>,
 }

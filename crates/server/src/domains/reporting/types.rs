@@ -100,11 +100,17 @@ fn default_export_format() -> ReportExportFormat {
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct ReportExport {
+    /// Export format (currently `csv`).
     pub format: ReportExportFormat,
+    /// Suggested filename for the download (includes the extension matching `format`).
     pub filename: String,
+    /// MIME type matching `format` (`text/csv` for CSV exports).
     pub content_type: String,
+    /// Serialized payload as a UTF-8 string. Caller streams this to the client.
     pub content: String,
+    /// Timestamp the underlying data was materialized (RFC 3339). Useful for "as of" footers.
     pub as_of: DateTime<Utc>,
+    /// How stale the data is relative to `now()`, in milliseconds. `None` when freshness can't be determined.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub freshness_lag_ms: Option<i64>,
 }
@@ -127,34 +133,47 @@ pub struct DatasetProjectorLag {
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct ReportingOutboxDiagnostics {
+    /// Outbox rows waiting to be claimed by a projector.
     pub pending: i64,
+    /// Outbox rows currently being processed.
     pub processing: i64,
+    /// Outbox rows that have failed (exceeded retry limit).
     pub failed: i64,
+    /// Outbox rows that have completed processing successfully.
     pub completed: i64,
+    /// Timestamp of the oldest `pending` row (RFC 3339). `None` if no rows are pending.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub oldest_pending_at: Option<DateTime<Utc>>,
+    /// Sample of the most recent failed rows for operator inspection.
     pub failed_rows: Vec<FailedReportingOutboxRow>,
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct FailedReportingOutboxRow {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Outbox row UUID.
     pub id: Uuid,
-    /// Owning organization's prefixed public identifier.
+    /// Owning organization's internal numeric id.
     pub org_id: i64,
+    /// Discriminator for the outbox source (`event`, `session`, `llm_generation`, `usage_ledger`).
     pub source_type: String,
+    /// Source-specific row identifier (event id, session id, etc.).
     pub source_id: String,
+    /// Number of processing attempts made before this row was marked failed.
     pub attempts: i32,
+    /// Most recent error message from a processing attempt.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub last_error: Option<String>,
-    /// Timestamp when this resource was last updated (RFC 3339).
+    /// Timestamp when this row was last updated (RFC 3339).
     pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct ProjectorRunResult {
+    /// Number of outbox rows claimed by this run.
     pub claimed: usize,
+    /// Number of claimed rows that completed successfully.
     pub completed: usize,
+    /// Number of claimed rows that failed and will be retried (or moved to `failed` after retry limit).
     pub failed: usize,
 }
 
@@ -170,9 +189,14 @@ fn default_backfill_limit() -> i64 {
 
 #[derive(Debug, Clone, Default, Serialize, ToSchema)]
 pub struct ReportingBackfillResult {
+    /// Total number of outbox rows enqueued across all source types.
     pub enqueued: i64,
+    /// Number of `event` outbox rows enqueued.
     pub events: i64,
+    /// Number of `session` outbox rows enqueued.
     pub sessions: i64,
+    /// Number of `llm_generation` outbox rows enqueued.
     pub llm_generations: i64,
+    /// Number of `usage_ledger` outbox rows enqueued.
     pub usage_ledger: i64,
 }

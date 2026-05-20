@@ -12205,10 +12205,12 @@
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "JWT `aud` values to require on inbound tokens. Empty list disables audience checking."
           },
           "claims": {
             "type": "object",
+            "description": "Arbitrary claim equality predicates. Empty map disables claim filtering.",
             "additionalProperties": {},
             "propertyNames": {
               "type": "string"
@@ -12218,25 +12220,29 @@
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Allowlist of email/identifier domains. Empty list disables domain filtering."
           },
           "groups": {
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Allowlist of group memberships (from `groups` claim). Empty list disables group filtering."
           },
           "scopes": {
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "OAuth scope strings to require (space-delimited per scope entry). Empty list disables scope checking."
           },
           "subjects": {
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Allowlist of `sub` claim values. Empty list disables subject filtering."
           }
         }
       },
@@ -12712,13 +12718,15 @@
         ],
         "properties": {
           "capability_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Capability id (prefixed or namespaced) attributing this usage."
           },
           "capability_name": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Capability display name for UI. `None` when the capability is unnamed."
           },
           "duration_ms": {
             "type": [
@@ -12726,13 +12734,15 @@
               "null"
             ],
             "format": "int64",
+            "description": "Total wall-clock duration of the usage in milliseconds (duration-style records). `None` for count-style records.",
             "minimum": 0
           },
           "tool_name": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Concrete tool name when `usage_kind` is `tool_call`. `None` for non-tool usage kinds."
           },
           "usage_count": {
             "type": [
@@ -12740,10 +12750,12 @@
               "null"
             ],
             "format": "int64",
+            "description": "Number of distinct usages recorded in this record (count-style records). `None` for duration-style records.",
             "minimum": 0
           },
           "usage_kind": {
-            "$ref": "#/components/schemas/CapabilityUsageKind"
+            "$ref": "#/components/schemas/CapabilityUsageKind",
+            "description": "Discriminator for the kind of usage being recorded (e.g. `tool_call`, `subagent_spawn`)."
           }
         }
       },
@@ -13219,17 +13231,21 @@
         ],
         "properties": {
           "label": {
-            "type": "string"
+            "type": "string",
+            "description": "Human-readable label suitable for UI display."
           },
           "section_key": {
-            "type": "string"
+            "type": "string",
+            "description": "Section this contribution rolls up into; matches `ContextReportSection.key`."
           },
           "source_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Stable id of the contributing source (capability id, tool name, message id, etc.)."
           },
           "tokens": {
             "type": "integer",
             "format": "int32",
+            "description": "Tokens this single source contributes to the assembled context.",
             "minimum": 0
           }
         }
@@ -13246,17 +13262,21 @@
           "items": {
             "type": "integer",
             "format": "int32",
+            "description": "Number of items this section comprises (messages, tool defs, etc.).",
             "minimum": 0
           },
           "key": {
-            "type": "string"
+            "type": "string",
+            "description": "Stable section key (e.g. `system_prompt`, `tools`, `history`). Used as a join key for contributions."
           },
           "label": {
-            "type": "string"
+            "type": "string",
+            "description": "Human-readable section label suitable for UI display."
           },
           "tokens": {
             "type": "integer",
             "format": "int32",
+            "description": "Total tokens this section contributes to the assembled context.",
             "minimum": 0
           }
         }
@@ -15485,34 +15505,38 @@
         "properties": {
           "attempts": {
             "type": "integer",
-            "format": "int32"
+            "format": "int32",
+            "description": "Number of processing attempts made before this row was marked failed."
           },
           "id": {
             "type": "string",
             "format": "uuid",
-            "description": "Prefixed public identifier (see `specs/id-schema.md`)."
+            "description": "Outbox row UUID."
           },
           "last_error": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Most recent error message from a processing attempt."
           },
           "org_id": {
             "type": "integer",
             "format": "int64",
-            "description": "Owning organization's prefixed public identifier."
+            "description": "Owning organization's internal numeric id."
           },
           "source_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Source-specific row identifier (event id, session id, etc.)."
           },
           "source_type": {
-            "type": "string"
+            "type": "string",
+            "description": "Discriminator for the outbox source (`event`, `session`, `llm_generation`, `usage_ledger`)."
           },
           "updated_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Timestamp when this resource was last updated (RFC 3339)."
+            "description": "Timestamp when this row was last updated (RFC 3339)."
           }
         }
       },
@@ -15719,52 +15743,58 @@
         ],
         "properties": {
           "configured": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether the session's harness opts in to a managed sandbox at all."
           },
           "created_at": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Timestamp when this resource was created (RFC 3339)."
+            "description": "Timestamp when this sandbox record was created (RFC 3339)."
           },
           "display_name": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Human-readable display name. Safe to render in user-facing messages."
+            "description": "Human-readable sandbox label. Safe to render in user-facing messages."
           },
           "exists": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether a sandbox instance currently exists for this session (within its lease)."
           },
           "external_id": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Provider-side sandbox identifier (workspace ID, container ID, etc.)."
           },
           "init_completed_at": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Timestamp when sandbox initialization finished (RFC 3339); absent while still starting."
           },
           "last_init_error": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Most recent initialization error message; cleared on successful re-init."
           },
           "metadata": {
             "type": "object",
-            "description": "Free-form metadata attached to this resource."
+            "description": "Provider-specific metadata (URLs, ports, credentials envelopes)."
           },
           "provider": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Sandbox provider (`daytona`, `e2b`, `docker`, etc.) when one is configured."
           },
           "session_status": {
             "oneOf": [
@@ -15772,7 +15802,8 @@
                 "type": "null"
               },
               {
-                "$ref": "#/components/schemas/SessionSandboxStatusValue"
+                "$ref": "#/components/schemas/SessionSandboxStatusValue",
+                "description": "Current sandbox lifecycle status (`starting`, `ready`, `error`, `released`)."
               }
             ]
           },
@@ -15781,13 +15812,14 @@
               "string",
               "null"
             ],
-            "description": "Timestamp when this resource was last updated (RFC 3339)."
+            "description": "Timestamp when this sandbox record was last updated (RFC 3339)."
           },
           "workspace_path": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Absolute path of the sandbox workspace root (used to scope file operations)."
           }
         }
       },
@@ -15804,26 +15836,32 @@
         ],
         "properties": {
           "author_email": {
-            "type": "string"
+            "type": "string",
+            "description": "Author email from the commit."
           },
           "author_name": {
-            "type": "string"
+            "type": "string",
+            "description": "Author display name from the commit."
           },
           "message": {
-            "type": "string"
+            "type": "string",
+            "description": "Commit message as authored."
           },
           "oid": {
-            "type": "string"
+            "type": "string",
+            "description": "Full git object identifier (40-char hex SHA-1)."
           },
           "parent_oids": {
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Parent commit object identifiers. Length 0 for the initial commit, 1 for ordinary commits, 2+ for merge commits."
           },
           "timestamp": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Commit timestamp (RFC 3339, normalised to UTC)."
           }
         }
       },
@@ -18618,37 +18656,43 @@
                   "example": "vol_01933b5a000070008000000000000001"
                 },
                 "is_readonly": {
-                  "type": "boolean"
+                  "type": "boolean",
+                  "description": "Whether the volume is mounted read-only into sessions. Read-only volumes accept no writes from the session sandbox."
                 },
                 "last_sync_error": {
                   "type": [
                     "string",
                     "null"
-                  ]
+                  ],
+                  "description": "Most recent sync error message; cleared on the next successful sync."
                 },
                 "last_synced_at": {
                   "type": [
                     "string",
                     "null"
                   ],
-                  "format": "date-time"
+                  "format": "date-time",
+                  "description": "Timestamp of the most recent successful sync (RFC 3339). `None` if never synced."
                 },
                 "name": {
                   "type": "string",
                   "description": "Human-readable name. Safe to render in user-facing messages."
                 },
                 "source": {
-                  "$ref": "#/components/schemas/VolumeSourceResponse"
+                  "$ref": "#/components/schemas/VolumeSourceResponse",
+                  "description": "Source-specific configuration (git remote, github repo, manual upload)."
                 },
                 "source_type": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "Source kind discriminator (`manual`, `git`, `github`). Determines which `source` variant is populated."
                 },
                 "status": {
                   "type": "string",
                   "description": "Current lifecycle status."
                 },
                 "sync_status": {
-                  "type": "string"
+                  "type": "string",
+                  "description": "Current sync status (`idle`, `syncing`, `succeeded`, `failed`). Only meaningful when `source_type` is `git` or `github`."
                 },
                 "updated_at": {
                   "type": "string",
@@ -20648,7 +20692,8 @@
         ],
         "properties": {
           "action": {
-            "$ref": "#/components/schemas/SessionSandboxAction"
+            "$ref": "#/components/schemas/SessionSandboxAction",
+            "description": "Action to take on the sandbox (`reset`, `delete`, etc.)."
           }
         }
       },
@@ -20662,32 +20707,37 @@
         ],
         "properties": {
           "action": {
-            "$ref": "#/components/schemas/SessionSandboxAction"
+            "$ref": "#/components/schemas/SessionSandboxAction",
+            "description": "Action that was taken."
           },
           "deleted": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether the action deleted the sandbox (`true` after a successful `delete`)."
           },
           "display_name": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Human-readable display name. Safe to render in user-facing messages."
+            "description": "Human-readable sandbox label."
           },
           "exists": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether a sandbox instance still exists after the action."
           },
           "external_id": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Provider-side sandbox identifier."
           },
           "provider": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Sandbox provider (`daytona`, `e2b`, `docker`, etc.)."
           },
           "session_status": {
             "oneOf": [
@@ -20695,7 +20745,8 @@
                 "type": "null"
               },
               {
-                "$ref": "#/components/schemas/SessionSandboxStatusValue"
+                "$ref": "#/components/schemas/SessionSandboxStatusValue",
+                "description": "Current sandbox lifecycle status after the action."
               }
             ]
           },
@@ -20703,7 +20754,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Absolute path of the sandbox workspace root."
           }
         }
       },
@@ -21454,7 +21506,7 @@
       },
       "PaginatedResponse_Session": {
         "type": "object",
-        "description": "Response wrapper for paginated list endpoints.\nIncludes pagination metadata along with the data array.",
+        "description": "Response wrapper for paginated list endpoints.\nIncludes pagination metadata along with the data array.\n\n`next_url` and `prev_url` are populated by the [`decorate_pagination_links`]\nmiddleware after the handler returns, so handlers don't need to thread the\nrequest URL into every construction site.",
         "required": [
           "data",
           "total",
@@ -21772,11 +21824,25 @@
             "description": "Maximum number of items per page.",
             "minimum": 0
           },
+          "next_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Absolute URL for the next page, with `offset` advanced by `limit`. Omitted from the response (field absent) when this is the last page."
+          },
           "offset": {
             "type": "integer",
             "format": "int32",
             "description": "Current offset (starting position).",
             "minimum": 0
+          },
+          "prev_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Absolute URL for the previous page, with `offset` rolled back by `limit`. Omitted from the response (field absent) when this is the first page."
           },
           "total": {
             "type": "integer",
@@ -21788,7 +21854,7 @@
       },
       "PaginatedResponse_WithUrls_CapabilityInfo": {
         "type": "object",
-        "description": "Response wrapper for paginated list endpoints.\nIncludes pagination metadata along with the data array.",
+        "description": "Response wrapper for paginated list endpoints.\nIncludes pagination metadata along with the data array.\n\n`next_url` and `prev_url` are populated by the [`decorate_pagination_links`]\nmiddleware after the handler returns, so handlers don't need to thread the\nrequest URL into every construction site.",
         "required": [
           "data",
           "total",
@@ -21942,11 +22008,25 @@
             "description": "Maximum number of items per page.",
             "minimum": 0
           },
+          "next_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Absolute URL for the next page, with `offset` advanced by `limit`. Omitted from the response (field absent) when this is the last page."
+          },
           "offset": {
             "type": "integer",
             "format": "int32",
             "description": "Current offset (starting position).",
             "minimum": 0
+          },
+          "prev_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Absolute URL for the previous page, with `offset` rolled back by `limit`. Omitted from the response (field absent) when this is the first page."
           },
           "total": {
             "type": "integer",
@@ -21958,7 +22038,7 @@
       },
       "PaginatedResponse_WithUrls_ResourceWithCounts_Agent": {
         "type": "object",
-        "description": "Response wrapper for paginated list endpoints.\nIncludes pagination metadata along with the data array.",
+        "description": "Response wrapper for paginated list endpoints.\nIncludes pagination metadata along with the data array.\n\n`next_url` and `prev_url` are populated by the [`decorate_pagination_links`]\nmiddleware after the handler returns, so handlers don't need to thread the\nrequest URL into every construction site.",
         "required": [
           "data",
           "total",
@@ -22202,11 +22282,25 @@
             "description": "Maximum number of items per page.",
             "minimum": 0
           },
+          "next_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Absolute URL for the next page, with `offset` advanced by `limit`. Omitted from the response (field absent) when this is the last page."
+          },
           "offset": {
             "type": "integer",
             "format": "int32",
             "description": "Current offset (starting position).",
             "minimum": 0
+          },
+          "prev_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Absolute URL for the previous page, with `offset` rolled back by `limit`. Omitted from the response (field absent) when this is the first page."
           },
           "total": {
             "type": "integer",
@@ -22218,7 +22312,7 @@
       },
       "PaginatedResponse_WithUrls_Session": {
         "type": "object",
-        "description": "Response wrapper for paginated list endpoints.\nIncludes pagination metadata along with the data array.",
+        "description": "Response wrapper for paginated list endpoints.\nIncludes pagination metadata along with the data array.\n\n`next_url` and `prev_url` are populated by the [`decorate_pagination_links`]\nmiddleware after the handler returns, so handlers don't need to thread the\nrequest URL into every construction site.",
         "required": [
           "data",
           "total",
@@ -22563,11 +22657,25 @@
             "description": "Maximum number of items per page.",
             "minimum": 0
           },
+          "next_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Absolute URL for the next page, with `offset` advanced by `limit`. Omitted from the response (field absent) when this is the last page."
+          },
           "offset": {
             "type": "integer",
             "format": "int32",
             "description": "Current offset (starting position).",
             "minimum": 0
+          },
+          "prev_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Absolute URL for the previous page, with `offset` rolled back by `limit`. Omitted from the response (field absent) when this is the first page."
           },
           "total": {
             "type": "integer",
@@ -23037,14 +23145,17 @@
         "properties": {
           "claimed": {
             "type": "integer",
+            "description": "Number of outbox rows claimed by this run.",
             "minimum": 0
           },
           "completed": {
             "type": "integer",
+            "description": "Number of claimed rows that completed successfully.",
             "minimum": 0
           },
           "failed": {
             "type": "integer",
+            "description": "Number of claimed rows that failed and will be retried (or moved to `failed` after retry limit).",
             "minimum": 0
           }
         }
@@ -23330,26 +23441,32 @@
         "properties": {
           "as_of": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp the underlying data was materialized (RFC 3339). Useful for \"as of\" footers."
           },
           "content": {
-            "type": "string"
+            "type": "string",
+            "description": "Serialized payload as a UTF-8 string. Caller streams this to the client."
           },
           "content_type": {
-            "type": "string"
+            "type": "string",
+            "description": "MIME type matching `format` (`text/csv` for CSV exports)."
           },
           "filename": {
-            "type": "string"
+            "type": "string",
+            "description": "Suggested filename for the download (includes the extension matching `format`)."
           },
           "format": {
-            "$ref": "#/components/schemas/ReportExportFormat"
+            "$ref": "#/components/schemas/ReportExportFormat",
+            "description": "Export format (currently `csv`)."
           },
           "freshness_lag_ms": {
             "type": [
               "integer",
               "null"
             ],
-            "format": "int64"
+            "format": "int64",
+            "description": "How stale the data is relative to `now()`, in milliseconds. `None` when freshness can't be determined."
           }
         }
       },
@@ -23424,39 +23541,46 @@
         ],
         "properties": {
           "dataset": {
-            "type": "string"
+            "type": "string",
+            "description": "Dataset name to query (see `GET /v1/reports/catalog` for the list of available datasets)."
           },
           "dimensions": {
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Columns to group by. Empty list returns one aggregate row."
           },
           "filters": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ReportFilter"
-            }
+            },
+            "description": "Predicate filters applied before aggregation."
           },
           "limit": {
             "type": "integer",
             "format": "int32",
+            "description": "Maximum number of rows to return (defaults to 100).",
             "minimum": 0
           },
           "measures": {
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Aggregations to compute (count, sum, avg, etc.). Empty list returns row counts only."
           },
           "order_by": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ReportOrderBy"
-            }
+            },
+            "description": "Sort spec applied after aggregation. Empty list yields unspecified order."
           },
           "time_range": {
-            "$ref": "#/components/schemas/ReportTimeRange"
+            "$ref": "#/components/schemas/ReportTimeRange",
+            "description": "Time window for the query. The dataset selects which timestamp column the range applies to."
           }
         }
       },
@@ -23529,23 +23653,28 @@
         "properties": {
           "enqueued": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Total number of outbox rows enqueued across all source types."
           },
           "events": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Number of `event` outbox rows enqueued."
           },
           "llm_generations": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Number of `llm_generation` outbox rows enqueued."
           },
           "sessions": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Number of `session` outbox rows enqueued."
           },
           "usage_ledger": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Number of `usage_ledger` outbox rows enqueued."
           }
         }
       },
@@ -23584,32 +23713,38 @@
         "properties": {
           "completed": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Outbox rows that have completed processing successfully."
           },
           "failed": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Outbox rows that have failed (exceeded retry limit)."
           },
           "failed_rows": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/FailedReportingOutboxRow"
-            }
+            },
+            "description": "Sample of the most recent failed rows for operator inspection."
           },
           "oldest_pending_at": {
             "type": [
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp of the oldest `pending` row (RFC 3339). `None` if no rows are pending."
           },
           "pending": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Outbox rows waiting to be claimed by a projector."
           },
           "processing": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Outbox rows currently being processed."
           }
         }
       },
@@ -24581,13 +24716,15 @@
               "null"
             ],
             "format": "int32",
+            "description": "Total context window size in tokens for `model`. `None` if the model's profile lacks limits data.",
             "minimum": 0
           },
           "contributions": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ContextReportContribution"
-            }
+            },
+            "description": "Per-source token contributions (per-tool, per-capability, per-message) for attribution."
           },
           "cumulative_usage": {
             "oneOf": [
@@ -24595,26 +24732,31 @@
                 "type": "null"
               },
               {
-                "$ref": "#/components/schemas/TokenUsage"
+                "$ref": "#/components/schemas/TokenUsage",
+                "description": "Cumulative LLM usage observed across the session so far (token + cost rollup)."
               }
             ]
           },
           "estimated_input_tokens": {
             "type": "integer",
             "format": "int32",
+            "description": "Estimated number of input tokens consumed by the next generation given the current context.",
             "minimum": 0
           },
           "model": {
-            "type": "string"
+            "type": "string",
+            "description": "Model identifier the report's token estimates target (used to scope context-window math)."
           },
           "sections": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ContextReportSection"
-            }
+            },
+            "description": "Logical sections of the assembled context (system prompt, tool defs, message history, etc.) for inspection."
           },
           "session_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Prefixed session identifier this report describes."
           }
         }
       },
@@ -25079,28 +25221,33 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Parsed skill description. `None` when not present in the input or unparseable."
           },
           "errors": {
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Hard validation errors. Non-empty if and only if `valid` is `false`."
           },
           "name": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Parsed skill slug from the front matter. `None` when the input could not be parsed enough to extract a name."
           },
           "valid": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "`true` when the candidate SKILL.md parsed and passes all hard checks; `false` if any error was found."
           },
           "warnings": {
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Non-fatal warnings (style, deprecated patterns, optional fields missing). Emitted alongside a `valid` result."
           }
         }
       },
@@ -26336,13 +26483,15 @@
             ],
             "items": {
               "$ref": "#/components/schemas/AgentCapabilityConfig"
-            }
+            },
+            "description": "Replace the capability list entirely; omit to leave unchanged."
           },
           "default_model_id": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "New default model selected when sessions inherit from this harness; omit to leave unchanged."
           },
           "description": {
             "type": [
@@ -26366,7 +26515,8 @@
             ],
             "items": {
               "$ref": "#/components/schemas/InitialFile"
-            }
+            },
+            "description": "Replace the initial-files list entirely; omit to leave unchanged."
           },
           "mcpServers": {
             "oneOf": [
@@ -26374,7 +26524,8 @@
                 "type": "null"
               },
               {
-                "$ref": "#/components/schemas/BTreeMap"
+                "$ref": "#/components/schemas/BTreeMap",
+                "description": "Replace the scoped MCP server set entirely; omit to leave unchanged."
               }
             ]
           },
@@ -26401,7 +26552,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "New parent harness for inheritance. Outer `None` leaves unchanged; inner `None` removes inheritance (becomes a root harness)."
           },
           "status": {
             "oneOf": [
@@ -26418,7 +26570,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "New system prompt the harness contributes to sessions; omit to leave unchanged."
           },
           "tags": {
             "type": [
@@ -26428,7 +26581,7 @@
             "items": {
               "type": "string"
             },
-            "description": "Free-form tags attached to this resource."
+            "description": "Replace the tag list entirely; omit to leave unchanged."
           }
         }
       },
@@ -27523,31 +27676,37 @@
         ],
         "properties": {
           "accumulated": {
-            "type": "string"
+            "type": "string",
+            "description": "Full transcript accumulated for this item up to and including `delta`."
           },
           "delta": {
-            "type": "string"
+            "type": "string",
+            "description": "Newly transcribed text chunk delivered in this event. Empty for \"final\" events that only mark completion."
           },
           "item_id": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Provider-specific identifier of the conversation item being transcribed. `None` when not yet assigned."
           },
           "phase": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Transcript phase: `user_partial`, `user_final`, `assistant_partial`, `assistant_final`. `None` when not yet classified."
           },
           "response_id": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Provider-specific identifier of the response stream emitting this transcript. `None` for user-side transcripts."
           },
           "voice_connection_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Prefixed voice connection identifier this transcript belongs to."
           }
         }
       },
@@ -27600,37 +27759,43 @@
             "example": "vol_01933b5a000070008000000000000001"
           },
           "is_readonly": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether the volume is mounted read-only into sessions. Read-only volumes accept no writes from the session sandbox."
           },
           "last_sync_error": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Most recent sync error message; cleared on the next successful sync."
           },
           "last_synced_at": {
             "type": [
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp of the most recent successful sync (RFC 3339). `None` if never synced."
           },
           "name": {
             "type": "string",
             "description": "Human-readable name. Safe to render in user-facing messages."
           },
           "source": {
-            "$ref": "#/components/schemas/VolumeSourceResponse"
+            "$ref": "#/components/schemas/VolumeSourceResponse",
+            "description": "Source-specific configuration (git remote, github repo, manual upload)."
           },
           "source_type": {
-            "type": "string"
+            "type": "string",
+            "description": "Source kind discriminator (`manual`, `git`, `github`). Determines which `source` variant is populated."
           },
           "status": {
             "type": "string",
             "description": "Current lifecycle status."
           },
           "sync_status": {
-            "type": "string"
+            "type": "string",
+            "description": "Current sync status (`idle`, `syncing`, `succeeded`, `failed`). Only meaningful when `source_type` is `git` or `github`."
           },
           "updated_at": {
             "type": "string",
@@ -29933,22 +30098,27 @@
         "properties": {
           "active": {
             "type": "integer",
+            "description": "Workers in `running` state, accepting tasks.",
             "minimum": 0
           },
           "draining": {
             "type": "integer",
+            "description": "Workers in `draining` state, finishing in-flight tasks but not accepting new ones.",
             "minimum": 0
           },
           "stopped": {
             "type": "integer",
+            "description": "Workers in `stopped` state, neither running nor draining.",
             "minimum": 0
           },
           "total_capacity": {
             "type": "integer",
+            "description": "Sum of `max_concurrency` across all `active` + `draining` workers.",
             "minimum": 0
           },
           "total_load": {
             "type": "integer",
+            "description": "Total tasks currently in flight across all workers.",
             "minimum": 0
           }
         }

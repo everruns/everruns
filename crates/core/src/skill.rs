@@ -257,13 +257,18 @@ pub struct SkillUsage {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct SkillValidationResult {
+    /// `true` when the candidate SKILL.md parsed and passes all hard checks; `false` if any error was found.
     pub valid: bool,
+    /// Parsed skill slug from the front matter. `None` when the input could not be parsed enough to extract a name.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub name: Option<String>,
+    /// Parsed skill description. `None` when not present in the input or unparseable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    /// Hard validation errors. Non-empty if and only if `valid` is `false`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub errors: Vec<String>,
+    /// Non-fatal warnings (style, deprecated patterns, optional fields missing). Emitted alongside a `valid` result.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub warnings: Vec<String>,
 }
