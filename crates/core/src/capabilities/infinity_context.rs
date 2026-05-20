@@ -112,6 +112,10 @@ impl Default for InfinityContextConfig {
     }
 }
 
+const CANDIDATE_AVG_TOKENS_PER_MESSAGE: usize = 250;
+const CANDIDATE_OVERFETCH_FACTOR: usize = 4;
+const CANDIDATE_MAX_MESSAGES: usize = 2_000;
+
 struct InfinityContextFilterProvider;
 
 impl MessageFilterProvider for InfinityContextFilterProvider {
@@ -119,23 +123,23 @@ impl MessageFilterProvider for InfinityContextFilterProvider {
         let config: InfinityContextConfig =
             serde_json::from_value(config.clone()).unwrap_or_default();
 
-        if let Some(max_recent_messages) = config.max_recent_messages {
-            query.limit = Some(max_recent_messages.max(1) as i64);
-            query.prepend_transform = Some(Arc::new(ExcludedNoticeTransform::infinity_context()));
-        }
+        query.limit = Some(resolve_candidate_load_limit(&config) as i64);
+        query.prepend_transform = Some(Arc::new(ExcludedNoticeTransform::infinity_context()));
     }
 
     fn post_load(&self, messages: &mut Vec<Message>, config: &Value) {
         let config: InfinityContextConfig =
             serde_json::from_value(config.clone()).unwrap_or_default();
+        let existing_notice_count = take_existing_excluded_notice(messages);
         let excluded_count = trim_messages_to_token_budget(messages, &config);
-        if excluded_count > 0 {
+        let total_excluded_count = existing_notice_count.saturating_add(excluded_count);
+        if total_excluded_count > 0 {
             messages.insert(
                 0,
                 Message::system(
                     ExcludedNoticeTransform::infinity_context()
                         .format
-                        .replace("{}", &excluded_count.to_string()),
+                        .replace("{}", &total_excluded_count.to_string()),
                 ),
             );
         }
@@ -144,6 +148,18 @@ impl MessageFilterProvider for InfinityContextFilterProvider {
     fn priority(&self) -> i32 {
         100
     }
+}
+
+fn resolve_candidate_load_limit(config: &InfinityContextConfig) -> usize {
+    if let Some(max_recent_messages) = config.max_recent_messages {
+        return max_recent_messages.max(1);
+    }
+
+    (config.context_budget_tokens / CANDIDATE_AVG_TOKENS_PER_MESSAGE)
+        .saturating_mul(CANDIDATE_OVERFETCH_FACTOR)
+        .min(CANDIDATE_MAX_MESSAGES)
+        .max(config.min_recent_messages)
+        .max(1)
 }
 
 fn estimate_message_tokens(message: &Message) -> usize {
@@ -163,7 +179,7 @@ fn estimate_message_tokens(message: &Message) -> usize {
                 file.image_id.to_string().len() + file.filename.as_ref().map_or(0, String::len)
             }
             ContentPart::ToolCall(call) => {
-                call.id.len() + call.name.len() + call.arguments.to_string().len() + 20
+                call.id.len() + call.name.len() + estimate_json_value_len(&call.arguments) + 20
             }
             ContentPart::ToolResult(result) => {
                 result.tool_call_id.len()
@@ -196,6 +212,28 @@ fn estimate_json_value_len(value: &Value) -> usize {
     serde_json::to_writer(&mut writer, value)
         .map(|_| writer.len)
         .unwrap_or(0)
+}
+
+fn take_existing_excluded_notice(messages: &mut Vec<Message>) -> usize {
+    let Some(first) = messages.first() else {
+        return 0;
+    };
+    let Some(count) = parse_excluded_notice_count(first) else {
+        return 0;
+    };
+
+    messages.remove(0);
+    count
+}
+
+fn parse_excluded_notice_count(message: &Message) -> Option<usize> {
+    let text = message.text()?;
+    let rest = text.strip_prefix("[IMPORTANT: ")?;
+    let (count, rest) = rest.split_once(' ')?;
+    if !rest.starts_with("earlier messages are NOT visible in this context.") {
+        return None;
+    }
+    count.parse().ok()
 }
 
 fn trim_messages_to_token_budget(
@@ -540,7 +578,7 @@ mod tests {
     }
 
     #[test]
-    fn test_filter_provider_leaves_loading_unbounded_without_hard_cap() {
+    fn test_filter_provider_sets_bounded_candidate_load_limit_without_hard_cap() {
         let mut query = MessageQuery::new(SessionId::new());
         let provider = InfinityContextFilterProvider;
         provider.apply_filters(
@@ -548,8 +586,8 @@ mod tests {
             &json!({"context_budget_tokens": 1_000, "min_recent_messages": 3}),
         );
 
-        assert_eq!(query.limit, None);
-        assert!(query.prepend_transform.is_none());
+        assert_eq!(query.limit, Some(16));
+        assert!(query.prepend_transform.is_some());
     }
 
     #[test]
@@ -578,8 +616,8 @@ mod tests {
             &json!({"context_budget_tokens": "not-a-number"}),
         );
 
-        assert_eq!(query.limit, None);
-        assert!(query.prepend_transform.is_none());
+        assert_eq!(query.limit, Some(1_600));
+        assert!(query.prepend_transform.is_some());
     }
 
     #[test]
@@ -628,6 +666,34 @@ mod tests {
         assert!(
             extract_text_content(&messages[0])
                 .contains("earlier messages are NOT visible in this context")
+        );
+        assert_eq!(extract_text_content(&messages[1]), "two");
+        assert_eq!(extract_text_content(&messages[2]), "three");
+    }
+
+    #[test]
+    fn test_filter_provider_preserves_hard_cap_notice_through_full_flow() {
+        let provider = InfinityContextFilterProvider;
+        let config = json!({
+            "context_budget_tokens": 10_000,
+            "min_recent_messages": 10,
+            "max_recent_messages": 2
+        });
+        let mut query = MessageQuery::new(SessionId::new());
+        provider.apply_filters(&mut query, &config);
+        let mut messages = vec![
+            Message::user("one"),
+            Message::assistant("two"),
+            Message::user("three"),
+        ];
+
+        query.apply_windowing(&mut messages);
+        provider.post_load(&mut messages, &config);
+
+        assert_eq!(messages.len(), 3);
+        assert!(
+            extract_text_content(&messages[0])
+                .contains("1 earlier messages are NOT visible in this context")
         );
         assert_eq!(extract_text_content(&messages[1]), "two");
         assert_eq!(extract_text_content(&messages[2]), "three");
