@@ -80,7 +80,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry,id=cargo-registry-${TARG
 # ============================================================================
 # Stage 3a: Server Runtime image (distroless for minimal size and security)
 # ============================================================================
-FROM gcr.io/distroless/cc-debian12:nonroot@sha256:e2d29aec8061843706b7e484c444f78fafb05bfe47745505252b1769a05d14f1 AS server
+FROM gcr.io/distroless/cc-debian12:nonroot@sha256:bd2899c12b335c827750ccf2359879eab09c09b206023dcebea408947d54127c AS server
 
 WORKDIR /app
 
@@ -97,7 +97,7 @@ CMD ["/app/everruns-server"]
 # ============================================================================
 # Stage 3b: Worker Runtime image (distroless for minimal size and security)
 # ============================================================================
-FROM gcr.io/distroless/cc-debian12:nonroot@sha256:e2d29aec8061843706b7e484c444f78fafb05bfe47745505252b1769a05d14f1 AS worker
+FROM gcr.io/distroless/cc-debian12:nonroot@sha256:bd2899c12b335c827750ccf2359879eab09c09b206023dcebea408947d54127c AS worker
 
 WORKDIR /app
 
