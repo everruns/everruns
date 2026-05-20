@@ -957,11 +957,8 @@ fn todo_lines_for_result(data: &ToolCompletedData) -> Vec<ChatLine> {
         .iter()
         .filter(|todo| todo.get("status").and_then(Value::as_str) == Some("completed"))
         .count();
-    let mut lines = vec![ChatLine {
-        author: Author::Tool,
-        text: format!("{completed} of {total} todos completed"),
-    }];
-
+    let summary = format!("{completed} of {total} todos completed");
+    let mut rendered_todos = Vec::new();
     for todo in todos {
         let status = todo
             .get("status")
@@ -972,16 +969,35 @@ fn todo_lines_for_result(data: &ToolCompletedData) -> Vec<ChatLine> {
             .get("activeForm")
             .and_then(Value::as_str)
             .unwrap_or(content);
-        let (marker, text) = match status {
-            "completed" => ("[x]", content),
-            "in_progress" => ("[>]", active_form),
-            _ => ("[ ]", content),
+        let (icon, text) = match status {
+            "completed" => ("✓", content),
+            "in_progress" => ("›", active_form),
+            _ => ("○", content),
         };
-        lines.push(ChatLine {
-            author: Author::ToolDetail,
-            text: format!("{marker} {text}"),
-        });
+        rendered_todos.push(format!("{icon} {text}"));
     }
+
+    let mut lines = if rendered_todos.len() <= 3 {
+        let inline_todos = rendered_todos.join("  ");
+        vec![ChatLine {
+            author: Author::Tool,
+            text: if inline_todos.is_empty() {
+                summary
+            } else {
+                format!("{summary}  {inline_todos}")
+            },
+        }]
+    } else {
+        let mut lines = vec![ChatLine {
+            author: Author::Tool,
+            text: summary,
+        }];
+        lines.extend(rendered_todos.into_iter().map(|text| ChatLine {
+            author: Author::ToolDetail,
+            text,
+        }));
+        lines
+    };
 
     if let Some(warning) = v.get("warning").and_then(Value::as_str) {
         lines.push(ChatLine {
@@ -1127,9 +1143,14 @@ fn draw(f: &mut ratatui::Frame, app: &mut App) {
 fn draw_chat(f: &mut ratatui::Frame, area: Rect, app: &mut App) {
     let inner_width = area.width.saturating_sub(2).max(10) as usize;
     let mut lines: Vec<Line> = Vec::new();
-    for chat in &app.lines {
+    for (index, chat) in app.lines.iter().enumerate() {
         append_chat_lines(&mut lines, chat, inner_width);
-        lines.push(Line::from(""));
+        if should_insert_chat_gap(
+            &chat.author,
+            app.lines.get(index + 1).map(|line| &line.author),
+        ) {
+            lines.push(Line::from(""));
+        }
     }
     let height = area.height.saturating_sub(2) as usize;
     let total = lines.len();
@@ -1152,6 +1173,17 @@ fn draw_chat(f: &mut ratatui::Frame, area: Rect, app: &mut App) {
     let block = Block::default().borders(Borders::ALL).title(title);
     let para = Paragraph::new(view).block(block).wrap(Wrap { trim: false });
     f.render_widget(para, area);
+}
+
+fn should_insert_chat_gap(current: &Author, next: Option<&Author>) -> bool {
+    let Some(next) = next else {
+        return false;
+    };
+
+    !matches!(
+        (current, next),
+        (&Author::Tool, &Author::ToolDetail) | (&Author::ToolDetail, &Author::ToolDetail)
+    )
 }
 
 fn append_chat_lines<'a>(lines: &mut Vec<Line<'a>>, chat: &ChatLine, inner_width: usize) {
@@ -1748,7 +1780,7 @@ mod tests {
     }
 
     #[test]
-    fn lines_for_event_renders_write_todos_items() {
+    fn lines_for_event_renders_short_write_todos_inline() {
         let event = RuntimeEvent::new(
             SessionId::new(),
             EventContext::empty(),
@@ -1792,24 +1824,98 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert!(matches!(lines[0].0, Author::Tool));
-        assert_eq!(lines[0].1, "1 of 3 todos completed");
+        assert_eq!(
+            lines[0].1,
+            "1 of 3 todos completed  ✓ Read current CLI renderer  › Rendering todos in transcript  ○ Run focused tests"
+        );
+        assert_eq!(lines.len(), 1);
+    }
+
+    #[test]
+    fn lines_for_event_renders_long_write_todos_as_rows() {
+        let event = RuntimeEvent::new(
+            SessionId::new(),
+            EventContext::empty(),
+            ToolCompletedData::success(
+                "call_todos".to_string(),
+                "write_todos".to_string(),
+                vec![ContentPart::text(
+                    serde_json::json!({
+                        "success": true,
+                        "total_tasks": 4,
+                        "pending": 2,
+                        "in_progress": 1,
+                        "completed": 1,
+                        "todos": [
+                            {
+                                "content": "Read current CLI renderer",
+                                "activeForm": "Reading current CLI renderer",
+                                "status": "completed"
+                            },
+                            {
+                                "content": "Render todos in transcript",
+                                "activeForm": "Rendering todos in transcript",
+                                "status": "in_progress"
+                            },
+                            {
+                                "content": "Run focused tests",
+                                "activeForm": "Running focused tests",
+                                "status": "pending"
+                            },
+                            {
+                                "content": "Summarize changes",
+                                "activeForm": "Summarizing changes",
+                                "status": "pending"
+                            }
+                        ]
+                    })
+                    .to_string(),
+                )],
+                None,
+            ),
+        );
+
+        let lines = lines_for_event(&event)
+            .into_iter()
+            .map(|line| (line.author, line.text))
+            .collect::<Vec<_>>();
+
+        assert!(matches!(lines[0].0, Author::Tool));
+        assert_eq!(lines[0].1, "1 of 4 todos completed");
         assert!(
             lines
                 .iter()
                 .any(|(author, line)| matches!(author, Author::ToolDetail)
-                    && line == "[x] Read current CLI renderer")
+                    && line == "✓ Read current CLI renderer")
         );
         assert!(
             lines
                 .iter()
                 .any(|(author, line)| matches!(author, Author::ToolDetail)
-                    && line == "[>] Rendering todos in transcript")
+                    && line == "› Rendering todos in transcript")
         );
         assert!(
             lines
                 .iter()
                 .any(|(author, line)| matches!(author, Author::ToolDetail)
-                    && line == "[ ] Run focused tests")
+                    && line == "○ Run focused tests")
         );
+    }
+
+    #[test]
+    fn should_not_insert_chat_gap_inside_todo_blocks() {
+        assert!(!should_insert_chat_gap(
+            &Author::Tool,
+            Some(&Author::ToolDetail)
+        ));
+        assert!(!should_insert_chat_gap(
+            &Author::ToolDetail,
+            Some(&Author::ToolDetail)
+        ));
+        assert!(should_insert_chat_gap(
+            &Author::ToolDetail,
+            Some(&Author::Assistant)
+        ));
+        assert!(!should_insert_chat_gap(&Author::ToolDetail, None));
     }
 }
