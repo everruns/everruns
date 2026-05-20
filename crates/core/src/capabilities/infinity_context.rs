@@ -13,6 +13,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::cmp::Ordering;
+use std::io::{self, Write};
 use std::sync::Arc;
 
 /// Capability ID for infinity context.
@@ -166,16 +167,35 @@ fn estimate_message_tokens(message: &Message) -> usize {
             }
             ContentPart::ToolResult(result) => {
                 result.tool_call_id.len()
-                    + result
-                        .result
-                        .as_ref()
-                        .map_or(0, |value| value.to_string().len())
+                    + result.result.as_ref().map_or(0, estimate_json_value_len)
                     + result.error.as_ref().map_or(0, String::len)
                     + 20
             }
         })
         .sum();
     (role_overhead + content_len) / TOKEN_CHARS
+}
+
+struct CountingWriter {
+    len: usize,
+}
+
+impl Write for CountingWriter {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.len = self.len.saturating_add(buf.len());
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+fn estimate_json_value_len(value: &Value) -> usize {
+    let mut writer = CountingWriter { len: 0 };
+    serde_json::to_writer(&mut writer, value)
+        .map(|_| writer.len)
+        .unwrap_or(0)
 }
 
 fn trim_messages_to_token_budget(
@@ -611,6 +631,20 @@ mod tests {
         );
         assert_eq!(extract_text_content(&messages[1]), "two");
         assert_eq!(extract_text_content(&messages[2]), "three");
+    }
+
+    #[test]
+    fn test_estimate_json_value_len_matches_serialized_length() {
+        let value = json!({
+            "stdout": ["alpha", "beta"],
+            "ok": true,
+            "count": 2
+        });
+
+        assert_eq!(
+            estimate_json_value_len(&value),
+            serde_json::to_string(&value).unwrap().len()
+        );
     }
 
     #[test]
