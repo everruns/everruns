@@ -4,6 +4,7 @@
 
 mod app;
 mod approval;
+mod capabilities;
 mod diff;
 mod runtime;
 mod session_log;
