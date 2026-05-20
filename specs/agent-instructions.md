@@ -25,6 +25,10 @@ Everruns implements AGENTS.md as a built-in capability that reads from the sessi
 | Architecture | Self-contained capability with `system_prompt_contribution()` override |
 | Dependencies | None required; `session_file_system` recommended for authoring |
 
+## Authoring Guidance
+
+Repository `AGENTS.md` files should stay short enough to be useful as hot prompt context. Keep required workflow, git/PR rules, and local commands in the instruction file; move durable maps, catalogs, and long process detail into specs or other referenced docs. The Everruns root `AGENTS.md` should target roughly 2-5 KiB and point agents to `specs/README.md` for the spec index.
+
 ## Capability Definition
 
 The capability encapsulates all AGENTS.md logic: reading from the session filesystem,
