@@ -692,7 +692,7 @@ pub fn lines_for_event(event: &RuntimeEvent) -> Vec<ChatLine> {
                 Vec::new()
             }
         }
-        EventData::OutputMessageCompleted(data) => thinking_lines_for_message(&data.message),
+        EventData::OutputMessageCompleted(_) => Vec::new(),
         EventData::ToolCompleted(data) => {
             if data.tool_name == "write_todos" {
                 return todo_lines_for_result(data);
@@ -726,24 +726,6 @@ pub fn lines_for_event(event: &RuntimeEvent) -> Vec<ChatLine> {
         }
         _ => Vec::new(),
     }
-}
-
-fn thinking_lines_for_message(message: &everruns_core::Message) -> Vec<ChatLine> {
-    if message.role != MessageRole::Agent || !message.has_tool_calls() {
-        return Vec::new();
-    }
-    message
-        .thinking
-        .as_deref()
-        .map(str::trim)
-        .filter(|thinking| !thinking.is_empty())
-        .map(|thinking| {
-            vec![ChatLine {
-                author: Author::Assistant,
-                text: thinking.to_string(),
-            }]
-        })
-        .unwrap_or_default()
 }
 
 pub fn status_for_event(event: &RuntimeEvent) -> Option<ActivityStatus> {
@@ -1730,7 +1712,7 @@ mod tests {
     }
 
     #[test]
-    fn lines_for_event_surfaces_output_message_thinking() {
+    fn lines_for_event_hides_output_message_thinking() {
         let mut message = everruns_core::Message::assistant_with_tools(
             "",
             vec![ToolCall {
@@ -1750,12 +1732,7 @@ mod tests {
 
         let lines = lines_for_event(&event);
 
-        assert_eq!(lines.len(), 1);
-        assert!(matches!(lines[0].author, Author::Assistant));
-        assert_eq!(
-            lines[0].text,
-            "**Inspecting package files**\n\nI should read the package manifest first."
-        );
+        assert!(lines.is_empty(), "thinking must not be rendered: {lines:?}");
     }
 
     #[test]
