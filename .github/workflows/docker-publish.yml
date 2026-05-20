@@ -52,7 +52,7 @@ jobs:
       packages: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # QEMU needed for multi-arch builds (ARM64 cross-compilation)
       - name: Set up QEMU
@@ -205,7 +205,7 @@ jobs:
       packages: write
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up QEMU
         if: github.event_name != 'pull_request'
