@@ -102,11 +102,6 @@ const COMMANDS: &[CommandSpec] = &[
         description: "show workspace root",
     },
     CommandSpec {
-        name: "model",
-        usage: "/model <provider>/<id>",
-        description: "show or change the active provider/model",
-    },
-    CommandSpec {
         name: "clear",
         usage: "/clear",
         description: "clear transcript",
@@ -447,20 +442,6 @@ impl App {
                     self.bundle.workspace_root.display()
                 ));
             }
-            "model" => {
-                if arg.is_empty() {
-                    self.push_system(format!("model: {}", self.bundle.provider_label()));
-                    self.push_system(format!(
-                        "usage: /model <provider>/<id>; suggestions: {}",
-                        self.bundle.model_suggestions().join(", ")
-                    ));
-                } else {
-                    match self.bundle.set_model(arg).await {
-                        Ok(label) => self.push_system(format!("model changed: {label}")),
-                        Err(err) => self.push_system(format!("model change failed: {err}")),
-                    }
-                }
-            }
             "clear" => {
                 self.lines.clear();
                 self.emit_system_banner();
@@ -472,8 +453,10 @@ impl App {
                     .capability_commands
                     .iter()
                     .find(|c| c.name == other)
+                    .cloned()
                 {
-                    self.invoke_capability_command(descriptor.clone(), arg.to_string());
+                    self.invoke_capability_command(descriptor, arg.to_string())
+                        .await;
                 } else {
                     self.push_system(format!("unknown command: /{other}"));
                 }
@@ -481,21 +464,15 @@ impl App {
         }
     }
 
-    /// Send a capability-provided slash command as a regular chat message.
+    /// Dispatch a capability-provided slash command.
     ///
-    /// In the server, system commands route through a dedicated execute endpoint
-    /// that bypasses chat history (see `crates/server/src/api/commands.rs`). The
-    /// CLI example doesn't have that out-of-band path, so we surface the command
-    /// inline: the model sees `/name args` as a user prompt and reacts. Skill
-    /// commands behave the same way in the UI today, so this matches the skill
-    /// flow exactly and demonstrates the discoverability contract.
-    fn invoke_capability_command(&mut self, descriptor: CommandDescriptor, args: String) {
+    /// `System` commands execute through `runtime.execute_command` — the
+    /// capability's own handler runs and the result is rendered inline. This
+    /// is the path `/model` now takes. `Skill` commands match the web UI's
+    /// behavior: the literal `/name args` text is sent as a chat message so
+    /// the LLM activates the skill.
+    async fn invoke_capability_command(&mut self, descriptor: CommandDescriptor, args: String) {
         let trimmed = args.trim();
-        let text = if trimmed.is_empty() {
-            format!("/{}", descriptor.name)
-        } else {
-            format!("/{} {trimmed}", descriptor.name)
-        };
         let required_missing = descriptor
             .args
             .iter()
@@ -514,16 +491,41 @@ impl App {
             ));
             return;
         }
-        let source_label = match descriptor.source {
-            CommandSource::System => "system",
-            CommandSource::Skill => "skill",
-        };
-        self.push_system(format!(
-            "invoking capability command /{} ({source_label})",
-            descriptor.name
-        ));
-        self.push_user(text.clone());
-        self.start_turn(text);
+
+        match descriptor.source {
+            CommandSource::System => {
+                let request = everruns_core::command::ExecuteCommandRequest {
+                    name: descriptor.name.clone(),
+                    arguments: if trimmed.is_empty() {
+                        None
+                    } else {
+                        Some(trimmed.to_string())
+                    },
+                    controls: None,
+                };
+                let result = self
+                    .bundle
+                    .runtime
+                    .execute_command(self.bundle.session_id, request)
+                    .await;
+                match result {
+                    Ok(result) => {
+                        let prefix = if result.success { "" } else { "error: " };
+                        self.push_system(format!("{prefix}{}", result.message));
+                    }
+                    Err(err) => self.push_system(format!("/{} failed: {err}", descriptor.name)),
+                }
+            }
+            CommandSource::Skill => {
+                let text = if trimmed.is_empty() {
+                    format!("/{}", descriptor.name)
+                } else {
+                    format!("/{} {trimmed}", descriptor.name)
+                };
+                self.push_user(text.clone());
+                self.start_turn(text);
+            }
+        }
     }
 
     fn start_turn(&mut self, prompt: String) {
@@ -814,7 +816,7 @@ fn command_suggestions(
         });
     }
 
-    out.truncate(5);
+    out.truncate(8);
     out
 }
 
@@ -1139,17 +1141,40 @@ mod tests {
 
     use everruns_core::command::{CommandArg, CommandDescriptor, CommandSource};
 
+    fn model_capability_command() -> CommandDescriptor {
+        // Mirrors what `ModelSwitcherCapability::commands()` returns; the
+        // suggestion code applies a special-case enrichment for `/model` so
+        // model ids autocomplete after the command name.
+        CommandDescriptor {
+            name: "model".to_string(),
+            description: "Show or change the active provider/model.".to_string(),
+            source: CommandSource::System,
+            args: vec![CommandArg {
+                name: "spec".to_string(),
+                description: "<provider>/<id>".to_string(),
+                required: false,
+            }],
+        }
+    }
+
     #[test]
     fn command_suggestions_list_commands_for_slash() {
-        let suggestions = command_suggestions("/", &["openai/gpt-5.5"], &[]);
+        let caps = vec![model_capability_command()];
+        let suggestions = command_suggestions("/", &["openai/gpt-5.5"], &caps);
 
         assert!(suggestions.iter().any(|s| s.completion == "/help"));
-        assert!(suggestions.iter().any(|s| s.completion == "/model"));
+        assert!(
+            suggestions
+                .iter()
+                .any(|s| s.completion == "/model" || s.completion == "/model "),
+            "capability-provided /model should appear in suggestions: {suggestions:?}"
+        );
     }
 
     #[test]
     fn command_suggestions_complete_model_command_before_args() {
-        let suggestions = command_suggestions("/model", &["openai/gpt-5.5"], &[]);
+        let caps = vec![model_capability_command()];
+        let suggestions = command_suggestions("/model", &["openai/gpt-5.5"], &caps);
 
         assert_eq!(
             suggestions,

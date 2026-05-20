@@ -588,6 +588,36 @@ impl InProcessRuntime {
         Ok(self.event_bus.collected_events().await)
     }
 
+    /// Execute a system command declared by a registered capability.
+    ///
+    /// Looks up the first capability whose `commands()` includes the named
+    /// command (in capability-resolution order) and delegates to its
+    /// `execute_command`. Returns an error if no capability declares the
+    /// requested name. The CLI uses this so `/model`, `/clear`, and other
+    /// slash commands defined by capabilities run through the capability's
+    /// own handler instead of CLI-local branches.
+    pub async fn execute_command(
+        &self,
+        session_id: SessionId,
+        request: everruns_core::command::ExecuteCommandRequest,
+    ) -> Result<everruns_core::command::CommandResult> {
+        let ctx = self.load_context(session_id).await?;
+        let registry = self.platform_definition.capability_registry();
+        let exec_ctx = everruns_core::command::CommandExecutionContext { session_id };
+        for config in &ctx.resolved_capability_configs {
+            let Some(capability) = registry.get(config.capability_id()) else {
+                continue;
+            };
+            if capability.commands().iter().any(|c| c.name == request.name) {
+                return capability.execute_command(&request, &exec_ctx).await;
+            }
+        }
+        Err(AgentLoopError::config(format!(
+            "no capability declares command /{}",
+            request.name
+        )))
+    }
+
     /// List slash commands available for a session.
     ///
     /// Resolves the session's harness/agent capability chain and aggregates

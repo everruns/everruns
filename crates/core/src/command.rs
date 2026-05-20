@@ -10,6 +10,7 @@
 // system commands. The UI fetches available commands and renders autocomplete.
 
 use crate::message::Controls;
+use crate::typed_id::SessionId;
 use crate::user_facing_error::UserFacingErrorFields;
 use serde::{Deserialize, Serialize};
 
@@ -68,6 +69,17 @@ pub struct ExecuteCommandRequest {
     /// Optional per-invocation runtime controls
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub controls: Option<Controls>,
+}
+
+/// Context handed to [`crate::capabilities::Capability::execute_command`] when a
+/// system command is dispatched. Carries only data that is safe to expose
+/// across the trait surface; capabilities that need handles to runtime state
+/// (provider store, file system, etc.) own those references directly via the
+/// capability's constructor.
+#[derive(Debug, Clone)]
+pub struct CommandExecutionContext {
+    /// Session the command is being executed against.
+    pub session_id: SessionId,
 }
 
 /// Result of executing a system command

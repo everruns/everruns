@@ -518,3 +518,103 @@ async fn list_commands_returns_capability_commands_for_session() {
     assert_eq!(btw.args.len(), 1);
     assert!(btw.args[0].required);
 }
+
+#[tokio::test]
+async fn execute_command_dispatches_to_capability_handler() {
+    use async_trait::async_trait;
+    use everruns_core::capabilities::{Capability, CapabilityStatus};
+    use everruns_core::command::{
+        CommandArg, CommandDescriptor, CommandExecutionContext, CommandResult, CommandSource,
+        ExecuteCommandRequest,
+    };
+    use std::sync::Mutex;
+
+    struct EchoCapability {
+        seen: Arc<Mutex<Vec<String>>>,
+    }
+
+    #[async_trait]
+    impl Capability for EchoCapability {
+        fn id(&self) -> &str {
+            "echo"
+        }
+        fn name(&self) -> &str {
+            "Echo"
+        }
+        fn description(&self) -> &str {
+            "Echoes its argument."
+        }
+        fn status(&self) -> CapabilityStatus {
+            CapabilityStatus::Available
+        }
+        fn commands(&self) -> Vec<CommandDescriptor> {
+            vec![CommandDescriptor {
+                name: "echo".to_string(),
+                description: "echo".to_string(),
+                source: CommandSource::System,
+                args: vec![CommandArg {
+                    name: "text".to_string(),
+                    description: "text to echo".to_string(),
+                    required: true,
+                }],
+            }]
+        }
+        async fn execute_command(
+            &self,
+            request: &ExecuteCommandRequest,
+            ctx: &CommandExecutionContext,
+        ) -> everruns_core::Result<CommandResult> {
+            let arg = request.arguments.clone().unwrap_or_default();
+            self.seen.lock().unwrap().push(arg.clone());
+            Ok(CommandResult {
+                success: true,
+                message: format!("echo[{}]: {}", ctx.session_id, arg),
+                error_code: None,
+                error_fields: None,
+            })
+        }
+    }
+
+    let seen = Arc::new(Mutex::new(Vec::<String>::new()));
+    let mut capabilities = CapabilityRegistry::new();
+    capabilities.register(EchoCapability { seen: seen.clone() });
+    let platform = PlatformDefinition::new(capabilities, DriverRegistry::new());
+
+    let runtime = InProcessRuntimeBuilder::new()
+        .platform_definition(platform)
+        .llm_sim(LlmSimConfig::fixed("ok"))
+        .single_session(|s| s.harness("h", "prompt").with_capability("echo"))
+        .build()
+        .await
+        .unwrap();
+
+    let session_id = runtime.default_session_id().expect("default session id");
+    let result = runtime
+        .execute_command(
+            session_id,
+            ExecuteCommandRequest {
+                name: "echo".to_string(),
+                arguments: Some("hello".to_string()),
+                controls: None,
+            },
+        )
+        .await
+        .unwrap();
+
+    assert!(result.success);
+    assert!(result.message.contains("hello"));
+    assert_eq!(seen.lock().unwrap().as_slice(), &["hello".to_string()]);
+
+    // Unknown command: dispatcher errors instead of silently succeeding.
+    let unknown = runtime
+        .execute_command(
+            session_id,
+            ExecuteCommandRequest {
+                name: "nope".to_string(),
+                arguments: None,
+                controls: None,
+            },
+        )
+        .await;
+    assert!(unknown.is_err());
+}
