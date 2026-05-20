@@ -16,7 +16,7 @@ use utoipa::OpenApi;
 /// Lowest acceptable coverage. Bump up when you fix a batch.
 const MIN_OP_DESC_PCT: u32 = 100;
 const MIN_SCHEMA_DESC_PCT: u32 = 88;
-const MIN_FIELD_DESC_PCT: u32 = 82;
+const MIN_FIELD_DESC_PCT: u32 = 85;
 
 fn spec_value() -> serde_json::Value {
     serde_json::from_str(&ApiDoc::openapi().to_pretty_json().unwrap())
@@ -63,6 +63,28 @@ fn schema_description_coverage(spec: &serde_json::Value) -> (u32, u32) {
     (with_desc, total)
 }
 
+/// A field counts as described when there's a `description` either at the
+/// property root or on any branch of a `oneOf` / `anyOf` / `allOf` envelope.
+/// utoipa renders `Option<ComplexType>` as `oneOf: [{type: null}, {$ref, description}]`,
+/// putting the doc comment on the non-null branch rather than the property root.
+/// The description is still visible to an AI consumer parsing the spec, so
+/// counting only the root would undercount actual coverage.
+fn field_has_description(field: &serde_json::Value) -> bool {
+    if field.get("description").is_some() {
+        return true;
+    }
+    for key in ["oneOf", "anyOf", "allOf"] {
+        if let Some(branches) = field.get(key).and_then(|v| v.as_array()) {
+            for branch in branches {
+                if branch.get("description").is_some() {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
 fn field_description_coverage(spec: &serde_json::Value) -> (u32, u32) {
     let mut total = 0u32;
     let mut with_desc = 0u32;
@@ -75,7 +97,7 @@ fn field_description_coverage(spec: &serde_json::Value) -> (u32, u32) {
         };
         for field in props.values() {
             total += 1;
-            if field.get("description").is_some() {
+            if field_has_description(field) {
                 with_desc += 1;
             }
         }
