@@ -15,7 +15,7 @@ use everruns_core::capabilities::{
     AGENT_INSTRUCTIONS_CAPABILITY_ID, AgentInstructionsCapability, FileSystemCapability,
     INFINITY_CONTEXT_CAPABILITY_ID, InfinityContextCapability, LoopDetectionCapability,
     PROMPT_CACHING_CAPABILITY_ID, PromptCachingCapability, SKILLS_CAPABILITY_ID, SkillsCapability,
-    StatelessTodoListCapability, WebFetchCapability,
+    StatelessTodoListCapability, ToolOutputPersistenceCapability, WebFetchCapability,
 };
 use everruns_core::command::CommandDescriptor;
 use everruns_core::llm_driver_registry::DriverRegistry;
@@ -62,7 +62,7 @@ Always do step 1 before step 2. Always do step 3 when you change behavior.
 
 - **Read / search:** `read_file`, `grep_files`, `list_directory`, `stat_file`.
 - **Edit / write:** `edit_file` for targeted string replacement; `write_file` for new files or full rewrites; `delete_file` when removal is clearly intended.
-- **Run commands:** `bash` for tests, builds, linters, git, package managers, formatters. stdout and stderr are each truncated to 64 KiB; the command is killed if combined output exceeds 128 KiB or the run exceeds 120s.
+- **Run commands:** `bash` for tests, builds, linters, git, package managers, formatters. Use the `output` argument for verbosity. Large outputs are summarized inline and saved under `/.outputs/` for `read_file`; the command is killed if combined output exceeds 2 MiB or the run exceeds 120s.
 - **Web:** `duckduckgo_search` for docs lookups; `web_fetch` for specific URLs (GET/HEAD only; can save to workspace).
 - **Skills:** `list_skills` then `activate_skill` to consult project-supplied SKILL.md files under `/.agents/skills/`.
 - **Multi-step work:** `write_todos` to publish a visible task list for anything that takes more than a couple of tool calls.
@@ -357,6 +357,32 @@ fn normalize_openai_reasoning_effort(reasoning_effort: Option<String>) -> Option
     )
 }
 
+fn coding_harness_capabilities() -> Vec<AgentCapabilityConfig> {
+    vec![
+        // Pick up CLAUDE.md / .agents.md alongside AGENTS.md, live-reloaded.
+        AgentCapabilityConfig::with_config(
+            AGENT_INSTRUCTIONS_CAPABILITY_ID,
+            serde_json::json!({ "files": ["AGENTS.md", "CLAUDE.md", ".agents.md"] }),
+        ),
+        AgentCapabilityConfig::new("session_file_system"),
+        AgentCapabilityConfig::new(SKILLS_CAPABILITY_ID),
+        AgentCapabilityConfig::new(INFINITY_CONTEXT_CAPABILITY_ID),
+        AgentCapabilityConfig::new("stateless_todo_list"),
+        AgentCapabilityConfig::new("loop_detection"),
+        AgentCapabilityConfig::new(PROMPT_CACHING_CAPABILITY_ID),
+        AgentCapabilityConfig::new("tool_output_persistence"),
+        AgentCapabilityConfig::new("duckduckgo"),
+        // enable_file_download=true: saved responses land on disk through
+        // the platform filesystem stack, so the blocklist + approval gate apply.
+        AgentCapabilityConfig::with_config(
+            "web_fetch",
+            serde_json::json!({ "enable_file_download": true }),
+        ),
+        AgentCapabilityConfig::new(MODEL_SWITCHER_CAPABILITY_ID),
+        AgentCapabilityConfig::new("coding_cli_bash"),
+    ]
+}
+
 // ---------- runtime wiring result ----------
 
 pub struct BuiltRuntime {
@@ -494,6 +520,7 @@ pub async fn build(
     capabilities.register(StatelessTodoListCapability);
     capabilities.register(LoopDetectionCapability);
     capabilities.register(PromptCachingCapability::new());
+    capabilities.register(ToolOutputPersistenceCapability);
     capabilities.register(DuckDuckGoCapability);
     capabilities.register(WebFetchCapability::from_env());
     // `/model` (below) is the example's capability-sourced slash command —
@@ -540,28 +567,7 @@ pub async fn build(
     // runtime owns. `session_id(...)` pins the id so resume can re-attach
     // to the same JSONL log (filename encodes the id).
     let session_title = format!("coding-cli @ {}", canonical_root.display());
-    let harness_capabilities: Vec<AgentCapabilityConfig> = vec![
-        // Pick up CLAUDE.md / .agents.md alongside AGENTS.md, live-reloaded.
-        AgentCapabilityConfig::with_config(
-            AGENT_INSTRUCTIONS_CAPABILITY_ID,
-            serde_json::json!({ "files": ["AGENTS.md", "CLAUDE.md", ".agents.md"] }),
-        ),
-        AgentCapabilityConfig::new("session_file_system"),
-        AgentCapabilityConfig::new(SKILLS_CAPABILITY_ID),
-        AgentCapabilityConfig::new(INFINITY_CONTEXT_CAPABILITY_ID),
-        AgentCapabilityConfig::new("stateless_todo_list"),
-        AgentCapabilityConfig::new("loop_detection"),
-        AgentCapabilityConfig::new(PROMPT_CACHING_CAPABILITY_ID),
-        AgentCapabilityConfig::new("duckduckgo"),
-        // enable_file_download=true: saved responses land on disk through
-        // the platform filesystem stack, so the blocklist + approval gate apply.
-        AgentCapabilityConfig::with_config(
-            "web_fetch",
-            serde_json::json!({ "enable_file_download": true }),
-        ),
-        AgentCapabilityConfig::new(MODEL_SWITCHER_CAPABILITY_ID),
-        AgentCapabilityConfig::new("coding_cli_bash"),
-    ];
+    let harness_capabilities = coding_harness_capabilities();
 
     let mut builder = InProcessRuntimeBuilder::new()
         .platform_definition(platform)
@@ -693,6 +699,16 @@ mod tests {
                 .and_then(|controls| controls.reasoning)
                 .and_then(|reasoning| reasoning.effort),
             Some("medium".to_string())
+        );
+    }
+
+    #[test]
+    fn coding_harness_enables_tool_output_persistence() {
+        let ids = coding_harness_capabilities();
+
+        assert!(
+            ids.iter()
+                .any(|cap| cap.capability_id() == "tool_output_persistence")
         );
     }
 }
