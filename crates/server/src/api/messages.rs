@@ -109,6 +109,7 @@ pub struct Message {
 /// Only user messages can be created via the API.
 /// Agent messages are created internally by the workflow.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[schema(example = json!({"role": "user", "content": [{"type": "text", "text": "Why is the build failing on main?"}]}))]
 pub struct InputMessage {
     /// Message role (always "user" for API-created messages)
     #[serde(default = "default_user_role")]
@@ -124,16 +125,19 @@ fn default_user_role() -> MessageRole {
 /// Request to create a message
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CreateMessageRequest {
-    /// The message to create
+    /// The message to create. Example shape is defined on `InputMessage`.
     pub message: InputMessage,
     /// Runtime controls (model, reasoning, etc.)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub controls: Option<Controls>,
-    /// Request-level metadata
+    /// Request-level metadata. Arbitrary key/value pairs persisted with the message
+    /// for downstream filtering and analytics. Not interpreted by the agent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = json!({"source": "slack", "thread_ts": "1715000000.123456"}))]
     pub metadata: Option<HashMap<String, serde_json::Value>>,
-    /// Tags for the message
+    /// Tags for the message. Free-form labels used for grouping and filtering.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = json!(["bug-report", "from-slack"]))]
     pub tags: Option<Vec<String>>,
     /// External actor identity (for messages from external channels like Slack)
     #[serde(default, skip_serializing_if = "Option::is_none")]

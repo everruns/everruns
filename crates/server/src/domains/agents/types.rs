@@ -53,20 +53,24 @@ pub struct CreateAgentRequest {
     pub capabilities: Vec<AgentCapabilityConfig>,
     /// Starter files copied into each new session for this agent.
     #[serde(default)]
+    #[schema(example = json!([{"path": "INSTRUCTIONS.md", "content": "Always respond in formal English.\n"}]))]
     pub initial_files: Vec<InitialFile>,
     /// Client-side tools for this agent.
     /// These tools are sent to the LLM but executed by the client, not the server.
     #[serde(default, deserialize_with = "deserialize_client_side_tools")]
+    #[schema(example = json!([{"type": "client_side", "name": "open_url", "description": "Open URL in the user's browser", "input_schema": {"type": "object", "properties": {"url": {"type": "string"}}, "required": ["url"]}}]))]
     pub tools: Vec<ToolDefinition>,
     /// Remote MCP servers scoped to this agent.
     #[serde(default, rename = "mcpServers", alias = "mcp_servers")]
     pub mcp_servers: ScopedMcpServers,
     /// Network access list controlling which hosts/URLs this agent's sessions can reach.
     /// If set, merged with harness and session layers (allowed: intersect, blocked: union).
+    /// Example shape is defined on `NetworkAccessList`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub network_access: Option<everruns_core::network_access::NetworkAccessList>,
     /// Maximum number of LLM iterations per turn for this agent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[schema(example = 20)]
     pub max_iterations: Option<usize>,
 }
 

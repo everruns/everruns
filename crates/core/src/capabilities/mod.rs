@@ -250,6 +250,7 @@ pub use subagents::SubagentCapability;
 pub use system_commands::{SYSTEM_COMMANDS_CAPABILITY_ID, SystemCommandsCapability};
 pub use test_math::{AddTool, DivideTool, MultiplyTool, SubtractTool, TestMathCapability};
 pub use test_weather::{GetForecastTool, GetWeatherTool, TestWeatherCapability};
+pub use tool_output_persistence::ToolOutputPersistenceCapability;
 pub use virtual_bash::{BashTool, VirtualBashCapability};
 pub use web_fetch::{
     BotAuthPublicKey, WebFetchCapability, WebFetchTool, derive_bot_auth_public_key,

@@ -11803,7 +11803,8 @@
           "default",
           "latest",
           "pinned"
-        ]
+        ],
+        "example": "pinned"
       },
       "AllowedAction": {
         "type": "object",
@@ -12769,7 +12770,8 @@
           "webhook",
           "a2a",
           "fcp"
-        ]
+        ],
+        "example": "webhook"
       },
       "CheckAgentNameResponse": {
         "type": "object",
@@ -13434,7 +13436,13 @@
             "items": {
               "$ref": "#/components/schemas/InitialFile"
             },
-            "description": "Starter files copied into each new session for this agent."
+            "description": "Starter files copied into each new session for this agent.",
+            "example": [
+              {
+                "content": "Always respond in formal English.\n",
+                "path": "INSTRUCTIONS.md"
+              }
+            ]
           },
           "max_iterations": {
             "type": [
@@ -13442,6 +13450,7 @@
               "null"
             ],
             "description": "Maximum number of LLM iterations per turn for this agent.",
+            "example": 20,
             "minimum": 0
           },
           "mcpServers": {
@@ -13460,7 +13469,7 @@
               },
               {
                 "$ref": "#/components/schemas/NetworkAccessList",
-                "description": "Network access list controlling which hosts/URLs this agent's sessions can reach.\nIf set, merged with harness and session layers (allowed: intersect, blocked: union)."
+                "description": "Network access list controlling which hosts/URLs this agent's sessions can reach.\nIf set, merged with harness and session layers (allowed: intersect, blocked: union).\nExample shape is defined on `NetworkAccessList`."
               }
             ]
           },
@@ -13485,7 +13494,25 @@
             "items": {
               "$ref": "#/components/schemas/ToolDefinition"
             },
-            "description": "Client-side tools for this agent.\nThese tools are sent to the LLM but executed by the client, not the server."
+            "description": "Client-side tools for this agent.\nThese tools are sent to the LLM but executed by the client, not the server.",
+            "example": [
+              {
+                "description": "Open URL in the user's browser",
+                "input_schema": {
+                  "properties": {
+                    "url": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "url"
+                  ],
+                  "type": "object"
+                },
+                "name": "open_url",
+                "type": "client_side"
+              }
+            ]
           }
         }
       },
@@ -13543,10 +13570,15 @@
             "example": "agentver_01933b5a00007000800000000000001"
           },
           "agent_version_policy": {
-            "$ref": "#/components/schemas/AgentVersionPolicy"
+            "$ref": "#/components/schemas/AgentVersionPolicy",
+            "description": "How an App resolves the Agent version it runs.\nExample shape is defined on `AgentVersionPolicy`."
           },
           "channel_config": {
-            "description": "Initial channel configuration."
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Initial channel configuration. Shape depends on `channel_type`. Examples:\n`{\"token\": \"whk_redacted\", \"message\": \"Run support triage\"}` for `webhook`,\n`{\"cron_expression\": \"0 9 * * *\", \"message\": \"Daily standup\"}` for `schedule`."
           },
           "channel_type": {
             "oneOf": [
@@ -13555,7 +13587,7 @@
               },
               {
                 "$ref": "#/components/schemas/ChannelType",
-                "description": "Optional initial channel type (creates the first channel on the app)."
+                "description": "Optional initial channel type (creates the first channel on the app).\nExample shape is defined on `ChannelType`."
               }
             ]
           },
@@ -13902,7 +13934,8 @@
               "string",
               "null"
             ],
-            "description": "API key for authentication (optional)."
+            "description": "API key for authentication (optional). Sent with each request; never echoed in responses.",
+            "example": "sk-mcp-redacted-1234567890abcdef"
           },
           "auth_mode": {
             "oneOf": [
@@ -13911,7 +13944,7 @@
               },
               {
                 "$ref": "#/components/schemas/McpServerAuthMode",
-                "description": "Authentication mode. Defaults to `api_key` when `api_key` is provided, otherwise `none`."
+                "description": "Authentication mode. Defaults to `api_key` when `api_key` is provided, otherwise `none`.\nExample shape is defined on `McpServerAuthMode`."
               }
             ]
           },
@@ -13934,6 +13967,9 @@
             },
             "propertyNames": {
               "type": "string"
+            },
+            "example": {
+              "X-Atlassian-Cloud-Id": "00000000-0000-0000-0000-000000000000"
             }
           },
           "name": {
@@ -13943,7 +13979,7 @@
           },
           "transport_type": {
             "$ref": "#/components/schemas/McpServerTransportType",
-            "description": "Transport type. Currently only \"http\" is supported."
+            "description": "Transport type. Currently only \"http\" is supported.\nExample shape is defined on `McpServerTransportType`."
           },
           "url": {
             "type": "string",
@@ -13999,17 +14035,21 @@
           },
           "message": {
             "$ref": "#/components/schemas/InputMessage",
-            "description": "The message to create"
+            "description": "The message to create. Example shape is defined on `InputMessage`."
           },
           "metadata": {
             "type": [
               "object",
               "null"
             ],
-            "description": "Request-level metadata",
+            "description": "Request-level metadata. Arbitrary key/value pairs persisted with the message\nfor downstream filtering and analytics. Not interpreted by the agent.",
             "additionalProperties": {},
             "propertyNames": {
               "type": "string"
+            },
+            "example": {
+              "source": "slack",
+              "thread_ts": "1715000000.123456"
             }
           },
           "tags": {
@@ -14020,7 +14060,11 @@
             "items": {
               "type": "string"
             },
-            "description": "Tags for the message"
+            "description": "Tags for the message. Free-form labels used for grouping and filtering.",
+            "example": [
+              "bug-report",
+              "from-slack"
+            ]
           }
         }
       },
@@ -14284,7 +14328,17 @@
             "items": {
               "$ref": "#/components/schemas/AgentCapabilityConfig"
             },
-            "description": "Session-level capabilities (additive to agent capabilities).\nApplied after agent capabilities when building RuntimeAgent."
+            "description": "Session-level capabilities (additive to agent capabilities).\nApplied after agent capabilities when building RuntimeAgent.",
+            "example": [
+              {
+                "config": {},
+                "ref": "current_time"
+              },
+              {
+                "config": {},
+                "ref": "web_fetch"
+              }
+            ]
           },
           "harness_id": {
             "type": [
@@ -14307,14 +14361,28 @@
               "object",
               "null"
             ],
-            "description": "Session-level client hints — arbitrary key-value pairs that tell the\nserver what the client can handle. These are defaults for every turn;\nper-message `controls.hints` override these key-by-key (shallow merge).\n\nExamples: `{\"setup_connection\": true, \"rich_media\": true}`"
+            "description": "Session-level client hints — arbitrary key-value pairs that tell the\nserver what the client can handle. These are defaults for every turn;\nper-message `controls.hints` override these key-by-key (shallow merge).",
+            "additionalProperties": {},
+            "propertyNames": {
+              "type": "string"
+            },
+            "example": {
+              "rich_media": true,
+              "setup_connection": true
+            }
           },
           "initial_files": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/InitialFile"
             },
-            "description": "Session-level initial files (additive to agent initial_files).\nFiles with matching paths override agent/harness files; new paths are appended."
+            "description": "Session-level initial files (additive to agent initial_files).\nFiles with matching paths override agent/harness files; new paths are appended.",
+            "example": [
+              {
+                "content": "# Project notes\n",
+                "path": "README.md"
+              }
+            ]
           },
           "locale": {
             "type": [
@@ -14330,6 +14398,7 @@
               "null"
             ],
             "description": "Maximum number of LLM iterations per turn for this session.",
+            "example": 20,
             "minimum": 0
           },
           "mcpServers": {
@@ -14351,7 +14420,7 @@
               },
               {
                 "$ref": "#/components/schemas/NetworkAccessList",
-                "description": "Network access list controlling which hosts/URLs this session can reach.\nMerged with harness and agent layers (allowed: intersect, blocked: union)."
+                "description": "Network access list controlling which hosts/URLs this session can reach.\nMerged with harness and agent layers (allowed: intersect, blocked: union).\nExample shape is defined on `NetworkAccessList`."
               }
             ]
           },
@@ -14360,7 +14429,8 @@
               "string",
               "null"
             ],
-            "description": "Optional session-level system prompt override.\nPrepended to the agent's system prompt when building RuntimeAgent."
+            "description": "Optional session-level system prompt override.\nPrepended to the agent's system prompt when building RuntimeAgent.",
+            "example": "You are debugging a production incident. Be concise and cite log lines verbatim."
           },
           "tags": {
             "type": "array",
@@ -14386,7 +14456,25 @@
             "items": {
               "$ref": "#/components/schemas/ToolDefinition"
             },
-            "description": "Client-side tools for this session (additive to agent tools).\nThese tools are sent to the LLM but executed by the client."
+            "description": "Client-side tools for this session (additive to agent tools).\nThese tools are sent to the LLM but executed by the client.",
+            "example": [
+              {
+                "description": "Open URL in the user's browser",
+                "input_schema": {
+                  "properties": {
+                    "url": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "url"
+                  ],
+                  "type": "object"
+                },
+                "name": "open_url",
+                "type": "client_side"
+              }
+            ]
           }
         }
       },
@@ -14416,11 +14504,13 @@
               "string",
               "null"
             ],
-            "description": "Human-readable description. Safe to render in user-facing messages."
+            "description": "Human-readable description. Safe to render in user-facing messages.",
+            "example": "Living design documents synced from GitHub"
           },
           "name": {
             "type": "string",
-            "description": "Human-readable name. Safe to render in user-facing messages."
+            "description": "Human-readable name. Safe to render in user-facing messages.",
+            "example": "design-docs"
           },
           "source": {
             "oneOf": [
@@ -14428,7 +14518,8 @@
                 "type": "null"
               },
               {
-                "$ref": "#/components/schemas/CreateVolumeSourceRequest"
+                "$ref": "#/components/schemas/CreateVolumeSourceRequest",
+                "description": "Source configuration. Example shape is defined on `CreateVolumeSourceRequest`."
               }
             ]
           }
@@ -14479,7 +14570,13 @@
             ]
           }
         ],
-        "description": "Request body for the `create_volume_source` operation."
+        "description": "Request body for the `create_volume_source` operation.",
+        "example": {
+          "branch": "main",
+          "repository": "acme/design-docs",
+          "root_folder": "docs/",
+          "type": "github"
+        }
       },
       "DatabaseInfoResponse": {
         "type": "object",
@@ -16710,6 +16807,15 @@
             "$ref": "#/components/schemas/MessageRole",
             "description": "Message role (always \"user\" for API-created messages)"
           }
+        },
+        "example": {
+          "content": [
+            {
+              "text": "Why is the build failing on main?",
+              "type": "text"
+            }
+          ],
+          "role": "user"
         }
       },
       "InputMessageData": {
@@ -20868,7 +20974,8 @@
           "none",
           "api_key",
           "o_auth"
-        ]
+        ],
+        "example": "api_key"
       },
       "McpServerStatus": {
         "type": "string",
@@ -20885,7 +20992,8 @@
         "description": "MCP Server transport type.\nCurrently only HTTP is supported.",
         "enum": [
           "http"
-        ]
+        ],
+        "example": "http"
       },
       "McpToolAnnotations": {
         "type": "object",
@@ -21314,6 +21422,15 @@
             },
             "description": "Blocked host patterns. Always denied, even if matched by `allowed`."
           }
+        },
+        "example": {
+          "allowed": [
+            "*.example.com",
+            "https://api.acme.com/"
+          ],
+          "blocked": [
+            "169.254.169.254"
+          ]
         }
       },
       "OrganizationResponse": {

@@ -33,6 +33,9 @@ depends on the public runtime crate the same way an external embedder would.
   - `web_fetch` — HTTP GET/HEAD with optional markdown/text conversion.
     Saved responses land on disk via the same `RealDiskFileStore` stack,
     so the blocklist and approval gate apply.
+  - `tool_output_persistence` — large bash output is summarized inline and
+    saved under `/.outputs/` (the real `<workspace>/.outputs/` folder) so the
+    agent can inspect it with `read_file`.
 
 Note on parallel tool calls: independent tool calls already execute in
 parallel when the LLM provider batches them in one assistant turn (Anthropic
@@ -48,6 +51,8 @@ and OpenAI both do). No capability needed.
 - **Tool-result visibility**: the transcript shows a per-tool summary
   (e.g. `read_file ✓  /workspace/crates/runtime/src/runtime.rs (45/788 lines)`,
   `` bash ✓  `cargo test` exit=0 ``, `write_todos ✓`, `list_skills ✓`).
+  The `bash` tool also accepts an `output` verbosity argument matching the
+  built-in sandbox exec tools.
 - **Provider selection** via env vars: `OPENAI_API_KEY` → OpenAI (`gpt-5.5`),
   `ANTHROPIC_API_KEY` → Anthropic (`claude-sonnet-4-5`), otherwise falls back
   to `llmsim` (offline). OpenAI is preferred when both keys are present so the
@@ -182,8 +187,10 @@ run.
   `everruns-runtime`). Registers the built-in
   `AgentInstructionsCapability` (live-reloads AGENTS.md every turn),
   `FileSystemCapability` (read/write/edit/list/grep/delete/stat tools on real
-  disk via the platform session filesystem stack), and a tiny custom `CodingBashCapability` for
-  the shell tool. Picks a driver (Anthropic / OpenAI / llmsim).
+  disk via the platform session filesystem stack),
+  `ToolOutputPersistenceCapability` (saves large exec output), and a tiny
+  custom `CodingBashCapability` for the shell tool. Picks a driver
+  (Anthropic / OpenAI / llmsim).
 - `src/tools.rs` — `BashTool` only. Built-in `virtual_bash` runs against the
   VFS, not the real workspace, so the shell tool stays custom.
 - `src/approval.rs` — `ApprovalGate` and the request enum; implements
@@ -200,8 +207,8 @@ run.
 - Persistence is event-log only: messages are reconstructed from events on
   resume. There's no separate snapshot of agent state (skills cache, todos,
   budget counters); each new run rebuilds in-memory state from scratch.
-- Bash tool has a 120s timeout and a 64KiB stdout cap. Long-running jobs aren't
-  yet supported as background tools.
+- Bash tool has a 120s timeout and a 1MiB-per-stream capture cap. Long-running
+  jobs aren't yet supported as background tools.
 - The bash approval prompt shows the command string only — sub-commands
   spawned by it are not pre-listed.
 - Write blocklist matches directory names case-sensitively at any depth; it is

@@ -28,6 +28,10 @@ use utoipa::ToSchema;
 /// - `https://example.com/api/` — exact URL prefix (scheme + host + path)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[cfg_attr(
+    feature = "openapi",
+    schema(example = json!({"allowed": ["*.example.com", "https://api.acme.com/"], "blocked": ["169.254.169.254"]}))
+)]
 pub struct NetworkAccessList {
     /// Allowed host patterns. If non-empty, only matching URLs are permitted.
     /// An empty list means "no restriction from this layer" (inherit parent).
