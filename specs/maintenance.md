@@ -62,7 +62,7 @@ The expected outcome is either a small fix that reconnects the surfaces or a cri
 
 ## Spec Hygiene
 
-Specs must follow the **spec content principle** from `AGENTS.md`: they preserve design intent, rationale, and constraints — not implementation details readable from code. During maintenance, review specs in the changed surface for:
+Specs must follow the spec hygiene guidance from `specs/README.md`: they preserve design intent, rationale, and constraints — not implementation details readable from code. During maintenance, review specs in the changed surface for:
 
 - **Struct field tables** that duplicate Rust struct definitions — replace with a link to the source file
 - **Enum variant lists** that duplicate code — replace with a link

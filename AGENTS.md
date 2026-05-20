@@ -20,8 +20,8 @@ Use Doppler for all secret-backed commands in cloud agents.
 
 ```bash
 ./scripts/init-cloud-env.sh
-doppler run -- just start-dev --no-watch
 export CARGO_INCREMENTAL=0
+doppler run -- just start-dev --no-watch
 ```
 
 Secrets live in Doppler: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GITHUB_TOKEN`, `LINEAR_API_KEY`.
