@@ -13500,7 +13500,8 @@
             "example": [
               {
                 "description": "Open URL in the user's browser",
-                "input_schema": {
+                "name": "open_url",
+                "parameters": {
                   "properties": {
                     "url": {
                       "type": "string"
@@ -13511,7 +13512,6 @@
                   ],
                   "type": "object"
                 },
-                "name": "open_url",
                 "type": "client_side"
               }
             ]
@@ -14462,7 +14462,8 @@
             "example": [
               {
                 "description": "Open URL in the user's browser",
-                "input_schema": {
+                "name": "open_url",
+                "parameters": {
                   "properties": {
                     "url": {
                       "type": "string"
@@ -14473,7 +14474,6 @@
                   ],
                   "type": "object"
                 },
-                "name": "open_url",
                 "type": "client_side"
               }
             ]
@@ -26487,7 +26487,8 @@
             "example": [
               {
                 "description": "Open URL in the user's browser",
-                "input_schema": {
+                "name": "open_url",
+                "parameters": {
                   "properties": {
                     "url": {
                       "type": "string"
@@ -26498,7 +26499,6 @@
                   ],
                   "type": "object"
                 },
-                "name": "open_url",
                 "type": "client_side"
               }
             ]

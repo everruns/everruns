@@ -58,7 +58,7 @@ pub struct CreateAgentRequest {
     /// Client-side tools for this agent.
     /// These tools are sent to the LLM but executed by the client, not the server.
     #[serde(default, deserialize_with = "deserialize_client_side_tools")]
-    #[schema(example = json!([{"type": "client_side", "name": "open_url", "description": "Open URL in the user's browser", "input_schema": {"type": "object", "properties": {"url": {"type": "string"}}, "required": ["url"]}}]))]
+    #[schema(example = json!([{"type": "client_side", "name": "open_url", "description": "Open URL in the user's browser", "parameters": {"type": "object", "properties": {"url": {"type": "string"}}, "required": ["url"]}}]))]
     pub tools: Vec<ToolDefinition>,
     /// Remote MCP servers scoped to this agent.
     #[serde(default, rename = "mcpServers", alias = "mcp_servers")]
@@ -121,7 +121,7 @@ pub struct UpdateAgentRequest {
         deserialize_with = "deserialize_optional_client_side_tools",
         skip_serializing_if = "Option::is_none"
     )]
-    #[schema(example = json!([{"type": "client_side", "name": "open_url", "description": "Open URL in the user's browser", "input_schema": {"type": "object", "properties": {"url": {"type": "string"}}, "required": ["url"]}}]))]
+    #[schema(example = json!([{"type": "client_side", "name": "open_url", "description": "Open URL in the user's browser", "parameters": {"type": "object", "properties": {"url": {"type": "string"}}, "required": ["url"]}}]))]
     pub tools: Option<Vec<ToolDefinition>>,
     /// Remote MCP servers scoped to this agent.
     #[serde(
