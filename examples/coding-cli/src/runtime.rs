@@ -390,14 +390,19 @@ pub async fn build(
     // carries the sequence counter across resumes so `Event.sequence`
     // stays monotonic within a session.
     let event_bus = Arc::new(JsonlEventEmitter::open(&log_path, next_sequence)?);
+    // Seed the in-memory event vec with what we just read off disk so
+    // `runtime.events()` after resume returns the full history — not
+    // just events emitted during the resumed run. Does not re-persist;
+    // these lines are already in the JSONL file. Move (not clone): the
+    // replay buffer isn't used again after this and the seeded vec can
+    // get large on long-lived sessions.
+    event_bus.seed_replayed(replayed.events).await;
 
     // Pre-seed the message store with anything reconstructed from disk
     // so the agent sees prior conversation in its first context assembly.
     let message_store = Arc::new(InMemoryMessageRetriever::new());
     if !replayed.messages.is_empty() {
-        message_store
-            .seed(session_id, replayed.messages.clone())
-            .await;
+        message_store.seed(session_id, replayed.messages).await;
     }
 
     // Non-filesystem backends: in-memory for everything except the
