@@ -103,12 +103,12 @@ pub struct CreateSessionRequest {
     /// server what the client can handle. These are defaults for every turn;
     /// per-message `controls.hints` override these key-by-key (shallow merge).
     #[serde(default)]
-    #[schema(value_type = Option<Object>, example = json!({"setup_connection": true, "rich_media": true}))]
+    #[schema(example = json!({"setup_connection": true, "rich_media": true}))]
     pub hints: Option<std::collections::HashMap<String, serde_json::Value>>,
     /// Network access list controlling which hosts/URLs this session can reach.
     /// Merged with harness and agent layers (allowed: intersect, blocked: union).
+    /// Example shape is defined on `NetworkAccessList`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[schema(example = json!({"mode": "allowlist", "allowed": ["https://api.example.com/*"], "blocked": []}))]
     pub network_access: Option<everruns_core::network_access::NetworkAccessList>,
     /// Maximum number of LLM iterations per turn for this session.
     #[serde(default, skip_serializing_if = "Option::is_none")]

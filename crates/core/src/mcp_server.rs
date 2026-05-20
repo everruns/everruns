@@ -22,6 +22,7 @@ use utoipa::ToSchema;
 /// Currently only HTTP is supported.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[cfg_attr(feature = "openapi", schema(example = "http"))]
 #[serde(rename_all = "lowercase")]
 pub enum McpServerTransportType {
     /// HTTP (Streamable HTTP) transport
@@ -31,6 +32,7 @@ pub enum McpServerTransportType {
 /// MCP server authentication mode.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[cfg_attr(feature = "openapi", schema(example = "api_key"))]
 #[serde(rename_all = "snake_case")]
 pub enum McpServerAuthMode {
     /// No authentication required.

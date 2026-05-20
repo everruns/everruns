@@ -65,8 +65,8 @@ pub struct CreateAgentRequest {
     pub mcp_servers: ScopedMcpServers,
     /// Network access list controlling which hosts/URLs this agent's sessions can reach.
     /// If set, merged with harness and session layers (allowed: intersect, blocked: union).
+    /// Example shape is defined on `NetworkAccessList`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[schema(example = json!({"mode": "allowlist", "allowed": ["https://api.example.com/*"], "blocked": []}))]
     pub network_access: Option<everruns_core::network_access::NetworkAccessList>,
     /// Maximum number of LLM iterations per turn for this agent.
     #[serde(default, skip_serializing_if = "Option::is_none")]

@@ -109,6 +109,7 @@ pub struct Message {
 /// Only user messages can be created via the API.
 /// Agent messages are created internally by the workflow.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[schema(example = json!({"role": "user", "content": [{"type": "text", "text": "Why is the build failing on main?"}]}))]
 pub struct InputMessage {
     /// Message role (always "user" for API-created messages)
     #[serde(default = "default_user_role")]
@@ -124,8 +125,7 @@ fn default_user_role() -> MessageRole {
 /// Request to create a message
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct CreateMessageRequest {
-    /// The message to create
-    #[schema(example = json!({"role": "user", "content": [{"type": "text", "text": "Why is the build failing on main?"}]}))]
+    /// The message to create. Example shape is defined on `InputMessage`.
     pub message: InputMessage,
     /// Runtime controls (model, reasoning, etc.)
     #[serde(default, skip_serializing_if = "Option::is_none")]

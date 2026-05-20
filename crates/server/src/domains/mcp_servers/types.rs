@@ -24,12 +24,12 @@ pub struct CreateMcpServerRequest {
     #[schema(example = "https://mcp.atlassian.com/v1/mcp")]
     pub url: String,
     /// Transport type. Currently only "http" is supported.
+    /// Example shape is defined on `McpServerTransportType`.
     #[serde(default = "default_transport_type")]
-    #[schema(example = "http")]
     pub transport_type: McpServerTransportType,
     /// Authentication mode. Defaults to `api_key` when `api_key` is provided, otherwise `none`.
+    /// Example shape is defined on `McpServerAuthMode`.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[schema(example = "api_key")]
     pub auth_mode: Option<McpServerAuthMode>,
     /// API key for authentication (optional). Sent with each request; never echoed in responses.
     #[serde(skip_serializing_if = "Option::is_none")]

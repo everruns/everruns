@@ -40,6 +40,7 @@ pub enum AppStatus {
 /// How an App resolves the Agent version it runs.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[cfg_attr(feature = "openapi", schema(example = "pinned"))]
 #[serde(rename_all = "lowercase")]
 pub enum AgentVersionPolicy {
     /// Resolve the agent's default_version_id at session creation/invocation time.
@@ -96,6 +97,7 @@ impl From<&str> for AppStatus {
 /// Supported channel types for app distribution.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[cfg_attr(feature = "openapi", schema(example = "webhook"))]
 #[serde(rename_all = "lowercase")]
 pub enum ChannelType {
     Slack,

@@ -33,8 +33,9 @@ pub struct CreateAppRequest {
     #[serde(default)]
     #[schema(value_type = Option<String>, example = "agent_01933b5a00007000800000000000001")]
     pub agent_id: Option<AgentId>,
+    /// How an App resolves the Agent version it runs.
+    /// Example shape is defined on `AgentVersionPolicy`.
     #[serde(default)]
-    #[schema(example = "pinned")]
     pub agent_version_policy: AgentVersionPolicy,
     #[serde(default)]
     #[schema(value_type = Option<String>, example = "agentver_01933b5a00007000800000000000001")]
@@ -44,12 +45,14 @@ pub struct CreateAppRequest {
     #[schema(value_type = Option<String>, example = "identity_01933b5a00007000800000000000001")]
     pub agent_identity_id: Option<AgentIdentityId>,
     /// Optional initial channel type (creates the first channel on the app).
+    /// Example shape is defined on `ChannelType`.
     #[serde(default)]
-    #[schema(example = "webhook")]
     pub channel_type: Option<ChannelType>,
-    /// Initial channel configuration. Shape depends on `channel_type` (e.g. webhook token, schedule cron).
+    /// Initial channel configuration. Shape depends on `channel_type`. Examples:
+    /// `{"token": "whk_redacted", "message": "Run support triage"}` for `webhook`,
+    /// `{"cron_expression": "0 9 * * *", "message": "Daily standup"}` for `schedule`.
     #[serde(default, deserialize_with = "deserialize_opt_json_value_lenient")]
-    #[schema(value_type = Option<Object>, example = json!({"token": "whk_redacted", "message": "Run support triage"}))]
+    #[schema(value_type = Option<Object>)]
     pub channel_config: Option<serde_json::Value>,
 }
 

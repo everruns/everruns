@@ -22,7 +22,7 @@ const MIN_FIELD_DESC_PCT: u32 = 85;
 /// LLM to populate when it has seen one concrete instance. The floor starts
 /// low because the codebase only recently began adding `#[schema(example = …)]`
 /// — bump it as new annotations land, same rules as the description floors.
-const MIN_FIELD_EXAMPLE_PCT: u32 = 11;
+const MIN_FIELD_EXAMPLE_PCT: u32 = 13;
 
 fn spec_value() -> serde_json::Value {
     serde_json::from_str(&ApiDoc::openapi().to_pretty_json().unwrap())
@@ -111,17 +111,39 @@ fn field_description_coverage(spec: &serde_json::Value) -> (u32, u32) {
     (with_desc, total)
 }
 
+/// Resolves a `#/components/schemas/<Name>` pointer to the referenced schema.
+fn deref_schema<'a>(spec: &'a serde_json::Value, reference: &str) -> Option<&'a serde_json::Value> {
+    reference
+        .strip_prefix("#/components/schemas/")
+        .and_then(|name| spec.pointer(&format!("/components/schemas/{name}")))
+}
+
 /// A field counts as having an example when one is present at the property
-/// root or on any `oneOf` / `anyOf` / `allOf` branch (same utoipa rendering
-/// quirk as `field_has_description`).
-fn field_has_example(field: &serde_json::Value) -> bool {
+/// root, on any `oneOf` / `anyOf` / `allOf` branch, OR on the schema that a
+/// `$ref` points to. The last case matters because utoipa drops field-level
+/// `#[schema(example = …)]` on `Option<Ref>` / bare `$ref` fields — the
+/// idiomatic place for the example is on the referenced schema itself, and
+/// any spec consumer following the ref sees it.
+fn field_has_example(spec: &serde_json::Value, field: &serde_json::Value) -> bool {
     if field.get("example").is_some() {
+        return true;
+    }
+    if let Some(reference) = field.get("$ref").and_then(|v| v.as_str())
+        && let Some(target) = deref_schema(spec, reference)
+        && target.get("example").is_some()
+    {
         return true;
     }
     for key in ["oneOf", "anyOf", "allOf"] {
         if let Some(branches) = field.get(key).and_then(|v| v.as_array()) {
             for branch in branches {
                 if branch.get("example").is_some() {
+                    return true;
+                }
+                if let Some(reference) = branch.get("$ref").and_then(|v| v.as_str())
+                    && let Some(target) = deref_schema(spec, reference)
+                    && target.get("example").is_some()
+                {
                     return true;
                 }
             }
@@ -142,7 +164,7 @@ fn field_example_coverage(spec: &serde_json::Value) -> (u32, u32) {
         };
         for field in props.values() {
             total += 1;
-            if field_has_example(field) {
+            if field_has_example(spec, field) {
                 with_ex += 1;
             }
         }
