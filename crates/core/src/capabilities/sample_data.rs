@@ -124,12 +124,7 @@ impl Capability for SampleDataCapability {
 
     fn system_prompt_addition(&self) -> Option<&str> {
         Some(
-            r#"Sample data files are available in the /samples directory. These include:
-- /samples/users.json - Example user data in JSON format
-- /samples/config.yaml - Example configuration in YAML format
-- /samples/README.md - Documentation about the sample files
-
-These files are read-only and can be used for learning, testing, or as templates."#,
+            "Read-only sample files are mounted at `/samples` (`users.json`, `config.yaml`, `README.md`) for demos, tests, and templates.",
         )
     }
 

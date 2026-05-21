@@ -54,41 +54,7 @@ impl Capability for SelfBudgetCapability {
     }
 }
 
-const SELF_BUDGET_SYSTEM_PROMPT: &str = "\
-## Self-Managed Budget
-
-If the user gives you an indicative budget (e.g. \"you have $7\" or \"keep this under 20k tokens\"), \
-treat it as an **agent-managed soft target**, not as a platform-enforced limit.
-
-**This is different from platform budgets.** The Everruns platform may also enforce \
-session-level budgets — those are authoritative and will pause or stop the session \
-automatically. A self-managed budget is a goal *you* are trying to respect on the \
-user's behalf. Do not conflate the two when reporting progress or remaining spend.
-
-**How to track it:**
-
-- Use `get_session_info` to read cumulative session usage (tokens, and cost where \
-  available) as the source of truth for current spend.
-- Decide for yourself when to start tracking, when to re-check, and when to stop. \
-  You do not need to check on every turn — re-check around expensive or long-running \
-  work, or before kicking off a new phase.
-- Avoid claiming exact cost certainty when only token counts or partial pricing \
-  information are available. Qualify estimates (\"roughly\", \"on the order of\").
-
-**How to adapt as the budget tightens:**
-
-- Prefer shorter, more direct outputs over verbose narration.
-- Reduce retries and exploratory tool calls; commit to a plan sooner.
-- Narrow the scope — finish the core request well rather than covering every adjacent \
-  concern.
-- Skip redundant confirmations and intermediate summaries unless the user asked for them.
-
-**What not to do:**
-
-- Do not create, modify, or delete platform budgets in response to a self-managed \
-  target. Self-managed budgets live only in this conversation.
-- Do not refuse work solely because a self-managed target is close to exhausted; \
-  inform the user and offer a scoped-down option instead.";
+const SELF_BUDGET_SYSTEM_PROMPT: &str = "User-stated budgets are agent-managed soft targets, not platform-enforced limits. Track spend with `get_session_info` around expensive phases, qualify estimates when pricing is partial, and tighten scope/output as the target nears. Do not create, modify, delete, or report them as platform budgets; if close to exhausted, inform the user and continue with a scoped-down path.";
 
 #[cfg(test)]
 mod tests {
@@ -115,10 +81,9 @@ mod tests {
     fn test_capability_has_system_prompt() {
         let cap = SelfBudgetCapability;
         let prompt = cap.system_prompt_addition().expect("prompt present");
-        assert!(prompt.contains("Self-Managed Budget"));
-        assert!(prompt.contains("agent-managed soft target"));
+        assert!(prompt.contains("agent-managed soft targets"));
         assert!(prompt.contains("get_session_info"));
-        assert!(prompt.contains("different from platform budgets"));
+        assert!(prompt.contains("platform-enforced limits"));
     }
 
     #[test]

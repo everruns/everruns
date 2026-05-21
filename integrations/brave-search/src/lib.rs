@@ -80,16 +80,7 @@ impl Capability for BraveSearchCapability {
 
     fn system_prompt_addition(&self) -> Option<&str> {
         Some(
-            r#"## Brave Search (Experimental)
-
-Web search via Brave Search API. Use this to find current information, research topics, and look up documentation.
-
-Prerequisite: Brave Search API key must be configured in Settings > Connections, or set as session secret `BRAVE_SEARCH_API_KEY`.
-
-Tools:
-- `brave_web_search` - Search the web and return relevant results
-
-Get a free API key at https://brave.com/search/api/"#,
+            "`brave_web_search` performs current web search via Brave Search; use it for recent facts, research, and documentation lookups.",
         )
     }
 
@@ -136,8 +127,17 @@ mod tests {
         let cap = BraveSearchCapability;
         let prompt = cap.system_prompt_addition().unwrap();
         assert!(prompt.contains("brave_web_search"));
-        assert!(prompt.contains("Brave Search"));
-        assert!(prompt.contains("Experimental"));
+        assert!(prompt.contains("current web search"));
+    }
+
+    #[tokio::test]
+    async fn system_prompt_within_budget() {
+        let cap = BraveSearchCapability;
+        let ctx = everruns_core::capabilities::SystemPromptContext::without_file_store(
+            everruns_core::SessionId::new(),
+        );
+        let prompt = cap.system_prompt_contribution(&ctx).await.unwrap();
+        assert!(prompt.len() <= 250, "prompt is {} bytes", prompt.len());
     }
 
     #[test]

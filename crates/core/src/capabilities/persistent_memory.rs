@@ -106,12 +106,7 @@ impl Capability for MemoryCapability {
     }
 }
 
-const MEMORY_SYSTEM_PROMPT: &str = r#"## Persistent Memory
-
-You have persistent memory across sessions via `remember`, `recall`, and `forget` tools.
-Use `remember` to save important facts, user preferences, corrections, or procedures.
-Use `recall` to search your memory before answering questions where prior context may help.
-Use `forget` to remove outdated or incorrect memories."#;
+const MEMORY_SYSTEM_PROMPT: &str = "Persistent memory survives across sessions. Save durable facts, preferences, corrections, and procedures; recall when prior context may help; remove stale or wrong memories.";
 
 // ============================================================================
 // Capability Config

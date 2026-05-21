@@ -55,18 +55,7 @@ const DENO_WORKSPACE_PATH: &str = "/home/app";
 
 static SYSTEM_PROMPT: LazyLock<String> = LazyLock::new(|| {
     let mut prompt = String::from(
-        r#"## Deno Sandboxes
-
-Cloud-based sandboxes via Deno. Each sandbox is an isolated Linux microVM with network access.
-
-Authentication: Deno access token is resolved automatically from Settings > Connections > Deno Deploy.
-If not configured, guide the user to set it up in Settings > Connections.
-
-All tools except `deno_create_sandbox` and `deno_list_sandboxes` require a `sandbox_id`.
-Sandboxes are created with a fixed timeout because Everruns closes the create connection after each tool.
-Always DELETE sandboxes when done to avoid resource leaks.
-
-Use `deno_exec` for shell commands, `deno_write_file` / `deno_read_file` for files, and `deno_manage_sandbox` with action=`delete` for cleanup."#,
+        "Deno sandboxes are isolated networked microVMs. Create or select a sandbox before sandbox-scoped operations, use `/home/app` as the default workspace, and delete sandboxes when done to avoid leaks.",
     );
     prompt.push_str(everruns_core::tool_output_sanitizer::EXEC_OUTPUT_HINT);
     prompt
@@ -155,5 +144,15 @@ mod tests {
         assert!(names.contains(&"deno_write_file"));
         assert!(names.contains(&"deno_list_sandboxes"));
         assert!(names.contains(&"deno_manage_sandbox"));
+    }
+
+    #[tokio::test]
+    async fn system_prompt_within_budget() {
+        let cap = DenoCapability;
+        let ctx = everruns_core::capabilities::SystemPromptContext::without_file_store(
+            everruns_core::SessionId::new(),
+        );
+        let prompt = cap.system_prompt_contribution(&ctx).await.unwrap();
+        assert!(prompt.len() <= 1000, "prompt is {} bytes", prompt.len());
     }
 }

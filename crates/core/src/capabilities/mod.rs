@@ -151,6 +151,7 @@ pub use attach_skill::{
     parse_skill_capability_id, reconstruct_skill_md, skill_capability_id,
 };
 pub use btw::{BTW_CAPABILITY_ID, BtwCapability};
+pub use budgeting::BudgetingCapability;
 pub use compaction::{
     COMPACTION_CAPABILITY_ID, CompactionCapability, CompactionConfig, CompactionStep,
     CompactionStrategy, HierarchicalMemoryConfig, MaskingSummaryFormat, MemoryTier,

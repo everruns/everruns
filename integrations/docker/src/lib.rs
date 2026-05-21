@@ -95,28 +95,7 @@ impl Default for DockerContainerConfig {
 
 static SYSTEM_PROMPT: LazyLock<String> = LazyLock::new(|| {
     let mut prompt = String::from(
-        r#"## Docker Container (Experimental)
-
-You have access to a Docker container for executing commands and managing files.
-The container is tied to this session and persists across tool calls.
-
-IMPORTANT: This is an EXPERIMENTAL capability. The container uses host networking.
-
-Tools:
-- `docker_exec` - Execute a shell command inside the container. Returns stdout, stderr, and exit code.
-- `docker_read_file` - Read a file from the container filesystem.
-- `docker_write_file` - Write content to a file in the container filesystem.
-- `docker_logs` - Get logs from the container. Useful for debugging long-running processes.
-- `docker_stop` - Stop and remove the container (for cleanup or to reset state).
-
-The container is lazily started on first tool use. Subsequent calls reuse the same container.
-
-Best practices:
-- Use `docker_exec` with `bash -c "..."` for complex commands
-- Check exit codes to verify command success
-- The working directory defaults to /workspace
-- Files written persist for the session duration
-- Use `docker_stop` to clean up when done or to reset container state"#,
+        "This session has one lazily-started Docker container with host networking. Calls reuse the same container; default working directory is `/workspace`, files persist for the session, and stopping removes/resets it. Check exit codes and clean up when done.",
     );
     prompt.push_str(everruns_core::tool_output_sanitizer::EXEC_OUTPUT_HINT);
     prompt
@@ -1057,12 +1036,20 @@ mod tests {
     fn test_capability_has_system_prompt() {
         let cap = DockerContainerCapability;
         let prompt = cap.system_prompt_addition().unwrap();
-        assert!(prompt.contains("docker_exec"));
-        assert!(prompt.contains("docker_read_file"));
-        assert!(prompt.contains("docker_write_file"));
-        assert!(prompt.contains("docker_logs"));
-        assert!(prompt.contains("docker_stop"));
-        assert!(prompt.contains("EXPERIMENTAL"));
+        assert!(prompt.contains("lazily-started Docker container"));
+        assert!(prompt.contains("host networking"));
+        assert!(prompt.contains("/workspace"));
+        assert!(prompt.contains("stopping removes/resets it"));
+    }
+
+    #[tokio::test]
+    async fn system_prompt_within_budget() {
+        let cap = DockerContainerCapability;
+        let ctx = everruns_core::capabilities::SystemPromptContext::without_file_store(
+            everruns_core::SessionId::new(),
+        );
+        let prompt = cap.system_prompt_contribution(&ctx).await.unwrap();
+        assert!(prompt.len() <= 1150, "prompt is {} bytes", prompt.len());
     }
 
     #[test]
