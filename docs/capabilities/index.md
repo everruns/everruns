@@ -1,6 +1,8 @@
 ---
 title: Capabilities Overview
 description: Modular capabilities that extend agent behavior with tools, system prompts, and execution features. Browse all built-in and custom capabilities available.
+sidebar:
+  order: 1
 ---
 
 Capabilities are modular units that extend what an agent can do. Each capability can contribute:
