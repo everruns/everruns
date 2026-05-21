@@ -11422,7 +11422,7 @@
           },
           "session_mode": {
             "$ref": "#/components/schemas/InvocationSessionMode",
-            "description": "How a fresh session is opened for each invocation. Example shape is defined on `InvocationSessionMode`."
+            "description": "How invocations route into sessions (e.g. `shared_session` to reuse one durable session, or per-invocation modes). Example shape is defined on `InvocationSessionMode`."
           }
         }
       },
@@ -12059,7 +12059,12 @@
         "example": {
           "mode": "api_key",
           "requirements": {
-            "login_required": false
+            "audiences": [
+              "everruns-api"
+            ],
+            "scopes": [
+              "app:invoke"
+            ]
           }
         }
       },
@@ -14315,7 +14320,7 @@
             "example": "nightly-triage"
           },
           "retry_policy": {
-            "description": "Retry policy for failed executions (provider-specific JSON; see the durable engine's `RetryPolicy`)."
+            "description": "Retry policy for failed executions (provider-specific JSON; see the durable engine's `RetryPolicy`).\nExample: `{\"max_attempts\": 3, \"initial_backoff_secs\": 30, \"backoff_multiplier\": 2.0}`."
           },
           "target": {
             "$ref": "#/components/schemas/ScheduleTarget",
@@ -16060,7 +16065,7 @@
       },
       "GitHubVolumeSourceRequest": {
         "type": "object",
-        "description": "Request body for git hub volume source.",
+        "description": "Request body for GitHub volume source.",
         "required": [
           "repository"
         ],
@@ -16101,7 +16106,7 @@
       },
       "GitHubVolumeSourceResponse": {
         "type": "object",
-        "description": "Response body for git hub volume source.",
+        "description": "Response body for GitHub volume source.",
         "required": [
           "repository",
           "branch"
@@ -27400,7 +27405,7 @@
             "minimum": 0
           },
           "retry_policy": {
-            "description": "Retry policy (provider-specific JSON; see the durable engine's `RetryPolicy`)."
+            "description": "Retry policy (provider-specific JSON; see the durable engine's `RetryPolicy`).\nExample: `{\"max_attempts\": 3, \"initial_backoff_secs\": 30, \"backoff_multiplier\": 2.0}`."
           },
           "target": {
             "oneOf": [

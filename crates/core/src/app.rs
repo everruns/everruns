@@ -548,7 +548,7 @@ pub struct AppEndpointAuthRequirements {
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[cfg_attr(
     feature = "openapi",
-    schema(example = json!({"mode": "api_key", "requirements": {"login_required": false}}))
+    schema(example = json!({"mode": "api_key", "requirements": {"audiences": ["everruns-api"], "scopes": ["app:invoke"]}}))
 )]
 pub struct AppEndpointAuthConfig {
     pub mode: AppEndpointAuthMode,

@@ -111,7 +111,7 @@ pub enum VolumeSourceResponse {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ManualVolumeSourceResponse {}
 
-/// Response body for git hub volume source.
+/// Response body for GitHub volume source.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct GitHubVolumeSourceResponse {
     pub repository: String,
@@ -137,7 +137,7 @@ pub struct GitVolumeSourceResponse {
     pub sync_interval_secs: Option<u32>,
 }
 
-/// Request body for git hub volume source.
+/// Request body for GitHub volume source.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct GitHubVolumeSourceRequest {
     /// GitHub repository in `owner/repo` form.

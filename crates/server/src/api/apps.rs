@@ -458,7 +458,7 @@ pub async fn delete_channel(
 /// Request body for the `add_a2a_channel_http` operation.
 #[derive(Debug, serde::Deserialize, utoipa::ToSchema)]
 pub struct AddA2aChannelHttpRequest {
-    /// How a fresh session is opened for each invocation. Example shape is defined on `InvocationSessionMode`.
+    /// How invocations route into sessions (e.g. `shared_session` to reuse one durable session, or per-invocation modes). Example shape is defined on `InvocationSessionMode`.
     #[serde(default)]
     pub session_mode: everruns_core::app::InvocationSessionMode,
     /// First user message sent to the agent on each invocation; can reference incoming A2A payload via templating.

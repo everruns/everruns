@@ -182,7 +182,7 @@ pub struct CreateScheduleRequest {
     #[schema(example = 3)]
     pub max_catch_up: Option<u32>,
     /// Retry policy for failed executions (provider-specific JSON; see the durable engine's `RetryPolicy`).
-    #[schema(example = json!({"max_attempts": 3, "initial_backoff_secs": 30, "backoff_multiplier": 2.0}))]
+    /// Example: `{"max_attempts": 3, "initial_backoff_secs": 30, "backoff_multiplier": 2.0}`.
     pub retry_policy: Option<serde_json::Value>,
 }
 
@@ -221,7 +221,7 @@ pub struct UpdateScheduleRequest {
     #[schema(example = 3)]
     pub max_catch_up: Option<u32>,
     /// Retry policy (provider-specific JSON; see the durable engine's `RetryPolicy`).
-    #[schema(example = json!({"max_attempts": 3, "initial_backoff_secs": 30, "backoff_multiplier": 2.0}))]
+    /// Example: `{"max_attempts": 3, "initial_backoff_secs": 30, "backoff_multiplier": 2.0}`.
     pub retry_policy: Option<serde_json::Value>,
 }
 
