@@ -355,24 +355,12 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
         .await;
     }
 
-    pub async fn emit_turn_completed(
-        &self,
-        turn_id: TurnId,
-        input_message_id: MessageId,
-        iterations: u32,
-        usage: Option<TokenUsage>,
-        input_content: Option<String>,
-    ) {
+    pub async fn emit_turn_completed(&self, input_message_id: MessageId, data: TurnCompletedData) {
+        let turn_id = data.turn_id;
         self.emit_event(EventRequest::new(
             self.session_id,
             EventContext::turn(turn_id, input_message_id),
-            TurnCompletedData {
-                turn_id,
-                iterations,
-                duration_ms: None,
-                usage,
-                input_content,
-            },
+            data,
         ))
         .await;
     }
@@ -408,11 +396,20 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
         input_content: Option<String>,
     ) {
         self.emit_turn_completed(
-            turn_id,
             input_message_id,
-            iterations,
-            usage.clone(),
-            input_content,
+            TurnCompletedData {
+                turn_id,
+                iterations,
+                duration_ms: None,
+                usage: usage.clone(),
+                input_content,
+                final_message_id: None,
+                final_answer_preview: None,
+                time_to_first_token_ms: None,
+                tool_call_count: None,
+                llm_call_count: None,
+                status: Some("completed".to_string()),
+            },
         )
         .await;
         self.emit_session_idled(turn_id, input_message_id, Some(iterations), usage)
@@ -570,6 +567,8 @@ pub async fn execute_reason_activity<A: RuntimeHostAdapter>(
             max_iterations: everruns_core::runtime_agent::default_max_iterations(),
             error: Some("dependency_unavailable".to_string()),
             usage: None,
+            output_message_id: None,
+            time_to_first_token_ms: None,
             response_id: None,
             locale: None,
             network_access: None,

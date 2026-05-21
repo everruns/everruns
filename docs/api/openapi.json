@@ -26245,6 +26245,21 @@
             "description": "Duration in milliseconds",
             "minimum": 0
           },
+          "final_answer_preview": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Bounded preview of the final visible assistant answer."
+          },
+          "final_message_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Canonical assistant message emitted by `output.message.completed`.",
+            "example": "message_01933b5a00007000800000000000001"
+          },
           "input_content": {
             "type": [
               "string",
@@ -26256,6 +26271,40 @@
             "type": "integer",
             "format": "int32",
             "description": "Number of iterations in this turn",
+            "minimum": 0
+          },
+          "llm_call_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Number of LLM generation calls executed during the turn.",
+            "minimum": 0
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional explicit completion status for consumers that summarize turns."
+          },
+          "time_to_first_token_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "First-token latency for the turn, usually from the first LLM generation.",
+            "minimum": 0
+          },
+          "tool_call_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Number of tool calls completed during the turn.",
             "minimum": 0
           },
           "turn_id": {

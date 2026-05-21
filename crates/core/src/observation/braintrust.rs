@@ -2418,6 +2418,12 @@ mod tests {
                 cache_creation_tokens: None,
             }),
             input_content: Some("Hello, how are you?".to_string()),
+            final_message_id: None,
+            final_answer_preview: None,
+            time_to_first_token_ms: None,
+            tool_call_count: None,
+            llm_call_count: None,
+            status: None,
         };
 
         let event = Event::new(
@@ -2496,6 +2502,12 @@ mod tests {
             duration_ms: Some(1000),
             usage: None,
             input_content: Some("Test input content".to_string()),
+            final_message_id: None,
+            final_answer_preview: None,
+            time_to_first_token_ms: None,
+            tool_call_count: None,
+            llm_call_count: None,
+            status: None,
         };
         let completed_event = Event::new(
             SessionId::new(),
@@ -2998,6 +3010,12 @@ mod tests {
             duration_ms: Some(1000),
             usage: None,
             input_content: Some("Test".to_string()),
+            final_message_id: None,
+            final_answer_preview: None,
+            time_to_first_token_ms: None,
+            tool_call_count: None,
+            llm_call_count: None,
+            status: None,
         };
         let event = Event::new(
             SessionId::new(),
@@ -3659,6 +3677,12 @@ mod tests {
                 duration_ms: Some(5),
                 usage: None,
                 input_content: Some("hello".to_string()),
+                final_message_id: None,
+                final_answer_preview: None,
+                time_to_first_token_ms: None,
+                tool_call_count: None,
+                llm_call_count: None,
+                status: None,
             }),
         );
 

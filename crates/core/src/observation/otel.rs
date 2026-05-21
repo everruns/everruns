@@ -990,6 +990,12 @@ mod tests {
             duration_ms: Some(1500),
             usage: Some(TokenUsage::new(100, 50)),
             input_content: Some("Hello".to_string()),
+            final_message_id: None,
+            final_answer_preview: None,
+            time_to_first_token_ms: None,
+            tool_call_count: None,
+            llm_call_count: None,
+            status: None,
         };
         let complete_event = Event::new(
             session_id,
@@ -1082,6 +1088,12 @@ mod tests {
             duration_ms: None,
             usage: None,
             input_content: None,
+            final_message_id: None,
+            final_answer_preview: None,
+            time_to_first_token_ms: None,
+            tool_call_count: None,
+            llm_call_count: None,
+            status: None,
         };
         // Should not panic
         listener
@@ -1798,6 +1810,12 @@ mod tests {
             duration_ms: Some(200),
             usage: None,
             input_content: None,
+            final_message_id: None,
+            final_answer_preview: None,
+            time_to_first_token_ms: None,
+            tool_call_count: None,
+            llm_call_count: None,
+            status: None,
         };
         listener
             .on_event(&Event::new(
@@ -1937,6 +1955,12 @@ mod tests {
                     duration_ms: Some(500),
                     usage: Some(TokenUsage::new(200, 100)),
                     input_content: None,
+                    final_message_id: None,
+                    final_answer_preview: None,
+                    time_to_first_token_ms: None,
+                    tool_call_count: None,
+                    llm_call_count: None,
+                    status: None,
                 }),
             ))
             .await;
@@ -2192,6 +2216,12 @@ mod tests {
                     duration_ms: Some(1200),
                     usage: Some(TokenUsage::new(150, 100)),
                     input_content: None,
+                    final_message_id: None,
+                    final_answer_preview: None,
+                    time_to_first_token_ms: None,
+                    tool_call_count: None,
+                    llm_call_count: None,
+                    status: None,
                 }),
             ))
             .await;

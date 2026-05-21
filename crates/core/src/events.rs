@@ -1649,6 +1649,31 @@ pub struct TurnCompletedData {
     /// Input message content (for observability, passed through from turn.started)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub input_content: Option<String>,
+
+    /// Canonical assistant message emitted by `output.message.completed`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<String>, example = "message_01933b5a00007000800000000000001"))]
+    pub final_message_id: Option<MessageId>,
+
+    /// Bounded preview of the final visible assistant answer.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub final_answer_preview: Option<String>,
+
+    /// First-token latency for the turn, usually from the first LLM generation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub time_to_first_token_ms: Option<u64>,
+
+    /// Number of tool calls completed during the turn.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tool_call_count: Option<u32>,
+
+    /// Number of LLM generation calls executed during the turn.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub llm_call_count: Option<u32>,
+
+    /// Optional explicit completion status for consumers that summarize turns.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
 }
 
 /// Data for turn.failed event
@@ -3258,6 +3283,12 @@ mod contract_tests {
             duration_ms: Some(1500),
             usage: Some(TokenUsage::new(100, 50)),
             input_content: None,
+            final_message_id: Some(test_message_id()),
+            final_answer_preview: Some("Done.".to_string()),
+            time_to_first_token_ms: Some(120),
+            tool_call_count: Some(2),
+            llm_call_count: Some(3),
+            status: Some("completed".to_string()),
         };
         with_settings!({
             sort_maps => true,
@@ -3697,6 +3728,12 @@ mod contract_tests {
         assert!(data.duration_ms.is_none());
         assert!(data.usage.is_none());
         assert!(data.input_content.is_none());
+        assert!(data.final_message_id.is_none());
+        assert!(data.final_answer_preview.is_none());
+        assert!(data.time_to_first_token_ms.is_none());
+        assert!(data.tool_call_count.is_none());
+        assert!(data.llm_call_count.is_none());
+        assert!(data.status.is_none());
     }
 
     // ========================================================================
@@ -3751,6 +3788,12 @@ mod contract_tests {
                     duration_ms: None,
                     usage: None,
                     input_content: None,
+                    final_message_id: None,
+                    final_answer_preview: None,
+                    time_to_first_token_ms: None,
+                    tool_call_count: None,
+                    llm_call_count: None,
+                    status: None,
                 }
                 .into(),
             ),

@@ -9,5 +9,11 @@ expression: data
   "usage": {
     "input_tokens": 100,
     "output_tokens": 50
-  }
+  },
+  "final_message_id": "message_00000000000000000000000000000003",
+  "final_answer_preview": "Done.",
+  "time_to_first_token_ms": 120,
+  "tool_call_count": 2,
+  "llm_call_count": 3,
+  "status": "completed"
 }
