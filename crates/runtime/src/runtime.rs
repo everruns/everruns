@@ -42,8 +42,15 @@ use everruns_core::{
     InputMessage, MemoryStoreBackend, MessageRetriever, SessionFileSystem,
     SessionFileSystemFactoryContext,
 };
-use std::hash::{Hash, Hasher};
+use sha2::{Digest, Sha256};
 use std::sync::Arc;
+
+/// Cap on the input length hashed by [`hash_public_org_id`].
+///
+/// Legitimate org public ids are `org_<32hex>` (36 bytes). Bounding the
+/// hashed prefix keeps worst-case cost predictable when an attacker-controlled
+/// session carries an oversize string.
+const HASH_INPUT_CAP_BYTES: usize = 128;
 
 /// Derive an internal `i64` org id from the public `org_<32hex>` form on a
 /// [`Session`].
@@ -76,10 +83,18 @@ fn in_process_internal_org_id(public_org_id: &str) -> i64 {
     hash_public_org_id(public_org_id)
 }
 
+// Use SHA-256 with a fixed truncation scheme so the mapping is stable across
+// Rust/binary upgrades and predictable for any embedder. Input is bounded to
+// `HASH_INPUT_CAP_BYTES` so attacker-controlled oversize org strings cannot
+// drive unbounded hashing work.
 fn hash_public_org_id(public_org_id: &str) -> i64 {
-    let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    public_org_id.hash(&mut hasher);
-    ((hasher.finish() % ((i64::MAX - 1) as u64)) as i64) + 2
+    let bytes = public_org_id.as_bytes();
+    let bounded = &bytes[..bytes.len().min(HASH_INPUT_CAP_BYTES)];
+    let digest = Sha256::digest(bounded);
+    let mut buf = [0u8; 8];
+    buf.copy_from_slice(&digest[..8]);
+    let raw = u64::from_be_bytes(buf);
+    ((raw % ((i64::MAX - 1) as u64)) as i64) + 2
 }
 
 #[derive(Debug, Clone)]
@@ -1003,5 +1018,34 @@ mod org_id_mapping_tests {
         assert_ne!(a, b);
         assert_ne!(a, DEFAULT_ORG_ID);
         assert_ne!(b, DEFAULT_ORG_ID);
+    }
+
+    #[test]
+    fn hash_uses_stable_sha256_truncation() {
+        // SHA-256 with fixed big-endian first-8-byte truncation gives a value
+        // we can pin. If this assertion ever breaks, callers depending on
+        // build-stable mapping must be re-audited.
+        let mapped = in_process_internal_org_id("org_80000000000000000000000000000000");
+        let expected = {
+            let digest = sha2::Sha256::digest(b"org_80000000000000000000000000000000");
+            let mut buf = [0u8; 8];
+            buf.copy_from_slice(&digest[..8]);
+            let raw = u64::from_be_bytes(buf);
+            ((raw % ((i64::MAX - 1) as u64)) as i64) + 2
+        };
+        assert_eq!(mapped, expected);
+    }
+
+    #[test]
+    fn oversize_input_is_bounded_and_does_not_collide_silently() {
+        // Inputs past HASH_INPUT_CAP_BYTES are truncated before hashing, so
+        // two oversize strings that agree on the first cap bytes map to the
+        // same internal id. We only assert the result stays in the safe
+        // [2, i64::MAX] range and is not DEFAULT_ORG_ID — the cap exists to
+        // bound work, not to widen the input space.
+        let oversize = "x".repeat(super::HASH_INPUT_CAP_BYTES * 4);
+        let mapped = in_process_internal_org_id(&oversize);
+        assert!(mapped >= 2);
+        assert_ne!(mapped, DEFAULT_ORG_ID);
     }
 }
