@@ -22,6 +22,8 @@ Create and start a new subagent. The subagent begins executing immediately in th
 |---|---|---|---|
 | `name` | string | yes | Human-readable name for the subagent. Must be unique within the session. |
 | `task` | string | yes | Description of what the subagent should do. This becomes the subagent's initial prompt. |
+| `blueprint` | string | no | Optional specialist blueprint ID, such as `github_scout`, that supplies its own prompt, model, and private tools. |
+| `config` | object | no | Blueprint-specific configuration. Only valid when `blueprint` is set. |
 
 ### `get_subagents`
 
@@ -48,9 +50,11 @@ Send a follow-up message to an existing subagent. Use this to steer a running su
 - **Case-insensitive matching** — names are matched case-insensitively when using `name_or_id`.
 - **Foreground mode** — spawning can block until the subagent completes. Foreground execution has a 5-minute timeout.
 - **Inherited configuration** — subagents inherit the parent's harness and agent configuration.
+- **Blueprints** — specialist blueprints can run with their own prompt, model, and private tools while still using the same subagent lifecycle.
 
 ## See Also
 
+- [GitHub Scout](./github-scout.md) — blueprint-only GitHub repository exploration
 - [Session](./session.md) — session metadata and lifecycle
 - [Platform Management](./platform-management.md) — agent and platform configuration
 - [Capabilities Overview](./index.md) — full list of available capabilities

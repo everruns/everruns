@@ -79,6 +79,7 @@ everruns-integrations-docker = { path = "../../integrations/docker" }
 everruns-integrations-brave-search = { path = "../../integrations/brave-search" }
 everruns-integrations-parallel = { path = "../../integrations/parallel" }
 everruns-integrations-duckduckgo = { path = "../../integrations/duckduckgo" }
+everruns-integrations-github = { path = "../../integrations/github" }
 everruns-integrations-cursor = { path = "../../integrations/cursor" }
 everruns-integrations-daytona = { path = "../../integrations/daytona" }
 everruns-integrations-deno = { path = "../../integrations/deno" }

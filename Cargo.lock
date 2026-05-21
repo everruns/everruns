@@ -2325,6 +2325,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-integrations-github"
+version = "0.8.33"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "everruns-core",
+ "inventory",
+ "reqwest 0.13.3",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "wiremock",
+]
+
+[[package]]
 name = "everruns-integrations-parallel"
 version = "0.8.33"
 dependencies = [
@@ -2488,6 +2504,7 @@ dependencies = [
  "everruns-integrations-docker",
  "everruns-integrations-duckduckgo",
  "everruns-integrations-e2b",
+ "everruns-integrations-github",
  "everruns-integrations-parallel",
  "everruns-integrations-sprites",
  "everruns-internal-protocol",
@@ -2582,6 +2599,7 @@ dependencies = [
  "everruns-integrations-docker",
  "everruns-integrations-duckduckgo",
  "everruns-integrations-e2b",
+ "everruns-integrations-github",
  "everruns-integrations-parallel",
  "everruns-integrations-sprites",
  "everruns-internal-protocol",
