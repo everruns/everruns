@@ -72,6 +72,7 @@ pub struct CapabilityInfo {
     /// Number of active harnesses referencing this capability in the org.
     #[serde(default, skip_serializing_if = "is_zero_u64")]
     pub harness_count: u64,
+    #[allow(rustdoc::bare_urls)]
     /// Slug under https://dev.everruns.com/capabilities/ when public docs exist.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub docs_slug: Option<String>,
@@ -87,6 +88,7 @@ fn is_zero_u64(v: &u64) -> bool {
     *v == 0
 }
 
+#[allow(rustdoc::bare_urls)]
 /// Mapping from built-in capability ID to its docs slug under
 /// https://dev.everruns.com/capabilities/. Returns None for IDs that
 /// have no published documentation page.

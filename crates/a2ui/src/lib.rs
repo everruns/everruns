@@ -1,11 +1,22 @@
-//! A2UI Component Catalog and Prompt Generator
+//! A2UI component catalog and prompt generator for Everruns.
 //!
 //! Produces system prompts that instruct LLMs to emit A2UI JSON component trees.
 //! The JSON is transported in ```a2ui fenced code blocks and rendered by the UI
 //! using native shadcn/ui primitives.
 //!
+//! This crate is part of the [Everruns](https://everruns.com) ecosystem.
+//!
+//! # Example
+//!
+//! ```
+//! use everruns_a2ui::{PromptOptions, default_catalog, generate_prompt};
+//!
+//! let prompt = generate_prompt(default_catalog(), &PromptOptions::default());
+//! assert!(prompt.contains("```a2ui"));
+//! ```
+//!
 //! Ref: specs/a2ui.md
-//! Ref: https://github.com/google/a2ui
+//! Ref: <https://github.com/google/a2ui>
 
 mod catalog;
 mod components;

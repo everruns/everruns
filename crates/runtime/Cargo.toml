@@ -12,6 +12,7 @@ homepage.workspace = true
 repository.workspace = true
 documentation = "https://docs.rs/everruns-runtime"
 description = "Public in-process runtime for embedding Everruns harnesses"
+readme = "README.md"
 
 [dependencies]
 async-trait.workspace = true

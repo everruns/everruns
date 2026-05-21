@@ -1,4 +1,4 @@
-//! OpenUI Component Library and Prompt Generator
+//! OpenUI component library and prompt generator for Everruns.
 //!
 //! Rust reimplementation of the OpenUI component definitions and prompt generator.
 //! Produces system prompts that instruct LLMs to generate OpenUI Lang code.
@@ -6,7 +6,18 @@
 //! The generated prompt is compatible with `@openuidev/react-lang` and `@openuidev/react-ui`
 //! — the React runtime parses the LLM output and renders it into interactive components.
 //!
-//! Ref: https://github.com/thesysdev/openui
+//! This crate is part of the [Everruns](https://everruns.com) ecosystem.
+//!
+//! # Example
+//!
+//! ```
+//! use everruns_openui::{PromptOptions, default_library, generate_prompt};
+//!
+//! let prompt = generate_prompt(default_library(), &PromptOptions::default());
+//! assert!(prompt.contains("```openui"));
+//! ```
+//!
+//! Ref: <https://github.com/thesysdev/openui>
 //! - Component definitions: packages/react-ui/src/genui-lib/
 //! - Prompt generator: packages/react-lang/src/parser/prompt.ts
 //! - Library/types: packages/react-lang/src/library.ts

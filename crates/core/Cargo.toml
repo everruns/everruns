@@ -15,6 +15,7 @@ homepage.workspace = true
 repository.workspace = true
 documentation = "https://docs.rs/everruns-core"
 description = "Core agent abstractions for Everruns - agent loop, events, tools, LLM providers"
+readme = "README.md"
 
 [dependencies]
 # Core dependencies

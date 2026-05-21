@@ -261,7 +261,7 @@ pub struct McpToolDefinition {
     #[serde(rename = "inputSchema")]
     pub input_schema: Value,
     /// MCP tool annotations (behavioral hints).
-    /// See: https://spec.modelcontextprotocol.io
+    /// See: <https://spec.modelcontextprotocol.io>
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub annotations: Option<McpToolAnnotations>,
 }

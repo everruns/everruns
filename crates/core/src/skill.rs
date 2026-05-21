@@ -184,7 +184,7 @@ pub struct ParsedSkillMd {
     pub user_invocable: bool,
     /// Whether the model is prevented from auto-invoking this skill (default: false)
     pub disable_model_invocation: bool,
-    /// Hint string for autocomplete (e.g., "<issue-number>")
+    /// Hint string for autocomplete (e.g., `"<issue-number>"`)
     pub argument_hint: Option<String>,
     /// Execution context: inline (default) or fork (subagent)
     pub context: SkillContext,
@@ -806,7 +806,7 @@ const COMMAND_EXECUTION_CONCURRENCY: usize = 4;
 /// its stdout. Execution is bounded: at most
 /// [`MAX_COMMAND_PLACEHOLDERS_PER_SKILL`] placeholders are expanded per call
 /// (extras are replaced with `[Too many command placeholders: limit is N]`
-/// sentinels), and at most [`COMMAND_EXECUTION_CONCURRENCY`] commands run
+/// sentinels), and at most `COMMAND_EXECUTION_CONCURRENCY` commands run
 /// concurrently.
 ///
 /// Substitution pipeline order (caller is responsible for prior steps):
