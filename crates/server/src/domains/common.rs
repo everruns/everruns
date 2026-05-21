@@ -8,7 +8,7 @@ use axum::Json;
 use axum::http::StatusCode;
 #[cfg(test)]
 use everruns_core::DefaultPermissionResolver;
-use everruns_core::{Caller, PermissionResolver, Policy, PolicyError};
+use everruns_core::{Caller, FeatureFlags, PermissionResolver, Policy, PolicyError};
 use everruns_durable::WorkflowEventStore;
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
@@ -299,6 +299,7 @@ pub struct Ctx {
     // hardcodes `DefaultPermissionResolver`.
     pub permission_resolver: Arc<dyn PermissionResolver>,
     pub db: Arc<StorageBackend>,
+    pub feature_flags: FeatureFlags,
     pub capability_service: Arc<crate::services::CapabilityService>,
     pub encryption: Option<Arc<crate::storage::encryption::EncryptionService>>,
     pub session_service: Option<Arc<crate::domains::sessions::SessionService>>,
@@ -350,6 +351,7 @@ impl Ctx {
             caller,
             permission_resolver,
             db,
+            feature_flags: FeatureFlags::current(),
             capability_service,
             encryption,
             session_service: None,
@@ -407,6 +409,11 @@ impl Ctx {
     /// code should pass the resolver to `Ctx::new` directly.
     pub fn with_permission_resolver(mut self, resolver: Arc<dyn PermissionResolver>) -> Self {
         self.permission_resolver = resolver;
+        self
+    }
+
+    pub fn with_feature_flags(mut self, feature_flags: FeatureFlags) -> Self {
+        self.feature_flags = feature_flags;
         self
     }
 

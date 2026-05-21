@@ -29,6 +29,8 @@ use crate::api::validation::{
     MAX_AGENT_SYSTEM_PROMPT_BYTES, MAX_INITIAL_FILES, MAX_INITIAL_FILES_TOTAL_BYTES,
 };
 
+const MAX_AUTO_SNAPSHOTS_PER_AGENT: i64 = 50;
+
 fn validate_create_limits(req: &CreateAgentRequest) -> Result<(), CommandError> {
     if req.name.len() > MAX_AGENT_NAME_BYTES
         || req
@@ -439,6 +441,15 @@ impl Command for UpdateAgentCmd {
         }
 
         let internal_id = existing.id;
+        let previous_config_hash = if ctx.feature_flags.agent_versions {
+            let caps = q::get_capabilities(&ctx.db, ctx.org_id(), internal_id.uuid())
+                .await
+                .map_err(classify_anyhow)?;
+            let agent = q::row_to_agent(existing.clone(), caps);
+            Some(q::config_hash(&q::authored_config(&agent)))
+        } else {
+            None
+        };
         if let Some(ref name) = req.name {
             q::ensure_name_available(&ctx.db, ctx.org_id(), name, Some(internal_id)).await?;
         }
@@ -530,7 +541,13 @@ impl Command for UpdateAgentCmd {
         };
 
         let agent = q::row_to_agent(row, caps);
-        create_auto_snapshot_from_agent(ctx, &agent).await?;
+        let current_config_hash = q::config_hash(&q::authored_config(&agent));
+        if previous_config_hash
+            .as_ref()
+            .is_none_or(|hash| hash != &current_config_hash)
+        {
+            create_auto_snapshot_from_agent(ctx, &agent).await?;
+        }
 
         Ok(agent)
     }
@@ -645,6 +662,7 @@ impl Command for UpsertAgent {
 
     async fn execute(self, ctx: &Ctx) -> Result<UpsertResult, CommandError> {
         let req = self.req;
+        let public_id = self.id;
 
         // Validate (same checks as CreateAgent)
         validate_name("Agent", &req.name)?;
@@ -671,9 +689,27 @@ impl Command for UpsertAgent {
         let default_model_id = q::validate_model_id(&ctx.db, ctx.org_id(), req.default_model_id)
             .await
             .map_err(classify_anyhow)?;
+        let previous_config_hash = if ctx.feature_flags.agent_versions {
+            if let Some(existing) = ctx
+                .db
+                .get_agent_by_public_id(ctx.org_id(), &public_id)
+                .await
+                .map_err(classify_anyhow)?
+            {
+                let caps = q::get_capabilities(&ctx.db, ctx.org_id(), existing.id.uuid())
+                    .await
+                    .map_err(classify_anyhow)?;
+                let agent = q::row_to_agent(existing, caps);
+                Some(q::config_hash(&q::authored_config(&agent)))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
 
         let input = CreateAgentRow {
-            public_id: self.id,
+            public_id: public_id.clone(),
             name: req.name,
             display_name: req.display_name,
             description: req.description,
@@ -708,7 +744,12 @@ impl Command for UpsertAgent {
         };
 
         let agent = q::row_to_agent(row, final_caps);
-        if !was_created {
+        let current_config_hash = q::config_hash(&q::authored_config(&agent));
+        if !was_created
+            && previous_config_hash
+                .as_ref()
+                .is_none_or(|hash| hash != &current_config_hash)
+        {
             create_auto_snapshot_from_agent(ctx, &agent).await?;
         }
 
@@ -1009,16 +1050,42 @@ async fn create_version_from_agent(
     Ok(q::row_to_agent_version(row))
 }
 
-async fn create_auto_snapshot_from_agent(
-    ctx: &Ctx,
-    agent: &Agent,
-) -> Result<AgentVersion, CommandError> {
+async fn create_auto_snapshot_from_agent(ctx: &Ctx, agent: &Agent) -> Result<(), CommandError> {
+    if !ctx.feature_flags.agent_versions {
+        return Ok(());
+    }
+
+    let agent_id = AgentId::from_uuid(agent.internal_id);
+    let authored_config = q::authored_config(agent);
+    let config_hash = q::config_hash(&authored_config);
+    if ctx
+        .db
+        .get_latest_agent_snapshot(ctx.org_id(), agent_id)
+        .await
+        .map_err(classify_anyhow)?
+        .is_some_and(|row| row.config_hash == config_hash)
+    {
+        return Ok(());
+    }
+
+    // THREAT[TM-DOS-013]: Repeated no-op Agent updates can grow hidden snapshot rows.
+    // Mitigation: automatic snapshots are feature-gated, deduplicated by latest config hash, and retained to a bounded per-Agent window.
     let mut last_conflict = None;
     for _ in 0..3 {
         match create_version_from_agent(ctx, agent, AgentVersionChangeKind::Auto, None, None, false)
             .await
         {
-            Ok(version) => return Ok(version),
+            Ok(_) => {
+                ctx.db
+                    .prune_agent_auto_snapshots(
+                        ctx.org_id(),
+                        agent_id,
+                        MAX_AUTO_SNAPSHOTS_PER_AGENT,
+                    )
+                    .await
+                    .map_err(classify_anyhow)?;
+                return Ok(());
+            }
             Err(CommandError {
                 kind: CommandErrorKind::Conflict(message),
                 ..
@@ -1563,7 +1630,8 @@ mod tests {
     use crate::services::CapabilityService;
     use crate::storage::StorageBackend;
     use everruns_core::{
-        Caller, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, DefaultPermissionResolver, OrgRole,
+        Caller, DEFAULT_ORG_ID, DEFAULT_ORG_PUBLIC_ID, DefaultPermissionResolver, FeatureFlags,
+        OrgRole,
     };
     use std::sync::Arc;
     use uuid::Uuid;
@@ -1577,7 +1645,11 @@ mod tests {
         assert_eq!(version, "0.1.0");
     }
 
-    fn ctx_with_role(db: Arc<StorageBackend>, role: OrgRole) -> Ctx {
+    fn ctx_with_role_and_flags(
+        db: Arc<StorageBackend>,
+        role: OrgRole,
+        feature_flags: FeatureFlags,
+    ) -> Ctx {
         let capability_service = Arc::new(CapabilityService::new(db.clone(), None));
         Ctx::new(
             Caller {
@@ -1592,6 +1664,18 @@ mod tests {
             capability_service,
             None,
             Arc::new(DefaultPermissionResolver),
+        )
+        .with_feature_flags(feature_flags)
+    }
+
+    fn ctx_with_role(db: Arc<StorageBackend>, role: OrgRole) -> Ctx {
+        ctx_with_role_and_flags(
+            db,
+            role,
+            FeatureFlags {
+                agent_versions: true,
+                ..FeatureFlags::default()
+            },
         )
     }
 
@@ -1722,6 +1806,102 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn update_agent_skips_auto_snapshot_when_versions_disabled() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = ctx_with_role_and_flags(db, OrgRole::Owner, FeatureFlags::default());
+        let agent = CreateAgent(basic_agent_request("auto-snapshot-disabled-agent"))
+            .run(&ctx)
+            .await
+            .expect("agent is created");
+
+        UpdateAgentCmd {
+            id: agent.public_id.to_string(),
+            req: update_prompt_request("updated prompt"),
+        }
+        .run(&ctx)
+        .await
+        .expect("agent is updated");
+
+        let snapshots = ListAgentVersions {
+            agent_id: agent.public_id.to_string(),
+        }
+        .run(&ctx)
+        .await
+        .expect("versions are listed");
+        assert!(snapshots.is_empty());
+    }
+
+    #[tokio::test]
+    async fn update_agent_skips_auto_snapshot_for_unchanged_config() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = ctx_with_role(db, OrgRole::Owner);
+        let agent = CreateAgent(basic_agent_request("auto-snapshot-noop-agent"))
+            .run(&ctx)
+            .await
+            .expect("agent is created");
+
+        UpdateAgentCmd {
+            id: agent.public_id.to_string(),
+            req: UpdateAgentRequest {
+                name: None,
+                display_name: None,
+                description: None,
+                system_prompt: None,
+                default_model_id: None,
+                tags: None,
+                capabilities: None,
+                initial_files: None,
+                status: None,
+                tools: None,
+                mcp_servers: None,
+                network_access: None,
+                max_iterations: None,
+            },
+        }
+        .run(&ctx)
+        .await
+        .expect("no-op update succeeds");
+
+        let snapshots = ListAgentVersions {
+            agent_id: agent.public_id.to_string(),
+        }
+        .run(&ctx)
+        .await
+        .expect("versions are listed");
+        assert!(snapshots.is_empty());
+    }
+
+    #[tokio::test]
+    async fn update_agent_prunes_old_auto_snapshots() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = ctx_with_role(db, OrgRole::Owner);
+        let agent = CreateAgent(basic_agent_request("auto-snapshot-pruned-agent"))
+            .run(&ctx)
+            .await
+            .expect("agent is created");
+
+        for i in 0..(MAX_AUTO_SNAPSHOTS_PER_AGENT + 2) {
+            UpdateAgentCmd {
+                id: agent.public_id.to_string(),
+                req: update_prompt_request(&format!("updated prompt {i}")),
+            }
+            .run(&ctx)
+            .await
+            .expect("agent is updated");
+        }
+
+        let snapshots = ListAgentVersions {
+            agent_id: agent.public_id.to_string(),
+        }
+        .run(&ctx)
+        .await
+        .expect("versions are listed");
+        assert_eq!(snapshots.len(), MAX_AUTO_SNAPSHOTS_PER_AGENT as usize);
+        assert_eq!(snapshots[0].version, "draft.52");
+        assert_eq!(snapshots.last().unwrap().version, "draft.3");
+    }
+
+    #[tokio::test]
     async fn upsert_agent_update_creates_unpublished_auto_snapshot() {
         let db = Arc::new(StorageBackend::in_memory());
         let ctx = ctx_with_role(db, OrgRole::Owner);
@@ -1761,6 +1941,37 @@ mod tests {
             snapshots[0].authored_config["system_prompt"],
             "updated upsert prompt"
         );
+    }
+
+    #[tokio::test]
+    async fn upsert_agent_skips_auto_snapshot_for_unchanged_config() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let ctx = ctx_with_role(db, OrgRole::Owner);
+        let agent_id = AgentId::new();
+        let req = basic_agent_request("upsert-auto-snapshot-noop-agent");
+
+        UpsertAgent {
+            id: agent_id.to_string(),
+            req: req.clone(),
+        }
+        .run(&ctx)
+        .await
+        .expect("agent is created by upsert");
+        UpsertAgent {
+            id: agent_id.to_string(),
+            req,
+        }
+        .run(&ctx)
+        .await
+        .expect("agent is upserted without changes");
+
+        let snapshots = ListAgentVersions {
+            agent_id: agent_id.to_string(),
+        }
+        .run(&ctx)
+        .await
+        .expect("versions are listed");
+        assert!(snapshots.is_empty());
     }
 
     #[tokio::test]

@@ -554,6 +554,37 @@ impl Database {
         .await?)
     }
 
+    pub async fn prune_agent_auto_snapshots(
+        &self,
+        org_id: i64,
+        agent_id: AgentId,
+        keep: i64,
+    ) -> Result<u64> {
+        let keep = keep.max(0);
+        let result = sqlx::query(
+            r#"
+            DELETE FROM agent_versions
+            WHERE id IN (
+                SELECT id
+                FROM agent_versions
+                WHERE org_id = $1
+                    AND agent_id = $2
+                    AND is_published = FALSE
+                    AND change_kind = 'auto'
+                ORDER BY version_number DESC
+                OFFSET $3
+            )
+            "#,
+        )
+        .bind(org_id)
+        .bind(agent_id)
+        .bind(keep)
+        .execute(&self.pool)
+        .await?;
+
+        Ok(result.rows_affected())
+    }
+
     // ============================================
     // Agent Capabilities
     // ============================================
