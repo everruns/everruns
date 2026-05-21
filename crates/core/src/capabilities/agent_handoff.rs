@@ -1094,6 +1094,58 @@ mod tests {
         );
     }
 
+    /// Regression for the confused-deputy issue this PR fixes: the child
+    /// session must be created with the *target's* harness, not the
+    /// parent session's harness. If a future refactor reintroduces
+    /// `parent_session.harness_id` here, the child would inherit the
+    /// parent's mounts/capabilities while gaining the target's tools.
+    #[tokio::test]
+    async fn start_handoff_uses_target_harness_not_parent() {
+        let store = Arc::new(MockPlatformStore::new());
+        let registry = Arc::new(TestResourceRegistry::default());
+        let resolver = Arc::new(TestConnectionResolver {
+            providers: HashSet::from(["fake_aws".to_string()]),
+        });
+        let target_harness_id = HarnessId::new();
+        // Sanity: the target harness must differ from the parent's,
+        // otherwise the assertion below cannot distinguish them.
+        assert_ne!(store.session.harness_id, target_harness_id);
+
+        let config = target_config(store.agent.public_id, target_harness_id, vec!["fake_aws"]);
+        let tool = start_tool(config);
+        let context = context(store.clone(), Some(resolver), Some(registry));
+
+        let result = tool
+            .execute_with_context(
+                json!({
+                    "target": "aws_operator",
+                    "task": "Create an RDS database named app-db"
+                }),
+                &context,
+            )
+            .await;
+        assert!(result.is_success(), "expected success, got {result:?}");
+
+        let recorded = store
+            .created_session_harness_ids
+            .lock()
+            .expect("recorder lock")
+            .clone();
+        assert_eq!(
+            recorded.len(),
+            1,
+            "expected exactly one child create_session call, got {recorded:?}"
+        );
+        assert_eq!(
+            recorded[0], target_harness_id,
+            "child session must inherit the target harness, not the parent's",
+        );
+        assert_ne!(
+            recorded[0], store.session.harness_id,
+            "child session must NOT inherit the parent harness (confused-deputy regression)",
+        );
+    }
+
     #[tokio::test]
     async fn get_handoffs_lists_registered_handoff_resources() {
         let store = Arc::new(MockPlatformStore::new());
