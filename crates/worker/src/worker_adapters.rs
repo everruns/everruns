@@ -21,7 +21,9 @@ use everruns_core::traits::{
 use everruns_core::typed_id::{
     AgentId, HarnessId, LeasedResourceId, MessageId, ModelId, SessionId,
 };
-use everruns_core::{Agent, DriverRegistry, Harness, Message, Session, ToolDefinition};
+use everruns_core::{
+    Agent, DriverRegistry, Harness, Message, Session, ToolDefinition, UtilityLlmService,
+};
 use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -237,6 +239,9 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
 
     /// Get the provider credential store for tool-side provider auth lookup.
     fn provider_credential_store(&self, org_id: i64) -> Arc<dyn ProviderCredentialStore>;
+
+    /// Get the system utility LLM service for capability internals.
+    fn utility_llm_service(&self) -> Option<Arc<dyn UtilityLlmService>>;
 
     /// Get the platform store for org-level management tools.
     /// Takes org_id so the store is scoped to the current session's organization.

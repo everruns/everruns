@@ -560,6 +560,7 @@ The shared validator blocks loopback, RFC1918, link-local, and cloud metadata ta
 | TM-LLM-007 | Indirect prompt injection | High | Tool results and user messages are role-separated; no complete mitigation exists for LLM-level prompt injection | **ACCEPTED** |
 | TM-LLM-008 | Cost runaway via agent loop | Medium | Max 10 iterations per agent turn; configurable | MITIGATED |
 | TM-LLM-020 | Client-supplied privileged message roles in AG-UI input | Medium | Anonymous AG-UI/CopilotKit clients could send `role: "system"` / `developer` / `tool` messages that flow into the LLM context alongside the agent's real system prompt. Mitigated in `crates/server/src/api/ag_ui.rs::validate_input_messages` by rejecting any non-{user,assistant} role at the runtime trust boundary with a generic 400 `invalid_request`, and by rejecting duplicate message ids. | MITIGATED |
+| TM-LLM-021 | Utility LLM key exposed through agent model configuration | High | The utility LLM uses deployment env secret `UTILITY_OPENAI_API_KEY`, is carried as a host service on `PlatformDefinition`, and is threaded only into capability `ToolContext`. It is not stored in provider records, exposed through model selection, or accepted from session/agent config. | MITIGATED |
 
 ### Mitigation Details
 
@@ -583,6 +584,12 @@ Indirect prompt injection via tool results or user messages is an inherent LLM l
 - Max iteration limit prevents infinite loops
 - No automatic code execution without registered tool
 - Monitoring via usage tracking
+
+**TM-LLM-021 — Utility LLM Service:**
+The utility LLM exists for capability internals only. It is configured from the
+host environment, defaults to disabled, fixes the model in code, and reaches
+capabilities through `ToolContext` rather than through agent model/provider
+configuration.
 
 ## 9. Durable Execution Engine (TM-DURABLE)
 

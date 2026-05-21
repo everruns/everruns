@@ -10,6 +10,7 @@ use everruns_core::connection_provider::{ConnectionProviderPlugin, ConnectionPro
 use everruns_core::deployment::DeploymentGrade;
 use everruns_core::{
     BuiltInHarnessDefinition, CapabilityRegistry, PlatformDefinition, SystemEmailConfig,
+    SystemUtilityLlmConfig,
 };
 use std::sync::Arc;
 
@@ -26,6 +27,7 @@ pub fn oss_platform_definition_for_grade(grade: DeploymentGrade) -> PlatformDefi
     let email_sender = SystemEmailConfig::from_env()
         .expect("Invalid system email configuration")
         .into_sender();
+    let utility_llm_service = SystemUtilityLlmConfig::from_env().into_service();
 
     PlatformDefinition::builder()
         .capability_registry(capability_registry)
@@ -33,6 +35,7 @@ pub fn oss_platform_definition_for_grade(grade: DeploymentGrade) -> PlatformDefi
         .connection_providers(connection_providers)
         .built_in_harnesses(oss_built_in_harnesses())
         .email_sender(email_sender)
+        .utility_llm_service(utility_llm_service)
         .session_file_system_factory(Arc::new(
             crate::domains::session_files::StorageSessionFileSystemFactory,
         ))

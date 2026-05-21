@@ -21,7 +21,7 @@ use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use everruns_core::{
     Agent, AgentStatus, Caller, ContentPart, DriverRegistry, EventData, Harness, HarnessStatus,
     LlmProviderType, Message, MessageRole, Session, SessionStatus, ToolDefinition,
-    ToolResultContentPart, merge_harness,
+    ToolResultContentPart, UtilityLlmService, merge_harness,
 };
 use everruns_worker::mcp_executor::McpServerInfo;
 use everruns_worker::worker_adapters::{TurnContext, WorkerAdapters};
@@ -269,6 +269,7 @@ pub struct DirectWorkerAdapters {
     mcp_server_service: Arc<McpServerService>,
     capability_registry: CapabilityRegistry,
     driver_registry: DriverRegistry,
+    utility_llm_service: Option<Arc<dyn UtilityLlmService>>,
     sqldb_store: everruns_core::traits::SessionSqlDbStoreRef,
     storage_store: Option<Arc<dyn everruns_core::traits::SessionStorageStore>>,
     connection_resolver: Option<Arc<dyn everruns_core::traits::UserConnectionResolver>>,
@@ -299,6 +300,7 @@ impl DirectWorkerAdapters {
             mcp_server_service,
             capability_registry,
             driver_registry,
+            utility_llm_service: None,
             sqldb_store,
             storage_store: None,
             connection_resolver: None,
@@ -364,6 +366,11 @@ impl DirectWorkerAdapters {
 
     pub fn with_permission_resolver(mut self, resolver: Arc<dyn PermissionResolver>) -> Self {
         self.permission_resolver = resolver;
+        self
+    }
+
+    pub fn with_utility_llm_service(mut self, service: Arc<dyn UtilityLlmService>) -> Self {
+        self.utility_llm_service = Some(service);
         self
     }
 
@@ -1391,6 +1398,10 @@ impl WorkerAdapters for DirectWorkerAdapters {
             llm_resolver: self.llm_resolver.clone(),
             org_id,
         })
+    }
+
+    fn utility_llm_service(&self) -> Option<Arc<dyn UtilityLlmService>> {
+        self.utility_llm_service.clone()
     }
 
     fn connection_resolver(&self) -> Arc<dyn everruns_core::traits::UserConnectionResolver> {

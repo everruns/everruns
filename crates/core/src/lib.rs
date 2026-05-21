@@ -39,6 +39,7 @@ pub mod tool_types;
 pub mod deployment;
 pub mod email;
 pub mod exec_tool_result;
+pub mod utility_llm;
 
 // Feature flags
 pub mod feature_flags;
@@ -225,6 +226,10 @@ pub use email::{
     EmailTag, EmailTemplate, GenericEmailTemplate, NoopEmailSender, RenderedEmail,
     ResendEmailConfig, ResendEmailSender, SYSTEM_EMAIL_FROM, SentEmail, SystemEmailConfig,
     system_email_from,
+};
+pub use utility_llm::{
+    DisabledUtilityLlmService, OpenAiUtilityLlmService, SystemUtilityLlmConfig, UTILITY_LLM_MODEL,
+    UTILITY_OPENAI_API_KEY_ENV, UtilityLlmReasoningEffort, UtilityLlmRequest, UtilityLlmService,
 };
 
 // LLM driver types re-exports

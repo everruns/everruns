@@ -162,6 +162,8 @@ where
     image_store: Option<Arc<dyn crate::traits::ImageArtifactStore>>,
     /// Optional provider credential store for tool-side API clients
     provider_credential_store: Option<Arc<dyn crate::traits::ProviderCredentialStore>>,
+    /// Optional utility LLM service for capability internals
+    utility_llm_service: Option<Arc<dyn crate::UtilityLlmService>>,
     /// Optional resolver for user connection tokens
     connection_resolver: Option<Arc<dyn crate::traits::UserConnectionResolver>>,
     /// Optional session store for session metadata reads
@@ -221,6 +223,7 @@ where
             storage_store: None,
             image_store: None,
             provider_credential_store: None,
+            utility_llm_service: None,
             connection_resolver: None,
             session_store: None,
             session_mutator: None,
@@ -257,6 +260,7 @@ where
             storage_store: None,
             image_store: None,
             provider_credential_store: None,
+            utility_llm_service: None,
             connection_resolver: None,
             session_store: None,
             session_mutator: None,
@@ -327,6 +331,12 @@ where
         store: Arc<dyn crate::traits::ProviderCredentialStore>,
     ) -> Self {
         self.provider_credential_store = Some(store);
+        self
+    }
+
+    /// Set the utility LLM service on this atom.
+    pub fn with_utility_llm_service(mut self, service: Arc<dyn crate::UtilityLlmService>) -> Self {
+        self.utility_llm_service = Some(service);
         self
     }
 
@@ -926,6 +936,9 @@ where
         if let Some(ref store) = self.provider_credential_store {
             tool_context.provider_credential_store = Some(store.clone());
         }
+        if let Some(ref service) = self.utility_llm_service {
+            tool_context.utility_llm_service = Some(service.clone());
+        }
         if let Some(ref resolver) = self.connection_resolver {
             tool_context.connection_resolver = Some(resolver.clone());
         }
@@ -1200,6 +1213,48 @@ mod tests {
         }
     }
 
+    struct UtilityLlmContextProbeTool;
+
+    #[async_trait]
+    impl crate::tools::Tool for UtilityLlmContextProbeTool {
+        fn name(&self) -> &str {
+            "utility_llm_context_probe"
+        }
+
+        fn description(&self) -> &str {
+            "checks whether the utility LLM service is present in tool context"
+        }
+
+        fn parameters_schema(&self) -> serde_json::Value {
+            json!({
+                "type": "object",
+                "properties": {}
+            })
+        }
+
+        async fn execute(&self, _arguments: serde_json::Value) -> crate::ToolExecutionResult {
+            crate::ToolExecutionResult::tool_error("context required")
+        }
+
+        async fn execute_with_context(
+            &self,
+            _arguments: serde_json::Value,
+            context: &crate::traits::ToolContext,
+        ) -> crate::ToolExecutionResult {
+            crate::ToolExecutionResult::success(json!({
+                "utility_llm_service": context.utility_llm_service.is_some(),
+                "configured": context
+                    .utility_llm_service
+                    .as_ref()
+                    .is_some_and(|service| service.is_configured()),
+            }))
+        }
+
+        fn requires_context(&self) -> bool {
+            true
+        }
+    }
+
     #[tokio::test]
     async fn test_act_atom_empty_tool_calls() {
         let executor = ToolRegistry::with_defaults();
@@ -1225,6 +1280,51 @@ mod tests {
         assert!(result.results.is_empty());
         assert_eq!(result.success_count, 0);
         assert_eq!(result.error_count, 0);
+    }
+
+    #[tokio::test]
+    async fn test_act_atom_threads_utility_llm_service_to_tool_context() {
+        let mut executor = ToolRegistry::with_defaults();
+        executor.register(UtilityLlmContextProbeTool);
+        let event_emitter = NoopEventEmitter;
+        let atom = ActAtom::new(executor, event_emitter)
+            .with_utility_llm_service(Arc::new(crate::DisabledUtilityLlmService));
+
+        let context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
+        let input = ActInput {
+            org_id: Some(1),
+            context,
+            harness_id: HarnessId::from_seed(1),
+            agent_id: Some(AgentId::new()),
+            tool_calls: vec![ToolCall {
+                id: "call_1".to_string(),
+                name: "utility_llm_context_probe".to_string(),
+                arguments: json!({}),
+            }],
+            tool_definitions: vec![ToolDefinition::Builtin(crate::BuiltinTool {
+                name: "utility_llm_context_probe".to_string(),
+                display_name: None,
+                description: "checks context".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {}
+                }),
+                policy: Default::default(),
+                category: None,
+                deferrable: Default::default(),
+                hints: crate::tool_types::ToolHints::default(),
+            })],
+            locale: None,
+            blueprint_id: None,
+            network_access: None,
+        };
+
+        let result = atom.execute(input).await.unwrap();
+
+        assert_eq!(result.success_count, 1);
+        let payload = result.results[0].result.result.as_ref().unwrap();
+        assert_eq!(payload["utility_llm_service"], true);
+        assert_eq!(payload["configured"], false);
     }
 
     #[tokio::test]

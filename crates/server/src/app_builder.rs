@@ -100,6 +100,8 @@ pub struct ServerContext {
     pub platform_definition: Arc<PlatformDefinition>,
     /// System-wide email sender from the platform profile.
     pub email_sender: Arc<dyn everruns_core::EmailSender>,
+    /// System-wide utility LLM service from the platform profile.
+    pub utility_llm_service: Arc<dyn everruns_core::UtilityLlmService>,
     /// Vendor-neutral embedder-provided error reporter. Always present;
     /// defaults to a no-op when no embedder has installed one.
     pub error_reporter: SharedErrorReporter,
@@ -1389,6 +1391,7 @@ impl ServerAppBuilder {
             driver_registry: driver_registry.clone(),
             platform_definition: platform_definition.clone(),
             email_sender: platform_definition.email_sender(),
+            utility_llm_service: platform_definition.utility_llm_service(),
             error_reporter: error_reporter.clone(),
         };
 
@@ -1653,6 +1656,7 @@ impl ServerAppBuilder {
                 .with_encryption(encryption.clone())
                 .with_workflow_store(durable_store.clone())
                 .with_permission_resolver(auth_state.permission_resolver.clone())
+                .with_utility_llm_service(platform_definition.utility_llm_service())
                 .with_virtual_registry(virtual_registry.clone())
                 .with_storage_store(session_storage_store)
                 .with_runner(runner.clone());

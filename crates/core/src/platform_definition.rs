@@ -12,7 +12,7 @@
 
 use crate::{
     Capability, CapabilityRegistry, ConnectionProvider, ConnectionProviderRegistry, DriverRegistry,
-    EmailSender,
+    EmailSender, UtilityLlmService,
     traits::{DisabledSessionFileSystemFactory, SessionFileSystemFactory},
 };
 use serde_json::Value;
@@ -186,6 +186,7 @@ pub struct PlatformDefinition {
     connection_providers: ConnectionProviderRegistry,
     built_in_harnesses: Vec<BuiltInHarnessDefinition>,
     email_sender: Arc<dyn EmailSender>,
+    utility_llm_service: Arc<dyn UtilityLlmService>,
     session_file_system_factory: Arc<dyn SessionFileSystemFactory>,
 }
 
@@ -198,6 +199,7 @@ impl PlatformDefinition {
             connection_providers: ConnectionProviderRegistry::new(),
             built_in_harnesses: Vec::new(),
             email_sender: Arc::new(crate::DisabledEmailSender),
+            utility_llm_service: Arc::new(crate::DisabledUtilityLlmService),
             session_file_system_factory: Arc::new(DisabledSessionFileSystemFactory),
         }
     }
@@ -252,6 +254,11 @@ impl PlatformDefinition {
         self.email_sender.clone()
     }
 
+    /// System-wide utility LLM service for capability internals.
+    pub fn utility_llm_service(&self) -> Arc<dyn UtilityLlmService> {
+        self.utility_llm_service.clone()
+    }
+
     /// Factory for the platform-selected session filesystem implementation.
     pub fn session_file_system_factory(&self) -> Arc<dyn SessionFileSystemFactory> {
         self.session_file_system_factory.clone()
@@ -283,6 +290,7 @@ impl std::fmt::Debug for PlatformDefinition {
             .field("connection_providers", &self.connection_providers)
             .field("built_in_harnesses", &harness_keys)
             .field("email_sender", &self.email_sender.name())
+            .field("utility_llm_service", &self.utility_llm_service.name())
             .field(
                 "session_file_system_factory",
                 &self.session_file_system_factory.name(),
@@ -352,6 +360,12 @@ impl PlatformDefinitionBuilder {
     /// Set the system-wide email sender.
     pub fn email_sender(mut self, sender: Arc<dyn EmailSender>) -> Self {
         self.platform.email_sender = sender;
+        self
+    }
+
+    /// Set the system-wide utility LLM service.
+    pub fn utility_llm_service(mut self, service: Arc<dyn UtilityLlmService>) -> Self {
+        self.platform.utility_llm_service = service;
         self
     }
 
