@@ -450,30 +450,17 @@ impl Capability for FileSystemCapability {
 
     fn system_prompt_addition(&self) -> Option<&str> {
         use crate::tool_output_sanitizer::READ_ECONOMY_HINT;
+        // Constraints the model cannot infer from tool schemas: workspace
+        // root path and a behavioral nudge against guessing. Sandbox-tool
+        // routing is dynamic — when sandbox tools are present, their own
+        // capability prompt names them; we don't preadvertise here.
         const BASE: &str = concat!(
-            "Session workspace root: `/workspace`. ",
-            "All file paths must start with `/workspace`. ",
-            "Directories are created automatically when writing files. ",
-            "These tools (read_file, write_file, etc.) operate on the session workspace ONLY — ",
-            "to read or write files inside a cloud sandbox, use the sandbox-specific tools ",
-            "(e.g. daytona_read_file, e2b_read_file).",
+            "Workspace root: `/workspace`. All file paths must start with `/workspace`. ",
+            "Directories are created on write. ",
+            "Read files before claiming what they contain — never speculate about code you have not opened.",
         );
-        const INVESTIGATE: &str = "\n\n<investigate_before_answering>\n\
-            Never speculate about code you have not opened. If the user references a specific file, \
-            read it before answering. Investigate and read relevant files before making claims about \
-            the codebase — ground answers in what the files actually contain rather than plausible guesses.\n\
-            </investigate_before_answering>";
-        const PARALLEL: &str = "\n\n<use_parallel_tool_calls>\n\
-            When you intend to call multiple tools and there are no dependencies between the calls, \
-            make all independent tool calls in parallel in the same response. For example, when reading \
-            3 files, issue 3 `read_file` calls in one turn rather than sequentially. If a later call \
-            depends on a value produced by an earlier one, call them sequentially — never use \
-            placeholders or guess missing parameters.\n\
-            </use_parallel_tool_calls>";
-        // Build the full prompt lazily on first use.
-        static PROMPT: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-            format!("{}{}{}{}", BASE, READ_ECONOMY_HINT, INVESTIGATE, PARALLEL)
-        });
+        static PROMPT: std::sync::LazyLock<String> =
+            std::sync::LazyLock::new(|| format!("{}{}", BASE, READ_ECONOMY_HINT));
         Some(PROMPT.as_str())
     }
 

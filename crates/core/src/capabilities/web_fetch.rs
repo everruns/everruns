@@ -200,18 +200,25 @@ impl Capability for WebFetchCapability {
         _ctx: &super::SystemPromptContext,
         config: &serde_json::Value,
     ) -> Option<String> {
+        // Behavioral note only — parameter details live in the tool's JSON
+        // schema. The full fetchkit llmtxt remains available via
+        // `system_prompt_preview()` for UI display but is not injected on
+        // every turn. The `save_to_file` mention is gated on the same
+        // `enable_file_download` flag the tool itself uses, so the prompt
+        // matches the actually-available capability.
         let enable_file_download = config
             .get("enable_file_download")
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
-        let llmtxt = fetchkit::Tool::builder()
-            .enable_save_to_file(enable_file_download)
-            .build()
-            .llmtxt();
+        let body = if enable_file_download {
+            "`web_fetch` fetches one URL (GET/HEAD); it is not a search engine. For large or binary responses, pass `save_to_file` to write the body to the workspace instead of inlining it."
+        } else {
+            "`web_fetch` fetches one URL (GET/HEAD); it is not a search engine."
+        };
         Some(format!(
             "<capability id=\"{}\">\n{}\n</capability>",
             self.id(),
-            llmtxt
+            body
         ))
     }
 

@@ -82,57 +82,19 @@ impl Capability for StatelessTodoListCapability {
     }
 }
 
-/// System prompt addition for StatelessTodoList capability
-const SYSTEM_PROMPT: &str = r#"# Task Management
+/// System prompt addition for StatelessTodoList capability.
+///
+/// Kept intentionally short — the tool schema describes fields and the
+/// status enum. This prompt covers only behaviors the model cannot infer
+/// from the schema.
+const SYSTEM_PROMPT: &str = r#"## Task Management (`write_todos`)
 
-You have access to a task management tool via `write_todos` to help you track and manage tasks.
+Use for work spanning 3+ distinct steps. Skip for greetings, single-step
+edits, or read-only checks.
 
-## When to Use Task Management
-
-Use the write_todos tool when:
-1. **Complex multi-step tasks** - Tasks requiring 3 or more distinct steps
-2. **User provides multiple tasks** - When users give a list of things to do
-3. **Non-trivial work** - Tasks requiring careful planning
-4. **After receiving new instructions** - Capture requirements as tasks immediately
-5. **When starting work** - Mark a task as `in_progress` BEFORE beginning
-6. **After completing work** - Mark task as `completed` and add any follow-up tasks
-
-Do NOT use for:
-1. Single, straightforward tasks
-2. Trivial tasks with no organizational benefit
-3. Tasks completable in fewer than 3 steps
-4. Purely conversational or informational requests
-
-## Task Structure
-
-Each task must have:
-- `content` - Imperative form describing what to do (e.g., "Run tests", "Fix the bug")
-- `activeForm` - Present continuous form shown during execution (e.g., "Running tests", "Fixing the bug")
-- `status` - One of: `pending`, `in_progress`, `completed`
-
-## Task Management Best Practices
-
-1. **Create tasks proactively** when starting complex work
-2. **Update immediately** - mark tasks as completed as soon as done, don't batch
-3. **One task in progress** - exactly ONE task should be `in_progress` at a time
-4. **Completion criteria** - only mark `completed` when fully done:
-   - Tests pass
-   - Implementation is complete
-   - No unresolved errors
-5. **Keep tasks specific** - break complex work into actionable items
-6. **Replace entire list** - each write_todos call replaces the full list
-
-## Status Flow
-
-```
-pending → in_progress → completed
-```
-
-Keep a task as `in_progress` if:
-- Tests are failing
-- Implementation is partial
-- You encountered unresolved errors
-- Dependencies are missing"#;
+Each `write_todos` call replaces the full list. Keep exactly one task
+`in_progress`. Mark `completed` only when the step is fully done (tests
+pass, no unresolved errors)."#;
 
 // ============================================================================
 // Tool: write_todos

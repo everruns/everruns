@@ -68,17 +68,11 @@ impl Capability for DuckDuckGoCapability {
     }
 
     fn system_prompt_addition(&self) -> Option<&str> {
+        // Behavioral note only: tool description covers what `duckduckgo_search`
+        // does. The model needs to know it is an instant-answer API (curated
+        // facts/abstracts), not a general web search.
         Some(
-            r#"## DuckDuckGo (Experimental)
-
-Instant answers via DuckDuckGo Instant Answer API. Use this to get quick facts, definitions, abstracts (from Wikipedia and other sources), and related topics.
-
-No API key required — the DuckDuckGo Instant Answer API is free.
-
-Tools:
-- `duckduckgo_search` - Get instant answers, abstracts, and related topics for a query
-
-Note: This returns curated instant answers, not full web search results. For comprehensive web search, use Brave Search if available."#,
+            "`duckduckgo_search` returns curated instant answers (facts, definitions, abstracts), not general web results.",
         )
     }
 
@@ -124,9 +118,11 @@ mod tests {
     fn test_capability_has_system_prompt() {
         let cap = DuckDuckGoCapability;
         let prompt = cap.system_prompt_addition().unwrap();
+        // Tool name and behavioral distinction (instant answers, not full
+        // web search) are the only things the prompt needs to convey —
+        // the rest lives in the tool description.
         assert!(prompt.contains("duckduckgo_search"));
-        assert!(prompt.contains("DuckDuckGo"));
-        assert!(prompt.contains("Experimental"));
+        assert!(prompt.contains("instant answers"));
     }
 
     #[test]
