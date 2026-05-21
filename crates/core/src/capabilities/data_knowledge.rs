@@ -74,12 +74,7 @@ impl Capability for DataKnowledgeCapability {
 
     fn system_prompt_addition(&self) -> Option<&str> {
         Some(
-            r#"Curated data knowledge is available in /knowledge/:
-- /knowledge/tables/ — schema docs, column semantics, gotchas
-- /knowledge/business/ — metric definitions, business rules
-- /knowledge/queries/ — validated SQL templates
-
-Read these files before writing SQL. They are curated ground truth."#,
+            "Curated data knowledge is mounted at `/knowledge/{tables,business,queries}`. Read it before writing SQL; it is ground truth for schema semantics, metrics, and validated query patterns.",
         )
     }
 
@@ -130,9 +125,8 @@ mod tests {
     fn test_has_system_prompt() {
         let cap = DataKnowledgeCapability;
         let prompt = cap.system_prompt_addition().unwrap();
-        assert!(prompt.contains("/knowledge/tables/"));
-        assert!(prompt.contains("/knowledge/business/"));
-        assert!(prompt.contains("/knowledge/queries/"));
+        assert!(prompt.contains("/knowledge/{tables,business,queries}"));
+        assert!(prompt.contains("ground truth"));
     }
 
     #[test]

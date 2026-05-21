@@ -60,18 +60,7 @@ impl Capability for BudgetingCapability {
     }
 }
 
-const BUDGET_SYSTEM_PROMPT: &str = "\
-## Budget Awareness
-
-This session has budget constraints. You should be mindful of token usage and cost.
-
-**Guidelines:**
-- Use the `check_budget` tool to see remaining budget before starting expensive operations.
-- If budget is running low (< 20% remaining), prioritize completing the current task efficiently.
-- Avoid unnecessary verbose output when budget is constrained.
-- If budget is exhausted, the session will be paused or stopped automatically.
-
-Use the `check_budget` tool to check current budget status at any time.";
+const BUDGET_SYSTEM_PROMPT: &str = "This session may have enforced budgets. Check budget before expensive work; when remaining budget is low, finish the core task efficiently and avoid unnecessary output. Exhaustion may pause or stop the session.";
 
 // ============================================================================
 // Tool: check_budget
@@ -176,7 +165,7 @@ mod tests {
         assert!(
             cap.system_prompt_addition()
                 .unwrap()
-                .contains("Budget Awareness")
+                .contains("enforced budgets")
         );
     }
 

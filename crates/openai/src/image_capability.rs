@@ -36,19 +36,11 @@ inventory::submit! {
 }
 
 static SYSTEM_PROMPT: LazyLock<String> = LazyLock::new(|| {
-    r#"Use `generate_image` for raster image generation and `edit_image` to transform existing images.
-If the user asks for image generation or editing and those tools are present in the tool list, call them directly.
-Do not claim the tools are unavailable when `generate_image` or `edit_image` are listed as available tools.
-For straightforward image requests, avoid unrelated metadata or bookkeeping tools before the image tool call.
-When the user asks for multiple new images, make one `generate_image` call per requested concept unless they explicitly ask for a batch in one call.
-Unless the user says otherwise, set `save_to_session_fs` to true, keep `persist_artifact` enabled, and save under `/workspace/.outputs/images`.
-Prefer PNG output and rely on the capability default quality unless the user requests a specific quality.
-For single-image requests, streaming progress updates may arrive before the final image; wait for the completed tool result before describing the finished output.
-Do not stop at writing prompts, suggesting external tools, or describing environment limitations unless an actual image tool call fails.
+    r#"When image tools are listed, call them directly for generation/editing requests; do not claim they are unavailable or stop at writing prompts unless a tool call fails. Avoid unrelated bookkeeping before straightforward image calls.
 
-Store per-session OpenAI overrides in `secret_store` under `OPENAI_API_KEY` and optionally `OPENAI_BASE_URL`.
-When saving files, write under `/workspace/.outputs/images` unless the user requests another directory.
-Prefer medium quality unless the user explicitly asks for higher fidelity."#
+For multiple new images, make one generation call per requested concept unless the user asks for batching. Save session files under `/workspace/.outputs/images` by default, rely on the configured quality unless the user requests another, and wait for the completed result before describing a single-image output.
+
+Per-session OpenAI overrides belong in `secret_store` as `OPENAI_API_KEY` and optionally `OPENAI_BASE_URL`."#
         .to_string()
 });
 
@@ -1385,8 +1377,20 @@ mod tests {
     fn system_prompt_marks_image_tools_as_directly_invokable() {
         let prompt = GptImageGenCapability.system_prompt_addition().unwrap();
         assert!(prompt.contains("call them directly"));
-        assert!(prompt.contains("Do not claim the tools are unavailable"));
-        assert!(prompt.contains("Do not stop at writing prompts"));
+        assert!(prompt.contains("do not claim they are unavailable"));
+        assert!(prompt.contains("stop at writing prompts"));
+    }
+
+    #[tokio::test]
+    async fn image_system_prompt_within_budget() {
+        let ctx = everruns_core::capabilities::SystemPromptContext::without_file_store(
+            everruns_core::SessionId::new(),
+        );
+        let prompt = GptImageGenCapability
+            .system_prompt_contribution(&ctx)
+            .await
+            .unwrap();
+        assert!(prompt.len() <= 850, "prompt is {} bytes", prompt.len());
     }
 
     #[test]

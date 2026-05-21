@@ -12,8 +12,10 @@
 // always fine.
 
 use everruns_core::capabilities::{
-    Capability, FileSystemCapability, InfinityContextCapability, SkillsCapability,
-    StatelessTodoListCapability, SystemPromptContext, WebFetchCapability,
+    BudgetingCapability, Capability, DataKnowledgeCapability, FileSystemCapability,
+    InfinityContextCapability, MemoryCapability, SampleDataCapability, SelfBudgetCapability,
+    SessionSandboxCapability, SkillsCapability, StatelessTodoListCapability, SubagentCapability,
+    SystemPromptContext, WebFetchCapability,
 };
 use everruns_core::typed_id::SessionId;
 
@@ -51,6 +53,37 @@ async fn infinity_context_prompt_within_budget() {
 #[tokio::test]
 async fn skills_static_prompt_within_budget() {
     assert_contribution_under(&SkillsCapability, 250).await;
+}
+
+#[tokio::test]
+async fn memory_prompt_within_budget() {
+    assert_contribution_under(&MemoryCapability, 275).await;
+}
+
+#[tokio::test]
+async fn subagents_prompt_within_budget() {
+    assert_contribution_under(&SubagentCapability, 350).await;
+}
+
+#[tokio::test]
+async fn budgeting_prompt_within_budget() {
+    assert_contribution_under(&BudgetingCapability, 300).await;
+}
+
+#[tokio::test]
+async fn self_budget_prompt_within_budget() {
+    assert_contribution_under(&SelfBudgetCapability, 475).await;
+}
+
+#[tokio::test]
+async fn session_sandbox_prompt_within_budget() {
+    assert_contribution_under(&SessionSandboxCapability, 300).await;
+}
+
+#[tokio::test]
+async fn mounted_data_prompts_within_budget() {
+    assert_contribution_under(&SampleDataCapability, 250).await;
+    assert_contribution_under(&DataKnowledgeCapability, 300).await;
 }
 
 #[tokio::test]

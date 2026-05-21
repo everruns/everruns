@@ -64,28 +64,7 @@ const SPRITES_WORKSPACE_PATH: &str = "/home/sprite";
 
 static SYSTEM_PROMPT: LazyLock<String> = LazyLock::new(|| {
     let mut prompt = String::from(
-        r#"## Sprites
-
-Persistent, hardware-isolated Linux microVMs (Firecracker) via Sprites. Each sprite is
-a full Linux computer with a persistent ext4 filesystem that survives between sessions.
-
-Authentication: Sprites API token is resolved automatically from Settings > Connections > Sprites.
-If not configured, guide the user to set up their token in Settings > Connections.
-
-All tools except `sprites_create_sprite` and `sprites_list_sprites` require a `sprite_name`.
-Sprites persist indefinitely — they hibernate when idle (no compute charges) and wake instantly.
-Always DELETE sprites when done to avoid storage charges.
-
-Key differences from ephemeral sandboxes:
-- **Persistent filesystem**: Data survives idle/sleep, backed to durable object storage.
-- **Checkpoints**: Use `sprites_checkpoint` to snapshot state before risky operations,
-  `sprites_restore_checkpoint` to roll back. Checkpoints complete in ~300ms.
-- **HTTP services**: Each sprite has a unique public URL. Listen on port 8080 inside
-  the sprite and it's accessible at the sprite's URL. Use `sprites_service_url` to get
-  the URL for sharing or testing.
-- **Instant wake**: Sprites wake from hibernation in <1s when you execute a command.
-
-Working directory is `/home/sprite`."#,
+        "Sprites are persistent Firecracker Linux VMs. Create or select a sprite before sprite-scoped operations; data survives idle/sleep, checkpoints can protect risky changes, services should listen on port 8080 for the public URL, and deleting avoids storage charges. Working directory is `/home/sprite`.",
     );
     prompt.push_str(everruns_core::tool_output_sanitizer::EXEC_OUTPUT_HINT);
     prompt
@@ -193,10 +172,20 @@ mod tests {
         let cap = SpritesCapability;
         let prompt = cap.system_prompt_addition().unwrap();
         assert!(prompt.contains("Sprites"));
-        assert!(prompt.contains("Settings > Connections"));
-        assert!(prompt.contains("sprites_create_sprite"));
-        assert!(prompt.contains("sprites_checkpoint"));
-        assert!(prompt.contains("HTTP services"));
+        assert!(prompt.contains("persistent Firecracker"));
+        assert!(prompt.contains("checkpoints"));
+        assert!(prompt.contains("port 8080"));
+        assert!(prompt.contains("/home/sprite"));
+    }
+
+    #[tokio::test]
+    async fn system_prompt_within_budget() {
+        let cap = SpritesCapability;
+        let ctx = everruns_core::capabilities::SystemPromptContext::without_file_store(
+            everruns_core::SessionId::new(),
+        );
+        let prompt = cap.system_prompt_contribution(&ctx).await.unwrap();
+        assert!(prompt.len() <= 1200, "prompt is {} bytes", prompt.len());
     }
 
     #[test]

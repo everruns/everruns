@@ -44,10 +44,7 @@ impl Capability for SessionSandboxCapability {
 
     fn system_prompt_addition(&self) -> Option<&str> {
         Some(
-            "Use the managed sandbox tools for code execution and filesystem access. \
-             You do not need to create or pick a sandbox: this session owns a single managed sandbox. \
-             Use `sandbox_exec` for shell commands, `sandbox_read_file`/`sandbox_write_file` for file I/O, \
-             `sandbox_status` to inspect lifecycle state, and `sandbox_manage` for pause/resume/delete.",
+            "This session owns one managed sandbox. Use sandbox tools for commands and sandbox file I/O; inspect lifecycle state before lifecycle-sensitive work and pause/resume/delete only when requested or cleaning up.",
         )
     }
 

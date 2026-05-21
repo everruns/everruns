@@ -134,65 +134,7 @@ impl Capability for BrowserlessCapability {
 
     fn system_prompt_addition(&self) -> Option<&str> {
         Some(
-            r#"## Browserless
-
-Cloud browser automation via Browserless. Two modes of operation:
-
-### Stateless Mode (default)
-Each tool call uses a fresh browser session that is automatically destroyed after completion.
-No resources are left behind.
-
-### Persistent Session Mode (CDP)
-Use `browserless_open_browser` to create a persistent browser session via Chrome DevTools Protocol.
-The browser stays alive between tool calls, preserving login state, cookies, and navigation history.
-Use `browserless_close_browser` when done to release the browser.
-Persistent sessions also appear in the session Resources tab so users can see
-what may be cleaned automatically after inactivity.
-
-When a persistent session is active, the navigate/screenshot/content/interact tools will
-automatically use it instead of creating fresh browsers.
-
-Authentication: Browserless API token is resolved automatically from Settings > Connections > Browserless.
-If not configured, guide the user to set up their token in Settings > Connections.
-
-### Session Management Tools
-- `browserless_open_browser` - Open a persistent browser session (stays alive between tool calls)
-- `browserless_close_browser` - Close the persistent browser session and release resources
-
-### Browser Tools
-- `browserless_navigate` - Open a URL and get page metadata (title, links, headings, meta tags)
-- `browserless_screenshot` - Take a PNG screenshot of a page (full page or specific element)
-- `browserless_content` - Get the fully rendered HTML/DOM of a page (including JS-rendered content)
-- `browserless_scrape` - Extract structured data using CSS selectors
-- `browserless_interact` - Multi-step interactions: click, type, keyboard, mouse, touch, scroll, then capture result
-
-### Typical Workflows
-
-**One-shot (no persistent session needed):**
-1. `browserless_navigate` to explore a page and discover its structure
-2. `browserless_screenshot` to capture the visual state
-3. `browserless_content` or `browserless_scrape` to read specific content
-
-**Login-protected pages (use persistent session):**
-1. `browserless_open_browser` with the login page URL
-2. `browserless_interact` to fill in credentials and submit the form
-3. `browserless_navigate` to browse authenticated pages
-4. `browserless_screenshot` / `browserless_content` to inspect pages
-5. `browserless_close_browser` when done
-
-### Interaction Actions (browserless_interact)
-- `click` - Click by CSS selector or x,y coordinates
-- `type` - Type text into an input field (selector + value)
-- `keyboard` - Press a key (Enter, Tab, Escape, etc.)
-- `mouse_move` - Move mouse to x,y coordinates
-- `touch` - Tap an element (mobile touch simulation)
-- `scroll` - Scroll the page by a pixel amount
-- `wait` - Wait for milliseconds
-- `wait_for_selector` - Wait for a CSS selector to appear
-- `navigate` - Navigate to a different URL mid-interaction
-
-Set `return_screenshot: true` on `browserless_interact` to get a screenshot after all steps,
-or leave it false to get the DOM content instead."#,
+            "Browserless tools use fresh browsers by default. Open a persistent browser only for login/stateful flows; active persistent sessions are reused automatically and should be closed when done. Use screenshots for visual state and DOM/content/scrape tools for text or structured data.",
         )
     }
 
@@ -288,16 +230,20 @@ mod tests {
     fn test_capability_has_system_prompt() {
         let cap = BrowserlessCapability;
         let prompt = cap.system_prompt_addition().unwrap();
-        assert!(prompt.contains("browserless_open_browser"));
-        assert!(prompt.contains("browserless_close_browser"));
-        assert!(prompt.contains("browserless_navigate"));
-        assert!(prompt.contains("browserless_screenshot"));
-        assert!(prompt.contains("browserless_content"));
-        assert!(prompt.contains("browserless_scrape"));
-        assert!(prompt.contains("browserless_interact"));
-        assert!(prompt.contains("Settings > Connections"));
-        assert!(prompt.contains("Persistent Session Mode"));
-        assert!(prompt.contains("CDP"));
+        assert!(prompt.contains("fresh browsers"));
+        assert!(prompt.contains("persistent browser"));
+        assert!(prompt.contains("closed when done"));
+        assert!(prompt.contains("screenshots for visual state"));
+    }
+
+    #[tokio::test]
+    async fn system_prompt_within_budget() {
+        let cap = BrowserlessCapability;
+        let ctx = everruns_core::capabilities::SystemPromptContext::without_file_store(
+            everruns_core::SessionId::new(),
+        );
+        let prompt = cap.system_prompt_contribution(&ctx).await.unwrap();
+        assert!(prompt.len() <= 400, "prompt is {} bytes", prompt.len());
     }
 
     #[test]

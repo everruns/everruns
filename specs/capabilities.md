@@ -203,6 +203,33 @@ System prompt additions must **not duplicate** information already present in to
 
 If every piece of information in the prompt is already covered by tool definitions, return `None`. Listing tool names and descriptions in the system prompt is redundant because the model receives tool definitions as structured metadata alongside the prompt.
 
+Prompt contributions are paid on every model call, so capability prompts are
+budgeted product surface, not documentation. Authors should keep prompt text to
+the smallest stable behavior contract:
+
+- Prefer one or two dense sentences over headings, catalogs, examples, and
+  step-by-step tutorials.
+- Do not include setup instructions, marketing copy, tool inventories, or
+  parameter/action lists when capability metadata, tool descriptions, schemas,
+  config schemas, or tool errors already carry that information.
+- Do not paste external toolkit `llmtxt`/help output into the runtime prompt
+  unless the model needs that grammar on every turn. Long previews may be
+  exposed through `system_prompt_preview()` or docs instead.
+- Config-aware prompts must describe only behavior that changes with config, and
+  must not mention options that are not actually enabled in the current config.
+- When a larger prompt is unavoidable (for example, UI component grammars or
+  machine-readable output catalogs), document why it cannot live in schemas,
+  mounted files, previews, or a tool result.
+
+Prompt-size tests should measure the **actual assembled contribution** using
+`system_prompt_contribution(ctx)` or
+`system_prompt_contribution_with_config(ctx, config)`, including the
+`<capability id="…">` wrapper and config-specific branches. Any capability that
+adds or materially changes a runtime prompt should add or update a byte-budget
+ratchet test in the same PR. Lowering a budget is always acceptable; raising a
+budget requires an explicit code change and a short justification in the commit
+or PR description.
+
 ##### Config-Aware Methods
 
 - **`tools_with_config(config)`** — Returns tools adapted to per-capability config. Default delegates to `tools()`. Example: `WebFetchCapability` enables `save_to_file` when config has `enable_file_download: true`.

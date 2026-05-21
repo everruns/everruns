@@ -41,13 +41,7 @@ pub const E2B_ENVD_PORT: u16 = 49_983;
 
 static SYSTEM_PROMPT: LazyLock<String> = LazyLock::new(|| {
     let mut prompt = String::from(
-        r#"## E2B
-
-Cloud sandboxes via E2B. Each sandbox is an isolated Linux environment with network access.
-
-Use `e2b_create_sandbox` first, then `e2b_exec`, `e2b_read_file`, and `e2b_write_file` against the returned `sandbox_id`.
-Prefer `/home/user` as the workspace root.
-Always pause or delete sandboxes when done. Deleted sandboxes are cleaned up immediately; paused sandboxes may still consume platform quota until resumed or deleted."#,
+        "E2B sandboxes are isolated networked Linux environments. Create or select a sandbox before sandbox-scoped operations, prefer `/home/user` as workspace root, and pause or delete sandboxes when done; delete for immediate cleanup.",
     );
     prompt.push_str(everruns_core::tool_output_sanitizer::EXEC_OUTPUT_HINT);
     prompt
@@ -136,5 +130,15 @@ mod tests {
         assert!(names.contains(&"e2b_write_file".to_string()));
         assert!(names.contains(&"e2b_list_sandboxes".to_string()));
         assert!(names.contains(&"e2b_manage_sandbox".to_string()));
+    }
+
+    #[tokio::test]
+    async fn system_prompt_within_budget() {
+        let cap = E2BCapability;
+        let ctx = everruns_core::capabilities::SystemPromptContext::without_file_store(
+            everruns_core::SessionId::new(),
+        );
+        let prompt = cap.system_prompt_contribution(&ctx).await.unwrap();
+        assert!(prompt.len() <= 1000, "prompt is {} bytes", prompt.len());
     }
 }

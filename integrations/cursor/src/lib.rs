@@ -80,23 +80,7 @@ impl Capability for CursorCapability {
 
     fn system_prompt_addition(&self) -> Option<&str> {
         Some(
-            r#"## Cursor Cloud Agents
-
-Use Cursor tools to delegate coding work to asynchronous Cursor Cloud Agents.
-
-Prerequisites:
-- Cursor Cloud Agents API key configured in Settings > Connections (or a per-session `CURSOR_API_KEY` session secret).
-- Cursor GitHub app must have access to the target repository.
-
-Recommended workflow:
-1. Use `cursor_list_models` only when the user asks for a specific model; otherwise omit model and let Cursor choose automatically.
-2. Use `cursor_launch_agent` with a precise repository, base ref, task prompt, and optional branch name.
-3. Use `cursor_get_agent` or `cursor_list_agents` to track status.
-4. Use `cursor_add_followup` for additional instructions while an agent is running.
-5. Use `cursor_get_conversation` to inspect the transcript before summarizing results.
-6. Use `cursor_delete_agent` only when the user asks to remove the agent record.
-
-Cursor agents run in Cursor-managed remote environments and can push branches or create PRs depending on the request."#,
+            "Delegate async coding work to Cursor Cloud Agents when a remote repository task should run outside this session. Launch with a precise repo, base ref, task, and optional branch; track status, send follow-ups while running, inspect the transcript before summarizing, and delete agent records only when asked. Omit model unless the user specifies one.",
         )
     }
 
@@ -233,5 +217,15 @@ mod tests {
         assert!(names.contains(&"cursor_add_followup"));
         assert!(names.contains(&"cursor_get_conversation"));
         assert!(names.contains(&"cursor_list_repositories"));
+    }
+
+    #[tokio::test]
+    async fn system_prompt_within_budget() {
+        let cap = CursorCapability;
+        let ctx = everruns_core::capabilities::SystemPromptContext::without_file_store(
+            everruns_core::SessionId::new(),
+        );
+        let prompt = cap.system_prompt_contribution(&ctx).await.unwrap();
+        assert!(prompt.len() <= 475, "prompt is {} bytes", prompt.len());
     }
 }
