@@ -1084,7 +1084,26 @@ fn value_kind(value: &serde_json::Value) -> &'static str {
 }
 
 fn estimate_json_value_len(value: &serde_json::Value) -> usize {
-    serde_json::to_string(value).map(|s| s.len()).unwrap_or(0)
+    let mut writer = CountingWriter::default();
+    serde_json::to_writer(&mut writer, value)
+        .map(|_| writer.bytes)
+        .unwrap_or(0)
+}
+
+#[derive(Default)]
+struct CountingWriter {
+    bytes: usize,
+}
+
+impl std::io::Write for CountingWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.bytes += buf.len();
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
 }
 
 fn truncate_inline(text: &str, max_chars: usize) -> String {
