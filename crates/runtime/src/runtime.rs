@@ -42,11 +42,8 @@ use everruns_core::{
     InputMessage, MemoryStoreBackend, MessageRetriever, SessionFileSystem,
     SessionFileSystemFactoryContext,
 };
+use std::hash::{Hash, Hasher};
 use std::sync::Arc;
-
-/// Internal org id fallback used by the in-process runtime when a session
-/// org id is absent or invalid.
-const IN_PROCESS_ORG_ID_FALLBACK: i64 = everruns_core::DEFAULT_ORG_ID;
 
 /// Derive an internal `i64` org id from the public `org_<32hex>` form on a
 /// [`Session`].
@@ -54,20 +51,20 @@ const IN_PROCESS_ORG_ID_FALLBACK: i64 = everruns_core::DEFAULT_ORG_ID;
 /// Round-trip with [`everruns_core::org_public_id_from_internal`]: when the
 /// public id was produced by that helper (i.e. the upper bits are zero and
 /// the value fits in a positive `i64`), this returns the original internal
-/// id unchanged. High-entropy UUID-style ids that do not fit in `i64` are
-/// folded deterministically into `[2, i64::MAX]`, leaving `1` reserved for
-/// [`everruns_core::DEFAULT_ORG_ID`].
+/// id unchanged. Other values are mapped into `[2, i64::MAX]` by hashing the
+/// original public id string so runtime namespaces do not fail open to the
+/// shared default org and avoid arithmetic collision gadgets.
 fn in_process_internal_org_id(public_org_id: &str) -> i64 {
     if public_org_id == everruns_core::DEFAULT_ORG_PUBLIC_ID {
         return everruns_core::DEFAULT_ORG_ID;
     }
 
     let Ok(parsed) = public_org_id.parse::<OrgId>() else {
-        return IN_PROCESS_ORG_ID_FALLBACK;
+        return hash_public_org_id(public_org_id);
     };
     let raw: u128 = parsed.uuid().as_u128();
     if raw == 0 {
-        return IN_PROCESS_ORG_ID_FALLBACK;
+        return hash_public_org_id(public_org_id);
     }
 
     // Synthetic ids from `org_public_id_from_internal(i64)` always fit here,
@@ -76,9 +73,13 @@ fn in_process_internal_org_id(public_org_id: &str) -> i64 {
         return raw as i64;
     }
 
-    // UUID-style ids exceed `i64`; fold deterministically into [2, i64::MAX].
-    // We avoid `0` (invalid) and `1` (DEFAULT_ORG_ID, handled above).
-    ((raw % ((i64::MAX - 1) as u128)) as i64) + 2
+    hash_public_org_id(public_org_id)
+}
+
+fn hash_public_org_id(public_org_id: &str) -> i64 {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    public_org_id.hash(&mut hasher);
+    ((hasher.finish() % ((i64::MAX - 1) as u64)) as i64) + 2
 }
 
 #[derive(Debug, Clone)]
@@ -935,7 +936,7 @@ mod org_id_mapping_tests {
     }
 
     #[test]
-    fn invalid_public_id_falls_back_to_default() {
+    fn invalid_public_id_does_not_fall_back_to_default() {
         for invalid in [
             "",
             "not-an-org",
@@ -943,22 +944,19 @@ mod org_id_mapping_tests {
             "org_ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ",
             "ORG_00000000000000000000000000000001",
         ] {
-            assert_eq!(
-                in_process_internal_org_id(invalid),
-                IN_PROCESS_ORG_ID_FALLBACK,
-                "invalid input {invalid:?} should fall back"
-            );
+            let mapped = in_process_internal_org_id(invalid);
+            assert_ne!(mapped, everruns_core::DEFAULT_ORG_ID);
+            assert!(mapped >= 2, "invalid input {invalid:?} should not map to default");
         }
     }
 
     #[test]
-    fn zero_public_id_falls_back_to_default() {
+    fn zero_public_id_does_not_fall_back_to_default() {
         // org_public_id_from_internal never produces this; a hand-crafted
         // all-zeros id is treated as invalid (raw == 0).
-        assert_eq!(
-            in_process_internal_org_id("org_00000000000000000000000000000000"),
-            IN_PROCESS_ORG_ID_FALLBACK
-        );
+        let mapped = in_process_internal_org_id("org_00000000000000000000000000000000");
+        assert_ne!(mapped, everruns_core::DEFAULT_ORG_ID);
+        assert!(mapped >= 2, "all-zero id should not map to default");
     }
 
     #[test]
@@ -985,13 +983,13 @@ mod org_id_mapping_tests {
     }
 
     #[test]
-    fn high_entropy_uuid_style_id_folds_into_reserved_range() {
+    fn high_entropy_uuid_style_id_hashes_into_reserved_range() {
         // First valid UUID-style id whose raw u128 exceeds i64::MAX
-        // (top bit of the u128 set). It must fold to a positive i64 that
+        // (top bit of the u128 set). It must hash to a positive i64 that
         // is neither 0 nor DEFAULT_ORG_ID.
         let high = "org_80000000000000000000000000000000";
         let mapped = in_process_internal_org_id(high);
-        assert!(mapped >= 2, "folded id {mapped} must be >= 2");
+        assert!(mapped >= 2, "mapped id {mapped} must be >= 2");
         assert_ne!(mapped, DEFAULT_ORG_ID);
 
         // Mapping is deterministic.
