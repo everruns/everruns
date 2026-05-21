@@ -145,15 +145,19 @@ impl MessageFilterProvider for InfinityContextFilterProvider {
 }
 
 fn resolve_candidate_load_limit(config: &InfinityContextConfig) -> usize {
+    // Cap the candidate window unconditionally at `CANDIDATE_MAX_MESSAGES` so a
+    // large `min_recent_messages` or `max_recent_messages` cannot turn into an
+    // unbounded DB `LIMIT`.
+    let budget_derived_limit = (config.context_budget_tokens / CANDIDATE_AVG_TOKENS_PER_MESSAGE)
+        .saturating_mul(CANDIDATE_OVERFETCH_FACTOR)
+        .max(config.min_recent_messages)
+        .clamp(1, CANDIDATE_MAX_MESSAGES);
+
     if let Some(max_recent_messages) = config.max_recent_messages {
-        return max_recent_messages.max(1);
+        return budget_derived_limit.min(max_recent_messages.max(1));
     }
 
-    (config.context_budget_tokens / CANDIDATE_AVG_TOKENS_PER_MESSAGE)
-        .saturating_mul(CANDIDATE_OVERFETCH_FACTOR)
-        .min(CANDIDATE_MAX_MESSAGES)
-        .max(config.min_recent_messages)
-        .max(1)
+    budget_derived_limit
 }
 
 fn estimate_message_tokens(message: &Message) -> usize {
@@ -581,6 +585,39 @@ mod tests {
         );
 
         assert_eq!(query.limit, Some(16));
+        assert!(query.prepend_transform.is_some());
+    }
+
+    #[test]
+    fn test_filter_provider_caps_explicit_max_to_bounded_candidate_window() {
+        let mut query = MessageQuery::new(SessionId::new());
+        let provider = InfinityContextFilterProvider;
+        provider.apply_filters(
+            &mut query,
+            &json!({
+                "context_budget_tokens": 500_000,
+                "min_recent_messages": 10,
+                "max_recent_messages": 1_000_000
+            }),
+        );
+
+        assert_eq!(query.limit, Some(CANDIDATE_MAX_MESSAGES as i64));
+        assert!(query.prepend_transform.is_some());
+    }
+
+    #[test]
+    fn test_filter_provider_caps_large_min_recent_messages() {
+        let mut query = MessageQuery::new(SessionId::new());
+        let provider = InfinityContextFilterProvider;
+        provider.apply_filters(
+            &mut query,
+            &json!({
+                "context_budget_tokens": 1_000,
+                "min_recent_messages": 1_000_000,
+            }),
+        );
+
+        assert_eq!(query.limit, Some(CANDIDATE_MAX_MESSAGES as i64));
         assert!(query.prepend_transform.is_some());
     }
 
