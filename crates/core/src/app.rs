@@ -546,6 +546,10 @@ pub struct AppEndpointAuthRequirements {
 /// Inline auth config for one App endpoint/channel.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[cfg_attr(
+    feature = "openapi",
+    schema(example = json!({"mode": "api_key", "requirements": {"login_required": false}}))
+)]
 pub struct AppEndpointAuthConfig {
     pub mode: AppEndpointAuthMode,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -672,6 +676,7 @@ fn default_fcp_response_timeout_seconds() -> u32 {
 /// How app-triggered invocations route into sessions.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[cfg_attr(feature = "openapi", schema(example = "shared_session"))]
 #[serde(rename_all = "snake_case")]
 pub enum InvocationSessionMode {
     /// Reuse a single durable session for every invocation of the channel.

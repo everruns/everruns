@@ -140,28 +140,40 @@ pub struct GitVolumeSourceResponse {
 /// Request body for git hub volume source.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct GitHubVolumeSourceRequest {
+    /// GitHub repository in `owner/repo` form.
+    #[schema(example = "acme/design-docs")]
     pub repository: String,
+    /// Branch to sync. Defaults to the repository's default branch when omitted.
     #[serde(default)]
+    #[schema(example = "main")]
     pub branch: Option<String>,
+    /// Sub-directory within the repository to sync. Empty / omitted = whole tree.
     #[serde(default)]
+    #[schema(example = "docs/")]
     pub root_folder: Option<String>,
     /// Automatic resync interval in seconds. Omit or set 0 for manual-only; scheduled sync accepts 300 through 604800.
     #[serde(default)]
-    #[schema(maximum = 604800, minimum = 0)]
+    #[schema(maximum = 604800, minimum = 0, example = 3600)]
     pub sync_interval_secs: Option<u32>,
 }
 
 /// Request body for git volume source.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct GitVolumeSourceRequest {
+    /// Clonable git URL (SSH or HTTPS).
+    #[schema(example = "https://github.com/acme/design-docs.git")]
     pub url: String,
+    /// Branch to sync. Defaults to the repository's default branch when omitted.
     #[serde(default)]
+    #[schema(example = "main")]
     pub branch: Option<String>,
+    /// Sub-directory within the repository to sync. Empty / omitted = whole tree.
     #[serde(default)]
+    #[schema(example = "docs/")]
     pub root_folder: Option<String>,
     /// Automatic resync interval in seconds. Omit or set 0 for manual-only; scheduled sync accepts 300 through 604800.
     #[serde(default)]
-    #[schema(maximum = 604800, minimum = 0)]
+    #[schema(maximum = 604800, minimum = 0, example = 3600)]
     pub sync_interval_secs: Option<u32>,
 }
 
