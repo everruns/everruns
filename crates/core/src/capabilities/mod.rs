@@ -154,11 +154,12 @@ pub use btw::{BTW_CAPABILITY_ID, BtwCapability};
 pub use budgeting::BudgetingCapability;
 pub use compaction::{
     COMPACTION_CAPABILITY_ID, CompactionCapability, CompactionConfig, CompactionStep,
-    CompactionStrategy, HierarchicalMemoryConfig, MaskingSummaryFormat, MemoryTier,
-    ObservationMaskingConfig, ObservationMaskingResult, SessionCompactionMetrics,
-    SummarizationConfig, aggressive_trim, apply_hierarchical_memory, apply_observation_masking,
-    build_summarization_prompt, build_summary_message, classify_memory_tiers, estimate_tokens,
-    estimate_total_tokens, format_messages_for_summarization, should_compact_proactively,
+    CompactionStrategy, CostControlConfig, CostControlMaskingResult, HierarchicalMemoryConfig,
+    MaskingSummaryFormat, MemoryTier, ObservationMaskingConfig, ObservationMaskingResult,
+    SessionCompactionMetrics, SummarizationConfig, aggressive_trim, apply_cost_control_masking,
+    apply_hierarchical_memory, apply_observation_masking, build_summarization_prompt,
+    build_summary_message, classify_memory_tiers, estimate_tokens, estimate_total_tokens,
+    format_messages_for_summarization, should_compact_proactively,
 };
 pub use current_time::{CurrentTimeCapability, GetCurrentTimeTool};
 pub use data_knowledge::DataKnowledgeCapability;

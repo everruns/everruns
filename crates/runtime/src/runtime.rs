@@ -925,7 +925,8 @@ fn tool_completed_to_message(data: ToolCompletedData) -> Message {
         if text_parts.len() == 1
             && let ContentPart::Text(text) = text_parts[0]
         {
-            return serde_json::Value::String(text.text.clone());
+            return serde_json::from_str(&text.text)
+                .unwrap_or_else(|_| serde_json::Value::String(text.text.clone()));
         }
         if !text_parts.is_empty() {
             serde_json::to_value(&text_parts).unwrap_or_default()
