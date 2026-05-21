@@ -13,6 +13,7 @@ homepage.workspace = true
 repository.workspace = true
 documentation = "https://docs.rs/everruns-integrations-duckduckgo"
 description = "DuckDuckGo Instant Answer search integration for Everruns"
+readme = "README.md"
 
 [dependencies]
 everruns-core.workspace = true

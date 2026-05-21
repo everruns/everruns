@@ -3,6 +3,7 @@
 //! The runtime crate exposes an in-memory execution surface that runs the same
 //! core atoms (`input`, `reason`, `act`) used elsewhere in the system, but
 //! without the durable engine, gRPC worker boundary, or control-plane server.
+//! It is part of the [Everruns](https://everruns.com) ecosystem.
 //!
 //! This is the intended public entrypoint for embedders who want to:
 //!
@@ -73,7 +74,7 @@
 //! Embedders who want built-in capabilities (`file_system`,
 //! `agent_instructions`, `skills`, ...) to read and write a real directory
 //! on disk can configure [`RealDiskSessionFileSystemFactory`] on their
-//! [`PlatformDefinition`]. Every capability that goes through
+//! [`PlatformDefinition`](everruns_core::PlatformDefinition). Every capability that goes through
 //! `ToolContext.file_store` or `SystemPromptContext.file_store` picks it up
 //! automatically.
 //!

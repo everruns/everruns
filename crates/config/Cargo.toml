@@ -14,6 +14,7 @@ homepage.workspace = true
 repository.workspace = true
 documentation = "https://docs.rs/everruns-config"
 description = "Shared configuration loading helpers for Everruns"
+readme = "README.md"
 
 [dependencies]
 thiserror.workspace = true

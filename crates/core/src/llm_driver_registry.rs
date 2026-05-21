@@ -304,7 +304,7 @@ impl LlmMessage {
 
     /// Prepend a prefix to the first text content.
     ///
-    /// Used by ReasonAtom to inject external actor identity (e.g. "[Alice] ")
+    /// Used by ReasonAtom to inject external actor identity (e.g. `"[Alice] "`)
     /// into user messages from external channels.
     pub fn prepend_text_prefix(&mut self, prefix: &str) {
         match &mut self.content {

@@ -12,6 +12,7 @@ homepage.workspace = true
 repository.workspace = true
 documentation = "https://docs.rs/everruns-anthropic"
 description = "Anthropic Claude provider implementation for Everruns"
+readme = "README.md"
 
 [dependencies]
 # Core dependencies

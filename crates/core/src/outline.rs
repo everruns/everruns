@@ -17,7 +17,7 @@ pub struct OutlineItem {
     pub kind: &'static str,
     /// Name of the declaration
     pub name: String,
-    /// Full signature text (e.g. "fn process(input: &Input) -> Result<Output>")
+    /// Full signature text (e.g. `"fn process(input: &Input) -> Result<Output>"`)
     pub signature: String,
     /// 1-based line number
     pub line: usize,

@@ -1,20 +1,35 @@
-// Agent Loop Abstraction
-//
-// This crate provides a DB-agnostic, streamable, and decomposable implementation
-// of an agentic loop (LLM call → tool execution → repeat).
-
-//
-// Key design decisions:
-// - Uses traits (MessageRetriever, ToolExecutor) for pluggable backends
-// - MessageRetriever is retrieval-only; messages are stored via EventEmitter
-// - Can be decomposed into steps for durable activity execution
-// - Configuration via RuntimeAgent (can be built from Agent entity or created directly)
-// - Tools are defined via a Tool trait for flexibility (function-style tools)
-// - ToolRegistry implements ToolExecutor for easy tool management
-// - Error handling distinguishes between user-visible and internal errors
-// - Capabilities provide modular functionality units for composing agent behavior
-// - Domain entity types (Agent, Session, LlmProvider, etc.) are defined here
-// - Tool types are defined here as runtime types
+//! Core agent abstractions for Everruns.
+//!
+//! `everruns-core` is the shared contract crate for the
+//! [Everruns](https://everruns.com) ecosystem. It defines the runtime-facing
+//! types used by embedded hosts, workers, provider drivers, integrations, and
+//! the control plane.
+//!
+//! The crate is deliberately storage-agnostic. Agent execution is expressed in
+//! terms of traits such as [`MessageRetriever`], [`ToolExecutor`],
+//! [`EventEmitter`], and [`LlmProviderStore`], while host crates decide whether
+//! those traits are backed by memory, PostgreSQL, gRPC, or another system.
+//!
+//! # Main Surfaces
+//!
+//! - Agent, harness, session, message, event, and typed ID models
+//! - Capability and tool traits for composing agent behavior
+//! - Provider-neutral LLM messages, streams, and driver registration
+//! - Context assembly for the shared `input -> reason -> act` execution flow
+//! - In-memory helpers and `llmsim` for deterministic tests and examples
+//!
+//! # Example
+//!
+//! ```ignore
+//! use everruns_core::{CapabilityRegistry, DriverRegistry, PlatformDefinition};
+//! use everruns_core::capabilities::TestMathCapability;
+//!
+//! let mut capabilities = CapabilityRegistry::new();
+//! capabilities.register(TestMathCapability);
+//!
+//! let platform = PlatformDefinition::new(capabilities, DriverRegistry::new());
+//! assert!(platform.capability_registry().get("test_math").is_some());
+//! ```
 
 // Runtime types (tool definitions, capability types)
 pub mod capability_types;

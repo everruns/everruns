@@ -1,8 +1,21 @@
-//! DuckDuckGo Integration (Experimental)
+//! DuckDuckGo Instant Answer integration for Everruns.
 //!
 //! Instant answers via DuckDuckGo Instant Answer API.
 //! Provides `duckduckgo_search` tool for agents to get instant answers,
 //! abstracts, related topics, and definitions.
+//!
+//! This crate is part of the [Everruns](https://everruns.com) ecosystem.
+//!
+//! # Example
+//!
+//! ```
+//! use everruns_core::capabilities::Capability;
+//! use everruns_integrations_duckduckgo::DuckDuckGoCapability;
+//!
+//! let capability = DuckDuckGoCapability;
+//! assert_eq!(capability.id(), "duckduckgo");
+//! assert_eq!(capability.tools().len(), 1);
+//! ```
 //!
 //! Decision: External integration crate, auto-registered via inventory plugin system
 //! Decision: No API key required — DuckDuckGo Instant Answer API is free

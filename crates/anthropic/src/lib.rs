@@ -1,12 +1,26 @@
-// Anthropic Driver Implementation
-//
-// This crate provides an Anthropic Claude LLM driver implementation.
-// It implements the LlmDriver trait from everruns-core, enabling
-// the agent loop to communicate with Anthropic's Messages API.
-//
-// Design: This crate depends on everruns-core and registers its driver
-// at application startup via register_driver(). This enables dependency
-// inversion - core has no knowledge of specific provider implementations.
+//! Anthropic Claude provider driver for Everruns.
+//!
+//! `everruns-anthropic` is part of the [Everruns](https://everruns.com)
+//! ecosystem. It implements the [`LlmDriver`] contract from `everruns-core` and
+//! registers Anthropic's Messages API driver into a [`DriverRegistry`].
+//!
+//! Provider crates depend on `everruns-core`; `everruns-core` does not depend on
+//! provider implementations. Hosts register whichever drivers they want to make
+//! available.
+//!
+//! # Example
+//!
+//! ```
+//! use everruns_anthropic::{AnthropicLlmDriver, register_driver};
+//! use everruns_core::DriverRegistry;
+//!
+//! let driver = AnthropicLlmDriver::new("your-api-key");
+//!
+//! let mut registry = DriverRegistry::new();
+//! register_driver(&mut registry);
+//!
+//! assert!(format!("{driver:?}").contains("AnthropicLlmDriver"));
+//! ```
 
 mod driver;
 

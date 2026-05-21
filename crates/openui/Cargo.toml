@@ -15,6 +15,7 @@ homepage.workspace = true
 repository.workspace = true
 documentation = "https://docs.rs/everruns-openui"
 description = "OpenUI component definitions and prompt generator for Everruns"
+readme = "README.md"
 
 [dependencies]
 
