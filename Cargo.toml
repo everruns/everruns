@@ -25,6 +25,7 @@ members = [
     "integrations/brave-search",
     "integrations/parallel",
     "integrations/duckduckgo",
+    "integrations/github",
     "integrations/cursor",
     "integrations/browserless",
     "integrations/e2b",

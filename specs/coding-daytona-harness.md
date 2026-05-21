@@ -13,7 +13,7 @@ the default-built-ins-vs-examples split and migration behaviour.
 **Name:** `coding-daytona`
 **Display Name:** Coding (Daytona)
 **Parent:** `generic` (inherits session_file_system, virtual_bash, web_fetch, session_storage, session, agent_instructions, skills, infinity_context, openai_tool_search, budgeting, compaction, tool_output_persistence)
-**Additional capability:** `daytona`
+**Additional capabilities:** `daytona`, `github_scout`
 **Roles:** None (not Base, Default, or Chat — opt-in harness)
 
 ## Architecture: Two-Level Execution
@@ -55,6 +55,7 @@ Inherited from Generic:
 
 Added by this harness:
 - `daytona` — cloud sandbox (file read/write/edit, bash exec, git clone, git credentials, snapshots, lifecycle management)
+- `github_scout` — read-only GitHub repository exploration subagent blueprint; depends on `subagents`
 
 ## Coding Workflow
 

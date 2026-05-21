@@ -1,0 +1,35 @@
+# GitHub Integration
+# Decision: External integration crate, auto-registered via inventory plugin system
+# Decision: Provides blueprint-only GitHub Scout; host-facing GitHub tools stay empty
+# Decision: GitHub token resolved via the existing "github" user connection
+
+[package]
+name = "everruns-integrations-github"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/everruns-integrations-github"
+readme = "README.md"
+keywords = ["everruns", "github", "agents", "blueprints"]
+categories = ["api-bindings", "development-tools"]
+description = "GitHub-backed agent blueprints for Everruns"
+
+[dependencies]
+everruns-core.workspace = true
+inventory.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+async-trait.workspace = true
+tracing.workspace = true
+base64.workspace = true
+
+[features]
+github-live-tests = []
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full", "test-util"] }
+wiremock = "0.6"

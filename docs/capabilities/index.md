@@ -55,6 +55,14 @@ Delegate and coordinate work across multiple agent sessions.
 |---|---|---|
 | [Sub Agents](/capabilities/sub-agents/) | `subagents` | 3 |
 
+### Integrations
+
+External-service capabilities and blueprint-backed workflows.
+
+| Capability | ID | Tools |
+|---|---|---|
+| [GitHub Scout](/capabilities/github-scout/) | `github_scout` | 0 |
+
 ### Platform & Configuration
 
 Agent self-management, dynamic instructions, and skill discovery.
@@ -166,6 +174,7 @@ Some capabilities depend on others. Dependencies are resolved automatically at r
 |---|---|
 | [Virtual Bash](/capabilities/virtual-bash/) | [File System](/capabilities/file-system/) |
 | [Agent Skills](/capabilities/agent-skills/) | [File System](/capabilities/file-system/) |
+| [GitHub Scout](/capabilities/github-scout/) | [Sub Agents](/capabilities/sub-agents/) |
 
 ### Features
 

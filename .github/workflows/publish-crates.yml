@@ -148,6 +148,9 @@ jobs:
               "integrations/duckduckgo/Cargo.toml": [
                   "everruns-core",
               ],
+              "integrations/github/Cargo.toml": [
+                  "everruns-core",
+              ],
           }
 
           for manifest_path, dependency_names in dependency_versions.items():
@@ -185,6 +188,7 @@ jobs:
             everruns-openai
             everruns-anthropic
             everruns-integrations-duckduckgo
+            everruns-integrations-github
             everruns-runtime
           )
 

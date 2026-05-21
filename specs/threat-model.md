@@ -1015,6 +1015,17 @@ Cursor Cloud Agents are third-party asynchronous coding agents that clone GitHub
 | TM-CURSOR-006 | Large prompt or identifier payload causes API/resource abuse | Medium | Tool-side length validation bounds prompt, agent id, ref, model, and branch fields before outbound requests. | MITIGATED |
 | TM-CURSOR-007 | Repository enumeration and rate-limit abuse | Low | `cursor_list_repositories` is read-only but documented as heavily rate-limited; seed prompt instructs agents to prefer explicit repository URLs and use the endpoint sparingly. | MITIGATED |
 
+## 17C. GitHub Scout (TM-GITHUB)
+
+GitHub Scout is a blueprint-only integration. It gives the child agent private read-only GitHub REST tools for code search, file reads, and issue or pull request search. Credentials resolve from the existing GitHub user connection, with `GITHUB_TOKEN` session secret fallback.
+
+| ID | Threat | Severity | Mitigation | Status |
+|----|--------|----------|------------|--------|
+| TM-GITHUB-001 | GitHub token captured in chat history | High | Tools return `ConnectionRequired` when no GitHub connection or session secret is available; they never ask for tokens in chat and never include tokens in tool output. | MITIGATED |
+| TM-GITHUB-002 | Over-scoped repository read access | Medium | Access is bounded by the user's GitHub App installation/token scope. `github_scout` is read-only, but Everruns does not enforce per-repository policy beyond optional `repos` config and GitHub's own authorization. | **CALLER RISK** |
+| TM-GITHUB-003 | Outbound request bypasses session network policy | Medium | Tool execution checks the session network access list before calling `https://api.github.com/`. | MITIGATED |
+| TM-GITHUB-004 | Repository path confusion in file reads | Low | `read_github_file` validates `owner/repo` segments before constructing the GitHub contents API URL, and file paths are percent-encoded. | MITIGATED |
+
 ## 18. E2B Cloud Sandbox (TM-E2B)
 
 E2B sandboxes are remote Linux environments managed through the E2B Management API plus per-sandbox envd runtime endpoints. Everruns uses a platform-owned `E2B_API_KEY` from environment or session secret override, and stores per-sandbox envd access tokens in session-scoped secrets.

@@ -248,9 +248,9 @@ Generated dynamically from `CapabilityRegistry::blueprints()`. Each entry shows 
 | Resource exhaustion | `max_turns` limit on blueprint. Same 300s timeout as subagents. |
 | Blueprint impersonation | `blueprint_id` validated against registry at spawn time. Invalid IDs rejected. |
 
-## Concrete Example: GitHubScout
+## Concrete Example: GitHub Scout
 
-First blueprint implementation. Integration crate: `integrations/github-scout/`.
+First blueprint implementation. Integration crate: `integrations/github/`. The GitHub integration contributes the `github_scout` capability and `github_scout` blueprint, depends on `subagents`, and keeps host-facing GitHub tools empty unless a separate GitHub capability surface is intentionally added.
 
 ### Capability
 
@@ -261,11 +261,13 @@ impl Capability for GitHubScoutCapability {
     fn id(&self) -> &str { "github_scout" }
     fn name(&self) -> &str { "GitHub Scout" }
     fn description(&self) -> &str {
-        "Pre-built agent for searching GitHub repositories."
+        "Blueprint-only GitHub repository scout."
     }
 
     // No host tools — all tools are private to the blueprint
     fn tools(&self) -> Vec<Box<dyn Tool>> { vec![] }
+
+    fn dependencies(&self) -> Vec<&'static str> { vec!["subagents"] }
 
     fn agent_blueprints(&self) -> Vec<AgentBlueprint> {
         vec![AgentBlueprint {
@@ -302,9 +304,9 @@ impl Capability for GitHubScoutCapability {
 |------|-------------|
 | `search_github_code` | Search code across repos using GitHub code search API |
 | `read_github_file` | Read a specific file from a GitHub repo (by path + ref) |
-| `search_github_issues` | Search issues and discussions with filters |
+| `search_github_issues` | Search issues and pull requests with filters |
 
-These use the GitHub token from User Connections. Never visible to the host agent.
+These use the GitHub token from User Connections. They are private to the blueprint session and never visible to the host agent.
 
 ### Host Usage
 
@@ -401,10 +403,9 @@ Branch on `session.blueprint_id`:
 7. `spawn_subagent` blueprint parameter handling
 8. System prompt blueprint discovery
 
-### Phase 2: GitHubScout
+### Phase 2: GitHub Scout
 
-1. `integrations/github-scout/` crate with 3 private tools
+1. `integrations/github/` crate with 3 private tools
 2. Wire GitHub API via User Connections
 3. Register via `inventory::submit!`
-4. Add to Generic harness capabilities
-
+4. Enable the `github_scout` capability wherever the `github_scout` blueprint should be available

@@ -18,6 +18,16 @@ A harness defines the base environment for sessions — system prompt, default m
 
 See the [Harnesses feature guide](/features/harnesses/) for harness selection, API management, and the prompt stack model.
 
+## Harness Examples
+
+Harness examples are adoptable templates. Import them when you want a preconfigured starting point, then customize the resulting org-owned harness.
+
+| Example | Import Name | Description |
+|---------|-------------|-------------|
+| Coding (Daytona) | `coding-daytona` | Generic + Daytona sandbox execution + GitHub Scout subagents for repository exploration |
+| Coding (Container) | `coding-container` | Generic + self-hosted container sandbox execution + GitHub Scout subagents for repository exploration |
+| Data Analyst | `data-analyst` | Generic + SQL databases, charts, persistent memory, and curated data knowledge |
+
 ## Capabilities
 
 Capabilities are modular units that extend what an agent can do. Each can contribute tools, system prompt additions, and UI features.

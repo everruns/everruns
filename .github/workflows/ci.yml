@@ -307,6 +307,7 @@ jobs:
           cargo test -p everruns-integrations-browserless
           cargo test -p everruns-integrations-cursor
           cargo test -p everruns-integrations-e2b
+          cargo test -p everruns-integrations-github
           cargo test -p everruns-integrations-sprites
 
   # Durable-worker PR coverage. Catches regressions in the worker crate's
