@@ -458,14 +458,23 @@ pub async fn delete_channel(
 /// Request body for the `add_a2a_channel_http` operation.
 #[derive(Debug, serde::Deserialize, utoipa::ToSchema)]
 pub struct AddA2aChannelHttpRequest {
+    /// How invocations route into sessions (e.g. `shared_session` to reuse one durable session, or per-invocation modes). Example shape is defined on `InvocationSessionMode`.
     #[serde(default)]
     pub session_mode: everruns_core::app::InvocationSessionMode,
+    /// First user message sent to the agent on each invocation; can reference incoming A2A payload via templating.
+    #[schema(example = "Process incoming A2A request and return a structured response.")]
     pub message: String,
+    /// Public agent card name advertised by the A2A endpoint. Defaults to the app name when omitted.
+    #[schema(example = "Support Triage Agent")]
     pub agent_card_name: Option<String>,
+    /// Public agent card description advertised by the A2A endpoint. Defaults to the app description when omitted.
+    #[schema(example = "Triages incoming support tickets and routes to the right team")]
     pub agent_card_description: Option<String>,
+    /// Optional endpoint auth. Example shape is defined on `AppEndpointAuthConfig`.
     #[serde(default)]
     pub auth: Option<everruns_core::AppEndpointAuthConfig>,
     /// Whether this resource is enabled.
+    #[schema(example = true)]
     pub enabled: Option<bool>,
 }
 

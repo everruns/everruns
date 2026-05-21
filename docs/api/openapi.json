@@ -11384,13 +11384,17 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Public agent card description advertised by the A2A endpoint. Defaults to the app description when omitted.",
+            "example": "Triages incoming support tickets and routes to the right team"
           },
           "agent_card_name": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Public agent card name advertised by the A2A endpoint. Defaults to the app name when omitted.",
+            "example": "Support Triage Agent"
           },
           "auth": {
             "oneOf": [
@@ -11398,7 +11402,8 @@
                 "type": "null"
               },
               {
-                "$ref": "#/components/schemas/AppEndpointAuthConfig"
+                "$ref": "#/components/schemas/AppEndpointAuthConfig",
+                "description": "Optional endpoint auth. Example shape is defined on `AppEndpointAuthConfig`."
               }
             ]
           },
@@ -11407,13 +11412,17 @@
               "boolean",
               "null"
             ],
-            "description": "Whether this resource is enabled."
+            "description": "Whether this resource is enabled.",
+            "example": true
           },
           "message": {
-            "type": "string"
+            "type": "string",
+            "description": "First user message sent to the agent on each invocation; can reference incoming A2A payload via templating.",
+            "example": "Process incoming A2A request and return a structured response."
           },
           "session_mode": {
-            "$ref": "#/components/schemas/InvocationSessionMode"
+            "$ref": "#/components/schemas/InvocationSessionMode",
+            "description": "How invocations route into sessions (e.g. `shared_session` to reuse one durable session, or per-invocation modes). Example shape is defined on `InvocationSessionMode`."
           }
         }
       },
@@ -12045,6 +12054,17 @@
           },
           "requirements": {
             "$ref": "#/components/schemas/AppEndpointAuthRequirements"
+          }
+        },
+        "example": {
+          "mode": "api_key",
+          "requirements": {
+            "audiences": [
+              "everruns-api"
+            ],
+            "scopes": [
+              "app:invoke"
+            ]
           }
         }
       },
@@ -14253,22 +14273,26 @@
         "properties": {
           "catch_up_missed": {
             "type": "boolean",
-            "description": "Whether to catch up missed triggers (default: false)"
+            "description": "Whether to catch up missed triggers (default: false)",
+            "example": false
           },
           "cron_expression": {
             "type": "string",
-            "description": "Cron expression (5-field or 7-field)"
+            "description": "Cron expression (5-field or 7-field). Standard `min hour day-of-month month day-of-week` form.",
+            "example": "0 2 * * *"
           },
           "description": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Optional description"
+            "description": "Optional description",
+            "example": "Fires the support-triage agent every night at 02:00 UTC"
           },
           "enabled": {
             "type": "boolean",
-            "description": "Whether schedule is enabled (default: true)"
+            "description": "Whether schedule is enabled (default: true)",
+            "example": true
           },
           "max_catch_up": {
             "type": [
@@ -14276,7 +14300,8 @@
               "null"
             ],
             "format": "int32",
-            "description": "Max catch-up executions",
+            "description": "Max catch-up executions when `catch_up_missed` is true. Older missed fires are dropped.",
+            "example": 3,
             "minimum": 0
           },
           "max_concurrent": {
@@ -14285,23 +14310,26 @@
               "null"
             ],
             "format": "int32",
-            "description": "Max concurrent executions",
+            "description": "Max concurrent executions. Omit for no limit beyond the worker pool's concurrency.",
+            "example": 1,
             "minimum": 0
           },
           "name": {
             "type": "string",
-            "description": "Unique name for the schedule"
+            "description": "Unique name for the schedule",
+            "example": "nightly-triage"
           },
           "retry_policy": {
-            "description": "Retry policy for failed executions"
+            "description": "Retry policy for failed executions (provider-specific JSON; see the durable engine's `RetryPolicy`).\nExample: `{\"max_attempts\": 3, \"initial_backoff_secs\": 30, \"backoff_multiplier\": 2.0}`."
           },
           "target": {
             "$ref": "#/components/schemas/ScheduleTarget",
-            "description": "Target to trigger"
+            "description": "Target to trigger. Variant shape is defined on `ScheduleTarget`."
           },
           "timezone": {
             "type": "string",
-            "description": "Timezone (default: UTC)"
+            "description": "Timezone (default: UTC). IANA name (e.g. `UTC`, `America/New_York`).",
+            "example": "UTC"
           }
         }
       },
@@ -16037,7 +16065,7 @@
       },
       "GitHubVolumeSourceRequest": {
         "type": "object",
-        "description": "Request body for git hub volume source.",
+        "description": "Request body for GitHub volume source.",
         "required": [
           "repository"
         ],
@@ -16046,16 +16074,22 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Branch to sync. Defaults to the repository's default branch when omitted.",
+            "example": "main"
           },
           "repository": {
-            "type": "string"
+            "type": "string",
+            "description": "GitHub repository in `owner/repo` form.",
+            "example": "acme/design-docs"
           },
           "root_folder": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Sub-directory within the repository to sync. Empty / omitted = whole tree.",
+            "example": "docs/"
           },
           "sync_interval_secs": {
             "type": [
@@ -16064,6 +16098,7 @@
             ],
             "format": "int32",
             "description": "Automatic resync interval in seconds. Omit or set 0 for manual-only; scheduled sync accepts 300 through 604800.",
+            "example": 3600,
             "maximum": 604800,
             "minimum": 0
           }
@@ -16071,7 +16106,7 @@
       },
       "GitHubVolumeSourceResponse": {
         "type": "object",
-        "description": "Response body for git hub volume source.",
+        "description": "Response body for GitHub volume source.",
         "required": [
           "repository",
           "branch"
@@ -16133,13 +16168,17 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Branch to sync. Defaults to the repository's default branch when omitted.",
+            "example": "main"
           },
           "root_folder": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Sub-directory within the repository to sync. Empty / omitted = whole tree.",
+            "example": "docs/"
           },
           "sync_interval_secs": {
             "type": [
@@ -16148,11 +16187,14 @@
             ],
             "format": "int32",
             "description": "Automatic resync interval in seconds. Omit or set 0 for manual-only; scheduled sync accepts 300 through 604800.",
+            "example": 3600,
             "maximum": 604800,
             "minimum": 0
           },
           "url": {
-            "type": "string"
+            "type": "string",
+            "description": "Clonable git URL (SSH or HTTPS).",
+            "example": "https://github.com/acme/design-docs.git"
           }
         }
       },
@@ -16840,7 +16882,8 @@
         "enum": [
           "shared_session",
           "session_per_invocation"
-        ]
+        ],
+        "example": "shared_session"
       },
       "KeyValueInfo": {
         "type": "object",
@@ -17141,6 +17184,7 @@
             ],
             "format": "int32",
             "description": "Pagination limit (default: 20, max: 100)",
+            "example": 20,
             "minimum": 0
           },
           "offset": {
@@ -17150,6 +17194,7 @@
             ],
             "format": "int32",
             "description": "Pagination offset",
+            "example": 0,
             "minimum": 0
           },
           "status": {
@@ -17157,7 +17202,8 @@
               "string",
               "null"
             ],
-            "description": "Filter by execution status"
+            "description": "Filter by execution status",
+            "example": "success"
           }
         }
       },
@@ -19938,7 +19984,8 @@
               "boolean",
               "null"
             ],
-            "description": "Filter by enabled status"
+            "description": "Filter by enabled status",
+            "example": true
           },
           "limit": {
             "type": [
@@ -19947,6 +19994,7 @@
             ],
             "format": "int32",
             "description": "Pagination limit (default: 20, max: 100)",
+            "example": 20,
             "minimum": 0
           },
           "offset": {
@@ -19956,6 +20004,7 @@
             ],
             "format": "int32",
             "description": "Pagination offset",
+            "example": 0,
             "minimum": 0
           },
           "target_type": {
@@ -19963,7 +20012,8 @@
               "string",
               "null"
             ],
-            "description": "Filter by target type (\"workflow\" or \"activity\")"
+            "description": "Filter by target type (\"workflow\" or \"activity\")",
+            "example": "workflow"
           }
         }
       },
@@ -24398,12 +24448,21 @@
           },
           "name": {
             "type": "string",
-            "description": "Workflow type name or activity type name"
+            "description": "Workflow type name or activity type name",
+            "example": "session.run"
           },
           "type": {
             "type": "string",
-            "description": "Target type: \"workflow\" or \"activity\""
+            "description": "Target type: \"workflow\" or \"activity\"",
+            "example": "workflow"
           }
+        },
+        "example": {
+          "input": {
+            "session_id": "session_01933b5a00007000800000000000001"
+          },
+          "name": "session.run",
+          "type": "workflow"
         }
       },
       "ScheduleTargetResponse": {
@@ -27298,28 +27357,32 @@
               "boolean",
               "null"
             ],
-            "description": "Catch up missed triggers"
+            "description": "Catch up missed triggers",
+            "example": true
           },
           "cron_expression": {
             "type": [
               "string",
               "null"
             ],
-            "description": "New cron expression"
+            "description": "New cron expression. Standard `min hour day-of-month month day-of-week` form.",
+            "example": "0 8 * * 1-5"
           },
           "description": {
             "type": [
               "string",
               "null"
             ],
-            "description": "New description"
+            "description": "New description",
+            "example": "Fires the support-triage agent every weekday at 08:00 UTC"
           },
           "enabled": {
             "type": [
               "boolean",
               "null"
             ],
-            "description": "Enable/disable"
+            "description": "Enable/disable",
+            "example": true
           },
           "max_catch_up": {
             "type": [
@@ -27328,6 +27391,7 @@
             ],
             "format": "int32",
             "description": "Max catch-up executions",
+            "example": 3,
             "minimum": 0
           },
           "max_concurrent": {
@@ -27337,10 +27401,11 @@
             ],
             "format": "int32",
             "description": "Max concurrent executions",
+            "example": 1,
             "minimum": 0
           },
           "retry_policy": {
-            "description": "Retry policy"
+            "description": "Retry policy (provider-specific JSON; see the durable engine's `RetryPolicy`).\nExample: `{\"max_attempts\": 3, \"initial_backoff_secs\": 30, \"backoff_multiplier\": 2.0}`."
           },
           "target": {
             "oneOf": [
@@ -27349,7 +27414,7 @@
               },
               {
                 "$ref": "#/components/schemas/ScheduleTarget",
-                "description": "New target"
+                "description": "New target. Variant shape is defined on `ScheduleTarget`."
               }
             ]
           },
@@ -27358,7 +27423,8 @@
               "string",
               "null"
             ],
-            "description": "New timezone"
+            "description": "New timezone (IANA name).",
+            "example": "America/New_York"
           }
         }
       },
