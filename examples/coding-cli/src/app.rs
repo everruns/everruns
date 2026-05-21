@@ -962,6 +962,19 @@ fn extract_field(data: &ToolCompletedData, field: &str) -> Option<String> {
     v.get(field).and_then(|s| s.as_str()).map(str::to_string)
 }
 
+const MAX_RENDERED_TODOS: usize = 20;
+const MAX_TODO_TEXT_CHARS: usize = 160;
+
+fn truncate_chars(value: &str, max_chars: usize) -> String {
+    let mut chars = value.chars();
+    let truncated: String = chars.by_ref().take(max_chars).collect();
+    if chars.next().is_some() {
+        format!("{truncated}…")
+    } else {
+        truncated
+    }
+}
+
 fn todo_lines_for_result(data: &ToolCompletedData) -> Vec<ChatLine> {
     let Some(v) = result_value(data) else {
         return vec![ChatLine {
@@ -986,7 +999,7 @@ fn todo_lines_for_result(data: &ToolCompletedData) -> Vec<ChatLine> {
         .count();
     let summary = format!("{completed} of {total} todos completed");
     let mut rendered_todos = Vec::new();
-    for todo in todos {
+    for todo in todos.iter().take(MAX_RENDERED_TODOS) {
         let status = todo
             .get("status")
             .and_then(Value::as_str)
@@ -1001,7 +1014,10 @@ fn todo_lines_for_result(data: &ToolCompletedData) -> Vec<ChatLine> {
             "in_progress" => ("›", active_form),
             _ => ("○", content),
         };
-        rendered_todos.push(format!("{icon} {text}"));
+        rendered_todos.push(format!(
+            "{icon} {}",
+            truncate_chars(text, MAX_TODO_TEXT_CHARS)
+        ));
     }
 
     let mut lines = if rendered_todos.len() <= 3 {
@@ -1026,10 +1042,18 @@ fn todo_lines_for_result(data: &ToolCompletedData) -> Vec<ChatLine> {
         lines
     };
 
+    let omitted = total.saturating_sub(MAX_RENDERED_TODOS);
+    if omitted > 0 {
+        lines.push(ChatLine {
+            author: Author::ToolDetail,
+            text: format!("… {omitted} more todo(s) omitted"),
+        });
+    }
+
     if let Some(warning) = v.get("warning").and_then(Value::as_str) {
         lines.push(ChatLine {
             author: Author::ToolDetail,
-            text: format!("warning: {warning}"),
+            text: format!("warning: {}", truncate_chars(warning, MAX_TODO_TEXT_CHARS)),
         });
     }
 
@@ -1962,6 +1986,70 @@ mod tests {
                 .iter()
                 .any(|(author, line)| matches!(author, Author::ToolDetail)
                     && line == "○ Run focused tests")
+        );
+    }
+
+    #[test]
+    fn lines_for_event_limits_write_todo_rows_and_truncates_text() {
+        let total = MAX_RENDERED_TODOS + 5;
+        let long_text = "x".repeat(MAX_TODO_TEXT_CHARS + 60);
+        let todos = (0..total)
+            .map(|_| {
+                serde_json::json!({
+                    "content": &long_text,
+                    "activeForm": &long_text,
+                    "status": "pending"
+                })
+            })
+            .collect::<Vec<_>>();
+        let event = RuntimeEvent::new(
+            SessionId::new(),
+            EventContext::empty(),
+            ToolCompletedData::success(
+                "call_todos".to_string(),
+                "write_todos".to_string(),
+                vec![ContentPart::text(
+                    serde_json::json!({
+                        "success": true,
+                        "todos": todos,
+                        "warning": "w".repeat(MAX_TODO_TEXT_CHARS + 60)
+                    })
+                    .to_string(),
+                )],
+                None,
+            ),
+        );
+
+        let lines = lines_for_event(&event);
+        let detail_lines = lines
+            .iter()
+            .filter(|line| matches!(line.author, Author::ToolDetail))
+            .map(|line| line.text.as_str())
+            .collect::<Vec<_>>();
+
+        let omitted = total - MAX_RENDERED_TODOS;
+        assert_eq!(
+            detail_lines
+                .iter()
+                .filter(|line| line.starts_with("○ "))
+                .count(),
+            MAX_RENDERED_TODOS
+        );
+        assert!(
+            detail_lines
+                .iter()
+                .any(|line| *line == format!("… {omitted} more todo(s) omitted"))
+        );
+        assert!(
+            detail_lines
+                .iter()
+                .any(|line| line.starts_with("warning: "))
+        );
+        assert!(
+            detail_lines
+                .iter()
+                .filter(|line| line.starts_with("○ "))
+                .all(|line| line.ends_with('…'))
         );
     }
 
