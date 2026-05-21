@@ -961,7 +961,10 @@ mod org_id_mapping_tests {
         ] {
             let mapped = in_process_internal_org_id(invalid);
             assert_ne!(mapped, everruns_core::DEFAULT_ORG_ID);
-            assert!(mapped >= 2, "invalid input {invalid:?} should not map to default");
+            assert!(
+                mapped >= 2,
+                "invalid input {invalid:?} should not map to default"
+            );
         }
     }
 
