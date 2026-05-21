@@ -204,19 +204,34 @@ case "$cmd" in
     # UI dependencies
     echo ""
     echo "🖥️  UI setup:"
-    if ! command -v npm &> /dev/null; then
-      echo "  ⚠️  npm not found! Please install Node.js/npm to use the UI."
+    if ! command -v node &> /dev/null; then
+      echo "  ⚠️  node not found! Please install Node.js to use the UI."
       echo "     You can install it from: https://nodejs.org/"
       exit 1
     else
-      echo "  ✅ npm found: $(npm --version)"
+      echo "  ✅ node found: $(node --version)"
     fi
+    if ! command -v pnpm &> /dev/null; then
+      if command -v corepack &> /dev/null; then
+        echo "  Installing pnpm via corepack..."
+        corepack enable 2>/dev/null || true
+        corepack prepare pnpm@10.33.0 --activate 2>/dev/null || true
+      fi
+      if ! command -v pnpm &> /dev/null && command -v npm &> /dev/null; then
+        echo "  Installing pnpm via npm..."
+        npm install -g pnpm@10.33.0
+      fi
+    fi
+    if ! command -v pnpm &> /dev/null; then
+      echo "  ⚠️  pnpm not found and could not be installed. Install manually: https://pnpm.io/installation"
+      exit 1
+    fi
+    echo "  ✅ pnpm found: $(pnpm --version)"
     echo "  📦 Installing UI dependencies..."
     cd "$PROJECT_ROOT/apps/ui"
-    npm install
-    npm rebuild --ignore-scripts=false
+    pnpm install
     echo "  🎭 Installing Playwright browsers..."
-    npx playwright install chromium || echo "  ⚠️  Playwright browser install failed (may work in CI)"
+    pnpm exec playwright install chromium || echo "  ⚠️  Playwright browser install failed (may work in CI)"
     cd "$PROJECT_ROOT"
 
     # Docs dependencies
@@ -224,8 +239,7 @@ case "$cmd" in
     echo "📚 Docs setup:"
     echo "  📦 Installing docs dependencies..."
     cd "$PROJECT_ROOT/apps/docs"
-    npm install
-    npm rebuild --ignore-scripts=false
+    pnpm install
     cd "$PROJECT_ROOT"
 
     echo ""

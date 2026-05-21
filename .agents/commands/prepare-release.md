@@ -105,8 +105,9 @@ See `specs/release-process.md` for the full release process specification.
    ```bash
    # Regenerate Cargo.lock with new workspace version
    cargo generate-lockfile
-   # Regenerate package-lock.json
-   cd apps/ui && npm install --package-lock-only
+   # Regenerate pnpm lockfiles
+   (cd apps/ui && pnpm install --lockfile-only)
+   (cd apps/docs && pnpm install --lockfile-only)
    ```
 
 7. **Skip migration notes unless necessary**:

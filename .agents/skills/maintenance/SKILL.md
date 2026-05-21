@@ -43,7 +43,7 @@ Use this skill when the task is about repo maintenance rather than a single feat
 
 - Start from goals and risk surface, not checklist order.
 - Prefer the highest-signal path first: recent diffs, flaky areas, failing checks, stale specs, outdated dependencies, or known security/performance hotspots.
-- Always run `cargo outdated` (or `cargo search` per-crate) and `npm outdated` during release-readiness or dependency-scoped maintenance — even when no security advisory exists. Patch/minor bumps are cheap to miss and cheap to apply; skipping them silently accumulates drift.
+- Always run `cargo outdated` (or `cargo search` per-crate) and `pnpm outdated` during release-readiness or dependency-scoped maintenance — even when no security advisory exists. Patch/minor bumps are cheap to miss and cheap to apply; skipping them silently accumulates drift.
 - Check Linear issues in the OSS project (EVE team) already in `In Progress` when maintenance covers release readiness or workflow hygiene. Treat issues whose `updatedAt` is older than 1 day as stale by default, then triage or report them.
 - When maintenance covers release readiness or repo workflow hygiene, review recent upstream plugin-platform changes before declaring local plugins current. Check the Codex and Claude Code Everruns Dev plugin surfaces together: compare `.agents/plugins/marketplace.json`, `.claude-plugin/marketplace.json`, `plugins/everruns-dev/.codex-plugin/plugin.json`, `plugins/everruns-dev/.claude-plugin/plugin.json`, shipped plugin behavior, skills, docs, and marketplace entries; run `scripts/test-everruns-dev-plugin.sh` or equivalent metadata validation so registration, version parity, compatibility, and non-contradiction are proven.
 - When maintenance covers recently shipped features or release readiness, check for half-built cross-surface features: UI disconnected from backend behavior, backend capabilities missing intended MCP/CLI/docs exposure, MCP or CLI behavior lagging API semantics, or tests/manual cases claiming more than the product provides.
@@ -61,14 +61,14 @@ Use judgment on which surfaces matter for the current task.
 Goal: all packages — including CLI, server, worker, integrations, UI, and docs — run on current dependency versions. Outdated major versions are upgraded proactively, not deferred indefinitely.
 
 Actions:
-- audit every workspace crate and npm package for outdated dependencies, including major-version bumps
+- audit every workspace crate and pnpm-managed package for outdated dependencies, including major-version bumps
 - upgrade major versions when the migration path is clear; document blockers when it is not
 - flag deprecated crates/packages and identify replacements
 - check for unused dependencies (`cargo udeps` or manual review)
 
 Good evidence:
 - `cargo outdated` (or `cargo search`) checked for each CLI and workspace dependency
-- `npm outdated` checked for `apps/ui/` and `apps/docs/`
+- `pnpm outdated` checked for `apps/ui/` and `apps/docs/`
 - major-version upgrades applied and tested, not just noted
 - deprecated dependencies flagged with replacement plan
 - lockfiles updated intentionally
@@ -172,8 +172,8 @@ Pick only what matches the task:
 - `cargo fmt --check`
 - `cargo clippy --all-targets --all-features -- -D warnings`
 - `cargo test --all-features`
-- `cd apps/ui && npm run lint && npm run build`
-- `cd apps/docs && npm run build`
+- `cd apps/ui && pnpm run lint && pnpm run build`
+- `cd apps/docs && pnpm run build`
 - `./scripts/export-openapi.sh`
 - `doppler run -- bash -lc 'GH_TOKEN="$GITHUB_TOKEN" gh api repos/everruns/everruns/dependabot/alerts --jq "[.[] | select(.state==\"open\")] | length"'` — open Dependabot alert count
 - `doppler run -- bash -lc 'GH_TOKEN="$GITHUB_TOKEN" gh api repos/everruns/everruns/secret-scanning/alerts --jq "[.[] | select(.state==\"open\")] | length"'` — open secret scanning alert count

@@ -21,8 +21,8 @@ Use `oxfmt` (Rust-powered formatter from Oxc project):
 
 ```bash
 cd apps/ui
-npm run format        # Format all UI code
-npm run format:check  # Check formatting (CI)
+pnpm run format        # Format all UI code
+pnpm run format:check  # Check formatting (CI)
 ```
 
 Config: `apps/ui/oxfmt.json` (100 char width, single quotes, trailing commas)
@@ -342,10 +342,10 @@ mockConfirm.mockReturnValue(false); // User cancels
 
 ```bash
 cd apps/ui
-npm test                    # Run all tests
-npm test -- schedules       # Run tests matching pattern
-npm test -- --coverage      # With coverage report
-npm test -- --watch         # Watch mode for development
+pnpm test                    # Run all tests
+pnpm test -- schedules       # Run tests matching pattern
+pnpm test -- --coverage      # With coverage report
+pnpm test -- --watch         # Watch mode for development
 ```
 
 **CI Integration:** UI tests run as part of the `ui-build` job in GitHub Actions CI. Tests must pass before PRs can be merged.
@@ -366,13 +366,13 @@ Configuration: `apps/ui/playwright.config.ts`
 - Playwright smoke — end-to-end rendering of shared primitives as composed pages; catches regressions that unit-rendered components do not (routing, SSR/CSR hydration, CSS load, provider wiring).
 - Durable workflow tests (Rust `workflow-test`) — backend-side end-to-end flows.
 
-**CI Integration:** runs as the `ui-e2e` job on every PR where `apps/ui/**` changes. The job installs Playwright chromium, starts `npm run dev` via the Playwright webServer config, and executes `npm run e2e`.
+**CI Integration:** runs as the `ui-e2e` job on every PR where `apps/ui/**` changes. The job installs Playwright chromium, starts `pnpm run dev` via the Playwright webServer config, and executes `pnpm run e2e`.
 
 ```bash
 cd apps/ui
-npm run e2e          # Run all Playwright tests
-npm run e2e:ui       # Run with UI mode
-npm run e2e:headed   # Run in headed mode
+pnpm run e2e          # Run all Playwright tests
+pnpm run e2e:ui       # Run with UI mode
+pnpm run e2e:headed   # Run in headed mode
 ```
 
 ### CI Jobs

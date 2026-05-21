@@ -8,13 +8,16 @@
 FROM --platform=linux/amd64 node:26-alpine AS builder
 WORKDIR /app
 
-# Install dependencies
-COPY package*.json ./
-RUN npm ci
+# Enable pnpm via corepack (version pinned by packageManager in package.json)
+RUN corepack enable
+
+# Install dependencies (lockfile-only — fail if pnpm-lock.yaml is stale)
+COPY package.json pnpm-lock.yaml .npmrc ./
+RUN pnpm install --frozen-lockfile
 
 # Copy source and build
 COPY . .
-RUN npm run build
+RUN pnpm run build
 
 # Production image — uses the target platform (amd64 or arm64)
 FROM node:26-alpine AS ui

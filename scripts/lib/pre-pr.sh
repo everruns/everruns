@@ -67,10 +67,10 @@ echo ""
 # 5. UI formatting
 echo "5️⃣  Checking UI formatting..."
 cd "$PROJECT_ROOT/apps/ui"
-if npm run format:check; then
+if pnpm run format:check; then
   echo "   ✅ UI formatting OK"
 else
-  echo "   ❌ UI formatting failed. Run: cd apps/ui && npm run format"
+  echo "   ❌ UI formatting failed. Run: cd apps/ui && pnpm run format"
   FAILED=1
 fi
 cd "$PROJECT_ROOT"
@@ -79,7 +79,7 @@ echo ""
 # 6. UI lint
 echo "6️⃣  Running UI lint..."
 cd "$PROJECT_ROOT/apps/ui"
-if npm run lint; then
+if pnpm run lint; then
   echo "   ✅ UI lint passed"
 else
   echo "   ❌ UI lint failed"
@@ -91,7 +91,7 @@ echo ""
 # 7. UI build
 echo "7️⃣  Building UI..."
 cd "$PROJECT_ROOT/apps/ui"
-if npm run build; then
+if pnpm run build; then
   echo "   ✅ UI build passed"
 else
   echo "   ❌ UI build failed"
@@ -131,7 +131,7 @@ echo ""
 # 10. Docs build
 echo "🔟 Building docs..."
 cd "$PROJECT_ROOT/apps/docs"
-if npm run check && npm run build; then
+if pnpm run check && pnpm run build; then
   echo "   ✅ Docs build passed"
 else
   echo "   ❌ Docs build failed"

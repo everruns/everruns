@@ -50,7 +50,8 @@ If the release has an operator-visible migration caveat, compatibility limitatio
 
 Lock files must be updated when preparing a release:
 - `Cargo.lock` - Run `cargo generate-lockfile` to sync with new workspace version
-- `apps/ui/package-lock.json` - Run `npm install --package-lock-only` in apps/ui to regenerate
+- `apps/ui/pnpm-lock.yaml` - Run `pnpm install --lockfile-only` in `apps/ui` to regenerate
+- `apps/docs/pnpm-lock.yaml` - Run `pnpm install --lockfile-only` in `apps/docs` to regenerate
 
 This ensures lock files reflect the current version and any dependency updates.
 

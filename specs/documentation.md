@@ -103,7 +103,7 @@ Design follows the brand guidelines defined in [specs/brand.md](brand.md) (color
 
 ### Build & Deployment
 
-1. **Build Command**: `npm run build`
+1. **Build Command**: `pnpm run build`
 2. **Output Directory**: `dist/`
 3. **Root Directory**: `apps/docs`
 4. **Deployment Platform**: Cloudflare Pages (GitHub integration)
@@ -112,9 +112,10 @@ Design follows the brand guidelines defined in [specs/brand.md](brand.md) (color
 Cloudflare Pages dashboard configuration:
 - Connect GitHub repository
 - Set root directory: `apps/docs`
-- Set build command: `npm run build`
+- Set build command: `pnpm install --frozen-lockfile && pnpm run build`
 - Set output directory: `dist`
 - Pin Node.js from `apps/docs/.node-version` (currently `22.16.0`) so Pages builds do not depend on dashboard defaults; any override must stay at `20.19.1+` or `22.12+` to satisfy Astro 6 toolchain requirements
+- Pnpm is selected automatically when Cloudflare Pages sees `pnpm-lock.yaml`; the `packageManager` field in `apps/docs/package.json` pins the exact version via corepack
 
 The docs homepage advertises agent-discoverable API resources with RFC 8288
 `Link` response headers from `apps/docs/public/_headers`. The header points to
@@ -124,16 +125,16 @@ the docs API reference.
 
 ```bash
 # Install dependencies
-cd apps/docs && npm install
+cd apps/docs && pnpm install
 
 # Local development
-npm run dev
+pnpm run dev
 
 # Type checking
-npm run check
+pnpm run check
 
 # Build for production
-npm run build
+pnpm run build
 ```
 
 ### API Reference Generation
@@ -155,7 +156,7 @@ API reference documentation is auto-generated from the OpenAPI specification usi
 ./scripts/export-openapi.sh
 
 # 2. Build docs (spec is read at build time)
-cd apps/docs && npm run build
+cd apps/docs && pnpm run build
 ```
 
 #### Files
@@ -261,7 +262,7 @@ hero: ../images/features/my-feature-screenshot.png
 
 Place images under `docs/images/{section}/` (e.g. `docs/images/integrations/`, `docs/images/features/`).
 
-**Generated files are gitignored** — `public/og/` and `public/og-image.png` are rebuilt on every `npm run build` (via the `prebuild` script). Only the generation script and source images are committed.
+**Generated files are gitignored** — `public/og/` and `public/og-image.png` are rebuilt on every `pnpm run build` (via the `prebuild` script). Only the generation script and source images are committed.
 
 #### Route Middleware (`apps/docs/src/routeData.ts`)
 

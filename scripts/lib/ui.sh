@@ -34,21 +34,20 @@ case "$cmd" in
   dev)
     echo "🖥️  Starting UI development server..."
     cd "$UI_DIR"
-    npm run dev
+    pnpm run dev
     ;;
 
   build)
     echo "🔨 Building UI for production..."
     cd "$UI_DIR"
-    npm run build
+    pnpm run build
     echo "✅ UI build complete!"
     ;;
 
   install)
     echo "📦 Installing UI dependencies..."
     cd "$UI_DIR"
-    npm install
-    npm rebuild --ignore-scripts=false
+    pnpm install
     echo "✅ UI dependencies installed!"
     ;;
 
@@ -56,7 +55,7 @@ case "$cmd" in
     echo "🎭 Running UI e2e tests..."
     cd "$UI_DIR"
     setup_playwright
-    npm run e2e
+    pnpm run e2e
     echo "✅ E2E tests complete!"
     ;;
 

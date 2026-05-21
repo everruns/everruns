@@ -2,12 +2,13 @@
   "name": "@everruns/docs",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@10.33.0",
   "scripts": {
     "prepare-content": "node scripts/render-notebooks.mjs",
     "dev": "astro dev",
-    "predev": "npm run prepare-content",
-    "precheck": "npm run prepare-content",
-    "prebuild": "npm run prepare-content && node scripts/generate-og-image.mjs",
+    "predev": "pnpm run prepare-content",
+    "precheck": "pnpm run prepare-content",
+    "prebuild": "pnpm run prepare-content && node scripts/generate-og-image.mjs",
     "build": "astro build",
     "postbuild": "node scripts/verify-notebooks.mjs",
     "preview": "astro preview",
@@ -26,8 +27,14 @@
     "starlight-sidebar-topics": "^0.7.1",
     "typescript": "^6.0.3"
   },
-  "overrides": {
-    "lodash": "4.17.23",
-    "yaml": "2.8.4"
+  "pnpm": {
+    "overrides": {
+      "lodash": "4.17.23",
+      "yaml": "2.8.4"
+    },
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "sharp"
+    ]
   }
 }

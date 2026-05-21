@@ -7,9 +7,9 @@ const useExternalServer = !!process.env.PLAYWRIGHT_BASE_URL;
  * Playwright configuration for UI e2e tests.
  *
  * Usage:
- *   npm run e2e          # Run tests
- *   npm run e2e:ui       # Run with UI mode
- *   npm run e2e:headed   # Run in headed mode
+ *   pnpm run e2e          # Run tests
+ *   pnpm run e2e:ui       # Run with UI mode
+ *   pnpm run e2e:headed   # Run in headed mode
  */
 export default defineConfig({
   testDir: "./e2e",
@@ -70,7 +70,7 @@ export default defineConfig({
   webServer: useExternalServer
     ? undefined
     : {
-        command: "npm run dev",
+        command: "pnpm run dev",
         url: baseURL,
         reuseExistingServer: !process.env.CI,
         timeout: 120 * 1000,
