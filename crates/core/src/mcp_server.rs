@@ -94,6 +94,7 @@ impl From<&str> for McpServerTransportType {
 /// - `deleted`: Server is a tombstone kept only for historical references
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[cfg_attr(feature = "openapi", schema(example = "active"))]
 #[serde(rename_all = "lowercase")]
 pub enum McpServerStatus {
     /// Server is available for use.

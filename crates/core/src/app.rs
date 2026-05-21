@@ -29,6 +29,7 @@ use utoipa::ToSchema;
 /// - `deleted`: App is a tombstone kept only for historical references
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[cfg_attr(feature = "openapi", schema(example = "published"))]
 #[serde(rename_all = "lowercase")]
 pub enum AppStatus {
     Draft,

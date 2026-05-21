@@ -11652,7 +11652,8 @@
           "active",
           "archived",
           "deleted"
-        ]
+        ],
+        "example": "active"
       },
       "AgentVersion": {
         "type": "object",
@@ -12372,7 +12373,8 @@
           "published",
           "archived",
           "deleted"
-        ]
+        ],
+        "example": "published"
       },
       "BTreeMap": {
         "type": "object",
@@ -13498,7 +13500,8 @@
             "example": [
               {
                 "description": "Open URL in the user's browser",
-                "input_schema": {
+                "name": "open_url",
+                "parameters": {
                   "properties": {
                     "url": {
                       "type": "string"
@@ -13509,7 +13512,6 @@
                   ],
                   "type": "object"
                 },
-                "name": "open_url",
                 "type": "client_side"
               }
             ]
@@ -14460,7 +14462,8 @@
             "example": [
               {
                 "description": "Open URL in the user's browser",
-                "input_schema": {
+                "name": "open_url",
+                "parameters": {
                   "properties": {
                     "url": {
                       "type": "string"
@@ -14471,7 +14474,6 @@
                   ],
                   "type": "object"
                 },
-                "name": "open_url",
                 "type": "client_side"
               }
             ]
@@ -16450,7 +16452,8 @@
           "active",
           "archived",
           "deleted"
-        ]
+        ],
+        "example": "active"
       },
       "HealthResponse": {
         "type": "object",
@@ -20985,7 +20988,8 @@
           "disabled",
           "archived",
           "deleted"
-        ]
+        ],
+        "example": "active"
       },
       "McpServerTransportType": {
         "type": "string",
@@ -26441,7 +26445,13 @@
             "items": {
               "$ref": "#/components/schemas/InitialFile"
             },
-            "description": "Starter files copied into each new session for this agent."
+            "description": "Starter files copied into each new session for this agent.",
+            "example": [
+              {
+                "content": "Always respond in formal English.\n",
+                "path": "INSTRUCTIONS.md"
+              }
+            ]
           },
           "max_iterations": {
             "type": [
@@ -26449,6 +26459,7 @@
               "null"
             ],
             "description": "Maximum number of LLM iterations per turn for this agent.",
+            "example": 20,
             "minimum": 0
           },
           "mcpServers": {
@@ -26477,7 +26488,7 @@
               },
               {
                 "$ref": "#/components/schemas/NetworkAccessList",
-                "description": "Network access list controlling which hosts/URLs this agent's sessions can reach.\nSend `{}` (empty object) to clear restrictions. Omit to leave unchanged."
+                "description": "Network access list controlling which hosts/URLs this agent's sessions can reach.\nSend `{}` (empty object) to clear restrictions. Omit to leave unchanged.\nExample shape is defined on `NetworkAccessList`."
               }
             ]
           },
@@ -26521,7 +26532,25 @@
             "items": {
               "$ref": "#/components/schemas/ToolDefinition"
             },
-            "description": "Client-side tools for this agent.\nReplaces existing tools if provided."
+            "description": "Client-side tools for this agent.\nReplaces existing tools if provided.",
+            "example": [
+              {
+                "description": "Open URL in the user's browser",
+                "name": "open_url",
+                "parameters": {
+                  "properties": {
+                    "url": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "url"
+                  ],
+                  "type": "object"
+                },
+                "type": "client_side"
+              }
+            ]
           }
         }
       },
@@ -26534,7 +26563,8 @@
               "string",
               "null"
             ],
-            "description": "ID of the agent to use."
+            "description": "ID of the agent to use.",
+            "example": "agent_01933b5a00007000800000000000001"
           },
           "agent_identity_id": {
             "type": [
@@ -26555,7 +26585,8 @@
                 "type": "null"
               },
               {
-                "$ref": "#/components/schemas/AgentVersionPolicy"
+                "$ref": "#/components/schemas/AgentVersionPolicy",
+                "description": "How the App resolves the agent version. Example shape is defined on `AgentVersionPolicy`."
               }
             ]
           },
@@ -26564,21 +26595,24 @@
               "string",
               "null"
             ],
-            "description": "Description of what the app does."
+            "description": "Description of what the app does.",
+            "example": "Customer support bot connected to Slack"
           },
           "harness_id": {
             "type": [
               "string",
               "null"
             ],
-            "description": "ID of the harness to use."
+            "description": "ID of the harness to use.",
+            "example": "harness_01933b5a00007000800000000000001"
           },
           "name": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Display name of the app."
+            "description": "Display name of the app.",
+            "example": "Support Bot"
           },
           "status": {
             "oneOf": [
@@ -26650,21 +26684,33 @@
             "items": {
               "$ref": "#/components/schemas/AgentCapabilityConfig"
             },
-            "description": "Replace the capability list entirely; omit to leave unchanged."
+            "description": "Replace the capability list entirely; omit to leave unchanged.",
+            "example": [
+              {
+                "config": {},
+                "ref": "current_time"
+              },
+              {
+                "config": {},
+                "ref": "web_fetch"
+              }
+            ]
           },
           "default_model_id": {
             "type": [
               "string",
               "null"
             ],
-            "description": "New default model selected when sessions inherit from this harness; omit to leave unchanged."
+            "description": "New default model selected when sessions inherit from this harness; omit to leave unchanged.",
+            "example": "model_01933b5a00007000800000000000001"
           },
           "description": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Human-readable description. Safe to render in user-facing messages."
+            "description": "Human-readable description. Safe to render in user-facing messages.",
+            "example": "Research harness with web tools"
           },
           "display_name": {
             "type": [
@@ -26682,7 +26728,13 @@
             "items": {
               "$ref": "#/components/schemas/InitialFile"
             },
-            "description": "Replace the initial-files list entirely; omit to leave unchanged."
+            "description": "Replace the initial-files list entirely; omit to leave unchanged.",
+            "example": [
+              {
+                "content": "Cite sources verbatim.\n",
+                "path": "INSTRUCTIONS.md"
+              }
+            ]
           },
           "mcpServers": {
             "oneOf": [
@@ -26710,7 +26762,7 @@
               },
               {
                 "$ref": "#/components/schemas/NetworkAccessList",
-                "description": "Network access list. Send `{}` (empty object) to clear. Omit to leave unchanged."
+                "description": "Network access list. Send `{}` (empty object) to clear. Omit to leave unchanged.\nExample shape is defined on `NetworkAccessList`."
               }
             ]
           },
@@ -26728,7 +26780,7 @@
               },
               {
                 "$ref": "#/components/schemas/HarnessStatus",
-                "description": "Current lifecycle status."
+                "description": "Current lifecycle status. Example shape is defined on `HarnessStatus`."
               }
             ]
           },
@@ -26737,7 +26789,8 @@
               "string",
               "null"
             ],
-            "description": "New system prompt the harness contributes to sessions; omit to leave unchanged."
+            "description": "New system prompt the harness contributes to sessions; omit to leave unchanged.",
+            "example": "You are a research assistant. Cite sources verbatim."
           },
           "tags": {
             "type": [
@@ -26747,7 +26800,11 @@
             "items": {
               "type": "string"
             },
-            "description": "Replace the tag list entirely; omit to leave unchanged."
+            "description": "Replace the tag list entirely; omit to leave unchanged.",
+            "example": [
+              "research",
+              "web-tools"
+            ]
           }
         }
       },
@@ -26927,7 +26984,8 @@
               "string",
               "null"
             ],
-            "description": "API key for authentication. Set to update."
+            "description": "API key for authentication. Set to update.",
+            "example": "sk-mcp-redacted-1234567890abcdef"
           },
           "auth_mode": {
             "oneOf": [
@@ -26959,6 +27017,9 @@
             },
             "propertyNames": {
               "type": "string"
+            },
+            "example": {
+              "X-Atlassian-Cloud-Id": "00000000-0000-0000-0000-000000000000"
             }
           },
           "name": {
@@ -27384,7 +27445,8 @@
               "string",
               "null"
             ],
-            "description": "Human-readable name. Safe to render in user-facing messages."
+            "description": "Human-readable name. Safe to render in user-facing messages.",
+            "example": "design-docs"
           },
           "source": {
             "oneOf": [
@@ -27392,7 +27454,8 @@
                 "type": "null"
               },
               {
-                "$ref": "#/components/schemas/CreateVolumeSourceRequest"
+                "$ref": "#/components/schemas/CreateVolumeSourceRequest",
+                "description": "Source configuration. Example shape is defined on `CreateVolumeSourceRequest`."
               }
             ]
           }

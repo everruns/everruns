@@ -82,7 +82,7 @@ pub struct CreateSessionRequest {
     /// Client-side tools for this session (additive to agent tools).
     /// These tools are sent to the LLM but executed by the client.
     #[serde(default, deserialize_with = "deserialize_client_side_tools")]
-    #[schema(example = json!([{"type": "client_side", "name": "open_url", "description": "Open URL in the user's browser", "input_schema": {"type": "object", "properties": {"url": {"type": "string"}}, "required": ["url"]}}]))]
+    #[schema(example = json!([{"type": "client_side", "name": "open_url", "description": "Open URL in the user's browser", "parameters": {"type": "object", "properties": {"url": {"type": "string"}}, "required": ["url"]}}]))]
     pub tools: Vec<ToolDefinition>,
     /// Remote MCP servers scoped to this session only.
     #[serde(default, rename = "mcpServers", alias = "mcp_servers")]
