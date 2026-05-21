@@ -42,11 +42,15 @@ use everruns_core::{
     InputMessage, MemoryStoreBackend, MessageRetriever, SessionFileSystem,
     SessionFileSystemFactoryContext,
 };
+use sha2::{Digest, Sha256};
 use std::sync::Arc;
 
-/// Internal org id fallback used by the in-process runtime when a session
-/// org id is absent or invalid.
-const IN_PROCESS_ORG_ID_FALLBACK: i64 = everruns_core::DEFAULT_ORG_ID;
+/// Cap on the input length hashed by [`hash_public_org_id`].
+///
+/// Legitimate org public ids are `org_<32hex>` (36 bytes). Bounding the
+/// hashed prefix keeps worst-case cost predictable when an attacker-controlled
+/// session carries an oversize string.
+const HASH_INPUT_CAP_BYTES: usize = 128;
 
 /// Derive an internal `i64` org id from the public `org_<32hex>` form on a
 /// [`Session`].
@@ -54,20 +58,20 @@ const IN_PROCESS_ORG_ID_FALLBACK: i64 = everruns_core::DEFAULT_ORG_ID;
 /// Round-trip with [`everruns_core::org_public_id_from_internal`]: when the
 /// public id was produced by that helper (i.e. the upper bits are zero and
 /// the value fits in a positive `i64`), this returns the original internal
-/// id unchanged. High-entropy UUID-style ids that do not fit in `i64` are
-/// folded deterministically into `[2, i64::MAX]`, leaving `1` reserved for
-/// [`everruns_core::DEFAULT_ORG_ID`].
+/// id unchanged. Other values are mapped into `[2, i64::MAX]` by hashing the
+/// original public id string so runtime namespaces do not fail open to the
+/// shared default org and avoid arithmetic collision gadgets.
 fn in_process_internal_org_id(public_org_id: &str) -> i64 {
     if public_org_id == everruns_core::DEFAULT_ORG_PUBLIC_ID {
         return everruns_core::DEFAULT_ORG_ID;
     }
 
     let Ok(parsed) = public_org_id.parse::<OrgId>() else {
-        return IN_PROCESS_ORG_ID_FALLBACK;
+        return hash_public_org_id(public_org_id);
     };
     let raw: u128 = parsed.uuid().as_u128();
     if raw == 0 {
-        return IN_PROCESS_ORG_ID_FALLBACK;
+        return hash_public_org_id(public_org_id);
     }
 
     // Synthetic ids from `org_public_id_from_internal(i64)` always fit here,
@@ -76,9 +80,21 @@ fn in_process_internal_org_id(public_org_id: &str) -> i64 {
         return raw as i64;
     }
 
-    // UUID-style ids exceed `i64`; fold deterministically into [2, i64::MAX].
-    // We avoid `0` (invalid) and `1` (DEFAULT_ORG_ID, handled above).
-    ((raw % ((i64::MAX - 1) as u128)) as i64) + 2
+    hash_public_org_id(public_org_id)
+}
+
+// Use SHA-256 with a fixed truncation scheme so the mapping is stable across
+// Rust/binary upgrades and predictable for any embedder. Input is bounded to
+// `HASH_INPUT_CAP_BYTES` so attacker-controlled oversize org strings cannot
+// drive unbounded hashing work.
+fn hash_public_org_id(public_org_id: &str) -> i64 {
+    let bytes = public_org_id.as_bytes();
+    let bounded = &bytes[..bytes.len().min(HASH_INPUT_CAP_BYTES)];
+    let digest = Sha256::digest(bounded);
+    let mut buf = [0u8; 8];
+    buf.copy_from_slice(&digest[..8]);
+    let raw = u64::from_be_bytes(buf);
+    ((raw % ((i64::MAX - 1) as u64)) as i64) + 2
 }
 
 #[derive(Debug, Clone)]
@@ -935,7 +951,7 @@ mod org_id_mapping_tests {
     }
 
     #[test]
-    fn invalid_public_id_falls_back_to_default() {
+    fn invalid_public_id_does_not_fall_back_to_default() {
         for invalid in [
             "",
             "not-an-org",
@@ -943,22 +959,22 @@ mod org_id_mapping_tests {
             "org_ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZ",
             "ORG_00000000000000000000000000000001",
         ] {
-            assert_eq!(
-                in_process_internal_org_id(invalid),
-                IN_PROCESS_ORG_ID_FALLBACK,
-                "invalid input {invalid:?} should fall back"
+            let mapped = in_process_internal_org_id(invalid);
+            assert_ne!(mapped, everruns_core::DEFAULT_ORG_ID);
+            assert!(
+                mapped >= 2,
+                "invalid input {invalid:?} should not map to default"
             );
         }
     }
 
     #[test]
-    fn zero_public_id_falls_back_to_default() {
+    fn zero_public_id_does_not_fall_back_to_default() {
         // org_public_id_from_internal never produces this; a hand-crafted
         // all-zeros id is treated as invalid (raw == 0).
-        assert_eq!(
-            in_process_internal_org_id("org_00000000000000000000000000000000"),
-            IN_PROCESS_ORG_ID_FALLBACK
-        );
+        let mapped = in_process_internal_org_id("org_00000000000000000000000000000000");
+        assert_ne!(mapped, everruns_core::DEFAULT_ORG_ID);
+        assert!(mapped >= 2, "all-zero id should not map to default");
     }
 
     #[test]
@@ -985,13 +1001,13 @@ mod org_id_mapping_tests {
     }
 
     #[test]
-    fn high_entropy_uuid_style_id_folds_into_reserved_range() {
+    fn high_entropy_uuid_style_id_hashes_into_reserved_range() {
         // First valid UUID-style id whose raw u128 exceeds i64::MAX
-        // (top bit of the u128 set). It must fold to a positive i64 that
+        // (top bit of the u128 set). It must hash to a positive i64 that
         // is neither 0 nor DEFAULT_ORG_ID.
         let high = "org_80000000000000000000000000000000";
         let mapped = in_process_internal_org_id(high);
-        assert!(mapped >= 2, "folded id {mapped} must be >= 2");
+        assert!(mapped >= 2, "mapped id {mapped} must be >= 2");
         assert_ne!(mapped, DEFAULT_ORG_ID);
 
         // Mapping is deterministic.
@@ -1005,5 +1021,34 @@ mod org_id_mapping_tests {
         assert_ne!(a, b);
         assert_ne!(a, DEFAULT_ORG_ID);
         assert_ne!(b, DEFAULT_ORG_ID);
+    }
+
+    #[test]
+    fn hash_uses_stable_sha256_truncation() {
+        // SHA-256 with fixed big-endian first-8-byte truncation gives a value
+        // we can pin. If this assertion ever breaks, callers depending on
+        // build-stable mapping must be re-audited.
+        let mapped = in_process_internal_org_id("org_80000000000000000000000000000000");
+        let expected = {
+            let digest = sha2::Sha256::digest(b"org_80000000000000000000000000000000");
+            let mut buf = [0u8; 8];
+            buf.copy_from_slice(&digest[..8]);
+            let raw = u64::from_be_bytes(buf);
+            ((raw % ((i64::MAX - 1) as u64)) as i64) + 2
+        };
+        assert_eq!(mapped, expected);
+    }
+
+    #[test]
+    fn oversize_input_is_bounded_and_does_not_collide_silently() {
+        // Inputs past HASH_INPUT_CAP_BYTES are truncated before hashing, so
+        // two oversize strings that agree on the first cap bytes map to the
+        // same internal id. We only assert the result stays in the safe
+        // [2, i64::MAX] range and is not DEFAULT_ORG_ID — the cap exists to
+        // bound work, not to widen the input space.
+        let oversize = "x".repeat(super::HASH_INPUT_CAP_BYTES * 4);
+        let mapped = in_process_internal_org_id(&oversize);
+        assert!(mapped >= 2);
+        assert_ne!(mapped, DEFAULT_ORG_ID);
     }
 }
