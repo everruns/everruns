@@ -54,10 +54,10 @@ Events are classified as **ephemeral** or **durable**:
 
 | Category | Examples | Storage | Delivery |
 |---|---|---|---|
-| Ephemeral | `output.message.delta`, `reason.thinking.delta`, `tool.output.delta`, `llm.generation` | None (skip PG) | EventDelivery only |
-| Durable | `output.message.completed`, `turn.started`, `tool.completed` | PostgreSQL | PG + EventDelivery |
+| Ephemeral | `output.message.delta`, `reason.thinking.delta`, `tool.output.delta` | EventDelivery-only when the backend supports ephemeral skip; otherwise PostgreSQL + EventDelivery | EventDelivery only |
+| Durable | `llm.generation`, `output.message.completed`, `turn.started`, `tool.completed` | PostgreSQL | PG + EventDelivery |
 
-`EventService.emit()` routes automatically based on `EventRequest::is_ephemeral()`. Ephemeral events (~80% of volume) never hit PostgreSQL, reducing write pressure significantly. SSE reconnection replays durable events from PG; missed deltas are acceptable since the completed event has the full content.
+`EventService.emit()` routes automatically based on `EventRequest::is_ephemeral()`. With NATS-backed delivery, ephemeral delta events skip PostgreSQL, reducing write pressure significantly. In-memory dev delivery still persists events to PG. SSE reconnection replays durable events from PG; missed deltas are acceptable since the completed event has the full content.
 
 Durable events and usage rows can also feed asynchronous analytical projections
 for built-in reporting. Reporting is not part of the hot event delivery path;

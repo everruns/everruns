@@ -1186,17 +1186,15 @@ fn test_row_to_ledger_entry_dto() {
 }
 
 // ========================================================================
-// Listener: ephemeral llm.generation event journaling (regression: EVE-416)
+// Listener: unpersisted llm.generation event journaling (regression: EVE-416)
 // ========================================================================
 
 #[tokio::test]
-async fn test_llm_generation_listener_omits_event_id_for_ephemeral_events() {
-    // Regression for EVE-416: `llm.generation` is ephemeral and may skip the
-    // `events` table insert when NATS-backed delivery is active. The budget
-    // listener used to write `usage_journal.event_id = <ephemeral event id>`,
-    // which violated the FK on `events(id)`. The listener must now omit the
-    // FK reference for ephemeral source events while still journaling the
-    // generation. The public id is preserved via `source_type`/`source_id`.
+async fn test_llm_generation_listener_omits_event_id_for_unpersisted_events() {
+    // Regression for EVE-416: listener inputs without an events-table sequence
+    // do not have a durable FK target. The listener must omit the FK reference
+    // while still journaling the generation. The public id is preserved via
+    // `source_type`/`source_id`.
     let db = make_db();
     let svc = BudgetService::new(db.clone());
 
@@ -1232,10 +1230,7 @@ async fn test_llm_generation_listener_omits_event_id_for_ephemeral_events() {
     let event = Event::new(session_id, EventContext::empty(), data);
     let public_event_id = event.id.to_string();
 
-    assert!(
-        event.is_ephemeral(),
-        "llm.generation must remain ephemeral for this regression to apply"
-    );
+    assert!(event.sequence.is_none(), "test input must be unpersisted");
 
     svc.on_event(&event).await;
 
@@ -1257,7 +1252,7 @@ async fn test_llm_generation_listener_omits_event_id_for_ephemeral_events() {
 
     assert!(
         journal.event_id.is_none(),
-        "usage_journal.event_id must be NULL for ephemeral source events to avoid FK violation, got {:?}",
+        "usage_journal.event_id must be NULL for unpersisted source events to avoid FK violation, got {:?}",
         journal.event_id
     );
     assert_eq!(journal.kind, "llm_generation");

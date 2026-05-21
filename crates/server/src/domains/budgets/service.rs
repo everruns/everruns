@@ -289,12 +289,10 @@ impl BudgetService {
         }
 
         let total_tokens = input_tokens + output_tokens;
-        // Ephemeral events (e.g. `llm.generation`) may not be persisted to the
-        // `events` table when the ephemeral-skip delivery path is active (NATS),
-        // so storing their id in `usage_journal.event_id` would violate the FK.
-        // The public id is still preserved via `source_type`/`source_id` for
-        // traceability — `event_id` is the durable FK reference only.
-        let event_id = (!event.is_ephemeral()).then(|| event.id.uuid());
+        // Only persisted events have a sequence allocated by the events table.
+        // Synthetic listener inputs preserve traceability via source_id but must
+        // not write an FK to usage_journal.event_id.
+        let event_id = event.sequence.map(|_| event.id.uuid());
         let journal = match self
             .db
             .create_usage_journal_entry(CreateUsageJournalRow {
