@@ -94,6 +94,7 @@ impl EnvironmentContextBase {
             shell: shell_name(),
             timezone: local_timezone(),
             git_repo: git_output(&workspace_root, &["config", "--get", "remote.origin.url"])
+                .map(|remote| redact_git_remote_secret(&remote))
                 .or_else(|| git_output(&workspace_root, &["rev-parse", "--show-toplevel"])),
             git_user: git_output(&workspace_root, &["config", "--get", "user.name"]),
             git_email: git_output(&workspace_root, &["config", "--get", "user.email"]),
@@ -167,6 +168,31 @@ fn xml_escape(value: &str) -> String {
         .replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
+}
+
+fn redact_git_remote_secret(remote: &str) -> String {
+    // Only strip userinfo from http(s) remotes — scp-style (`git@host:path`)
+    // and `ssh://user@host/path` rely on the user component for routing, not
+    // credentialing. PATs and basic-auth passwords typically appear in
+    // `https://token@host/...` or `https://user:pass@host/...`.
+    let scheme_end = remote.find("://");
+    let Some(scheme_end) = scheme_end else {
+        return remote.to_string();
+    };
+    let scheme = &remote[..scheme_end];
+    if !scheme.eq_ignore_ascii_case("http") && !scheme.eq_ignore_ascii_case("https") {
+        return remote.to_string();
+    }
+    let authority_start = scheme_end + 3;
+    let authority = &remote[authority_start..];
+    let authority_end_offset = authority.find(['/', '?', '#']).unwrap_or(authority.len());
+    let authority_end = authority_start + authority_end_offset;
+    let userinfo = &remote[authority_start..authority_end];
+    if let Some(at_offset) = userinfo.find('@') {
+        let host_port = &userinfo[at_offset + 1..];
+        return format!("{}{}", &remote[..authority_start], host_port) + &remote[authority_end..];
+    }
+    remote.to_string()
 }
 
 fn shell_name() -> String {
@@ -409,5 +435,41 @@ mod tests {
                 .contains("  <git_current_branch>feature&lt;context&gt;</git_current_branch>\n")
         );
         assert!(rendered.ends_with("</environment_context>"));
+    }
+
+    #[test]
+    fn redact_git_remote_secret_removes_http_userinfo() {
+        let remote = "https://user:ghp_SUPERSECRET@github.com/org/private.git";
+        assert_eq!(
+            redact_git_remote_secret(remote),
+            "https://github.com/org/private.git"
+        );
+    }
+
+    #[test]
+    fn redact_git_remote_secret_leaves_non_url_remote_unchanged() {
+        let remote = "git@github.com:everruns/everruns.git";
+        assert_eq!(redact_git_remote_secret(remote), remote);
+    }
+
+    #[test]
+    fn redact_git_remote_secret_preserves_ssh_url_username() {
+        let remote = "ssh://git@github.com/everruns/everruns.git";
+        assert_eq!(redact_git_remote_secret(remote), remote);
+    }
+
+    #[test]
+    fn redact_git_remote_secret_removes_http_token_only_userinfo() {
+        let remote = "https://ghp_TOKEN@github.com/org/private.git";
+        assert_eq!(
+            redact_git_remote_secret(remote),
+            "https://github.com/org/private.git"
+        );
+    }
+
+    #[test]
+    fn redact_git_remote_secret_leaves_https_without_userinfo_unchanged() {
+        let remote = "https://github.com/everruns/everruns.git";
+        assert_eq!(redact_git_remote_secret(remote), remote);
     }
 }
