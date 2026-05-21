@@ -117,6 +117,15 @@ fn is_valid_repo_segment(segment: &str) -> bool {
             .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))
 }
 
+fn is_valid_repo_path(path: &str) -> bool {
+    let path = path.trim();
+    !path.is_empty()
+        && !path.starts_with('/')
+        && path.split('/').all(|segment| {
+            !segment.is_empty() && segment != "." && segment != ".." && !segment.contains('\\')
+        })
+}
+
 fn scoped_query(query: &str, arguments: &Value) -> String {
     let scope = repo_scope(arguments);
     if scope.is_empty() {
@@ -295,6 +304,11 @@ impl Tool for ReadGitHubFileTool {
             Ok(path) => path,
             Err(e) => return e,
         };
+        if !is_valid_repo_path(path) {
+            return ToolExecutionResult::tool_error(
+                "Invalid path. Expected a relative repository file path without empty, dot, or dot-dot segments.",
+            );
+        }
         let reference = arguments.get("ref").and_then(|v| v.as_str()).map(str::trim);
 
         if let Err(e) = enforce_github_network_access(context) {
@@ -567,5 +581,18 @@ mod tests {
         assert!(!is_valid_owner_repo("owner"));
         assert!(!is_valid_owner_repo("../repo"));
         assert!(!is_valid_owner_repo("owner/repo/extra"));
+    }
+
+    #[test]
+    fn validates_repo_path() {
+        assert!(is_valid_repo_path("src/lib.rs"));
+        assert!(is_valid_repo_path("README.md"));
+        assert!(!is_valid_repo_path(""));
+        assert!(!is_valid_repo_path("/README.md"));
+        assert!(!is_valid_repo_path("src//lib.rs"));
+        assert!(!is_valid_repo_path("./README.md"));
+        assert!(!is_valid_repo_path("../issues"));
+        assert!(!is_valid_repo_path("src/../README.md"));
+        assert!(!is_valid_repo_path("src\\lib.rs"));
     }
 }
