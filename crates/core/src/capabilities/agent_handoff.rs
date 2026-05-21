@@ -15,7 +15,7 @@ use crate::session_resource::{
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::{SessionResourceRegistry, ToolContext};
-use crate::typed_id::AgentId;
+use crate::typed_id::{AgentId, HarnessId};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -80,6 +80,10 @@ impl Capability for AgentHandoffCapability {
                                 "type": "string",
                                 "description": "Public id of the configured target agent."
                             },
+                            "harness_id": {
+                                "type": "string",
+                                "description": "Public id of the configured target harness."
+                            },
                             "required_connections": {
                                 "type": "array",
                                 "items": { "type": "string" },
@@ -91,7 +95,7 @@ impl Capability for AgentHandoffCapability {
                                 "description": "Non-secret scope labels recorded for audit and resource metadata."
                             }
                         },
-                        "required": ["id", "name", "agent_id"],
+                        "required": ["id", "name", "agent_id", "harness_id"],
                         "additionalProperties": false
                     },
                     "default": []
@@ -196,6 +200,7 @@ struct AgentHandoffTargetConfig {
     #[serde(default)]
     description: Option<String>,
     agent_id: AgentId,
+    harness_id: HarnessId,
     #[serde(default)]
     required_connections: Vec<String>,
     #[serde(default)]
@@ -449,7 +454,7 @@ impl Tool for StartAgentHandoffTool {
 
         let child_session = match store
             .create_session(
-                parent_session.harness_id,
+                target.harness_id,
                 Some(target.agent_id),
                 Some(&target.name),
                 parent_session.locale.as_deref(),
@@ -776,7 +781,11 @@ mod tests {
     use std::sync::{Arc, Mutex};
     use uuid::Uuid;
 
-    fn target_config(agent_id: AgentId, required_connections: Vec<&str>) -> Value {
+    fn target_config(
+        agent_id: AgentId,
+        harness_id: HarnessId,
+        required_connections: Vec<&str>,
+    ) -> Value {
         json!({
             "targets": [
                 {
@@ -784,6 +793,7 @@ mod tests {
                     "name": "AWS Operator",
                     "description": "Manage fake AWS infrastructure",
                     "agent_id": agent_id,
+                    "harness_id": harness_id,
                     "required_connections": required_connections,
                     "required_scopes": ["fake_aws:rds:create"]
                 }
@@ -967,10 +977,11 @@ mod tests {
     #[test]
     fn validate_config_rejects_duplicate_targets() {
         let agent_id = AgentId::new();
+        let harness_id = HarnessId::new();
         let config = json!({
             "targets": [
-                { "id": "dup", "name": "One", "agent_id": agent_id },
-                { "id": "dup", "name": "Two", "agent_id": AgentId::new() }
+                { "id": "dup", "name": "One", "agent_id": agent_id, "harness_id": harness_id },
+                { "id": "dup", "name": "Two", "agent_id": AgentId::new(), "harness_id": HarnessId::new() }
             ]
         });
 
@@ -983,7 +994,11 @@ mod tests {
     #[tokio::test]
     async fn start_handoff_requires_configured_connection() {
         let store = Arc::new(MockPlatformStore::new());
-        let config = target_config(store.agent.public_id, vec!["fake_aws"]);
+        let config = target_config(
+            store.agent.public_id,
+            store.session.harness_id,
+            vec!["fake_aws"],
+        );
         let tool = start_tool(config);
         let resolver = Arc::new(TestConnectionResolver {
             providers: HashSet::new(),
@@ -1009,7 +1024,11 @@ mod tests {
     #[tokio::test]
     async fn start_handoff_without_connection_resolver_is_internal_error() {
         let store = Arc::new(MockPlatformStore::new());
-        let config = target_config(store.agent.public_id, vec!["fake_aws"]);
+        let config = target_config(
+            store.agent.public_id,
+            store.session.harness_id,
+            vec!["fake_aws"],
+        );
         let tool = start_tool(config);
         let context = context(store, None, None);
 
@@ -1033,7 +1052,11 @@ mod tests {
         let resolver = Arc::new(TestConnectionResolver {
             providers: HashSet::from(["fake_aws".to_string()]),
         });
-        let config = target_config(store.agent.public_id, vec!["fake_aws"]);
+        let config = target_config(
+            store.agent.public_id,
+            store.session.harness_id,
+            vec!["fake_aws"],
+        );
         let tool = start_tool(config);
         let context = context(store.clone(), Some(resolver), Some(registry.clone()));
 
@@ -1071,11 +1094,63 @@ mod tests {
         );
     }
 
+    /// Regression for the confused-deputy issue this PR fixes: the child
+    /// session must be created with the *target's* harness, not the
+    /// parent session's harness. If a future refactor reintroduces
+    /// `parent_session.harness_id` here, the child would inherit the
+    /// parent's mounts/capabilities while gaining the target's tools.
+    #[tokio::test]
+    async fn start_handoff_uses_target_harness_not_parent() {
+        let store = Arc::new(MockPlatformStore::new());
+        let registry = Arc::new(TestResourceRegistry::default());
+        let resolver = Arc::new(TestConnectionResolver {
+            providers: HashSet::from(["fake_aws".to_string()]),
+        });
+        let target_harness_id = HarnessId::new();
+        // Sanity: the target harness must differ from the parent's,
+        // otherwise the assertion below cannot distinguish them.
+        assert_ne!(store.session.harness_id, target_harness_id);
+
+        let config = target_config(store.agent.public_id, target_harness_id, vec!["fake_aws"]);
+        let tool = start_tool(config);
+        let context = context(store.clone(), Some(resolver), Some(registry));
+
+        let result = tool
+            .execute_with_context(
+                json!({
+                    "target": "aws_operator",
+                    "task": "Create an RDS database named app-db"
+                }),
+                &context,
+            )
+            .await;
+        assert!(result.is_success(), "expected success, got {result:?}");
+
+        let recorded = store
+            .created_session_harness_ids
+            .lock()
+            .expect("recorder lock")
+            .clone();
+        assert_eq!(
+            recorded.len(),
+            1,
+            "expected exactly one child create_session call, got {recorded:?}"
+        );
+        assert_eq!(
+            recorded[0], target_harness_id,
+            "child session must inherit the target harness, not the parent's",
+        );
+        assert_ne!(
+            recorded[0], store.session.harness_id,
+            "child session must NOT inherit the parent harness (confused-deputy regression)",
+        );
+    }
+
     #[tokio::test]
     async fn get_handoffs_lists_registered_handoff_resources() {
         let store = Arc::new(MockPlatformStore::new());
         let registry = Arc::new(TestResourceRegistry::default());
-        let config = target_config(store.agent.public_id, vec![]);
+        let config = target_config(store.agent.public_id, store.session.harness_id, vec![]);
         let start = start_tool(config.clone());
         let get = get_tool(config);
         let context = context(store, None, Some(registry));

@@ -288,6 +288,10 @@ pub mod tests {
         pub app: App,
         pub app_channel: AppChannel,
         pub session: Session,
+        /// Records the `harness_id` argument of every `create_session`
+        /// call so tests can assert which harness a child session was
+        /// created against. See `start_handoff_uses_target_harness_not_parent`.
+        pub created_session_harness_ids: std::sync::Mutex<Vec<HarnessId>>,
     }
 
     impl Default for MockPlatformStore {
@@ -422,6 +426,7 @@ pub mod tests {
                     blueprint_id: None,
                     blueprint_config: None,
                 },
+                created_session_harness_ids: std::sync::Mutex::new(Vec::new()),
             }
         }
     }
@@ -668,6 +673,9 @@ pub mod tests {
             blueprint_id: Option<&str>,
             blueprint_config: Option<&serde_json::Value>,
         ) -> Result<Session> {
+            if let Ok(mut recorder) = self.created_session_harness_ids.lock() {
+                recorder.push(hid);
+            }
             let mut s = self.session.clone();
             s.id = SessionId::new();
             s.harness_id = hid;
