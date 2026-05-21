@@ -20,6 +20,7 @@ use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+use ratatui_textarea::{CursorMove, TextArea, WrapMode};
 use serde_json::Value;
 use std::collections::HashSet;
 use std::time::Duration;
@@ -117,7 +118,7 @@ pub struct App {
     startup: StartupInfo,
     model: ModelState,
     pub lines: Vec<ChatLine>,
-    pub input: String,
+    pub input: TextArea<'static>,
     pub busy: bool,
     pub should_quit: bool,
     /// Lines scrolled back from the bottom of the transcript. 0 = stuck to bottom.
@@ -154,7 +155,7 @@ impl App {
             startup: runtime.startup,
             model: runtime.model,
             lines: Vec::new(),
-            input: String::new(),
+            input: new_input_area(vec![String::new()]),
             busy: false,
             should_quit: false,
             scroll: 0,
@@ -332,11 +333,11 @@ impl App {
                 self.should_quit = true;
                 return;
             }
-            KeyCode::Up => {
+            KeyCode::Up if key.modifiers.contains(KeyModifiers::CONTROL) || self.busy => {
                 self.scroll_by(1);
                 return;
             }
-            KeyCode::Down => {
+            KeyCode::Down if key.modifiers.contains(KeyModifiers::CONTROL) || self.busy => {
                 self.scroll_by(-1);
                 return;
             }
@@ -348,11 +349,11 @@ impl App {
                 self.scroll_by(-(self.page_step() as i32));
                 return;
             }
-            KeyCode::Home => {
+            KeyCode::Home if key.modifiers.contains(KeyModifiers::CONTROL) || self.busy => {
                 self.scroll_to_top();
                 return;
             }
-            KeyCode::End => {
+            KeyCode::End if key.modifiers.contains(KeyModifiers::CONTROL) || self.busy => {
                 self.scroll = 0;
                 return;
             }
@@ -364,29 +365,23 @@ impl App {
             return;
         }
         match key.code {
-            KeyCode::Backspace => {
-                self.input.pop();
+            KeyCode::Enter
+                if !key
+                    .modifiers
+                    .intersects(KeyModifiers::ALT | KeyModifiers::SHIFT) =>
+            {
+                self.submit_input().await;
             }
             KeyCode::Tab => {
                 if let Some(suggestion) = self.suggestions().first() {
-                    self.input = suggestion.completion.clone();
+                    self.set_input_text(suggestion.completion.clone());
+                } else {
+                    let _ = self.input.input(key);
                 }
             }
-            KeyCode::Char(c) => self.input.push(c),
-            KeyCode::Enter => {
-                let text = std::mem::take(&mut self.input);
-                let text = text.trim().to_string();
-                if text.is_empty() {
-                    return;
-                }
-                if let Some(rest) = text.strip_prefix('/') {
-                    self.handle_command(rest).await;
-                    return;
-                }
-                self.push_user(text.clone());
-                self.start_turn(text);
+            _ => {
+                let _ = self.input.input(key);
             }
-            _ => {}
         }
     }
 
@@ -417,7 +412,48 @@ impl App {
     }
 
     fn suggestions(&self) -> Vec<CommandSuggestion> {
-        command_suggestions(&self.input, &self.startup.capability_commands)
+        command_suggestions(self.suggestion_input(), &self.startup.capability_commands)
+    }
+
+    fn suggestion_input(&self) -> &str {
+        self.input
+            .lines()
+            .first()
+            .map(String::as_str)
+            .unwrap_or_default()
+    }
+
+    fn input_text(&self) -> String {
+        self.input.lines().join("\n")
+    }
+
+    fn set_input_text(&mut self, text: String) {
+        self.input = new_input_area(vec![text]);
+        self.input.move_cursor(CursorMove::End);
+    }
+
+    fn reset_input(&mut self) {
+        self.input = new_input_area(vec![String::new()]);
+    }
+
+    fn input_height(&self) -> u16 {
+        let visible_lines = self.input.lines().len().clamp(1, 6) as u16;
+        visible_lines + 2
+    }
+
+    async fn submit_input(&mut self) {
+        let text = self.input_text();
+        self.reset_input();
+        let text = text.trim().to_string();
+        if text.is_empty() {
+            return;
+        }
+        if let Some(rest) = text.strip_prefix('/') {
+            self.handle_command(rest).await;
+            return;
+        }
+        self.push_user(text.clone());
+        self.start_turn(text);
     }
 
     async fn handle_command(&mut self, cmd: &str) {
@@ -445,7 +481,7 @@ impl App {
                     self.push_system(format!("capability commands: {caps}"));
                 }
                 self.push_system(
-                    "scroll: ↑/↓ line · PgUp/PgDn half-page · Home/End top/bottom · mouse wheel"
+                    "input: ←/→ edit · Alt/Shift-Enter newline · scroll: Ctrl-↑/↓ line · PgUp/PgDn half-page · Ctrl-Home/End top/bottom · mouse wheel"
                         .into(),
                 );
                 self.push_system("approvals: y allow · n / Esc deny · exit: Esc / Ctrl-D".into());
@@ -898,6 +934,14 @@ fn capability_command_usage(descriptor: &CommandDescriptor) -> String {
     }
 }
 
+fn new_input_area(lines: Vec<String>) -> TextArea<'static> {
+    let mut input = TextArea::new(lines);
+    input.set_wrap_mode(WrapMode::Word);
+    input.set_cursor_line_style(Style::default());
+    input.set_cursor_style(Style::default().add_modifier(Modifier::REVERSED));
+    input
+}
+
 // ---------- helpers for surfacing tool results ----------
 
 fn result_value(data: &ToolCompletedData) -> Option<Value> {
@@ -1087,7 +1131,7 @@ fn draw(f: &mut ratatui::Frame, app: &mut App) {
         Vec::new()
     };
     let has_suggestions = !suggestions.is_empty();
-    let input_height: u16 = 3;
+    let input_height = app.input_height();
     let approval_height: u16 = if has_approval { 3 } else { 0 };
     let suggestions_height: u16 = if has_suggestions { 3 } else { 0 };
 
@@ -1117,7 +1161,7 @@ fn draw(f: &mut ratatui::Frame, app: &mut App) {
         draw_suggestions(f, chunks[idx], &suggestions);
         idx += 1;
     }
-    draw_input(f, chunks[idx], &*app);
+    draw_input(f, chunks[idx], app);
     idx += 1;
     draw_status(f, chunks[idx], &*app);
 }
@@ -1508,16 +1552,35 @@ fn draw_suggestions(f: &mut ratatui::Frame, area: Rect, suggestions: &[CommandSu
     f.render_widget(para, area);
 }
 
-fn draw_input(f: &mut ratatui::Frame, area: Rect, app: &App) {
+fn draw_input(f: &mut ratatui::Frame, area: Rect, app: &mut App) {
     let title = input_title(app);
-    let para = Paragraph::new(app.input.as_str())
-        .block(Block::default().borders(Borders::ALL).title(title));
-    f.render_widget(para, area);
-    if !app.busy && app.pending.is_none() {
-        let x = area.x + 1 + (app.input.len() as u16).min(area.width.saturating_sub(2));
-        let y = area.y + 1;
-        f.set_cursor_position((x, y));
+    app.input
+        .set_block(Block::default().borders(Borders::ALL).title(title));
+    f.render_widget(&app.input, area);
+    draw_input_cursor(f, area, app);
+}
+
+fn draw_input_cursor(f: &mut ratatui::Frame, area: Rect, app: &App) {
+    if app.pending.is_some() || app.busy {
+        return;
     }
+
+    let inner_width = area.width.saturating_sub(2);
+    let inner_height = area.height.saturating_sub(2);
+    if inner_width == 0 || inner_height == 0 {
+        return;
+    }
+
+    let cursor = app.input.screen_cursor();
+    let x = area
+        .x
+        .saturating_add(1)
+        .saturating_add((cursor.col as u16).min(inner_width.saturating_sub(1)));
+    let y = area
+        .y
+        .saturating_add(1)
+        .saturating_add((cursor.row as u16).min(inner_height.saturating_sub(1)));
+    f.set_cursor_position((x, y));
 }
 
 fn input_title(app: &App) -> Line<'static> {
@@ -1530,7 +1593,7 @@ fn input_title(app: &App) -> Line<'static> {
             app.turn_activity.as_deref().unwrap_or("thinking"),
         );
     }
-    Line::from(" message (Enter to send) ")
+    Line::from(" message (Enter to send, Alt/Shift-Enter for newline) ")
 }
 
 fn thinking_title(frame: u64, activity: &str) -> Line<'static> {
@@ -1688,6 +1751,25 @@ mod tests {
             .collect();
         assert_eq!(help_entries.len(), 1);
         assert_eq!(help_entries[0].completion, "/help");
+    }
+
+    #[test]
+    fn input_area_supports_multiline_and_cursor_editing() {
+        let mut input = new_input_area(vec![String::new()]);
+
+        for key in [
+            KeyEvent::new(KeyCode::Char('a'), KeyModifiers::empty()),
+            KeyEvent::new(KeyCode::Char('c'), KeyModifiers::empty()),
+            KeyEvent::new(KeyCode::Left, KeyModifiers::empty()),
+            KeyEvent::new(KeyCode::Char('b'), KeyModifiers::empty()),
+            KeyEvent::new(KeyCode::Right, KeyModifiers::empty()),
+            KeyEvent::new(KeyCode::Enter, KeyModifiers::ALT),
+            KeyEvent::new(KeyCode::Char('d'), KeyModifiers::empty()),
+        ] {
+            let _ = input.input(key);
+        }
+
+        assert_eq!(input.lines(), ["abc", "d"]);
     }
 
     #[test]
