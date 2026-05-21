@@ -268,6 +268,8 @@ mod tests {
             max_iterations: 10,
             error: None,
             usage: None,
+            output_message_id: None,
+            time_to_first_token_ms: None,
             response_id: None,
             locale: None,
             network_access: None,

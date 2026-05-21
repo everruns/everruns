@@ -2,8 +2,10 @@
 // Decision: everruns-runtime stays durable-agnostic and returns generic next-step plans.
 
 use crate::{RuntimeHostAdapter, RuntimeSessionLifecycle};
+use chrono::{DateTime, Utc};
 use everruns_core::atoms::{ActInput, AtomContext};
 use everruns_core::error::{AgentLoopError, Result};
+use everruns_core::events::TokenUsage;
 use everruns_core::typed_id::{AgentId, ExecId, HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::{
     Controls, ReasonResult, UserFacingError, UserFacingErrorContext,
@@ -35,6 +37,20 @@ pub struct RuntimeTurnState {
     pub iteration: u32,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub request_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub started_at: Option<DateTime<Utc>>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub cumulative_usage: Option<TokenUsage>,
+    #[serde(default)]
+    pub tool_call_count: u32,
+    #[serde(default)]
+    pub llm_call_count: u32,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub time_to_first_token_ms: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub final_message_id: Option<MessageId>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub final_answer_preview: Option<String>,
 }
 
 fn default_iteration() -> u32 {
@@ -50,6 +66,7 @@ pub struct RuntimeActPlan {
     pub previous_response_id: Option<String>,
     pub iteration: u32,
     pub request_id: Option<String>,
+    pub resume_state: Box<RuntimeTurnState>,
 }
 
 /// Generic next-step decision for a host turn.
@@ -63,6 +80,46 @@ pub enum RuntimeTurnPlan {
     ScheduleAct(RuntimeActPlan),
     Complete { error: Option<String> },
     WaitForToolResults { resume: RuntimeTurnState },
+}
+
+fn preview_final_answer(text: &str) -> Option<String> {
+    if text.is_empty() {
+        return None;
+    }
+
+    Some(text.chars().take(2000).collect())
+}
+
+fn add_usage(current: &mut Option<TokenUsage>, next: &TokenUsage) {
+    match current {
+        Some(current) => current.add(next),
+        None => *current = Some(next.clone()),
+    }
+}
+
+impl RuntimeTurnState {
+    fn with_reason_summary(&self, reason_result: &ReasonResult) -> Self {
+        let mut next = self.clone();
+        next.llm_call_count = next.llm_call_count.saturating_add(1);
+        next.tool_call_count = next
+            .tool_call_count
+            .saturating_add(reason_result.tool_calls.len() as u32);
+        if let Some(usage) = &reason_result.usage {
+            add_usage(&mut next.cumulative_usage, usage);
+        }
+        if next.time_to_first_token_ms.is_none() {
+            next.time_to_first_token_ms = reason_result.time_to_first_token_ms;
+        }
+        next.final_message_id = reason_result.output_message_id;
+        next.final_answer_preview = preview_final_answer(&reason_result.text);
+        next
+    }
+
+    fn duration_ms(&self) -> Option<u64> {
+        self.started_at
+            .map(|started_at| Utc::now().signed_duration_since(started_at))
+            .and_then(|duration| u64::try_from(duration.num_milliseconds()).ok())
+    }
 }
 
 fn classify_reason_failure(reason_result: &ReasonResult) -> UserFacingError {
@@ -122,6 +179,7 @@ pub async fn plan_next_host_turn<A: RuntimeHostAdapter>(
                 turn_id,
                 previous_response_id: None,
                 iteration: 1,
+                started_at: state.started_at.or_else(|| Some(Utc::now())),
                 ..state.clone()
             };
             debug!(session_id = %state.session_id, turn_id = ?turn_id, "planned reason step");
@@ -131,6 +189,7 @@ pub async fn plan_next_host_turn<A: RuntimeHostAdapter>(
             let reason_result: ReasonResult = serde_json::from_value(output.clone())
                 .map_err(|error| AgentLoopError::Internal(error.into()))?;
             let response_id = reason_result.response_id.clone();
+            let summarized_state = state.with_reason_summary(&reason_result);
 
             if reason_result.has_tool_calls && reason_result.success {
                 let session_blueprint_id = adapter
@@ -158,6 +217,7 @@ pub async fn plan_next_host_turn<A: RuntimeHostAdapter>(
                     previous_response_id: response_id,
                     iteration: state.iteration,
                     request_id: state.request_id.clone(),
+                    resume_state: Box::new(summarized_state),
                 };
                 return Ok(RuntimeTurnPlan::ScheduleAct(plan));
             }
@@ -174,7 +234,7 @@ pub async fn plan_next_host_turn<A: RuntimeHostAdapter>(
                 let next = RuntimeTurnState {
                     previous_response_id: response_id,
                     iteration: state.iteration.saturating_add(1),
-                    ..state.clone()
+                    ..summarized_state
                 };
                 return Ok(RuntimeTurnPlan::ScheduleReason(next));
             }
@@ -186,11 +246,20 @@ pub async fn plan_next_host_turn<A: RuntimeHostAdapter>(
             if reason_result.success {
                 lifecycle
                     .emit_turn_completed(
-                        turn_id,
                         state.input_message_id,
-                        state.iteration,
-                        reason_result.usage.clone(),
-                        None,
+                        everruns_core::events::TurnCompletedData {
+                            turn_id,
+                            iterations: state.iteration,
+                            duration_ms: summarized_state.duration_ms(),
+                            usage: summarized_state.cumulative_usage.clone(),
+                            input_content: None,
+                            final_message_id: summarized_state.final_message_id,
+                            final_answer_preview: summarized_state.final_answer_preview.clone(),
+                            time_to_first_token_ms: summarized_state.time_to_first_token_ms,
+                            tool_call_count: Some(summarized_state.tool_call_count),
+                            llm_call_count: Some(summarized_state.llm_call_count),
+                            status: Some("completed".to_string()),
+                        },
                     )
                     .await;
                 lifecycle
@@ -198,7 +267,7 @@ pub async fn plan_next_host_turn<A: RuntimeHostAdapter>(
                         turn_id,
                         state.input_message_id,
                         Some(state.iteration),
-                        reason_result.usage.clone(),
+                        summarized_state.cumulative_usage.clone(),
                     )
                     .await;
             } else {

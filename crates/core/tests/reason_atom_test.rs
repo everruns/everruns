@@ -1385,6 +1385,8 @@ async fn test_previous_response_id_round_trips_through_serde() {
         max_iterations: 10,
         error: None,
         usage: None,
+        output_message_id: None,
+        time_to_first_token_ms: None,
         locale: None,
         response_id: Some("resp_out_456".to_string()),
         network_access: None,

@@ -1415,6 +1415,12 @@ mod tests {
             duration_ms: Some(10),
             usage: None,
             input_content: None,
+            final_message_id: None,
+            final_answer_preview: None,
+            time_to_first_token_ms: None,
+            tool_call_count: None,
+            llm_call_count: None,
+            status: None,
         });
         let frame = translate_session_event(&data, "task-1", "ctx-1").unwrap();
         assert_eq!(frame["kind"], "status-update");

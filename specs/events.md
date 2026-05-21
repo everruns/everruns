@@ -556,10 +556,26 @@ Turn execution completed successfully.
   "data": {
     "turn_id": "...",
     "iterations": 3,
-    "duration_ms": 1500
+    "duration_ms": 1500,
+    "usage": {
+      "input_tokens": 500,
+      "output_tokens": 200
+    },
+    "final_message_id": "message_...",
+    "final_answer_preview": "Done.",
+    "time_to_first_token_ms": 120,
+    "tool_call_count": 2,
+    "llm_call_count": 3,
+    "status": "completed"
   }
 }
 ```
+
+`turn.completed` is the durable turn-level summary event. New events should
+populate the optional summary fields when available so export/review consumers
+can render duration, final answer reference/preview, token usage, and basic
+execution counts from this event alone. Older persisted events remain valid when
+these optional fields are absent.
 
 #### `turn.failed`
 

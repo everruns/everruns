@@ -4,6 +4,7 @@
 
 use anyhow::Result;
 use async_trait::async_trait;
+use chrono::Utc;
 use everruns_config::env_string_any;
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use everruns_durable::{
@@ -661,6 +662,13 @@ impl AgentRunner for DurableRunner {
             previous_response_id: None,
             iteration: 1,
             request_id,
+            started_at: Some(Utc::now()),
+            cumulative_usage: None,
+            tool_call_count: 0,
+            llm_call_count: 0,
+            time_to_first_token_ms: None,
+            final_message_id: None,
+            final_answer_preview: None,
         };
         let workflow_id = session_id.uuid();
         let input_json = serde_json::to_value(&input)?;
@@ -1028,6 +1036,13 @@ mod tests {
             previous_response_id: Some("resp_123".to_string()),
             iteration: 3,
             request_id: None,
+            started_at: None,
+            cumulative_usage: None,
+            tool_call_count: 0,
+            llm_call_count: 0,
+            time_to_first_token_ms: None,
+            final_message_id: None,
+            final_answer_preview: None,
         };
         shared
             .create_workflow(
@@ -1085,6 +1100,13 @@ mod tests {
             previous_response_id: Some("resp_123".to_string()),
             iteration: 3,
             request_id: None,
+            started_at: None,
+            cumulative_usage: None,
+            tool_call_count: 0,
+            llm_call_count: 0,
+            time_to_first_token_ms: None,
+            final_message_id: None,
+            final_answer_preview: None,
         };
         shared
             .create_workflow(

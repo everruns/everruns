@@ -55,7 +55,7 @@ use crate::traits::{
     AgentStore, EventEmitter, HarnessStore, ImageResolver, LlmProviderStore, ModelWithProvider,
     ResolvedImage, SessionStore,
 };
-use crate::typed_id::{AgentId, HarnessId, SessionId};
+use crate::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use crate::{UserFacingErrorContext, user_facing_error_codes};
 
 // ============================================================================
@@ -207,6 +207,12 @@ pub struct ReasonResult {
     /// Token usage from the LLM call
     #[serde(skip_serializing_if = "Option::is_none")]
     pub usage: Option<TokenUsage>,
+    /// Assistant message emitted by `output.message.completed` for this generation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_message_id: Option<MessageId>,
+    /// Streaming latency for this LLM call, when available.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub time_to_first_token_ms: Option<u64>,
     /// LLM provider's response ID for chaining with `previous_response_id`
     #[serde(skip_serializing_if = "Option::is_none")]
     pub response_id: Option<String>,
@@ -637,6 +643,7 @@ impl ReasonAtom {
                 // The durable worker emits a single error event when all retries
                 // are exhausted (DLQ).
                 let is_transient = is_transient_error_message(&error_msg);
+                let mut output_message_id = None;
 
                 if !is_transient {
                     // Create error message for the user to see
@@ -644,6 +651,8 @@ impl ReasonAtom {
                     let mut metadata = std::collections::HashMap::new();
                     user_error.apply_to_message_metadata(&mut metadata);
                     error_message.metadata = Some(metadata);
+
+                    output_message_id = Some(error_message.id);
 
                     // Emit output.message.completed event (stores message as event with proper turn context)
                     // output.message.completed is child of reason span
@@ -706,6 +715,8 @@ impl ReasonAtom {
                     max_iterations: default_max_iterations(),
                     error: Some(error_msg),
                     usage: None,
+                    output_message_id,
+                    time_to_first_token_ms: None,
                     response_id: None,
                     locale: None,
                     network_access: None,
@@ -1957,6 +1968,7 @@ impl ReasonAtom {
             assistant_message.thinking = Some(thinking.clone());
             assistant_message.thinking_signature = thinking_signature.clone();
         }
+        let output_message_id = assistant_message.id;
 
         // Emit output.message.completed event (this stores the message as an event with proper turn context)
         // Include token usage for tracking (child of reason span)
@@ -1994,6 +2006,8 @@ impl ReasonAtom {
             max_iterations: runtime_agent.max_iterations,
             error: None,
             usage,
+            output_message_id: Some(output_message_id),
+            time_to_first_token_ms,
             response_id,
             locale: resolved_locale,
             network_access: runtime_agent.network_access.clone(),

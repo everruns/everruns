@@ -46,6 +46,8 @@ use serde::{Deserialize, Serialize};
 struct ActTaskInput {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     request_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    resume_state: Option<DurableTurnInput>,
     #[serde(flatten)]
     act_input: ActInput,
 }
@@ -938,17 +940,27 @@ impl DurableWorker {
                     .and_then(|raw| u32::try_from(raw).ok())
                     .filter(|&it| it > 0)
                     .unwrap_or(1);
-                let turn_input = DurableTurnInput {
+                let mut turn_input = act_task_input.resume_state.unwrap_or(DurableTurnInput {
                     org_id,
                     session_id: act_task_input.act_input.context.session_id,
                     harness_id: act_task_input.act_input.harness_id,
                     agent_id: act_task_input.act_input.agent_id,
                     input_message_id: act_task_input.act_input.context.input_message_id,
                     turn_id: Some(act_task_input.act_input.context.turn_id),
-                    previous_response_id,
+                    previous_response_id: previous_response_id.clone(),
                     iteration,
                     request_id: act_task_input.request_id.clone(),
-                };
+                    started_at: None,
+                    cumulative_usage: None,
+                    tool_call_count: 0,
+                    llm_call_count: 0,
+                    time_to_first_token_ms: None,
+                    final_message_id: None,
+                    final_answer_preview: None,
+                });
+                turn_input.previous_response_id = previous_response_id;
+                turn_input.iteration = iteration;
+                turn_input.request_id = act_task_input.request_id.clone();
                 let res = self
                     .execute_act_activity(grpc_client.clone(), org_id, act_task_input.act_input)
                     .await;
@@ -1491,6 +1503,7 @@ fn serialize_act_plan_for_durable_worker(plan: &RuntimeActPlan) -> Result<serde_
     }
     let mut input_json = serde_json::to_value(ActTaskInput {
         request_id: plan.request_id.clone(),
+        resume_state: Some(plan.resume_state.as_ref().clone()),
         act_input: plan.input.clone(),
     })?;
     if let Some(response_id) = &plan.previous_response_id {
@@ -1577,6 +1590,13 @@ mod tests {
             previous_response_id: None,
             iteration: 1,
             request_id: None,
+            started_at: None,
+            cumulative_usage: None,
+            tool_call_count: 0,
+            llm_call_count: 0,
+            time_to_first_token_ms: None,
+            final_message_id: None,
+            final_answer_preview: None,
         };
         let value = serde_json::to_value(&turn_input).unwrap();
 
@@ -1598,6 +1618,7 @@ mod tests {
         let turn_id = TurnId::new();
         let act_task_input = ActTaskInput {
             request_id: Some("req_123".to_string()),
+            resume_state: None,
             act_input: ActInput {
                 org_id: Some(7),
                 context: AtomContext {
@@ -1657,6 +1678,7 @@ mod tests {
 
         let input = ActTaskInput {
             request_id: None,
+            resume_state: None,
             act_input: ActInput {
                 org_id: Some(7),
                 context: AtomContext {
@@ -1694,6 +1716,7 @@ mod tests {
 
         let input = ActTaskInput {
             request_id: Some("req_abc".to_string()),
+            resume_state: None,
             act_input: ActInput {
                 org_id: Some(42),
                 context: AtomContext {
@@ -1736,6 +1759,7 @@ mod tests {
         let input_message_id = MessageId::new();
         let act_task_input = ActTaskInput {
             request_id: None,
+            resume_state: None,
             act_input: ActInput {
                 org_id: None,
                 context: AtomContext {
@@ -1781,6 +1805,13 @@ mod tests {
             previous_response_id: None,
             iteration: 0,
             request_id: None,
+            started_at: None,
+            cumulative_usage: None,
+            tool_call_count: 0,
+            llm_call_count: 0,
+            time_to_first_token_ms: None,
+            final_message_id: None,
+            final_answer_preview: None,
         };
         let value = serde_json::to_value(&turn_input).unwrap();
 

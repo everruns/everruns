@@ -107,6 +107,18 @@ export interface TurnCompletedData {
   usage?: TokenUsage;
   /** Input message content (for observability, passed through from turn.started) */
   input_content?: string;
+  /** Canonical assistant message emitted by output.message.completed */
+  final_message_id?: string;
+  /** Bounded preview of the final visible assistant answer */
+  final_answer_preview?: string;
+  /** First-token latency for the turn */
+  time_to_first_token_ms?: number;
+  /** Number of tool calls completed during the turn */
+  tool_call_count?: number;
+  /** Number of LLM generation calls executed during the turn */
+  llm_call_count?: number;
+  /** Optional explicit completion status */
+  status?: string;
 }
 
 /** Data for turn.failed event */

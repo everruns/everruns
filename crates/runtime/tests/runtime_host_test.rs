@@ -21,9 +21,9 @@ use everruns_core::traits::{
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::{
     Agent, AgentCapabilityConfig, AgentStatus, CapabilityRegistry, EventData, Harness,
-    HarnessStatus, InputMessage, LlmProviderType, ModelWithProvider, Session, SessionStatus, Tool,
-    ToolCall, ToolExecutionResult, ToolRegistry, ToolResult, inspect_turn_context,
-    user_facing_error_codes,
+    HarnessStatus, InputMessage, LlmProviderType, ModelWithProvider, Session, SessionStatus,
+    TokenUsage, Tool, ToolCall, ToolExecutionResult, ToolRegistry, ToolResult,
+    inspect_turn_context, user_facing_error_codes,
 };
 use everruns_runtime::{
     InMemorySessionFileStore, RuntimeHostAdapter, RuntimeHostTurnContext, RuntimeSessionLifecycle,
@@ -413,6 +413,13 @@ fn turn_state(session_id: SessionId, harness_id: HarnessId) -> RuntimeTurnState 
         previous_response_id: None,
         iteration: 1,
         request_id: None,
+        started_at: None,
+        cumulative_usage: None,
+        tool_call_count: 0,
+        llm_call_count: 0,
+        time_to_first_token_ms: None,
+        final_message_id: None,
+        final_answer_preview: None,
     }
 }
 
@@ -926,6 +933,8 @@ async fn plan_next_host_turn_schedules_act_after_reason_tool_calls() {
         max_iterations: 8,
         error: None,
         usage: None,
+        output_message_id: None,
+        time_to_first_token_ms: None,
         response_id: Some("resp_123".into()),
         locale: Some("en-US".into()),
         network_access: None,
@@ -977,6 +986,8 @@ async fn plan_next_host_turn_schedules_act_with_session_blueprint_id() {
         max_iterations: 8,
         error: None,
         usage: None,
+        output_message_id: None,
+        time_to_first_token_ms: None,
         response_id: Some("resp_blueprint".into()),
         locale: Some("en-US".into()),
         network_access: None,
@@ -1019,6 +1030,8 @@ async fn plan_next_host_turn_continues_reason_when_steering_messages_are_pending
         max_iterations: 8,
         error: None,
         usage: None,
+        output_message_id: None,
+        time_to_first_token_ms: None,
         response_id: Some("resp_steer".into()),
         locale: None,
         network_access: None,
@@ -1037,6 +1050,71 @@ async fn plan_next_host_turn_continues_reason_when_steering_messages_are_pending
         }
         other => panic!("expected ScheduleReason, got {other:?}"),
     }
+}
+
+#[tokio::test]
+async fn plan_next_host_turn_emits_turn_completed_summary_fields() {
+    let adapter = mock_host();
+    let harness_id = HarnessId::from_uuid(Uuid::now_v7());
+    let session_id = SessionId::from_uuid(Uuid::now_v7());
+    let final_message_id = MessageId::from_uuid(Uuid::now_v7());
+    adapter.harness_store.add_harness(harness(harness_id)).await;
+    adapter
+        .session_store
+        .insert(session(session_id, harness_id))
+        .await;
+
+    let mut input = turn_state(session_id, harness_id);
+    input.started_at = Some(Utc::now());
+    input.cumulative_usage = Some(TokenUsage::new(10, 4));
+    input.tool_call_count = 2;
+    input.llm_call_count = 1;
+    input.time_to_first_token_ms = Some(35);
+
+    let output = serde_json::to_value(ReasonResult {
+        success: true,
+        text: "Final answer for export".into(),
+        tool_calls: vec![],
+        has_tool_calls: false,
+        tool_definitions: vec![],
+        max_iterations: 8,
+        error: None,
+        usage: Some(TokenUsage::new(20, 8)),
+        output_message_id: Some(final_message_id),
+        time_to_first_token_ms: Some(50),
+        response_id: Some("resp_done".into()),
+        locale: None,
+        network_access: None,
+    })
+    .unwrap();
+
+    let plan = plan_next_host_turn(&adapter, "reason", &input, &output, 0)
+        .await
+        .unwrap();
+    assert!(matches!(plan, RuntimeTurnPlan::Complete { error: None }));
+
+    let events = adapter.event_emitter.events().await;
+    let completed = events
+        .into_iter()
+        .find_map(|event| match event.data {
+            EventData::TurnCompleted(data) => Some(data),
+            _ => None,
+        })
+        .expect("turn.completed event emitted");
+
+    assert_eq!(completed.final_message_id, Some(final_message_id));
+    assert_eq!(
+        completed.final_answer_preview.as_deref(),
+        Some("Final answer for export")
+    );
+    assert_eq!(completed.time_to_first_token_ms, Some(35));
+    assert_eq!(completed.tool_call_count, Some(2));
+    assert_eq!(completed.llm_call_count, Some(2));
+    assert_eq!(completed.status.as_deref(), Some("completed"));
+    let usage = completed.usage.expect("aggregated usage");
+    assert_eq!(usage.input_tokens, 30);
+    assert_eq!(usage.output_tokens, 12);
+    assert!(completed.duration_ms.is_some());
 }
 
 #[tokio::test]
@@ -1061,6 +1139,8 @@ async fn plan_next_host_turn_preserves_reason_failure_message() {
         max_iterations: 8,
         error: Some("Budget exhausted".into()),
         usage: None,
+        output_message_id: None,
+        time_to_first_token_ms: None,
         response_id: None,
         locale: None,
         network_access: None,
@@ -1120,6 +1200,8 @@ async fn plan_next_host_turn_classifies_missing_api_key_as_provider_misconfigure
             "LLM error: API key is required. Configure the API key in provider settings.".into(),
         ),
         usage: None,
+        output_message_id: None,
+        time_to_first_token_ms: None,
         response_id: None,
         locale: None,
         network_access: None,

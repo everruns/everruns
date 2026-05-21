@@ -132,6 +132,12 @@ Emitted when a turn completes successfully.
 | `duration_ms` | integer? | Duration in milliseconds |
 | `usage` | TokenUsage? | Aggregated token usage |
 | `input_content` | string? | Optional input content |
+| `final_message_id` | string? | Canonical final assistant message ID |
+| `final_answer_preview` | string? | Bounded final answer preview |
+| `time_to_first_token_ms` | integer? | First-token latency |
+| `tool_call_count` | integer? | Completed tool-call count |
+| `llm_call_count` | integer? | LLM generation count |
+| `status` | string? | Optional completion status |
 
 ```json
 {
@@ -143,7 +149,13 @@ Emitted when a turn completes successfully.
     "usage": {
       "input_tokens": 500,
       "output_tokens": 200
-    }
+    },
+    "final_message_id": "message_...",
+    "final_answer_preview": "Done.",
+    "time_to_first_token_ms": 120,
+    "tool_call_count": 2,
+    "llm_call_count": 3,
+    "status": "completed"
   }
 }
 ```

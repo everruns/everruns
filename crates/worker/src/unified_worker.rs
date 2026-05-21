@@ -456,9 +456,10 @@ where
                 .get("request_id")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string());
+            let resume_state = parse_resume_state(&task.input)?;
 
             // Create DurableTurnInput from ActInput context
-            let turn_input = DurableTurnInput {
+            let mut turn_input = resume_state.unwrap_or(DurableTurnInput {
                 org_id: act_input
                     .org_id
                     .expect("ActInput.org_id must be set for durable turns"),
@@ -467,10 +468,20 @@ where
                 agent_id: act_input.agent_id,
                 input_message_id: act_input.context.input_message_id,
                 turn_id: Some(act_input.context.turn_id),
-                previous_response_id,
+                previous_response_id: previous_response_id.clone(),
                 iteration,
-                request_id: act_request_id,
-            };
+                request_id: act_request_id.clone(),
+                started_at: None,
+                cumulative_usage: None,
+                tool_call_count: 0,
+                llm_call_count: 0,
+                time_to_first_token_ms: None,
+                final_message_id: None,
+                final_answer_preview: None,
+            });
+            turn_input.previous_response_id = previous_response_id;
+            turn_input.iteration = iteration;
+            turn_input.request_id = act_request_id;
 
             let res = execute_act_activity(adapters, &act_input).await;
             (res, Some(turn_input))
@@ -573,6 +584,16 @@ where
     }
 
     Ok(())
+}
+
+fn parse_resume_state(input: &serde_json::Value) -> Result<Option<DurableTurnInput>> {
+    match input.get("resume_state") {
+        Some(value) if value.is_null() => Ok(None),
+        Some(value) => serde_json::from_value(value.clone())
+            .map(Some)
+            .map_err(|e| anyhow::anyhow!("Failed to parse resume_state: {}", e)),
+        None => Ok(None),
+    }
 }
 
 // =============================================================================
@@ -810,6 +831,7 @@ async fn enqueue_act_task<S: WorkflowEventStore>(
     if let Some(request_id) = &plan.request_id {
         act_input_json["request_id"] = serde_json::json!(request_id);
     }
+    act_input_json["resume_state"] = serde_json::to_value(plan.resume_state.as_ref())?;
 
     let activity_id = format!("act_{}", Uuid::now_v7());
     let task = everruns_durable::TaskDefinition {
@@ -837,6 +859,31 @@ async fn enqueue_act_task<S: WorkflowEventStore>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_resume_state_allows_missing_field() {
+        let input = serde_json::json!({});
+
+        let parsed = parse_resume_state(&input).expect("missing resume_state is allowed");
+
+        assert!(parsed.is_none());
+    }
+
+    #[test]
+    fn parse_resume_state_rejects_malformed_state() {
+        let input = serde_json::json!({
+            "resume_state": {
+                "org_id": "not-an-org-id"
+            }
+        });
+
+        let error = parse_resume_state(&input).expect_err("malformed resume_state must fail");
+
+        assert!(
+            error.to_string().contains("Failed to parse resume_state"),
+            "unexpected error: {error}"
+        );
+    }
 
     #[test]
     fn test_config_default() {
