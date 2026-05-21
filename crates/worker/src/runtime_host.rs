@@ -9,7 +9,9 @@ use everruns_core::traits::{
     PaymentAuthority, ProviderCredentialStore, SessionFileSystem, SessionMutator, SessionStore,
 };
 use everruns_core::typed_id::{AgentId, HarnessId, SessionId};
-use everruns_core::{Agent, CapabilityRegistry, DriverRegistry, Harness, Session, SessionStatus};
+use everruns_core::{
+    Agent, CapabilityRegistry, DriverRegistry, Harness, Session, SessionStatus, UtilityLlmService,
+};
 use everruns_runtime::{RuntimeHostAdapter, RuntimeHostTurnContext};
 use std::sync::Arc;
 
@@ -136,6 +138,10 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
 
     fn provider_credential_store(&self, org_id: i64) -> Option<Arc<dyn ProviderCredentialStore>> {
         Some(self.adapters.provider_credential_store(org_id))
+    }
+
+    fn utility_llm_service(&self) -> Option<Arc<dyn UtilityLlmService>> {
+        self.adapters.utility_llm_service()
     }
 
     fn storage_store(&self) -> Option<Arc<dyn everruns_core::traits::SessionStorageStore>> {

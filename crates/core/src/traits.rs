@@ -855,6 +855,9 @@ pub struct ToolContext {
     /// Optional provider credential store for tool-side API clients.
     pub provider_credential_store: Option<Arc<dyn ProviderCredentialStore>>,
 
+    /// Optional system utility LLM service for capability internals.
+    pub utility_llm_service: Option<Arc<dyn crate::UtilityLlmService>>,
+
     /// Optional session SQL database store
     pub sqldb_store: Option<SessionSqlDbStoreRef>,
 
@@ -933,6 +936,7 @@ impl ToolContext {
             storage_store: None,
             image_store: None,
             provider_credential_store: None,
+            utility_llm_service: None,
             sqldb_store: None,
             message_retriever: None,
             session_store: None,
@@ -965,6 +969,7 @@ impl ToolContext {
             storage_store: None,
             image_store: None,
             provider_credential_store: None,
+            utility_llm_service: None,
             sqldb_store: None,
             message_retriever: None,
             session_store: None,
@@ -1000,6 +1005,7 @@ impl ToolContext {
             storage_store: Some(storage_store),
             image_store: None,
             provider_credential_store: None,
+            utility_llm_service: None,
             sqldb_store: None,
             message_retriever: None,
             session_store: None,
@@ -1037,6 +1043,7 @@ impl ToolContext {
             sqldb_store: None,
             image_store: None,
             provider_credential_store: None,
+            utility_llm_service: None,
             message_retriever: None,
             session_store: None,
             session_mutator: None,
@@ -1110,6 +1117,7 @@ impl ToolContext {
             storage_store: None,
             image_store: Some(image_store),
             provider_credential_store: None,
+            utility_llm_service: None,
             sqldb_store: None,
             message_retriever: None,
             session_store: None,
@@ -1140,6 +1148,12 @@ impl ToolContext {
         store: Arc<dyn ProviderCredentialStore>,
     ) -> Self {
         self.provider_credential_store = Some(store);
+        self
+    }
+
+    /// Set the utility LLM service on this context.
+    pub fn with_utility_llm_service(mut self, service: Arc<dyn crate::UtilityLlmService>) -> Self {
+        self.utility_llm_service = Some(service);
         self
     }
 
@@ -1285,6 +1299,7 @@ impl std::fmt::Debug for ToolContext {
                 "provider_credential_store",
                 &self.provider_credential_store.is_some(),
             )
+            .field("utility_llm_service", &self.utility_llm_service.is_some())
             .field("sqldb_store", &self.sqldb_store.is_some())
             .field("message_retriever", &self.message_retriever.is_some())
             .field("session_store", &self.session_store.is_some())

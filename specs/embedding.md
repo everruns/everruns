@@ -23,6 +23,7 @@ This spec defines the contract for embedding. See `crates/core/src/platform_defi
 - Connection-provider registry
 - Built-in harness templates
 - System email sender
+- System utility LLM service
 - Session filesystem factory
 
 The type lives in `everruns-core` so any binary can construct or mutate it without depending on `everruns-server`.

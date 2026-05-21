@@ -813,6 +813,10 @@ impl RuntimeHostAdapter for InProcessRuntime {
         Some(self.storage_store.clone())
     }
 
+    fn utility_llm_service(&self) -> Option<Arc<dyn everruns_core::UtilityLlmService>> {
+        Some(self.platform_definition.utility_llm_service())
+    }
+
     fn memory_store(&self, _org_id: i64) -> Option<Arc<dyn MemoryStoreBackend>> {
         Some(self.memory_store.clone())
     }

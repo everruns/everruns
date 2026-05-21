@@ -15,7 +15,9 @@ use everruns_core::traits::{
 use everruns_core::typed_id::{
     AgentId, HarnessId, LeasedResourceId, MessageId, ModelId, SessionId,
 };
-use everruns_core::{Agent, DriverRegistry, Harness, Message, PlatformDefinition, Session};
+use everruns_core::{
+    Agent, DriverRegistry, Harness, Message, PlatformDefinition, Session, UtilityLlmService,
+};
 use std::collections::HashMap;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -387,6 +389,10 @@ impl WorkerAdapters for GrpcWorkerAdapters {
             self.client.clone(),
             org_id,
         ))
+    }
+
+    fn utility_llm_service(&self) -> Option<Arc<dyn UtilityLlmService>> {
+        Some(self.platform_definition.utility_llm_service())
     }
 
     fn platform_store(
