@@ -481,6 +481,15 @@ impl StorageBackend {
         dispatch!(self, get_latest_agent_snapshot, org_id, agent_id)
     }
 
+    pub async fn prune_agent_auto_snapshots(
+        &self,
+        org_id: i64,
+        agent_id: AgentId,
+        keep: i64,
+    ) -> Result<u64> {
+        dispatch!(self, prune_agent_auto_snapshots, org_id, agent_id, keep)
+    }
+
     // ============================================
     // Harnesses
     // ============================================

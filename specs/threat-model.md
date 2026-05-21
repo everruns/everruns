@@ -938,6 +938,7 @@ When a bash script calls `bash` or `sh` or uses `eval`, bashkit re-invokes its o
 | TM-DOS-010 | Rate limit bypass via Valkey failure | Low | Fail-open design: if Valkey is down, requests are allowed without rate limiting | **ACCEPTED** |
 | TM-DOS-011 | Authenticated API key sprawl | Low | No server-side per-user API key quota; API key creation requires an authenticated user session and keys remain user-owned/revocable. Operators must monitor and clean up excessive key creation if they need stricter controls. | **ACCEPTED** |
 | TM-DOS-012 | Source-backed Volume repository storage abuse | Medium | Volume source sync performs shallow clones without tags, skips symlinks, excludes `.git`, and enforces configurable file-count, per-file byte, and total byte limits before replacing `volume_files`. Failed sync keeps the previous readable snapshot. | MITIGATED |
+| TM-DOS-013 | Hidden Agent snapshot storage growth | Medium | Automatic Agent draft snapshots are active only when `FEATURE_AGENT_VERSIONS` is enabled, skipped when the latest stored config hash already matches the draft, and pruned to a bounded per-Agent unpublished auto-snapshot window after each write. | MITIGATED |
 
 ### Mitigation Details
 

@@ -515,6 +515,36 @@ impl InMemoryDatabase {
             .next())
     }
 
+    pub async fn prune_agent_auto_snapshots(
+        &self,
+        org_id: i64,
+        agent_id: AgentId,
+        keep: i64,
+    ) -> Result<u64> {
+        let keep = keep.max(0) as usize;
+        let mut rows: Vec<_> = self
+            .agent_versions
+            .read()
+            .values()
+            .filter(|row| {
+                row.org_id == org_id
+                    && row.agent_id == agent_id
+                    && !row.is_published
+                    && row.change_kind == "auto"
+            })
+            .cloned()
+            .collect();
+        rows.sort_by_key(|row| std::cmp::Reverse(row.version_number));
+
+        let ids_to_remove: Vec<_> = rows.into_iter().skip(keep).map(|row| row.id).collect();
+        let removed = ids_to_remove.len() as u64;
+        let mut versions = self.agent_versions.write();
+        for id in ids_to_remove {
+            versions.remove(&id);
+        }
+        Ok(removed)
+    }
+
     // ============================================
     // Agent Capabilities
     // ============================================
