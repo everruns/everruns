@@ -8,8 +8,9 @@
 FROM --platform=linux/amd64 node:26-alpine AS builder
 WORKDIR /app
 
-# Enable pnpm via corepack (version pinned by packageManager in package.json)
-RUN corepack enable
+# Install pnpm directly — corepack isn't on PATH in some node:alpine variants.
+# Version pinned to match `packageManager` in apps/ui/package.json.
+RUN npm install -g pnpm@10.33.0
 
 # Install dependencies (lockfile-only — fail if pnpm-lock.yaml is stale)
 COPY package.json pnpm-lock.yaml .npmrc ./
