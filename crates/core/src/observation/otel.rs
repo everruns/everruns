@@ -1270,6 +1270,7 @@ mod tests {
                 name: "calculate".to_string(),
                 arguments: json!({"x": 42}),
             },
+            tool_call_fingerprint: None,
             display_name: None,
             narration: None,
         };
@@ -1285,6 +1286,8 @@ mod tests {
         let completed = ToolCompletedData {
             tool_call_id: "call_abc".to_string(),
             tool_name: "calculate".to_string(),
+            tool_call_fingerprint: None,
+            tool_result_fingerprint: None,
             display_name: None,
             success: true,
             status: "success".to_string(),
@@ -1312,6 +1315,8 @@ mod tests {
         let completed = ToolCompletedData {
             tool_call_id: "orphan_call".to_string(),
             tool_name: "unknown_tool".to_string(),
+            tool_call_fingerprint: None,
+            tool_result_fingerprint: None,
             display_name: None,
             success: false,
             status: "error".to_string(),
@@ -1345,6 +1350,7 @@ mod tests {
                     name: format!("tool_{}", i),
                     arguments: json!({}),
                 },
+                tool_call_fingerprint: None,
                 display_name: None,
                 narration: None,
             };
@@ -1363,6 +1369,8 @@ mod tests {
             let completed = ToolCompletedData {
                 tool_call_id: format!("call_{}", i),
                 tool_name: format!("tool_{}", i),
+                tool_call_fingerprint: None,
+                tool_result_fingerprint: None,
                 display_name: None,
                 success: true,
                 status: "success".to_string(),
@@ -1673,6 +1681,7 @@ mod tests {
                 name: "search".to_string(),
                 arguments: json!({"query": "rust programming", "limit": 10}),
             },
+            tool_call_fingerprint: None,
             display_name: None,
             narration: None,
         };
@@ -1687,6 +1696,8 @@ mod tests {
         let completed = ToolCompletedData {
             tool_call_id: "call_with_args".to_string(),
             tool_name: "search".to_string(),
+            tool_call_fingerprint: None,
+            tool_result_fingerprint: None,
             display_name: None,
             success: true,
             status: "success".to_string(),
@@ -2091,6 +2102,7 @@ mod tests {
                         name: "web_search".to_string(),
                         arguments: json!({"query": "rust documentation"}),
                     },
+                    tool_call_fingerprint: None,
                     display_name: None,
                     narration: None,
                 }),
@@ -2107,6 +2119,8 @@ mod tests {
                 EventData::ToolCompleted(ToolCompletedData {
                     tool_call_id: "call_search".to_string(),
                     tool_name: "web_search".to_string(),
+                    tool_call_fingerprint: None,
+                    tool_result_fingerprint: None,
                     display_name: None,
                     success: true,
                     status: "success".to_string(),

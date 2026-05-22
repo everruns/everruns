@@ -1921,8 +1921,8 @@ async fn test_get_generic_harness() {
         .collect();
     assert_eq!(
         cap_ids.len(),
-        16,
-        "Generic harness should have 16 capabilities"
+        17,
+        "Generic harness should have 17 capabilities"
     );
     assert!(
         cap_ids.contains(&"human_intent"),
@@ -1969,6 +1969,10 @@ async fn test_get_generic_harness() {
         "Should have self_budget guidance"
     );
     assert!(cap_ids.contains(&"compaction"), "Should have compaction");
+    assert!(
+        cap_ids.contains(&"loop_detection"),
+        "Should have loop detection"
+    );
 }
 
 #[tokio::test]
@@ -2456,8 +2460,8 @@ async fn test_copy_seed_generic_harness() {
     // Generic harness capabilities should be preserved on copy
     assert_eq!(
         copied.capabilities.len(),
-        16,
-        "Copied harness should have same 16 capabilities"
+        17,
+        "Copied harness should have same 17 capabilities"
     );
     assert!(
         copied

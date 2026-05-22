@@ -181,6 +181,8 @@ export interface ToolCall {
 /** Data for tool.started event */
 export interface ToolStartedData {
   tool_call: ToolCall;
+  /** Stable fingerprint of tool name + normalized arguments */
+  tool_call_fingerprint?: string;
   /** Human-readable display name for UI rendering */
   display_name?: string;
   /** Human-readable narration for timeline rendering */
@@ -221,6 +223,10 @@ export interface ToolOutputDeltaData {
 export interface ToolCompletedData {
   tool_call_id: string;
   tool_name: string;
+  /** Stable fingerprint of tool name + normalized arguments */
+  tool_call_fingerprint?: string;
+  /** Stable fingerprint of tool name + normalized result/error */
+  tool_result_fingerprint?: string;
   /** Human-readable display name for UI rendering */
   display_name?: string;
   success: boolean;

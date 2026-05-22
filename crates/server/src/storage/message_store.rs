@@ -244,6 +244,7 @@ fn event_to_message(
 fn tool_completed_to_message(data: ToolCompletedData) -> Message {
     // Separate text and image parts from the result content
     let mut images: Vec<everruns_core::tools::ToolResultImage> = Vec::new();
+    let metadata = tool_result_metadata(&data);
     let result: Option<serde_json::Value> = data.result.map(|parts| {
         // Collect image parts
         for part in &parts {
@@ -274,11 +275,33 @@ fn tool_completed_to_message(data: ToolCompletedData) -> Message {
         }
     });
 
-    if images.is_empty() {
+    let mut message = if images.is_empty() {
         Message::tool_result(&data.tool_call_id, result, data.error)
     } else {
         Message::tool_result_with_images(&data.tool_call_id, result, images)
+    };
+    message.metadata = metadata;
+    message
+}
+
+fn tool_result_metadata(
+    data: &ToolCompletedData,
+) -> Option<std::collections::HashMap<String, serde_json::Value>> {
+    let mut metadata = std::collections::HashMap::new();
+    metadata.insert("tool_name".to_string(), serde_json::json!(data.tool_name));
+    if let Some(fingerprint) = &data.tool_call_fingerprint {
+        metadata.insert(
+            "tool_call_fingerprint".to_string(),
+            serde_json::json!(fingerprint),
+        );
     }
+    if let Some(fingerprint) = &data.tool_result_fingerprint {
+        metadata.insert(
+            "tool_result_fingerprint".to_string(),
+            serde_json::json!(fingerprint),
+        );
+    }
+    (!metadata.is_empty()).then_some(metadata)
 }
 
 // ============================================================================

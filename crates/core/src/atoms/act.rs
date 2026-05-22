@@ -36,6 +36,9 @@ use crate::events::{
     ToolStartedData,
 };
 use crate::message::ContentPart;
+use crate::tool_fingerprint::{
+    tool_call_fingerprint, tool_error_fingerprint, tool_result_fingerprint,
+};
 use crate::tool_narration::{
     ToolNarrationPhase, render_group_headline_with_locale, render_tool_narration_with_locale,
 };
@@ -828,6 +831,7 @@ where
 
         // Track tool call timing for Braintrust observability
         let tool_start = Instant::now();
+        let tool_call_fingerprint = tool_call_fingerprint(&tool_call);
 
         // Resolve display name from tool definition
         let display_name = crate::localization::localized_tool_display_name(
@@ -848,6 +852,7 @@ where
                 event_context.clone(),
                 ToolStartedData {
                     tool_call: tool_call.clone(),
+                    tool_call_fingerprint: Some(tool_call_fingerprint.clone()),
                     display_name: display_name.clone(),
                     narration: Some(self.render_tool_narration(
                         tool_def,
@@ -884,6 +889,10 @@ where
                         "error".to_string(),
                         error_msg.clone(),
                         Some(tool_duration_ms),
+                    )
+                    .with_fingerprints(
+                        tool_call_fingerprint.clone(),
+                        tool_error_fingerprint(&tool_call.name, "error", &error_msg),
                     )
                     .with_narration(Some(self.render_tool_narration(
                         None,
@@ -1013,6 +1022,7 @@ where
 
                 // Emit tool.completed event
                 let completed_data = if success {
+                    let result_fingerprint = tool_result_fingerprint(&tool_call.name, &tool_result);
                     // Convert result to ContentPart (text + optional images)
                     let mut result_content = tool_result
                         .result
@@ -1036,6 +1046,7 @@ where
                         result_content,
                         Some(tool_duration_ms),
                     )
+                    .with_fingerprints(tool_call_fingerprint.clone(), result_fingerprint)
                     .with_display_name(display_name.clone())
                     .with_capability_attribution(
                         capability_attribution.as_ref().map(|(id, _)| id.clone()),
@@ -1050,6 +1061,7 @@ where
                         locale,
                     )))
                 } else {
+                    let result_fingerprint = tool_result_fingerprint(&tool_call.name, &tool_result);
                     ToolCompletedData::failure(
                         tool_call.id.clone(),
                         tool_call.name.clone(),
@@ -1057,6 +1069,7 @@ where
                         tool_result.error.clone().unwrap_or_default(),
                         Some(tool_duration_ms),
                     )
+                    .with_fingerprints(tool_call_fingerprint.clone(), result_fingerprint)
                     .with_display_name(display_name.clone())
                     .with_capability_attribution(
                         capability_attribution.as_ref().map(|(id, _)| id.clone()),
@@ -1122,6 +1135,10 @@ where
                             "error".to_string(),
                             error_msg.clone(),
                             Some(tool_duration_ms),
+                        )
+                        .with_fingerprints(
+                            tool_call_fingerprint.clone(),
+                            tool_error_fingerprint(&tool_call.name, "error", &error_msg),
                         )
                         .with_display_name(display_name.clone())
                         .with_capability_attribution(
@@ -1426,6 +1443,10 @@ mod tests {
         let crate::events::EventData::ToolStarted(data) = &tool_started.data else {
             panic!("expected tool.started data");
         };
+        let started_fingerprint = data
+            .tool_call_fingerprint
+            .as_ref()
+            .expect("tool.started call fingerprint");
         assert_eq!(data.narration.as_deref(), Some("Echoing test arguments"));
 
         let tool_completed = events
@@ -1435,6 +1456,11 @@ mod tests {
         let crate::events::EventData::ToolCompleted(data) = &tool_completed.data else {
             panic!("expected tool.completed data");
         };
+        assert_eq!(
+            data.tool_call_fingerprint.as_ref(),
+            Some(started_fingerprint)
+        );
+        assert!(data.tool_result_fingerprint.is_some());
         assert_eq!(data.narration.as_deref(), Some("Echoing test arguments"));
     }
 

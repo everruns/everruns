@@ -6,7 +6,7 @@ pub fn definition() -> BuiltInHarnessDefinition {
     BuiltInHarnessDefinition::new(
         "generic",
         "Generic",
-        "General-purpose harness with file system, bash, web fetch, secrets, session management, session schedules, long-context support, context compaction, budgeting, self-managed budget guidance, tool output persistence, and agent skills. Recommended default for most use cases.",
+        "General-purpose harness with file system, bash, web fetch, secrets, session management, session schedules, long-context support, context compaction, budgeting, self-managed budget guidance, tool output persistence, loop detection, and agent skills. Recommended default for most use cases.",
         SYSTEM_PROMPT,
     )
     .with_tags(["generic", "default", "built-in"])
@@ -29,6 +29,7 @@ pub fn definition() -> BuiltInHarnessDefinition {
         BuiltInCapabilityDefinition::new("openai_tool_search"),
         BuiltInCapabilityDefinition::new("budgeting"),
         BuiltInCapabilityDefinition::new("self_budget"),
+        BuiltInCapabilityDefinition::new("loop_detection"),
         BuiltInCapabilityDefinition::with_config(
             "compaction",
             serde_json::json!({
