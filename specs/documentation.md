@@ -112,7 +112,7 @@ Design follows the brand guidelines defined in [specs/brand.md](brand.md) (color
 Cloudflare Pages dashboard configuration:
 - Connect GitHub repository
 - Set root directory: `apps/docs`
-- Set build command: `pnpm install --frozen-lockfile && pnpm run build`
+- Set build command: `pnpm run build` (Pages auto-installs from `pnpm-lock.yaml` before running the build command)
 - Set output directory: `dist`
 - Pin Node.js from `apps/docs/.node-version` (currently `22.16.0`) so Pages builds do not depend on dashboard defaults; any override must stay at `20.19.1+` or `22.12+` to satisfy Astro 6 toolchain requirements
 - Pnpm is selected automatically when Cloudflare Pages sees `pnpm-lock.yaml`; the `packageManager` field in `apps/docs/package.json` pins the exact version via corepack

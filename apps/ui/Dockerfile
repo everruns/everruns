@@ -12,7 +12,7 @@ WORKDIR /app
 # Version pinned to match `packageManager` in apps/ui/package.json.
 RUN npm install -g pnpm@10.33.0
 
-# Install dependencies (lockfile-only — fail if pnpm-lock.yaml is stale)
+# Install dependencies (fail if pnpm-lock.yaml is out of sync with package.json)
 COPY package.json pnpm-lock.yaml .npmrc ./
 RUN pnpm install --frozen-lockfile
 
