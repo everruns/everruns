@@ -834,15 +834,28 @@ pub struct ToolDefinitionSummary {
     /// Human-readable display name for UI rendering
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
+    /// Tool category for namespace grouping.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub category: Option<String>,
+    /// Capability that contributed the tool definition, when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capability_id: Option<String>,
+    /// Human-readable capability name snapshot, when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capability_name: Option<String>,
     /// Tool description
     pub description: String,
 }
 
 impl From<&crate::tool_types::ToolDefinition> for ToolDefinitionSummary {
     fn from(tool: &crate::tool_types::ToolDefinition) -> Self {
+        let capability_attribution = tool.capability_attribution();
         Self {
             name: tool.name().to_string(),
             display_name: tool.display_name().map(|s| s.to_string()),
+            category: tool.category().map(|s| s.to_string()),
+            capability_id: capability_attribution.map(|(id, _)| id.to_string()),
+            capability_name: capability_attribution.and_then(|(_, name)| name.map(str::to_string)),
             description: tool.description().to_string(),
         }
     }
@@ -2706,6 +2719,9 @@ mod tests {
         let tools = vec![ToolDefinitionSummary {
             name: "get_weather".to_string(),
             display_name: None,
+            category: None,
+            capability_id: None,
+            capability_name: None,
             description: "Get weather for a city".to_string(),
         }];
         let tool_calls = vec![];
@@ -3460,6 +3476,9 @@ mod contract_tests {
             vec![ToolDefinitionSummary {
                 name: "tool1".to_string(),
                 display_name: None,
+                category: None,
+                capability_id: None,
+                capability_name: None,
                 description: "A tool".to_string(),
             }],
             Some("Hi there!".to_string()),

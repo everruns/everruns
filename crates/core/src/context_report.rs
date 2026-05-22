@@ -1,10 +1,12 @@
 use crate::capabilities::{CapabilityRegistry, SystemPromptContext};
-use crate::events::{LlmGenerationData, TokenUsage};
+use crate::events::{LlmGenerationData, TokenUsage, ToolDefinitionSummary};
 use crate::llm_model_profiles::get_model_profile;
-use crate::message::MessageRole;
+use crate::mcp_server::parse_mcp_tool_name;
+use crate::message::{ContentPart, Message, MessageRole};
 use crate::runtime_context::AssembledTurnContext;
 use crate::tool_types::ToolDefinition;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
@@ -60,32 +62,21 @@ pub fn build_session_context_report_from_generation(
     cumulative_usage: Option<TokenUsage>,
 ) -> SessionContextReport {
     let mut builder = ContextReportBuilder::default();
+    let tool_calls_by_id = tool_calls_by_id(&generation.messages);
 
     for message in &generation.messages {
         if message.role == MessageRole::System {
             add_system_prompt_breakdown(&mut builder, &message.content_to_llm_string());
         } else {
-            builder.add(
-                "conversation",
-                "Conversation",
-                estimate_serialized_tokens(message),
-                1,
-            );
+            add_message_breakdown(&mut builder, message, &tool_calls_by_id);
         }
     }
 
     for tool in &generation.tools {
-        let key = if tool.name.starts_with("mcp_") {
-            "mcp"
-        } else if matches!(
-            tool.name.as_str(),
-            "spawn_subagent" | "get_subagents" | "message_subagent"
-        ) {
-            "subagents"
-        } else {
-            "tools"
-        };
-        builder.add(key, section_label(key), estimate_serialized_tokens(tool), 1);
+        let key = classify_tool_summary(tool);
+        let tokens = estimate_serialized_tokens(tool);
+        let (source_id, label) = tool_summary_contribution_source(tool, key);
+        builder.add_contribution(key, source_id, label, tokens, 1);
     }
 
     let sections = builder.sections();
@@ -114,21 +105,14 @@ pub async fn build_session_context_report(
 
     for tool in &assembled.runtime_agent.tools {
         let section_key = classify_tool(tool);
-        builder.add(
-            section_key,
-            section_label(section_key),
-            estimate_tool_tokens(tool),
-            1,
-        );
+        let tokens = estimate_tool_tokens(tool);
+        let (source_id, label) = tool_definition_contribution_source(tool, section_key);
+        builder.add_contribution(section_key, source_id, label, tokens, 1);
     }
 
+    let tool_calls_by_id = tool_calls_by_id(&assembled.messages);
     for message in &assembled.messages {
-        builder.add(
-            "conversation",
-            "Conversation",
-            estimate_serialized_tokens(message),
-            1,
-        );
+        add_message_breakdown(&mut builder, message, &tool_calls_by_id);
     }
 
     let sections = builder.sections();
@@ -176,13 +160,13 @@ fn add_system_prompt_breakdown(builder: &mut ContextReportBuilder, prompt: &str)
         let end = id_end + relative_end + "</capability>".len();
         let key = classify_capability_prompt(capability_id);
         let tokens = estimate_text_tokens(&prompt[start..end]);
-        builder.add(key, section_label(key), tokens, 1);
-        builder.contributions.push(ContextReportContribution {
-            section_key: key.to_string(),
-            source_id: capability_id.to_string(),
-            label: capability_id.to_string(),
+        builder.add_contribution(
+            key,
+            capability_id.to_string(),
+            capability_label(capability_id),
             tokens,
-        });
+            1,
+        );
         cursor = end;
     }
 
@@ -220,6 +204,32 @@ impl ContextReportBuilder {
         });
     }
 
+    fn add_contribution(
+        &mut self,
+        section_key: &str,
+        source_id: String,
+        label: String,
+        tokens: u32,
+        items: u32,
+    ) {
+        self.add(section_key, section_label(section_key), tokens, items);
+        if tokens == 0 {
+            return;
+        }
+        if let Some(contribution) = self.contributions.iter_mut().find(|contribution| {
+            contribution.section_key == section_key && contribution.source_id == source_id
+        }) {
+            contribution.tokens = contribution.tokens.saturating_add(tokens);
+            return;
+        }
+        self.contributions.push(ContextReportContribution {
+            section_key: section_key.to_string(),
+            source_id,
+            label,
+            tokens,
+        });
+    }
+
     fn sections(&self) -> Vec<ContextReportSection> {
         let mut sections = self.sections.clone();
         let order = [
@@ -229,6 +239,7 @@ impl ContextReportBuilder {
             "skills",
             "mcp",
             "subagents",
+            "plugins",
             "conversation",
         ];
         sections.sort_by_key(|section| {
@@ -248,8 +259,19 @@ fn section_label(key: &str) -> &'static str {
         "skills" => "Skills",
         "mcp" => "MCP",
         "subagents" => "Subagents",
+        "plugins" => "Plugins",
         "conversation" => "Conversation",
         _ => "Tools",
+    }
+}
+
+fn capability_label(capability_id: &str) -> String {
+    if let Some(skill_id) = capability_id.strip_prefix("skill:") {
+        format!("/{skill_id}")
+    } else if let Some(mcp_id) = capability_id.strip_prefix("mcp:") {
+        mcp_id.to_string()
+    } else {
+        capability_id.to_string()
     }
 }
 
@@ -270,16 +292,199 @@ fn classify_capability_prompt(capability_id: &str) -> &'static str {
 fn classify_tool(tool: &ToolDefinition) -> &'static str {
     let name = tool.name();
     let category = tool.category().unwrap_or_default();
-    if name.starts_with("mcp_") || category.eq_ignore_ascii_case("mcp") {
+    let capability_id = tool
+        .capability_attribution()
+        .map(|(capability_id, _)| capability_id)
+        .unwrap_or_default();
+    if is_mcp_tool_source(name, category, capability_id) {
         "mcp"
-    } else if matches!(
-        name,
-        "spawn_subagent" | "get_subagents" | "message_subagent"
-    ) {
+    } else if is_subagent_tool_name(name) {
         "subagents"
+    } else if is_skill_tool_source(name, category, capability_id) {
+        "skills"
+    } else if category.eq_ignore_ascii_case("plugins") || category.eq_ignore_ascii_case("plugin") {
+        "plugins"
     } else {
         "tools"
     }
+}
+
+fn classify_tool_summary(tool: &ToolDefinitionSummary) -> &'static str {
+    let category = tool.category.as_deref().unwrap_or_default();
+    let capability_id = tool.capability_id.as_deref().unwrap_or_default();
+    if is_mcp_tool_source(&tool.name, category, capability_id) {
+        "mcp"
+    } else if is_subagent_tool_name(&tool.name) {
+        "subagents"
+    } else if is_skill_tool_source(&tool.name, category, capability_id) {
+        "skills"
+    } else if category.eq_ignore_ascii_case("plugins") || category.eq_ignore_ascii_case("plugin") {
+        "plugins"
+    } else {
+        "tools"
+    }
+}
+
+fn is_mcp_tool_source(name: &str, category: &str, capability_id: &str) -> bool {
+    name.starts_with("mcp_")
+        || category.eq_ignore_ascii_case("mcp")
+        || category.eq_ignore_ascii_case("mcp servers")
+        || capability_id.starts_with("mcp:")
+}
+
+fn is_skill_tool_source(name: &str, category: &str, capability_id: &str) -> bool {
+    matches!(name, "list_skills" | "activate_skill")
+        || category.eq_ignore_ascii_case("skills")
+        || capability_id == "skills"
+        || capability_id.starts_with("skill:")
+}
+
+fn is_subagent_tool_name(name: &str) -> bool {
+    matches!(
+        name,
+        "spawn_subagent" | "get_subagents" | "message_subagent"
+    )
+}
+
+fn tool_definition_contribution_source(
+    tool: &ToolDefinition,
+    section_key: &str,
+) -> (String, String) {
+    let capability_attribution = tool.capability_attribution();
+    tool_contribution_source(
+        tool.name(),
+        tool.display_name(),
+        capability_attribution.map(|(id, _)| id),
+        capability_attribution.and_then(|(_, name)| name),
+        section_key,
+    )
+}
+
+fn tool_summary_contribution_source(
+    tool: &ToolDefinitionSummary,
+    section_key: &str,
+) -> (String, String) {
+    tool_contribution_source(
+        &tool.name,
+        tool.display_name.as_deref(),
+        tool.capability_id.as_deref(),
+        tool.capability_name.as_deref(),
+        section_key,
+    )
+}
+
+fn tool_contribution_source(
+    tool_name: &str,
+    display_name: Option<&str>,
+    capability_id: Option<&str>,
+    capability_name: Option<&str>,
+    section_key: &str,
+) -> (String, String) {
+    match section_key {
+        "mcp" => {
+            let server = parse_mcp_tool_name(tool_name).map(|(server, _)| server);
+            let source_id = capability_id
+                .map(str::to_string)
+                .or_else(|| server.as_ref().map(|server| format!("mcp:{server}")))
+                .unwrap_or_else(|| format!("tool:{tool_name}"));
+            let label = capability_name
+                .map(str::to_string)
+                .or(server)
+                .unwrap_or_else(|| display_name.unwrap_or(tool_name).to_string());
+            (source_id, label)
+        }
+        "skills" => {
+            let source_id = capability_id
+                .map(str::to_string)
+                .unwrap_or_else(|| "skills:tools".to_string());
+            let label = capability_name
+                .map(str::to_string)
+                .unwrap_or_else(|| "Skills tools".to_string());
+            (source_id, label)
+        }
+        "subagents" => ("subagents:tools".to_string(), "Subagent tools".to_string()),
+        "plugins" => {
+            let source_id = capability_id
+                .map(str::to_string)
+                .unwrap_or_else(|| format!("plugin:{tool_name}"));
+            let label = capability_name
+                .or(display_name)
+                .unwrap_or(tool_name)
+                .to_string();
+            (source_id, label)
+        }
+        _ => (
+            format!("tool:{tool_name}"),
+            display_name.unwrap_or(tool_name).to_string(),
+        ),
+    }
+}
+
+fn tool_calls_by_id(messages: &[Message]) -> BTreeMap<String, String> {
+    let mut tool_calls = BTreeMap::new();
+    for message in messages {
+        for tool_call in message.tool_calls() {
+            tool_calls.insert(tool_call.id.clone(), tool_call.name.clone());
+        }
+    }
+    tool_calls
+}
+
+fn add_message_breakdown(
+    builder: &mut ContextReportBuilder,
+    message: &Message,
+    tool_calls_by_id: &BTreeMap<String, String>,
+) {
+    let tokens = estimate_serialized_tokens(message);
+    if let Some((section_key, source_id, label)) =
+        message_contribution_source(message, tool_calls_by_id)
+    {
+        builder.add_contribution(section_key, source_id, label, tokens, 1);
+        return;
+    }
+
+    builder.add("conversation", "Conversation", tokens, 1);
+}
+
+fn message_contribution_source(
+    message: &Message,
+    tool_calls_by_id: &BTreeMap<String, String>,
+) -> Option<(&'static str, String, String)> {
+    if message.role != MessageRole::ToolResult {
+        return None;
+    }
+    let tool_call_id = message.tool_call_id()?;
+    let tool_name = tool_calls_by_id.get(tool_call_id)?;
+    if tool_name == "activate_skill" {
+        let skill_name = extract_json_string_field(message, "skill")?;
+        return Some((
+            "skills",
+            format!("skill:{skill_name}"),
+            format!("/{skill_name}"),
+        ));
+    }
+    if is_subagent_tool_name(tool_name) {
+        let name = extract_json_string_field(message, "name").unwrap_or_else(|| "Subagent".into());
+        return Some(("subagents", format!("subagent:{name}"), name));
+    }
+    if let Some((server, _)) = parse_mcp_tool_name(tool_name) {
+        return Some(("mcp", format!("mcp:{server}"), server));
+    }
+    None
+}
+
+fn extract_json_string_field(message: &Message, field: &str) -> Option<String> {
+    message.content.iter().find_map(|part| {
+        let ContentPart::ToolResult(result) = part else {
+            return None;
+        };
+        result
+            .result
+            .as_ref()
+            .and_then(|value| value.get(field))
+            .and_then(|value| value.as_str())
+            .map(str::to_string)
+    })
 }
 
 fn estimate_tool_tokens(tool: &ToolDefinition) -> u32 {
@@ -320,7 +525,7 @@ mod tests {
     #[test]
     fn classifies_mcp_and_subagent_tools() {
         let mcp = ToolDefinition::Builtin(BuiltinTool {
-            name: "mcp_docs_search".into(),
+            name: "mcp_docs__search".into(),
             display_name: None,
             description: "Search docs".into(),
             parameters: json!({"type": "object"}),
@@ -342,6 +547,22 @@ mod tests {
 
         assert_eq!(classify_tool(&mcp), "mcp");
         assert_eq!(classify_tool(&subagent), "subagents");
+    }
+
+    #[test]
+    fn classifies_skill_tools() {
+        let skill = ToolDefinition::Builtin(BuiltinTool {
+            name: "activate_skill".into(),
+            display_name: None,
+            description: "Activate".into(),
+            parameters: json!({"type": "object"}),
+            policy: Default::default(),
+            category: None,
+            deferrable: Default::default(),
+            hints: Default::default(),
+        });
+
+        assert_eq!(classify_tool(&skill), "skills");
     }
 
     #[test]
@@ -377,6 +598,138 @@ mod tests {
                 .iter()
                 .any(|contribution| contribution.source_id == "agent_instructions")
         );
+    }
+
+    #[test]
+    fn generation_report_attributes_tool_definitions_by_source() {
+        let data = LlmGenerationData::success(
+            vec![crate::Message::user("hello")],
+            vec![
+                crate::events::ToolDefinitionSummary {
+                    name: "mcp_docs__search".into(),
+                    display_name: None,
+                    category: Some("MCP Servers".into()),
+                    capability_id: None,
+                    capability_name: None,
+                    description: "Search docs".into(),
+                },
+                crate::events::ToolDefinitionSummary {
+                    name: "mcp_docs__read".into(),
+                    display_name: None,
+                    category: Some("MCP Servers".into()),
+                    capability_id: None,
+                    capability_name: None,
+                    description: "Read docs".into(),
+                },
+                crate::events::ToolDefinitionSummary {
+                    name: "activate_skill".into(),
+                    display_name: Some("Activate Skill".into()),
+                    category: Some("Skills".into()),
+                    capability_id: Some("skills".into()),
+                    capability_name: Some("Agent Skills".into()),
+                    description: "Activate".into(),
+                },
+            ],
+            Some("ok".into()),
+            vec![],
+            "gpt-test".into(),
+            Some("openai".into()),
+            None,
+            None,
+            None,
+        );
+
+        let report =
+            build_session_context_report_from_generation("session_test", &data, None, None);
+        assert!(report.contributions.iter().any(|contribution| {
+            contribution.section_key == "mcp" && contribution.source_id == "mcp:docs"
+        }));
+        assert!(report.contributions.iter().any(|contribution| {
+            contribution.section_key == "skills"
+                && contribution.source_id == "skills"
+                && contribution.label == "Agent Skills"
+        }));
+    }
+
+    #[test]
+    fn generation_report_attributes_skill_activation_results() {
+        let data = LlmGenerationData::success(
+            vec![
+                crate::Message::assistant_with_tools(
+                    "",
+                    vec![crate::ToolCall {
+                        id: "call_skill".into(),
+                        name: "activate_skill".into(),
+                        arguments: json!({"name": "pdf-tool"}),
+                    }],
+                ),
+                crate::Message::tool_result(
+                    "call_skill",
+                    Some(json!({
+                        "skill": "pdf-tool",
+                        "instructions": "<skill name=\"pdf-tool\">Use the PDF flow.</skill>",
+                    })),
+                    None,
+                ),
+            ],
+            vec![],
+            Some("ok".into()),
+            vec![],
+            "gpt-test".into(),
+            Some("openai".into()),
+            None,
+            None,
+            None,
+        );
+
+        let report =
+            build_session_context_report_from_generation("session_test", &data, None, None);
+        assert!(report.contributions.iter().any(|contribution| {
+            contribution.section_key == "skills"
+                && contribution.source_id == "skill:pdf-tool"
+                && contribution.label == "/pdf-tool"
+        }));
+    }
+
+    #[test]
+    fn generation_report_attributes_subagent_results_by_name() {
+        let data = LlmGenerationData::success(
+            vec![
+                crate::Message::assistant_with_tools(
+                    "",
+                    vec![crate::ToolCall {
+                        id: "call_subagent".into(),
+                        name: "spawn_subagent".into(),
+                        arguments: json!({"name": "Scout", "task": "look around"}),
+                    }],
+                ),
+                crate::Message::tool_result(
+                    "call_subagent",
+                    Some(json!({
+                        "name": "Scout",
+                        "status": "completed",
+                        "result": "Found the answer.",
+                    })),
+                    None,
+                ),
+            ],
+            vec![],
+            Some("ok".into()),
+            vec![],
+            "gpt-test".into(),
+            Some("openai".into()),
+            None,
+            None,
+            None,
+        );
+
+        let report =
+            build_session_context_report_from_generation("session_test", &data, None, None);
+        assert!(report.contributions.iter().any(|contribution| {
+            contribution.section_key == "subagents"
+                && contribution.source_id == "subagent:Scout"
+                && contribution.label == "Scout"
+        }));
     }
 
     #[test]
