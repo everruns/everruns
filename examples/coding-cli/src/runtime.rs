@@ -125,6 +125,11 @@ impl SessionFileSystemFactory for CodingCliSessionFileSystemFactory {
 const DEFAULT_OPENAI_MODEL: &str = "gpt-5.5";
 const DEFAULT_OPENAI_REASONING_EFFORT: &str = "medium";
 const DEFAULT_ANTHROPIC_MODEL: &str = "claude-sonnet-4-5";
+const DEFAULT_OPENROUTER_MODEL: &str = "openai/gpt-5.2";
+const DEFAULT_OPENROUTER_BASE_URL: &str = "https://openrouter.ai/api/v1";
+const DEFAULT_OLLAMA_MODEL: &str = "llama3.2";
+const DEFAULT_OLLAMA_BASE_URL: &str = "http://localhost:11434/v1";
+const DEFAULT_OLLAMA_API_KEY: &str = "ollama";
 
 #[derive(Clone, Debug)]
 pub enum ProviderChoice {
@@ -135,6 +140,14 @@ pub enum ProviderChoice {
         model: String,
         reasoning_effort: Option<String>,
     },
+    OpenRouter {
+        model: String,
+        base_url: String,
+    },
+    Ollama {
+        model: String,
+        base_url: String,
+    },
     Sim,
 }
 
@@ -143,26 +156,30 @@ impl ProviderChoice {
     /// OpenAI is preferred when both keys are present so the out-of-the-box
     /// default model stays `gpt-5.5`.
     pub fn from_env() -> Self {
-        if std::env::var("OPENAI_API_KEY")
-            .ok()
-            .is_some_and(|v| !v.is_empty())
-        {
+        if env_non_empty("OPENAI_API_KEY").is_some() {
             return Self::OpenAi {
-                model: std::env::var("EVERRUNS_CLI_MODEL")
-                    .unwrap_or_else(|_| DEFAULT_OPENAI_MODEL.to_string()),
-                reasoning_effort: Some(
-                    std::env::var("EVERRUNS_CLI_REASONING_EFFORT")
-                        .unwrap_or_else(|_| DEFAULT_OPENAI_REASONING_EFFORT.to_string()),
-                ),
+                model: env_or_default("EVERRUNS_CLI_MODEL", DEFAULT_OPENAI_MODEL),
+                reasoning_effort: Some(env_or_default(
+                    "EVERRUNS_CLI_REASONING_EFFORT",
+                    DEFAULT_OPENAI_REASONING_EFFORT,
+                )),
             };
         }
-        if std::env::var("ANTHROPIC_API_KEY")
-            .ok()
-            .is_some_and(|v| !v.is_empty())
-        {
+        if env_non_empty("ANTHROPIC_API_KEY").is_some() {
             return Self::Anthropic {
-                model: std::env::var("EVERRUNS_CLI_MODEL")
-                    .unwrap_or_else(|_| DEFAULT_ANTHROPIC_MODEL.to_string()),
+                model: env_or_default("EVERRUNS_CLI_MODEL", DEFAULT_ANTHROPIC_MODEL),
+            };
+        }
+        if env_non_empty("OPENROUTER_API_KEY").is_some() {
+            return Self::OpenRouter {
+                model: env_or_default("EVERRUNS_CLI_MODEL", DEFAULT_OPENROUTER_MODEL),
+                base_url: env_or_default("OPENROUTER_BASE_URL", DEFAULT_OPENROUTER_BASE_URL),
+            };
+        }
+        if env_non_empty("OLLAMA_BASE_URL").is_some() || env_non_empty("OLLAMA_API_KEY").is_some() {
+            return Self::Ollama {
+                model: env_or_default("EVERRUNS_CLI_MODEL", DEFAULT_OLLAMA_MODEL),
+                base_url: env_or_default("OLLAMA_BASE_URL", DEFAULT_OLLAMA_BASE_URL),
             };
         }
         Self::Sim
@@ -178,6 +195,8 @@ impl ProviderChoice {
                 Some(effort) => format!("openai/{model} {effort}"),
                 None => format!("openai/{model}"),
             },
+            Self::OpenRouter { model, .. } => format!("openrouter/{model}"),
+            Self::Ollama { model, .. } => format!("ollama/{model}"),
             Self::Sim => "llmsim/llmsim-coding-cli".to_string(),
         }
     }
@@ -189,6 +208,8 @@ impl ProviderChoice {
             "openai/gpt-5.4-mini",
             "openai/gpt-5.3-codex",
             "openai/gpt-5.2",
+            "openrouter/openai/gpt-5.2",
+            "ollama/llama3.2",
             "anthropic/claude-sonnet-4-5",
             "anthropic/claude-opus-4-5",
             "anthropic/claude-haiku-4-5",
@@ -231,6 +252,28 @@ impl ProviderChoice {
                 model: model.to_string(),
                 reasoning_effort: normalize_openai_reasoning_effort(reasoning_effort),
             }),
+            "openrouter" => {
+                if reasoning_effort.is_some() {
+                    return Err(anyhow!(
+                        "openrouter model switching does not accept reasoning effort"
+                    ));
+                }
+                Ok(Self::OpenRouter {
+                    model: model.to_string(),
+                    base_url: env_or_default("OPENROUTER_BASE_URL", DEFAULT_OPENROUTER_BASE_URL),
+                })
+            }
+            "ollama" => {
+                if reasoning_effort.is_some() {
+                    return Err(anyhow!(
+                        "ollama model switching does not accept reasoning effort"
+                    ));
+                }
+                Ok(Self::Ollama {
+                    model: model.to_string(),
+                    base_url: env_or_default("OLLAMA_BASE_URL", DEFAULT_OLLAMA_BASE_URL),
+                })
+            }
             "llmsim" | "sim" => {
                 if reasoning_effort.is_some() {
                     return Err(anyhow!("offline llmsim does not support reasoning effort"));
@@ -265,6 +308,28 @@ impl ProviderChoice {
                 model,
                 reasoning_effort: normalize_openai_reasoning_effort(reasoning_effort),
             }),
+            Self::OpenRouter { base_url, .. } => {
+                if reasoning_effort.is_some() {
+                    return Err(anyhow!(
+                        "openrouter model switching does not accept reasoning effort"
+                    ));
+                }
+                Ok(Self::OpenRouter {
+                    model,
+                    base_url: base_url.clone(),
+                })
+            }
+            Self::Ollama { base_url, .. } => {
+                if reasoning_effort.is_some() {
+                    return Err(anyhow!(
+                        "ollama model switching does not accept reasoning effort"
+                    ));
+                }
+                Ok(Self::Ollama {
+                    model,
+                    base_url: base_url.clone(),
+                })
+            }
             Self::Sim => {
                 if reasoning_effort.is_some() {
                     return Err(anyhow!("offline llmsim does not support reasoning effort"));
@@ -300,6 +365,22 @@ impl ProviderChoice {
                     base_url: None,
                 })
             }
+            ProviderChoice::OpenRouter { model, base_url } => {
+                let key = env_non_empty("OPENROUTER_API_KEY")
+                    .ok_or_else(|| anyhow!("OPENROUTER_API_KEY not set"))?;
+                Ok(ModelWithProvider {
+                    model: model.clone(),
+                    provider_type: LlmProviderType::Openai,
+                    api_key: Some(key),
+                    base_url: Some(base_url.clone()),
+                })
+            }
+            ProviderChoice::Ollama { model, base_url } => Ok(ModelWithProvider {
+                model: model.clone(),
+                provider_type: LlmProviderType::Openai,
+                api_key: Some(env_or_default("OLLAMA_API_KEY", DEFAULT_OLLAMA_API_KEY)),
+                base_url: Some(base_url.clone()),
+            }),
             ProviderChoice::Sim => Ok(ModelWithProvider {
                 model: "llmsim-coding-cli".into(),
                 provider_type: LlmProviderType::LlmSim,
@@ -325,6 +406,14 @@ impl ProviderChoice {
         }
         input
     }
+}
+
+fn env_non_empty(name: &str) -> Option<String> {
+    std::env::var(name).ok().filter(|value| !value.is_empty())
+}
+
+fn env_or_default(name: &str, default: &str) -> String {
+    env_non_empty(name).unwrap_or_else(|| default.to_string())
 }
 
 fn normalize_openai_reasoning_effort(reasoning_effort: Option<String>) -> Option<String> {
@@ -537,9 +626,10 @@ pub async fn build(
     everruns_anthropic::register_driver(&mut driver_registry);
     everruns_openai::register_driver(&mut driver_registry);
     let default_model = match &provider {
-        ProviderChoice::Anthropic { .. } | ProviderChoice::OpenAi { .. } => {
-            provider.model_with_provider()?
-        }
+        ProviderChoice::Anthropic { .. }
+        | ProviderChoice::OpenAi { .. }
+        | ProviderChoice::OpenRouter { .. }
+        | ProviderChoice::Ollama { .. } => provider.model_with_provider()?,
         ProviderChoice::Sim => ModelWithProvider {
             model: "llmsim-coding-cli".into(),
             provider_type: LlmProviderType::LlmSim,
@@ -667,6 +757,50 @@ mod tests {
             .unwrap();
 
         assert_eq!(next.label(), "llmsim/llmsim-coding-cli");
+    }
+
+    #[test]
+    fn model_spec_accepts_openrouter_provider_name() {
+        let provider = ProviderChoice::Sim;
+        let next = provider
+            .resolve_model_spec("openrouter/openai/gpt-5.2")
+            .unwrap();
+
+        assert_eq!(next.label(), "openrouter/openai/gpt-5.2");
+    }
+
+    #[test]
+    fn model_spec_accepts_ollama_provider_name() {
+        let provider = ProviderChoice::Sim;
+        let next = provider.resolve_model_spec("ollama/llama3.2").unwrap();
+
+        assert_eq!(next.label(), "ollama/llama3.2");
+    }
+
+    #[test]
+    fn openrouter_uses_openai_responses_driver_with_base_url() {
+        let provider = ProviderChoice::OpenRouter {
+            model: "openai/gpt-5.2".to_string(),
+            base_url: DEFAULT_OPENROUTER_BASE_URL.to_string(),
+        };
+
+        let err = provider.model_with_provider().unwrap_err();
+
+        assert_eq!(err.to_string(), "OPENROUTER_API_KEY not set");
+    }
+
+    #[test]
+    fn ollama_uses_openai_responses_driver_with_local_base_url() {
+        let provider = ProviderChoice::Ollama {
+            model: "llama3.2".to_string(),
+            base_url: DEFAULT_OLLAMA_BASE_URL.to_string(),
+        };
+
+        let model = provider.model_with_provider().unwrap();
+
+        assert_eq!(model.provider_type, LlmProviderType::Openai);
+        assert_eq!(model.api_key, Some(DEFAULT_OLLAMA_API_KEY.to_string()));
+        assert_eq!(model.base_url, Some(DEFAULT_OLLAMA_BASE_URL.to_string()));
     }
 
     #[test]

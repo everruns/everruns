@@ -77,6 +77,8 @@ struct Cli {
 enum ProviderArg {
     Anthropic,
     Openai,
+    Openrouter,
+    Ollama,
     #[value(name = "llmsim", alias = "sim")]
     Sim,
 }
@@ -94,6 +96,26 @@ fn pick_provider(cli: &Cli) -> ProviderChoice {
                     .unwrap_or_else(|| "medium".to_string()),
             ),
         },
+        Some(ProviderArg::Openrouter) => ProviderChoice::OpenRouter {
+            model: std::env::var("EVERRUNS_CLI_MODEL")
+                .ok()
+                .filter(|value| !value.is_empty())
+                .unwrap_or_else(|| "openai/gpt-5.2".to_string()),
+            base_url: std::env::var("OPENROUTER_BASE_URL")
+                .ok()
+                .filter(|value| !value.is_empty())
+                .unwrap_or_else(|| "https://openrouter.ai/api/v1".to_string()),
+        },
+        Some(ProviderArg::Ollama) => ProviderChoice::Ollama {
+            model: std::env::var("EVERRUNS_CLI_MODEL")
+                .ok()
+                .filter(|value| !value.is_empty())
+                .unwrap_or_else(|| "llama3.2".to_string()),
+            base_url: std::env::var("OLLAMA_BASE_URL")
+                .ok()
+                .filter(|value| !value.is_empty())
+                .unwrap_or_else(|| "http://localhost:11434/v1".to_string()),
+        },
         Some(ProviderArg::Sim) => ProviderChoice::Sim,
         None => ProviderChoice::from_env(),
     };
@@ -108,6 +130,12 @@ fn pick_provider(cli: &Cli) -> ProviderChoice {
             model: m,
             reasoning_effort: cli.reasoning_effort.clone().or(reasoning_effort),
         },
+        (ProviderChoice::OpenRouter { base_url, .. }, Some(m)) => {
+            ProviderChoice::OpenRouter { model: m, base_url }
+        }
+        (ProviderChoice::Ollama { base_url, .. }, Some(m)) => {
+            ProviderChoice::Ollama { model: m, base_url }
+        }
         (other, _) => other,
     };
     match (selected, cli.reasoning_effort.clone()) {
