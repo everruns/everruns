@@ -1210,6 +1210,7 @@ fn should_insert_chat_gap(current: &Author, next: Option<&Author>) -> bool {
         (current, next),
         (&Author::Tool, &Author::Tool)
             | (&Author::Tool, &Author::ToolDetail)
+            | (&Author::ToolDetail, &Author::Tool)
             | (&Author::ToolDetail, &Author::ToolDetail)
     )
 }
@@ -1969,6 +1970,10 @@ mod tests {
         assert!(!should_insert_chat_gap(
             &Author::Tool,
             Some(&Author::ToolDetail)
+        ));
+        assert!(!should_insert_chat_gap(
+            &Author::ToolDetail,
+            Some(&Author::Tool)
         ));
         assert!(!should_insert_chat_gap(
             &Author::ToolDetail,
