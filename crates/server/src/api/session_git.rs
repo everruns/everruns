@@ -30,15 +30,19 @@ use super::common::{impl_auth_state, verify_session_ownership};
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CommitRequest {
     /// Commit message
+    #[schema(example = "feat: draft migration plan")]
     pub message: String,
     /// Author name (defaults to "Agent")
     #[serde(default)]
+    #[schema(example = "Support Agent")]
     pub author_name: Option<String>,
     /// Author email (defaults to "agent@everruns.local")
     #[serde(default)]
+    #[schema(example = "support-agent@example.com")]
     pub author_email: Option<String>,
     /// Branch name (defaults to "refs/heads/main"); short names like "main" are normalized
     #[serde(default)]
+    #[schema(example = "main")]
     pub branch: Option<String>,
 }
 
@@ -47,19 +51,23 @@ pub struct CommitRequest {
 pub struct LogQuery {
     /// Ref to start from (default: HEAD)
     #[serde(default, rename = "ref")]
+    #[schema(example = "HEAD")]
     pub from_ref: Option<String>,
     /// Max commits to return (default: 50)
     #[serde(default)]
+    #[schema(example = 50)]
     pub limit: Option<usize>,
 }
 
 /// Query for diff endpoint
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct DiffQuery {
-    /// Commit OID to diff (required)
+    /// Commit OID to diff (required). 40-char hex SHA-1.
+    #[schema(example = "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678")]
     pub oid: String,
     /// Base commit OID (optional, defaults to parent)
     #[serde(default)]
+    #[schema(example = "9876543210fedcba9876543210fedcba98765432")]
     pub base: Option<String>,
 }
 
@@ -67,8 +75,10 @@ pub struct DiffQuery {
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateBranchRequest {
     /// Branch name (e.g., "feature-xyz")
+    #[schema(example = "feature/refund-flow")]
     pub name: String,
     /// Commit OID (hex) to point to
+    #[schema(example = "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678")]
     pub commit_oid: String,
 }
 

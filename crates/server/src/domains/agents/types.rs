@@ -164,6 +164,7 @@ pub struct RollbackAgentVersionRequest {
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct SetDefaultAgentVersionRequest {
     /// Agent version's prefixed public identifier.
+    #[schema(value_type = String, example = "agentver_01933b5a00007000800000000000001")]
     pub version_id: AgentVersionId,
 }
 
@@ -171,12 +172,15 @@ pub struct SetDefaultAgentVersionRequest {
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct ForkAgentVersionRequest {
     /// Human-readable name. Safe to render in user-facing messages.
+    #[schema(example = "support-agent-experimental")]
     pub name: String,
     #[serde(default)]
     /// Human-readable display name. Safe to render in user-facing messages.
+    #[schema(example = "Support Agent (Experimental)")]
     pub display_name: Option<String>,
     #[serde(default)]
     /// Human-readable description. Safe to render in user-facing messages.
+    #[schema(example = "Fork to test new refund-flow capabilities before promoting")]
     pub description: Option<String>,
 }
 

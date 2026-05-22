@@ -34,6 +34,7 @@ use utoipa::ToSchema;
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct SubmitToolResultsRequest {
     /// Tool results from the client
+    #[schema(example = json!([{"tool_call_id": "toolu_01933b5a00007000800000000000001", "result": {"url": "https://example.com/orders/42"}}]))]
     pub tool_results: Vec<ClientToolResult>,
 }
 
@@ -41,12 +42,15 @@ pub struct SubmitToolResultsRequest {
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct ClientToolResult {
     /// Tool call ID (correlates with the tool call from tool.call_requested event)
+    #[schema(example = "toolu_01933b5a00007000800000000000001")]
     pub tool_call_id: String,
     /// Result value (JSON). Null if the tool failed.
     #[serde(default)]
+    #[schema(value_type = Option<Object>, example = json!({"url": "https://example.com/orders/42"}))]
     pub result: Option<serde_json::Value>,
     /// Error message if the tool failed
     #[serde(default)]
+    #[schema(example = "Refund failed: order is outside refund window")]
     pub error: Option<String>,
 }
 
