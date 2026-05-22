@@ -251,6 +251,7 @@ const SSE_EVENT_TYPES = [
   "reason.thinking.started",
   "reason.thinking.delta",
   "reason.thinking.completed",
+  "reason.item",
   "context.compacted",
 ];
 

@@ -234,6 +234,7 @@ fn serialize_event_data(data: &everruns_core::EventData) -> serde_json::Value {
         EventData::ReasonThinkingStarted(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::ReasonThinkingDelta(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::ReasonThinkingCompleted(d) => serde_json::to_value(d).unwrap_or_default(),
+        EventData::ReasonItem(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::SessionStarted(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::SessionActivated(d) => serde_json::to_value(d).unwrap_or_default(),
         EventData::SessionIdled(d) => serde_json::to_value(d).unwrap_or_default(),

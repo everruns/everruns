@@ -1,0 +1,15 @@
+---
+source: crates/core/src/events.rs
+expression: data
+---
+{
+  "turn_id": "turn_00000000000000000000000000000002",
+  "provider": "openai",
+  "model": "gpt-5.5",
+  "item_id": "rs_test",
+  "encrypted_content": "OPAQUE",
+  "summary": [
+    "safe summary"
+  ],
+  "token_count": 42
+}

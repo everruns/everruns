@@ -1107,6 +1107,37 @@ Emitted when the model finishes its chain-of-thought reasoning and transitions t
 
 **Note:** Extended thinking events (`reason.thinking.*`) are only emitted when using models that support extended thinking mode. The thinking content is separate from the main response text and typically shown in a collapsible section in the UI. Thinking content is also persisted in the `output.message.completed` event's `thinking` field for multi-turn context.
 
+#### `reason.item`
+
+Durable record of an opaque assistant reasoning response item, distinct from `reason.thinking.*`. Emitted when a provider returns an opaque reasoning artifact (e.g., OpenAI Responses API reasoning items containing `encrypted_content`). Carries provider-supplied opaque content plus curated summary text and per-item metadata; plaintext hidden chain-of-thought is intentionally not persisted in this event.
+
+```json
+{
+  "type": "reason.item",
+  "session_id": "...",
+  "context": {
+    "turn_id": "...",
+    "input_message_id": "..."
+  },
+  "data": {
+    "turn_id": "...",
+    "provider": "openai",
+    "model": "gpt-5.5",
+    "item_id": "rs_abc",
+    "encrypted_content": "<opaque>",
+    "summary": ["safe summary segment"],
+    "token_count": 727
+  }
+}
+```
+
+**Constraints:**
+
+- Persisted reasoning artifacts must remain opaque/encrypted. Emitters strip plaintext reasoning content (e.g., OpenAI `reasoning_text` items) before constructing the event.
+- `summary` carries only provider-curated summary text (e.g., OpenAI `summary_text` parts). Other content variants are dropped.
+- `encrypted_content` and `token_count` are optional; not every provider supplies them.
+- User-visible thinking streams continue to flow through `reason.thinking.*`; `reason.item` is the durable record for opaque artifacts that cannot be safely streamed as plaintext.
+
 **Extended Thinking Timeline Example:**
 
 ```

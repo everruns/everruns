@@ -320,6 +320,28 @@ export interface ReasonThinkingCompletedData {
   thinking: string;
 }
 
+/** Data for reason.item event (durable opaque assistant reasoning response item).
+ *
+ * Carries provider-supplied opaque reasoning artifacts plus curated summary
+ * text. Plaintext hidden chain-of-thought is intentionally not persisted on
+ * this event — see specs/events.md.
+ */
+export interface ReasonItemData {
+  turn_id: string;
+  /** Provider that produced the reasoning item (e.g., "openai"). */
+  provider: string;
+  /** Model identifier reported by the provider, when known. */
+  model?: string;
+  /** Provider-assigned identifier for the reasoning item. */
+  item_id: string;
+  /** Provider-encrypted reasoning context, when supplied. Opaque to consumers. */
+  encrypted_content?: string;
+  /** Safe summary text segments curated by the provider. */
+  summary?: string[];
+  /** Per-item reasoning token count, when the provider reports one. */
+  token_count?: number;
+}
+
 /** A single step in a compaction cascade */
 export interface CompactionStepData {
   strategy: string;
@@ -379,6 +401,7 @@ export type EventData =
   | ReasonThinkingStartedData
   | ReasonThinkingDeltaData
   | ReasonThinkingCompletedData
+  | ReasonItemData
   | ContextCompactingData
   | ContextCompactedData
   | Record<string, unknown>; // Raw/unknown event data
@@ -414,6 +437,7 @@ export interface EventTypeMap {
   "reason.thinking.started": ReasonThinkingStartedData;
   "reason.thinking.delta": ReasonThinkingDeltaData;
   "reason.thinking.completed": ReasonThinkingCompletedData;
+  "reason.item": ReasonItemData;
   "context.compacting": ContextCompactingData;
   "context.compacted": ContextCompactedData;
 }
