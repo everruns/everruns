@@ -13,6 +13,7 @@ use std::sync::Arc;
 use crate::capabilities::Capability;
 use crate::message::{Message, MessageRole, ToolCallContentPart};
 use crate::message_filter::{MessageFilterProvider, MessageQuery};
+use crate::tool_fingerprint::tool_call_parts_fingerprint;
 
 /// Default threshold: 3 consecutive identical tool call batches triggers warning.
 const DEFAULT_THRESHOLD: usize = 3;
@@ -56,6 +57,20 @@ impl MessageFilterProvider for LoopDetectionFilter {
             .unwrap_or(DEFAULT_THRESHOLD)
             .max(1); // Clamp to at least 1 to avoid indexing empty vec
 
+        if let Some(consecutive) = repeated_tool_result_count(messages, threshold) {
+            tracing::warn!(
+                consecutive,
+                threshold,
+                "Loop detected: identical tool call/result pairs repeated"
+            );
+            messages.push(Message::system(
+                "Loop detected: the same tool call produced the same result repeatedly. \
+                 The approach is not making progress. Try different arguments, inspect a \
+                 new source of context, change state before retrying, or report the blocker.",
+            ));
+            return;
+        }
+
         // Collect tool call signature hashes from recent agent messages (reverse order).
         let mut recent_hashes: Vec<u64> = Vec::new();
         for msg in messages.iter().rev() {
@@ -94,17 +109,46 @@ impl MessageFilterProvider for LoopDetectionFilter {
 /// Hash a set of tool calls into a single u64 for comparison.
 /// Tool calls are sorted by (name, arguments) so ordering doesn't matter.
 fn hash_tool_calls(calls: &[&ToolCallContentPart]) -> u64 {
-    let mut h = DefaultHasher::new();
     let mut sorted: Vec<_> = calls
         .iter()
-        .map(|tc| (&tc.name, tc.arguments.to_string()))
+        .map(|tc| tool_call_parts_fingerprint(&tc.name, &tc.arguments))
         .collect();
     sorted.sort();
-    for (name, args) in &sorted {
-        name.hash(&mut h);
-        args.hash(&mut h);
-    }
+    let mut h = DefaultHasher::new();
+    sorted.hash(&mut h);
     h.finish()
+}
+
+fn repeated_tool_result_count(messages: &[Message], threshold: usize) -> Option<usize> {
+    let mut target: Option<String> = None;
+    let mut consecutive = 0;
+
+    for msg in messages.iter().rev() {
+        if msg.role == MessageRole::User || msg.role == MessageRole::System {
+            break;
+        }
+        if msg.role != MessageRole::ToolResult {
+            continue;
+        }
+        let signature = tool_result_signature(msg)?;
+        match &target {
+            Some(target) if target == &signature => consecutive += 1,
+            Some(_) => break,
+            None => {
+                target = Some(signature);
+                consecutive = 1;
+            }
+        }
+    }
+
+    (consecutive >= threshold).then_some(consecutive)
+}
+
+fn tool_result_signature(msg: &Message) -> Option<String> {
+    let metadata = msg.metadata.as_ref()?;
+    let call = metadata.get("tool_call_fingerprint")?.as_str()?;
+    let result = metadata.get("tool_result_fingerprint")?.as_str()?;
+    Some(format!("{call}:{result}"))
 }
 
 #[cfg(test)]
@@ -142,6 +186,21 @@ mod tests {
         serde_json::json!({})
     }
 
+    fn tool_result_msg(call_fingerprint: &str, result_fingerprint: &str) -> Message {
+        let mut msg = Message::tool_result("call_1", Some(serde_json::json!({ "ok": true })), None);
+        msg.metadata = Some(std::collections::HashMap::from([
+            (
+                "tool_call_fingerprint".to_string(),
+                serde_json::json!(call_fingerprint),
+            ),
+            (
+                "tool_result_fingerprint".to_string(),
+                serde_json::json!(result_fingerprint),
+            ),
+        ]));
+        msg
+    }
+
     #[test]
     fn test_no_loop_different_tool_calls() {
         let filter = LoopDetectionFilter;
@@ -175,6 +234,45 @@ mod tests {
         let last = messages.last().unwrap();
         assert_eq!(last.role, MessageRole::System);
         assert!(last.text().unwrap().contains("Loop detected"));
+    }
+
+    #[test]
+    fn test_loop_detected_three_identical_tool_results() {
+        let filter = LoopDetectionFilter;
+        let mut messages = vec![
+            Message::user("do something"),
+            agent_msg_with_calls(vec![("tool_a", serde_json::json!({"x": 1}))]),
+            tool_result_msg("call:a", "result:a"),
+            agent_msg_with_calls(vec![("tool_a", serde_json::json!({"x": 1}))]),
+            tool_result_msg("call:a", "result:a"),
+            agent_msg_with_calls(vec![("tool_a", serde_json::json!({"x": 1}))]),
+            tool_result_msg("call:a", "result:a"),
+        ];
+        let original_len = messages.len();
+
+        filter.post_load(&mut messages, &default_config());
+
+        assert_eq!(messages.len(), original_len + 1);
+        let last = messages.last().unwrap();
+        assert_eq!(last.role, MessageRole::System);
+        assert!(last.text().unwrap().contains("same tool call produced"));
+    }
+
+    #[test]
+    fn test_tool_result_loop_breaks_on_different_result() {
+        let filter = LoopDetectionFilter;
+        let mut messages = vec![
+            tool_result_msg("call:a", "result:a"),
+            agent_msg_with_calls(vec![("tool_a", serde_json::json!({"x": 1}))]),
+            tool_result_msg("call:a", "result:a"),
+            agent_msg_with_calls(vec![("tool_a", serde_json::json!({"x": 1}))]),
+            tool_result_msg("call:a", "result:b"),
+        ];
+        let original_len = messages.len();
+
+        filter.post_load(&mut messages, &default_config());
+
+        assert_eq!(messages.len(), original_len);
     }
 
     #[test]

@@ -575,7 +575,6 @@ pub async fn build(
                 .agent("coding-agent", AGENT_PROMPT)
                 .agent_display_name("Coding Agent")
                 .agent_description("Reads, edits, and runs commands inside a project workspace.")
-                .agent_max_iterations(20)
                 .session_id(session_id)
                 .session_title(session_title.clone())
                 .tag("example")
@@ -703,6 +702,16 @@ mod tests {
         assert!(
             ids.iter()
                 .any(|cap| cap.capability_id() == "tool_output_persistence")
+        );
+    }
+
+    #[test]
+    fn coding_harness_enables_loop_detection() {
+        let ids = coding_harness_capabilities();
+
+        assert!(
+            ids.iter()
+                .any(|cap| cap.capability_id() == "loop_detection")
         );
     }
 

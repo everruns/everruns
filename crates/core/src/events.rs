@@ -951,6 +951,9 @@ pub struct ActCompletedData {
 pub struct ToolStartedData {
     /// The tool call being executed
     pub tool_call: ToolCall,
+    /// Stable fingerprint of tool name + normalized arguments.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_call_fingerprint: Option<String>,
     /// Human-readable display name for UI rendering
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub display_name: Option<String>,
@@ -968,6 +971,14 @@ pub struct ToolCompletedData {
 
     /// Tool name
     pub tool_name: String,
+
+    /// Stable fingerprint of tool name + normalized arguments.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_call_fingerprint: Option<String>,
+
+    /// Stable fingerprint of tool name + normalized result/error.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_result_fingerprint: Option<String>,
 
     /// Human-readable display name for UI rendering
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1014,6 +1025,8 @@ impl ToolCompletedData {
         Self {
             tool_call_id,
             tool_name,
+            tool_call_fingerprint: None,
+            tool_result_fingerprint: None,
             display_name: None,
             success: true,
             status: "success".to_string(),
@@ -1036,6 +1049,8 @@ impl ToolCompletedData {
         Self {
             tool_call_id,
             tool_name,
+            tool_call_fingerprint: None,
+            tool_result_fingerprint: None,
             display_name: None,
             success: false,
             status,
@@ -1051,6 +1066,16 @@ impl ToolCompletedData {
     /// Set display name on this event data
     pub fn with_display_name(mut self, display_name: Option<String>) -> Self {
         self.display_name = display_name;
+        self
+    }
+
+    pub fn with_fingerprints(
+        mut self,
+        tool_call_fingerprint: String,
+        tool_result_fingerprint: String,
+    ) -> Self {
+        self.tool_call_fingerprint = Some(tool_call_fingerprint);
+        self.tool_result_fingerprint = Some(tool_result_fingerprint);
         self
     }
 
@@ -3402,6 +3427,7 @@ mod contract_tests {
                 name: "get_weather".to_string(),
                 arguments: serde_json::json!({"city": "London"}),
             },
+            tool_call_fingerprint: None,
             display_name: None,
             narration: None,
         };
@@ -3637,6 +3663,7 @@ mod contract_tests {
                 name: "bash".to_string(),
                 arguments: serde_json::json!({"command": "ls"}),
             },
+            tool_call_fingerprint: None,
             display_name: Some("Bash".to_string()),
             narration: None,
         };

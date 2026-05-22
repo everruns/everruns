@@ -33,6 +33,7 @@
 
 // Runtime types (tool definitions, capability types)
 pub mod capability_types;
+pub mod tool_fingerprint;
 pub mod tool_types;
 
 // Deployment configuration

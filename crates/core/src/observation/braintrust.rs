@@ -2711,6 +2711,8 @@ mod tests {
         let data = ToolCompletedData {
             tool_call_id: "call_123".to_string(),
             tool_name: "search".to_string(),
+            tool_call_fingerprint: None,
+            tool_result_fingerprint: None,
             display_name: None,
             success: true,
             status: "success".to_string(),
@@ -2933,6 +2935,8 @@ mod tests {
         let tool_data = ToolCompletedData {
             tool_call_id: "call_1".to_string(),
             tool_name: "search".to_string(),
+            tool_call_fingerprint: None,
+            tool_result_fingerprint: None,
             display_name: None,
             success: true,
             status: "success".to_string(),
@@ -3176,6 +3180,7 @@ mod tests {
                 name: "search".to_string(),
                 arguments: serde_json::json!({"query": "test"}),
             },
+            tool_call_fingerprint: None,
             display_name: None,
             narration: None,
         };
@@ -3196,6 +3201,8 @@ mod tests {
         let completed_data = ToolCompletedData {
             tool_call_id: "call_1".to_string(),
             tool_name: "search".to_string(),
+            tool_call_fingerprint: None,
+            tool_result_fingerprint: None,
             display_name: None,
             success: true,
             status: "success".to_string(),
@@ -3371,6 +3378,7 @@ mod tests {
                     name: "exec".to_string(),
                     arguments: json!({"secret": "value", "path": "/tmp/test"}),
                 },
+                tool_call_fingerprint: None,
                 display_name: Some("Execute".to_string()),
                 narration: Some("Running exec".to_string()),
             }),
@@ -3411,6 +3419,7 @@ mod tests {
                     name: "exec".to_string(),
                     arguments: json!({"secret": "value", "path": "/tmp/test"}),
                 },
+                tool_call_fingerprint: None,
                 display_name: Some("Execute".to_string()),
                 narration: Some("Running exec".to_string()),
             }),
@@ -3568,6 +3577,8 @@ mod tests {
         let data = ToolCompletedData {
             tool_call_id: "call_123".to_string(),
             tool_name: "search".to_string(),
+            tool_call_fingerprint: None,
+            tool_result_fingerprint: None,
             display_name: None,
             success: true,
             status: "success".to_string(),

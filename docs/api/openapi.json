@@ -25962,6 +25962,13 @@
             "type": "boolean",
             "description": "Whether the tool call succeeded"
           },
+          "tool_call_fingerprint": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Stable fingerprint of tool name + normalized arguments."
+          },
           "tool_call_id": {
             "type": "string",
             "description": "Tool call ID"
@@ -25969,6 +25976,13 @@
           "tool_name": {
             "type": "string",
             "description": "Tool name"
+          },
+          "tool_result_fingerprint": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Stable fingerprint of tool name + normalized result/error."
           }
         }
       },
@@ -26242,6 +26256,13 @@
           "tool_call": {
             "$ref": "#/components/schemas/ToolCall",
             "description": "The tool call being executed"
+          },
+          "tool_call_fingerprint": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Stable fingerprint of tool name + normalized arguments."
           }
         }
       },

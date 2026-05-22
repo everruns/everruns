@@ -906,6 +906,7 @@ fn message_from_event(data: &EventData) -> Option<Message> {
 
 fn tool_completed_to_message(data: ToolCompletedData) -> Message {
     let mut images: Vec<ToolResultImage> = Vec::new();
+    let metadata = tool_result_metadata(&data);
     let result = data.result.map(|parts| {
         for part in &parts {
             if let ContentPart::Image(img) = part
@@ -934,11 +935,33 @@ fn tool_completed_to_message(data: ToolCompletedData) -> Message {
         }
     });
 
-    if images.is_empty() {
+    let mut message = if images.is_empty() {
         Message::tool_result(&data.tool_call_id, result, data.error)
     } else {
         Message::tool_result_with_images(&data.tool_call_id, result, images)
+    };
+    message.metadata = metadata;
+    message
+}
+
+fn tool_result_metadata(
+    data: &ToolCompletedData,
+) -> Option<std::collections::HashMap<String, serde_json::Value>> {
+    let mut metadata = std::collections::HashMap::new();
+    metadata.insert("tool_name".to_string(), serde_json::json!(data.tool_name));
+    if let Some(fingerprint) = &data.tool_call_fingerprint {
+        metadata.insert(
+            "tool_call_fingerprint".to_string(),
+            serde_json::json!(fingerprint),
+        );
     }
+    if let Some(fingerprint) = &data.tool_result_fingerprint {
+        metadata.insert(
+            "tool_result_fingerprint".to_string(),
+            serde_json::json!(fingerprint),
+        );
+    }
+    (!metadata.is_empty()).then_some(metadata)
 }
 
 fn parse_structured_tool_result_text(text: &str) -> serde_json::Value {
@@ -998,6 +1021,24 @@ mod tool_completed_replay_tests {
             .expect("tool result should be present");
 
         assert_eq!(result, &serde_json::Value::String("123".to_string()));
+    }
+
+    #[test]
+    fn tool_completed_replay_preserves_fingerprints_as_metadata() {
+        let data = ToolCompletedData::success(
+            "call_read".to_string(),
+            "read_file".to_string(),
+            vec![ContentPart::text("{}")],
+            Some(1),
+        )
+        .with_fingerprints("sha256:call".to_string(), "sha256:result".to_string());
+
+        let message = tool_completed_to_message(data);
+        let metadata = message.metadata.expect("metadata should be present");
+
+        assert_eq!(metadata["tool_name"], "read_file");
+        assert_eq!(metadata["tool_call_fingerprint"], "sha256:call");
+        assert_eq!(metadata["tool_result_fingerprint"], "sha256:result");
     }
 }
 
