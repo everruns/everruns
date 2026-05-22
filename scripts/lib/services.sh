@@ -177,12 +177,7 @@ signal_port_bound_services() {
 
 # require_command is defined in common.sh (sourced above)
 
-ui_dev_args=()
-# Keep local/worktree dev on webpack by default. Next's default dev engine can
-# serve stale route state across generated cache changes in these worktrees.
-if [ "${UI_DEV_ENGINE:-webpack}" = "webpack" ] || [ -L "${PROJECT_ROOT:-$(pwd)}/apps/ui/node_modules" ]; then
-  ui_dev_args+=(--webpack)
-fi
+ui_dev_args=(--turbopack)
 if [ -n "${UI_DEV_ARGS:-}" ]; then
   read -r -a ui_dev_args_extra <<< "$UI_DEV_ARGS"
   ui_dev_args+=("${ui_dev_args_extra[@]}")
