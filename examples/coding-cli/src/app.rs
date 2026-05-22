@@ -1208,7 +1208,9 @@ fn should_insert_chat_gap(current: &Author, next: Option<&Author>) -> bool {
 
     !matches!(
         (current, next),
-        (&Author::Tool, &Author::ToolDetail) | (&Author::ToolDetail, &Author::ToolDetail)
+        (&Author::Tool, &Author::Tool)
+            | (&Author::Tool, &Author::ToolDetail)
+            | (&Author::ToolDetail, &Author::ToolDetail)
     )
 }
 
@@ -1962,7 +1964,8 @@ mod tests {
     }
 
     #[test]
-    fn should_not_insert_chat_gap_inside_todo_blocks() {
+    fn should_not_insert_chat_gap_inside_tool_blocks() {
+        assert!(!should_insert_chat_gap(&Author::Tool, Some(&Author::Tool)));
         assert!(!should_insert_chat_gap(
             &Author::Tool,
             Some(&Author::ToolDetail)
