@@ -36,8 +36,8 @@ depends on the public runtime crate the same way an external embedder would.
     Saved responses land on disk via the same `RealDiskFileStore` stack,
     so the blocklist and approval gate apply.
   - `tool_output_persistence` — large bash output is summarized inline and
-    saved under `/.outputs/` (the real `<workspace>/.outputs/` folder) so the
-    agent can inspect it with `read_file`.
+    saved under `/outputs/` inside the current session folder so the agent
+    can inspect it with `read_file`.
 
 Note on parallel tool calls: independent tool calls already execute in
 parallel when the LLM provider batches them in one assistant turn (Anthropic
@@ -119,26 +119,31 @@ ercode --provider llmsim -p "hi"
 | `-p, --print <PROMPT>`     | Run one prompt non-interactively and print the result                |
 | `--ask`                    | Prompt before every destructive tool call (off by default)           |
 | `--session <ID>`           | Resume a previous session by id (its JSONL log is replayed)          |
-| `--session-dir <PATH>`     | Override the session-log directory (default: XDG data dir)           |
+| `--session-dir <PATH>`     | Override the parent directory for session folders (default: XDG data dir) |
 
 `RUST_LOG` is honored for the underlying tracing layer (writes to stderr).
 
 ## Session persistence
 
-Every run appends replay-relevant emitted events to a JSONL file under
+Every run writes durable local artifacts into a per-session folder under
 the platform-native user data directory:
 
 | OS      | Default location                                                 |
 |---------|------------------------------------------------------------------|
-| Linux   | `$XDG_DATA_HOME/ercode/sessions/<session_id>.jsonl` (typically `~/.local/share/…`) |
-| macOS   | `~/Library/Application Support/ercode/sessions/<session_id>.jsonl` |
-| Windows | `%APPDATA%\ercode\sessions\<session_id>.jsonl`                   |
+| Linux   | `$XDG_DATA_HOME/ercode/sessions/<session_id>/` (typically `~/.local/share/…`) |
+| macOS   | `~/Library/Application Support/ercode/sessions/<session_id>/` |
+| Windows | `%APPDATA%\ercode\sessions\<session_id>\`                   |
+
+The event log lives at `<session_folder>/events.jsonl`. Large tool output
+persisted by `tool_output_persistence` lives under
+`<session_folder>/outputs/`. The folder layout leaves room for other
+session-scoped stores, such as key/value data, to sit beside the event log.
 
 One serialized `Event` per line, flushed after every write. On Unix the
-file is created with `0o600` (owner-only) because session logs contain
+event file is created with `0o600` (owner-only) because session logs contain
 user prompts, tool arguments, and tool output. The session id is
 generated fresh on every plain `ercode` invocation and printed in the
-startup banner (`[session] session_… (log: …)`).
+startup banner (`[session] session_… (folder: …; log: …)`).
 
 Only the event types that round-trip into the conversation are persisted
 (`input.message`, `output.message.completed`, `tool.completed`).
@@ -160,7 +165,7 @@ warning. The same JSONL file is then re-opened in append mode for the
 new run; `Event.sequence` continues monotonically past the highest
 replayed value.
 
-`--session-dir <PATH>` overrides the storage location (useful for
+`--session-dir <PATH>` overrides the parent storage location (useful for
 keeping per-workspace session histories in
 `<workspace>/.ercode/sessions/`).
 
@@ -183,8 +188,9 @@ run.
 ## How it's wired
 
 - `src/runtime.rs` — registers a platform `SessionFileSystemFactory` that
-  creates a `RealDiskFileStore` (from `everruns-runtime`) rooted at the
-  workspace and wraps it with two policy decorators
+  routes normal paths through a `RealDiskFileStore` rooted at the workspace
+  and routes `/outputs/` through the current session folder, then wraps it
+  with two policy decorators
   (`WriteBlocklistFileStore` and `ApprovalGatingFileStore`, both also from
   `everruns-runtime`). Registers the built-in
   `AgentInstructionsCapability` (live-reloads AGENTS.md every turn),

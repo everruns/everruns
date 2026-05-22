@@ -48,7 +48,7 @@ pub fn output_verbosity_schema() -> serde_json::Value {
         "type": "string",
         "enum": ["silent", "concise", "normal", "verbose", "full"],
         "default": "concise",
-        "description": "Output verbosity: silent (~200B, truncated to exit code + minimal output), concise (~2KiB, default), normal (~8KiB), verbose (~16KiB), full (unlimited, capped by 64KiB hard limit). Full output always persisted to /.outputs/{tool_call_id}.stdout (and .stderr) — use read_file to retrieve."
+        "description": "Output verbosity: silent (~200B, truncated to exit code + minimal output), concise (~2KiB, default), normal (~8KiB), verbose (~16KiB), full (unlimited, capped by 64KiB hard limit). Full output always persisted to /outputs/{tool_call_id}.stdout and /outputs/{tool_call_id}.stderr — use read_file to retrieve."
     })
 }
 
@@ -56,7 +56,7 @@ pub fn output_verbosity_schema() -> serde_json::Value {
 /// Appended to each sandbox capability's `system_prompt_addition()` to guide
 /// the LLM toward less verbose command usage.
 pub const EXEC_OUTPUT_HINT: &str = "\n\n**Output economy:** Command output is truncated based on the `output` parameter (default: `concise` ~2 KiB). \
-Use `verbose` or `full` when debugging failures. Full output is always persisted — stdout to `/.outputs/{tool_call_id}.stdout`, stderr to `/.outputs/{tool_call_id}.stderr`. \
+Use `verbose` or `full` when debugging failures. Full output is always persisted — stdout to `/outputs/{tool_call_id}.stdout`, stderr to `/outputs/{tool_call_id}.stderr`. \
 When output exceeds the budget, the result includes an `output_files` array with paths you can `read_file` with offset/limit.\n\
 Available modes: `silent` (~200B), `concise` (~2KiB), `normal` (~8KiB), `verbose` (~16KiB), `full` (unlimited).\n\
 For build/install commands, the default `concise` is usually sufficient — check exit code first.\n\

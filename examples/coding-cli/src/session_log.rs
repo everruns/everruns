@@ -1,7 +1,7 @@
 // Per-session JSONL event log.
 //
 // Each session writes its replay-relevant events to
-// `<storage_dir>/<session_id>.jsonl`, one serialized `Event` per line.
+// `<sessions_dir>/<session_id>/events.jsonl`, one serialized `Event` per line.
 // `--session <id>` reuses the same SessionId on the next run and replays
 // the file: events are read back and messages derived from those events
 // are seeded into the message store so the conversation history shows up
@@ -59,7 +59,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::{Mutex, RwLock};
 
-/// Default location for ercode's per-session JSONL files. Resolves via
+/// Default location for ercode's per-session storage folders. Resolves via
 /// `dirs::data_dir()`, which is the platform-native user data directory
 /// (`~/.local/share/ercode/sessions/` on Linux,
 /// `~/Library/Application Support/ercode/sessions/` on macOS,
@@ -69,7 +69,7 @@ use tokio::sync::{Mutex, RwLock};
 /// intentionally do NOT fall back to the current working directory,
 /// because the cwd for ercode is usually the user's workspace and we
 /// don't want sensitive session logs landing in the repo.
-pub fn default_storage_dir() -> Result<PathBuf> {
+pub fn default_sessions_dir() -> Result<PathBuf> {
     dirs::data_dir()
         .map(|p| p.join("ercode").join("sessions"))
         .ok_or_else(|| {
@@ -80,8 +80,12 @@ pub fn default_storage_dir() -> Result<PathBuf> {
         })
 }
 
-pub fn session_log_path(storage_dir: &Path, session_id: SessionId) -> PathBuf {
-    storage_dir.join(format!("{session_id}.jsonl"))
+pub fn session_dir_path(sessions_dir: &Path, session_id: SessionId) -> PathBuf {
+    sessions_dir.join(session_id.to_string())
+}
+
+pub fn session_log_path(session_dir: &Path) -> PathBuf {
+    session_dir.join("events.jsonl")
 }
 
 /// Result of replaying a JSONL session log from disk.
@@ -407,7 +411,8 @@ mod tests {
     async fn seed_replayed_populates_collected_events_without_rewrite() {
         let dir = tempfile::tempdir().expect("tempdir");
         let session_id = SessionId::from_seed(482);
-        let path = session_log_path(dir.path(), session_id);
+        let session_dir = session_dir_path(dir.path(), session_id);
+        let path = session_log_path(&session_dir);
 
         let emitter = JsonlEventEmitter::open(&path, 1).expect("open");
         let prior = vec![
@@ -436,7 +441,8 @@ mod tests {
     async fn seed_replayed_then_emit_keeps_order() {
         let dir = tempfile::tempdir().expect("tempdir");
         let session_id = SessionId::from_seed(4820);
-        let path = session_log_path(dir.path(), session_id);
+        let session_dir = session_dir_path(dir.path(), session_id);
+        let path = session_log_path(&session_dir);
 
         let emitter = JsonlEventEmitter::open(&path, 3).expect("open");
         let prior = vec![input_event(session_id, "a"), input_event(session_id, "b")];
@@ -459,7 +465,8 @@ mod tests {
     async fn output_message_thinking_is_not_written_to_session_log() {
         let dir = tempfile::tempdir().expect("tempdir");
         let session_id = SessionId::from_seed(4821);
-        let path = session_log_path(dir.path(), session_id);
+        let session_dir = session_dir_path(dir.path(), session_id);
+        let path = session_log_path(&session_dir);
         let emitter = JsonlEventEmitter::open(&path, 1).expect("open");
 
         let mut message = Message::assistant("I will inspect the files.");

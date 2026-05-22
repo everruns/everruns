@@ -65,7 +65,7 @@ struct Cli {
     #[arg(long)]
     session: Option<String>,
 
-    /// Directory where session JSONL logs are stored. Default: the
+    /// Directory where per-session folders are stored. Default: the
     /// platform-native user data directory (`$XDG_DATA_HOME/ercode/sessions/`
     /// on Linux, `~/Library/Application Support/ercode/sessions/` on macOS,
     /// `%APPDATA%\ercode\sessions\` on Windows).
@@ -161,11 +161,11 @@ async fn main() -> Result<()> {
         ),
         None => None,
     };
-    let session_dir = match cli.session_dir.clone() {
+    let sessions_dir = match cli.session_dir.clone() {
         Some(p) => p,
-        None => session_log::default_storage_dir()?,
+        None => session_log::default_sessions_dir()?,
     };
-    let runtime = runtime::build(cwd, provider, gate, resume_session_id, session_dir).await?;
+    let runtime = runtime::build(cwd, provider, gate, resume_session_id, sessions_dir).await?;
 
     if let Some(prompt) = cli.print {
         return run_print_mode(runtime, prompt).await;
@@ -220,9 +220,10 @@ async fn run_print_mode(runtime: BuiltRuntime, prompt: String) -> Result<()> {
         startup.tool_names.join(", ")
     );
     println!(
-        "{}   {} ({}; {} prior event(s))",
+        "{}   {} (folder: {}; log: {}; {} prior event(s))",
         paint(color, "90", "session"),
         handles.session_id,
+        startup.session_dir.display(),
         startup.session_log_path.display(),
         startup.replayed_events,
     );
