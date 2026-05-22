@@ -25,8 +25,11 @@ pub struct MemoryStoreResponse {
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateMemoryStoreRequest {
     /// Human-readable name. Safe to render in user-facing messages.
+    #[schema(example = "customer-preferences")]
     pub name: String,
+    /// When `true`, sets this store as the org's default for newly-created memories.
     #[serde(default)]
+    #[schema(example = false)]
     pub is_default: bool,
 }
 
@@ -35,8 +38,11 @@ pub struct CreateMemoryStoreRequest {
 pub struct UpdateMemoryStoreRequest {
     #[serde(default)]
     /// Human-readable name. Safe to render in user-facing messages.
+    #[schema(example = "customer-preferences-archive")]
     pub name: Option<String>,
+    /// Toggle this store as the org default.
     #[serde(default)]
+    #[schema(example = true)]
     pub is_default: Option<bool>,
 }
 
@@ -73,17 +79,25 @@ pub struct ListMemoriesResponse {
 
 #[derive(Debug, Clone, Default, Deserialize, IntoParams, ToSchema)]
 pub struct ListMemoriesQuery {
+    /// Substring filter applied to memory content.
     #[serde(default)]
+    #[schema(example = "preferred timezone")]
     pub query: Option<String>,
     #[serde(default)]
-    /// Discriminator selecting the variant of this resource.
+    /// Discriminator selecting the variant of this resource (e.g. `fact`, `preference`, `summary`).
+    #[schema(example = "preference")]
     pub kind: Option<String>,
+    /// Filter to memories tagged with at least one of these labels.
     #[serde(default)]
+    #[schema(example = json!(["onboarding", "billing"]))]
     pub tag: Option<Vec<String>>,
+    /// When `true`, also returns inactive (deactivated) memories.
     #[serde(default)]
+    #[schema(example = false)]
     pub include_inactive: Option<bool>,
     #[serde(default)]
     /// Maximum number of items returned in this page.
+    #[schema(example = 50)]
     pub limit: Option<usize>,
 }
 
