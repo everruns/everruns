@@ -15248,14 +15248,13 @@
             "$ref": "#/components/schemas/ReasonThinkingDeltaData"
           },
           {
+            "$ref": "#/components/schemas/ReasonItemData"
+          },
+          {
             "$ref": "#/components/schemas/ReasonThinkingStartedData"
           },
           {
             "$ref": "#/components/schemas/ReasonThinkingCompletedData"
-          },
-          {
-            "$ref": "#/components/schemas/ReasonItemData",
-            "description": "Durable record of an opaque assistant reasoning response item.\nPlaced after `ReasonThinking*` so untagged deserialization continues to\nprefer the thinking variants when their distinguishing fields are\npresent in the JSON."
           },
           {
             "$ref": "#/components/schemas/TurnCancelledData"
