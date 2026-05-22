@@ -10,7 +10,7 @@
 //! - The `auto` cascade: observation masking → native → summarization
 //! - Proactive compaction at a configurable budget threshold, not just on error
 
-use super::{Capability, CapabilityStatus};
+use super::{Capability, CapabilityStatus, ModelViewContext, ModelViewProvider};
 use crate::events::TokenUsage;
 use crate::message::{ContentPart, Message, MessageRole};
 use crate::message_filter::MessageFilterProvider;
@@ -289,6 +289,38 @@ Choose between native provider compaction (e.g., OpenAI /responses/compact), obs
 
     fn message_filter_provider(&self) -> Option<Arc<dyn MessageFilterProvider>> {
         Some(Arc::new(CompactionFilterProvider))
+    }
+
+    fn model_view_provider(&self) -> Option<Arc<dyn ModelViewProvider>> {
+        Some(Arc::new(CompactionModelViewProvider))
+    }
+}
+
+struct CompactionModelViewProvider;
+
+impl ModelViewProvider for CompactionModelViewProvider {
+    fn apply_model_view(
+        &self,
+        messages: Vec<Message>,
+        config: &serde_json::Value,
+        context: &ModelViewContext<'_>,
+    ) -> Vec<Message> {
+        let config = CompactionConfig::from_json(config);
+        let masking = build_model_view_messages_owned(messages, &config, context.prior_usage);
+        if masking.masked_count > 0 {
+            tracing::info!(
+                session_id = %context.session_id,
+                masked_count = masking.masked_count,
+                tool_result_bytes_before = masking.tool_result_bytes_before,
+                tool_result_bytes_after = masking.tool_result_bytes_after,
+                "CompactionCapability: masked stale tool results for model view"
+            );
+        }
+        masking.messages
+    }
+
+    fn priority(&self) -> i32 {
+        50
     }
 }
 
@@ -735,21 +767,28 @@ pub struct CostControlMaskingResult {
     pub tool_result_bytes_after: usize,
 }
 
-static DEFAULT_MODEL_VIEW_COMPACTION_CONFIG: std::sync::LazyLock<CompactionConfig> =
-    std::sync::LazyLock::new(CompactionConfig::default);
-
 /// Build the bounded model-view messages from lossless stored messages.
 ///
 /// Storage keeps full tool results. This helper defines the cheaper prompt
-/// view used for provider serialization, with cost control enabled by default
-/// even when the compaction capability itself is not configured.
+/// view used for provider serialization when the compaction capability is
+/// configured.
 pub fn build_model_view_messages(
     stored_messages: &[Message],
-    compaction_config: Option<&CompactionConfig>,
+    compaction_config: &CompactionConfig,
     prior_usage: Option<&TokenUsage>,
 ) -> CostControlMaskingResult {
-    let config = compaction_config.unwrap_or(&*DEFAULT_MODEL_VIEW_COMPACTION_CONFIG);
-    apply_cost_control_masking(stored_messages, config, prior_usage)
+    apply_cost_control_masking(stored_messages, compaction_config, prior_usage)
+}
+
+/// Build the bounded model-view messages from owned stored messages.
+///
+/// This avoids cloning the message list when masking does not apply.
+pub fn build_model_view_messages_owned(
+    stored_messages: Vec<Message>,
+    compaction_config: &CompactionConfig,
+    prior_usage: Option<&TokenUsage>,
+) -> CostControlMaskingResult {
+    apply_cost_control_masking_owned(stored_messages, compaction_config, prior_usage)
 }
 
 /// Apply cheap, generic cost-control masking to stored messages.
@@ -765,13 +804,21 @@ pub fn apply_cost_control_masking(
     config: &CompactionConfig,
     prior_usage: Option<&TokenUsage>,
 ) -> CostControlMaskingResult {
+    apply_cost_control_masking_owned(messages.to_vec(), config, prior_usage)
+}
+
+fn apply_cost_control_masking_owned(
+    messages: Vec<Message>,
+    config: &CompactionConfig,
+    prior_usage: Option<&TokenUsage>,
+) -> CostControlMaskingResult {
     let cost_config = &config.cost_control;
     let tool_indices: Vec<usize> = messages
         .iter()
         .enumerate()
         .filter(|(_, message)| {
             message.role == MessageRole::ToolResult
-                && !is_protected_message_tool_result(messages, message)
+                && !is_protected_message_tool_result(&messages, message)
         })
         .map(|(index, _)| index)
         .collect();
@@ -790,7 +837,7 @@ pub fn apply_cost_control_masking(
         )
     {
         return CostControlMaskingResult {
-            messages: messages.to_vec(),
+            messages,
             masked_count: 0,
             tool_result_bytes_before,
             tool_result_bytes_after: tool_result_bytes_before,
@@ -801,16 +848,24 @@ pub fn apply_cost_control_masking(
     let to_mask_count = tool_indices.len().saturating_sub(keep_recent);
     let indices_to_mask: std::collections::HashSet<usize> =
         tool_indices[..to_mask_count].iter().copied().collect();
+    let tool_names: std::collections::HashMap<usize, String> = indices_to_mask
+        .iter()
+        .map(|index| {
+            (
+                *index,
+                find_message_tool_call_name(&messages, &messages[*index]),
+            )
+        })
+        .collect();
 
     let mut masked_count = 0;
     let mut masked_messages = Vec::with_capacity(messages.len());
-    for (index, message) in messages.iter().enumerate() {
-        if indices_to_mask.contains(&index) {
-            let tool_name = find_message_tool_call_name(messages, message);
-            masked_messages.push(mask_tool_result_message(message, &tool_name));
+    for (index, message) in messages.into_iter().enumerate() {
+        if let Some(tool_name) = tool_names.get(&index) {
+            masked_messages.push(mask_tool_result_message(&message, tool_name));
             masked_count += 1;
         } else {
-            masked_messages.push(message.clone());
+            masked_messages.push(message);
         }
     }
 
@@ -1632,7 +1687,7 @@ mod tests {
     }
 
     #[test]
-    fn test_model_view_masks_without_compaction_config() {
+    fn test_model_view_masks_with_compaction_config() {
         let mut messages = vec![Message::user("inspect files repeatedly")];
         for index in 0..9 {
             messages.extend(make_message_tool_turn(
@@ -1649,7 +1704,8 @@ mod tests {
             ));
         }
 
-        let result = build_model_view_messages(&messages, None, None);
+        let config = CompactionConfig::default();
+        let result = build_model_view_messages(&messages, &config, None);
 
         assert_eq!(result.masked_count, 7);
         assert!(result.tool_result_bytes_after < result.tool_result_bytes_before / 4);
@@ -1663,6 +1719,37 @@ mod tests {
             .unwrap()
             .tool_result_content()
             .unwrap();
+        assert!(last_tool.result.as_ref().unwrap().get("content").is_some());
+    }
+
+    #[test]
+    fn test_compaction_capability_contributes_model_view_provider() {
+        let mut messages = vec![Message::user("inspect files repeatedly")];
+        for index in 0..9 {
+            messages.extend(make_message_tool_turn(
+                &format!("call_{index}"),
+                "read_file",
+                json!({
+                    "path": "/workspace/src/lib.rs",
+                    "content": format!("{}{}", "large file line\n".repeat(1000), index),
+                    "total_lines": 1000,
+                    "lines_shown": {"start": 1, "end": 1000},
+                    "truncated": false
+                }),
+            ));
+        }
+
+        let capability = CompactionCapability;
+        let provider = capability.model_view_provider().unwrap();
+        let context = ModelViewContext {
+            session_id: crate::typed_id::SessionId::new(),
+            prior_usage: None,
+        };
+        let result = provider.apply_model_view(messages, &json!({}), &context);
+
+        let first_tool = result[2].tool_result_content().unwrap();
+        assert_eq!(first_tool.result.as_ref().unwrap()["masked"], true);
+        let last_tool = result.last().unwrap().tool_result_content().unwrap();
         assert!(last_tool.result.as_ref().unwrap().get("content").is_some());
     }
 
@@ -1690,7 +1777,7 @@ mod tests {
                 "mask_after_tool_results": 2
             }
         }));
-        let result = build_model_view_messages(&messages, Some(&config), None);
+        let result = build_model_view_messages(&messages, &config, None);
 
         assert_eq!(result.masked_count, 0);
         assert_eq!(
@@ -1735,7 +1822,7 @@ mod tests {
     }
 
     #[test]
-    fn test_model_view_uses_provider_cache_signal_by_default() {
+    fn test_model_view_uses_provider_cache_signal_from_compaction_config() {
         let mut messages = vec![Message::user("run commands")];
         for index in 0..3 {
             messages.extend(make_message_tool_turn(
@@ -1751,7 +1838,8 @@ mod tests {
         }
         let usage = TokenUsage::with_cache(150_000, 100, Some(0), None);
 
-        let result = build_model_view_messages(&messages, None, Some(&usage));
+        let config = CompactionConfig::default();
+        let result = build_model_view_messages(&messages, &config, Some(&usage));
 
         assert_eq!(result.masked_count, 1);
         let first_tool = result.messages[2].tool_result_content().unwrap();
