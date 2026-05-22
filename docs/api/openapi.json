@@ -26045,6 +26045,27 @@
           "description"
         ],
         "properties": {
+          "capability_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Capability that contributed the tool definition, when known."
+          },
+          "capability_name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable capability name snapshot, when known."
+          },
+          "category": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Tool category for namespace grouping."
+          },
           "description": {
             "type": "string",
             "description": "Tool description"
