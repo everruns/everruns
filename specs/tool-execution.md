@@ -160,7 +160,7 @@ All exec tools accept an `output` parameter controlling how much output is retur
 | `verbose` | ~16 KiB | Test failures, error investigation |
 | `full` | unlimited | Raw output, no truncation — when the LLM needs every line |
 
-Default is `concise`. Budgets apply to stdout; stderr is capped at `min(budget, 4096)` to keep error output proportional. Full output is always persisted to `/.outputs/` via `tool_output_persistence` — stdout to `/.outputs/{tool_call_id}.stdout`, stderr to `.stderr` — and readable with `read_file`. See `crates/core/src/tool_output_sanitizer.rs` for budget constants and `output_verbosity_budget()`.
+Default is `concise`. Budgets apply to stdout; stderr is capped at `min(budget, 4096)` to keep error output proportional. Full output is always persisted to `/outputs/` via `tool_output_persistence` — stdout to `/outputs/{tool_call_id}.stdout`, stderr to `/outputs/{tool_call_id}.stderr` — and readable with `read_file`. See `crates/core/src/tool_output_sanitizer.rs` for budget constants and `output_verbosity_budget()`.
 
 This is the tool's responsibility — each tool calls the helpers before constructing `ToolExecutionResult`. See `crates/core/src/tool_output_sanitizer.rs` for the primitives.
 
@@ -262,7 +262,7 @@ Two hook slots run in sequence:
 2. **Final hooks** (`final_post_tool_hooks`) — always-on infrastructure (e.g. EVE-225 hard limit)
 
 Current hooks:
-- **PersistOutputHook** (`tool_output_persistence` capability; also installed as an always-on final hook): When a tool declares `persist_output: true` in hints, writes stdout to `/.outputs/{tool_call_id}.stdout` and stderr to `/.outputs/{tool_call_id}.stderr` in session VFS, injecting `full_output`, `total_lines`, and `output_files` into the result. It skips cleanly if no session file store is present, and skips if another hook already injected `output_files`. See `crates/core/src/capabilities/tool_output_persistence.rs`.
+- **PersistOutputHook** (`tool_output_persistence` capability; also installed as an always-on final hook): When a tool declares `persist_output: true` in hints, writes stdout to `/outputs/{tool_call_id}.stdout` and stderr to `/outputs/{tool_call_id}.stderr` in session VFS, injecting `full_output`, `total_lines`, and `output_files` into the result. It skips cleanly if no session file store is present, and skips if another hook already injected `output_files`. See `crates/core/src/capabilities/tool_output_persistence.rs`.
 
 Current final hooks (always-on, cannot be removed):
 - **PersistOutputHook**: Persists full output for any tool that declares `persist_output: true` before hard-limit truncation, independent of whether a harness explicitly enabled the persistence capability.

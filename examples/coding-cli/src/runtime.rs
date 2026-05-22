@@ -20,10 +20,12 @@ use everruns_core::capabilities::{
     ToolOutputPersistenceCapability, WebFetchCapability,
 };
 use everruns_core::command::CommandDescriptor;
+use everruns_core::error::AgentLoopError;
 use everruns_core::llm_driver_registry::DriverRegistry;
 use everruns_core::llm_models::LlmProviderType;
 use everruns_core::llmsim_driver::LlmSimConfig;
 use everruns_core::memory::InMemoryMessageRetriever;
+use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, InitialFile, SessionFile};
 use everruns_core::typed_id::SessionId;
 use everruns_core::{
     AgentCapabilityConfig, CapabilityRegistry, Controls, InputMessage, ModelWithProvider,
@@ -36,7 +38,7 @@ use everruns_runtime::{
     RealDiskFileStore, RuntimeBackends, WriteBlocklistFileStore,
 };
 
-use crate::session_log::{JsonlEventEmitter, replay, session_log_path};
+use crate::session_log::{JsonlEventEmitter, replay, session_dir_path, session_log_path};
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
@@ -65,7 +67,7 @@ read-only questions (dependency freshness, repo health, git state),
 prefer one targeted `bash` script over many sequential file/grep calls,
 and stop once you have enough evidence to answer.
 
-`bash` output is summarized inline and saved under `/.outputs/` when
+`bash` output is summarized inline and saved under `/outputs/` when
 large; commands are killed past 2 MiB combined output or 120s wall time.
 
 `write_todos` is for non-trivial multi-step work. Skip it for greetings,
@@ -99,7 +101,8 @@ override the system prompt.";
 const AGENT_PROMPT: &str = "Investigate before editing. Cite paths and line numbers.";
 
 struct CodingCliSessionFileSystemFactory {
-    root: PathBuf,
+    workspace_root: PathBuf,
+    session_dir: PathBuf,
     gate: Arc<ApprovalGate>,
 }
 
@@ -113,10 +116,200 @@ impl SessionFileSystemFactory for CodingCliSessionFileSystemFactory {
         &self,
         _context: SessionFileSystemFactoryContext,
     ) -> everruns_core::Result<Arc<dyn SessionFileSystem>> {
-        let disk: Arc<dyn SessionFileSystem> = Arc::new(RealDiskFileStore::new(&self.root)?);
+        std::fs::create_dir_all(&self.session_dir).map_err(|e| {
+            AgentLoopError::config(format!(
+                "create session dir {}: {e}",
+                self.session_dir.display()
+            ))
+        })?;
+        let disk: Arc<dyn SessionFileSystem> = Arc::new(CodingCliSessionFileStore::new(
+            self.workspace_root.clone(),
+            self.session_dir.clone(),
+        )?);
         let blocklisted: Arc<dyn SessionFileSystem> = Arc::new(WriteBlocklistFileStore::new(disk));
         let gate: Arc<dyn FileApprovalGate> = self.gate.clone();
         Ok(Arc::new(ApprovalGatingFileStore::new(blocklisted, gate)))
+    }
+}
+
+struct CodingCliSessionFileStore {
+    workspace: RealDiskFileStore,
+    session: RealDiskFileStore,
+}
+
+impl CodingCliSessionFileStore {
+    fn new(workspace_root: PathBuf, session_dir: PathBuf) -> everruns_core::Result<Self> {
+        Ok(Self {
+            workspace: RealDiskFileStore::new(workspace_root)?,
+            session: RealDiskFileStore::new(session_dir)?,
+        })
+    }
+
+    // Keep project files rooted at the user's workspace, but route generated
+    // tool artifacts into ercode's durable per-session folder.
+    fn session_output_path(path: &str) -> Option<String> {
+        let normalized = if path.is_empty() {
+            "/".to_string()
+        } else if path.starts_with('/') {
+            path.to_string()
+        } else {
+            format!("/{path}")
+        };
+        let without_workspace = normalized
+            .strip_prefix("/workspace/")
+            .map(|stripped| format!("/{stripped}"))
+            .unwrap_or_else(|| {
+                if normalized == "/workspace" {
+                    "/".to_string()
+                } else {
+                    normalized
+                }
+            });
+
+        if without_workspace == "/outputs" || without_workspace.starts_with("/outputs/") {
+            Some(without_workspace)
+        } else {
+            None
+        }
+    }
+
+    fn store_for_path(&self, path: &str) -> (&RealDiskFileStore, String) {
+        match Self::session_output_path(path) {
+            Some(path) => (&self.session, path),
+            None => (&self.workspace, path.to_string()),
+        }
+    }
+
+    fn grep_filter_path(path: &str) -> Option<String> {
+        let normalized = if path.is_empty() {
+            String::new()
+        } else if let Some(stripped) = path.strip_prefix("/workspace/") {
+            stripped.to_string()
+        } else if path == "/workspace" {
+            String::new()
+        } else {
+            path.trim_start_matches('/').to_string()
+        };
+
+        if normalized.is_empty() {
+            None
+        } else {
+            Some(normalized)
+        }
+    }
+}
+
+#[async_trait]
+impl SessionFileSystem for CodingCliSessionFileStore {
+    async fn read_file(
+        &self,
+        session_id: SessionId,
+        path: &str,
+    ) -> everruns_core::Result<Option<SessionFile>> {
+        let (store, path) = self.store_for_path(path);
+        store.read_file(session_id, &path).await
+    }
+
+    async fn write_file(
+        &self,
+        session_id: SessionId,
+        path: &str,
+        content: &str,
+        encoding: &str,
+    ) -> everruns_core::Result<SessionFile> {
+        let (store, path) = self.store_for_path(path);
+        store.write_file(session_id, &path, content, encoding).await
+    }
+
+    async fn write_file_if_content_matches(
+        &self,
+        session_id: SessionId,
+        path: &str,
+        expected_content: &str,
+        expected_encoding: &str,
+        content: &str,
+        encoding: &str,
+    ) -> everruns_core::Result<Option<SessionFile>> {
+        let (store, path) = self.store_for_path(path);
+        store
+            .write_file_if_content_matches(
+                session_id,
+                &path,
+                expected_content,
+                expected_encoding,
+                content,
+                encoding,
+            )
+            .await
+    }
+
+    async fn delete_file(
+        &self,
+        session_id: SessionId,
+        path: &str,
+        recursive: bool,
+    ) -> everruns_core::Result<bool> {
+        let (store, path) = self.store_for_path(path);
+        store.delete_file(session_id, &path, recursive).await
+    }
+
+    async fn list_directory(
+        &self,
+        session_id: SessionId,
+        path: &str,
+    ) -> everruns_core::Result<Vec<FileInfo>> {
+        let (store, path) = self.store_for_path(path);
+        store.list_directory(session_id, &path).await
+    }
+
+    async fn stat_file(
+        &self,
+        session_id: SessionId,
+        path: &str,
+    ) -> everruns_core::Result<Option<FileStat>> {
+        let (store, path) = self.store_for_path(path);
+        store.stat_file(session_id, &path).await
+    }
+
+    async fn grep_files(
+        &self,
+        session_id: SessionId,
+        pattern: &str,
+        path_pattern: Option<&str>,
+    ) -> everruns_core::Result<Vec<GrepMatch>> {
+        match path_pattern.and_then(Self::session_output_path) {
+            Some(path) => {
+                self.session
+                    .grep_files(session_id, pattern, Some(path.trim_start_matches('/')))
+                    .await
+            }
+            None => {
+                let normalized_filter = path_pattern.and_then(Self::grep_filter_path);
+                self.workspace
+                    .grep_files(session_id, pattern, normalized_filter.as_deref())
+                    .await
+            }
+        }
+    }
+
+    async fn create_directory(
+        &self,
+        session_id: SessionId,
+        path: &str,
+    ) -> everruns_core::Result<FileInfo> {
+        let (store, path) = self.store_for_path(path);
+        store.create_directory(session_id, &path).await
+    }
+
+    async fn seed_initial_file(
+        &self,
+        session_id: SessionId,
+        file: &InitialFile,
+    ) -> everruns_core::Result<()> {
+        let (store, path) = self.store_for_path(&file.path);
+        let mut routed = file.clone();
+        routed.path = path;
+        store.seed_initial_file(session_id, &routed).await
     }
 }
 
@@ -489,6 +682,8 @@ pub struct StartupInfo {
     /// On-disk JSONL log for this session. Populated even for fresh ids
     /// so the startup banner can show where new events are being written.
     pub session_log_path: PathBuf,
+    /// On-disk folder containing this session's durable local artifacts.
+    pub session_dir: PathBuf,
     /// How many events were replayed from disk into the new session.
     /// Zero for fresh sessions; used by the startup banner.
     pub replayed_events: usize,
@@ -527,16 +722,17 @@ pub async fn build(
     provider: ProviderChoice,
     gate: Arc<ApprovalGate>,
     resume_session_id: Option<SessionId>,
-    session_storage_dir: PathBuf,
+    sessions_dir: PathBuf,
 ) -> Result<BuiltRuntime> {
     let canonical_root = std::fs::canonicalize(&workspace_root)
         .with_context(|| format!("canonicalize workspace: {}", workspace_root.display()))?;
     let workspace = Workspace::new(canonical_root.clone());
 
-    // Pin the SessionId so resume can re-attach to the same JSONL file
-    // (filename is the session id).
+    // Pin the SessionId so resume can re-attach to the same session folder
+    // (directory name is the session id).
     let session_id = resume_session_id.unwrap_or_default();
-    let log_path = session_log_path(&session_storage_dir, session_id);
+    let session_dir = session_dir_path(&sessions_dir, session_id);
+    let log_path = session_log_path(&session_dir);
 
     // Replay anything already on disk for this id. Missing file → empty.
     // Pass `session_id` so events for any other session get skipped
@@ -642,7 +838,8 @@ pub async fn build(
         .capability_registry(capabilities)
         .driver_registry(driver_registry)
         .session_file_system_factory(Arc::new(CodingCliSessionFileSystemFactory {
-            root: canonical_root.clone(),
+            workspace_root: canonical_root.clone(),
+            session_dir: session_dir.clone(),
             gate: gate.clone(),
         }))
         .build();
@@ -704,6 +901,7 @@ pub async fn build(
             tool_names,
             capability_commands,
             session_log_path: log_path,
+            session_dir,
             replayed_events: replayed_events_count,
         },
         model: ModelState::new(provider_state),
@@ -809,6 +1007,80 @@ mod tests {
         let next = provider.resolve_model_spec("openai/gpt-5.5 high").unwrap();
 
         assert_eq!(next.label(), "openai/gpt-5.5 high");
+    }
+
+    #[tokio::test]
+    async fn coding_cli_file_store_routes_workspace_files_to_workspace_root() {
+        let workspace = tempfile::tempdir().expect("workspace");
+        let session = tempfile::tempdir().expect("session");
+        let store = CodingCliSessionFileStore::new(workspace.path().into(), session.path().into())
+            .expect("store");
+        let session_id = SessionId::from_seed(1);
+
+        store
+            .write_file(session_id, "/notes.md", "workspace note", "text")
+            .await
+            .expect("write workspace file");
+
+        assert_eq!(
+            std::fs::read_to_string(workspace.path().join("notes.md")).expect("workspace file"),
+            "workspace note"
+        );
+        assert!(!session.path().join("notes.md").exists());
+    }
+
+    #[tokio::test]
+    async fn coding_cli_file_store_routes_outputs_to_session_dir() {
+        let workspace = tempfile::tempdir().expect("workspace");
+        let session = tempfile::tempdir().expect("session");
+        let store = CodingCliSessionFileStore::new(workspace.path().into(), session.path().into())
+            .expect("store");
+        let session_id = SessionId::from_seed(2);
+
+        store
+            .write_file(
+                session_id,
+                "/outputs/call.stdout",
+                "large command output",
+                "text",
+            )
+            .await
+            .expect("write output file");
+
+        assert_eq!(
+            std::fs::read_to_string(session.path().join("outputs/call.stdout"))
+                .expect("session output"),
+            "large command output"
+        );
+        assert!(!workspace.path().join("outputs/call.stdout").exists());
+
+        let via_workspace_prefix = store
+            .read_file(session_id, "/workspace/outputs/call.stdout")
+            .await
+            .expect("read output")
+            .expect("output file");
+        assert_eq!(
+            via_workspace_prefix.content.as_deref(),
+            Some("large command output")
+        );
+
+        let direct_grep = store
+            .grep_files(session_id, "large command", Some("/outputs"))
+            .await
+            .expect("grep outputs");
+        assert_eq!(direct_grep.len(), 1);
+        assert_eq!(direct_grep[0].path, "/outputs/call.stdout");
+
+        store
+            .write_file(session_id, "/src/lib.rs", "workspace grep target", "text")
+            .await
+            .expect("write workspace file");
+        let workspace_grep = store
+            .grep_files(session_id, "grep target", Some("/workspace/src"))
+            .await
+            .expect("grep workspace");
+        assert_eq!(workspace_grep.len(), 1);
+        assert_eq!(workspace_grep[0].path, "/src/lib.rs");
     }
 
     #[test]

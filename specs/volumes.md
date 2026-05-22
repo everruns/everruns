@@ -310,7 +310,7 @@ See `specs/threat-model.md` for the canonical entries.
 * **Path traversal:** Volume file path validation mirrors session file
   validation exactly.
 * **Reserved paths:** Mounts cannot shadow session system paths (e.g. `/.agents/`,
-  `/.outputs/`).
+  `/outputs/`).
 * **Read-write trust boundary:** Read-write mounts on shared agents/harnesses
   let one session influence future sessions. Treat as a meaningful trust
   boundary; capability risk level is `Medium`.

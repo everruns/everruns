@@ -179,8 +179,9 @@ impl App {
         self.push_system(format!("model: {}", self.model.provider_label()));
         self.push_system(format!("tools: {}", self.startup.tool_names.join(", ")));
         self.push_system(format!(
-            "session: {} (log: {}; {} prior event(s) replayed)",
+            "session: {} (folder: {}; log: {}; {} prior event(s) replayed)",
             self.handles.session_id,
+            self.startup.session_dir.display(),
             self.startup.session_log_path.display(),
             self.startup.replayed_events,
         ));

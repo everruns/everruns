@@ -251,7 +251,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn bash_tool_output_persistence_hook_saves_full_output_to_workspace_folder() {
+    async fn bash_tool_output_persistence_hook_saves_full_output_to_outputs_folder() {
         let dir = tempfile::tempdir().unwrap();
         let tool = BashTool::new(
             Workspace::new(dir.path().to_path_buf()),
@@ -287,12 +287,12 @@ mod tests {
         assert_eq!(output_files.len(), 1);
         assert_eq!(
             output_files[0].as_str(),
-            Some("/workspace/.outputs/call-persist.stdout")
+            Some("/workspace/outputs/call-persist.stdout")
         );
 
-        let saved = tokio::fs::read_to_string(dir.path().join(".outputs/call-persist.stdout"))
+        let saved = tokio::fs::read_to_string(dir.path().join("outputs/call-persist.stdout"))
             .await
-            .expect("persisted stdout should be readable from the workspace outputs folder");
+            .expect("persisted stdout should be readable from the outputs folder");
         assert!(saved.contains("saved-line-3000"));
     }
 }

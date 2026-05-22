@@ -9,8 +9,8 @@
 // - Implemented as PostToolExecHook, not baked into each tool — VFS
 //   persistence is a cross-cutting concern the tool shouldn't know about
 // - Reads `persist_output` hint from ToolDefinition to decide what to persist
-// - Writes stdout to /.outputs/{safe_id}.stdout, stderr to
-//   /.outputs/{safe_id}.stderr when stderr is persisted (session-scoped)
+// - Writes stdout to /outputs/{safe_id}.stdout, stderr to
+//   /outputs/{safe_id}.stderr when stderr is persisted (session-scoped)
 // - Injects `output_files` array into result for agent to read selectively
 // - Graceful degradation: skip silently if file_store is unavailable
 // - Runs as an always-on final hook before EVE-225 hard-limit truncation
@@ -31,11 +31,12 @@ use crate::typed_id::SessionId;
 
 /// Max bytes persisted per output stream file to avoid storage exhaustion.
 const MAX_PERSISTED_STREAM_BYTES: usize = 1024 * 1024; // 1 MiB
+const OUTPUT_DIR: &str = "/outputs";
 
 /// Result of persisting large exec output to session VFS.
 pub struct PersistResult {
     /// Path to the persisted stdout file in session VFS form
-    /// (e.g. `/.outputs/{safe_id}.stdout`).
+    /// (e.g. `/outputs/{safe_id}.stdout`).
     pub stdout_path: Option<String>,
     /// Path to the persisted stderr file in session VFS form, if non-empty
     /// stderr was persisted.
@@ -46,8 +47,8 @@ pub struct PersistResult {
 
 /// Persist large exec output to session VFS when it exceeds the budget.
 ///
-/// Writes stdout to `/.outputs/{safe_id}.stdout` and stderr to
-/// `/.outputs/{safe_id}.stderr` (if non-empty). Returns paths and metadata.
+/// Writes stdout to `/outputs/{safe_id}.stdout` and stderr to
+/// `/outputs/{safe_id}.stderr` (if non-empty). Returns paths and metadata.
 ///
 /// This is the shared helper that any sandbox tool or hook can call.
 pub async fn persist_large_output(
@@ -79,7 +80,7 @@ pub async fn persist_large_output(
     // Persist stdout
     if stdout.len() > EXEC_OUTPUT_BUDGET {
         let stdout_to_persist = truncate_for_persistence(stdout, MAX_PERSISTED_STREAM_BYTES);
-        let path = format!("/.outputs/{safe_id}.stdout");
+        let path = format!("{OUTPUT_DIR}/{safe_id}.stdout");
         result.stdout_total_lines = stdout.lines().count();
         if file_store
             .write_file(session_id, &path, &stdout_to_persist, "utf-8")
@@ -93,7 +94,7 @@ pub async fn persist_large_output(
     // Persist stderr separately if large
     if stderr.len() > 4096 {
         let stderr_to_persist = truncate_for_persistence(stderr, MAX_PERSISTED_STREAM_BYTES);
-        let path = format!("/.outputs/{safe_id}.stderr");
+        let path = format!("{OUTPUT_DIR}/{safe_id}.stderr");
         if file_store
             .write_file(session_id, &path, &stderr_to_persist, "utf-8")
             .await
@@ -393,16 +394,16 @@ mod tests {
     #[test]
     fn test_annotate_truncated_output() {
         let annotated =
-            annotate_truncated_output("truncated text...", "/.outputs/abc.stdout", 50 * 1024);
+            annotate_truncated_output("truncated text...", "/outputs/abc.stdout", 50 * 1024);
         assert!(annotated.contains("truncated text..."));
-        assert!(annotated.contains("/workspace/.outputs/abc.stdout"));
+        assert!(annotated.contains("/workspace/outputs/abc.stdout"));
         assert!(annotated.contains("50 KiB"));
         assert!(annotated.contains("read_file"));
     }
 
     #[test]
     fn test_annotate_truncated_output_small() {
-        let annotated = annotate_truncated_output("short", "/.outputs/x.stdout", 1024);
+        let annotated = annotate_truncated_output("short", "/outputs/x.stdout", 1024);
         assert!(annotated.contains("1 KiB"));
         assert!(annotated.contains("read_file with offset/limit"));
     }
@@ -534,12 +535,12 @@ mod tests {
         let result = persist_large_output(&store, test_session_id(), "call-2", &large, "").await;
         let r = result.expect("should persist");
         assert!(r.stdout_path.is_some());
-        assert_eq!(r.stdout_path.as_deref(), Some("/.outputs/call-2.stdout"));
+        assert_eq!(r.stdout_path.as_deref(), Some("/outputs/call-2.stdout"));
         assert!(r.stderr_path.is_none());
         assert_eq!(r.stdout_total_lines, 1);
         // Verify content was written
         assert_eq!(
-            mock.content("/.outputs/call-2.stdout").unwrap().len(),
+            mock.content("/outputs/call-2.stdout").unwrap().len(),
             large.len()
         );
     }
@@ -551,7 +552,7 @@ mod tests {
         let huge = "x".repeat(MAX_PERSISTED_STREAM_BYTES + 2048);
         let result = persist_large_output(&store, test_session_id(), "call-cap", &huge, "").await;
         assert!(result.is_some());
-        let persisted = mock.content("/.outputs/call-cap.stdout").unwrap();
+        let persisted = mock.content("/outputs/call-cap.stdout").unwrap();
         assert!(persisted.len() < huge.len());
         assert!(persisted.contains("output truncated before persistence"));
     }
@@ -565,8 +566,8 @@ mod tests {
             persist_large_output(&store, test_session_id(), "call-3", "small", &large_stderr).await;
         let r = result.expect("should persist stderr");
         assert!(r.stdout_path.is_none());
-        assert_eq!(r.stderr_path.as_deref(), Some("/.outputs/call-3.stderr"));
-        assert_eq!(mock.content("/.outputs/call-3.stderr").unwrap().len(), 4097);
+        assert_eq!(r.stderr_path.as_deref(), Some("/outputs/call-3.stderr"));
+        assert_eq!(mock.content("/outputs/call-3.stderr").unwrap().len(), 4097);
     }
 
     #[tokio::test]
@@ -597,7 +598,7 @@ mod tests {
             persist_large_output(&store, test_session_id(), "call/../../../etc", &large, "").await;
         let r = result.expect("should persist with sanitized id");
         // Path traversal chars stripped, only alphanumeric + dash + underscore kept
-        assert_eq!(r.stdout_path.as_deref(), Some("/.outputs/calletc.stdout"));
+        assert_eq!(r.stdout_path.as_deref(), Some("/outputs/calletc.stdout"));
     }
 
     #[tokio::test]
