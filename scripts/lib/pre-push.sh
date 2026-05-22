@@ -39,10 +39,10 @@ fi
 # 4. UI formatting (skip if node_modules missing)
 echo "4/9 UI formatting"
 if [ -d "$PROJECT_ROOT/apps/ui/node_modules" ]; then
-  if (cd "$PROJECT_ROOT/apps/ui" && npm run format:check 2>/dev/null); then
+  if (cd "$PROJECT_ROOT/apps/ui" && pnpm run format:check 2>/dev/null); then
     pass "UI format"
   else
-    fail "UI format — run: cd apps/ui && npm run format"
+    fail "UI format — run: cd apps/ui && pnpm run format"
   fi
 else
   echo "   ⏭️  skipped (no node_modules)"
@@ -51,10 +51,10 @@ fi
 # 5. UI linting (skip if node_modules missing)
 echo "5/9 UI linting"
 if [ -d "$PROJECT_ROOT/apps/ui/node_modules" ]; then
-  if (cd "$PROJECT_ROOT/apps/ui" && npm run lint 2>/dev/null); then
+  if (cd "$PROJECT_ROOT/apps/ui" && pnpm run lint 2>/dev/null); then
     pass "UI lint"
   else
-    fail "UI lint — run: cd apps/ui && npm run lint -- --fix"
+    fail "UI lint — run: cd apps/ui && pnpm run lint -- --fix"
   fi
 else
   echo "   ⏭️  skipped (no node_modules)"

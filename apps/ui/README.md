@@ -2,16 +2,12 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
-First, run the development server:
+This package uses [pnpm](https://pnpm.io). The version is pinned via the
+`packageManager` field in `package.json` and activated through corepack.
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+pnpm install
+pnpm run dev
 ```
 
 Open [http://localhost:9100](http://localhost:9100) with your browser to see the result.

@@ -8,13 +8,17 @@
 FROM --platform=linux/amd64 node:26-alpine AS builder
 WORKDIR /app
 
-# Install dependencies
-COPY package*.json ./
-RUN npm ci
+# Install pnpm directly — corepack isn't on PATH in some node:alpine variants.
+# Version pinned to match `packageManager` in apps/ui/package.json.
+RUN npm install -g pnpm@10.33.0
+
+# Install dependencies (fail if pnpm-lock.yaml is out of sync with package.json)
+COPY package.json pnpm-lock.yaml .npmrc ./
+RUN pnpm install --frozen-lockfile
 
 # Copy source and build
 COPY . .
-RUN npm run build
+RUN pnpm run build
 
 # Production image — uses the target platform (amd64 or arm64)
 FROM node:26-alpine AS ui

@@ -61,10 +61,10 @@ apply_port_prefix_defaults() {
   export PORT_PREFIX API_PORT WORKER_GRPC_PORT CADDY_ADMIN_PORT UI_PORT PROXY_PORT OTEL_GRPC_PORT OTEL_HTTP_PORT VICTORIAMETRICS_PORT VALKEY_PORT NATS_PORT DB_PORT COMPOSE_PROJECT_NAME RUN_STATE_DIR
 }
 
-# Check if npm dependencies need to be installed/updated
-# Usage: check_npm_deps <app_name> <install_command>
-# Example: check_npm_deps "UI" "cd apps/ui && npm install"
-check_npm_deps() {
+# Check if node dependencies need to be installed/updated (pnpm).
+# Usage: check_node_deps <app_name> <install_command>
+# Example: check_node_deps "UI" "cd apps/ui && pnpm install"
+check_node_deps() {
   local app_name="$1"
   local install_cmd="$2"
   local app_name_lower
@@ -76,8 +76,8 @@ check_npm_deps() {
     return 1
   fi
 
-  if [ -f "$app_dir/package-lock.json" ] && [ -f "$app_dir/node_modules/.package-lock.json" ]; then
-    if [ "$app_dir/package-lock.json" -nt "$app_dir/node_modules/.package-lock.json" ]; then
+  if [ -f "$app_dir/pnpm-lock.yaml" ] && [ -f "$app_dir/node_modules/.modules.yaml" ]; then
+    if [ "$app_dir/pnpm-lock.yaml" -nt "$app_dir/node_modules/.modules.yaml" ]; then
       echo "   ⚠️  $app_name dependencies outdated. Run: $install_cmd"
       return 1
     fi
@@ -262,11 +262,10 @@ print_doppler_secret_hint() {
   fi
 }
 
-# Backward-compatible wrappers
 check_ui_deps() {
-  check_npm_deps "UI" "cd apps/ui && npm install"
+  check_node_deps "UI" "cd apps/ui && pnpm install"
 }
 
 check_docs_deps() {
-  check_npm_deps "Docs" "cd apps/docs && npm install"
+  check_node_deps "Docs" "cd apps/docs && pnpm install"
 }

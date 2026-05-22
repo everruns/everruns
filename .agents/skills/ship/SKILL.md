@@ -132,9 +132,9 @@ Pick only what matches the changed surface:
 - `cargo clippy --all-targets --all-features -- -D warnings`
 - `cargo test --all-features`
 - `cargo fetch --locked`
-- `cd apps/ui && npm run format:check && npm run lint && npm run build`
+- `cd apps/ui && pnpm run format:check && pnpm run lint && pnpm run build`
 - `./scripts/export-openapi.sh`
-- `cd apps/docs && npm run check && npm run build`
+- `cd apps/docs && pnpm run check && pnpm run build`
 - `bash scripts/lib/check-migration-ordering.sh` (migration sequentiality, ~instant)
 
 ## PR And Merge

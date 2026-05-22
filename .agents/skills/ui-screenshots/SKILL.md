@@ -118,7 +118,7 @@ Note: This is a workaround when storage.googleapis.com is unreachable. Minor ver
 The dev server may not be running. Start it first:
 
 ```bash
-cd apps/ui && npm run dev &
+cd apps/ui && pnpm run dev &
 sleep 10  # Wait for server
 ```
 

@@ -60,9 +60,9 @@ Use the smallest set that gives high confidence. The ship skill should pick from
 1. `just pre-push` before `git push`.
 2. `just pre-pr` for a full local quality pass.
 3. `cargo fmt --check`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo test --all-features` for Rust changes.
-4. `npm run lint` and `npm run build` in `apps/ui/` for UI changes.
+4. `pnpm run lint` and `pnpm run build` in `apps/ui/` for UI changes.
 5. `./scripts/export-openapi.sh` when API surface changes.
-6. `npm run build` in `apps/docs/` when docs change.
+6. `pnpm run build` in `apps/docs/` when docs change.
 7. Prefer `git fetch origin main && git rebase origin/main` before merge; if skipping the final rebase, verify no migration changes exist on either side since the merge base and monitor main CI after merge.
 8. Smoke test impacted flows in `just start-dev` or `just start-all` as risk dictates.
 9. Review performance impact: indexes, scans, N+1 patterns, pagination, and bounded result sets.

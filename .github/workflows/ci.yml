@@ -977,39 +977,41 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'npm'
-          cache-dependency-path: apps/ui/package-lock.json
+          cache: 'pnpm'
+          cache-dependency-path: apps/ui/pnpm-lock.yaml
 
       - name: Install dependencies
-        run: npm ci
-
-      - name: Rebuild native dependencies
-        run: npm rebuild --ignore-scripts=false
+        run: pnpm install --frozen-lockfile
 
       - name: Cache Next.js build
         uses: actions/cache@v4
         with:
           path: apps/ui/.next/cache
-          key: ${{ runner.os }}-nextjs-${{ hashFiles('apps/ui/package-lock.json') }}-${{ hashFiles('apps/ui/src/**/*', 'apps/ui/app/**/*') }}
+          key: ${{ runner.os }}-nextjs-${{ hashFiles('apps/ui/pnpm-lock.yaml') }}-${{ hashFiles('apps/ui/src/**/*', 'apps/ui/app/**/*') }}
           restore-keys: |
-            ${{ runner.os }}-nextjs-${{ hashFiles('apps/ui/package-lock.json') }}-
+            ${{ runner.os }}-nextjs-${{ hashFiles('apps/ui/pnpm-lock.yaml') }}-
             ${{ runner.os }}-nextjs-
 
       - name: Format check
-        run: npm run format:check
+        run: pnpm run format:check
 
       - name: Lint
-        run: npm run lint
+        run: pnpm run lint
 
       - name: Run tests
-        run: npm test
+        run: pnpm test
 
       - name: Type check & build
-        run: npm run build
+        run: pnpm run build
 
   ui-e2e:
     name: UI Playwright Smoke
@@ -1024,32 +1026,34 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'npm'
-          cache-dependency-path: apps/ui/package-lock.json
+          cache: 'pnpm'
+          cache-dependency-path: apps/ui/pnpm-lock.yaml
 
       - name: Install dependencies
-        run: npm ci
-
-      - name: Rebuild native dependencies
-        run: npm rebuild --ignore-scripts=false
+        run: pnpm install --frozen-lockfile
 
       - name: Cache Playwright browsers
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ hashFiles('apps/ui/package-lock.json') }}
+          key: ${{ runner.os }}-playwright-${{ hashFiles('apps/ui/pnpm-lock.yaml') }}
           restore-keys: |
             ${{ runner.os }}-playwright-
 
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+        run: pnpm exec playwright install --with-deps chromium
 
       - name: Run Playwright smoke tests
-        run: npm run e2e
+        run: pnpm run e2e
 
       - name: Upload Playwright report
         if: always()
@@ -1072,12 +1076,17 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
-          cache: 'npm'
-          cache-dependency-path: apps/docs/package-lock.json
+          cache: 'pnpm'
+          cache-dependency-path: apps/docs/pnpm-lock.yaml
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -1093,13 +1102,10 @@ jobs:
           shared-key: "debug"
 
       - name: Install dependencies
-        run: npm ci
-
-      - name: Rebuild native dependencies
-        run: npm rebuild --ignore-scripts=false
+        run: pnpm install --frozen-lockfile
 
       - name: Prepare notebook docs content
-        run: npm run prepare-content
+        run: pnpm run prepare-content
 
       - name: Execute notebook tutorials
         if: needs.changes.outputs.docs_notebooks == 'true' && needs.changes.outputs.skip_docs_notebooks != 'true'
@@ -1139,10 +1145,10 @@ jobs:
           python scripts/execute-notebooks.py
 
       - name: Astro check
-        run: npm run check
+        run: pnpm run check
 
       - name: Build docs
-        run: npm run build
+        run: pnpm run build
 
   # Docker builds — server and worker share builder-all stage, so build on
   # one runner to compile shared dependencies once instead of 2x.

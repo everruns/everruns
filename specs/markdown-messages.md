@@ -32,7 +32,7 @@ Specification for rendering markdown content in chat messages with streaming sup
 
 ```bash
 cd apps/ui
-npm install streamdown @streamdown/code @streamdown/mermaid
+pnpm add streamdown @streamdown/code @streamdown/mermaid
 ```
 
 ### Dependencies

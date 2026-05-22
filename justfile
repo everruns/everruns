@@ -50,7 +50,7 @@ build:
 # are run via `just test-integration` which sets up Docker and enables those features.
 test:
     cargo test
-    cd apps/ui && npm run e2e 2>/dev/null || echo "(e2e skipped)"
+    cd apps/ui && pnpm run e2e 2>/dev/null || echo "(e2e skipped)"
 
 # Run repository shell-layer tests (scripts/test-*.sh)
 test-shell:
@@ -122,8 +122,8 @@ test-llm:
 fmt:
     cargo fmt
     cargo clippy --all-targets --fix --allow-dirty --allow-staged 2>/dev/null || true
-    cd apps/ui && npm run format 2>/dev/null || true
-    cd apps/ui && npm run lint -- --fix 2>/dev/null || true
+    cd apps/ui && pnpm run format 2>/dev/null || true
+    cd apps/ui && pnpm run lint -- --fix 2>/dev/null || true
 
 # Run format, lint, and test checks
 check:

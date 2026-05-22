@@ -14,3 +14,16 @@ updates:
     labels:
       - "dependencies"
       - "docker"
+
+  - package-ecosystem: "npm"
+    directories:
+      - "/apps/ui"
+      - "/apps/docs"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "javascript"

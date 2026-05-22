@@ -240,7 +240,7 @@ case "$cmd" in
     if [ "$NO_WATCH" = false ]; then
       require_command cargo-watch "Run: just init (or use --no-watch)"
     fi
-    require_command npm "Install Node.js/npm to start the UI."
+    require_command pnpm "Install pnpm to start the UI (https://pnpm.io/installation)."
     require_command caddy "Run: just init"
 
     # Track child PIDs for cleanup
@@ -422,7 +422,7 @@ case "$cmd" in
     fi
     require_command sqlx "Run: just init"
     if [ "$NO_UI" = false ]; then
-      require_command npm "Install Node.js/npm to start the UI (or use --no-ui)"
+      require_command pnpm "Install pnpm to start the UI (or use --no-ui)"
       require_command caddy "Run: just init"
     fi
 
@@ -717,7 +717,7 @@ case "$cmd" in
 
     require_command sqlx "Run: just init"
     if [ "$NO_UI" = false ]; then
-      require_command npm "Install Node.js/npm to build the UI (or use --no-ui)"
+      require_command pnpm "Install pnpm to build the UI (or use --no-ui)"
       require_command caddy "Run: just init"
     fi
 
@@ -851,7 +851,7 @@ case "$cmd" in
       echo "4️⃣  Building UI (production)..."
       check_ui_deps || true
       cd "$PROJECT_ROOT/apps/ui"
-      npm run build
+      pnpm run build
       cd "$PROJECT_ROOT"
       echo "   ✅ UI built"
     fi

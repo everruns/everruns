@@ -10,21 +10,20 @@ case "$cmd" in
   dev)
     echo "📚 Starting docs development server..."
     cd "$DOCS_DIR"
-    npm run dev
+    pnpm run dev
     ;;
 
   build)
     echo "🔨 Building docs for production..."
     cd "$DOCS_DIR"
-    npm run check && npm run build
+    pnpm run check && pnpm run build
     echo "✅ Docs build complete!"
     ;;
 
   install)
     echo "📦 Installing docs dependencies..."
     cd "$DOCS_DIR"
-    npm install
-    npm rebuild --ignore-scripts=false
+    pnpm install
     echo "✅ Docs dependencies installed!"
     ;;
 
