@@ -4993,6 +4993,7 @@
           {
             "name": "search",
             "in": "query",
+            "description": "Substring filter applied to knowledge-base name and description.",
             "required": false,
             "schema": {
               "type": [
@@ -5004,6 +5005,7 @@
           {
             "name": "include_archived",
             "in": "query",
+            "description": "When `true`, also returns archived knowledge bases.",
             "required": false,
             "schema": {
               "type": [
@@ -5241,6 +5243,7 @@
           {
             "name": "search",
             "in": "query",
+            "description": "Substring filter applied to entry title and body.",
             "required": false,
             "schema": {
               "type": [
@@ -5252,7 +5255,7 @@
           {
             "name": "kind",
             "in": "query",
-            "description": "Discriminator selecting the variant of this resource.",
+            "description": "Discriminator selecting the variant of this resource. One of `note`,\n`table`, `business`, `query`, `runbook`.",
             "required": false,
             "schema": {
               "type": [
@@ -6481,6 +6484,7 @@
           {
             "name": "query",
             "in": "query",
+            "description": "Substring filter applied to memory content.",
             "required": false,
             "schema": {
               "type": [
@@ -6492,7 +6496,7 @@
           {
             "name": "kind",
             "in": "query",
-            "description": "Discriminator selecting the variant of this resource.",
+            "description": "Discriminator selecting the variant of this resource. One of `fact`,\n`preference`, `correction`, `procedure`, `context`.",
             "required": false,
             "schema": {
               "type": [
@@ -6504,6 +6508,7 @@
           {
             "name": "tag",
             "in": "query",
+            "description": "Filter to memories tagged with at least one of these labels.",
             "required": false,
             "schema": {
               "type": [
@@ -6518,6 +6523,7 @@
           {
             "name": "include_inactive",
             "in": "query",
+            "description": "When `true`, also returns inactive (deactivated) memories.",
             "required": false,
             "schema": {
               "type": [
@@ -13825,11 +13831,13 @@
               "string",
               "null"
             ],
-            "description": "Human-readable description. Safe to render in user-facing messages."
+            "description": "Human-readable description. Safe to render in user-facing messages.",
+            "example": "Runbooks for the support team"
           },
           "name": {
             "type": "string",
-            "description": "Human-readable name. Safe to render in user-facing messages."
+            "description": "Human-readable name. Safe to render in user-facing messages.",
+            "example": "support-runbooks"
           }
         }
       },
@@ -13842,14 +13850,17 @@
         ],
         "properties": {
           "body": {
-            "type": "string"
+            "type": "string",
+            "description": "Entry body. Markdown is rendered when displayed.",
+            "example": "Use the `/v1/payments/{id}/refund` endpoint with `reason: \"past_window\"`. Only the on-call billing engineer can authorize this."
           },
           "kind": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Discriminator selecting the variant of this resource."
+            "description": "Discriminator selecting the variant of this resource. One of `note`,\n`table`, `business`, `query`, `runbook`.",
+            "example": "runbook"
           },
           "tags": {
             "type": [
@@ -13859,11 +13870,16 @@
             "items": {
               "type": "string"
             },
-            "description": "Free-form tags attached to this resource."
+            "description": "Free-form tags attached to this resource.",
+            "example": [
+              "billing",
+              "refunds"
+            ]
           },
           "title": {
             "type": "string",
-            "description": "Human-readable title. Safe to render in user-facing messages."
+            "description": "Human-readable title. Safe to render in user-facing messages.",
+            "example": "Refund a payment past 30 days"
           }
         }
       },
@@ -14018,11 +14034,14 @@
         ],
         "properties": {
           "is_default": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "When `true`, sets this store as the org's default for newly-created memories.",
+            "example": false
           },
           "name": {
             "type": "string",
-            "description": "Human-readable name. Safe to render in user-facing messages."
+            "description": "Human-readable name. Safe to render in user-facing messages.",
+            "example": "customer-preferences"
           }
         }
       },
@@ -17214,13 +17233,17 @@
             "type": [
               "boolean",
               "null"
-            ]
+            ],
+            "description": "When `true`, also returns archived knowledge bases.",
+            "example": false
           },
           "search": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Substring filter applied to knowledge-base name and description.",
+            "example": "runbook"
           }
         }
       },
@@ -17232,13 +17255,16 @@
               "string",
               "null"
             ],
-            "description": "Discriminator selecting the variant of this resource."
+            "description": "Discriminator selecting the variant of this resource. One of `note`,\n`table`, `business`, `query`, `runbook`.",
+            "example": "runbook"
           },
           "search": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Substring filter applied to entry title and body.",
+            "example": "refund"
           }
         }
       },
@@ -17249,14 +17275,17 @@
             "type": [
               "boolean",
               "null"
-            ]
+            ],
+            "description": "When `true`, also returns inactive (deactivated) memories.",
+            "example": false
           },
           "kind": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Discriminator selecting the variant of this resource."
+            "description": "Discriminator selecting the variant of this resource. One of `fact`,\n`preference`, `correction`, `procedure`, `context`.",
+            "example": "preference"
           },
           "limit": {
             "type": [
@@ -17264,13 +17293,16 @@
               "null"
             ],
             "description": "Maximum number of items returned in this page.",
+            "example": 50,
             "minimum": 0
           },
           "query": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Substring filter applied to memory content.",
+            "example": "preferred timezone"
           },
           "tag": {
             "type": [
@@ -17279,7 +17311,12 @@
             ],
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Filter to memories tagged with at least one of these labels.",
+            "example": [
+              "onboarding",
+              "billing"
+            ]
           }
         }
       },
@@ -26925,7 +26962,8 @@
               "string",
               "null"
             ],
-            "description": "Human-readable name. Safe to render in user-facing messages."
+            "description": "Human-readable name. Safe to render in user-facing messages.",
+            "example": "support-runbooks-archive"
           }
         }
       },
@@ -26937,14 +26975,17 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Updated entry body. Markdown is rendered when displayed.",
+            "example": "Use the `/v1/payments/{id}/refund` endpoint with `reason: \"past_window\"`. Now requires VP approval."
           },
           "kind": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Discriminator selecting the variant of this resource."
+            "description": "Discriminator selecting the variant of this resource. One of `note`,\n`table`, `business`, `query`, `runbook`.",
+            "example": "runbook"
           },
           "tags": {
             "type": [
@@ -26954,14 +26995,20 @@
             "items": {
               "type": "string"
             },
-            "description": "Free-form tags attached to this resource."
+            "description": "Free-form tags attached to this resource.",
+            "example": [
+              "billing",
+              "refunds",
+              "vp-approval"
+            ]
           },
           "title": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Human-readable title. Safe to render in user-facing messages."
+            "description": "Human-readable title. Safe to render in user-facing messages.",
+            "example": "Refund a payment past 60 days"
           }
         }
       },
@@ -27171,14 +27218,17 @@
             "type": [
               "boolean",
               "null"
-            ]
+            ],
+            "description": "Toggle this store as the org default.",
+            "example": true
           },
           "name": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Human-readable name. Safe to render in user-facing messages."
+            "description": "Human-readable name. Safe to render in user-facing messages.",
+            "example": "customer-preferences-archive"
           }
         }
       },

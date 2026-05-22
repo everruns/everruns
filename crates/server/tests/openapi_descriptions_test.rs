@@ -22,7 +22,7 @@ const MIN_FIELD_DESC_PCT: u32 = 85;
 /// LLM to populate when it has seen one concrete instance. The floor starts
 /// low because the codebase only recently began adding `#[schema(example = …)]`
 /// — bump it as new annotations land, same rules as the description floors.
-const MIN_FIELD_EXAMPLE_PCT: u32 = 17;
+const MIN_FIELD_EXAMPLE_PCT: u32 = 19;
 
 fn spec_value() -> serde_json::Value {
     serde_json::from_str(&ApiDoc::openapi().to_pretty_json().unwrap())

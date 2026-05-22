@@ -43,9 +43,11 @@ pub struct KnowledgeBaseResponse {
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateKnowledgeBaseRequest {
     /// Human-readable name. Safe to render in user-facing messages.
+    #[schema(example = "support-runbooks")]
     pub name: String,
     #[serde(default)]
     /// Human-readable description. Safe to render in user-facing messages.
+    #[schema(example = "Runbooks for the support team")]
     pub description: Option<String>,
 }
 
@@ -54,6 +56,7 @@ pub struct CreateKnowledgeBaseRequest {
 pub struct UpdateKnowledgeBaseRequest {
     #[serde(default)]
     /// Human-readable name. Safe to render in user-facing messages.
+    #[schema(example = "support-runbooks-archive")]
     pub name: Option<String>,
     #[serde(default, deserialize_with = "deserialize_nullable_update_field")]
     #[schema(value_type = Option<String>, nullable = true)]
@@ -63,9 +66,13 @@ pub struct UpdateKnowledgeBaseRequest {
 
 #[derive(Debug, Clone, Deserialize, IntoParams, ToSchema)]
 pub struct ListKnowledgeBasesQuery {
+    /// Substring filter applied to knowledge-base name and description.
     #[serde(default)]
+    #[schema(example = "runbook")]
     pub search: Option<String>,
+    /// When `true`, also returns archived knowledge bases.
     #[serde(default)]
+    #[schema(example = false)]
     pub include_archived: Option<bool>,
 }
 
@@ -125,13 +132,21 @@ pub fn knowledge_entry_response(
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateKnowledgeEntryRequest {
     /// Human-readable title. Safe to render in user-facing messages.
+    #[schema(example = "Refund a payment past 30 days")]
     pub title: String,
+    /// Entry body. Markdown is rendered when displayed.
+    #[schema(
+        example = "Use the `/v1/payments/{id}/refund` endpoint with `reason: \"past_window\"`. Only the on-call billing engineer can authorize this."
+    )]
     pub body: String,
     #[serde(default)]
-    /// Discriminator selecting the variant of this resource.
+    /// Discriminator selecting the variant of this resource. One of `note`,
+    /// `table`, `business`, `query`, `runbook`.
+    #[schema(example = "runbook")]
     pub kind: Option<String>,
     #[serde(default)]
     /// Free-form tags attached to this resource.
+    #[schema(example = json!(["billing", "refunds"]))]
     pub tags: Option<Vec<String>>,
 }
 
@@ -140,22 +155,34 @@ pub struct CreateKnowledgeEntryRequest {
 pub struct UpdateKnowledgeEntryRequest {
     #[serde(default)]
     /// Human-readable title. Safe to render in user-facing messages.
+    #[schema(example = "Refund a payment past 60 days")]
     pub title: Option<String>,
+    /// Updated entry body. Markdown is rendered when displayed.
     #[serde(default)]
+    #[schema(
+        example = "Use the `/v1/payments/{id}/refund` endpoint with `reason: \"past_window\"`. Now requires VP approval."
+    )]
     pub body: Option<String>,
     #[serde(default)]
-    /// Discriminator selecting the variant of this resource.
+    /// Discriminator selecting the variant of this resource. One of `note`,
+    /// `table`, `business`, `query`, `runbook`.
+    #[schema(example = "runbook")]
     pub kind: Option<String>,
     #[serde(default)]
     /// Free-form tags attached to this resource.
+    #[schema(example = json!(["billing", "refunds", "vp-approval"]))]
     pub tags: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Deserialize, IntoParams, ToSchema)]
 pub struct ListKnowledgeEntriesQuery {
+    /// Substring filter applied to entry title and body.
     #[serde(default)]
+    #[schema(example = "refund")]
     pub search: Option<String>,
     #[serde(default)]
-    /// Discriminator selecting the variant of this resource.
+    /// Discriminator selecting the variant of this resource. One of `note`,
+    /// `table`, `business`, `query`, `runbook`.
+    #[schema(example = "runbook")]
     pub kind: Option<String>,
 }
