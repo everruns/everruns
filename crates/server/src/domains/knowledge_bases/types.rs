@@ -140,7 +140,8 @@ pub struct CreateKnowledgeEntryRequest {
     )]
     pub body: String,
     #[serde(default)]
-    /// Discriminator selecting the variant of this resource (e.g. `runbook`, `faq`, `policy`).
+    /// Discriminator selecting the variant of this resource. One of `note`,
+    /// `table`, `business`, `query`, `runbook`.
     #[schema(example = "runbook")]
     pub kind: Option<String>,
     #[serde(default)]
@@ -163,12 +164,13 @@ pub struct UpdateKnowledgeEntryRequest {
     )]
     pub body: Option<String>,
     #[serde(default)]
-    /// Discriminator selecting the variant of this resource (e.g. `runbook`, `faq`, `policy`).
-    #[schema(example = "policy")]
+    /// Discriminator selecting the variant of this resource. One of `note`,
+    /// `table`, `business`, `query`, `runbook`.
+    #[schema(example = "runbook")]
     pub kind: Option<String>,
     #[serde(default)]
     /// Free-form tags attached to this resource.
-    #[schema(example = json!(["billing", "refunds", "policy-update"]))]
+    #[schema(example = json!(["billing", "refunds", "vp-approval"]))]
     pub tags: Option<Vec<String>>,
 }
 
@@ -179,7 +181,8 @@ pub struct ListKnowledgeEntriesQuery {
     #[schema(example = "refund")]
     pub search: Option<String>,
     #[serde(default)]
-    /// Discriminator selecting the variant of this resource (e.g. `runbook`, `faq`, `policy`).
+    /// Discriminator selecting the variant of this resource. One of `note`,
+    /// `table`, `business`, `query`, `runbook`.
     #[schema(example = "runbook")]
     pub kind: Option<String>,
 }

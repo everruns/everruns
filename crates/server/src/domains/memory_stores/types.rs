@@ -84,7 +84,8 @@ pub struct ListMemoriesQuery {
     #[schema(example = "preferred timezone")]
     pub query: Option<String>,
     #[serde(default)]
-    /// Discriminator selecting the variant of this resource (e.g. `fact`, `preference`, `summary`).
+    /// Discriminator selecting the variant of this resource. One of `fact`,
+    /// `preference`, `correction`, `procedure`, `context`.
     #[schema(example = "preference")]
     pub kind: Option<String>,
     /// Filter to memories tagged with at least one of these labels.

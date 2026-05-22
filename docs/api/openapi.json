@@ -5255,7 +5255,7 @@
           {
             "name": "kind",
             "in": "query",
-            "description": "Discriminator selecting the variant of this resource (e.g. `runbook`, `faq`, `policy`).",
+            "description": "Discriminator selecting the variant of this resource. One of `note`,\n`table`, `business`, `query`, `runbook`.",
             "required": false,
             "schema": {
               "type": [
@@ -6496,7 +6496,7 @@
           {
             "name": "kind",
             "in": "query",
-            "description": "Discriminator selecting the variant of this resource (e.g. `fact`, `preference`, `summary`).",
+            "description": "Discriminator selecting the variant of this resource. One of `fact`,\n`preference`, `correction`, `procedure`, `context`.",
             "required": false,
             "schema": {
               "type": [
@@ -13859,7 +13859,7 @@
               "string",
               "null"
             ],
-            "description": "Discriminator selecting the variant of this resource (e.g. `runbook`, `faq`, `policy`).",
+            "description": "Discriminator selecting the variant of this resource. One of `note`,\n`table`, `business`, `query`, `runbook`.",
             "example": "runbook"
           },
           "tags": {
@@ -17255,7 +17255,7 @@
               "string",
               "null"
             ],
-            "description": "Discriminator selecting the variant of this resource (e.g. `runbook`, `faq`, `policy`).",
+            "description": "Discriminator selecting the variant of this resource. One of `note`,\n`table`, `business`, `query`, `runbook`.",
             "example": "runbook"
           },
           "search": {
@@ -17284,7 +17284,7 @@
               "string",
               "null"
             ],
-            "description": "Discriminator selecting the variant of this resource (e.g. `fact`, `preference`, `summary`).",
+            "description": "Discriminator selecting the variant of this resource. One of `fact`,\n`preference`, `correction`, `procedure`, `context`.",
             "example": "preference"
           },
           "limit": {
@@ -26984,8 +26984,8 @@
               "string",
               "null"
             ],
-            "description": "Discriminator selecting the variant of this resource (e.g. `runbook`, `faq`, `policy`).",
-            "example": "policy"
+            "description": "Discriminator selecting the variant of this resource. One of `note`,\n`table`, `business`, `query`, `runbook`.",
+            "example": "runbook"
           },
           "tags": {
             "type": [
@@ -26999,7 +26999,7 @@
             "example": [
               "billing",
               "refunds",
-              "policy-update"
+              "vp-approval"
             ]
           },
           "title": {
