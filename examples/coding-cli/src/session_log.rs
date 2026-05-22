@@ -359,7 +359,7 @@ fn tool_completed_to_message(data: everruns_core::events::ToolCompletedData) -> 
         if text_parts.len() == 1
             && let ContentPart::Text(text) = text_parts[0]
         {
-            return serde_json::Value::String(text.text.clone());
+            return parse_structured_tool_result_text(&text.text);
         }
         if !text_parts.is_empty() {
             serde_json::to_value(&text_parts).unwrap_or_default()
@@ -375,10 +375,24 @@ fn tool_completed_to_message(data: everruns_core::events::ToolCompletedData) -> 
     }
 }
 
+fn parse_structured_tool_result_text(text: &str) -> serde_json::Value {
+    let trimmed = text.trim_start();
+    if !trimmed.starts_with('{') && !trimmed.starts_with('[') {
+        return serde_json::Value::String(text.to_string());
+    }
+
+    match serde_json::from_str(text) {
+        Ok(value @ (serde_json::Value::Object(_) | serde_json::Value::Array(_))) => value,
+        _ => serde_json::Value::String(text.to_string()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use everruns_core::events::{EventContext, InputMessageData, OutputMessageCompletedData};
+    use everruns_core::events::{
+        EventContext, InputMessageData, OutputMessageCompletedData, ToolCompletedData,
+    };
     use everruns_core::message::Message;
 
     fn input_event(session_id: SessionId, text: &str) -> Event {
@@ -483,5 +497,48 @@ mod tests {
             }
             other => panic!("unexpected event data: {other:?}"),
         }
+    }
+
+    #[test]
+    fn tool_completed_replay_preserves_json_result_shape() {
+        let data = ToolCompletedData::success(
+            "call_read".to_string(),
+            "read_file".to_string(),
+            vec![ContentPart::text(
+                serde_json::json!({
+                    "path": "/workspace/src/lib.rs",
+                    "content": "1|fn main() {}"
+                })
+                .to_string(),
+            )],
+            Some(1),
+        );
+
+        let message = tool_completed_to_message(data);
+        let result = message
+            .tool_result_content()
+            .and_then(|content| content.result.as_ref())
+            .expect("tool result should be present");
+
+        assert_eq!(result["path"], "/workspace/src/lib.rs");
+        assert_eq!(result["content"], "1|fn main() {}");
+    }
+
+    #[test]
+    fn tool_completed_replay_keeps_scalar_json_as_text() {
+        let data = ToolCompletedData::success(
+            "call_scalar".to_string(),
+            "custom_tool".to_string(),
+            vec![ContentPart::text("123")],
+            Some(1),
+        );
+
+        let message = tool_completed_to_message(data);
+        let result = message
+            .tool_result_content()
+            .and_then(|content| content.result.as_ref())
+            .expect("tool result should be present");
+
+        assert_eq!(result, &serde_json::Value::String("123".to_string()));
     }
 }

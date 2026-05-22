@@ -11,6 +11,8 @@
 //! - Proactive compaction at a configurable budget threshold, not just on error
 
 use super::{Capability, CapabilityStatus};
+use crate::events::TokenUsage;
+use crate::message::{ContentPart, Message, MessageRole};
 use crate::message_filter::MessageFilterProvider;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -84,6 +86,75 @@ fn default_keep_recent_tool_outputs() -> usize {
     2
 }
 
+/// Cost-control masking settings.
+///
+/// Unlike proactive compaction, this is cost-oriented rather than
+/// context-window-oriented: old bulky tool results should not stay verbatim in
+/// every request just because the model still has room for them.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CostControlConfig {
+    /// Enable low-cost tool-result masking before every LLM call.
+    #[serde(default = "default_cost_control_enabled")]
+    pub enabled: bool,
+
+    /// Number of most-recent tool results to always keep verbatim.
+    #[serde(default = "default_cost_control_keep_recent_tool_results")]
+    pub keep_recent_tool_results: usize,
+
+    /// Start masking once this many tool results are present.
+    #[serde(default = "default_cost_control_mask_after_tool_results")]
+    pub mask_after_tool_results: usize,
+
+    /// Start masking once aggregate live tool-result payload exceeds this many bytes.
+    #[serde(default = "default_cost_control_max_live_tool_result_bytes")]
+    pub max_live_tool_result_bytes: usize,
+
+    /// If cumulative/session usage is available, mask when uncached input exceeds this.
+    #[serde(default = "default_cost_control_max_uncached_input_tokens")]
+    pub max_uncached_input_tokens: u32,
+
+    /// If cumulative/session usage is available, mask when cache read ratio falls below this.
+    #[serde(default = "default_cost_control_min_cache_read_ratio")]
+    pub min_cache_read_ratio: f32,
+}
+
+impl Default for CostControlConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_cost_control_enabled(),
+            keep_recent_tool_results: default_cost_control_keep_recent_tool_results(),
+            mask_after_tool_results: default_cost_control_mask_after_tool_results(),
+            max_live_tool_result_bytes: default_cost_control_max_live_tool_result_bytes(),
+            max_uncached_input_tokens: default_cost_control_max_uncached_input_tokens(),
+            min_cache_read_ratio: default_cost_control_min_cache_read_ratio(),
+        }
+    }
+}
+
+fn default_cost_control_enabled() -> bool {
+    true
+}
+
+fn default_cost_control_keep_recent_tool_results() -> usize {
+    2
+}
+
+fn default_cost_control_mask_after_tool_results() -> usize {
+    4
+}
+
+fn default_cost_control_max_live_tool_result_bytes() -> usize {
+    24 * 1024
+}
+
+fn default_cost_control_max_uncached_input_tokens() -> u32 {
+    100_000
+}
+
+fn default_cost_control_min_cache_read_ratio() -> f32 {
+    0.35
+}
+
 /// Summarization settings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SummarizationConfig {
@@ -151,6 +222,10 @@ pub struct CompactionConfig {
     /// Hierarchical memory tier settings for hot/warm/cold management.
     #[serde(default)]
     pub memory_tiers: HierarchicalMemoryConfig,
+
+    /// Always-on cost-oriented masking for stale tool results.
+    #[serde(default)]
+    pub cost_control: CostControlConfig,
 }
 
 impl Default for CompactionConfig {
@@ -162,6 +237,7 @@ impl Default for CompactionConfig {
             observation_masking: ObservationMaskingConfig::default(),
             summarization: SummarizationConfig::default(),
             memory_tiers: HierarchicalMemoryConfig::default(),
+            cost_control: CostControlConfig::default(),
         }
     }
 }
@@ -646,6 +722,399 @@ pub fn apply_observation_masking(
     apply_observation_masking_with_protected(messages, config, &std::collections::HashSet::new())
 }
 
+/// Result of cost-control masking applied before provider serialization.
+#[derive(Debug)]
+pub struct CostControlMaskingResult {
+    /// Messages after stale bulky tool results were replaced by summaries.
+    pub messages: Vec<Message>,
+    /// Number of tool-result messages that were masked.
+    pub masked_count: usize,
+    /// Tool-result payload bytes before masking.
+    pub tool_result_bytes_before: usize,
+    /// Tool-result payload bytes after masking.
+    pub tool_result_bytes_after: usize,
+}
+
+/// Apply cheap, generic cost-control masking to stored messages.
+///
+/// This runs before converting messages to provider-specific LLM messages, so
+/// the llm.generation event can reflect the context actually sent. It is
+/// deliberately separate from observation masking: observation masking is part
+/// of the context-window compaction cascade, while this keeps stale tool output
+/// from being paid for repeatedly even when a large-context model still has
+/// room.
+pub fn apply_cost_control_masking(
+    messages: &[Message],
+    config: &CompactionConfig,
+    prior_usage: Option<&TokenUsage>,
+) -> CostControlMaskingResult {
+    let cost_config = &config.cost_control;
+    let tool_indices: Vec<usize> = messages
+        .iter()
+        .enumerate()
+        .filter(|(_, message)| {
+            message.role == MessageRole::ToolResult
+                && !is_protected_message_tool_result(messages, message)
+        })
+        .map(|(index, _)| index)
+        .collect();
+    let tool_result_bytes_before = tool_indices
+        .iter()
+        .map(|index| message_tool_result_len(&messages[*index]))
+        .sum();
+
+    if !cost_config.enabled
+        || tool_indices.len() <= cost_config.keep_recent_tool_results
+        || !should_apply_cost_control_masking(
+            tool_indices.len(),
+            tool_result_bytes_before,
+            cost_config,
+            prior_usage,
+        )
+    {
+        return CostControlMaskingResult {
+            messages: messages.to_vec(),
+            masked_count: 0,
+            tool_result_bytes_before,
+            tool_result_bytes_after: tool_result_bytes_before,
+        };
+    }
+
+    let keep_recent = cost_config.keep_recent_tool_results;
+    let to_mask_count = tool_indices.len().saturating_sub(keep_recent);
+    let indices_to_mask: std::collections::HashSet<usize> =
+        tool_indices[..to_mask_count].iter().copied().collect();
+
+    let mut masked_count = 0;
+    let mut masked_messages = Vec::with_capacity(messages.len());
+    for (index, message) in messages.iter().enumerate() {
+        if indices_to_mask.contains(&index) {
+            let tool_name = find_message_tool_call_name(messages, message);
+            masked_messages.push(mask_tool_result_message(message, &tool_name));
+            masked_count += 1;
+        } else {
+            masked_messages.push(message.clone());
+        }
+    }
+
+    let tool_result_bytes_after = masked_messages
+        .iter()
+        .filter(|message| message.role == MessageRole::ToolResult)
+        .map(message_tool_result_len)
+        .sum();
+
+    CostControlMaskingResult {
+        messages: masked_messages,
+        masked_count,
+        tool_result_bytes_before,
+        tool_result_bytes_after,
+    }
+}
+
+fn should_apply_cost_control_masking(
+    tool_result_count: usize,
+    tool_result_bytes: usize,
+    config: &CostControlConfig,
+    prior_usage: Option<&TokenUsage>,
+) -> bool {
+    if tool_result_count >= config.mask_after_tool_results {
+        return true;
+    }
+    if tool_result_bytes >= config.max_live_tool_result_bytes {
+        return true;
+    }
+    let Some(usage) = prior_usage else {
+        return false;
+    };
+    let cache_read = usage.cache_read_tokens.unwrap_or(0);
+    let uncached = usage.input_tokens.saturating_sub(cache_read);
+    if uncached >= config.max_uncached_input_tokens {
+        return true;
+    }
+    usage.input_tokens > 0
+        && (cache_read as f32 / usage.input_tokens as f32) < config.min_cache_read_ratio
+}
+
+fn is_protected_message_tool_result(messages: &[Message], tool_msg: &Message) -> bool {
+    if tool_msg.role != MessageRole::ToolResult {
+        return false;
+    }
+    let tool_name = find_message_tool_call_name(messages, tool_msg);
+    PROTECTED_TOOL_NAMES.contains(&tool_name.as_str())
+}
+
+fn find_message_tool_call_name(messages: &[Message], tool_msg: &Message) -> String {
+    let Some(call_id) = tool_msg.tool_call_id() else {
+        return "unknown_tool".to_string();
+    };
+
+    for msg in messages.iter().rev() {
+        if msg.role != MessageRole::Agent {
+            continue;
+        }
+        for tool_call in msg.tool_calls() {
+            if tool_call.id == call_id {
+                return tool_call.name.clone();
+            }
+        }
+    }
+
+    "unknown_tool".to_string()
+}
+
+fn message_tool_result_len(message: &Message) -> usize {
+    let Some(result) = message.tool_result_content() else {
+        return 0;
+    };
+    result
+        .result
+        .as_ref()
+        .map(estimate_json_value_len)
+        .unwrap_or(0)
+        + result.error.as_ref().map_or(0, String::len)
+}
+
+fn mask_tool_result_message(message: &Message, tool_name: &str) -> Message {
+    let Some(result) = message.tool_result_content() else {
+        return message.clone();
+    };
+    let summary = summarize_tool_result(tool_name, result.result.as_ref(), result.error.as_ref());
+    let was_error = result.error.is_some();
+    let mut masked = message.clone();
+    for part in &mut masked.content {
+        if let ContentPart::ToolResult(tool_result) = part {
+            if was_error {
+                tool_result.result = None;
+                tool_result.error = Some(summary);
+            } else {
+                tool_result.result = Some(serde_json::json!({
+                    "masked": true,
+                    "summary": summary,
+                }));
+                tool_result.error = None;
+            }
+            break;
+        }
+    }
+    masked
+}
+
+fn summarize_tool_result(
+    tool_name: &str,
+    result: Option<&serde_json::Value>,
+    error: Option<&String>,
+) -> String {
+    if let Some(error) = error {
+        return format!("[{tool_name} error: {}]", truncate_inline(error, 160));
+    }
+    let Some(value) = result else {
+        return format!("[{tool_name} returned no result]");
+    };
+    let Some(object) = value.as_object() else {
+        return format!(
+            "[{tool_name} -> {}, {} bytes]",
+            value_kind(value),
+            estimate_json_value_len(value)
+        );
+    };
+
+    match tool_name {
+        "read_file" | "daytona_read_file" | "sandbox_read_file" => {
+            summarize_read_file_result(tool_name, object, value)
+        }
+        "bash" | "daytona_exec" | "sandbox_exec" | "e2b_exec" | "docker_exec" | "deno_exec" => {
+            summarize_exec_result(tool_name, object, value)
+        }
+        "list_directory" => summarize_list_directory_result(tool_name, object, value),
+        "grep_files" => summarize_grep_files_result(tool_name, object, value),
+        _ => summarize_generic_tool_result(tool_name, object, value),
+    }
+}
+
+fn summarize_read_file_result(
+    tool_name: &str,
+    object: &serde_json::Map<String, serde_json::Value>,
+    value: &serde_json::Value,
+) -> String {
+    let path = object
+        .get("path")
+        .and_then(|v| v.as_str())
+        .unwrap_or("(unknown path)");
+    let lines = object.get("lines_shown").and_then(|v| v.as_object());
+    let line_range = lines
+        .and_then(|lines| {
+            let start = lines.get("start")?.as_u64()?;
+            let end = lines.get("end")?.as_u64()?;
+            Some(format!(" lines {start}-{end}"))
+        })
+        .unwrap_or_default();
+    let total_lines = object
+        .get("total_lines")
+        .and_then(|v| v.as_u64())
+        .map(|lines| format!(", total_lines={lines}"))
+        .unwrap_or_default();
+    let next_offset = object
+        .get("truncation")
+        .and_then(|v| v.as_object())
+        .and_then(|truncation| truncation.get("next_offset"))
+        .and_then(|v| v.as_u64())
+        .map(|offset| format!(", next_offset={offset}"))
+        .unwrap_or_default();
+    let hash = object
+        .get("content_hash")
+        .and_then(|v| v.as_str())
+        .map(|hash| format!(", hash={hash}"))
+        .unwrap_or_default();
+    let truncated = object
+        .get("truncated")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    format!(
+        "[{tool_name} {path}{line_range}, {} bytes, truncated={truncated}{total_lines}{next_offset}{hash}]",
+        estimate_json_value_len(value)
+    )
+}
+
+fn summarize_exec_result(
+    tool_name: &str,
+    object: &serde_json::Map<String, serde_json::Value>,
+    value: &serde_json::Value,
+) -> String {
+    let exit = object
+        .get("exit_code")
+        .and_then(|v| v.as_i64())
+        .map(|code| format!(" exit={code}"))
+        .unwrap_or_default();
+    let stdout_len = object
+        .get("stdout")
+        .and_then(|v| v.as_str())
+        .map(|stdout| stdout.len())
+        .unwrap_or(0);
+    let stderr_len = object
+        .get("stderr")
+        .and_then(|v| v.as_str())
+        .map(|stderr| stderr.len())
+        .unwrap_or(0);
+    let full_output = object
+        .get("full_output")
+        .and_then(|v| v.as_str())
+        .map(|path| format!(", full_output={path}"))
+        .unwrap_or_default();
+    let total_lines = object
+        .get("total_lines")
+        .and_then(|v| v.as_u64())
+        .map(|lines| format!(", total_lines={lines}"))
+        .unwrap_or_default();
+
+    format!(
+        "[{tool_name}{exit}, stdout={} bytes, stderr={} bytes, result={} bytes{full_output}{total_lines}]",
+        stdout_len,
+        stderr_len,
+        estimate_json_value_len(value)
+    )
+}
+
+fn summarize_list_directory_result(
+    tool_name: &str,
+    object: &serde_json::Map<String, serde_json::Value>,
+    value: &serde_json::Value,
+) -> String {
+    let path = object
+        .get("path")
+        .and_then(|v| v.as_str())
+        .unwrap_or("(unknown path)");
+    let count = object
+        .get("count")
+        .and_then(|v| v.as_u64())
+        .or_else(|| {
+            object
+                .get("entries")
+                .and_then(|v| v.as_array())
+                .map(|v| v.len() as u64)
+        })
+        .unwrap_or(0);
+    format!(
+        "[{tool_name} {path}, {count} entries, {} bytes]",
+        estimate_json_value_len(value)
+    )
+}
+
+fn summarize_grep_files_result(
+    tool_name: &str,
+    object: &serde_json::Map<String, serde_json::Value>,
+    value: &serde_json::Value,
+) -> String {
+    let pattern = object
+        .get("pattern")
+        .and_then(|v| v.as_str())
+        .map(|pattern| format!(" pattern={:?}", truncate_inline(pattern, 80)))
+        .unwrap_or_default();
+    let match_count = object
+        .get("match_count")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    format!(
+        "[{tool_name}{pattern}, matches={match_count}, {} bytes]",
+        estimate_json_value_len(value)
+    )
+}
+
+fn summarize_generic_tool_result(
+    tool_name: &str,
+    object: &serde_json::Map<String, serde_json::Value>,
+    value: &serde_json::Value,
+) -> String {
+    let keys = object.keys().take(5).cloned().collect::<Vec<_>>().join(",");
+    format!(
+        "[{tool_name} result, {} bytes, keys={keys}]",
+        estimate_json_value_len(value)
+    )
+}
+
+fn value_kind(value: &serde_json::Value) -> &'static str {
+    match value {
+        serde_json::Value::Null => "null",
+        serde_json::Value::Bool(_) => "bool",
+        serde_json::Value::Number(_) => "number",
+        serde_json::Value::String(_) => "string",
+        serde_json::Value::Array(_) => "array",
+        serde_json::Value::Object(_) => "object",
+    }
+}
+
+fn estimate_json_value_len(value: &serde_json::Value) -> usize {
+    let mut writer = CountingWriter::default();
+    serde_json::to_writer(&mut writer, value)
+        .map(|_| writer.bytes)
+        .unwrap_or(0)
+}
+
+#[derive(Default)]
+struct CountingWriter {
+    bytes: usize,
+}
+
+impl std::io::Write for CountingWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.bytes += buf.len();
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+fn truncate_inline(text: &str, max_chars: usize) -> String {
+    if text.chars().count() <= max_chars {
+        return text.to_string();
+    }
+    let mut truncated = text.chars().take(max_chars).collect::<String>();
+    truncated.push_str("...");
+    truncated
+}
+
 /// Like `apply_observation_masking`, but accepts additional pre-identified protected
 /// tool_call_ids. This is needed when the message slice doesn't contain the
 /// assistant tool-call message (e.g. warm tier where the call is in cold tier).
@@ -997,6 +1466,8 @@ mod tests {
         assert!(config.summarization.model.is_none());
         assert_eq!(config.summarization.preserve.len(), 5);
         assert!(config.summarization.instructions.is_none());
+        assert!(config.cost_control.enabled);
+        assert_eq!(config.cost_control.keep_recent_tool_results, 2);
     }
 
     #[test]
@@ -1033,6 +1504,27 @@ mod tests {
     }
 
     #[test]
+    fn test_config_cost_control_with_custom_settings() {
+        let config = CompactionConfig::from_json(&json!({
+            "cost_control": {
+                "enabled": true,
+                "keep_recent_tool_results": 1,
+                "mask_after_tool_results": 2,
+                "max_live_tool_result_bytes": 4096,
+                "max_uncached_input_tokens": 50000,
+                "min_cache_read_ratio": 0.5
+            }
+        }));
+
+        assert!(config.cost_control.enabled);
+        assert_eq!(config.cost_control.keep_recent_tool_results, 1);
+        assert_eq!(config.cost_control.mask_after_tool_results, 2);
+        assert_eq!(config.cost_control.max_live_tool_result_bytes, 4096);
+        assert_eq!(config.cost_control.max_uncached_input_tokens, 50000);
+        assert!((config.cost_control.min_cache_read_ratio - 0.5).abs() < f32::EPSILON);
+    }
+
+    #[test]
     fn test_config_summarization_with_custom_model() {
         let config = CompactionConfig::from_json(&json!({
             "strategy": "summarization",
@@ -1052,6 +1544,108 @@ mod tests {
             Some("Focus on API decisions")
         );
         assert_eq!(config.summarization.preserve.len(), 2);
+    }
+
+    fn make_message_tool_turn(
+        call_id: &str,
+        tool_name: &str,
+        result: serde_json::Value,
+    ) -> Vec<Message> {
+        vec![
+            Message::assistant_with_tools(
+                "",
+                vec![ToolCall {
+                    id: call_id.to_string(),
+                    name: tool_name.to_string(),
+                    arguments: json!({"path": "/workspace/src/lib.rs"}),
+                }],
+            ),
+            Message::tool_result(call_id, Some(result), None),
+        ]
+    }
+
+    #[test]
+    fn test_cost_control_masks_old_read_file_results() {
+        let mut messages = vec![Message::user("inspect files")];
+        for index in 0..5 {
+            messages.extend(make_message_tool_turn(
+                &format!("call_{index}"),
+                "read_file",
+                json!({
+                    "path": "/workspace/src/lib.rs",
+                    "content": format!("{}{}", "line\n".repeat(400), index),
+                    "total_lines": 900,
+                    "lines_shown": {"start": 1, "end": 400},
+                    "truncated": true,
+                    "content_hash": format!("sha256:{index}"),
+                    "truncation": {"truncated": true, "next_offset": 400, "reason": "line_cap"}
+                }),
+            ));
+        }
+
+        let config = CompactionConfig::from_json(&json!({
+            "cost_control": {
+                "keep_recent_tool_results": 2,
+                "mask_after_tool_results": 4
+            }
+        }));
+        let result = apply_cost_control_masking(&messages, &config, None);
+
+        assert_eq!(result.masked_count, 3);
+        assert!(result.tool_result_bytes_after < result.tool_result_bytes_before);
+
+        let first_tool = result.messages[2].tool_result_content().unwrap();
+        let masked = first_tool.result.as_ref().unwrap();
+        assert_eq!(masked["masked"], true);
+        let summary = masked["summary"].as_str().unwrap();
+        assert!(summary.contains("read_file"));
+        assert!(summary.contains("/workspace/src/lib.rs"));
+        assert!(summary.contains("lines 1-400"));
+        assert!(summary.contains("next_offset=400"));
+        assert!(!summary.contains("line\nline"));
+
+        let last_tool = result
+            .messages
+            .last()
+            .unwrap()
+            .tool_result_content()
+            .unwrap();
+        assert!(last_tool.result.as_ref().unwrap().get("content").is_some());
+    }
+
+    #[test]
+    fn test_cost_control_uses_prior_usage_signal() {
+        let mut messages = vec![Message::user("run commands")];
+        for index in 0..3 {
+            messages.extend(make_message_tool_turn(
+                &format!("call_{index}"),
+                "bash",
+                json!({
+                    "stdout": "small output",
+                    "stderr": "",
+                    "exit_code": 0,
+                    "success": true
+                }),
+            ));
+        }
+
+        let config = CompactionConfig::from_json(&json!({
+            "cost_control": {
+                "keep_recent_tool_results": 1,
+                "mask_after_tool_results": 99,
+                "max_live_tool_result_bytes": 999999,
+                "max_uncached_input_tokens": 1000
+            }
+        }));
+        let usage = TokenUsage::with_cache(10_000, 100, Some(0), None);
+        let result = apply_cost_control_masking(&messages, &config, Some(&usage));
+
+        assert_eq!(result.masked_count, 2);
+        let first_tool = result.messages[2].tool_result_content().unwrap();
+        let summary = first_tool.result.as_ref().unwrap()["summary"]
+            .as_str()
+            .unwrap();
+        assert!(summary.contains("bash exit=0"));
     }
 
     #[test]

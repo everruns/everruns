@@ -177,6 +177,15 @@ pub struct SummarizationConfig {
 }
 ```
 
+Cost-control masking is also part of compaction. It runs before provider
+serialization and replaces older bulky tool results with small structured
+summaries when repeated full-history prompts would otherwise keep paying for
+stale `read_file`, exec, listing, or search output. It is enabled by default
+when compaction is enabled, keeps the most recent tool results verbatim, and can
+also trigger from prior usage signals when cache reuse is poor. See
+[`crates/core/src/capabilities/compaction.rs`](../crates/core/src/capabilities/compaction.rs)
+for the exact configuration fields and defaults.
+
 ### Config Examples
 
 **"I want native OpenAI compaction only":**
@@ -220,6 +229,7 @@ When the `compaction` capability is present with no config (or `{}`):
 | `proactive` | `true` | Don't wait for errors |
 | `budget_percent` | `0.85` | 15% headroom |
 | `keep_recent_tool_outputs` | `2` | Recent context stays verbatim |
+| Cost-control masking | Enabled | Prevent stale bulky tool results from being resent verbatim in every request |
 | `summarization.model` | `null` (same model) | Simplest default |
 | `summarization.preserve` | `["decisions", "files_modified", "errors", "current_plan"]` | Key agent context |
 

@@ -764,6 +764,7 @@ impl ReasonAtom {
         };
 
         let messages = assembled.messages;
+        let prior_usage = assembled.session.usage.clone();
         let model_with_provider = assembled.model_with_provider;
         let resolved_model_id = assembled.resolved_model_id;
         let resolved_locale = assembled.resolved_locale;
@@ -849,11 +850,34 @@ impl ReasonAtom {
         // 9. Patch dangling tool calls (add cancelled results for tool calls without responses)
         let patched_messages = patch_dangling_tool_calls(&messages);
 
+        // 9b. Apply cost-oriented masking before provider serialization.
+        // This keeps stale bulky tool results from being paid for repeatedly
+        // even when the model's context window is still large enough.
+        let context_messages = if let Some(ref config) = compaction_config {
+            let masking = crate::capabilities::apply_cost_control_masking(
+                &patched_messages,
+                config,
+                prior_usage.as_ref(),
+            );
+            if masking.masked_count > 0 {
+                tracing::info!(
+                    session_id = %session_id,
+                    masked_count = masking.masked_count,
+                    tool_result_bytes_before = masking.tool_result_bytes_before,
+                    tool_result_bytes_after = masking.tool_result_bytes_after,
+                    "ReasonAtom: cost-control masked stale tool results"
+                );
+            }
+            masking.messages
+        } else {
+            patched_messages
+        };
+
         // 10. Resolve images from image_file references (if any)
         //
         // Image resolution converts image_file content parts (which only contain UUIDs)
         // into actual base64-encoded image data that can be sent to LLMs.
-        let resolved_images = self.resolve_images(&patched_messages).await;
+        let resolved_images = self.resolve_images(&context_messages).await;
 
         // 11. Build LLM messages
         let mut llm_messages = Vec::new();
@@ -875,10 +899,10 @@ impl ReasonAtom {
         // Build messages for llm.generation event (includes system message)
         let messages_for_event: Vec<Message> = if has_system_prompt {
             std::iter::once(Message::system(&runtime_agent.system_prompt))
-                .chain(patched_messages.iter().cloned())
+                .chain(context_messages.iter().cloned())
                 .collect()
         } else {
-            patched_messages.clone()
+            context_messages.clone()
         };
 
         // Add conversation messages with resolved images.
@@ -887,7 +911,7 @@ impl ReasonAtom {
         // Skip error placeholder messages from prior failed turns — they add
         // no conversational value and inflate the request.
         let mut stripped_error_count = 0u32;
-        for msg in &patched_messages {
+        for msg in &context_messages {
             if is_error_placeholder_message(msg) {
                 stripped_error_count += 1;
                 continue;
