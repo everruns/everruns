@@ -224,15 +224,32 @@ pub fn apply_read_file_hard_cap(result: &mut String) -> bool {
     true
 }
 
+#[derive(Debug)]
+struct FormattedReadFileWindow {
+    content: String,
+    total_lines: usize,
+    start_line: usize,
+    end_line: usize,
+    line_capped: bool,
+    size_capped: bool,
+}
+
 /// Format file content with compact line numbers: `N|content`.
 ///
-/// Applies offset/limit pagination. Returns (formatted_content, total_lines, truncated).
+/// Applies offset/limit pagination and the hard byte cap in one pass while
+/// preserving whether truncation was caused by the line window or byte budget.
 /// Line numbers are 1-based in output regardless of offset.
-/// Single-pass: counts total lines while only formatting the requested window.
-pub fn format_lines(content: &str, offset: usize, limit: usize) -> (String, usize, bool) {
+fn format_lines_with_metadata(
+    content: &str,
+    offset: usize,
+    limit: usize,
+) -> FormattedReadFileWindow {
     let window_end = offset.saturating_add(limit);
     let mut total_lines = 0;
     let mut result = String::new();
+    let mut start_line = 0;
+    let mut end_line = 0;
+    let mut size_capped = false;
 
     for (idx, line) in content.lines().enumerate() {
         total_lines = idx + 1;
@@ -241,26 +258,135 @@ pub fn format_lines(content: &str, offset: usize, limit: usize) -> (String, usiz
             continue;
         }
 
-        if !result.is_empty() {
-            result.push('\n');
+        if size_capped {
+            continue;
         }
 
         // 1-based line numbers
         let line_num = idx + 1;
-        result.push_str(&line_num.to_string());
-        result.push('|');
-        result.push_str(line);
+        if start_line == 0 {
+            start_line = line_num;
+        }
+
+        let separator = if result.is_empty() { "" } else { "\n" };
+        let formatted_line = format!("{separator}{line_num}|{line}");
+        let available = READ_FILE_HARD_BYTE_CAP.saturating_sub(result.len());
+
+        if formatted_line.len() <= available {
+            result.push_str(&formatted_line);
+            end_line = line_num;
+            continue;
+        }
+
+        let cut = utf8_floor(&formatted_line, available);
+        if cut > 0 {
+            result.push_str(&formatted_line[..cut]);
+            end_line = line_num;
+        }
+        size_capped = true;
     }
 
     let end = offset.saturating_add(limit).min(total_lines);
-    let truncated = end < total_lines;
+    let line_capped = end < total_lines;
 
-    // Apply hard byte cap
-    if apply_read_file_hard_cap(&mut result) {
-        return (result, total_lines, true);
+    FormattedReadFileWindow {
+        content: result,
+        total_lines,
+        start_line,
+        end_line,
+        line_capped,
+        size_capped,
     }
+}
 
-    (result, total_lines, truncated)
+/// Format file content with compact line numbers: `N|content`.
+///
+/// Applies offset/limit pagination. Returns (formatted_content, total_lines, truncated).
+/// Line numbers are 1-based in output regardless of offset.
+pub fn format_lines(content: &str, offset: usize, limit: usize) -> (String, usize, bool) {
+    let formatted = format_lines_with_metadata(content, offset, limit);
+    (
+        formatted.content,
+        formatted.total_lines,
+        formatted.line_capped || formatted.size_capped,
+    )
+}
+
+/// Parse standard read-file `offset`/`limit` arguments.
+pub fn parse_read_file_window_args(
+    arguments: &serde_json::Value,
+) -> Result<(usize, usize), String> {
+    let offset = arguments
+        .get("offset")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0) as usize;
+    let limit = arguments
+        .get("limit")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(READ_FILE_DEFAULT_LIMIT as u64) as usize;
+    if limit == 0 {
+        return Err("limit must be a positive integer".to_string());
+    }
+    Ok((offset, limit))
+}
+
+/// Build the standard structured response for a text read-file tool.
+pub fn build_text_read_file_result(
+    tool_name: &str,
+    path: &str,
+    content: &str,
+    encoding: &str,
+    offset: usize,
+    limit: usize,
+) -> serde_json::Value {
+    let formatted = format_lines_with_metadata(content, offset, limit);
+    let truncated = formatted.line_capped || formatted.size_capped;
+
+    let mut result = serde_json::json!({
+        "path": path,
+        "content": formatted.content,
+        "encoding": encoding,
+        "total_lines": formatted.total_lines,
+        "lines_shown": {
+            "start": formatted.start_line,
+            "end": formatted.end_line,
+        },
+        "truncated": truncated,
+        "size_bytes": content.len(),
+    });
+
+    let truncation = if truncated {
+        if formatted.size_capped {
+            crate::truncation_info::TruncationInfo::without_resume(
+                formatted.content.len(),
+                Some(content.len()),
+                crate::truncation_info::TruncationReason::SizeCap,
+            )
+        } else if formatted.line_capped {
+            crate::truncation_info::TruncationInfo::with_resume(
+                formatted.content.len(),
+                Some(content.len()),
+                formatted.end_line as u64,
+                format!(
+                    "call {tool_name} with offset={} to resume from line {}",
+                    formatted.end_line,
+                    formatted.end_line + 1,
+                ),
+                crate::truncation_info::TruncationReason::LineCap,
+            )
+        } else {
+            crate::truncation_info::TruncationInfo::without_resume(
+                formatted.content.len(),
+                Some(content.len()),
+                crate::truncation_info::TruncationReason::SizeCap,
+            )
+        }
+    } else {
+        crate::truncation_info::TruncationInfo::not_truncated(formatted.content.len())
+    };
+    truncation.attach(&mut result);
+
+    result
 }
 
 /// Full sanitization pipeline: strip ANSI → collapse CR → priority-aware truncate.
@@ -841,6 +967,43 @@ mod tests {
         assert_eq!(content, "1|hello");
         assert_eq!(total, 1);
         assert!(!truncated);
+    }
+
+    #[test]
+    fn test_build_text_read_file_result_window() {
+        let result =
+            build_text_read_file_result("read_file", "/workspace/a.txt", "a\nb\nc", "text", 1, 1);
+
+        assert_eq!(result["content"], "2|b");
+        assert_eq!(result["total_lines"], 3);
+        assert_eq!(result["lines_shown"]["start"], 2);
+        assert_eq!(result["lines_shown"]["end"], 2);
+        assert_eq!(result["truncated"], true);
+        assert_eq!(result["truncation"]["next_offset"], 2);
+    }
+
+    #[test]
+    fn test_build_text_read_file_result_hard_cap_has_no_resume() {
+        let big_line = "x".repeat(READ_FILE_HARD_BYTE_CAP + 128);
+        let result =
+            build_text_read_file_result("read_file", "/workspace/big.txt", &big_line, "text", 0, 1);
+
+        assert_eq!(result["total_lines"], 1);
+        assert_eq!(result["lines_shown"]["start"], 1);
+        assert_eq!(result["lines_shown"]["end"], 1);
+        assert_eq!(result["truncated"], true);
+        assert_eq!(result["truncation"]["reason"], "size_cap");
+        assert!(result["truncation"].get("next_offset").is_none());
+        assert!(
+            result["content"].as_str().unwrap().len() <= READ_FILE_HARD_BYTE_CAP,
+            "content exceeded hard byte cap"
+        );
+    }
+
+    #[test]
+    fn test_parse_read_file_window_rejects_zero_limit() {
+        let err = parse_read_file_window_args(&serde_json::json!({"limit": 0})).unwrap_err();
+        assert_eq!(err, "limit must be a positive integer");
     }
 
     // ====================================================================

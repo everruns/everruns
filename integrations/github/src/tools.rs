@@ -2,6 +2,9 @@
 
 use async_trait::async_trait;
 use everruns_core::ToolHints;
+use everruns_core::tool_output_sanitizer::{
+    READ_FILE_DEFAULT_LIMIT, build_text_read_file_result, parse_read_file_window_args,
+};
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::ToolContext;
 use serde_json::{Value, json};
@@ -265,6 +268,18 @@ impl Tool for ReadGitHubFileTool {
                 "ref": {
                     "type": "string",
                     "description": "Optional branch, tag, or commit SHA."
+                },
+                "offset": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "default": 0,
+                    "description": "Zero-based line offset to start reading from"
+                },
+                "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "default": READ_FILE_DEFAULT_LIMIT,
+                    "description": "Maximum number of lines to return"
                 }
             },
             "required": ["repo", "path"],
@@ -310,6 +325,10 @@ impl Tool for ReadGitHubFileTool {
             );
         }
         let reference = arguments.get("ref").and_then(|v| v.as_str()).map(str::trim);
+        let (offset, limit) = match parse_read_file_window_args(&arguments) {
+            Ok(window) => window,
+            Err(err) => return ToolExecutionResult::tool_error(err),
+        };
 
         if let Err(e) = enforce_github_network_access(context) {
             return e;
@@ -321,15 +340,22 @@ impl Tool for ReadGitHubFileTool {
 
         match github_client(token).read_file(repo, path, reference).await {
             Ok(file) => match file.decoded_content() {
-                Ok(content) => ToolExecutionResult::success(json!({
-                    "repo": repo,
-                    "path": file.path,
-                    "name": file.name,
-                    "sha": file.sha,
-                    "url": file.html_url,
-                    "download_url": file.download_url,
-                    "content": content,
-                })),
+                Ok(content) => {
+                    let mut result = build_text_read_file_result(
+                        "read_github_file",
+                        &file.path,
+                        &content,
+                        "text",
+                        offset,
+                        limit,
+                    );
+                    result["repo"] = json!(repo);
+                    result["name"] = json!(file.name);
+                    result["sha"] = json!(file.sha);
+                    result["url"] = json!(file.html_url);
+                    result["download_url"] = json!(file.download_url);
+                    ToolExecutionResult::success(result)
+                }
                 Err(e) => ToolExecutionResult::tool_error(e),
             },
             Err(e) => ToolExecutionResult::tool_error(e),

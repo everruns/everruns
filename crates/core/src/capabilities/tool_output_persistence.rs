@@ -13,7 +13,7 @@
 //   /.outputs/{safe_id}.stderr when stderr is persisted (session-scoped)
 // - Injects `output_files` array into result for agent to read selectively
 // - Graceful degradation: skip silently if file_store is unavailable
-// - Runs before FinalPostToolExecHook (EVE-225 hard limit)
+// - Runs as an always-on final hook before EVE-225 hard-limit truncation
 // - EVE-245: annotates truncated stdout with file reference so agent knows
 //   it can read_file the full output with offset/limit
 
@@ -166,7 +166,7 @@ impl Capability for ToolOutputPersistenceCapability {
 }
 
 /// Hook that persists tool output to VFS when `persist_output` hint is set.
-struct PersistOutputHook;
+pub struct PersistOutputHook;
 
 #[async_trait]
 impl PostToolExecHook for PersistOutputHook {
@@ -179,6 +179,15 @@ impl PostToolExecHook for PersistOutputHook {
     ) {
         // Only persist if tool declares persist_output hint
         if tool_def.hints().persist_output != Some(true) {
+            return;
+        }
+
+        if result
+            .result
+            .as_ref()
+            .and_then(|value| value.get("output_files"))
+            .is_some()
+        {
             return;
         }
 

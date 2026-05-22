@@ -12,6 +12,14 @@ Context compaction manages conversations that exceed LLM context windows. Users 
 4. **Proactive, not reactive.** Compact before hitting limits, not after `RequestTooLarge`.
 5. **Users must know.** Every compaction emits events and renders in the UI.
 
+## Model View Versus Storage
+
+Session storage remains lossless: tool results, file reads, and exec outputs are stored as events/messages exactly as produced. Before provider serialization, `ReasonAtom` builds a separate **model view** from those stored messages.
+
+The model view always applies generic cost-control masking by default, even when the `compaction` capability is not configured. This masking replaces stale bulky tool results with compact summaries while preserving message/tool-call structure and the most recent tool results verbatim. A configured compaction capability can still tune or disable this via `cost_control`.
+
+Provider cache telemetry feeds this same model-view step. If the previous call reports high uncached input or a low cache-read ratio, the model view may mask older tool results earlier so repeated full-history prompts do not keep paying for cache misses.
+
 ## Current State
 
 ### What Exists

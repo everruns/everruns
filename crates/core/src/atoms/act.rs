@@ -304,7 +304,10 @@ where
     /// Default final post-tool-exec hooks (infrastructure, always-on).
     /// These run after all capability-contributed hooks and cannot be removed.
     fn default_final_hooks() -> Vec<Arc<dyn act_hooks::PostToolExecHook>> {
-        vec![Arc::new(act_hooks::OutputHardLimitHook)]
+        vec![
+            Arc::new(crate::capabilities::PersistOutputHook),
+            Arc::new(act_hooks::OutputHardLimitHook),
+        ]
     }
 
     /// Set the SQL database store on this atom

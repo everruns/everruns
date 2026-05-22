@@ -25,6 +25,9 @@ use everruns_core::resource_ownership::{
     list_owned_external_resource_ids, ownership_tracking_unavailable_error,
     require_owned_external_resource,
 };
+use everruns_core::tool_output_sanitizer::{
+    READ_FILE_DEFAULT_LIMIT, build_text_read_file_result, parse_read_file_window_args,
+};
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::ToolContext;
 
@@ -602,6 +605,18 @@ impl Tool for DaytonaReadFileTool {
                 "path": {
                     "type": "string",
                     "description": "Path to file in sandbox (e.g., '/home/daytona/main.py')"
+                },
+                "offset": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "default": 0,
+                    "description": "Zero-based line offset to start reading from"
+                },
+                "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "default": READ_FILE_DEFAULT_LIMIT,
+                    "description": "Maximum number of lines to return"
                 }
             },
             "required": ["sandbox_id", "path"],
@@ -635,6 +650,10 @@ impl Tool for DaytonaReadFileTool {
             Ok(s) => s,
             Err(e) => return e,
         };
+        let (offset, limit) = match parse_read_file_window_args(&arguments) {
+            Ok(window) => window,
+            Err(err) => return ToolExecutionResult::tool_error(err),
+        };
 
         let api_key = match get_api_key(context).await {
             Ok(k) => k,
@@ -653,11 +672,25 @@ impl Tool for DaytonaReadFileTool {
                     return e;
                 }
                 let (content, encoding) = SessionFile::encode_content(&bytes);
-                ToolExecutionResult::success(json!({
-                    "path": path,
-                    "content": content,
-                    "encoding": encoding
-                }))
+                let mut result = if encoding == "text" || encoding == "utf-8" {
+                    build_text_read_file_result(
+                        "daytona_read_file",
+                        path,
+                        &content,
+                        &encoding,
+                        offset,
+                        limit,
+                    )
+                } else {
+                    json!({
+                        "path": path,
+                        "content": content,
+                        "encoding": encoding,
+                        "size_bytes": bytes.len()
+                    })
+                };
+                result["sandbox_id"] = json!(sandbox_id);
+                ToolExecutionResult::success(result)
             }
             Err(e) => ToolExecutionResult::tool_error(e),
         }

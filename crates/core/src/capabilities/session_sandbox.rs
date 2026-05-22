@@ -10,8 +10,12 @@ use crate::session_sandbox::{
     ensure_session_sandbox_running, load_session_sandbox_state, pause_session_sandbox,
     session_sandbox_tool_hints,
 };
+use crate::tool_output_sanitizer::{
+    READ_FILE_DEFAULT_LIMIT, build_text_read_file_result, parse_read_file_window_args,
+};
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::ToolContext;
+use crate::truncation_info::TruncationInfo;
 use async_trait::async_trait;
 use serde_json::{Value, json};
 
@@ -123,6 +127,33 @@ fn build_sandbox_exec_result(
     } else {
         ToolExecutionResult::success(result)
     }
+}
+
+fn build_sandbox_read_file_result(
+    response: crate::SessionSandboxReadFileResponse,
+    offset: usize,
+    limit: usize,
+) -> ToolExecutionResult {
+    if response.encoding != "text" && response.encoding != "utf-8" {
+        let bytes_returned = response.content.len();
+        let mut result = json!({
+            "path": response.path,
+            "content": response.content,
+            "encoding": response.encoding,
+            "size_bytes": bytes_returned,
+        });
+        TruncationInfo::not_truncated(bytes_returned).attach(&mut result);
+        return ToolExecutionResult::success(result);
+    }
+
+    ToolExecutionResult::success(build_text_read_file_result(
+        "sandbox_read_file",
+        &response.path,
+        &response.content,
+        &response.encoding,
+        offset,
+        limit,
+    ))
 }
 
 #[derive(Clone)]
@@ -260,7 +291,19 @@ impl Tool for SandboxReadFileTool {
         json!({
             "type": "object",
             "properties": {
-                "path": { "type": "string", "description": "Path to read inside the sandbox" }
+                "path": { "type": "string", "description": "Path to read inside the sandbox" },
+                "offset": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "default": 0,
+                    "description": "Zero-based line offset to start reading from"
+                },
+                "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "default": READ_FILE_DEFAULT_LIMIT,
+                    "description": "Maximum number of lines to return"
+                }
             },
             "required": ["path"],
             "additionalProperties": false
@@ -297,16 +340,16 @@ impl Tool for SandboxReadFileTool {
         let Some(path) = arguments.get("path").and_then(|v| v.as_str()) else {
             return ToolExecutionResult::tool_error("Missing required parameter: path");
         };
+        let (offset, limit) = match parse_read_file_window_args(&arguments) {
+            Ok(window) => window,
+            Err(err) => return ToolExecutionResult::tool_error(err),
+        };
 
         match provider
             .read_file(context, &config, &state.instance, path)
             .await
         {
-            Ok(response) => ToolExecutionResult::success(json!({
-                "path": response.path,
-                "content": response.content,
-                "encoding": response.encoding,
-            })),
+            Ok(response) => build_sandbox_read_file_result(response, offset, limit),
             Err(err) => err,
         }
     }
@@ -697,5 +740,53 @@ mod tests {
         assert_eq!(payload["exit_code"], 17);
         assert_eq!(payload["truncated"], true);
         assert_eq!(payload["hint"], "non-zero");
+    }
+
+    #[test]
+    fn sandbox_read_file_result_applies_line_window() {
+        let result = build_sandbox_read_file_result(
+            crate::SessionSandboxReadFileResponse {
+                path: "/workspace/src/lib.rs".to_string(),
+                content: "alpha\nbeta\ngamma\ndelta".to_string(),
+                encoding: "text".to_string(),
+            },
+            1,
+            2,
+        )
+        .into_tool_result("call_1", "sandbox_read_file");
+
+        let payload = result.result.unwrap();
+        assert_eq!(payload["path"], "/workspace/src/lib.rs");
+        assert_eq!(payload["content"], "2|beta\n3|gamma");
+        assert_eq!(payload["total_lines"], 4);
+        assert_eq!(payload["lines_shown"]["start"], 2);
+        assert_eq!(payload["lines_shown"]["end"], 3);
+        assert_eq!(payload["truncated"], true);
+        assert_eq!(payload["truncation"]["next_offset"], 3);
+        assert!(
+            payload["truncation"]["resume_hint"]
+                .as_str()
+                .unwrap()
+                .contains("sandbox_read_file")
+        );
+    }
+
+    #[test]
+    fn sandbox_read_file_result_marks_untruncated_window() {
+        let result = build_sandbox_read_file_result(
+            crate::SessionSandboxReadFileResponse {
+                path: "/workspace/src/lib.rs".to_string(),
+                content: "alpha\nbeta".to_string(),
+                encoding: "text".to_string(),
+            },
+            0,
+            10,
+        )
+        .into_tool_result("call_1", "sandbox_read_file");
+
+        let payload = result.result.unwrap();
+        assert_eq!(payload["content"], "1|alpha\n2|beta");
+        assert_eq!(payload["truncated"], false);
+        assert_eq!(payload["truncation"]["truncated"], false);
     }
 }

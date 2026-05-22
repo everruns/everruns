@@ -157,9 +157,9 @@ pub use compaction::{
     CompactionStrategy, CostControlConfig, CostControlMaskingResult, HierarchicalMemoryConfig,
     MaskingSummaryFormat, MemoryTier, ObservationMaskingConfig, ObservationMaskingResult,
     SessionCompactionMetrics, SummarizationConfig, aggressive_trim, apply_cost_control_masking,
-    apply_hierarchical_memory, apply_observation_masking, build_summarization_prompt,
-    build_summary_message, classify_memory_tiers, estimate_tokens, estimate_total_tokens,
-    format_messages_for_summarization, should_compact_proactively,
+    apply_hierarchical_memory, apply_observation_masking, build_model_view_messages,
+    build_summarization_prompt, build_summary_message, classify_memory_tiers, estimate_tokens,
+    estimate_total_tokens, format_messages_for_summarization, should_compact_proactively,
 };
 pub use current_time::{CurrentTimeCapability, GetCurrentTimeTool};
 pub use data_knowledge::DataKnowledgeCapability;
@@ -252,7 +252,7 @@ pub use subagents::SubagentCapability;
 pub use system_commands::{SYSTEM_COMMANDS_CAPABILITY_ID, SystemCommandsCapability};
 pub use test_math::{AddTool, DivideTool, MultiplyTool, SubtractTool, TestMathCapability};
 pub use test_weather::{GetForecastTool, GetWeatherTool, TestWeatherCapability};
-pub use tool_output_persistence::ToolOutputPersistenceCapability;
+pub use tool_output_persistence::{PersistOutputHook, ToolOutputPersistenceCapability};
 pub use virtual_bash::{BashTool, VirtualBashCapability};
 pub use web_fetch::{
     BotAuthPublicKey, WebFetchCapability, WebFetchTool, derive_bot_auth_public_key,

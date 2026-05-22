@@ -8,7 +8,8 @@ use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use everruns_core::ToolHints;
 use everruns_core::tool_output_sanitizer::{
-    clean_exec_output, output_verbosity_budget, priority_aware_truncate,
+    READ_FILE_DEFAULT_LIMIT, build_text_read_file_result, clean_exec_output,
+    output_verbosity_budget, parse_read_file_window_args, priority_aware_truncate,
 };
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::ToolContext;
@@ -322,6 +323,18 @@ impl Tool for SandboxReadFileTool {
                 "path": {
                     "type": "string",
                     "description": "Absolute path to the file inside the container"
+                },
+                "offset": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "default": 0,
+                    "description": "Zero-based line offset to start reading from"
+                },
+                "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "default": READ_FILE_DEFAULT_LIMIT,
+                    "description": "Maximum number of lines to return"
                 }
             },
             "required": ["path"],
@@ -342,6 +355,10 @@ impl Tool for SandboxReadFileTool {
             Ok(p) => p,
             Err(e) => return e,
         };
+        let (offset, limit) = match parse_read_file_window_args(&arguments) {
+            Ok(window) => window,
+            Err(err) => return ToolExecutionResult::tool_error(err),
+        };
 
         let state = match get_sandbox_state(context).await {
             Ok(s) => s,
@@ -355,7 +372,14 @@ impl Tool for SandboxReadFileTool {
             Ok(bytes) => {
                 // Try to return as text, fall back to base64
                 match String::from_utf8(bytes.clone()) {
-                    Ok(text) => ToolExecutionResult::success(text),
+                    Ok(text) => ToolExecutionResult::success(build_text_read_file_result(
+                        "sandbox_read_file",
+                        &path,
+                        &text,
+                        "text",
+                        offset,
+                        limit,
+                    )),
                     Err(_) => ToolExecutionResult::success(format!(
                         "[Binary file, {} bytes]",
                         bytes.len()

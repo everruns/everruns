@@ -735,6 +735,23 @@ pub struct CostControlMaskingResult {
     pub tool_result_bytes_after: usize,
 }
 
+static DEFAULT_MODEL_VIEW_COMPACTION_CONFIG: std::sync::LazyLock<CompactionConfig> =
+    std::sync::LazyLock::new(CompactionConfig::default);
+
+/// Build the bounded model-view messages from lossless stored messages.
+///
+/// Storage keeps full tool results. This helper defines the cheaper prompt
+/// view used for provider serialization, with cost control enabled by default
+/// even when the compaction capability itself is not configured.
+pub fn build_model_view_messages(
+    stored_messages: &[Message],
+    compaction_config: Option<&CompactionConfig>,
+    prior_usage: Option<&TokenUsage>,
+) -> CostControlMaskingResult {
+    let config = compaction_config.unwrap_or(&*DEFAULT_MODEL_VIEW_COMPACTION_CONFIG);
+    apply_cost_control_masking(stored_messages, config, prior_usage)
+}
+
 /// Apply cheap, generic cost-control masking to stored messages.
 ///
 /// This runs before converting messages to provider-specific LLM messages, so
@@ -919,7 +936,8 @@ fn summarize_tool_result(
     };
 
     match tool_name {
-        "read_file" | "daytona_read_file" | "sandbox_read_file" => {
+        "read_file" | "daytona_read_file" | "sandbox_read_file" | "e2b_read_file"
+        | "docker_read_file" | "deno_read_file" | "sprites_read_file" | "read_github_file" => {
             summarize_read_file_result(tool_name, object, value)
         }
         "bash" | "daytona_exec" | "sandbox_exec" | "e2b_exec" | "docker_exec" | "deno_exec" => {
@@ -1614,6 +1632,74 @@ mod tests {
     }
 
     #[test]
+    fn test_model_view_masks_without_compaction_config() {
+        let mut messages = vec![Message::user("inspect files repeatedly")];
+        for index in 0..9 {
+            messages.extend(make_message_tool_turn(
+                &format!("call_{index}"),
+                "read_file",
+                json!({
+                    "path": "/workspace/session_019e4c9dd1b17021af70ad3227361b16.jsonl",
+                    "content": format!("{}{}", "large transcript line\n".repeat(1000), index),
+                    "total_lines": 1000,
+                    "lines_shown": {"start": 1, "end": 1000},
+                    "truncated": false,
+                    "content_hash": format!("sha256:{index}")
+                }),
+            ));
+        }
+
+        let result = build_model_view_messages(&messages, None, None);
+
+        assert_eq!(result.masked_count, 7);
+        assert!(result.tool_result_bytes_after < result.tool_result_bytes_before / 4);
+        let first_tool = result.messages[2].tool_result_content().unwrap();
+        let masked = first_tool.result.as_ref().unwrap();
+        assert_eq!(masked["masked"], true);
+        assert!(masked["summary"].as_str().unwrap().contains("read_file"));
+        let last_tool = result
+            .messages
+            .last()
+            .unwrap()
+            .tool_result_content()
+            .unwrap();
+        assert!(last_tool.result.as_ref().unwrap().get("content").is_some());
+    }
+
+    #[test]
+    fn test_model_view_respects_disabled_cost_control_config() {
+        let mut messages = vec![Message::user("inspect files repeatedly")];
+        for index in 0..5 {
+            messages.extend(make_message_tool_turn(
+                &format!("call_{index}"),
+                "read_file",
+                json!({
+                    "path": "/workspace/src/lib.rs",
+                    "content": "line\n".repeat(400),
+                    "total_lines": 400,
+                    "lines_shown": {"start": 1, "end": 400},
+                    "truncated": false
+                }),
+            ));
+        }
+
+        let config = CompactionConfig::from_json(&json!({
+            "cost_control": {
+                "enabled": false,
+                "keep_recent_tool_results": 1,
+                "mask_after_tool_results": 2
+            }
+        }));
+        let result = build_model_view_messages(&messages, Some(&config), None);
+
+        assert_eq!(result.masked_count, 0);
+        assert_eq!(
+            result.tool_result_bytes_after,
+            result.tool_result_bytes_before
+        );
+    }
+
+    #[test]
     fn test_cost_control_uses_prior_usage_signal() {
         let mut messages = vec![Message::user("run commands")];
         for index in 0..3 {
@@ -1646,6 +1732,30 @@ mod tests {
             .as_str()
             .unwrap();
         assert!(summary.contains("bash exit=0"));
+    }
+
+    #[test]
+    fn test_model_view_uses_provider_cache_signal_by_default() {
+        let mut messages = vec![Message::user("run commands")];
+        for index in 0..3 {
+            messages.extend(make_message_tool_turn(
+                &format!("call_{index}"),
+                "bash",
+                json!({
+                    "stdout": "small output",
+                    "stderr": "",
+                    "exit_code": 0,
+                    "success": true
+                }),
+            ));
+        }
+        let usage = TokenUsage::with_cache(150_000, 100, Some(0), None);
+
+        let result = build_model_view_messages(&messages, None, Some(&usage));
+
+        assert_eq!(result.masked_count, 1);
+        let first_tool = result.messages[2].tool_result_content().unwrap();
+        assert_eq!(first_tool.result.as_ref().unwrap()["masked"], true);
     }
 
     #[test]
