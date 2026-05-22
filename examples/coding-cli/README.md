@@ -56,13 +56,16 @@ and OpenAI both do). No capability needed.
   The `bash` tool also accepts an `output` verbosity argument matching the
   built-in sandbox exec tools.
 - **Provider selection** via env vars: `OPENAI_API_KEY` → OpenAI (`gpt-5.5`),
-  `ANTHROPIC_API_KEY` → Anthropic (`claude-sonnet-4-5`), otherwise falls back
-  to `llmsim` (offline). OpenAI is preferred when both keys are present so the
-  default model stays `gpt-5.5`.
+  `ANTHROPIC_API_KEY` → Anthropic (`claude-sonnet-4-5`), `OPENROUTER_API_KEY`
+  → OpenRouter (`openai/gpt-5.2`), `OLLAMA_BASE_URL` or `OLLAMA_API_KEY` →
+  Ollama (`llama3.2`), otherwise falls back to `llmsim` (offline). OpenAI is
+  preferred when multiple provider env vars are present so the default model
+  stays `gpt-5.5`.
 - **Slash commands** (TUI): `/help`, `/tools`, `/cwd`, `/model <provider>/<id>`, `/clear`, `/quit`.
   Typing `/` opens suggestions; Tab accepts the first suggestion. `/model`
   with no argument shows the current model and suggested model IDs, while
-  `/model openai/gpt-5.5`, `/model anthropic/claude-sonnet-4-5`, or
+  `/model openai/gpt-5.5`, `/model anthropic/claude-sonnet-4-5`,
+  `/model openrouter/openai/gpt-5.2`, `/model ollama/llama3.2`, or
   `/model llmsim/llmsim-coding-cli` changes the active provider/model for
   subsequent turns. Bare model IDs still target the current provider.
 - **`--print`** one-shot mode for CI smoke tests
@@ -109,12 +112,24 @@ Offline (no API key required):
 ercode --provider llmsim -p "hi"
 ```
 
+OpenRouter, using its OpenAI-compatible Responses endpoint:
+
+```bash
+OPENROUTER_API_KEY=sk-or-... ercode --provider openrouter -m openai/gpt-5.2 -p "hi"
+```
+
+Local Ollama, using its OpenAI-compatible Responses endpoint:
+
+```bash
+OLLAMA_BASE_URL=http://localhost:11434/v1 ercode --provider ollama -m llama3.2 -p "hi"
+```
+
 ## Flags
 
 | Flag                       | Description                                                          |
 | -------------------------- | -------------------------------------------------------------------- |
 | `-C, --cwd <PATH>`         | Workspace root (default: current dir)                                |
-| `--provider <P>`           | Force `anthropic`, `openai`, or `llmsim` (default: env-detected)     |
+| `--provider <P>`           | Force `anthropic`, `openai`, `openrouter`, `ollama`, or `llmsim`     |
 | `-m, --model <ID>`         | Override the model id for the chosen provider                        |
 | `-p, --print <PROMPT>`     | Run one prompt non-interactively and print the result                |
 | `--ask`                    | Prompt before every destructive tool call (off by default)           |
@@ -122,6 +137,19 @@ ercode --provider llmsim -p "hi"
 | `--session-dir <PATH>`     | Override the session-log directory (default: XDG data dir)           |
 
 `RUST_LOG` is honored for the underlying tracing layer (writes to stderr).
+
+Provider env vars:
+
+| Env var                         | Description                                                 |
+| ------------------------------- | ----------------------------------------------------------- |
+| `OPENAI_API_KEY`                | Select OpenAI unless `--provider` overrides it              |
+| `ANTHROPIC_API_KEY`             | Select Anthropic when OpenAI is not configured              |
+| `OPENROUTER_API_KEY`            | Select OpenRouter when OpenAI/Anthropic are not configured  |
+| `OPENROUTER_BASE_URL`           | Optional, defaults to `https://openrouter.ai/api/v1`        |
+| `OLLAMA_BASE_URL`               | Select Ollama, defaults to `http://localhost:11434/v1`      |
+| `OLLAMA_API_KEY`                | Optional, defaults to `ollama` for local Ollama             |
+| `EVERRUNS_CLI_MODEL`            | Override the auto-selected default model                    |
+| `EVERRUNS_CLI_REASONING_EFFORT` | OpenAI-only reasoning effort override                       |
 
 ## Session persistence
 
