@@ -3,6 +3,9 @@
 use async_trait::async_trait;
 use everruns_core::ToolHints;
 use everruns_core::exec_tool_result::ExecToolResultPayload;
+use everruns_core::tool_output_sanitizer::{
+    READ_FILE_DEFAULT_LIMIT, build_text_read_file_result, parse_read_file_window_args,
+};
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::ToolContext;
 use serde_json::{Value, json};
@@ -360,7 +363,19 @@ impl Tool for E2BReadFileTool {
             "type": "object",
             "properties": {
                 "sandbox_id": {"type": "string"},
-                "path": {"type": "string"}
+                "path": {"type": "string"},
+                "offset": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "default": 0,
+                    "description": "Zero-based line offset to start reading from"
+                },
+                "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "default": READ_FILE_DEFAULT_LIMIT,
+                    "description": "Maximum number of lines to return"
+                }
             },
             "required": ["sandbox_id", "path"],
             "additionalProperties": false
@@ -397,17 +412,28 @@ impl Tool for E2BReadFileTool {
             Ok(value) => value,
             Err(err) => return err,
         };
+        let (offset, limit) = match parse_read_file_window_args(&arguments) {
+            Ok(window) => window,
+            Err(err) => return ToolExecutionResult::tool_error(err),
+        };
         let state = match get_sandbox_state(context, sandbox_id).await {
             Ok(state) => state,
             Err(err) => return err,
         };
         let client = E2BClient::new(api_key);
         match client.read_file(&state, path).await {
-            Ok(content) => ToolExecutionResult::success(json!({
-                "sandbox_id": sandbox_id,
-                "path": path,
-                "content": content,
-            })),
+            Ok(content) => {
+                let mut result = build_text_read_file_result(
+                    "e2b_read_file",
+                    path,
+                    &content,
+                    "text",
+                    offset,
+                    limit,
+                );
+                result["sandbox_id"] = json!(sandbox_id);
+                ToolExecutionResult::success(result)
+            }
             Err(err) => ToolExecutionResult::tool_error(err),
         }
     }

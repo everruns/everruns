@@ -850,28 +850,24 @@ impl ReasonAtom {
         // 9. Patch dangling tool calls (add cancelled results for tool calls without responses)
         let patched_messages = patch_dangling_tool_calls(&messages);
 
-        // 9b. Apply cost-oriented masking before provider serialization.
-        // This keeps stale bulky tool results from being paid for repeatedly
-        // even when the model's context window is still large enough.
-        let context_messages = if let Some(ref config) = compaction_config {
-            let masking = crate::capabilities::apply_cost_control_masking(
-                &patched_messages,
-                config,
-                prior_usage.as_ref(),
+        // 9b. Build the prompt-facing model view from lossless stored
+        // messages. This keeps stale bulky tool results from being paid for
+        // repeatedly even when no compaction capability is configured.
+        let masking = crate::capabilities::build_model_view_messages(
+            &patched_messages,
+            compaction_config.as_ref(),
+            prior_usage.as_ref(),
+        );
+        if masking.masked_count > 0 {
+            tracing::info!(
+                session_id = %session_id,
+                masked_count = masking.masked_count,
+                tool_result_bytes_before = masking.tool_result_bytes_before,
+                tool_result_bytes_after = masking.tool_result_bytes_after,
+                "ReasonAtom: model-view cost-control masked stale tool results"
             );
-            if masking.masked_count > 0 {
-                tracing::info!(
-                    session_id = %session_id,
-                    masked_count = masking.masked_count,
-                    tool_result_bytes_before = masking.tool_result_bytes_before,
-                    tool_result_bytes_after = masking.tool_result_bytes_after,
-                    "ReasonAtom: cost-control masked stale tool results"
-                );
-            }
-            masking.messages
-        } else {
-            patched_messages
-        };
+        }
+        let context_messages = masking.messages;
 
         // 10. Resolve images from image_file references (if any)
         //

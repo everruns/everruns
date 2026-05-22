@@ -95,7 +95,7 @@ Capability hooks involved:
 
 ### Reading-tool output contract
 
-Every reading tool attaches a shared `truncation` envelope to its JSON response so LLM callers can detect partial output, understand why it was cut, and resume or fall back without regex-matching human markers. The envelope is additive — existing flat fields like `truncated`, `total_lines`, and `row_count` stay in place for back-compat.
+Every reading tool attaches a shared `truncation` envelope to its JSON response so LLM callers can detect partial output, understand why it was cut, and resume or fall back without regex-matching human markers. The envelope is additive — existing flat fields like `truncated`, `total_lines`, and `row_count` stay in place for back-compat. File-reading tools, including session-sandbox-backed reads such as `sandbox_read_file`, accept `offset` and `limit` and return only that line window for text files.
 
 See [`crates/core/src/truncation_info.rs`](../crates/core/src/truncation_info.rs) for the source of truth: `TruncationInfo`, `TruncationReason`, and the `assert_conforms` conformance helper.
 
@@ -262,9 +262,10 @@ Two hook slots run in sequence:
 2. **Final hooks** (`final_post_tool_hooks`) — always-on infrastructure (e.g. EVE-225 hard limit)
 
 Current hooks:
-- **PersistOutputHook** (`tool_output_persistence` capability, included in Generic harness): When a tool declares `persist_output: true` in hints, writes stdout to `/.outputs/{tool_call_id}.stdout` and stderr to `/.outputs/{tool_call_id}.stderr` in session VFS, injecting `full_output`, `total_lines`, and `output_files` into the result. See `crates/core/src/capabilities/tool_output_persistence.rs`.
+- **PersistOutputHook** (`tool_output_persistence` capability; also installed as an always-on final hook): When a tool declares `persist_output: true` in hints, writes stdout to `/.outputs/{tool_call_id}.stdout` and stderr to `/.outputs/{tool_call_id}.stderr` in session VFS, injecting `full_output`, `total_lines`, and `output_files` into the result. It skips cleanly if no session file store is present, and skips if another hook already injected `output_files`. See `crates/core/src/capabilities/tool_output_persistence.rs`.
 
 Current final hooks (always-on, cannot be removed):
+- **PersistOutputHook**: Persists full output for any tool that declares `persist_output: true` before hard-limit truncation, independent of whether a harness explicitly enabled the persistence capability.
 - **OutputHardLimitHook** (EVE-225): Enforces a 64 KiB hard ceiling on serialized tool result text. Head-truncation with UTF-8 safety; appends an LLM-actionable suffix. Logs `tracing::warn!` with tool_name, tool_call_id, result_bytes, limit when truncating. Fires regardless of which capabilities are active. See `crates/core/src/atoms/act_hooks.rs`.
 
 ### Loop Detection (EVE-227)

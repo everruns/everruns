@@ -5,6 +5,9 @@
 
 use async_trait::async_trait;
 use everruns_core::ToolHints;
+use everruns_core::tool_output_sanitizer::{
+    READ_FILE_DEFAULT_LIMIT, build_text_read_file_result, parse_read_file_window_args,
+};
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::ToolContext;
 use serde_json::{Value, json};
@@ -337,7 +340,19 @@ impl Tool for DenoReadFileTool {
             "type": "object",
             "properties": {
                 "sandbox_id": { "type": "string", "description": "Sandbox ID" },
-                "path": { "type": "string", "description": "Path to read" }
+                "path": { "type": "string", "description": "Path to read" },
+                "offset": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "default": 0,
+                    "description": "Zero-based line offset to start reading from"
+                },
+                "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "default": READ_FILE_DEFAULT_LIMIT,
+                    "description": "Maximum number of lines to return"
+                }
             },
             "required": ["sandbox_id", "path"],
             "additionalProperties": false
@@ -370,6 +385,10 @@ impl Tool for DenoReadFileTool {
             Ok(value) => value,
             Err(error) => return error,
         };
+        let (offset, limit) = match parse_read_file_window_args(&arguments) {
+            Ok(window) => window,
+            Err(err) => return ToolExecutionResult::tool_error(err),
+        };
 
         let credentials = match get_credentials(context).await {
             Ok(credentials) => credentials,
@@ -389,10 +408,10 @@ impl Tool for DenoReadFileTool {
             return error;
         }
 
-        ToolExecutionResult::success(json!({
-            "path": path,
-            "content": content,
-        }))
+        let mut result =
+            build_text_read_file_result("deno_read_file", path, &content, "text", offset, limit);
+        result["sandbox_id"] = json!(sandbox_id);
+        ToolExecutionResult::success(result)
     }
 
     fn requires_context(&self) -> bool {

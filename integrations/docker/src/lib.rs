@@ -20,6 +20,9 @@
 
 use everruns_core::ToolHints;
 use everruns_core::capabilities::{Capability, CapabilityStatus, IntegrationPlugin, RiskLevel};
+use everruns_core::tool_output_sanitizer::{
+    READ_FILE_DEFAULT_LIMIT, build_text_read_file_result, parse_read_file_window_args,
+};
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::ToolContext;
 
@@ -501,6 +504,18 @@ impl Tool for DockerReadFileTool {
                     "type": "string",
                     "description": "Absolute path to the file inside the container (e.g., '/workspace/main.py')"
                 },
+                "offset": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "default": 0,
+                    "description": "Zero-based line offset to start reading from"
+                },
+                "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "default": READ_FILE_DEFAULT_LIMIT,
+                    "description": "Maximum number of lines to return"
+                },
                 "config": {
                     "type": "object",
                     "description": "Container configuration (image, working_dir). Usually provided by capability config.",
@@ -535,6 +550,10 @@ impl Tool for DockerReadFileTool {
         let path = match arguments.get("path").and_then(|v| v.as_str()) {
             Some(p) => p,
             None => return ToolExecutionResult::tool_error("Missing required parameter: path"),
+        };
+        let (offset, limit) = match parse_read_file_window_args(&arguments) {
+            Ok(window) => window,
+            Err(err) => return ToolExecutionResult::tool_error(err),
         };
 
         let config = arguments
@@ -574,11 +593,14 @@ impl Tool for DockerReadFileTool {
 
         let content = String::from_utf8_lossy(&output.stdout).to_string();
 
-        ToolExecutionResult::success(json!({
-            "path": path,
-            "content": content,
-            "size_bytes": content.len()
-        }))
+        ToolExecutionResult::success(build_text_read_file_result(
+            "docker_read_file",
+            path,
+            &content,
+            "text",
+            offset,
+            limit,
+        ))
     }
 
     fn requires_context(&self) -> bool {

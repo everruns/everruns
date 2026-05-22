@@ -1,5 +1,8 @@
 //! Tool implementations for Sprites operations.
 
+use everruns_core::tool_output_sanitizer::{
+    READ_FILE_DEFAULT_LIMIT, build_text_read_file_result, parse_read_file_window_args,
+};
 use everruns_core::tool_types::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::ToolContext;
@@ -341,6 +344,18 @@ impl Tool for SpritesReadFileTool {
                 "path": {
                     "type": "string",
                     "description": "Path to file (e.g., '/home/sprite/main.py')"
+                },
+                "offset": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "default": 0,
+                    "description": "Zero-based line offset to start reading from"
+                },
+                "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "default": READ_FILE_DEFAULT_LIMIT,
+                    "description": "Maximum number of lines to return"
                 }
             },
             "required": ["sprite_name", "path"],
@@ -367,6 +382,10 @@ impl Tool for SpritesReadFileTool {
             Ok(s) => s,
             Err(e) => return e,
         };
+        let (offset, limit) = match parse_read_file_window_args(&arguments) {
+            Ok(window) => window,
+            Err(err) => return ToolExecutionResult::tool_error(err),
+        };
 
         let api_token = match get_api_token(context).await {
             Ok(t) => t,
@@ -385,10 +404,16 @@ impl Tool for SpritesReadFileTool {
                     return e;
                 }
                 let content = String::from_utf8_lossy(&bytes).to_string();
-                ToolExecutionResult::success(json!({
-                    "path": path,
-                    "content": content
-                }))
+                let mut result = build_text_read_file_result(
+                    "sprites_read_file",
+                    path,
+                    &content,
+                    "text",
+                    offset,
+                    limit,
+                );
+                result["sprite_name"] = json!(sprite_name);
+                ToolExecutionResult::success(result)
             }
             Err(e) => ToolExecutionResult::tool_error(e),
         }
