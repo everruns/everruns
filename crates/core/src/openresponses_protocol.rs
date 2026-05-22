@@ -1197,17 +1197,35 @@ fn handle_streaming_event(
                     LlmStreamEvent::TextDelta(String::new())
                 }
                 Some(types::OutputItem::Reasoning {
-                    encrypted_content: Some(encrypted),
-                    ..
+                    id,
+                    summary,
+                    content: _, // plaintext reasoning content is intentionally not propagated
+                    encrypted_content,
                 }) => {
-                    // Emit encrypted reasoning content as ThinkingSignature
-                    // This is the OpenAI equivalent of Anthropic's thinking signature
-                    // and must be included in subsequent API calls to preserve reasoning context
+                    // Plaintext reasoning content from the provider is intentionally
+                    // dropped here so it never reaches persisted events. Only the
+                    // provider's opaque encrypted artifact and curated summary text
+                    // travel forward.
+                    let safe_summary: Vec<String> = summary
+                        .into_iter()
+                        .filter_map(|part| match part {
+                            types::ContentPart::SummaryText { text } => Some(text),
+                            _ => None,
+                        })
+                        .collect();
                     tracing::debug!(
-                        encrypted_len = encrypted.len(),
-                        "OpenResponses: received encrypted reasoning content"
+                        encrypted_len = encrypted_content.as_ref().map(|s| s.len()).unwrap_or(0),
+                        summary_segments = safe_summary.len(),
+                        "OpenResponses: received reasoning item"
                     );
-                    LlmStreamEvent::ThinkingSignature(encrypted)
+                    LlmStreamEvent::ReasonItem {
+                        provider: "openai".to_string(),
+                        model: Some(model.clone()),
+                        item_id: id,
+                        encrypted_content,
+                        summary: safe_summary,
+                        token_count: None,
+                    }
                 }
                 _ => LlmStreamEvent::TextDelta(String::new()),
             }
@@ -2464,12 +2482,27 @@ mod tests {
             None,
         );
 
-        // Should emit ThinkingSignature with the encrypted content
+        // Should emit ReasonItem with the encrypted content and metadata
         match result {
-            LlmStreamEvent::ThinkingSignature(sig) => {
-                assert_eq!(sig, "encrypted_reasoning_data");
+            LlmStreamEvent::ReasonItem {
+                provider,
+                model,
+                item_id,
+                encrypted_content,
+                summary,
+                token_count,
+            } => {
+                assert_eq!(provider, "openai");
+                assert_eq!(model.as_deref(), Some("gpt-5"));
+                assert_eq!(item_id, "rs_001");
+                assert_eq!(
+                    encrypted_content.as_deref(),
+                    Some("encrypted_reasoning_data")
+                );
+                assert!(summary.is_empty());
+                assert!(token_count.is_none());
             }
-            _ => panic!("Expected ThinkingSignature event, got {:?}", result),
+            other => panic!("Expected ReasonItem event, got {:?}", other),
         }
     }
 
@@ -2508,12 +2541,78 @@ mod tests {
             None,
         );
 
-        // Should emit empty TextDelta (not ThinkingSignature)
+        // Should still emit ReasonItem carrying the safe summary even when no
+        // encrypted content is present so the durable reasoning record survives.
         match result {
-            LlmStreamEvent::TextDelta(text) => {
-                assert!(text.is_empty());
+            LlmStreamEvent::ReasonItem {
+                provider,
+                item_id,
+                encrypted_content,
+                summary,
+                ..
+            } => {
+                assert_eq!(provider, "openai");
+                assert_eq!(item_id, "rs_001");
+                assert!(encrypted_content.is_none());
+                assert_eq!(summary, vec!["Some summary".to_string()]);
             }
-            _ => panic!("Expected empty TextDelta, got {:?}", result),
+            other => panic!("Expected ReasonItem event, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_handle_streaming_event_reasoning_drops_plaintext_content() {
+        use std::sync::Mutex;
+
+        let input_tokens = Mutex::new(0u32);
+        let output_tokens = Mutex::new(0u32);
+        let cache_read_tokens = Mutex::new(None);
+        let accumulated_tool_calls = Mutex::new(Vec::new());
+        let finish_reason = Mutex::new(None);
+
+        // Reasoning item with plaintext content and a non-summary content part in `summary`.
+        // Both must be excluded from the emitted ReasonItem.
+        let event = StreamingEvent::OutputItemDone {
+            sequence_number: 5,
+            output_index: 0,
+            item: Some(types::OutputItem::Reasoning {
+                id: "rs_002".to_string(),
+                summary: vec![
+                    types::ContentPart::SummaryText {
+                        text: "safe summary".to_string(),
+                    },
+                    types::ContentPart::ReasoningText {
+                        text: "SECRET hidden reasoning".to_string(),
+                    },
+                ],
+                content: Some(vec![types::ContentPart::ReasoningText {
+                    text: "SECRET hidden reasoning".to_string(),
+                }]),
+                encrypted_content: Some("opaque".to_string()),
+            }),
+        };
+
+        let result = handle_streaming_event(
+            event,
+            &input_tokens,
+            &output_tokens,
+            &cache_read_tokens,
+            &accumulated_tool_calls,
+            &finish_reason,
+            "gpt-5".to_string(),
+            None,
+        );
+
+        match result {
+            LlmStreamEvent::ReasonItem {
+                summary,
+                encrypted_content,
+                ..
+            } => {
+                assert_eq!(summary, vec!["safe summary".to_string()]);
+                assert_eq!(encrypted_content.as_deref(), Some("opaque"));
+            }
+            other => panic!("Expected ReasonItem event, got {:?}", other),
         }
     }
 

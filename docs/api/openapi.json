@@ -15267,6 +15267,9 @@
             "$ref": "#/components/schemas/ReasonThinkingDeltaData"
           },
           {
+            "$ref": "#/components/schemas/ReasonItemData"
+          },
+          {
             "$ref": "#/components/schemas/ReasonThinkingStartedData"
           },
           {
@@ -23431,6 +23434,60 @@
                 "description": "Token usage from the LLM call"
               }
             ]
+          }
+        }
+      },
+      "ReasonItemData": {
+        "type": "object",
+        "description": "Data for `reason.item` event.\n\nDurable record of an opaque assistant reasoning response item (e.g., OpenAI\nResponses API reasoning items). Carries provider-supplied opaque artifacts\nand curated summary text only. Plaintext hidden chain-of-thought is never\npersisted in this event — emitters must strip any plaintext reasoning\ncontent before constructing it.",
+        "required": [
+          "turn_id",
+          "provider",
+          "item_id"
+        ],
+        "properties": {
+          "encrypted_content": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Provider-encrypted reasoning context, if supplied. Opaque to consumers."
+          },
+          "item_id": {
+            "type": "string",
+            "description": "Provider-assigned identifier for the reasoning item."
+          },
+          "model": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Model identifier reported by the provider, if known."
+          },
+          "provider": {
+            "type": "string",
+            "description": "Provider that produced the reasoning item (e.g., \"openai\")."
+          },
+          "summary": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Safe summary text segments curated by the provider. Never includes\nplaintext reasoning content."
+          },
+          "token_count": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Per-item reasoning token count, when the provider reports one.",
+            "minimum": 0
+          },
+          "turn_id": {
+            "type": "string",
+            "description": "Turn ID this reasoning item belongs to.",
+            "example": "turn_01933b5a00007000800000000000001"
           }
         }
       },

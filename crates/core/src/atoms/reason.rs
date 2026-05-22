@@ -32,9 +32,9 @@ use crate::events::{
     CapabilityUsageData, CapabilityUsageKind, CapabilityUsageRecord, EventContext, EventRequest,
     LlmCompactionInfo, LlmGenerationData, LlmPromptCacheInfo, LlmRequestOptions, LlmRetryInfo,
     LlmToolSearchInfo, OutputMessageCompletedData, OutputMessageDeltaData,
-    OutputMessageReplacedData, OutputMessageStartedData, ReasonCompletedData, ReasonStartedData,
-    ReasonThinkingCompletedData, ReasonThinkingDeltaData, ReasonThinkingStartedData, TokenUsage,
-    ToolDefinitionSummary,
+    OutputMessageReplacedData, OutputMessageStartedData, ReasonCompletedData, ReasonItemData,
+    ReasonStartedData, ReasonThinkingCompletedData, ReasonThinkingDeltaData,
+    ReasonThinkingStartedData, TokenUsage, ToolDefinitionSummary,
 };
 use crate::llm_driver_registry::{
     DriverRegistry, LlmCallConfigBuilder, LlmCompletionMetadata, LlmMessage, LlmMessageContent,
@@ -1685,6 +1685,53 @@ impl ReasonAtom {
                             "ReasonAtom: received ThinkingSignature from LLM"
                         );
                         thinking_signature = Some(signature);
+                    }
+                    LlmStreamEvent::ReasonItem {
+                        provider,
+                        model,
+                        item_id,
+                        encrypted_content,
+                        summary,
+                        token_count,
+                    } => {
+                        // Preserve the opaque artifact as the assistant message's
+                        // thinking_signature so the next request can replay
+                        // reasoning context, and emit a durable reason.item event
+                        // for trace/session review. Plaintext reasoning content is
+                        // never included.
+                        if let Some(sig) = encrypted_content.as_ref() {
+                            tracing::debug!(
+                                session_id = %session_id,
+                                signature_len = sig.len(),
+                                provider = %provider,
+                                item_id = %item_id,
+                                "ReasonAtom: captured encrypted reasoning content from ReasonItem"
+                            );
+                            thinking_signature = Some(sig.clone());
+                        }
+                        if let Err(e) = self
+                            .event_emitter
+                            .emit(EventRequest::new(
+                                session_id,
+                                streaming_event_context.clone(),
+                                ReasonItemData {
+                                    turn_id: context.turn_id,
+                                    provider,
+                                    model,
+                                    item_id,
+                                    encrypted_content,
+                                    summary,
+                                    token_count,
+                                },
+                            ))
+                            .await
+                        {
+                            tracing::warn!(
+                                session_id = %session_id,
+                                error = %e,
+                                "ReasonAtom: failed to emit reason.item event"
+                            );
+                        }
                     }
                     LlmStreamEvent::ToolCalls(calls) => {
                         tool_calls = calls;

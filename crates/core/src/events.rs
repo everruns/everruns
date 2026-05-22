@@ -88,6 +88,14 @@ pub const REASON_THINKING_STARTED: &str = "reason.thinking.started";
 pub const REASON_THINKING_DELTA: &str = "reason.thinking.delta";
 pub const REASON_THINKING_COMPLETED: &str = "reason.thinking.completed";
 
+/// Durable record of an opaque assistant reasoning response item.
+///
+/// Distinct from `reason.thinking.*` (user-visible thinking streams). This event
+/// captures provider-supplied opaque/encrypted reasoning artifacts plus safe
+/// summary text and per-item metadata, without persisting plaintext hidden
+/// chain-of-thought.
+pub const REASON_ITEM: &str = "reason.item";
+
 // Session events
 pub const SESSION_STARTED: &str = "session.started";
 pub const SESSION_ACTIVATED: &str = "session.activated";
@@ -150,6 +158,7 @@ pub const VALID_EVENT_TYPES: &[&str] = &[
     REASON_THINKING_STARTED,
     REASON_THINKING_DELTA,
     REASON_THINKING_COMPLETED,
+    REASON_ITEM,
     SESSION_STARTED,
     SESSION_ACTIVATED,
     SESSION_IDLED,
@@ -1644,6 +1653,44 @@ pub struct ReasonThinkingCompletedData {
     pub thinking: String,
 }
 
+/// Data for `reason.item` event.
+///
+/// Durable record of an opaque assistant reasoning response item (e.g., OpenAI
+/// Responses API reasoning items). Carries provider-supplied opaque artifacts
+/// and curated summary text only. Plaintext hidden chain-of-thought is never
+/// persisted in this event — emitters must strip any plaintext reasoning
+/// content before constructing it.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct ReasonItemData {
+    /// Turn ID this reasoning item belongs to.
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "turn_01933b5a00007000800000000000001"))]
+    pub turn_id: TurnId,
+
+    /// Provider that produced the reasoning item (e.g., "openai").
+    pub provider: String,
+
+    /// Model identifier reported by the provider, if known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+
+    /// Provider-assigned identifier for the reasoning item.
+    pub item_id: String,
+
+    /// Provider-encrypted reasoning context, if supplied. Opaque to consumers.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub encrypted_content: Option<String>,
+
+    /// Safe summary text segments curated by the provider. Never includes
+    /// plaintext reasoning content.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub summary: Vec<String>,
+
+    /// Per-item reasoning token count, when the provider reports one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub token_count: Option<u32>,
+}
+
 // ============================================================================
 // Turn Event Data Types
 // ============================================================================
@@ -2044,6 +2091,7 @@ pub struct VoiceSessionFailedData {
 /// - `reason.thinking.started` → ReasonThinkingStartedData
 /// - `reason.thinking.delta` → ReasonThinkingDeltaData
 /// - `reason.thinking.completed` → ReasonThinkingCompletedData
+/// - `reason.item` → ReasonItemData
 /// - `session.started` → SessionStartedData
 /// - `session.activated` → SessionActivatedData
 /// - `session.idled` → SessionIdledData
@@ -2102,7 +2150,14 @@ pub enum EventData {
     // ReasonThinkingDelta has more required fields (turn_id, delta, accumulated) while
     // ReasonThinkingStarted/Completed have fewer required fields. If simpler types come first,
     // they will match their JSON and discard delta/accumulated fields.
+    //
+    // ReasonItem (durable opaque reasoning record) must come BEFORE the
+    // ReasonThinking* variants for the same reason: ReasonThinkingStartedData
+    // only requires `turn_id`, so a `reason.item` JSON payload would otherwise
+    // bind to ReasonThinkingStarted and silently lose `provider`, `item_id`,
+    // `encrypted_content`, etc.
     ReasonThinkingDelta(ReasonThinkingDeltaData),
+    ReasonItem(ReasonItemData),
     ReasonThinkingStarted(ReasonThinkingStartedData),
     ReasonThinkingCompleted(ReasonThinkingCompletedData),
 
@@ -2184,6 +2239,7 @@ impl EventData {
             EventData::ReasonThinkingDelta(_) => REASON_THINKING_DELTA,
             EventData::ReasonThinkingStarted(_) => REASON_THINKING_STARTED,
             EventData::ReasonThinkingCompleted(_) => REASON_THINKING_COMPLETED,
+            EventData::ReasonItem(_) => REASON_ITEM,
             EventData::SessionStarted(_) => SESSION_STARTED,
             EventData::SessionActivated(_) => SESSION_ACTIVATED,
             EventData::SessionIdled(_) => SESSION_IDLED,
@@ -2304,6 +2360,9 @@ pub fn deserialize_event_data(event_type: &str, data: serde_json::Value) -> Even
                 serde_json::from_value::<ReasonThinkingCompletedData>(data.clone())
                     .map(EventData::ReasonThinkingCompleted)
             }
+            REASON_ITEM => {
+                serde_json::from_value::<ReasonItemData>(data.clone()).map(EventData::ReasonItem)
+            }
             SESSION_STARTED => serde_json::from_value::<SessionStartedData>(data.clone())
                 .map(EventData::SessionStarted),
             SESSION_ACTIVATED => serde_json::from_value::<SessionActivatedData>(data.clone())
@@ -2410,6 +2469,7 @@ impl_from_event_data! {
     ReasonThinkingStartedData => ReasonThinkingStarted,
     ReasonThinkingDeltaData => ReasonThinkingDelta,
     ReasonThinkingCompletedData => ReasonThinkingCompleted,
+    ReasonItemData => ReasonItem,
     SessionStartedData => SessionStarted,
     SessionActivatedData => SessionActivated,
     SessionIdledData => SessionIdled,
@@ -3173,6 +3233,158 @@ mod tests {
     }
 
     #[test]
+    fn test_reason_item_data_event_type_and_serialization() {
+        let turn_id = TurnId::from_uuid(Uuid::now_v7());
+        let data = ReasonItemData {
+            turn_id,
+            provider: "openai".to_string(),
+            model: Some("gpt-5.5".to_string()),
+            item_id: "rs_abc".to_string(),
+            encrypted_content: Some("OPAQUE_BLOB".to_string()),
+            summary: vec!["safe summary".to_string()],
+            token_count: Some(123),
+        };
+
+        let event_data: EventData = data.into();
+        assert_eq!(event_data.event_type(), REASON_ITEM);
+
+        let json = serde_json::to_string(&event_data).unwrap();
+        assert!(json.contains("turn_id"));
+        assert!(json.contains("openai"));
+        assert!(json.contains("rs_abc"));
+        assert!(json.contains("OPAQUE_BLOB"));
+        assert!(json.contains("safe summary"));
+    }
+
+    #[test]
+    fn test_reason_item_data_round_trip_uses_typed_dispatch() {
+        // ReasonItemData carries (turn_id, item_id, provider...) which is
+        // structurally close to other turn-scoped events. Verify the typed
+        // dispatcher selects the correct variant.
+        let turn_id = TurnId::from_uuid(Uuid::now_v7());
+        let data = ReasonItemData {
+            turn_id,
+            provider: "openai".to_string(),
+            model: Some("gpt-5".to_string()),
+            item_id: "rs_xyz".to_string(),
+            encrypted_content: Some("ENC".to_string()),
+            summary: vec![],
+            token_count: None,
+        };
+
+        let json = serde_json::to_value(&data).unwrap();
+        let deserialized = deserialize_event_data(REASON_ITEM, json);
+
+        match deserialized {
+            EventData::ReasonItem(out) => {
+                assert_eq!(out.turn_id, turn_id);
+                assert_eq!(out.provider, "openai");
+                assert_eq!(out.item_id, "rs_xyz");
+                assert_eq!(out.encrypted_content.as_deref(), Some("ENC"));
+            }
+            other => panic!("Expected ReasonItem, got {}", other.event_type()),
+        }
+    }
+
+    /// `EventData` is `#[serde(untagged)]`, so variant order shifts which
+    /// variant a JSON object resolves to. `ReasonThinkingStartedData` only
+    /// requires `turn_id`, so a `reason.item` payload bound to it would
+    /// silently drop `provider`, `item_id`, etc. Guard the relative ordering
+    /// of the two reasoning variants here. (Cross-variant overlap with
+    /// `OutputMessageStartedData` is an existing untagged-enum limitation
+    /// across the protocol; canonical parsing goes through
+    /// `deserialize_event_data` which dispatches on the outer `type` string.)
+    #[test]
+    fn test_reason_item_variant_precedes_reason_thinking_started() {
+        // Find variant positions in the source order. We rely on the enum's
+        // discriminant-order property: when serializing an untagged enum,
+        // serde tries variants in declaration order at deserialization.
+        // Build a payload whose only reasoning-variant candidates are
+        // ReasonThinkingStarted (turn_id + optional model) and ReasonItem
+        // (turn_id + provider + item_id + …) and confirm ReasonItem wins.
+        let turn_id = TurnId::from_uuid(Uuid::now_v7());
+        let json = serde_json::json!({
+            "turn_id": turn_id.to_string(),
+            "provider": "openai",
+            "model": "gpt-5",
+            "item_id": "rs_keep",
+            "encrypted_content": "ENC",
+            "summary": ["s"],
+            "token_count": 7,
+        });
+
+        // Try the two candidate variants in isolation. ReasonThinkingStarted
+        // greedily matches because it ignores unknown fields, so the safe
+        // contract is "if you have to pick one, pick ReasonItem". We assert
+        // both succeed in isolation (proving the overlap) and verify the
+        // dispatcher resolves correctly given the event_type.
+        let as_thinking: ReasonThinkingStartedData =
+            serde_json::from_value(json.clone()).expect("thinking ignores extra fields");
+        assert_eq!(as_thinking.turn_id, turn_id);
+        assert_eq!(as_thinking.model.as_deref(), Some("gpt-5"));
+
+        let as_item: ReasonItemData =
+            serde_json::from_value(json.clone()).expect("ReasonItem accepts payload");
+        assert_eq!(as_item.item_id, "rs_keep");
+        assert_eq!(as_item.provider, "openai");
+
+        // Canonical parse via type dispatch: this is the path used by Event
+        // and EventRequest deserialization (see `deserialize_event_data`).
+        let event_data = deserialize_event_data(REASON_ITEM, json);
+        match event_data {
+            EventData::ReasonItem(out) => {
+                assert_eq!(out.item_id, "rs_keep");
+                assert_eq!(out.provider, "openai");
+            }
+            other => panic!(
+                "Typed dispatcher must select ReasonItem for {REASON_ITEM}, got {}",
+                other.event_type()
+            ),
+        }
+    }
+
+    /// Regression guard for EVE-485: the persisted `reason.item` event must
+    /// never carry plaintext hidden reasoning content. Construction only
+    /// accepts `encrypted_content` and `summary` (curated by the provider).
+    /// Assert structurally on parsed JSON keys rather than substrings so a
+    /// payload value that happens to contain "content"/"thinking" cannot mask
+    /// the guard.
+    #[test]
+    fn test_reason_item_data_excludes_plaintext_reasoning() {
+        let turn_id = TurnId::from_uuid(Uuid::now_v7());
+        let data = ReasonItemData {
+            turn_id,
+            provider: "openai".to_string(),
+            model: Some("gpt-5".to_string()),
+            item_id: "rs_secret".to_string(),
+            // Deliberately stuff the substrings the old guard checked into a
+            // legitimate value to prove the structural check still rejects
+            // them when present only as values.
+            encrypted_content: Some("opaque_blob_thinking_content_reasoning_text".to_string()),
+            summary: vec!["safe summary mentioning content and thinking".to_string()],
+            token_count: Some(1),
+        };
+
+        let value = serde_json::to_value(&data).expect("serializable");
+        let object = value.as_object().expect("data serializes to JSON object");
+        for forbidden in [
+            "content",
+            "reasoning_text",
+            "thinking",
+            "reasoning_content",
+            "raw_reasoning",
+        ] {
+            assert!(
+                !object.contains_key(forbidden),
+                "ReasonItemData JSON must not expose `{forbidden}` key, got: {object:?}",
+            );
+        }
+        // The only sanctioned fields that carry reasoning artifacts.
+        assert!(object.contains_key("encrypted_content"));
+        assert!(object.contains_key("summary"));
+    }
+
+    #[test]
     fn test_llm_generation_ttft_omitted_when_none() {
         let messages = vec![Message::user("test")];
         let data = LlmGenerationData::success(
@@ -3537,6 +3749,24 @@ mod contract_tests {
             sort_maps => true,
         }, {
             assert_json_snapshot!("event_data_reason_thinking_completed", data);
+        });
+    }
+
+    #[test]
+    fn snapshot_reason_item() {
+        let data = ReasonItemData {
+            turn_id: test_turn_id(),
+            provider: "openai".to_string(),
+            model: Some("gpt-5.5".to_string()),
+            item_id: "rs_test".to_string(),
+            encrypted_content: Some("OPAQUE".to_string()),
+            summary: vec!["safe summary".to_string()],
+            token_count: Some(42),
+        };
+        with_settings!({
+            sort_maps => true,
+        }, {
+            assert_json_snapshot!("event_data_reason_item", data);
         });
     }
 

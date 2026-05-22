@@ -42,6 +42,25 @@ pub enum LlmStreamEvent {
     /// Cryptographic signature for thinking content (Anthropic Claude)
     /// Emitted when a thinking block completes, before the Done event
     ThinkingSignature(String),
+    /// Opaque assistant reasoning response item (OpenAI Responses).
+    /// Carries provider-supplied opaque/encrypted reasoning artifacts plus safe
+    /// summary text and per-item metadata. Plaintext hidden reasoning content is
+    /// intentionally excluded so callers can persist this without exposing
+    /// chain-of-thought.
+    ReasonItem {
+        /// Provider name (e.g., "openai").
+        provider: String,
+        /// Model identifier reported by the provider, if known.
+        model: Option<String>,
+        /// Provider-assigned identifier for the reasoning item.
+        item_id: String,
+        /// Provider-encrypted reasoning context, if supplied.
+        encrypted_content: Option<String>,
+        /// Safe summary text segments curated by the provider.
+        summary: Vec<String>,
+        /// Per-item reasoning token count, when the provider reports one.
+        token_count: Option<u32>,
+    },
     /// Tool calls from the LLM
     ToolCalls(Vec<ToolCall>),
     /// Streaming completed
@@ -141,6 +160,13 @@ pub trait LlmDriver: Send + Sync {
                 LlmStreamEvent::TextDelta(delta) => text.push_str(&delta),
                 LlmStreamEvent::ThinkingDelta(delta) => thinking.push_str(&delta),
                 LlmStreamEvent::ThinkingSignature(sig) => thinking_signature = Some(sig),
+                LlmStreamEvent::ReasonItem {
+                    encrypted_content, ..
+                } => {
+                    if let Some(sig) = encrypted_content {
+                        thinking_signature = Some(sig);
+                    }
+                }
                 LlmStreamEvent::ToolCalls(calls) => tool_calls = calls,
                 LlmStreamEvent::Done(meta) => metadata = *meta,
                 LlmStreamEvent::Error(err) => return Err(crate::error::AgentLoopError::llm(err)),
