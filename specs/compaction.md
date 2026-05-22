@@ -14,9 +14,9 @@ Context compaction manages conversations that exceed LLM context windows. Users 
 
 ## Model View Versus Storage
 
-Session storage remains lossless: tool results, file reads, and exec outputs are stored as events/messages exactly as produced. Before provider serialization, `ReasonAtom` builds a separate **model view** from those stored messages.
+Session storage remains lossless: tool results, file reads, and exec outputs are stored as events/messages exactly as produced. When the `compaction` capability is configured, it contributes a model-view provider that builds a separate **model view** from those stored messages before provider serialization.
 
-The model view always applies generic cost-control masking by default, even when the `compaction` capability is not configured. This masking replaces stale bulky tool results with compact summaries while preserving message/tool-call structure and the most recent tool results verbatim. A configured compaction capability can still tune or disable this via `cost_control`.
+The model view applies generic cost-control masking according to the configured `compaction` capability. This masking replaces stale bulky tool results with compact summaries while preserving message/tool-call structure and the most recent tool results verbatim. Builders can tune or disable this via `cost_control`.
 
 Provider cache telemetry feeds this same model-view step. If the previous call reports high uncached input or a low cache-read ratio, the model view may mask older tool results earlier so repeated full-history prompts do not keep paying for cache misses.
 

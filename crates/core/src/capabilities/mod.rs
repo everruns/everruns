@@ -22,7 +22,9 @@ use crate::command::{
     CommandDescriptor, CommandExecutionContext, CommandResult, ExecuteCommandRequest,
 };
 use crate::deployment::DeploymentGrade;
+use crate::events::TokenUsage;
 use crate::mcp_server::{ScopedMcpServers, merge_scoped_mcp_servers};
+use crate::message::Message;
 use crate::message_filter::MessageFilterProvider;
 use crate::runtime_agent::RuntimeAgent;
 use crate::tool_types::{ToolCall, ToolDefinition};
@@ -546,6 +548,17 @@ pub trait Capability: Send + Sync {
         None
     }
 
+    /// Returns a provider that can build a prompt-facing model view from
+    /// lossless stored messages before provider serialization.
+    ///
+    /// This is for capability-owned context transformations such as compaction
+    /// cost-control masking. Storage messages remain unchanged.
+    ///
+    /// By default, returns None (no model-view transformation).
+    fn model_view_provider(&self) -> Option<Arc<dyn ModelViewProvider>> {
+        None
+    }
+
     /// Returns post-tool execution hooks provided by this capability.
     ///
     /// These hooks run after each individual tool completes execution.
@@ -1054,6 +1067,30 @@ impl Default for CapabilityRegistryBuilder {
 // Collect Capabilities Helper
 // ============================================================================
 
+/// Context available to capability-owned model-view transforms.
+pub struct ModelViewContext<'a> {
+    pub session_id: SessionId,
+    pub prior_usage: Option<&'a TokenUsage>,
+}
+
+/// Provider-side hook for building prompt-facing model views.
+///
+/// Providers receive the output of earlier providers and return the messages
+/// that should be sent into provider serialization. Lower priority providers
+/// run earlier.
+pub trait ModelViewProvider: Send + Sync {
+    fn apply_model_view(
+        &self,
+        messages: Vec<Message>,
+        config: &serde_json::Value,
+        context: &ModelViewContext<'_>,
+    ) -> Vec<Message>;
+
+    fn priority(&self) -> i32 {
+        0
+    }
+}
+
 /// Collected data from capabilities before applying to config.
 ///
 /// This intermediate struct allows sharing the capability collection logic
@@ -1142,6 +1179,12 @@ pub struct CollectedMessageFilters {
     pub message_filter_providers: Vec<(Arc<dyn MessageFilterProvider>, serde_json::Value)>,
 }
 
+/// Lightweight result containing only model-view providers.
+pub struct CollectedModelViewProviders {
+    /// Model-view providers with their configs (in priority order).
+    pub model_view_providers: Vec<(Arc<dyn ModelViewProvider>, serde_json::Value)>,
+}
+
 // Note: apply_message_filters/apply_post_load_filters mirror the same methods
 // on CollectedCapabilities. The duplication is intentional — extracting a trait
 // would add indirection for 3 lines of loop body, and the two structs serve
@@ -1160,6 +1203,20 @@ impl CollectedMessageFilters {
         for (provider, config) in &self.message_filter_providers {
             provider.post_load(messages, config);
         }
+    }
+}
+
+impl CollectedModelViewProviders {
+    /// Apply all collected model-view providers in priority order.
+    pub fn apply_model_view(
+        &self,
+        mut messages: Vec<Message>,
+        context: &ModelViewContext<'_>,
+    ) -> Vec<Message> {
+        for (provider, config) in &self.model_view_providers {
+            messages = provider.apply_model_view(messages, config, context);
+        }
+        messages
     }
 }
 
@@ -1191,6 +1248,32 @@ pub fn collect_message_filters_only(
 
     CollectedMessageFilters {
         message_filter_providers,
+    }
+}
+
+/// Collect only model-view providers from capabilities.
+pub fn collect_model_view_providers(
+    capability_configs: &[AgentCapabilityConfig],
+    registry: &CapabilityRegistry,
+) -> CollectedModelViewProviders {
+    let mut model_view_providers: Vec<(Arc<dyn ModelViewProvider>, serde_json::Value)> = Vec::new();
+
+    for cap_config in capability_configs {
+        let cap_id = cap_config.capability_ref.as_str();
+        if let Some(capability) = registry.get(cap_id) {
+            if capability.status() != CapabilityStatus::Available {
+                continue;
+            }
+            if let Some(provider) = capability.model_view_provider() {
+                model_view_providers.push((provider, cap_config.config.clone()));
+            }
+        }
+    }
+
+    model_view_providers.sort_by_key(|(p, _)| p.priority());
+
+    CollectedModelViewProviders {
+        model_view_providers,
     }
 }
 
@@ -3088,6 +3171,70 @@ mod tests {
         // post_load reversed the messages
         assert_eq!(messages[0].text(), Some("second"));
         assert_eq!(messages[1].text(), Some("first"));
+    }
+
+    #[test]
+    fn test_collect_model_view_providers_respects_compaction_capability_boundary() {
+        use crate::tool_types::ToolCall;
+
+        fn tool_heavy_messages() -> Vec<Message> {
+            let mut messages = vec![Message::user("inspect files repeatedly")];
+            for index in 0..9 {
+                let call_id = format!("call_{index}");
+                messages.push(Message::assistant_with_tools(
+                    "",
+                    vec![ToolCall {
+                        id: call_id.clone(),
+                        name: "read_file".to_string(),
+                        arguments: serde_json::json!({"path": "/workspace/src/lib.rs"}),
+                    }],
+                ));
+                messages.push(Message::tool_result(
+                    call_id,
+                    Some(serde_json::json!({
+                        "path": "/workspace/src/lib.rs",
+                        "content": format!("{}{}", "large file line\n".repeat(1000), index),
+                        "total_lines": 1000,
+                        "lines_shown": {"start": 1, "end": 1000},
+                        "truncated": false
+                    })),
+                    None,
+                ));
+            }
+            messages
+        }
+
+        fn first_tool_result_is_masked(messages: &[Message]) -> bool {
+            messages[2]
+                .tool_result_content()
+                .and_then(|result| result.result.as_ref())
+                .and_then(|result| result.get("masked"))
+                .and_then(|masked| masked.as_bool())
+                .unwrap_or(false)
+        }
+
+        let mut registry = CapabilityRegistry::new();
+        registry.register(CompactionCapability);
+        let context = ModelViewContext {
+            session_id: SessionId::new(),
+            prior_usage: None,
+        };
+
+        let no_compaction = collect_model_view_providers(&[], &registry);
+        let unmasked = no_compaction.apply_model_view(tool_heavy_messages(), &context);
+        assert!(!first_tool_result_is_masked(&unmasked));
+
+        let compaction = collect_model_view_providers(
+            &[AgentCapabilityConfig {
+                capability_ref: CapabilityId::new(COMPACTION_CAPABILITY_ID),
+                config: serde_json::json!({}),
+            }],
+            &registry,
+        );
+        let masked = compaction.apply_model_view(tool_heavy_messages(), &context);
+        assert!(first_tool_result_is_masked(&masked));
+        let last_tool = masked.last().unwrap().tool_result_content().unwrap();
+        assert!(last_tool.result.as_ref().unwrap().get("content").is_some());
     }
 
     // =========================================================================
