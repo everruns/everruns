@@ -24,28 +24,23 @@ Provider cache telemetry feeds this same model-view step. If the previous call r
 
 ### What Exists
 
-**OpenResponses Protocol Compaction** (`crates/core/src/atoms/reason.rs:839-953`):
-- Reactive only — triggers on `RequestTooLarge` error
-- Calls `LlmDriver::compact()` — only OpenAI Responses API supports it today
-- Records `LlmCompactionInfo` as metadata on `llm.generation` event
-- No SSE event, no UI indicator, no TS types
+**Compaction capability** (`crates/core/src/capabilities/compaction.rs`):
+- Configured explicitly through the `compaction` capability.
+- Contributes the prompt-facing model-view provider that masks stale bulky tool results before provider serialization.
+- Supports proactive budget checks, reactive `RequestTooLarge` recovery, observation masking, native provider compaction when available, summarization, and last-resort trimming.
+- Emits `context.compacting` / `context.compacted` events and records `LlmCompactionInfo` on `llm.generation` when native provider compaction runs.
 
 **Infinity Context** (`crates/core/src/capabilities/infinity_context.rs`):
 - Separate, optional capability — not part of compaction. Trims messages + provides `query_history` tool.
 - Complementary to compaction but independent. See `specs/infinity-context.md`.
 
-### What's Missing
+### Current Caveats
 
 | Gap | Impact |
 |-----|--------|
-| No strategy selection | Users can't choose native vs our own |
-| No proactive compaction | Waits for error, adds latency |
-| No observation masking | Cheapest strategy not available |
-| No LLM summarization | Non-OpenAI providers have no fallback |
-| No SSE events | No real-time feedback |
-| No UI indicator | Users don't know compaction happened |
-| No TS types for `LlmCompactionInfo` | Frontend can't render compaction data |
-| `supports_compact()` not exposed | Users can't see what their provider supports |
+| Provider capability visibility | Users cannot yet see every provider's native compaction support in all product surfaces. |
+| UI polish | The backend emits compaction events, but timeline rendering may still need product-specific display work. |
+| Token telemetry precision | Some compaction events report message counts rather than exact token deltas when the strategy does not make a provider call. |
 
 ## Compaction Strategies
 
@@ -225,7 +220,9 @@ for the exact configuration fields and defaults.
 }
 ```
 
-**No compaction capability configured → existing behavior (reactive native-only on error).**
+**No compaction capability configured → no Everruns compaction or masking runs.**
+Provider `RequestTooLarge` errors propagate unless the agent/harness enables the
+`compaction` capability.
 
 ### Default Behavior
 
@@ -447,47 +444,28 @@ pub struct SessionCompactionMetrics {
 
 Displayed in session detail view and session list (as a subtle indicator when compaction has occurred).
 
-## Implementation Plan
+## Implementation Status
 
-### Phase 1: Compaction Capability + Events
+Implemented pieces live in the capability and runtime assembly paths:
 
-1. Create `CompactionConfig` types in `crates/core/src/capabilities/compaction.rs`
-2. Register `compaction` capability in `CapabilityRegistry`
-3. Add `context.compacting` / `context.compacted` event types to `crates/core/src/events.rs`
-4. Refactor `ReasonAtom` compaction flow to:
-   - Read compaction config from collected capabilities
-   - Emit SSE events
-   - Support strategy selection
-5. Add `LlmCompactionInfo` + event types to UI TypeScript types
-6. Render compaction divider in chat UI
+- `crates/core/src/capabilities/compaction.rs` owns config parsing,
+  cost-control model-view masking, observation masking, summarization helpers,
+  and compaction metrics types.
+- `crates/core/src/capabilities/mod.rs` exposes the generic
+  `ModelViewProvider` hook so compaction remains capability-owned.
+- `crates/core/src/atoms/reason.rs` invokes compaction only when the resolved
+  capability config includes `compaction`; without it, context-limit errors are
+  returned to the caller.
+- `crates/core/src/events.rs` defines compaction events and generation metadata.
 
-### Phase 2: Observation Masking
+Remaining product work should focus on UI presentation and provider capability
+visibility rather than changing the capability ownership model.
 
-1. Implement `ObservationMaskingFilter` in `crates/core/src/message_filter.rs`
-2. Wire into compaction capability's `message_filter_provider()`
-3. Add `observation_masking` as a strategy in `ReasonAtom`
-4. Integrate into `auto` cascade (runs before native/summarization)
+### Future Work
 
-### Phase 3: Proactive Compaction
-
-1. Add token estimation to message assembly in `ReasonAtom`
-2. Check against `budget_percent` threshold before LLM call
-3. Trigger cascade proactively instead of waiting for `RequestTooLarge`
-4. Keep reactive path as fallback (config: `proactive: false`)
-
-### Phase 4: Summarization
-
-1. Implement `SummarizationCompactor` — takes messages + config, returns summary
-2. Use agent's model by default, allow override via `summarization.model`
-3. Integrate as final cascade step in `auto` strategy
-4. Add as standalone strategy option
-
-### Phase 5: Hierarchical Memory + Metrics
-
-1. Implement hot/warm/cold tier management
-2. Wire cold tier to Infinity Context's `query_history` when both capabilities enabled
-3. Add `SessionCompactionMetrics` tracking
-4. Display metrics in session UI
+- Product UI for compaction timeline events and session-level metrics.
+- Provider capability visibility for native compaction support.
+- Deeper integration between hierarchical memory tiers and Infinity Context.
 
 ## References
 

@@ -48,7 +48,7 @@ pub fn output_verbosity_schema() -> serde_json::Value {
         "type": "string",
         "enum": ["silent", "concise", "normal", "verbose", "full"],
         "default": "concise",
-        "description": "Output verbosity: silent (~200B, truncated to exit code + minimal output), concise (~2KiB, default), normal (~8KiB), verbose (~16KiB), full (unlimited, capped by 64KiB hard limit). Full output always persisted to /outputs/{tool_call_id}.stdout and /outputs/{tool_call_id}.stderr — use read_file to retrieve."
+        "description": "Output verbosity: silent (~200B, truncated to exit code + minimal output), concise (~2KiB, default), normal (~8KiB), verbose (~16KiB), full (unlimited, capped by 64KiB hard limit). For tools with output persistence enabled, full output is saved to /outputs/{tool_call_id}.stdout and /outputs/{tool_call_id}.stderr — use read_file to retrieve."
     })
 }
 
@@ -56,7 +56,7 @@ pub fn output_verbosity_schema() -> serde_json::Value {
 /// Appended to each sandbox capability's `system_prompt_addition()` to guide
 /// the LLM toward less verbose command usage.
 pub const EXEC_OUTPUT_HINT: &str = "\n\n**Output economy:** Command output is truncated based on the `output` parameter (default: `concise` ~2 KiB). \
-Use `verbose` or `full` when debugging failures. Full output is always persisted — stdout to `/outputs/{tool_call_id}.stdout`, stderr to `/outputs/{tool_call_id}.stderr`. \
+Use `verbose` or `full` when debugging failures. Tools with output persistence enabled save full output — stdout to `/outputs/{tool_call_id}.stdout`, stderr to `/outputs/{tool_call_id}.stderr`. \
 When output exceeds the budget, the result includes an `output_files` array with paths you can `read_file` with offset/limit.\n\
 Available modes: `silent` (~200B), `concise` (~2KiB), `normal` (~8KiB), `verbose` (~16KiB), `full` (unlimited).\n\
 For build/install commands, the default `concise` is usually sufficient — check exit code first.\n\
@@ -387,6 +387,49 @@ pub fn build_text_read_file_result(
     truncation.attach(&mut result);
 
     result
+}
+
+/// Build the standard structured response for a binary read-file tool.
+pub fn build_binary_read_file_result(
+    path: &str,
+    size_bytes: usize,
+    encoding: &str,
+) -> serde_json::Value {
+    let mut result = serde_json::json!({
+        "path": path,
+        "content_type": "binary",
+        "encoding": encoding,
+        "size_bytes": size_bytes,
+        "note": "Binary file — use a different tool or download to inspect."
+    });
+    crate::truncation_info::TruncationInfo {
+        truncated: false,
+        bytes_returned: 0,
+        bytes_total: Some(size_bytes),
+        next_offset: None,
+        resume_hint: None,
+        reason: crate::truncation_info::TruncationReason::SizeCap,
+    }
+    .attach(&mut result);
+    result
+}
+
+/// Build the standard structured response for file bytes.
+///
+/// Valid UTF-8 bytes are returned through the standard line-windowed text
+/// formatter. Invalid UTF-8 returns metadata only so binary payloads do not
+/// leak into model context as lossy replacement text or base64.
+pub fn build_bytes_read_file_result(
+    tool_name: &str,
+    path: &str,
+    bytes: &[u8],
+    offset: usize,
+    limit: usize,
+) -> serde_json::Value {
+    match std::str::from_utf8(bytes) {
+        Ok(content) => build_text_read_file_result(tool_name, path, content, "text", offset, limit),
+        Err(_) => build_binary_read_file_result(path, bytes.len(), "binary"),
+    }
 }
 
 /// Full sanitization pipeline: strip ANSI → collapse CR → priority-aware truncate.
@@ -998,6 +1041,25 @@ mod tests {
             result["content"].as_str().unwrap().len() <= READ_FILE_HARD_BYTE_CAP,
             "content exceeded hard byte cap"
         );
+    }
+
+    #[test]
+    fn test_build_bytes_read_file_result_omits_binary_content() {
+        let result = build_bytes_read_file_result(
+            "sandbox_read_file",
+            "/workspace/archive.zip",
+            &[0xff, 0x00, 0xfe],
+            0,
+            READ_FILE_DEFAULT_LIMIT,
+        );
+
+        assert_eq!(result["content_type"], "binary");
+        assert_eq!(result["encoding"], "binary");
+        assert_eq!(result["size_bytes"], 3);
+        assert_eq!(result["truncation"]["truncated"], false);
+        assert_eq!(result["truncation"]["bytes_returned"], 0);
+        assert_eq!(result["truncation"]["bytes_total"], 3);
+        assert!(result.get("content").is_none());
     }
 
     #[test]

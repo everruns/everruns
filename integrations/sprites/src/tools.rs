@@ -1,7 +1,7 @@
 //! Tool implementations for Sprites operations.
 
 use everruns_core::tool_output_sanitizer::{
-    READ_FILE_DEFAULT_LIMIT, build_text_read_file_result, parse_read_file_window_args,
+    READ_FILE_DEFAULT_LIMIT, build_bytes_read_file_result, parse_read_file_window_args,
 };
 use everruns_core::tool_types::ToolHints;
 use everruns_core::tools::{Tool, ToolExecutionResult};
@@ -403,15 +403,8 @@ impl Tool for SpritesReadFileTool {
                 if let Err(e) = touch_sprite_lease(context, &state, None).await {
                     return e;
                 }
-                let content = String::from_utf8_lossy(&bytes).to_string();
-                let mut result = build_text_read_file_result(
-                    "sprites_read_file",
-                    path,
-                    &content,
-                    "text",
-                    offset,
-                    limit,
-                );
+                let mut result =
+                    build_bytes_read_file_result("sprites_read_file", path, &bytes, offset, limit);
                 result["sprite_name"] = json!(sprite_name);
                 ToolExecutionResult::success(result)
             }

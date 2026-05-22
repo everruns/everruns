@@ -21,7 +21,7 @@
 use everruns_core::ToolHints;
 use everruns_core::capabilities::{Capability, CapabilityStatus, IntegrationPlugin, RiskLevel};
 use everruns_core::tool_output_sanitizer::{
-    READ_FILE_DEFAULT_LIMIT, build_text_read_file_result, parse_read_file_window_args,
+    READ_FILE_DEFAULT_LIMIT, build_bytes_read_file_result, parse_read_file_window_args,
 };
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::ToolContext;
@@ -591,13 +591,10 @@ impl Tool for DockerReadFileTool {
             return ToolExecutionResult::tool_error(format!("Failed to read file: {}", stderr));
         }
 
-        let content = String::from_utf8_lossy(&output.stdout).to_string();
-
-        ToolExecutionResult::success(build_text_read_file_result(
+        ToolExecutionResult::success(build_bytes_read_file_result(
             "docker_read_file",
             path,
-            &content,
-            "text",
+            &output.stdout,
             offset,
             limit,
         ))

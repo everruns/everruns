@@ -38,7 +38,9 @@ use everruns_runtime::{
     RealDiskFileStore, RuntimeBackends, WriteBlocklistFileStore,
 };
 
-use crate::session_log::{JsonlEventEmitter, replay, session_dir_path, session_log_path};
+use crate::session_log::{
+    JsonlEventEmitter, migrate_legacy_session_log, replay, session_dir_path, session_log_path,
+};
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
@@ -733,6 +735,7 @@ pub async fn build(
     let session_id = resume_session_id.unwrap_or_default();
     let session_dir = session_dir_path(&sessions_dir, session_id);
     let log_path = session_log_path(&session_dir);
+    let _legacy_log = migrate_legacy_session_log(&sessions_dir, &session_dir, session_id)?;
 
     // Replay anything already on disk for this id. Missing file → empty.
     // Pass `session_id` so events for any other session get skipped

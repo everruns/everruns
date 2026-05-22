@@ -95,7 +95,7 @@ Capability hooks involved:
 
 ### Reading-tool output contract
 
-Every reading tool attaches a shared `truncation` envelope to its JSON response so LLM callers can detect partial output, understand why it was cut, and resume or fall back without regex-matching human markers. The envelope is additive — existing flat fields like `truncated`, `total_lines`, and `row_count` stay in place for back-compat. File-reading tools, including session-sandbox-backed reads such as `sandbox_read_file`, accept `offset` and `limit` and return only that line window for text files.
+Every reading tool attaches a shared `truncation` envelope to its JSON response so LLM callers can detect partial output, understand why it was cut, and resume or fall back without regex-matching human markers. The envelope is additive — existing flat fields like `truncated`, `total_lines`, and `row_count` stay in place for back-compat. File-reading tools, including session-sandbox-backed reads such as `sandbox_read_file`, accept `offset` and `limit` and return only that line window for text files. Non-image binary file reads return metadata by default instead of raw base64 or lossy UTF-8.
 
 See [`crates/core/src/truncation_info.rs`](../crates/core/src/truncation_info.rs) for the source of truth: `TruncationInfo`, `TruncationReason`, and the `assert_conforms` conformance helper.
 
@@ -104,12 +104,14 @@ See [`crates/core/src/truncation_info.rs`](../crates/core/src/truncation_info.rs
 | Tool | Reason codes | Resume supported? |
 |------|--------------|-------------------|
 | `read_file` (session VFS + sandbox) | `line_cap` (with resume), `size_cap` (without resume) | Line cap only — `next_offset` = line number |
-| `list_directory` (session VFS + sandbox) | `item_cap` | No — narrow with `path` |
-| `grep_files` (session VFS + sandbox) | `line_cap` | No — narrow `pattern`/`path_pattern` |
+| `list_directory` (session VFS) | `item_cap` | Yes — `next_offset` = item offset |
+| `grep_files` (session VFS) | `line_cap` | Yes — `next_offset` = match offset |
 | `sql_query` | `row_cap` | No — narrow `WHERE`/`LIMIT` |
-| `browserless_content` | `size_cap` | No — narrow via `browserless_scrape` selectors or shrink the source page |
+| `browserless_content` / interaction DOM content | `size_cap` | No — narrow via `browserless_scrape` selectors or shrink the source page |
 
-`next_offset` units are tool-specific — `read_file` uses a line number today. Each tool documents its own unit via `resume_hint`.
+`next_offset` units are tool-specific — `read_file` uses a line number, `list_directory` uses an item offset, and `grep_files` uses a match offset. Each tool documents its own unit via `resume_hint`.
+
+Platform-management `session_read_messages` is not a filesystem reader, but it follows the same token-economy principle: returned message count and per-message content are bounded by defaults, with explicit caps for larger reads.
 
 Exec tools (`bash`, `*_exec`) keep their existing `truncated`/`total_lines`/`output_files` fields and the `exec_budget` reason is reserved for future migration; they are outside this envelope today because their truncation is priority-aware and persisted-output-backed.
 
@@ -160,7 +162,7 @@ All exec tools accept an `output` parameter controlling how much output is retur
 | `verbose` | ~16 KiB | Test failures, error investigation |
 | `full` | unlimited | Raw output, no truncation — when the LLM needs every line |
 
-Default is `concise`. Budgets apply to stdout; stderr is capped at `min(budget, 4096)` to keep error output proportional. Full output is always persisted to `/outputs/` via `tool_output_persistence` — stdout to `/outputs/{tool_call_id}.stdout`, stderr to `/outputs/{tool_call_id}.stderr` — and readable with `read_file`. See `crates/core/src/tool_output_sanitizer.rs` for budget constants and `output_verbosity_budget()`.
+Default is `concise`. Budgets apply to stdout; stderr is capped at `min(budget, 4096)` to keep error output proportional. Tools that set the `persist_output` hint persist non-empty full output to `/outputs/` via `tool_output_persistence` — stdout to `/outputs/{tool_call_id}.stdout`, stderr to `/outputs/{tool_call_id}.stderr` — and the files are readable with `read_file`. See `crates/core/src/tool_output_sanitizer.rs` for budget constants and `output_verbosity_budget()`.
 
 This is the tool's responsibility — each tool calls the helpers before constructing `ToolExecutionResult`. See `crates/core/src/tool_output_sanitizer.rs` for the primitives.
 

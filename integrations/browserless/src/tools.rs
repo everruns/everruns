@@ -12,7 +12,7 @@
 //! When no session exists, each tool call uses a fresh browser via REST API.
 
 use everruns_core::ToolHints;
-use everruns_core::tools::{Tool, ToolExecutionResult};
+use everruns_core::tools::{Tool, ToolExecutionResult, ToolResultImage};
 use everruns_core::traits::ToolContext;
 use everruns_core::truncation_info::{TruncationInfo, TruncationReason};
 
@@ -72,6 +72,21 @@ fn truncate_html(html: String) -> (String, bool) {
     } else {
         (html, false)
     }
+}
+
+fn png_image_result(mut result: Value, base64: String, size_bytes: usize) -> ToolExecutionResult {
+    if let Some(obj) = result.as_object_mut() {
+        obj.insert("image_returned".to_string(), json!(true));
+        obj.insert("format".to_string(), json!("png"));
+        obj.insert("size_bytes".to_string(), json!(size_bytes));
+    }
+    ToolExecutionResult::success_with_images(
+        result,
+        vec![ToolResultImage {
+            base64,
+            media_type: "image/png".to_string(),
+        }],
+    )
 }
 
 fn validate_url(url: &str) -> Result<(), ToolExecutionResult> {
@@ -189,16 +204,22 @@ impl Tool for BrowserlessScreenshotTool {
             return match result {
                 Ok(b64) => {
                     use base64::Engine;
-                    let bytes = base64::engine::general_purpose::STANDARD
-                        .decode(&b64)
-                        .unwrap_or_default();
-                    ToolExecutionResult::Success(json!({
-                        "url": url,
-                        "format": "png",
-                        "size_bytes": bytes.len(),
-                        "image_base64": b64,
-                        "session": "cdp"
-                    }))
+                    let bytes = match base64::engine::general_purpose::STANDARD.decode(&b64) {
+                        Ok(bytes) => bytes,
+                        Err(e) => {
+                            return ToolExecutionResult::tool_error(format!(
+                                "CDP screenshot returned invalid base64: {e}"
+                            ));
+                        }
+                    };
+                    png_image_result(
+                        json!({
+                            "url": url,
+                            "session": "cdp"
+                        }),
+                        b64,
+                        bytes.len(),
+                    )
                 }
                 Err(e) => ToolExecutionResult::tool_error(format!("CDP screenshot failed: {e}")),
             };
@@ -230,12 +251,13 @@ impl Tool for BrowserlessScreenshotTool {
             Ok(bytes) => {
                 use base64::Engine;
                 let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
-                ToolExecutionResult::Success(json!({
-                    "url": url,
-                    "format": "png",
-                    "size_bytes": bytes.len(),
-                    "image_base64": b64
-                }))
+                png_image_result(
+                    json!({
+                        "url": url,
+                    }),
+                    b64,
+                    bytes.len(),
+                )
             }
             Err(e) => ToolExecutionResult::tool_error(e),
         }
@@ -947,6 +969,7 @@ impl Tool for BrowserlessInteractTool {
                 "url": final_url,
                 "session": "cdp"
             });
+            let mut images = Vec::new();
             if suppress_content_for_secrets {
                 result["content_redacted"] = json!(true);
                 result["content_redaction_reason"] = json!("secrets_used_in_steps");
@@ -954,7 +977,24 @@ impl Tool for BrowserlessInteractTool {
             if want_screenshot {
                 match session.screenshot(true).await {
                     Ok(b64) => {
-                        result["screenshot"] = json!(b64);
+                        use base64::Engine;
+                        let bytes = match base64::engine::general_purpose::STANDARD.decode(&b64) {
+                            Ok(bytes) => bytes,
+                            Err(e) => {
+                                keep_session_alive(context, &mut session).await;
+                                session.disconnect().await;
+                                return ToolExecutionResult::tool_error(format!(
+                                    "CDP screenshot returned invalid base64: {e}"
+                                ));
+                            }
+                        };
+                        result["screenshot_returned"] = json!(true);
+                        result["screenshot_format"] = json!("png");
+                        result["screenshot_size_bytes"] = json!(bytes.len());
+                        images.push(ToolResultImage {
+                            base64: b64,
+                            media_type: "image/png".to_string(),
+                        });
                     }
                     Err(e) => {
                         keep_session_alive(context, &mut session).await;
@@ -968,7 +1008,11 @@ impl Tool for BrowserlessInteractTool {
             if want_content {
                 match session.get_content().await {
                     Ok(content) => {
+                        let total = content.len();
+                        let (content, was_truncated) = truncate_html(content);
                         result["content"] = json!(content);
+                        result["truncated"] = json!(was_truncated);
+                        attach_content_truncation(&mut result, &content, total, was_truncated);
                     }
                     Err(e) => {
                         keep_session_alive(context, &mut session).await;
@@ -980,7 +1024,11 @@ impl Tool for BrowserlessInteractTool {
 
             keep_session_alive(context, &mut session).await;
             session.disconnect().await;
-            return ToolExecutionResult::Success(result);
+            return if images.is_empty() {
+                ToolExecutionResult::Success(result)
+            } else {
+                ToolExecutionResult::success_with_images(result, images)
+            };
         }
 
         // Fallback: REST API
@@ -1000,6 +1048,8 @@ impl Tool for BrowserlessInteractTool {
                 if let Some(data_str) = result.get("data").and_then(|v| v.as_str()) {
                     match serde_json::from_str::<Value>(data_str) {
                         Ok(mut data) => {
+                            let mut images = Vec::new();
+                            let mut content_truncation: Option<(String, usize, bool)> = None;
                             // Extract and persist cookies (even empty — clears stale state)
                             if let Some(cookies) = data.get("__cookies").and_then(|v| v.as_array())
                                 && let Err(e) = save_cookies(context, cookies).await
@@ -1008,6 +1058,41 @@ impl Tool for BrowserlessInteractTool {
                             }
                             if let Some(obj) = data.as_object_mut() {
                                 obj.remove("__cookies");
+                                if let Some(content_value) = obj.get("content").cloned()
+                                    && let Some(content) = content_value.as_str()
+                                {
+                                    let total = content.len();
+                                    let (content, was_truncated) =
+                                        truncate_html(content.to_string());
+                                    obj.insert("content".to_string(), json!(content.clone()));
+                                    obj.insert("truncated".to_string(), json!(was_truncated));
+                                    content_truncation = Some((content, total, was_truncated));
+                                }
+                                if let Some(screenshot_value) = obj.remove("screenshot")
+                                    && let Some(b64) = screenshot_value.as_str()
+                                {
+                                    use base64::Engine;
+                                    let bytes = match base64::engine::general_purpose::STANDARD
+                                        .decode(b64)
+                                    {
+                                        Ok(bytes) => bytes,
+                                        Err(e) => {
+                                            return ToolExecutionResult::tool_error(format!(
+                                                "REST screenshot returned invalid base64: {e}"
+                                            ));
+                                        }
+                                    };
+                                    obj.insert("screenshot_returned".to_string(), json!(true));
+                                    obj.insert("screenshot_format".to_string(), json!("png"));
+                                    obj.insert(
+                                        "screenshot_size_bytes".to_string(),
+                                        json!(bytes.len()),
+                                    );
+                                    images.push(ToolResultImage {
+                                        base64: b64.to_string(),
+                                        media_type: "image/png".to_string(),
+                                    });
+                                }
                                 if suppress_content_for_secrets {
                                     obj.insert("content_redacted".to_string(), json!(true));
                                     obj.insert(
@@ -1016,7 +1101,19 @@ impl Tool for BrowserlessInteractTool {
                                     );
                                 }
                             }
-                            ToolExecutionResult::Success(data)
+                            if let Some((content, total, was_truncated)) = content_truncation {
+                                attach_content_truncation(
+                                    &mut data,
+                                    content.as_str(),
+                                    total,
+                                    was_truncated,
+                                );
+                            }
+                            if images.is_empty() {
+                                ToolExecutionResult::Success(data)
+                            } else {
+                                ToolExecutionResult::success_with_images(data, images)
+                            }
                         }
                         Err(_) => ToolExecutionResult::Success(json!({
                             "result": data_str

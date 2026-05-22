@@ -35,9 +35,9 @@ depends on the public runtime crate the same way an external embedder would.
   - `web_fetch` — HTTP GET/HEAD with optional markdown/text conversion.
     Saved responses land on disk via the same `RealDiskFileStore` stack,
     so the blocklist and approval gate apply.
-  - `tool_output_persistence` — large bash output is summarized inline and
-    saved under `/outputs/` inside the current session folder so the agent
-    can inspect it with `read_file`.
+  - `tool_output_persistence` — bash output is summarized inline and the
+    full stdout/stderr streams are saved under `/outputs/` inside the current
+    session folder so the agent can inspect them with `read_file`.
 
 Note on parallel tool calls: independent tool calls already execute in
 parallel when the LLM provider batches them in one assistant turn (Anthropic
@@ -162,9 +162,11 @@ the platform-native user data directory:
 | macOS   | `~/Library/Application Support/ercode/sessions/<session_id>/` |
 | Windows | `%APPDATA%\ercode\sessions\<session_id>\`                   |
 
-The event log lives at `<session_folder>/events.jsonl`. Large tool output
-persisted by `tool_output_persistence` lives under
-`<session_folder>/outputs/`. The folder layout leaves room for other
+The event log lives at `<session_folder>/events.jsonl`. Tool output persisted
+by `tool_output_persistence` lives under `<session_folder>/outputs/`. On first
+resume after upgrading from the old flat-log layout, ercode copies
+`<sessions_dir>/<session_id>.jsonl` into the session folder if no
+`events.jsonl` exists yet. The folder layout leaves room for other
 session-scoped stores, such as key/value data, to sit beside the event log.
 
 One serialized `Event` per line, flushed after every write. On Unix the

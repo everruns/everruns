@@ -101,7 +101,7 @@ static SYSTEM_PROMPT: LazyLock<String> = LazyLock::new(|| {
     let mut prompt = String::from(
         r#"Daytona sandboxes are isolated networked Linux environments. Create or select a sandbox before sandbox-scoped operations; inspect snapshots before creating custom environments. Sandboxes auto-stop/archive/delete, but delete them when done because stop leaves them visible in Daytona.
 
-Default workspace is `/home/daytona`. Clone repos under `/home/daytona/owner/repo`; connected GitHub accounts authenticate private clones. Configure sandbox git credentials before push/pull/fetch and refresh them if they expire."#,
+Workspace is `/home/daytona`. Clone repos under `/home/daytona/owner/repo`; connected GitHub accounts authenticate private clones. Configure sandbox git credentials before push/pull/fetch and refresh them if they expire."#,
     );
     prompt.push_str(everruns_core::tool_output_sanitizer::EXEC_OUTPUT_HINT);
     prompt
