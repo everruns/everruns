@@ -95,6 +95,7 @@ class A2UIErrorBoundary extends Component<EBProps, EBState> {
   }
   componentDidUpdate(prevProps: EBProps) {
     if (this.state.hasError && prevProps.children !== this.props.children) {
+      // eslint-disable-next-line react/no-did-update-set-state -- ErrorBoundary reset on new children is the standard React pattern
       this.setState({ hasError: false });
     }
   }

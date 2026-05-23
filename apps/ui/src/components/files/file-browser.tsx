@@ -464,6 +464,7 @@ export function FileBrowser({
               placeholder="File content (optional)"
               value={newFileContent}
               onChange={(e) => setNewFileContent(e.target.value)}
+              aria-label="File content (optional)"
             />
           </div>
           <DialogFooter>

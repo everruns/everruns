@@ -83,6 +83,7 @@ class OpenUIErrorBoundary extends Component<EBProps, EBState> {
   componentDidUpdate(prevProps: EBProps) {
     // Reset when children change (new code / streaming update)
     if (this.state.hasError && prevProps.children !== this.props.children) {
+      // eslint-disable-next-line react/no-did-update-set-state -- ErrorBoundary reset on new children is the standard React pattern
       this.setState({ hasError: false });
     }
   }

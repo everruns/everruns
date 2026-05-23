@@ -112,7 +112,7 @@ function AppCard({ app }: { app: App }) {
             </div>
           )}
 
-          {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
+          {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions, jsx-a11y/no-noninteractive-element-interactions -- group container only suppresses click propagation; nested actions own interactivity */}
           <div
             className="flex gap-2 pt-2"
             role="group"

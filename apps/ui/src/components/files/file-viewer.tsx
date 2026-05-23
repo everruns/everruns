@@ -186,6 +186,7 @@ export function FileViewer({ sessionId, file, onClose }: FileViewerProps) {
             value={editContent}
             onChange={(e) => setEditContent(e.target.value)}
             spellCheck={false}
+            aria-label="File content editor"
           />
         ) : !fileData?.content && fileData?.content !== "" ? (
           <div className="flex flex-col items-center justify-center h-full text-muted-foreground">

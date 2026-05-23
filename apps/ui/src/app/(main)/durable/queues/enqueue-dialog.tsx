@@ -84,6 +84,7 @@ export function EnqueueDialog({
               }}
               className="flex min-h-[100px] w-full border border-input bg-background px-3 py-2 text-sm font-mono ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               placeholder='{"key": "value"}'
+              aria-label="Input JSON"
             />
             {jsonError && <p className="text-sm text-destructive">{jsonError}</p>}
           </div>

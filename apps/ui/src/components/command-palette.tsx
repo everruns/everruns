@@ -171,6 +171,7 @@ export function CommandPalette() {
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Search pages, organizations, agents..."
                 className="flex-1 bg-transparent py-3.5 text-sm outline-none placeholder:text-muted-foreground"
+                aria-label="Search pages, organizations, agents"
               />
               <kbd className="hidden sm:inline-flex h-5 items-center gap-1 border bg-muted px-1.5 font-mono text-[10px] font-medium text-muted-foreground">
                 ESC

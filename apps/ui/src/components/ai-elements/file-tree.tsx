@@ -257,6 +257,7 @@ const stopPropagation = (e: React.SyntheticEvent) => e.stopPropagation();
 export const FileTreeActions = ({ className, children, ...props }: FileTreeActionsProps) => (
   // biome-ignore lint/a11y/noNoninteractiveElementInteractions: stopPropagation required for nested interactions
   // biome-ignore lint/a11y/useSemanticElements: fieldset doesn't fit this UI pattern
+  // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- group container only stops event propagation; nested controls own interactivity
   <div
     className={cn(
       "ml-auto flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity",

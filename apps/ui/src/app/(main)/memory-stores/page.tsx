@@ -755,6 +755,7 @@ function CreateStoreDialog({
               type="checkbox"
               checked={isDefault}
               onChange={(e) => setIsDefault(e.target.checked)}
+              aria-label="Make this the default store for the organization"
             />
             Make this the default store for the organization
           </label>
@@ -847,6 +848,7 @@ function EditStoreDialog({
               checked={isDefault}
               disabled={disableDefaultToggle}
               onChange={(e) => setIsDefault(e.target.checked)}
+              aria-label="Make this the default store for the organization"
             />
             Make this the default store for the organization
             {disableDefaultToggle && (

@@ -207,6 +207,7 @@ function UploadSkillDialog({
               id="skill-file"
               type="file"
               accept=".zip"
+              aria-label="Skill ZIP archive"
               onChange={(e) => setFile(e.target.files?.[0] ?? null)}
               className="block w-full text-sm text-muted-foreground file:mr-4 file:py-2 file:px-4 file:border-0 file:text-sm file:font-medium file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
             />

@@ -89,6 +89,7 @@ export default function AgentsPage() {
             onChange={handleFileChange}
             accept=".md,.yaml,.yml,.json"
             className="hidden"
+            aria-label="Import agent file"
           />
           <Button variant="outline" onClick={handleImportClick} disabled={importAgent.isPending}>
             <Upload className="w-4 h-4 mr-2" />

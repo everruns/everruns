@@ -28,7 +28,7 @@ jest.mock("@/components/ui/prompt-editor", () => ({
     <div data-testid="markdown">{content}</div>
   ),
   PromptEditor: ({ value, onChange }: { value: string; onChange: (v: string) => void }) => (
-    <textarea value={value} onChange={(e) => onChange(e.target.value)} />
+    <textarea aria-label="Prompt" value={value} onChange={(e) => onChange(e.target.value)} />
   ),
 }));
 

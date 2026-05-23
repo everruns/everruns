@@ -21,8 +21,6 @@ interface ComboboxProps {
   clearable?: boolean;
 }
 
-const listboxId = "combobox-listbox";
-
 export function Combobox({
   options,
   value,
@@ -33,6 +31,7 @@ export function Combobox({
   className,
   clearable = true,
 }: ComboboxProps) {
+  const listboxId = React.useId();
   const [open, setOpen] = React.useState(false);
   const [search, setSearch] = React.useState("");
   const [highlightIndex, setHighlightIndex] = React.useState(0);
@@ -176,6 +175,7 @@ export function Combobox({
               onKeyDown={handleKeyDown}
               placeholder={searchPlaceholder}
               aria-controls={listboxId}
+              aria-label={searchPlaceholder}
               className="bg-transparent w-full text-sm outline-none placeholder:text-muted-foreground"
             />
           </div>
@@ -189,9 +189,16 @@ export function Combobox({
                 <div
                   key={option.value}
                   role="option"
+                  tabIndex={-1}
                   aria-selected={option.value === value}
                   data-combobox-item
                   onClick={() => handleSelect(option.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      handleSelect(option.value);
+                    }
+                  }}
                   className={cn(
                     "flex cursor-default items-center px-2 py-1.5 text-sm select-none",
                     idx === highlightIndex && "bg-muted text-foreground",
