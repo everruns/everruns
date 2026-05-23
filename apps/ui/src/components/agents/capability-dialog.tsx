@@ -118,11 +118,13 @@ export function CapabilityDialog({
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
+            // eslint-disable-next-line jsx-a11y/no-autofocus -- search-input inside an opened dialog is a deliberate focus target
+            autoFocus
             placeholder="Search capabilities..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-9"
-            autoFocus
+            aria-label="Search capabilities"
           />
         </div>
 

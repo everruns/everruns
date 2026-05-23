@@ -153,6 +153,7 @@ export function ChatComposer({
           multiple
           className="hidden"
           onChange={handleFileChange}
+          aria-label="Attach images"
         />
 
         {hasImages && <ImageAttachments images={pendingImages} onRemove={removeImage} />}

@@ -296,6 +296,7 @@ export default function DevSessionCardPage() {
                   <button
                     className="p-2 hover:bg-muted text-muted-foreground hover:text-foreground"
                     type="button"
+                    aria-label="Delete session"
                   >
                     <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path

@@ -2446,6 +2446,7 @@ function AppDetailPageLegacy({ params }: { params: Promise<{ appId: string }> })
                         setShowAddChannel(false);
                       }}
                       aria-pressed={selected}
+                      aria-label={`Select channel ${summary.target}`}
                       className={cn(
                         "w-full rounded-md border border-border p-3 text-left transition-colors outline-none hover:bg-muted/50 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50",
                         selected && "bg-muted",

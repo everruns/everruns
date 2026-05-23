@@ -396,6 +396,7 @@ export function ImagePreview({
   return (
     <ScrollArea className="h-full">
       <div className="p-4 flex items-center justify-center min-h-full">
+        {/* eslint-disable-next-line @next/next/no-img-element -- preview source is a data: URL from user-uploaded bytes; next/image's optimizer/loaders do not handle data: URLs */}
         <img
           src={dataUrl}
           alt={fileName}

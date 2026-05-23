@@ -239,6 +239,7 @@ export function InitialFilesEditor({
           type="file"
           multiple
           className="hidden"
+          aria-label="Upload files"
           onChange={(event) => {
             void addUploadedFiles(event.target.files);
             event.target.value = "";
@@ -371,6 +372,7 @@ export function InitialFilesEditor({
                         type="file"
                         className="hidden"
                         disabled={disabled}
+                        aria-label="Replace selected file with upload"
                         onChange={(event) => {
                           void replaceWithUpload(selectedIndex!, event.target.files);
                           event.target.value = "";

@@ -144,7 +144,12 @@ export function ChannelRow({
   return (
     <div className="border bg-card">
       <div className="grid gap-3 p-4 md:grid-cols-[minmax(0,1fr)_140px_120px_120px_48px] md:items-center">
-        <button type="button" onClick={onToggle} className="min-w-0 text-left">
+        <button
+          type="button"
+          onClick={onToggle}
+          className="min-w-0 text-left"
+          aria-label={`Toggle ${channelName(channel)} details`}
+        >
           <div className="flex min-w-0 items-start gap-3">
             <span className="flex size-9 shrink-0 items-center justify-center border bg-background">
               <Icon className="size-4" />
