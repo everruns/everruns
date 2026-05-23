@@ -2331,6 +2331,7 @@ version = "0.8.33"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
+ "chrono",
  "everruns-core",
  "inventory",
  "reqwest 0.13.3",
