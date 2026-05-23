@@ -1214,7 +1214,14 @@ impl ReasonAtom {
                         ContextCompactingData,
                     };
 
-                    let config = compaction_config.clone().unwrap_or_default();
+                    let Some(config) = compaction_config.clone() else {
+                        tracing::warn!(
+                            session_id = %session_id,
+                            turn_id = %context.turn_id,
+                            "ReasonAtom: context too large and compaction capability is not enabled"
+                        );
+                        return Err(e);
+                    };
                     let messages_before = llm_messages_for_call.len();
 
                     tracing::info!(

@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use everruns_core::ToolHints;
 use everruns_core::tool_output_sanitizer::{
-    READ_FILE_DEFAULT_LIMIT, build_text_read_file_result, clean_exec_output,
+    READ_FILE_DEFAULT_LIMIT, build_bytes_read_file_result, clean_exec_output,
     output_verbosity_budget, parse_read_file_window_args, priority_aware_truncate,
 };
 use everruns_core::tools::{Tool, ToolExecutionResult};
@@ -369,23 +369,13 @@ impl Tool for SandboxReadFileTool {
         let client = docker_client(&config);
 
         match client.get_archive(&state.container_id, &path).await {
-            Ok(bytes) => {
-                // Try to return as text, fall back to base64
-                match String::from_utf8(bytes.clone()) {
-                    Ok(text) => ToolExecutionResult::success(build_text_read_file_result(
-                        "sandbox_read_file",
-                        &path,
-                        &text,
-                        "text",
-                        offset,
-                        limit,
-                    )),
-                    Err(_) => ToolExecutionResult::success(format!(
-                        "[Binary file, {} bytes]",
-                        bytes.len()
-                    )),
-                }
-            }
+            Ok(bytes) => ToolExecutionResult::success(build_bytes_read_file_result(
+                "sandbox_read_file",
+                &path,
+                &bytes,
+                offset,
+                limit,
+            )),
             Err(e) => ToolExecutionResult::tool_error(format!("Failed to read file: {e}")),
         }
     }

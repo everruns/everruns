@@ -14,6 +14,7 @@
 
 use super::{Capability, CapabilityStatus};
 use crate::session_file::SessionFile;
+use crate::tool_output_sanitizer::build_binary_read_file_result;
 use crate::tool_types::ToolHints;
 use crate::tools::{Tool, ToolExecutionResult, ToolResultImage};
 use crate::traits::ToolContext;
@@ -44,6 +45,10 @@ fn image_media_type(path: &str) -> Option<&'static str> {
 /// Workspace prefix used in file paths
 const WORKSPACE_PREFIX: &str = "/workspace";
 const MAX_EDIT_DIFF_CHARS: usize = 16_000;
+const LIST_DIRECTORY_DEFAULT_LIMIT: usize = 200;
+const LIST_DIRECTORY_MAX_LIMIT: usize = 1_000;
+const GREP_FILES_DEFAULT_LIMIT: usize = 200;
+const GREP_FILES_MAX_LIMIT: usize = 1_000;
 
 // ============================================================================
 // Content-type detection (EVE-249)
@@ -622,15 +627,16 @@ impl Tool for ReadFileTool {
                     Err(e) => return ToolExecutionResult::internal_error(e),
                 };
 
-                // Non-image binary files: return raw base64 without line formatting
+                // Non-image binary files: return metadata only. Base64 payloads
+                // are token-expensive and usually not useful to the model.
                 if file.encoding == "base64" {
-                    return ToolExecutionResult::success(json!({
-                        "path": display_path,
-                        "content": file.content.as_deref().unwrap_or(""),
-                        "encoding": "base64",
-                        "size_bytes": file.size_bytes,
-                        "content_hash": content_hash
-                    }));
+                    let mut result = build_binary_read_file_result(
+                        &display_path,
+                        file.size_bytes as usize,
+                        "base64",
+                    );
+                    result["content_hash"] = json!(content_hash);
+                    return ToolExecutionResult::success(result);
                 }
 
                 let raw_content = file.content.as_deref().unwrap_or("");
@@ -642,13 +648,13 @@ impl Tool for ReadFileTool {
 
                 // Metadata-only for known binary extensions
                 if read_mode == ReadMode::MetadataOnly {
-                    return ToolExecutionResult::success(json!({
-                        "path": display_path,
-                        "content_type": "binary",
-                        "size_bytes": file.size_bytes,
-                        "content_hash": content_hash,
-                        "note": "Binary file — use a different tool or download to inspect."
-                    }));
+                    let mut result = build_binary_read_file_result(
+                        &display_path,
+                        file.size_bytes as usize,
+                        "binary",
+                    );
+                    result["content_hash"] = json!(content_hash);
+                    return ToolExecutionResult::success(result);
                 }
 
                 // Apply content-type defaults when user didn't specify
@@ -1182,6 +1188,19 @@ impl Tool for ListDirectoryTool {
                     "type": "string",
                     "default": "/workspace",
                     "description": "Directory path to list (default: '/workspace')"
+                },
+                "offset": {
+                    "type": "integer",
+                    "description": "Starting item offset for large directories. Default: 0",
+                    "default": 0,
+                    "minimum": 0
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max directory entries to return. Default: 200, maximum: 1000",
+                    "default": LIST_DIRECTORY_DEFAULT_LIMIT,
+                    "minimum": 1,
+                    "maximum": LIST_DIRECTORY_MAX_LIMIT
                 }
             },
             "additionalProperties": false
@@ -1209,6 +1228,15 @@ impl Tool for ListDirectoryTool {
             .get("path")
             .and_then(|v| v.as_str())
             .unwrap_or("/workspace");
+        let offset = arguments
+            .get("offset")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0) as usize;
+        let limit = match arguments.get("limit").and_then(|v| v.as_u64()) {
+            Some(0) => return ToolExecutionResult::tool_error("limit must be greater than 0"),
+            Some(value) => (value as usize).min(LIST_DIRECTORY_MAX_LIMIT),
+            None => LIST_DIRECTORY_DEFAULT_LIMIT,
+        };
 
         let file_store = match &context.file_store {
             Some(store) => store,
@@ -1228,8 +1256,11 @@ impl Tool for ListDirectoryTool {
             .await
         {
             Ok(files) => {
+                let total_count = files.len();
                 let entries: Vec<Value> = files
                     .iter()
+                    .skip(offset)
+                    .take(limit)
                     .map(|f| {
                         json!({
                             "name": f.name,
@@ -1244,17 +1275,31 @@ impl Tool for ListDirectoryTool {
                 let mut result = json!({
                     "path": display_path,
                     "entries": entries,
-                    "count": entries.len()
+                    "count": entries.len(),
+                    "total_count": total_count,
+                    "offset": offset,
+                    "limit": limit
                 });
-                // `list_directory` has no backend cap today — the contract is
-                // wired with `not_truncated` so the envelope is always present
-                // (EVE-339). If a cap is introduced later, switch to
-                // `without_resume(... ItemCap)`. `bytes_returned` measures the
-                // primary payload (`entries`), not the wrapping object.
                 let bytes_returned = serde_json::to_string(&entries)
                     .expect("list_directory entries always serialize")
                     .len();
-                TruncationInfo::not_truncated(bytes_returned).attach(&mut result);
+                let next_offset = offset.saturating_add(entries.len());
+                let truncation = if next_offset < total_count {
+                    TruncationInfo::with_resume(
+                        bytes_returned,
+                        None,
+                        next_offset as u64,
+                        format!(
+                            "call list_directory with offset={} to resume from item {}",
+                            next_offset,
+                            next_offset + 1
+                        ),
+                        TruncationReason::ItemCap,
+                    )
+                } else {
+                    TruncationInfo::not_truncated(bytes_returned)
+                };
+                truncation.attach(&mut result);
                 ToolExecutionResult::success(result)
             }
             Err(e) => {
@@ -1305,6 +1350,19 @@ impl Tool for GrepFilesTool {
                 "path_pattern": {
                     "type": "string",
                     "description": "Optional path pattern to filter files (e.g., '*.txt', '/workspace/docs/*')"
+                },
+                "offset": {
+                    "type": "integer",
+                    "description": "Starting match offset. Default: 0",
+                    "default": 0,
+                    "minimum": 0
+                },
+                "limit": {
+                    "type": "integer",
+                    "description": "Max matches to return. Default: 200, maximum: 1000",
+                    "default": GREP_FILES_DEFAULT_LIMIT,
+                    "minimum": 1,
+                    "maximum": GREP_FILES_MAX_LIMIT
                 }
             },
             "required": ["pattern"],
@@ -1335,6 +1393,15 @@ impl Tool for GrepFilesTool {
         };
 
         let path_pattern = arguments.get("path_pattern").and_then(|v| v.as_str());
+        let offset = arguments
+            .get("offset")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0) as usize;
+        let limit = match arguments.get("limit").and_then(|v| v.as_u64()) {
+            Some(0) => return ToolExecutionResult::tool_error("limit must be greater than 0"),
+            Some(value) => (value as usize).min(GREP_FILES_MAX_LIMIT),
+            None => GREP_FILES_DEFAULT_LIMIT,
+        };
 
         let file_store = match &context.file_store {
             Some(store) => store,
@@ -1350,8 +1417,11 @@ impl Tool for GrepFilesTool {
             .await
         {
             Ok(matches) => {
+                let total_matches = matches.len();
                 let results: Vec<Value> = matches
                     .iter()
+                    .skip(offset)
+                    .take(limit)
                     .map(|m| {
                         json!({
                             "path": add_workspace_prefix(&m.path),
@@ -1364,18 +1434,31 @@ impl Tool for GrepFilesTool {
                 let mut result = json!({
                     "pattern": pattern,
                     "matches": results,
-                    "match_count": results.len()
+                    "match_count": results.len(),
+                    "total_matches": total_matches,
+                    "offset": offset,
+                    "limit": limit
                 });
-                // `grep_files` does not currently cap match count; the
-                // envelope is wired with `not_truncated` so the reading-tool
-                // contract is honoured uniformly (EVE-339). If a cap is
-                // introduced later, switch to `without_resume(... LineCap)`.
-                // `bytes_returned` measures the primary payload (`matches`),
-                // not the wrapping object.
                 let bytes_returned = serde_json::to_string(&results)
                     .expect("grep_files matches always serialize")
                     .len();
-                TruncationInfo::not_truncated(bytes_returned).attach(&mut result);
+                let next_offset = offset.saturating_add(results.len());
+                let truncation = if next_offset < total_matches {
+                    TruncationInfo::with_resume(
+                        bytes_returned,
+                        None,
+                        next_offset as u64,
+                        format!(
+                            "call grep_files with offset={} to resume from match {}",
+                            next_offset,
+                            next_offset + 1
+                        ),
+                        TruncationReason::LineCap,
+                    )
+                } else {
+                    TruncationInfo::not_truncated(bytes_returned)
+                };
+                truncation.attach(&mut result);
                 ToolExecutionResult::success(result)
             }
             Err(e) => {
@@ -1794,9 +1877,43 @@ mod tests {
         async fn list_directory(
             &self,
             _session_id: SessionId,
-            _path: &str,
+            path: &str,
         ) -> Result<Vec<FileInfo>> {
-            Ok(vec![])
+            let prefix = if path == "/" {
+                "/".to_string()
+            } else {
+                format!("{}/", path.trim_end_matches('/'))
+            };
+            let files = self.files.lock().unwrap();
+            let mut entries: Vec<FileInfo> = files
+                .iter()
+                .filter_map(|(entry_path, entry)| {
+                    if path != "/" && entry_path == path {
+                        return None;
+                    }
+                    let rest = entry_path.strip_prefix(&prefix)?;
+                    if rest.is_empty() || rest.contains('/') {
+                        return None;
+                    }
+                    Some(FileInfo {
+                        id: Uuid::new_v4(),
+                        session_id: Uuid::nil(),
+                        name: rest.to_string(),
+                        path: entry_path.clone(),
+                        is_directory: entry.is_directory,
+                        is_readonly: entry.is_readonly,
+                        size_bytes: entry
+                            .content
+                            .as_ref()
+                            .map(|content| content.len() as i64)
+                            .unwrap_or(0),
+                        created_at: entry.created_at,
+                        updated_at: entry.updated_at,
+                    })
+                })
+                .collect();
+            entries.sort_by(|a, b| a.path.cmp(&b.path));
+            Ok(entries)
         }
 
         async fn stat_file(&self, _session_id: SessionId, path: &str) -> Result<Option<FileStat>> {
@@ -1819,10 +1936,34 @@ mod tests {
         async fn grep_files(
             &self,
             _session_id: SessionId,
-            _pattern: &str,
+            pattern: &str,
             _path_pattern: Option<&str>,
         ) -> Result<Vec<GrepMatch>> {
-            Ok(vec![])
+            let files = self.files.lock().unwrap();
+            let mut matches = Vec::new();
+            for (path, entry) in files.iter() {
+                if entry.is_directory || entry.encoding != "text" {
+                    continue;
+                }
+                let Some(content) = entry.content.as_deref() else {
+                    continue;
+                };
+                for (idx, line) in content.lines().enumerate() {
+                    if line.contains(pattern) {
+                        matches.push(GrepMatch {
+                            path: path.clone(),
+                            line_number: idx + 1,
+                            line: line.to_string(),
+                        });
+                    }
+                }
+            }
+            matches.sort_by(|a, b| {
+                a.path
+                    .cmp(&b.path)
+                    .then_with(|| a.line_number.cmp(&b.line_number))
+            });
+            Ok(matches)
         }
 
         async fn create_directory(&self, _session_id: SessionId, path: &str) -> Result<FileInfo> {
@@ -2275,6 +2416,27 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_list_directory_applies_item_window() {
+        let store = Arc::new(MockFileStore::default());
+        store.add_text_file("/a.txt", "a");
+        store.add_text_file("/b.txt", "b");
+        store.add_text_file("/c.txt", "c");
+        let context = make_context(store);
+
+        let result = ListDirectoryTool
+            .execute_with_context(json!({"path": "/workspace", "limit": 2}), &context)
+            .await;
+        let value = expect_success(result);
+
+        crate::truncation_info::assert_conforms("list_directory", &value);
+        assert_eq!(value["count"], 2);
+        assert_eq!(value["total_count"], 3);
+        assert_eq!(value["truncation"]["truncated"], true);
+        assert_eq!(value["truncation"]["reason"], "item_cap");
+        assert_eq!(value["truncation"]["next_offset"], 2);
+    }
+
+    #[tokio::test]
     async fn test_grep_files_emits_truncation_envelope() {
         let store = Arc::new(MockFileStore::default());
         store.add_text_file("/notes.txt", "hello world");
@@ -2287,6 +2449,25 @@ mod tests {
 
         crate::truncation_info::assert_conforms("grep_files", &value);
         assert_eq!(value["truncation"]["truncated"], false);
+    }
+
+    #[tokio::test]
+    async fn test_grep_files_applies_match_window() {
+        let store = Arc::new(MockFileStore::default());
+        store.add_text_file("/notes.txt", "hello one\nhello two\nhello three");
+        let context = make_context(store);
+
+        let result = GrepFilesTool
+            .execute_with_context(json!({"pattern": "hello", "limit": 2}), &context)
+            .await;
+        let value = expect_success(result);
+
+        crate::truncation_info::assert_conforms("grep_files", &value);
+        assert_eq!(value["match_count"], 2);
+        assert_eq!(value["total_matches"], 3);
+        assert_eq!(value["truncation"]["truncated"], true);
+        assert_eq!(value["truncation"]["reason"], "line_cap");
+        assert_eq!(value["truncation"]["next_offset"], 2);
     }
 
     #[tokio::test]
@@ -2485,6 +2666,25 @@ mod tests {
             .await;
 
         assert!(expect_tool_error(result).contains("only supports text files"));
+    }
+
+    #[tokio::test]
+    async fn test_read_file_non_image_binary_omits_base64_content() {
+        let store = Arc::new(MockFileStore::default());
+        store.add_base64_file("/archive.zip", "UEsDBAoAAAAAAA==");
+        let context = make_context(store);
+
+        let result = ReadFileTool
+            .execute_with_context(json!({"path": "/workspace/archive.zip"}), &context)
+            .await;
+        let value = expect_success(result);
+
+        assert_eq!(value["content_type"], "binary");
+        assert_eq!(value["encoding"], "base64");
+        assert_eq!(value["truncation"]["truncated"], false);
+        assert_eq!(value["truncation"]["bytes_returned"], 0);
+        assert!(value.get("content").is_none());
+        assert!(value.get("content_hash").is_some());
     }
 
     #[tokio::test]

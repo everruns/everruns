@@ -24,6 +24,11 @@ use serde_json::{Value, json};
 #[cfg(all(feature = "embedded-platform-docs", everruns_has_workspace_docs))]
 use std::sync::Arc;
 
+const SESSION_READ_MESSAGES_DEFAULT_LIMIT: usize = 10;
+const SESSION_READ_MESSAGES_MAX_LIMIT: usize = 50;
+const SESSION_READ_MESSAGES_DEFAULT_CONTENT_LIMIT: usize = 12_000;
+const SESSION_READ_MESSAGES_MAX_CONTENT_LIMIT: usize = 50_000;
+
 // =============================================================================
 // Capability
 // =============================================================================
@@ -214,9 +219,52 @@ fn require_str<'a>(args: &'a Value, key: &str) -> Result<&'a str, ToolExecutionR
     })
 }
 
+fn parse_bounded_usize_arg(
+    args: &Value,
+    key: &str,
+    default: usize,
+    max: usize,
+) -> Result<usize, ToolExecutionResult> {
+    match args.get(key).and_then(|v| v.as_u64()) {
+        Some(0) => Err(ToolExecutionResult::tool_error(format!(
+            "{key} must be greater than 0"
+        ))),
+        Some(value) => Ok((value as usize).min(max)),
+        None => Ok(default),
+    }
+}
+
 fn parse_channel_type(value: &str, field: &str) -> Result<ChannelType, ToolExecutionResult> {
     serde_json::from_value(Value::String(value.to_string()))
         .map_err(|_| ToolExecutionResult::tool_error(format!("Invalid {field}: {value}")))
+}
+
+fn truncate_content_chars(content: &str, limit: usize) -> (String, bool, usize, usize) {
+    let mut end_byte = content.len();
+    let mut returned_chars = 0;
+    let mut total_chars = 0;
+
+    for (idx, (byte_idx, _)) in content.char_indices().enumerate() {
+        total_chars = idx + 1;
+        if idx == limit {
+            end_byte = byte_idx;
+        }
+        if idx < limit {
+            returned_chars = idx + 1;
+        }
+    }
+
+    let truncated = total_chars > limit;
+    if !truncated {
+        return (content.to_string(), false, total_chars, total_chars);
+    }
+
+    (
+        content[..end_byte].to_string(),
+        true,
+        total_chars,
+        returned_chars,
+    )
 }
 
 fn channel_json(channel: &AppChannel, include_config: bool) -> Value {
@@ -2138,7 +2186,17 @@ impl Tool for SessionReadMessagesTool {
                 },
                 "limit": {
                     "type": "integer",
-                    "description": "Optional max messages (default: 10)"
+                    "description": "Max messages to return. Default: 10, maximum: 50",
+                    "default": SESSION_READ_MESSAGES_DEFAULT_LIMIT,
+                    "minimum": 1,
+                    "maximum": SESSION_READ_MESSAGES_MAX_LIMIT
+                },
+                "content_limit": {
+                    "type": "integer",
+                    "description": "Max characters to return per message. Default: 12000, maximum: 50000",
+                    "default": SESSION_READ_MESSAGES_DEFAULT_CONTENT_LIMIT,
+                    "minimum": 1,
+                    "maximum": SESSION_READ_MESSAGES_MAX_CONTENT_LIMIT
                 }
             },
             "required": ["session_id"],
@@ -2181,28 +2239,54 @@ impl Tool for SessionReadMessagesTool {
             }
         };
 
-        let limit = arguments
-            .get("limit")
-            .and_then(|v| v.as_u64())
-            .map(|v| v as usize);
+        let limit = match parse_bounded_usize_arg(
+            &arguments,
+            "limit",
+            SESSION_READ_MESSAGES_DEFAULT_LIMIT,
+            SESSION_READ_MESSAGES_MAX_LIMIT,
+        ) {
+            Ok(value) => value,
+            Err(error) => return error,
+        };
+        let content_limit = match parse_bounded_usize_arg(
+            &arguments,
+            "content_limit",
+            SESSION_READ_MESSAGES_DEFAULT_CONTENT_LIMIT,
+            SESSION_READ_MESSAGES_MAX_CONTENT_LIMIT,
+        ) {
+            Ok(value) => value,
+            Err(error) => return error,
+        };
 
         let base_url = store.base_url();
 
-        match store.get_messages(session_id, limit).await {
+        match store.get_messages(session_id, Some(limit)).await {
             Ok(messages) => {
                 let items: Vec<Value> = messages
                     .iter()
                     .map(|m| {
+                        let (content, truncated, total_chars, returned_chars) =
+                            truncate_content_chars(&m.content, content_limit);
                         json!({
                             "role": m.role,
-                            "content": m.content,
+                            "content": content,
+                            "content_truncated": truncated,
+                            "content_total_chars": total_chars,
+                            "content_returned_chars": returned_chars,
                             "created_at": m.created_at.to_rfc3339(),
                         })
                     })
                     .collect();
+                let truncated_message_count = items
+                    .iter()
+                    .filter(|item| item["content_truncated"].as_bool().unwrap_or(false))
+                    .count();
                 ToolExecutionResult::success(json!({
                     "messages": items,
                     "count": items.len(),
+                    "limit": limit,
+                    "content_limit": content_limit,
+                    "truncated_message_count": truncated_message_count,
                     "session_id": session_id_str,
                     "ui_link": format!("{}/sessions/{}/chat", base_url, session_id),
                 }))
@@ -2483,6 +2567,16 @@ mod tests {
         assert!(names.contains(&"session_send_message"));
         assert!(names.contains(&"session_read_messages"));
         assert!(names.contains(&"session_read_response"));
+    }
+
+    #[test]
+    fn truncate_content_chars_respects_unicode_boundaries() {
+        let (content, truncated, total_chars, returned_chars) = truncate_content_chars("ab😀cd", 3);
+
+        assert_eq!(content, "ab😀");
+        assert!(truncated);
+        assert_eq!(total_chars, 5);
+        assert_eq!(returned_chars, 3);
     }
 
     // =========================================================================
@@ -3215,6 +3309,46 @@ mod tests {
                 assert_eq!(msgs[1]["role"], "agent");
             }
             other => panic!("expected success, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn read_messages_applies_content_limit() {
+        let ctx = mock_context();
+        let tool = SessionReadMessagesTool;
+        let result = tool
+            .execute_with_context(
+                json!({"session_id": SessionId::new().to_string(), "content_limit": 2}),
+                &ctx,
+            )
+            .await;
+        match result {
+            ToolExecutionResult::Success(v) => {
+                assert_eq!(v["content_limit"], 2);
+                assert_eq!(v["truncated_message_count"], 2);
+                let msgs = v["messages"].as_array().unwrap();
+                assert_eq!(msgs[0]["content"], "He");
+                assert_eq!(msgs[0]["content_truncated"], true);
+                assert_eq!(msgs[0]["content_total_chars"], 5);
+                assert_eq!(msgs[0]["content_returned_chars"], 2);
+            }
+            other => panic!("expected success, got: {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn read_messages_rejects_zero_limits() {
+        let ctx = mock_context();
+        let tool = SessionReadMessagesTool;
+        let result = tool
+            .execute_with_context(
+                json!({"session_id": SessionId::new().to_string(), "limit": 0}),
+                &ctx,
+            )
+            .await;
+        match result {
+            ToolExecutionResult::ToolError(msg) => assert!(msg.contains("greater than 0")),
+            other => panic!("expected tool error, got: {other:?}"),
         }
     }
 

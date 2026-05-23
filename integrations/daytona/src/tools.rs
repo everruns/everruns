@@ -26,7 +26,8 @@ use everruns_core::resource_ownership::{
     require_owned_external_resource,
 };
 use everruns_core::tool_output_sanitizer::{
-    READ_FILE_DEFAULT_LIMIT, build_text_read_file_result, parse_read_file_window_args,
+    READ_FILE_DEFAULT_LIMIT, build_binary_read_file_result, build_text_read_file_result,
+    parse_read_file_window_args,
 };
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::ToolContext;
@@ -682,12 +683,7 @@ impl Tool for DaytonaReadFileTool {
                         limit,
                     )
                 } else {
-                    json!({
-                        "path": path,
-                        "content": content,
-                        "encoding": encoding,
-                        "size_bytes": bytes.len()
-                    })
+                    build_binary_read_file_result(path, bytes.len(), &encoding)
                 };
                 result["sandbox_id"] = json!(sandbox_id);
                 ToolExecutionResult::success(result)

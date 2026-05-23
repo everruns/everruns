@@ -41,7 +41,7 @@ pub const E2B_ENVD_PORT: u16 = 49_983;
 
 static SYSTEM_PROMPT: LazyLock<String> = LazyLock::new(|| {
     let mut prompt = String::from(
-        "E2B sandboxes are isolated networked Linux environments. Create or select a sandbox before sandbox-scoped operations, prefer `/home/user` as workspace root, and pause or delete sandboxes when done; delete for immediate cleanup.",
+        "E2B sandboxes are isolated networked Linux environments. Create or select a sandbox before sandbox-scoped operations, prefer `/home/user` as workspace root, and pause or delete sandboxes when done.",
     );
     prompt.push_str(everruns_core::tool_output_sanitizer::EXEC_OUTPUT_HINT);
     prompt

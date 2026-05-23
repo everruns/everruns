@@ -24,7 +24,6 @@ use serde_json::json;
 
 use super::{Capability, CapabilityStatus};
 use crate::atoms::PostToolExecHook;
-use crate::tool_output_sanitizer::EXEC_OUTPUT_BUDGET;
 use crate::tool_types::{ToolCall, ToolDefinition, ToolResult};
 use crate::traits::{SessionFileSystem, ToolContext};
 use crate::typed_id::SessionId;
@@ -45,21 +44,20 @@ pub struct PersistResult {
     pub stdout_total_lines: usize,
 }
 
-/// Persist large exec output to session VFS when it exceeds the budget.
+/// Persist exec output to session VFS.
 ///
 /// Writes stdout to `/outputs/{safe_id}.stdout` and stderr to
 /// `/outputs/{safe_id}.stderr` (if non-empty). Returns paths and metadata.
 ///
 /// This is the shared helper that any sandbox tool or hook can call.
-pub async fn persist_large_output(
+pub async fn persist_output(
     file_store: &Arc<dyn SessionFileSystem>,
     session_id: SessionId,
     tool_call_id: &str,
     stdout: &str,
     stderr: &str,
 ) -> Option<PersistResult> {
-    // Only persist if stdout exceeds its budget or stderr exceeds 4096 bytes
-    if stdout.len() <= EXEC_OUTPUT_BUDGET && stderr.len() <= 4096 {
+    if stdout.is_empty() && stderr.is_empty() {
         return None;
     }
 
@@ -77,8 +75,8 @@ pub async fn persist_large_output(
         stdout_total_lines: 0,
     };
 
-    // Persist stdout
-    if stdout.len() > EXEC_OUTPUT_BUDGET {
+    // Persist stdout whenever present so verbosity-truncated results remain recoverable.
+    if !stdout.is_empty() {
         let stdout_to_persist = truncate_for_persistence(stdout, MAX_PERSISTED_STREAM_BYTES);
         let path = format!("{OUTPUT_DIR}/{safe_id}.stdout");
         result.stdout_total_lines = stdout.lines().count();
@@ -91,8 +89,8 @@ pub async fn persist_large_output(
         }
     }
 
-    // Persist stderr separately if large
-    if stderr.len() > 4096 {
+    // Persist stderr separately whenever present.
+    if !stderr.is_empty() {
         let stderr_to_persist = truncate_for_persistence(stderr, MAX_PERSISTED_STREAM_BYTES);
         let path = format!("{OUTPUT_DIR}/{safe_id}.stderr");
         if file_store
@@ -110,6 +108,19 @@ pub async fn persist_large_output(
     } else {
         None
     }
+}
+
+/// Back-compat wrapper for older callers. Despite the historical name, this now
+/// persists any non-empty opted-in output so verbosity-truncated results are
+/// recoverable through `read_file`.
+pub async fn persist_large_output(
+    file_store: &Arc<dyn SessionFileSystem>,
+    session_id: SessionId,
+    tool_call_id: &str,
+    stdout: &str,
+    stderr: &str,
+) -> Option<PersistResult> {
+    persist_output(file_store, session_id, tool_call_id, stdout, stderr).await
 }
 
 /// Truncate persisted stream content to a bounded size with a clear marker.
@@ -308,6 +319,7 @@ fn extract_output_text(json: &serde_json::Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tool_output_sanitizer::EXEC_OUTPUT_BUDGET;
 
     #[test]
     fn test_extract_output_text_stdout_stderr() {
@@ -520,11 +532,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_persist_large_output_returns_none_below_budget() {
+    async fn test_persist_large_output_persists_stdout_below_budget() {
         let store: Arc<dyn SessionFileSystem> = Arc::new(MockFileStore::default());
         let small = "a".repeat(EXEC_OUTPUT_BUDGET);
         let result = persist_large_output(&store, test_session_id(), "call-1", &small, "").await;
-        assert!(result.is_none());
+        let r = result.expect("should persist non-empty stdout");
+        assert_eq!(r.stdout_path.as_deref(), Some("/outputs/call-1.stdout"));
     }
 
     #[tokio::test]
@@ -565,7 +578,7 @@ mod tests {
         let result =
             persist_large_output(&store, test_session_id(), "call-3", "small", &large_stderr).await;
         let r = result.expect("should persist stderr");
-        assert!(r.stdout_path.is_none());
+        assert_eq!(r.stdout_path.as_deref(), Some("/outputs/call-3.stdout"));
         assert_eq!(r.stderr_path.as_deref(), Some("/outputs/call-3.stderr"));
         assert_eq!(mock.content("/outputs/call-3.stderr").unwrap().len(), 4097);
     }

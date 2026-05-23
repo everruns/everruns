@@ -88,6 +88,41 @@ pub fn session_log_path(session_dir: &Path) -> PathBuf {
     session_dir.join("events.jsonl")
 }
 
+pub fn legacy_session_log_path(sessions_dir: &Path, session_id: SessionId) -> PathBuf {
+    sessions_dir.join(format!("{session_id}.jsonl"))
+}
+
+/// Copy a pre-folder-layout session log into the current session folder.
+///
+/// The old layout wrote `<sessions_dir>/<session_id>.jsonl`; the current
+/// layout writes `<sessions_dir>/<session_id>/events.jsonl`. Copying instead
+/// of renaming keeps older ercode binaries able to read the legacy file.
+pub fn migrate_legacy_session_log(
+    sessions_dir: &Path,
+    session_dir: &Path,
+    session_id: SessionId,
+) -> Result<Option<PathBuf>> {
+    let current = session_log_path(session_dir);
+    if current.exists() {
+        return Ok(None);
+    }
+    let legacy = legacy_session_log_path(sessions_dir, session_id);
+    if !legacy.exists() {
+        return Ok(None);
+    }
+    std::fs::create_dir_all(session_dir).map_err(|e| {
+        AgentLoopError::config(format!("create session dir {}: {e}", session_dir.display()))
+    })?;
+    std::fs::copy(&legacy, &current).map_err(|e| {
+        AgentLoopError::config(format!(
+            "migrate legacy session log {} to {}: {e}",
+            legacy.display(),
+            current.display()
+        ))
+    })?;
+    Ok(Some(legacy))
+}
+
 /// Result of replaying a JSONL session log from disk.
 #[derive(Debug, Default)]
 pub struct ReplayedSession {
@@ -459,6 +494,50 @@ mod tests {
         assert_eq!(collected.len(), 3, "seeded + 1 new");
         // New event sequence continues from start_sequence we opened with.
         assert_eq!(collected[2].sequence, Some(3));
+    }
+
+    #[test]
+    fn migrate_legacy_session_log_copies_flat_jsonl() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let session_id = SessionId::from_seed(48200);
+        let legacy_path = legacy_session_log_path(dir.path(), session_id);
+        std::fs::write(&legacy_path, "legacy event\n").expect("write legacy");
+
+        let session_dir = session_dir_path(dir.path(), session_id);
+        let migrated =
+            migrate_legacy_session_log(dir.path(), &session_dir, session_id).expect("migrate");
+        let current_path = session_log_path(&session_dir);
+
+        assert_eq!(migrated.as_deref(), Some(legacy_path.as_path()));
+        assert_eq!(
+            std::fs::read_to_string(&current_path).expect("read migrated"),
+            "legacy event\n"
+        );
+        assert!(
+            legacy_path.exists(),
+            "migration copies instead of renaming for old ercode compatibility"
+        );
+    }
+
+    #[test]
+    fn migrate_legacy_session_log_does_not_overwrite_current_log() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let session_id = SessionId::from_seed(48201);
+        let legacy_path = legacy_session_log_path(dir.path(), session_id);
+        std::fs::write(&legacy_path, "legacy event\n").expect("write legacy");
+        let session_dir = session_dir_path(dir.path(), session_id);
+        std::fs::create_dir_all(&session_dir).expect("create session dir");
+        let current_path = session_log_path(&session_dir);
+        std::fs::write(&current_path, "current event\n").expect("write current");
+
+        let migrated =
+            migrate_legacy_session_log(dir.path(), &session_dir, session_id).expect("migrate");
+
+        assert!(migrated.is_none());
+        assert_eq!(
+            std::fs::read_to_string(&current_path).expect("read current"),
+            "current event\n"
+        );
     }
 
     #[tokio::test]

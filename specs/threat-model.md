@@ -946,6 +946,7 @@ When a bash script calls `bash` or `sh` or uses `eval`, bashkit re-invokes its o
 | TM-DOS-011 | Authenticated API key sprawl | Low | No server-side per-user API key quota; API key creation requires an authenticated user session and keys remain user-owned/revocable. Operators must monitor and clean up excessive key creation if they need stricter controls. | **ACCEPTED** |
 | TM-DOS-012 | Source-backed Volume repository storage abuse | Medium | Volume source sync performs shallow clones without tags, skips symlinks, excludes `.git`, and enforces configurable file-count, per-file byte, and total byte limits before replacing `volume_files`. Failed sync keeps the previous readable snapshot. | MITIGATED |
 | TM-DOS-013 | Hidden Agent snapshot storage growth | Medium | Automatic Agent draft snapshots are active only when `FEATURE_AGENT_VERSIONS` is enabled, skipped when the latest stored config hash already matches the draft, and pruned to a bounded per-Agent unpublished auto-snapshot window after each write. | MITIGATED |
+| TM-DOS-014 | Tool output context growth | Medium | Read-like tools use windowed responses and truncation envelopes (`read_file`, `list_directory`, `grep_files`, browser DOM content); platform message reads cap message count and per-message content; non-image binary reads return metadata instead of base64 or lossy UTF-8; opted-in exec tools persist full output under `/outputs/` so the inline prompt payload can stay bounded and recoverable. | MITIGATED |
 
 ### Mitigation Details
 
