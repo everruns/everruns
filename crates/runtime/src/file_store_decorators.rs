@@ -210,9 +210,11 @@ impl ApprovalGatingFileStore {
     }
 
     /// Internal helper: gate a write given an already-known `before` content,
-    /// then write through the inner store. Used by `write_file_if_content_matches`
-    /// to avoid re-reading the file when the caller already has the content
-    /// in hand from the CAS check.
+    /// then write through the inner store.
+    ///
+    /// Used by [`Self::write_file`] for the unconditional-write path. The CAS
+    /// path ([`Self::write_file_if_content_matches`]) re-checks via the inner
+    /// store's CAS write after approval so it cannot use this helper.
     async fn gated_write_with_before(
         &self,
         session_id: SessionId,
@@ -280,9 +282,23 @@ impl SessionFileSystem for ApprovalGatingFileStore {
         if current != expected_content || existing.encoding != expected_encoding {
             return Ok(None);
         }
-        self.gated_write_with_before(session_id, path, Some(current), content, encoding)
+        let approved = self.gate.approve_write(path, Some(current), content).await;
+        if !approved {
+            return Err(AgentLoopError::tool(format!(
+                "user denied write to `{path}`"
+            )));
+        }
+
+        self.inner
+            .write_file_if_content_matches(
+                session_id,
+                path,
+                expected_content,
+                expected_encoding,
+                content,
+                encoding,
+            )
             .await
-            .map(Some)
     }
 
     async fn delete_file(
@@ -541,5 +557,57 @@ mod tests {
             .unwrap();
         assert!(result.is_none());
         assert!(gate.writes.lock().unwrap().is_empty());
+    }
+
+    struct MutatingGate {
+        inner: Arc<dyn SessionFileSystem>,
+    }
+
+    #[async_trait]
+    impl FileApprovalGate for MutatingGate {
+        async fn approve_write(&self, _path: &str, _before: Option<String>, _after: &str) -> bool {
+            self.inner
+                .write_file(sid(), "/notes.txt", "intruder", "text")
+                .await
+                .unwrap();
+            true
+        }
+
+        async fn approve_delete(&self, _path: &str, _recursive: bool) -> bool {
+            true
+        }
+    }
+
+    #[tokio::test]
+    async fn write_if_content_matches_rechecks_after_approval() {
+        let inner_store: Arc<dyn SessionFileSystem> = inner();
+        inner_store
+            .write_file(sid(), "/notes.txt", "original", "text")
+            .await
+            .unwrap();
+        let gate = Arc::new(MutatingGate {
+            inner: inner_store.clone(),
+        });
+        let store = ApprovalGatingFileStore::new(inner_store.clone(), gate);
+
+        let result = store
+            .write_file_if_content_matches(
+                sid(),
+                "/notes.txt",
+                "original",
+                "text",
+                "updated",
+                "text",
+            )
+            .await
+            .unwrap();
+
+        assert!(result.is_none());
+        let final_file = inner_store
+            .read_file(sid(), "/notes.txt")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(final_file.content.as_deref(), Some("intruder"));
     }
 }
