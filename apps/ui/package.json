@@ -13,8 +13,8 @@
     "./styles/*.css": "./src/app/*.css"
   },
   "scripts": {
-    "dev": "next dev --port 9100",
-    "build": "node ./scripts/next-build.mjs",
+    "dev": "next dev --turbopack --port 9100",
+    "build": "next build --turbopack",
     "start": "next start",
     "lint": "oxlint -c oxlint.json ./src",
     "format": "oxfmt --write ./src",
@@ -46,6 +46,7 @@
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "recharts": "^3.7.0",
+    "remark-gfm": "^4.0.1",
     "remark-github-blockquote-alert": "^2.0.1",
     "streamdown": "^2.3.0",
     "tailwind-merge": "^3.5.0",

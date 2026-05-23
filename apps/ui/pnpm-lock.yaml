@@ -73,6 +73,9 @@ importers:
       recharts:
         specifier: ^3.7.0
         version: 3.8.1(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react-is@19.2.6)(react@19.2.6)(redux@5.0.1)
+      remark-gfm:
+        specifier: ^4.0.1
+        version: 4.0.1
       remark-github-blockquote-alert:
         specifier: ^2.0.1
         version: 2.1.0
