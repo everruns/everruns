@@ -843,9 +843,9 @@ pub struct SendSignalRequest {
     /// Signal name. Must match a signal the running workflow listens for.
     #[schema(example = "user_response_received")]
     pub signal_type: String,
-    /// Signal payload (workflow-specific JSON). Empty object when the signal carries no data.
+    /// Signal payload (workflow-specific JSON, any shape; defaults to `null` when omitted).
+    /// Example: `{"approved": true, "approver": "user_01933b5a00007000800000000000001"}`.
     #[serde(default)]
-    #[schema(value_type = Object, example = json!({"approved": true, "approver": "user_01933b5a00007000800000000000001"}))]
     pub payload: serde_json::Value,
 }
 
@@ -1308,8 +1308,8 @@ pub struct EnqueueTaskRequest {
     /// Activity type (determines which worker handles this task)
     #[schema(example = "session.run")]
     pub activity_type: String,
-    /// Task input payload (activity-specific JSON).
-    #[schema(value_type = Object, example = json!({"session_id": "session_01933b5a00007000800000000000001"}))]
+    /// Task input payload (activity-specific JSON; any shape — object, array, string, etc.).
+    /// Example for `session.run`: `{"session_id": "session_01933b5a00007000800000000000001"}`.
     pub input: serde_json::Value,
     /// Retry policy options
     #[serde(default)]

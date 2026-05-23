@@ -44,9 +44,9 @@ pub struct ClientToolResult {
     /// Tool call ID (correlates with the tool call from tool.call_requested event)
     #[schema(example = "toolu_01933b5a00007000800000000000001")]
     pub tool_call_id: String,
-    /// Result value (JSON). Null if the tool failed.
+    /// Result value (any JSON — object, array, string, number, etc.). Null if the tool failed.
+    /// Example: `{"url": "https://example.com/orders/42"}`.
     #[serde(default)]
-    #[schema(value_type = Option<Object>, example = json!({"url": "https://example.com/orders/42"}))]
     pub result: Option<serde_json::Value>,
     /// Error message if the tool failed
     #[serde(default)]

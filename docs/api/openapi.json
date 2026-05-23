@@ -12971,11 +12971,7 @@
             "example": "Refund failed: order is outside refund window"
           },
           "result": {
-            "type": [
-              "object",
-              "null"
-            ],
-            "description": "Result value (JSON). Null if the tool failed."
+            "description": "Result value (any JSON — object, array, string, number, etc.). Null if the tool failed.\nExample: `{\"url\": \"https://example.com/orders/42\"}`."
           },
           "tool_call_id": {
             "type": "string",
@@ -15021,8 +15017,7 @@
             "example": "session.run"
           },
           "input": {
-            "type": "object",
-            "description": "Task input payload (activity-specific JSON)."
+            "description": "Task input payload (activity-specific JSON; any shape — object, array, string, etc.).\nExample for `session.run`: `{\"session_id\": \"session_01933b5a00007000800000000000001\"}`."
           },
           "options": {
             "oneOf": [
@@ -24625,8 +24620,7 @@
         ],
         "properties": {
           "payload": {
-            "type": "object",
-            "description": "Signal payload (workflow-specific JSON). Empty object when the signal carries no data."
+            "description": "Signal payload (workflow-specific JSON, any shape; defaults to `null` when omitted).\nExample: `{\"approved\": true, \"approver\": \"user_01933b5a00007000800000000000001\"}`."
           },
           "signal_type": {
             "type": "string",
