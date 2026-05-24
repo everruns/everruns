@@ -90,8 +90,8 @@ importers:
         version: 4.4.3
     devDependencies:
       '@ag-ui/core':
-        specifier: ^0.0.45
-        version: 0.0.45
+        specifier: ^0.0.53
+        version: 0.0.53
       '@playwright/test':
         specifier: ^1.58.2
         version: 1.60.0
@@ -145,6 +145,9 @@ packages:
 
   '@ag-ui/core@0.0.45':
     resolution: {integrity: sha512-Ccsarxb23TChONOWXDbNBqp1fIbOSMht8g7w6AsSYBTtdOwZ7h7AkjNkr3LSdVv+RbT30JMdSLtieJE0YepNPg==}
+
+  '@ag-ui/core@0.0.53':
+    resolution: {integrity: sha512-11UocR7fFdMWw503bWCX2IOK15vbWfxT11Mn9xOiPBVO/UVcn57ywGrlLL4UaBlPgmUTvuzr2yYR2ElSqiN2wQ==}
 
   '@alloc/quick-lru@5.2.0':
     resolution: {integrity: sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw==}
@@ -4556,6 +4559,10 @@ snapshots:
   '@ag-ui/core@0.0.45':
     dependencies:
       rxjs: 7.8.1
+      zod: 3.25.76
+
+  '@ag-ui/core@0.0.53':
+    dependencies:
       zod: 3.25.76
 
   '@alloc/quick-lru@5.2.0': {}
