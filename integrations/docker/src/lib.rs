@@ -404,7 +404,7 @@ impl Tool for DockerExecTool {
         let output_mode = arguments
             .get("output")
             .and_then(|v| v.as_str())
-            .unwrap_or("concise");
+            .unwrap_or("auto");
 
         let name = container_name(&context.session_id);
 
@@ -445,11 +445,12 @@ impl Tool for DockerExecTool {
         let stderr_raw = String::from_utf8_lossy(&output.stderr);
 
         use everruns_core::tool_output_sanitizer::{
-            clean_exec_output, output_verbosity_budget, priority_aware_truncate,
+            clean_exec_output, output_verbosity_budget, priority_aware_truncate, resolve_auto_mode,
         };
         let clean_stdout = clean_exec_output(&stdout_raw);
         let clean_stderr = clean_exec_output(&stderr_raw);
-        let (stdout, stderr) = if let Some(budget) = output_verbosity_budget(output_mode) {
+        let effective_mode = resolve_auto_mode(output_mode, exit_code);
+        let (stdout, stderr) = if let Some(budget) = output_verbosity_budget(effective_mode) {
             (
                 priority_aware_truncate(&clean_stdout, budget),
                 priority_aware_truncate(&clean_stderr, budget.min(4096)),

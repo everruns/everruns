@@ -288,7 +288,7 @@ impl Tool for E2BExecTool {
         let output_mode = arguments
             .get("output")
             .and_then(|v| v.as_str())
-            .unwrap_or("concise");
+            .unwrap_or("auto");
         let state = match get_sandbox_state(context, sandbox_id).await {
             Ok(state) => state,
             Err(err) => return err,

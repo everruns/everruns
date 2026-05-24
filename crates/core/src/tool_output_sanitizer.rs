@@ -44,8 +44,10 @@ pub const AUTO_SUCCESS_BUDGET: usize = 384;
 ///
 /// Note: `auto` is exec-tool specific and depends on the process exit code,
 /// so callers should run [`resolve_auto_mode`] first to map `auto` to a
-/// concrete mode. A bare `auto` reaching this function falls through to the
-/// unknown default (`CONCISE_BUDGET`) so behavior stays safe.
+/// concrete mode. A bare `auto` reaching this function resolves to the
+/// tight `AUTO_SUCCESS_BUDGET` rather than silently falling back to
+/// `CONCISE_BUDGET` — callers that forget to resolve will at worst
+/// over-truncate, never silently widen.
 pub fn output_verbosity_budget(mode: &str) -> Option<usize> {
     match mode {
         "silent" => Some(SILENT_BUDGET),
@@ -53,7 +55,7 @@ pub fn output_verbosity_budget(mode: &str) -> Option<usize> {
         "normal" => Some(NORMAL_BUDGET),
         "verbose" => Some(VERBOSE_BUDGET),
         "full" => None,
-        "auto_success" => Some(AUTO_SUCCESS_BUDGET),
+        "auto" | "auto_success" => Some(AUTO_SUCCESS_BUDGET),
         _ => Some(CONCISE_BUDGET), // unknown → default
     }
 }
@@ -86,7 +88,7 @@ pub fn output_verbosity_schema() -> serde_json::Value {
         "type": "string",
         "enum": ["auto", "silent", "concise", "normal", "verbose", "full"],
         "default": "auto",
-        "description": "Output verbosity: auto (default — compact summary on success when output is persisted, ~8KiB on failure for diagnostics), silent (~200B), concise (~2KiB), normal (~8KiB), verbose (~16KiB), full (unlimited, capped by 64KiB hard limit). For tools with output persistence enabled, full output is saved to /outputs/{tool_call_id}.stdout and /outputs/{tool_call_id}.stderr — use read_file to retrieve."
+        "description": "Output verbosity: auto (default — compact summary on success, ~8KiB on failure for diagnostics), silent (~200B), concise (~2KiB), normal (~8KiB), verbose (~16KiB), full (unlimited, capped by 64KiB hard limit). For tools with output persistence enabled, full output is saved to /outputs/{tool_call_id}.stdout and /outputs/{tool_call_id}.stderr — use read_file to retrieve."
     })
 }
 
@@ -1322,6 +1324,19 @@ mod tests {
         assert_eq!(
             output_verbosity_budget("auto_success"),
             Some(AUTO_SUCCESS_BUDGET)
+        );
+    }
+
+    #[test]
+    fn test_bare_auto_budget_defaults_to_auto_success() {
+        // A caller that forgets to run `resolve_auto_mode` first must not
+        // silently widen to `concise`. EVE-489 keeps the tight budget so
+        // the worst case is an over-truncated payload, never a silently
+        // expanded one.
+        assert_eq!(
+            output_verbosity_budget("auto"),
+            Some(AUTO_SUCCESS_BUDGET),
+            "bare `auto` should resolve to the tight success budget, not silently widen to concise"
         );
     }
 

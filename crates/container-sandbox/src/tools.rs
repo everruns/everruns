@@ -284,10 +284,12 @@ impl Tool for SandboxExecTool {
 
         // Sanitize output. EVE-489: resolve `auto` against the exit code so
         // successes get a compact summary and failures still get a diagnostic
-        // window. Docker exit codes fit in i32; saturate on the off chance
-        // the daemon returns something outlandish.
+        // window. `resolve_auto_mode` only branches on `== 0`, so reduce the
+        // (possibly i64) Docker exit code to a sentinel that preserves that
+        // distinction without lossy casting.
         let exit_code = result.exit_code;
-        let effective_mode = resolve_auto_mode(output_mode, exit_code as i32);
+        let success_sentinel: i32 = if exit_code == 0 { 0 } else { 1 };
+        let effective_mode = resolve_auto_mode(output_mode, success_sentinel);
         let clean_output = clean_exec_output(&result.output);
         let output = if let Some(budget) = output_verbosity_budget(effective_mode) {
             priority_aware_truncate(&clean_output, budget)
