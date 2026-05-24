@@ -245,10 +245,12 @@ impl Tool for SandboxExecTool {
                         .and_then(|v| v.as_str())
                         .map(ToString::to_string),
                     timeout_ms,
+                    // EVE-489: persistence-first default — `auto` returns
+                    // compact summaries on success, diagnostics on failure.
                     output_mode: arguments
                         .get("output")
                         .and_then(|v| v.as_str())
-                        .unwrap_or("concise")
+                        .unwrap_or("auto")
                         .to_string(),
                 },
             )

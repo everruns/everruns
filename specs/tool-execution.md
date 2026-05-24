@@ -150,19 +150,22 @@ The pipeline:
 2. **Collapse CR lines** — `\r`-overwritten lines (progress bars) reduced to final content
 3. **Truncate** — priority-aware truncation at the budget determined by the `output` verbosity parameter
 
-### Output Verbosity (EVE-236)
+### Output Verbosity (EVE-236, EVE-489)
 
 All exec tools accept an `output` parameter controlling how much output is returned to the LLM:
 
 | Mode | Budget | When to use |
 |------|--------|-------------|
+| `auto` | compact summary on success (~512 B total inline including the `[full output saved to ...]` pointer) / ~8 KiB on failure | Persistence-first — compact summary when the run succeeds and output is persisted, diagnostic window when it fails (**default**) |
 | `silent` | ~200 B | Minimal truncated output — fire-and-forget commands |
-| `concise` | ~2 KiB | Tail ~30 lines — builds, installs, known-good commands (**default**) |
+| `concise` | ~2 KiB | Tail ~30 lines — builds, installs, known-good commands |
 | `normal` | ~8 KiB | General use, debugging |
 | `verbose` | ~16 KiB | Test failures, error investigation |
 | `full` | unlimited | Raw output, no truncation — when the LLM needs every line |
 
-Default is `concise`. Budgets apply to stdout; stderr is capped at `min(budget, 4096)` to keep error output proportional. Tools that set the `persist_output` hint persist non-empty full output to `/outputs/` via `tool_output_persistence` — stdout to `/outputs/{tool_call_id}.stdout`, stderr to `/outputs/{tool_call_id}.stderr` — and the files are readable with `read_file`. See `crates/core/src/tool_output_sanitizer.rs` for budget constants and `output_verbosity_budget()`.
+Default is `auto`. In `auto` mode, the resolved budget depends on the process exit code: successful runs (`exit_code == 0`) collapse to `AUTO_SUCCESS_BUDGET` so the model relies on the persisted log; non-zero exits resolve to `normal` (~8 KiB) so failures stay debuggable in-loop. `AUTO_SUCCESS_BUDGET` is intentionally sized so the inline `stdout` field — including the `[full output saved to /workspace/outputs/... — use read_file ...]` pointer that `PersistOutputHook` appends — stays around 512 bytes total. `raw_output` always carries the full cleaned output for persistence hooks, regardless of mode. Explicit `silent`/`concise`/`normal`/`verbose`/`full` are opt-ins for a fixed inline window and continue to behave exactly as before — they ignore exit code.
+
+Budgets apply to stdout; stderr is capped at `min(budget, 4096)` to keep error output proportional. Tools that set the `persist_output` hint persist non-empty full output to `/outputs/` via `tool_output_persistence` — stdout to `/outputs/{tool_call_id}.stdout`, stderr to `/outputs/{tool_call_id}.stderr` — and the files are readable with `read_file`. The persisted files are the source of truth for full logs; the inline payload is sized for next-step reasoning. See `crates/core/src/tool_output_sanitizer.rs` for budget constants, `output_verbosity_budget()`, and `resolve_auto_mode()`.
 
 This is the tool's responsibility — each tool calls the helpers before constructing `ToolExecutionResult`. See `crates/core/src/tool_output_sanitizer.rs` for the primitives.
 
