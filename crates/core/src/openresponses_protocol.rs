@@ -515,6 +515,12 @@ impl OpenResponsesProtocolLlmDriver {
     /// Handles the conversion of:
     /// - Assistant messages with tool_calls into separate FunctionCall items
     /// - Assistant messages with thinking into Reasoning items (for o-series/GPT-5 models)
+    ///
+    /// Note: this function always reconstructs the FULL transcript from the supplied
+    /// messages. The caller is responsible for trimming to a delta window when a
+    /// `previous_response_id` is in play — see [`compute_delta_input_items`]. The
+    /// stateful Responses invariant is: a request must not mix `previous_response_id`
+    /// with prior transcript input the provider already holds server-side.
     fn build_input(
         messages: &[LlmMessage],
         supports_phases: bool,
@@ -588,6 +594,59 @@ impl OpenResponsesProtocolLlmDriver {
     }
 }
 
+/// Trim input items to the "delta" window for a stateful Responses continuation.
+///
+/// When a request carries `previous_response_id`, OpenAI already holds the prior
+/// transcript server-side. Re-sending it in `input` double-counts context (charges
+/// the user twice and inflates prompt-cache keys). The invariant is:
+///
+///   **A request must not mix `previous_response_id` with prior transcript input.**
+///
+/// "Delta" is everything strictly after the last item that belonged to a prior
+/// assistant turn. Items that belong to a prior assistant turn are: assistant
+/// `Message`, `Reasoning`, and `FunctionCall` (the assistant's own tool calls).
+/// What remains as delta is typically `FunctionCallOutput` items (tool results
+/// the client produced) plus any fresh user `Message`s.
+///
+/// Defensive behavior: if no prior-assistant item is found (e.g., the caller
+/// passed only fresh user input), all items are treated as delta and kept. An
+/// empty input is also valid — the provider can resume purely from
+/// `previous_response_id`.
+fn compute_delta_input_items(items: Vec<ResponsesInputItem>) -> Vec<ResponsesInputItem> {
+    // Find the index of the last item that is part of a prior assistant turn.
+    let last_assistant_turn_idx = items
+        .iter()
+        .enumerate()
+        .rev()
+        .find_map(|(i, item)| match item {
+            ResponsesInputItem::Message { role, .. } if role == "assistant" => Some(i),
+            ResponsesInputItem::Reasoning { .. } => Some(i),
+            ResponsesInputItem::FunctionCall { .. } => Some(i),
+            _ => None,
+        });
+
+    match last_assistant_turn_idx {
+        Some(idx) => items.into_iter().skip(idx + 1).collect(),
+        // No prior-assistant items in input — defensive: keep all items as delta.
+        None => items,
+    }
+}
+
+/// The single decision point for whether a Responses request `input` should be
+/// trimmed to the delta window. Extracted so the call path can be regression-tested
+/// without spinning up an HTTP mock — protects against accidentally removing the
+/// `previous_response_id.is_some()` guard that enforces the stateful invariant.
+fn finalize_input_for_request(
+    input_items: Vec<ResponsesInputItem>,
+    previous_response_id: &Option<String>,
+) -> Vec<ResponsesInputItem> {
+    if previous_response_id.is_some() {
+        compute_delta_input_items(input_items)
+    } else {
+        input_items
+    }
+}
+
 #[async_trait]
 impl LlmDriver for OpenResponsesProtocolLlmDriver {
     async fn chat_completion_stream(
@@ -604,6 +663,12 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
         .is_some_and(|p| p.supports_phases);
 
         let (instructions, input_items) = Self::build_input(&messages, supports_phases);
+
+        // Stateful Responses continuations must not mix `previous_response_id` with
+        // the prior transcript input the provider already holds server-side. When a
+        // continuation handle is present, trim `input_items` to the delta window so
+        // the request only carries new tool results / user messages.
+        let input_items = finalize_input_for_request(input_items, &config.previous_response_id);
 
         let tools = if config.tools.is_empty() {
             None
@@ -1690,8 +1755,14 @@ enum ResponsesInputItem {
         output: String,
     },
     /// Reasoning item for o-series and GPT-5 models
-    /// Contains encrypted reasoning content that must be included in subsequent API calls
-    /// to preserve reasoning context across turns (similar to Anthropic's thinking signature)
+    /// Contains encrypted reasoning content that preserves reasoning context across turns
+    /// (similar to Anthropic's thinking signature).
+    ///
+    /// Stateless requests must re-send prior `Reasoning` items in `input` so the model can
+    /// continue from them. Stateful continuations (those carrying `previous_response_id`)
+    /// rely on OpenAI to hold the prior reasoning chain server-side, so [`compute_delta_input_items`]
+    /// intentionally drops `Reasoning` items that belong to a prior assistant turn — re-sending
+    /// them alongside `previous_response_id` would violate the no-mixing invariant.
     Reasoning {
         r#type: String,
         /// Unique ID for this reasoning item
@@ -2237,6 +2308,302 @@ mod tests {
         let json = serde_json::to_value(&input[2]).unwrap();
         assert_eq!(json["type"], "function_call");
         assert_eq!(json["call_id"], "call_abc");
+    }
+
+    // ========================================================================
+    // EVE-488: Stateful Responses continuations must not double-send context.
+    //
+    // When `previous_response_id` is set, the OpenAI Responses provider already
+    // holds the prior transcript server-side. Re-sending it in `input` causes
+    // double-counting. These tests pin the invariant that the delta-trim helper
+    // only keeps items strictly after the most recent assistant turn, and
+    // that the request-building path applies the trim when (and only when) a
+    // continuation handle is present.
+    // ========================================================================
+
+    /// Issue reproducer: a stateful continuation must not carry the full prior
+    /// transcript in `input` alongside `previous_response_id`. After trimming,
+    /// only the new tool result and any fresh user input should remain.
+    #[test]
+    fn openresponses_requests_should_not_mix_previous_response_id_with_full_transcript() {
+        use crate::tool_types::ToolCall;
+
+        // Simulate a multi-turn transcript: system + user + assistant(tool_call) + tool result.
+        // This is the exact shape that gets reconstructed on a follow-up turn when
+        // the runtime has a `previous_response_id` from the prior assistant turn.
+        let messages = vec![
+            LlmMessage::text(LlmMessageRole::System, "You are helpful"),
+            LlmMessage::text(LlmMessageRole::User, "What time is it?"),
+            LlmMessage {
+                role: LlmMessageRole::Assistant,
+                content: LlmMessageContent::Text("Let me check.".to_string()),
+                tool_calls: Some(vec![ToolCall {
+                    id: "call_xyz789".to_string(),
+                    name: "get_current_time".to_string(),
+                    arguments: json!({"timezone": "UTC"}),
+                }]),
+                tool_call_id: None,
+                phase: None,
+                thinking: None,
+                thinking_signature: None,
+            },
+            LlmMessage {
+                role: LlmMessageRole::Tool,
+                content: LlmMessageContent::Text("2025-01-19T10:30:00Z".to_string()),
+                tool_calls: None,
+                tool_call_id: Some("call_xyz789".to_string()),
+                phase: None,
+                thinking: None,
+                thinking_signature: None,
+            },
+        ];
+
+        // Build the full transcript the same way the driver does.
+        let (instructions, full_input) =
+            OpenResponsesProtocolLlmDriver::build_input(&messages, false);
+
+        // Without trimming the full transcript leaks user + assistant + function_call
+        // + function_call_output — exactly the bug.
+        assert!(
+            full_input.len() > 1,
+            "sanity: full transcript has multi items"
+        );
+
+        // The trim performed when `previous_response_id` is present in the request
+        // path must drop everything up to and including the last prior-assistant item.
+        let delta = compute_delta_input_items(full_input);
+
+        // Only the tool result (function_call_output) should remain.
+        assert_eq!(
+            delta.len(),
+            1,
+            "stateful continuation must only send delta items; got {} items",
+            delta.len()
+        );
+        let json = serde_json::to_value(&delta[0]).unwrap();
+        assert_eq!(json["type"], "function_call_output");
+        assert_eq!(json["call_id"], "call_xyz789");
+        assert_eq!(json["output"], "2025-01-19T10:30:00Z");
+
+        // Instructions (system message) are NOT part of `input`; they're still sent
+        // separately and that is correct — they don't count toward the invariant.
+        assert_eq!(instructions, Some("You are helpful".to_string()));
+    }
+
+    /// Stateless mode (no previous_response_id): all input items are kept.
+    /// The trim helper is only invoked by the call path when previous_response_id
+    /// is set; this test pins that the helper produces correct delta output
+    /// regardless, leaving the fresh user message that follows the assistant turn.
+    #[test]
+    fn compute_delta_keeps_tail_after_assistant_message() {
+        let items = vec![
+            ResponsesInputItem::Message {
+                r#type: "message".to_string(),
+                role: "user".to_string(),
+                content: ResponsesContent::Text("hi".to_string()),
+                phase: None,
+            },
+            ResponsesInputItem::Message {
+                r#type: "message".to_string(),
+                role: "assistant".to_string(),
+                content: ResponsesContent::Text("hello".to_string()),
+                phase: None,
+            },
+            ResponsesInputItem::Message {
+                r#type: "message".to_string(),
+                role: "user".to_string(),
+                content: ResponsesContent::Text("follow up".to_string()),
+                phase: None,
+            },
+        ];
+        let trimmed = compute_delta_input_items(items);
+        assert_eq!(trimmed.len(), 1);
+        let json = serde_json::to_value(&trimmed[0]).unwrap();
+        assert_eq!(json["role"], "user");
+        assert_eq!(
+            json["content"], "follow up",
+            "trim keeps the fresh user message that arrived after the assistant turn"
+        );
+    }
+
+    /// Stateful continuation with parallel tool calls: every tool output that
+    /// follows the prior assistant's function_call items is kept. The function_call
+    /// items themselves belong to server-side state and are dropped.
+    #[test]
+    fn compute_delta_keeps_tool_results_after_last_assistant_turn() {
+        let items = vec![
+            ResponsesInputItem::Message {
+                r#type: "message".to_string(),
+                role: "user".to_string(),
+                content: ResponsesContent::Text("do two things".to_string()),
+                phase: None,
+            },
+            ResponsesInputItem::Message {
+                r#type: "message".to_string(),
+                role: "assistant".to_string(),
+                content: ResponsesContent::Text("ok".to_string()),
+                phase: None,
+            },
+            ResponsesInputItem::FunctionCall {
+                r#type: "function_call".to_string(),
+                call_id: "call_a".to_string(),
+                name: "tool_a".to_string(),
+                arguments: "{}".to_string(),
+            },
+            ResponsesInputItem::FunctionCall {
+                r#type: "function_call".to_string(),
+                call_id: "call_b".to_string(),
+                name: "tool_b".to_string(),
+                arguments: "{}".to_string(),
+            },
+            ResponsesInputItem::FunctionCallOutput {
+                r#type: "function_call_output".to_string(),
+                call_id: "call_a".to_string(),
+                output: "a result".to_string(),
+            },
+            ResponsesInputItem::FunctionCallOutput {
+                r#type: "function_call_output".to_string(),
+                call_id: "call_b".to_string(),
+                output: "b result".to_string(),
+            },
+        ];
+
+        let trimmed = compute_delta_input_items(items);
+
+        // The function_call items live in server-side state. The delta carries
+        // only the tool outputs the client produced for them.
+        assert_eq!(trimmed.len(), 2);
+        for item in &trimmed {
+            let json = serde_json::to_value(item).unwrap();
+            assert_eq!(json["type"], "function_call_output");
+        }
+    }
+
+    /// Empty input with previous_response_id is valid: the provider can resume
+    /// purely from the continuation handle, no input needed.
+    #[test]
+    fn compute_delta_allows_empty_input_for_stateful_continuation() {
+        let trimmed = compute_delta_input_items(vec![]);
+        assert!(trimmed.is_empty());
+    }
+
+    /// Defensive: if no prior-assistant item is present (caller passed only fresh
+    /// user input), all items are kept as delta.
+    #[test]
+    fn compute_delta_keeps_all_items_when_no_assistant_turn_present() {
+        let items = vec![
+            ResponsesInputItem::Message {
+                r#type: "message".to_string(),
+                role: "user".to_string(),
+                content: ResponsesContent::Text("one".to_string()),
+                phase: None,
+            },
+            ResponsesInputItem::Message {
+                r#type: "message".to_string(),
+                role: "user".to_string(),
+                content: ResponsesContent::Text("two".to_string()),
+                phase: None,
+            },
+        ];
+        let trimmed = compute_delta_input_items(items);
+        assert_eq!(trimmed.len(), 2);
+    }
+
+    /// Reasoning items from a prior assistant turn are also dropped by the trim.
+    #[test]
+    fn compute_delta_drops_prior_reasoning_items() {
+        let items = vec![
+            ResponsesInputItem::Reasoning {
+                r#type: "reasoning".to_string(),
+                id: "rs_00000001".to_string(),
+                encrypted_content: "encrypted-blob".to_string(),
+            },
+            ResponsesInputItem::Message {
+                r#type: "message".to_string(),
+                role: "assistant".to_string(),
+                content: ResponsesContent::Text("prior".to_string()),
+                phase: None,
+            },
+            ResponsesInputItem::FunctionCallOutput {
+                r#type: "function_call_output".to_string(),
+                call_id: "call_z".to_string(),
+                output: "result".to_string(),
+            },
+        ];
+        let trimmed = compute_delta_input_items(items);
+        assert_eq!(trimmed.len(), 1);
+        let json = serde_json::to_value(&trimmed[0]).unwrap();
+        assert_eq!(json["type"], "function_call_output");
+    }
+
+    // ------------------------------------------------------------------------
+    // Request-builder integration: `finalize_input_for_request` is the single
+    // gate that chooses whether the request `input` is trimmed. These tests
+    // pin the exact decision the call path makes — they catch regressions
+    // where the `previous_response_id`-presence check is accidentally dropped
+    // or inverted, which is what would re-introduce the bug even if the trim
+    // helper itself stays correct.
+    // ------------------------------------------------------------------------
+
+    fn sample_full_transcript_items() -> Vec<ResponsesInputItem> {
+        vec![
+            ResponsesInputItem::Message {
+                r#type: "message".to_string(),
+                role: "user".to_string(),
+                content: ResponsesContent::Text("first request".to_string()),
+                phase: None,
+            },
+            ResponsesInputItem::Message {
+                r#type: "message".to_string(),
+                role: "assistant".to_string(),
+                content: ResponsesContent::Text("first reply".to_string()),
+                phase: None,
+            },
+            ResponsesInputItem::Message {
+                r#type: "message".to_string(),
+                role: "user".to_string(),
+                content: ResponsesContent::Text("follow-up".to_string()),
+                phase: None,
+            },
+        ]
+    }
+
+    #[test]
+    fn finalize_input_skips_trim_when_previous_response_id_is_none() {
+        let items = sample_full_transcript_items();
+        let original_len = items.len();
+        let out = finalize_input_for_request(items, &None);
+        assert_eq!(
+            out.len(),
+            original_len,
+            "stateless mode keeps the full transcript so the model has context"
+        );
+    }
+
+    #[test]
+    fn finalize_input_trims_when_previous_response_id_is_set() {
+        let items = sample_full_transcript_items();
+        let out = finalize_input_for_request(items, &Some("resp_prev_42".to_string()));
+        assert_eq!(
+            out.len(),
+            1,
+            "stateful continuation must drop everything up to and including the prior assistant message"
+        );
+        let json = serde_json::to_value(&out[0]).unwrap();
+        assert_eq!(json["type"], "message");
+        assert_eq!(json["role"], "user");
+        // Only the post-assistant follow-up survives.
+        let txt = json["content"].as_str().unwrap_or("");
+        assert_eq!(txt, "follow-up");
+    }
+
+    #[test]
+    fn finalize_input_allows_empty_input_with_previous_response_id() {
+        let out = finalize_input_for_request(vec![], &Some("resp_anything".to_string()));
+        assert!(
+            out.is_empty(),
+            "empty delta is valid — the provider can resume purely from the response id"
+        );
     }
 
     // ========================================================================
