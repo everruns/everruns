@@ -122,10 +122,7 @@ impl AnthropicLlmDriver {
         }
     }
 
-    fn convert_content(
-        content: &LlmMessageContent,
-        prompt_cache_enabled: bool,
-    ) -> Vec<AnthropicContentBlock> {
+    fn convert_content(content: &LlmMessageContent) -> Vec<AnthropicContentBlock> {
         match content {
             LlmMessageContent::Text(text) => {
                 // Skip empty text to avoid Anthropic API error
@@ -134,7 +131,7 @@ impl AnthropicLlmDriver {
                 } else {
                     vec![AnthropicContentBlock::Text {
                         text: text.clone(),
-                        cache_control: prompt_cache_enabled.then(AnthropicCacheControl::ephemeral),
+                        cache_control: None,
                     }]
                 }
             }
@@ -148,8 +145,7 @@ impl AnthropicLlmDriver {
                         } else {
                             Some(AnthropicContentBlock::Text {
                                 text: text.clone(),
-                                cache_control: prompt_cache_enabled
-                                    .then(AnthropicCacheControl::ephemeral),
+                                cache_control: None,
                             })
                         }
                     }
@@ -178,10 +174,37 @@ impl AnthropicLlmDriver {
                     }
                     LlmContentPart::Audio { .. } => Some(AnthropicContentBlock::Text {
                         text: AUDIO_CONTENT_PLACEHOLDER.to_string(),
-                        cache_control: prompt_cache_enabled.then(AnthropicCacheControl::ephemeral),
+                        cache_control: None,
                     }),
                 })
                 .collect(),
+        }
+    }
+
+    fn system_prompt_for_request(
+        system_prompt: Option<String>,
+        prompt_cache_enabled: bool,
+    ) -> Option<AnthropicSystem> {
+        system_prompt.map(|text| {
+            if prompt_cache_enabled && !text.is_empty() {
+                AnthropicSystem::Blocks(vec![AnthropicSystemBlock::Text {
+                    text,
+                    cache_control: Some(AnthropicCacheControl::ephemeral()),
+                }])
+            } else {
+                AnthropicSystem::Text(text)
+            }
+        })
+    }
+
+    fn mark_last_text_block_for_cache(messages: &mut [AnthropicMessage]) {
+        for msg in messages.iter_mut().rev() {
+            for block in msg.content.iter_mut().rev() {
+                if let AnthropicContentBlock::Text { cache_control, .. } = block {
+                    *cache_control = Some(AnthropicCacheControl::ephemeral());
+                    return;
+                }
+            }
         }
     }
 
@@ -291,7 +314,7 @@ impl AnthropicLlmDriver {
                     }
 
                     // Add text/image content
-                    content.extend(Self::convert_content(&msg.content, prompt_cache_enabled));
+                    content.extend(Self::convert_content(&msg.content));
 
                     // Add tool_use blocks if present
                     if let Some(tool_calls) = &msg.tool_calls {
@@ -312,22 +335,30 @@ impl AnthropicLlmDriver {
                 _ => {
                     converted.push(AnthropicMessage {
                         role: Self::convert_role(&msg.role).to_string(),
-                        content: Self::convert_content(&msg.content, prompt_cache_enabled),
+                        content: Self::convert_content(&msg.content),
                     });
                 }
             }
         }
 
+        if prompt_cache_enabled {
+            Self::mark_last_text_block_for_cache(&mut converted);
+        }
+
         (system_prompt, converted)
     }
 
-    fn convert_tools(tools: &[ToolDefinition]) -> Vec<AnthropicTool> {
+    fn convert_tools(tools: &[ToolDefinition], prompt_cache_enabled: bool) -> Vec<AnthropicTool> {
+        let last_index = tools.len().saturating_sub(1);
         tools
             .iter()
-            .map(|tool| AnthropicTool {
+            .enumerate()
+            .map(|(index, tool)| AnthropicTool {
                 name: tool.name().to_string(),
                 description: tool.description().to_string(),
                 input_schema: tool.parameters().clone(),
+                cache_control: (prompt_cache_enabled && index == last_index)
+                    .then(AnthropicCacheControl::ephemeral),
             })
             .collect()
     }
@@ -346,11 +377,12 @@ impl LlmDriver for AnthropicLlmDriver {
         let prompt_cache_enabled = config.prompt_cache.as_ref().is_some_and(|cfg| cfg.enabled);
         let (system_prompt, anthropic_messages) =
             Self::convert_messages(&messages, prompt_cache_enabled);
+        let system = Self::system_prompt_for_request(system_prompt, prompt_cache_enabled);
 
         let tools = if config.tools.is_empty() {
             None
         } else {
-            Some(Self::convert_tools(&config.tools))
+            Some(Self::convert_tools(&config.tools, prompt_cache_enabled))
         };
 
         // Build thinking config from reasoning effort
@@ -401,7 +433,7 @@ impl LlmDriver for AnthropicLlmDriver {
             messages: anthropic_messages,
             max_tokens,
             temperature: config.temperature,
-            system: system_prompt,
+            system,
             stream: true,
             tools,
             thinking,
@@ -900,7 +932,7 @@ struct AnthropicRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     temperature: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    system: Option<String>,
+    system: Option<AnthropicSystem>,
     stream: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     tools: Option<Vec<AnthropicTool>>,
@@ -920,6 +952,24 @@ impl AnthropicCacheControl {
             r#type: "ephemeral".to_string(),
         }
     }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(untagged)]
+enum AnthropicSystem {
+    Text(String),
+    Blocks(Vec<AnthropicSystemBlock>),
+}
+
+#[derive(Debug, Serialize)]
+#[serde(tag = "type")]
+enum AnthropicSystemBlock {
+    #[serde(rename = "text")]
+    Text {
+        text: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        cache_control: Option<AnthropicCacheControl>,
+    },
 }
 
 /// Extended thinking configuration for Claude
@@ -1013,6 +1063,8 @@ struct AnthropicTool {
     name: String,
     description: String,
     input_schema: Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cache_control: Option<AnthropicCacheControl>,
 }
 
 // Streaming response types
@@ -1441,6 +1493,7 @@ impl AnthropicModelInfo {
 mod tests {
     use super::*;
     use everruns_core::llm_models::Modality;
+    use everruns_core::{BuiltinTool, DeferrablePolicy, ToolHints, ToolPolicy};
 
     // These tests verify that empty text blocks are filtered out to avoid
     // Anthropic API error: "text content blocks must be non-empty"
@@ -1449,24 +1502,83 @@ mod tests {
     fn test_convert_content_filters_empty_text() {
         // Empty text content should produce empty vec
         let content = LlmMessageContent::Text(String::new());
-        let blocks = AnthropicLlmDriver::convert_content(&content, false);
+        let blocks = AnthropicLlmDriver::convert_content(&content);
         assert!(blocks.is_empty(), "Empty text should be filtered out");
     }
 
     #[test]
-    fn test_convert_content_adds_cache_control_when_enabled() {
+    fn test_convert_messages_bounds_cache_control_breakpoints() {
         let content = LlmMessageContent::Text("Hello".to_string());
-        let blocks = AnthropicLlmDriver::convert_content(&content, true);
-        let json = serde_json::to_value(&blocks[0]).unwrap();
-        assert_eq!(json["type"], "text");
-        assert_eq!(json["cache_control"]["type"], "ephemeral");
+        let messages = vec![
+            LlmMessage {
+                role: LlmMessageRole::User,
+                content: content.clone(),
+                tool_calls: None,
+                tool_call_id: None,
+                phase: None,
+                thinking: None,
+                thinking_signature: None,
+            },
+            LlmMessage {
+                role: LlmMessageRole::Assistant,
+                content,
+                tool_calls: None,
+                tool_call_id: None,
+                phase: None,
+                thinking: None,
+                thinking_signature: None,
+            },
+        ];
+
+        let (_, converted) = AnthropicLlmDriver::convert_messages(&messages, true);
+        let json = serde_json::to_value(&converted).unwrap();
+        let cache_controls = json.to_string().matches("cache_control").count();
+
+        assert_eq!(cache_controls, 1);
+    }
+
+    #[test]
+    fn test_system_prompt_uses_cacheable_block_when_enabled() {
+        let system =
+            AnthropicLlmDriver::system_prompt_for_request(Some("System prompt".to_string()), true)
+                .unwrap();
+        let json = serde_json::to_value(&system).unwrap();
+
+        assert_eq!(json[0]["type"], "text");
+        assert_eq!(json[0]["cache_control"]["type"], "ephemeral");
+    }
+
+    #[test]
+    fn test_convert_tools_marks_only_last_tool_for_cache() {
+        let make_tool = |name: &str| {
+            ToolDefinition::Builtin(BuiltinTool {
+                name: name.to_string(),
+                display_name: None,
+                description: "test tool".to_string(),
+                parameters: json!({}),
+                policy: ToolPolicy::Auto,
+                category: None,
+                deferrable: DeferrablePolicy::default(),
+                hints: ToolHints::default(),
+            })
+        };
+        let tools = vec![make_tool("first"), make_tool("second"), make_tool("third")];
+
+        let converted = AnthropicLlmDriver::convert_tools(&tools, true);
+        let json = serde_json::to_value(&converted).unwrap();
+        let cache_controls = json.to_string().matches("cache_control").count();
+
+        assert_eq!(cache_controls, 1);
+        assert!(json[0].get("cache_control").is_none());
+        assert!(json[1].get("cache_control").is_none());
+        assert_eq!(json[2]["cache_control"]["type"], "ephemeral");
     }
 
     #[test]
     fn test_convert_content_keeps_non_empty_text() {
         // Non-empty text should be kept
         let content = LlmMessageContent::Text("Hello, world!".to_string());
-        let blocks = AnthropicLlmDriver::convert_content(&content, false);
+        let blocks = AnthropicLlmDriver::convert_content(&content);
         assert_eq!(blocks.len(), 1, "Non-empty text should be kept");
     }
 
@@ -1484,7 +1596,7 @@ mod tests {
                 text: String::new(),
             },
         ]);
-        let blocks = AnthropicLlmDriver::convert_content(&content, false);
+        let blocks = AnthropicLlmDriver::convert_content(&content);
         assert_eq!(blocks.len(), 1, "Only non-empty text should be kept");
     }
 
@@ -1499,7 +1611,7 @@ mod tests {
                 url: "https://example.com/image.png".to_string(),
             },
         ]);
-        let blocks = AnthropicLlmDriver::convert_content(&content, false);
+        let blocks = AnthropicLlmDriver::convert_content(&content);
         assert_eq!(blocks.len(), 1, "Image should be kept, empty text filtered");
     }
 
@@ -1514,7 +1626,7 @@ mod tests {
                 text: String::new(),
             },
         ]);
-        let blocks = AnthropicLlmDriver::convert_content(&content, false);
+        let blocks = AnthropicLlmDriver::convert_content(&content);
         assert!(blocks.is_empty(), "All empty text should produce empty vec");
     }
 
@@ -1551,7 +1663,7 @@ mod tests {
     fn test_convert_content_whitespace_is_kept() {
         // Whitespace-only text is kept (not empty after is_empty() check)
         let content = LlmMessageContent::Text("   ".to_string());
-        let blocks = AnthropicLlmDriver::convert_content(&content, false);
+        let blocks = AnthropicLlmDriver::convert_content(&content);
         assert_eq!(blocks.len(), 1, "Whitespace-only text is kept");
     }
 
@@ -1561,7 +1673,7 @@ mod tests {
         let content = LlmMessageContent::Parts(vec![LlmContentPart::Image {
             url: "data:image/png;base64,iVBORw0KGgo=".to_string(),
         }]);
-        let blocks = AnthropicLlmDriver::convert_content(&content, false);
+        let blocks = AnthropicLlmDriver::convert_content(&content);
         assert_eq!(blocks.len(), 1, "Base64 image should be converted");
         match &blocks[0] {
             AnthropicContentBlock::Image { source } => match source {
@@ -1580,7 +1692,7 @@ mod tests {
         let content = LlmMessageContent::Parts(vec![LlmContentPart::Image {
             url: "https://example.com/photo.jpg".to_string(),
         }]);
-        let blocks = AnthropicLlmDriver::convert_content(&content, false);
+        let blocks = AnthropicLlmDriver::convert_content(&content);
         assert_eq!(blocks.len(), 1, "HTTP image should be converted");
         match &blocks[0] {
             AnthropicContentBlock::Image { source } => match source {
@@ -1599,7 +1711,7 @@ mod tests {
         let content = LlmMessageContent::Parts(vec![LlmContentPart::Audio {
             url: "data:audio/wav;base64,AAAA".to_string(),
         }]);
-        let blocks = AnthropicLlmDriver::convert_content(&content, false);
+        let blocks = AnthropicLlmDriver::convert_content(&content);
         assert_eq!(blocks.len(), 1, "Audio should fallback to text note");
         match &blocks[0] {
             AnthropicContentBlock::Text { text, .. } => {

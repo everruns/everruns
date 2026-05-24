@@ -320,16 +320,22 @@ impl OpenResponsesProtocolLlmDriver {
 
     fn build_prompt_cache_key(
         config: &LlmCallConfig,
-        input_items: &[ResponsesInputItem],
+        _input_items: &[ResponsesInputItem],
         instructions: &Option<String>,
         tools: &Option<Vec<ResponsesTool>>,
     ) -> Option<String> {
         let prompt_cache = config.prompt_cache.as_ref().filter(|cfg| cfg.enabled)?;
+        let cache_family = config
+            .metadata
+            .get("session_id")
+            .or_else(|| config.metadata.get("agent_id"))
+            .or_else(|| config.metadata.get("harness_id"))
+            .or_else(|| config.metadata.get("org_id"));
         let fingerprint = json!({
             "strategy": prompt_cache.strategy,
             "model": config.model,
+            "cache_family": cache_family,
             "instructions": instructions,
-            "input": input_items,
             "tools": tools,
         });
         let payload = serde_json::to_vec(&fingerprint).ok()?;
@@ -1863,13 +1869,15 @@ mod tests {
 
     #[test]
     fn test_build_prompt_cache_key_when_enabled() {
+        let mut metadata = std::collections::HashMap::new();
+        metadata.insert("session_id".to_string(), "session_abc123".to_string());
         let config = LlmCallConfig {
             model: "gpt-5.4".to_string(),
             temperature: None,
             max_tokens: None,
             tools: vec![],
             reasoning_effort: None,
-            metadata: std::collections::HashMap::new(),
+            metadata,
             previous_response_id: None,
             tool_search: None,
             prompt_cache: Some(crate::llm_driver_registry::PromptCacheConfig {
@@ -1894,6 +1902,98 @@ mod tests {
 
         assert!(key.is_some());
         assert!(key.unwrap().starts_with("everruns:"));
+    }
+
+    #[test]
+    fn test_build_prompt_cache_key_ignores_changing_input() {
+        let mut metadata = std::collections::HashMap::new();
+        metadata.insert("session_id".to_string(), "session_abc123".to_string());
+        let config = LlmCallConfig {
+            model: "gpt-5.4".to_string(),
+            temperature: None,
+            max_tokens: None,
+            tools: vec![],
+            reasoning_effort: None,
+            metadata,
+            previous_response_id: None,
+            tool_search: None,
+            prompt_cache: Some(crate::llm_driver_registry::PromptCacheConfig {
+                enabled: true,
+                strategy: crate::llm_driver_registry::PromptCacheStrategy::Auto,
+                gemini_cached_content: None,
+            }),
+        };
+        let first_input = vec![ResponsesInputItem::Message {
+            r#type: "message".to_string(),
+            role: "user".to_string(),
+            content: ResponsesContent::Text("first turn".to_string()),
+            phase: None,
+        }];
+        let second_input = vec![ResponsesInputItem::Message {
+            r#type: "message".to_string(),
+            role: "user".to_string(),
+            content: ResponsesContent::Text("second turn with different text".to_string()),
+            phase: None,
+        }];
+
+        let first = OpenResponsesProtocolLlmDriver::build_prompt_cache_key(
+            &config,
+            &first_input,
+            &Some("You are helpful".to_string()),
+            &None,
+        );
+        let second = OpenResponsesProtocolLlmDriver::build_prompt_cache_key(
+            &config,
+            &second_input,
+            &Some("You are helpful".to_string()),
+            &None,
+        );
+
+        assert_eq!(first, second);
+    }
+
+    #[test]
+    fn test_build_prompt_cache_key_changes_with_cache_family() {
+        let mut first_metadata = std::collections::HashMap::new();
+        first_metadata.insert("session_id".to_string(), "session_abc123".to_string());
+        let mut second_metadata = std::collections::HashMap::new();
+        second_metadata.insert("session_id".to_string(), "session_xyz789".to_string());
+        let make_config = |metadata| LlmCallConfig {
+            model: "gpt-5.4".to_string(),
+            temperature: None,
+            max_tokens: None,
+            tools: vec![],
+            reasoning_effort: None,
+            metadata,
+            previous_response_id: None,
+            tool_search: None,
+            prompt_cache: Some(crate::llm_driver_registry::PromptCacheConfig {
+                enabled: true,
+                strategy: crate::llm_driver_registry::PromptCacheStrategy::Auto,
+                gemini_cached_content: None,
+            }),
+        };
+        let input = vec![ResponsesInputItem::Message {
+            r#type: "message".to_string(),
+            role: "user".to_string(),
+            content: ResponsesContent::Text("same turn".to_string()),
+            phase: None,
+        }];
+
+        let first = OpenResponsesProtocolLlmDriver::build_prompt_cache_key(
+            &make_config(first_metadata),
+            &input,
+            &Some("You are helpful".to_string()),
+            &None,
+        );
+        let second = OpenResponsesProtocolLlmDriver::build_prompt_cache_key(
+            &make_config(second_metadata),
+            &input,
+            &Some("You are helpful".to_string()),
+            &None,
+        );
+
+        assert_ne!(first, second);
     }
 
     #[test]

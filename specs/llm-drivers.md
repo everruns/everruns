@@ -98,8 +98,8 @@ Prompt caching is modeled as request intent on `LlmCallConfig.prompt_cache`. Dri
 
 Current provider mappings:
 
-- **OpenAI Responses API** — derives a deterministic `prompt_cache_key` within OpenAI's 64-character request limit
-- **Anthropic** — adds `cache_control: { type: "ephemeral" }` to eligible text blocks
+- **OpenAI Responses API** — derives a deterministic `prompt_cache_key` within OpenAI's 64-character request limit from stable cache-family inputs, not the changing per-turn transcript
+- **Anthropic** — adds bounded `cache_control: { type: "ephemeral" }` breakpoints to stable/high-value request sections instead of every text block
 - **Gemini** — uses `cachedContent` when the config includes an existing cached-content resource name; otherwise the request remains in implicit/default Gemini behavior
 
 `llm.generation.metadata.request_options.prompt_cache` records which provider-specific mode the driver actually attempted.
