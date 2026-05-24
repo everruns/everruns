@@ -17,10 +17,10 @@ importers:
         version: 0.9.9(prettier@3.8.3)(typescript@6.0.3)
       '@astrojs/starlight':
         specifier: ^0.39.2
-        version: 0.39.2(astro@6.3.6(@types/node@24.12.4)(rollup@4.60.4)(yaml@2.8.4))(typescript@6.0.3)
+        version: 0.39.2(astro@6.3.7(@types/node@24.12.4)(rollup@4.60.4)(yaml@2.8.4))(typescript@6.0.3)
       astro:
-        specifier: ^6.1.8
-        version: 6.3.6(@types/node@24.12.4)(rollup@4.60.4)(yaml@2.8.4)
+        specifier: ^6.3.7
+        version: 6.3.7(@types/node@24.12.4)(rollup@4.60.4)(yaml@2.8.4)
       js-yaml:
         specifier: ^4.1.0
         version: 4.1.1
@@ -35,10 +35,10 @@ importers:
         version: 4.1.0
       starlight-openapi:
         specifier: ^0.24.0
-        version: 0.24.0(@astrojs/markdown-remark@7.1.2)(@astrojs/starlight@0.39.2(astro@6.3.6(@types/node@24.12.4)(rollup@4.60.4)(yaml@2.8.4))(typescript@6.0.3))(astro@6.3.6(@types/node@24.12.4)(rollup@4.60.4)(yaml@2.8.4))(openapi-types@12.1.3)
+        version: 0.24.0(@astrojs/markdown-remark@7.1.2)(@astrojs/starlight@0.39.2(astro@6.3.7(@types/node@24.12.4)(rollup@4.60.4)(yaml@2.8.4))(typescript@6.0.3))(astro@6.3.7(@types/node@24.12.4)(rollup@4.60.4)(yaml@2.8.4))(openapi-types@12.1.3)
       starlight-sidebar-topics:
         specifier: ^0.7.1
-        version: 0.7.1(@astrojs/starlight@0.39.2(astro@6.3.6(@types/node@24.12.4)(rollup@4.60.4)(yaml@2.8.4))(typescript@6.0.3))
+        version: 0.7.1(@astrojs/starlight@0.39.2(astro@6.3.7(@types/node@24.12.4)(rollup@4.60.4)(yaml@2.8.4))(typescript@6.0.3))
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -864,8 +864,8 @@ packages:
     peerDependencies:
       astro: ^4.0.0-beta || ^5.0.0-beta || ^3.3.0 || ^6.0.0-beta
 
-  astro@6.3.6:
-    resolution: {integrity: sha512-lM30gGI/iASK9Z1WQVnBBYzxVwDv8slkXbJOF7FNJdZQeBrFETpsQvYoLRupM/adt2ObP5hkYAWEeCjofoqlRw==}
+  astro@6.3.7:
+    resolution: {integrity: sha512-zIeDRrI0qNgN1lcCjNqt6/IVCVej7VwSa326cO8uP9BOk1cg4QuffhLnOn2gCgWQr32/wxpSRFfXiLKHglu1Tw==}
     engines: {node: '>=22.12.0', npm: '>=9.6.5', pnpm: '>=7.1.0'}
     hasBin: true
 
@@ -1752,6 +1752,11 @@ packages:
     engines: {node: '>=10'}
     hasBin: true
 
+  semver@7.8.1:
+    resolution: {integrity: sha512-rkVq3IXh+4FDGch+KwzX3aV9W3kO54GyEgpvBzSyctDA6Xtd7RJQV1xmXbeQp5v7+VzLOfVqiutSE6GICgPFvg==}
+    engines: {node: '>=10'}
+    hasBin: true
+
   sharp@0.34.5:
     resolution: {integrity: sha512-Ou9I5Ft9WNcCbXrU9cMgPBcCK8LiwLqcbywW3t4oDV37n1pzpuNLsYiAV8eODnjbtQlSDwZ2cUEeQz4E54Hltg==}
     engines: {node: ^18.17.0 || ^20.3.0 || >=21.0.0}
@@ -1829,8 +1834,8 @@ packages:
     resolution: {integrity: sha512-Ae3OVUqifDw0wBriIBS7yVaW44Dp6eSHQcyq4Igc7eN2TJH/2YsicswaW+J/OuMvhpDPOKEgpAZCjkb4hpoyeA==}
     engines: {node: ^16.14.0 || >= 17.3.0}
 
-  tinyexec@1.1.2:
-    resolution: {integrity: sha512-dAqSqE/RabpBKI8+h26GfLq6Vb3JVXs30XYQjdMjaj/c2tS8IYYMbIzP599KtRj7c57/wYApb3QjgRgXmrCukA==}
+  tinyexec@1.2.2:
+    resolution: {integrity: sha512-M/Q0B2cp4K7kynaT/vnED1j8TlLY+Pp7C6Wl2bl/7u/F0mUVwdyOpwomQb8JpYLitHUssAJRmLZdMCGsrx7i+g==}
     engines: {node: '>=18'}
 
   tinyglobby@0.2.16:
@@ -2249,12 +2254,12 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@astrojs/mdx@5.0.6(astro@6.3.6(@types/node@24.12.4)(rollup@4.60.4)(yaml@2.8.4))':
+  '@astrojs/mdx@5.0.6(astro@6.3.7(@types/node@24.12.4)(rollup@4.60.4)(yaml@2.8.4))':
     dependencies:
       '@astrojs/markdown-remark': 7.1.2
       '@mdx-js/mdx': 3.1.1
       acorn: 8.16.0
-      astro: 6.3.6(@types/node@24.12.4)(rollup@4.60.4)(yaml@2.8.4)
+      astro: 6.3.7(@types/node@24.12.4)(rollup@4.60.4)(yaml@2.8.4)
       es-module-lexer: 2.1.0
       estree-util-visit: 2.0.0
       hast-util-to-html: 9.0.5
@@ -2278,17 +2283,17 @@ snapshots:
       stream-replace-string: 2.0.0
       zod: 4.4.3
 
-  '@astrojs/starlight@0.39.2(astro@6.3.6(@types/node@24.12.4)(rollup@4.60.4)(yaml@2.8.4))(typescript@6.0.3)':
+  '@astrojs/starlight@0.39.2(astro@6.3.7(@types/node@24.12.4)(rollup@4.60.4)(yaml@2.8.4))(typescript@6.0.3)':
     dependencies:
       '@astrojs/markdown-remark': 7.1.2
-      '@astrojs/mdx': 5.0.6(astro@6.3.6(@types/node@24.12.4)(rollup@4.60.4)(yaml@2.8.4))
+      '@astrojs/mdx': 5.0.6(astro@6.3.7(@types/node@24.12.4)(rollup@4.60.4)(yaml@2.8.4))
       '@astrojs/sitemap': 3.7.2
       '@pagefind/default-ui': 1.5.2
       '@types/hast': 3.0.4
       '@types/js-yaml': 4.0.9
       '@types/mdast': 4.0.4
-      astro: 6.3.6(@types/node@24.12.4)(rollup@4.60.4)(yaml@2.8.4)
-      astro-expressive-code: 0.42.0(astro@6.3.6(@types/node@24.12.4)(rollup@4.60.4)(yaml@2.8.4))
+      astro: 6.3.7(@types/node@24.12.4)(rollup@4.60.4)(yaml@2.8.4)
+      astro-expressive-code: 0.42.0(astro@6.3.7(@types/node@24.12.4)(rollup@4.60.4)(yaml@2.8.4))
       bcp-47: 2.1.0
       hast-util-from-html: 2.0.3
       hast-util-select: 6.0.4
@@ -2929,12 +2934,12 @@ snapshots:
 
   astring@1.9.0: {}
 
-  astro-expressive-code@0.42.0(astro@6.3.6(@types/node@24.12.4)(rollup@4.60.4)(yaml@2.8.4)):
+  astro-expressive-code@0.42.0(astro@6.3.7(@types/node@24.12.4)(rollup@4.60.4)(yaml@2.8.4)):
     dependencies:
-      astro: 6.3.6(@types/node@24.12.4)(rollup@4.60.4)(yaml@2.8.4)
+      astro: 6.3.7(@types/node@24.12.4)(rollup@4.60.4)(yaml@2.8.4)
       rehype-expressive-code: 0.42.0
 
-  astro@6.3.6(@types/node@24.12.4)(rollup@4.60.4)(yaml@2.8.4):
+  astro@6.3.7(@types/node@24.12.4)(rollup@4.60.4)(yaml@2.8.4):
     dependencies:
       '@astrojs/compiler': 4.0.0
       '@astrojs/internal-helpers': 0.9.1
@@ -2974,12 +2979,12 @@ snapshots:
       piccolore: 0.1.3
       picomatch: 4.0.4
       rehype: 13.0.2
-      semver: 7.8.0
+      semver: 7.8.1
       shiki: 4.1.0
       smol-toml: 1.6.1
       svgo: 4.0.1
       tinyclip: 0.1.12
-      tinyexec: 1.1.2
+      tinyexec: 1.2.2
       tinyglobby: 0.2.16
       ultrahtml: 1.6.0
       unifont: 0.7.4
@@ -4391,6 +4396,8 @@ snapshots:
 
   semver@7.8.0: {}
 
+  semver@7.8.1: {}
+
   sharp@0.34.5:
     dependencies:
       '@img/colour': 1.1.0
@@ -4450,20 +4457,20 @@ snapshots:
 
   space-separated-tokens@2.0.2: {}
 
-  starlight-openapi@0.24.0(@astrojs/markdown-remark@7.1.2)(@astrojs/starlight@0.39.2(astro@6.3.6(@types/node@24.12.4)(rollup@4.60.4)(yaml@2.8.4))(typescript@6.0.3))(astro@6.3.6(@types/node@24.12.4)(rollup@4.60.4)(yaml@2.8.4))(openapi-types@12.1.3):
+  starlight-openapi@0.24.0(@astrojs/markdown-remark@7.1.2)(@astrojs/starlight@0.39.2(astro@6.3.7(@types/node@24.12.4)(rollup@4.60.4)(yaml@2.8.4))(typescript@6.0.3))(astro@6.3.7(@types/node@24.12.4)(rollup@4.60.4)(yaml@2.8.4))(openapi-types@12.1.3):
     dependencies:
       '@astrojs/markdown-remark': 7.1.2
-      '@astrojs/starlight': 0.39.2(astro@6.3.6(@types/node@24.12.4)(rollup@4.60.4)(yaml@2.8.4))(typescript@6.0.3)
+      '@astrojs/starlight': 0.39.2(astro@6.3.7(@types/node@24.12.4)(rollup@4.60.4)(yaml@2.8.4))(typescript@6.0.3)
       '@readme/openapi-parser': 4.1.2(openapi-types@12.1.3)
-      astro: 6.3.6(@types/node@24.12.4)(rollup@4.60.4)(yaml@2.8.4)
+      astro: 6.3.7(@types/node@24.12.4)(rollup@4.60.4)(yaml@2.8.4)
       github-slugger: 2.0.0
       url-template: 3.1.1
     transitivePeerDependencies:
       - openapi-types
 
-  starlight-sidebar-topics@0.7.1(@astrojs/starlight@0.39.2(astro@6.3.6(@types/node@24.12.4)(rollup@4.60.4)(yaml@2.8.4))(typescript@6.0.3)):
+  starlight-sidebar-topics@0.7.1(@astrojs/starlight@0.39.2(astro@6.3.7(@types/node@24.12.4)(rollup@4.60.4)(yaml@2.8.4))(typescript@6.0.3)):
     dependencies:
-      '@astrojs/starlight': 0.39.2(astro@6.3.6(@types/node@24.12.4)(rollup@4.60.4)(yaml@2.8.4))(typescript@6.0.3)
+      '@astrojs/starlight': 0.39.2(astro@6.3.7(@types/node@24.12.4)(rollup@4.60.4)(yaml@2.8.4))(typescript@6.0.3)
       picomatch: 4.0.4
 
   stream-replace-string@2.0.0: {}
@@ -4505,7 +4512,7 @@ snapshots:
 
   tinyclip@0.1.12: {}
 
-  tinyexec@1.1.2: {}
+  tinyexec@1.2.2: {}
 
   tinyglobby@0.2.16:
     dependencies:
@@ -4523,7 +4530,7 @@ snapshots:
 
   typescript-auto-import-cache@0.3.6:
     dependencies:
-      semver: 7.8.0
+      semver: 7.8.1
 
   typescript@6.0.3: {}
 
@@ -4685,7 +4692,7 @@ snapshots:
   volar-service-typescript@0.0.70(@volar/language-service@2.4.28):
     dependencies:
       path-browserify: 1.0.1
-      semver: 7.8.0
+      semver: 7.8.1
       typescript-auto-import-cache: 0.3.6
       vscode-languageserver-textdocument: 1.0.12
       vscode-nls: 5.2.0
