@@ -68,7 +68,7 @@
     "oxlint": "^1.49.0",
     "playwright": "^1.58.2",
     "tailwindcss": "^4.2.0",
-    "typescript": "5.9.3"
+    "typescript": "6.0.3"
   },
   "pnpm": {
     "overrides": {
