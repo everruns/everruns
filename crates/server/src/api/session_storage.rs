@@ -50,7 +50,9 @@ pub struct SecretInfo {
 /// Batch secret set request
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct BatchSetSecretsRequest {
-    /// Map of secret names to values
+    /// Map of secret names to values. Names are case-sensitive; values are stored encrypted
+    /// and never returned by list/read endpoints. Existing keys are overwritten.
+    /// Example: `{"OPENAI_API_KEY": "sk-...", "GITHUB_TOKEN": "ghp_..."}`.
     pub secrets: HashMap<String, String>,
 }
 

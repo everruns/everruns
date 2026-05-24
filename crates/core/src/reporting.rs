@@ -20,7 +20,11 @@ pub struct ReportScope {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ReportTimeRange {
+    /// Start of the window (RFC 3339, inclusive).
+    #[cfg_attr(feature = "openapi", schema(example = "2026-04-24T00:00:00Z"))]
     pub from: DateTime<Utc>,
+    /// End of the window (RFC 3339, exclusive).
+    #[cfg_attr(feature = "openapi", schema(example = "2026-05-24T00:00:00Z"))]
     pub to: DateTime<Utc>,
 }
 
@@ -55,8 +59,12 @@ fn default_report_limit() -> u32 {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ReportFilter {
+    /// Field to filter on. Must be a filter field exposed by the dataset (see `filter_fields` in the catalog).
+    #[cfg_attr(feature = "openapi", schema(example = "status"))]
     pub field: String,
     pub op: ReportFilterOp,
+    /// Comparison value. Type depends on `op`: a scalar for `eq`/`neq`/`gt`/`gte`/`lt`/`lte`,
+    /// an array for `in`. Example for `op = in`: `["completed", "failed"]`.
     pub value: Value,
 }
 
@@ -76,10 +84,15 @@ pub enum ReportFilterOp {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ReportOrderBy {
+    /// Dimension name to sort by. Mutually exclusive with `measure`.
     #[serde(default)]
+    #[cfg_attr(feature = "openapi", schema(example = "org_id"))]
     pub dimension: Option<String>,
+    /// Measure name to sort by. Mutually exclusive with `dimension`.
     #[serde(default)]
+    #[cfg_attr(feature = "openapi", schema(example = "session_count"))]
     pub measure: Option<String>,
+    /// Sort direction (`asc` or `desc`). Defaults to `asc`.
     #[serde(default = "default_order_direction")]
     pub direction: ReportOrderDirection,
 }
@@ -109,6 +122,8 @@ pub struct ReportResult {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ReportColumn {
+    /// Column name as it appears in `rows`.
+    #[cfg_attr(feature = "openapi", schema(example = "session_count"))]
     pub name: String,
     pub kind: ReportColumnKind,
 }

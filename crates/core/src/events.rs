@@ -2010,10 +2010,23 @@ pub struct BudgetEventData {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct VoiceSessionStartedData {
+    /// Prefixed voice connection identifier for the started session.
+    #[cfg_attr(
+        feature = "openapi",
+        schema(example = "voice_01933b5a00007000800000000000001")
+    )]
     pub voice_connection_id: String,
+    /// Provider-side realtime model identifier negotiated for this session.
+    #[cfg_attr(feature = "openapi", schema(example = "gpt-realtime"))]
     pub model: String,
+    /// Realtime voice preset selected for this session.
+    #[cfg_attr(feature = "openapi", schema(example = "alloy"))]
     pub voice: String,
+    /// Reasoning effort applied to the realtime model. One of `low`, `medium`, `high`.
+    #[cfg_attr(feature = "openapi", schema(example = "medium"))]
     pub reasoning_effort: String,
+    /// Transport carrying the audio stream. One of `webrtc`, `sip`, `websocket`.
+    #[cfg_attr(feature = "openapi", schema(example = "webrtc"))]
     pub transport: String,
 }
 
@@ -2043,10 +2056,23 @@ pub struct VoiceTranscriptData {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct VoiceSessionEndedData {
+    /// Prefixed voice connection identifier for the ended session.
+    #[cfg_attr(
+        feature = "openapi",
+        schema(example = "voice_01933b5a00007000800000000000001")
+    )]
     pub voice_connection_id: String,
+    /// Free-text end reason captured from the client or server. `None` when no reason was supplied.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(
+        feature = "openapi",
+        schema(example = "User hung up after refund confirmed.")
+    )]
     pub reason: Option<String>,
+    /// Total wall-clock duration of the connection in milliseconds. `None` when the connection
+    /// never completed an audio handshake.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = 184_500_u64))]
     pub duration_ms: Option<u64>,
 }
 
@@ -2054,7 +2080,17 @@ pub struct VoiceSessionEndedData {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct VoiceSessionFailedData {
+    /// Prefixed voice connection identifier for the failed session.
+    #[cfg_attr(
+        feature = "openapi",
+        schema(example = "voice_01933b5a00007000800000000000001")
+    )]
     pub voice_connection_id: String,
+    /// Error message captured at failure. Provider-formatted; not stable for parsing.
+    #[cfg_attr(
+        feature = "openapi",
+        schema(example = "realtime provider closed stream: 1011 internal_error")
+    )]
     pub error: String,
 }
 

@@ -45,9 +45,13 @@ pub struct SavedReportDashboardMetadata {
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateSavedReportRequest {
     /// Human-readable name. Safe to render in user-facing messages.
+    #[schema(example = "Weekly active agents — last 30 days")]
     pub name: String,
-    #[serde(default)]
     /// Human-readable description. Safe to render in user-facing messages.
+    #[serde(default)]
+    #[schema(
+        example = "Rolling 30-day count of agents with at least one session per day, grouped by org."
+    )]
     pub description: Option<String>,
     pub query: ReportQuery,
     #[serde(default)]
@@ -57,12 +61,13 @@ pub struct CreateSavedReportRequest {
 /// Request body for the `update_saved_report` operation.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct UpdateSavedReportRequest {
-    #[serde(default)]
     /// Human-readable name. Safe to render in user-facing messages.
+    #[serde(default)]
+    #[schema(example = "Weekly active agents — last 60 days")]
     pub name: Option<String>,
-    #[serde(default, deserialize_with = "deserialize_nullable_update_field")]
-    #[schema(value_type = Option<String>, nullable = true)]
     /// Human-readable description. Safe to render in user-facing messages.
+    #[serde(default, deserialize_with = "deserialize_nullable_update_field")]
+    #[schema(value_type = Option<String>, nullable = true, example = "Rolling 60-day window; widened from 30d after the Q3 product launch.")]
     pub description: UpdateField<String>,
     #[serde(default, deserialize_with = "deserialize_nullable_update_field")]
     #[schema(value_type = ReportQuery, nullable = false)]
@@ -83,6 +88,7 @@ pub enum ReportExportFormat {
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct ExportReportQueryRequest {
     pub query: ReportQuery,
+    /// Export format. Defaults to `csv` when omitted.
     #[serde(default = "default_export_format")]
     pub format: ReportExportFormat,
 }
@@ -90,6 +96,7 @@ pub struct ExportReportQueryRequest {
 /// Request body for the `export_saved_report` operation.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct ExportSavedReportRequest {
+    /// Export format. Defaults to `csv` when omitted.
     #[serde(default = "default_export_format")]
     pub format: ReportExportFormat,
 }
@@ -179,7 +186,9 @@ pub struct ProjectorRunResult {
 
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct ReportingBackfillRequest {
+    /// Maximum number of outbox rows to enqueue across all source types. Defaults to 1000.
     #[serde(default = "default_backfill_limit")]
+    #[schema(example = 5000)]
     pub limit: i64,
 }
 

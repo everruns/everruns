@@ -145,8 +145,12 @@ pub struct UpdateAgentRequest {
 /// Request body for the `create_agent_version` operation.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateAgentVersionRequest {
+    /// Free-text summary of what changed in this version. Shown in the version timeline.
     #[serde(default)]
+    #[schema(example = "Tightened the refund-window check and added a regression test.")]
     pub summary: Option<String>,
+    /// Reason this version was created. See `AgentVersionChangeKind` for the allowed values.
+    /// Defaults to `manual` when omitted.
     #[serde(default)]
     pub change_kind: Option<everruns_core::AgentVersionChangeKind>,
 }
@@ -154,9 +158,14 @@ pub struct CreateAgentVersionRequest {
 /// Request body for the `rollback_agent_version` operation.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct RollbackAgentVersionRequest {
+    /// When true, snapshot the current agent state as a new version before rolling back.
+    /// Use this to preserve the in-flight work alongside the recovery point.
     #[serde(default)]
+    #[schema(example = true)]
     pub save_version: bool,
+    /// Free-text summary attached to the rollback. Shown in the version timeline.
     #[serde(default)]
+    #[schema(example = "Reverting refund-window change — false positives in production.")]
     pub summary: Option<String>,
 }
 

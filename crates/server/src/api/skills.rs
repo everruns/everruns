@@ -43,7 +43,10 @@ const MAX_ARCHIVE_UPLOAD: usize = 11 * 1024 * 1024;
 /// Request to validate a SKILL.md
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct ValidateSkillRequest {
-    /// SKILL.md content to validate
+    /// Full SKILL.md content to validate, including the YAML frontmatter and the markdown body.
+    #[schema(
+        example = "---\nname: refund-policy\ndescription: Issue refunds inside the policy window.\n---\n\nUse this when a customer asks for a refund within 30 days of purchase."
+    )]
     pub skill_md: String,
 }
 
