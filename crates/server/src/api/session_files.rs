@@ -41,17 +41,21 @@ use utoipa::ToSchema;
 /// Request to create a file
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreateFileRequest {
-    /// File content (text or base64-encoded)
+    /// File content (text or base64-encoded). Must match `encoding`.
     #[serde(default)]
+    #[schema(example = "# Project notes\n\nDraft outline of the migration plan.\n")]
     pub content: Option<String>,
-    /// Content encoding: "text" or "base64"
+    /// Content encoding: "text" or "base64". Defaults to text.
     #[serde(default)]
+    #[schema(example = "text")]
     pub encoding: Option<String>,
     /// Whether file is read-only
     #[serde(default)]
+    #[schema(example = false)]
     pub is_readonly: Option<bool>,
-    /// Whether to create a directory instead of a file
+    /// Whether to create a directory instead of a file (ignores `content`/`encoding`).
     #[serde(default)]
+    #[schema(example = false)]
     pub is_directory: Option<bool>,
 }
 
@@ -60,47 +64,57 @@ pub struct CreateFileRequest {
 pub struct UpdateFileRequest {
     /// New file content
     #[serde(default)]
+    #[schema(example = "# Project notes (rev 2)\n\nUpdated migration plan with rollback steps.\n")]
     pub content: Option<String>,
-    /// Content encoding: "text" or "base64"
+    /// Content encoding: "text" or "base64". Defaults to text.
     #[serde(default)]
+    #[schema(example = "text")]
     pub encoding: Option<String>,
     /// Whether file is read-only
     #[serde(default)]
+    #[schema(example = false)]
     pub is_readonly: Option<bool>,
 }
 
 /// Request to move/rename a file
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct MoveFileRequest {
-    /// Source path
+    /// Source path (relative to the session workspace root).
+    #[schema(example = "drafts/migration-plan.md")]
     pub src_path: String,
-    /// Destination path
+    /// Destination path (relative to the session workspace root).
+    #[schema(example = "docs/migration-plan.md")]
     pub dst_path: String,
 }
 
 /// Request to copy a file
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CopyFileRequest {
-    /// Source path
+    /// Source path (relative to the session workspace root).
+    #[schema(example = "templates/runbook.md")]
     pub src_path: String,
-    /// Destination path
+    /// Destination path (relative to the session workspace root).
+    #[schema(example = "docs/runbooks/refund-30-days.md")]
     pub dst_path: String,
 }
 
 /// Request to search files
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct GrepRequest {
-    /// Regex pattern to search for
+    /// Regex pattern to search for. Standard PCRE-ish (Rust `regex` crate) syntax.
+    #[schema(example = "TODO\\(perf\\)")]
     pub pattern: String,
-    /// Optional path pattern to filter files
+    /// Optional path glob to filter files (`**/*.rs`, `docs/*.md`).
     #[serde(default)]
+    #[schema(example = "**/*.rs")]
     pub path_pattern: Option<String>,
 }
 
 /// Request to get file stat
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct StatRequest {
-    /// Path to the file or directory
+    /// Path to the file or directory (relative to the session workspace root).
+    #[schema(example = "docs/migration-plan.md")]
     pub path: String,
 }
 

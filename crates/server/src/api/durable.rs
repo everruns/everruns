@@ -840,7 +840,11 @@ pub struct ListDlqQuery {
 /// Request to send a signal to a workflow
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SendSignalRequest {
+    /// Signal name. Must match a signal the running workflow listens for.
+    #[schema(example = "user_response_received")]
     pub signal_type: String,
+    /// Signal payload (workflow-specific JSON, any shape; defaults to `null` when omitted).
+    /// Example: `{"approved": true, "approver": "user_01933b5a00007000800000000000001"}`.
     #[serde(default)]
     pub payload: serde_json::Value,
 }
@@ -1302,8 +1306,10 @@ pub async fn list_tasks(
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct EnqueueTaskRequest {
     /// Activity type (determines which worker handles this task)
+    #[schema(example = "session.run")]
     pub activity_type: String,
-    /// Task input payload
+    /// Task input payload (activity-specific JSON; any shape — object, array, string, etc.).
+    /// Example for `session.run`: `{"session_id": "session_01933b5a00007000800000000000001"}`.
     pub input: serde_json::Value,
     /// Retry policy options
     #[serde(default)]
@@ -1314,8 +1320,10 @@ pub struct EnqueueTaskRequest {
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct EnqueueTaskOptions {
     /// Maximum retry attempts (default: 3)
+    #[schema(example = 3)]
     pub max_attempts: Option<u32>,
     /// Priority (higher = claimed first, default: 0)
+    #[schema(example = 10)]
     pub priority: Option<i32>,
 }
 

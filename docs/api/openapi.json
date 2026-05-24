@@ -12967,14 +12967,16 @@
               "string",
               "null"
             ],
-            "description": "Error message if the tool failed"
+            "description": "Error message if the tool failed",
+            "example": "Refund failed: order is outside refund window"
           },
           "result": {
-            "description": "Result value (JSON). Null if the tool failed."
+            "description": "Result value (any JSON — object, array, string, number, etc.). Null if the tool failed.\nExample: `{\"url\": \"https://example.com/orders/42\"}`."
           },
           "tool_call_id": {
             "type": "string",
-            "description": "Tool call ID (correlates with the tool call from tool.call_requested event)"
+            "description": "Tool call ID (correlates with the tool call from tool.call_requested event)",
+            "example": "toolu_01933b5a00007000800000000000001"
           }
         }
       },
@@ -12990,25 +12992,29 @@
               "string",
               "null"
             ],
-            "description": "Author email (defaults to \"agent@everruns.local\")"
+            "description": "Author email (defaults to \"agent@everruns.local\")",
+            "example": "support-agent@example.com"
           },
           "author_name": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Author name (defaults to \"Agent\")"
+            "description": "Author name (defaults to \"Agent\")",
+            "example": "Support Agent"
           },
           "branch": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Branch name (defaults to \"refs/heads/main\"); short names like \"main\" are normalized"
+            "description": "Branch name (defaults to \"refs/heads/main\"); short names like \"main\" are normalized",
+            "example": "main"
           },
           "message": {
             "type": "string",
-            "description": "Commit message"
+            "description": "Commit message",
+            "example": "feat: draft migration plan"
           }
         }
       },
@@ -13360,11 +13366,13 @@
         "properties": {
           "dst_path": {
             "type": "string",
-            "description": "Destination path"
+            "description": "Destination path (relative to the session workspace root).",
+            "example": "docs/runbooks/refund-30-days.md"
           },
           "src_path": {
             "type": "string",
-            "description": "Source path"
+            "description": "Source path (relative to the session workspace root).",
+            "example": "templates/runbook.md"
           }
         }
       },
@@ -13649,11 +13657,13 @@
         "properties": {
           "commit_oid": {
             "type": "string",
-            "description": "Commit OID (hex) to point to"
+            "description": "Commit OID (hex) to point to",
+            "example": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678"
           },
           "name": {
             "type": "string",
-            "description": "Branch name (e.g., \"feature-xyz\")"
+            "description": "Branch name (e.g., \"feature-xyz\")",
+            "example": "feature/refund-flow"
           }
         }
       },
@@ -13692,28 +13702,32 @@
               "string",
               "null"
             ],
-            "description": "File content (text or base64-encoded)"
+            "description": "File content (text or base64-encoded). Must match `encoding`.",
+            "example": "# Project notes\n\nDraft outline of the migration plan.\n"
           },
           "encoding": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Content encoding: \"text\" or \"base64\""
+            "description": "Content encoding: \"text\" or \"base64\". Defaults to text.",
+            "example": "text"
           },
           "is_directory": {
             "type": [
               "boolean",
               "null"
             ],
-            "description": "Whether to create a directory instead of a file"
+            "description": "Whether to create a directory instead of a file (ignores `content`/`encoding`).",
+            "example": false
           },
           "is_readonly": {
             "type": [
               "boolean",
               "null"
             ],
-            "description": "Whether file is read-only"
+            "description": "Whether file is read-only",
+            "example": false
           }
         }
       },
@@ -14864,11 +14878,13 @@
               "string",
               "null"
             ],
-            "description": "Base commit OID (optional, defaults to parent)"
+            "description": "Base commit OID (optional, defaults to parent)",
+            "example": "9876543210fedcba9876543210fedcba98765432"
           },
           "oid": {
             "type": "string",
-            "description": "Commit OID to diff (required)"
+            "description": "Commit OID to diff (required). 40-char hex SHA-1.",
+            "example": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678"
           }
         }
       },
@@ -14973,6 +14989,7 @@
             ],
             "format": "int32",
             "description": "Maximum retry attempts (default: 3)",
+            "example": 3,
             "minimum": 0
           },
           "priority": {
@@ -14981,7 +14998,8 @@
               "null"
             ],
             "format": "int32",
-            "description": "Priority (higher = claimed first, default: 0)"
+            "description": "Priority (higher = claimed first, default: 0)",
+            "example": 10
           }
         }
       },
@@ -14995,10 +15013,11 @@
         "properties": {
           "activity_type": {
             "type": "string",
-            "description": "Activity type (determines which worker handles this task)"
+            "description": "Activity type (determines which worker handles this task)",
+            "example": "session.run"
           },
           "input": {
-            "description": "Task input payload"
+            "description": "Task input payload (activity-specific JSON; any shape — object, array, string, etc.).\nExample for `session.run`: `{\"session_id\": \"session_01933b5a00007000800000000000001\"}`."
           },
           "options": {
             "oneOf": [
@@ -15834,18 +15853,21 @@
               "string",
               "null"
             ],
-            "description": "Human-readable description. Safe to render in user-facing messages."
+            "description": "Human-readable description. Safe to render in user-facing messages.",
+            "example": "Fork to test new refund-flow capabilities before promoting"
           },
           "display_name": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Human-readable display name. Safe to render in user-facing messages."
+            "description": "Human-readable display name. Safe to render in user-facing messages.",
+            "example": "Support Agent (Experimental)"
           },
           "name": {
             "type": "string",
-            "description": "Human-readable name. Safe to render in user-facing messages."
+            "description": "Human-readable name. Safe to render in user-facing messages.",
+            "example": "support-agent-experimental"
           }
         }
       },
@@ -16285,11 +16307,13 @@
               "string",
               "null"
             ],
-            "description": "Optional path pattern to filter files"
+            "description": "Optional path glob to filter files (`**/*.rs`, `docs/*.md`).",
+            "example": "**/*.rs"
           },
           "pattern": {
             "type": "string",
-            "description": "Regex pattern to search for"
+            "description": "Regex pattern to search for. Standard PCRE-ish (Rust `regex` crate) syntax.",
+            "example": "TODO\\(perf\\)"
           }
         }
       },
@@ -20872,6 +20896,7 @@
               "null"
             ],
             "description": "Max commits to return (default: 50)",
+            "example": 50,
             "minimum": 0
           },
           "ref": {
@@ -20879,7 +20904,8 @@
               "string",
               "null"
             ],
-            "description": "Ref to start from (default: HEAD)"
+            "description": "Ref to start from (default: HEAD)",
+            "example": "HEAD"
           }
         }
       },
@@ -21490,11 +21516,13 @@
         "properties": {
           "dst_path": {
             "type": "string",
-            "description": "Destination path"
+            "description": "Destination path (relative to the session workspace root).",
+            "example": "docs/migration-plan.md"
           },
           "src_path": {
             "type": "string",
-            "description": "Source path"
+            "description": "Source path (relative to the session workspace root).",
+            "example": "drafts/migration-plan.md"
           }
         }
       },
@@ -24648,9 +24676,13 @@
           "signal_type"
         ],
         "properties": {
-          "payload": {},
+          "payload": {
+            "description": "Signal payload (workflow-specific JSON, any shape; defaults to `null` when omitted).\nExample: `{\"approved\": true, \"approver\": \"user_01933b5a00007000800000000000001\"}`."
+          },
           "signal_type": {
-            "type": "string"
+            "type": "string",
+            "description": "Signal name. Must match a signal the running workflow listens for.",
+            "example": "user_response_received"
           }
         }
       },
@@ -25300,8 +25332,9 @@
         ],
         "properties": {
           "version_id": {
-            "$ref": "#/components/schemas/agentverId",
-            "description": "Agent version's prefixed public identifier."
+            "type": "string",
+            "description": "Agent version's prefixed public identifier.",
+            "example": "agentver_01933b5a00007000800000000000001"
           }
         }
       },
@@ -25534,7 +25567,8 @@
         "properties": {
           "path": {
             "type": "string",
-            "description": "Path to the file or directory"
+            "description": "Path to the file or directory (relative to the session workspace root).",
+            "example": "docs/migration-plan.md"
           }
         }
       },
@@ -25604,7 +25638,15 @@
             "items": {
               "$ref": "#/components/schemas/ClientToolResult"
             },
-            "description": "Tool results from the client"
+            "description": "Tool results from the client",
+            "example": [
+              {
+                "result": {
+                  "url": "https://example.com/orders/42"
+                },
+                "tool_call_id": "toolu_01933b5a00007000800000000000001"
+              }
+            ]
           }
         }
       },
@@ -26849,21 +26891,24 @@
               "string",
               "null"
             ],
-            "description": "New file content"
+            "description": "New file content",
+            "example": "# Project notes (rev 2)\n\nUpdated migration plan with rollback steps.\n"
           },
           "encoding": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Content encoding: \"text\" or \"base64\""
+            "description": "Content encoding: \"text\" or \"base64\". Defaults to text.",
+            "example": "text"
           },
           "is_readonly": {
             "type": [
               "boolean",
               "null"
             ],
-            "description": "Whether file is read-only"
+            "description": "Whether file is read-only",
+            "example": false
           }
         }
       },
