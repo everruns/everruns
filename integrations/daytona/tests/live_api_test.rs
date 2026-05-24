@@ -754,17 +754,56 @@ async fn test_live_api_call_sandbox_lifecycle_with_labels() {
     assert!(files.is_array(), "Expected array of files, got: {files}");
     eprintln!("[test] Toolbox file listing works via api_call");
 
-    // List all sandboxes via api_call, verify ours appears
-    let all = client
-        .api_call(reqwest::Method::GET, "/sandbox", None)
-        .await
-        .expect("api_call GET /sandbox failed");
-    let found = all
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|s| s["id"].as_str() == Some(sandbox_id));
-    assert!(found, "Sandbox {sandbox_id} not found in list");
+    // List all sandboxes via api_call, verify ours appears.
+    //
+    // Daytona's `GET /sandbox` historically returned a bare array but has
+    // since started wrapping results in `{ items: [...], next_cursor: ... }`
+    // when pagination is in play (EVE-490). Accept either shape so the test
+    // stays resilient. If pagination is active and our sandbox is not in the
+    // first page, follow the cursor until it shows up or the stream ends —
+    // sandbox creation/listing is eventually consistent and one or two
+    // follow-on pages is usually all we need.
+    let mut next: Option<String> = None;
+    let mut found = false;
+    let mut pages_scanned: usize = 0;
+    loop {
+        let path = match &next {
+            Some(cursor) => format!("/sandbox?cursor={cursor}"),
+            None => "/sandbox".to_string(),
+        };
+        let page = client
+            .api_call(reqwest::Method::GET, &path, None)
+            .await
+            .expect("api_call GET /sandbox failed");
+
+        let items = page
+            .as_array()
+            .or_else(|| page["items"].as_array())
+            .or_else(|| page["data"].as_array())
+            .unwrap_or_else(|| {
+                panic!(
+                    "expected /sandbox response to be a bare array or a wrapped {{ items: [...] }} object, got: {page}"
+                )
+            });
+        pages_scanned += 1;
+        if items.iter().any(|s| s["id"].as_str() == Some(sandbox_id)) {
+            found = true;
+            break;
+        }
+        next = page["next_cursor"]
+            .as_str()
+            .or_else(|| page["nextCursor"].as_str())
+            .filter(|s| !s.is_empty())
+            .map(String::from);
+        // Cap follow-on pages so a runaway listing never makes the test hang.
+        if next.is_none() || pages_scanned >= 5 {
+            break;
+        }
+    }
+    assert!(
+        found,
+        "Sandbox {sandbox_id} not found in {pages_scanned} listed page(s)"
+    );
 
     // Delete via api_call
     let del = client
