@@ -115,13 +115,21 @@ pub struct UpdateHarnessRequest {
 /// Request to preview harness shape with capabilities applied
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct PreviewHarnessRequest {
+    /// System prompt to render as the base prompt for the preview.
     #[schema(example = "You are a research assistant.")]
     pub system_prompt: String,
+    /// Parent harness to extend. When set, its prompt, capabilities, and MCP servers are
+    /// merged with the fields in this request before rendering.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(value_type = Option<String>, example = "harness_01933b5a000070008000000000000602")]
     pub parent_harness_id: Option<HarnessId>,
+    /// Capability configurations to layer onto the preview. Empty list means none.
+    /// Example: `[{"id": "web.search", "enabled": true}]`.
     #[serde(default)]
     pub capabilities: Vec<AgentCapabilityConfig>,
+    /// MCP servers scoped to this preview. Use the camelCase key `mcpServers` (preferred) or
+    /// the snake_case alias `mcp_servers`. Empty by default.
+    /// Example: `{"shared": [{"name": "filesystem", "transport": "stdio", "command": "mcp-fs"}]}`.
     #[serde(default, rename = "mcpServers", alias = "mcp_servers")]
     pub mcp_servers: ScopedMcpServers,
 }

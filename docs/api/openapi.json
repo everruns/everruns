@@ -11780,7 +11780,7 @@
       },
       "AgentVersionChangeKind": {
         "type": "string",
-        "description": "Reason a version was created. Stored as lower_snake_case text.",
+        "description": "Reason a version was created. Stored as lower_snake_case text.\nOne of `auto`, `manual`, `patch`, `minor`, `major`, `import`, `rollback`, `fork`.",
         "enum": [
           "auto",
           "manual",
@@ -11790,7 +11790,8 @@
           "import",
           "rollback",
           "fork"
-        ]
+        ],
+        "example": "manual"
       },
       "AgentVersionDiffResponse": {
         "type": "object",
@@ -12459,7 +12460,7 @@
         "properties": {
           "secrets": {
             "type": "object",
-            "description": "Map of secret names to values",
+            "description": "Map of secret names to values. Names are case-sensitive; values are stored encrypted\nand never returned by list/read endpoints. Existing keys are overwritten.\nExample: `{\"OPENAI_API_KEY\": \"sk-...\", \"GITHUB_TOKEN\": \"ghp_...\"}`.",
             "additionalProperties": {
               "type": "string"
             },
@@ -13562,7 +13563,8 @@
                 "type": "null"
               },
               {
-                "$ref": "#/components/schemas/AgentVersionChangeKind"
+                "$ref": "#/components/schemas/AgentVersionChangeKind",
+                "description": "Reason this version was created. See `AgentVersionChangeKind` for the allowed values.\nDefaults to `manual` when omitted."
               }
             ]
           },
@@ -13570,7 +13572,9 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Free-text summary of what changed in this version. Shown in the version timeline.",
+            "example": "Tightened the refund-window check and added a regression test."
           }
         }
       },
@@ -13676,7 +13680,8 @@
         "properties": {
           "name": {
             "type": "string",
-            "description": "Database name (alphanumeric + underscores, max 64 chars)"
+            "description": "Database name (alphanumeric + underscores, max 64 chars).",
+            "example": "refund_history"
           }
         }
       },
@@ -14149,36 +14154,42 @@
         "properties": {
           "label": {
             "type": "string",
-            "description": "Human-readable label. Safe to render in user-facing messages."
+            "description": "Human-readable label. Safe to render in user-facing messages.",
+            "example": "Refund agent · USDC on Base"
           },
           "metadata": {
-            "description": "Free-form metadata attached to this account (caller-defined; opaque to the platform)."
+            "description": "Free-form metadata attached to this account (caller-defined; opaque to the platform).\nExample: `{\"team\": \"support\", \"cost_center\": \"ops\"}`."
           },
           "owner_id": {
             "type": "string",
-            "description": "Prefixed identifier of the owning principal (e.g. `user_…`, `agent_…`, `org_…`)."
+            "description": "Prefixed identifier of the owning principal (e.g. `user_…`, `agent_…`, `org_…`).",
+            "example": "agent_01933b5a00007000800000000000001"
           },
           "owner_type": {
             "type": "string",
-            "description": "Principal class that owns the account (user, agent identity, or organization)."
+            "description": "Principal class that owns the account. One of: `user`, `agent_identity`, `organization`.",
+            "example": "agent_identity"
           },
           "private_key": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Private key material for the rail. Stored encrypted; never returned in responses."
+            "description": "Private key material for the rail. Stored encrypted; never returned in responses.",
+            "example": "0x4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318"
           },
           "public_address": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Public address on the rail (chain address, account number, etc.). Optional; can be filled in later."
+            "description": "Public address on the rail (chain address, account number, etc.). Optional; can be filled in later.",
+            "example": "0x742d35Cc6634C0532925a3b844Bc454e4438f44e"
           },
           "rail": {
             "type": "string",
-            "description": "Settlement rail this account operates on (e.g. `mpp_tempo`, `x402_base`)."
+            "description": "Settlement rail this account operates on. One of: `mpp_tempo`, `x402_base`.",
+            "example": "x402_base"
           }
         }
       },
@@ -14196,14 +14207,22 @@
             "items": {
               "type": "string"
             },
-            "description": "Capability IDs this policy permits paid calls for. Empty list means no capability gating."
+            "description": "Capability IDs this policy permits paid calls for. Empty list means no capability gating.",
+            "example": [
+              "weather.lookup",
+              "shipping.quote"
+            ]
           },
           "allowed_hosts": {
             "type": "array",
             "items": {
               "type": "string"
             },
-            "description": "HTTP host allowlist for paid outbound calls. Empty list means no host gating."
+            "description": "HTTP host allowlist for paid outbound calls. Empty list means no host gating.",
+            "example": [
+              "api.shippo.com",
+              "api.openweathermap.org"
+            ]
           },
           "max_amount_usd_per_day": {
             "type": [
@@ -14211,7 +14230,8 @@
               "null"
             ],
             "format": "double",
-            "description": "Maximum cumulative amount (USD) per UTC day. **Advisory only — not yet enforced.** Stored for forward compatibility; the authority currently checks only `max_amount_usd_per_request`. `None` means no per-day cap."
+            "description": "Maximum cumulative amount (USD) per UTC day. **Advisory only — not yet enforced.** Stored for forward compatibility; the authority currently checks only `max_amount_usd_per_request`. `None` means no per-day cap.",
+            "example": 100.0
           },
           "max_amount_usd_per_request": {
             "type": [
@@ -14219,7 +14239,8 @@
               "null"
             ],
             "format": "double",
-            "description": "Maximum amount (USD) any single paid request may settle for. **Enforced** by the payment authority at policy selection. `None` means no per-request cap."
+            "description": "Maximum amount (USD) any single paid request may settle for. **Enforced** by the payment authority at policy selection. `None` means no per-request cap.",
+            "example": 5.0
           },
           "max_amount_usd_per_turn": {
             "type": [
@@ -14227,21 +14248,27 @@
               "null"
             ],
             "format": "double",
-            "description": "Maximum cumulative amount (USD) per agent turn. **Advisory only — not yet enforced.** Stored for forward compatibility; the authority currently checks only `max_amount_usd_per_request`. `None` means no per-turn cap."
+            "description": "Maximum cumulative amount (USD) per agent turn. **Advisory only — not yet enforced.** Stored for forward compatibility; the authority currently checks only `max_amount_usd_per_request`. `None` means no per-turn cap.",
+            "example": 20.0
           },
           "metadata": {
-            "description": "Free-form metadata attached to this policy."
+            "description": "Free-form metadata attached to this policy.\nExample: `{\"owner_team\": \"ops\", \"ticket\": \"OPS-1248\"}`."
           },
           "payment_account_id": {
             "type": "string",
-            "description": "Payment account this policy authorizes spending from."
+            "description": "Payment account this policy authorizes spending from.",
+            "example": "pay_account_01933b5a00007000800000000000001"
           },
           "rail_preference": {
             "type": "array",
             "items": {
               "type": "string"
             },
-            "description": "Preferred settlement rails in priority order; the authority picks the first available."
+            "description": "Preferred settlement rails in priority order; the authority picks the first available.",
+            "example": [
+              "x402_base",
+              "mpp_tempo"
+            ]
           },
           "require_approval_above_usd": {
             "type": [
@@ -14249,15 +14276,18 @@
               "null"
             ],
             "format": "double",
-            "description": "Threshold (USD) above which a request would require explicit human approval. **Advisory only — not yet enforced.** Stored for forward compatibility; no approval gate is wired up yet. `None` disables the (future) gate."
+            "description": "Threshold (USD) above which a request would require explicit human approval. **Advisory only — not yet enforced.** Stored for forward compatibility; no approval gate is wired up yet. `None` disables the (future) gate.",
+            "example": 10.0
           },
           "subject_id": {
             "type": "string",
-            "description": "Prefixed identifier of the bound subject."
+            "description": "Prefixed identifier of the bound subject.",
+            "example": "agent_01933b5a00007000800000000000001"
           },
           "subject_type": {
             "type": "string",
-            "description": "Class of subject this policy binds to (e.g. `agent_identity`, `session`)."
+            "description": "Class of subject this policy binds to. One of: `user`, `agent_identity`, `agent`, `app`, `session`, `org`.",
+            "example": "agent_identity"
           }
         }
       },
@@ -14284,11 +14314,13 @@
               "string",
               "null"
             ],
-            "description": "Human-readable description. Safe to render in user-facing messages."
+            "description": "Human-readable description. Safe to render in user-facing messages.",
+            "example": "Rolling 30-day count of agents with at least one session per day, grouped by org."
           },
           "name": {
             "type": "string",
-            "description": "Human-readable name. Safe to render in user-facing messages."
+            "description": "Human-readable name. Safe to render in user-facing messages.",
+            "example": "Weekly active agents — last 30 days"
           },
           "query": {
             "$ref": "#/components/schemas/ReportQuery"
@@ -15453,7 +15485,8 @@
         ],
         "properties": {
           "format": {
-            "$ref": "#/components/schemas/ReportExportFormat"
+            "$ref": "#/components/schemas/ReportExportFormat",
+            "description": "Export format. Defaults to `csv` when omitted."
           },
           "query": {
             "$ref": "#/components/schemas/ReportQuery"
@@ -15465,7 +15498,8 @@
         "description": "Request body for the `export_saved_report` operation.",
         "properties": {
           "format": {
-            "$ref": "#/components/schemas/ReportExportFormat"
+            "$ref": "#/components/schemas/ReportExportFormat",
+            "description": "Export format. Defaults to `csv` when omitted."
           }
         }
       },
@@ -23286,20 +23320,24 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/AgentCapabilityConfig"
-            }
+            },
+            "description": "Capability configurations to layer onto the preview. Empty list means none.\nExample: `[{\"id\": \"web.search\", \"enabled\": true}]`."
           },
           "mcpServers": {
-            "$ref": "#/components/schemas/BTreeMap"
+            "$ref": "#/components/schemas/BTreeMap",
+            "description": "MCP servers scoped to this preview. Use the camelCase key `mcpServers` (preferred) or\nthe snake_case alias `mcp_servers`. Empty by default.\nExample: `{\"shared\": [{\"name\": \"filesystem\", \"transport\": \"stdio\", \"command\": \"mcp-fs\"}]}`."
           },
           "parent_harness_id": {
             "type": [
               "string",
               "null"
             ],
+            "description": "Parent harness to extend. When set, its prompt, capabilities, and MCP servers are\nmerged with the fields in this request before rendering.",
             "example": "harness_01933b5a000070008000000000000602"
           },
           "system_prompt": {
             "type": "string",
+            "description": "System prompt to render as the base prompt for the preview.",
             "example": "You are a research assistant."
           }
         }
@@ -23711,7 +23749,9 @@
             "$ref": "#/components/schemas/ReportColumnKind"
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Column name as it appears in `rows`.",
+            "example": "session_count"
           }
         }
       },
@@ -23779,12 +23819,16 @@
         ],
         "properties": {
           "field": {
-            "type": "string"
+            "type": "string",
+            "description": "Field to filter on. Must be a filter field exposed by the dataset (see `filter_fields` in the catalog).",
+            "example": "status"
           },
           "op": {
             "$ref": "#/components/schemas/ReportFilterOp"
           },
-          "value": {}
+          "value": {
+            "description": "Comparison value. Type depends on `op`: a scalar for `eq`/`neq`/`gt`/`gte`/`lt`/`lte`,\nan array for `in`. Example for `op = in`: `[\"completed\", \"failed\"]`."
+          }
         }
       },
       "ReportFilterOp": {
@@ -23806,16 +23850,21 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Dimension name to sort by. Mutually exclusive with `measure`.",
+            "example": "org_id"
           },
           "direction": {
-            "$ref": "#/components/schemas/ReportOrderDirection"
+            "$ref": "#/components/schemas/ReportOrderDirection",
+            "description": "Sort direction (`asc` or `desc`). Defaults to `asc`."
           },
           "measure": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Measure name to sort by. Mutually exclusive with `dimension`.",
+            "example": "session_count"
           }
         }
       },
@@ -23917,11 +23966,15 @@
         "properties": {
           "from": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Start of the window (RFC 3339, inclusive).",
+            "example": "2026-04-24T00:00:00Z"
           },
           "to": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "End of the window (RFC 3339, exclusive).",
+            "example": "2026-05-24T00:00:00Z"
           }
         }
       },
@@ -23930,7 +23983,9 @@
         "properties": {
           "limit": {
             "type": "integer",
-            "format": "int64"
+            "format": "int64",
+            "description": "Maximum number of outbox rows to enqueue across all source types. Defaults to 1000.",
+            "example": 5000
           }
         }
       },
@@ -24210,13 +24265,17 @@
         "description": "Request body for the `rollback_agent_version` operation.",
         "properties": {
           "save_version": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "When true, snapshot the current agent state as a new version before rolling back.\nUse this to preserve the in-flight work alongside the recovery point.",
+            "example": true
           },
           "summary": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Free-text summary attached to the rollback. Shown in the version timeline.",
+            "example": "Reverting refund-window change — false positives in production."
           }
         }
       },
@@ -27389,17 +27448,19 @@
               "string",
               "null"
             ],
-            "description": "New label, if changing."
+            "description": "New label, if changing.",
+            "example": "Refund agent · USDC on Base (prod)"
           },
           "metadata": {
-            "description": "New free-form metadata. Replaces the existing metadata blob entirely when set."
+            "description": "New free-form metadata. Replaces the existing metadata blob entirely when set.\nExample: `{\"team\": \"support\", \"cost_center\": \"ops-2026\"}`."
           },
           "private_key": {
             "type": [
               "string",
               "null"
             ],
-            "description": "New private key material. Set to `Some(...)` to rotate; omit to leave unchanged."
+            "description": "New private key material. Set to `Some(...)` to rotate; omit to leave unchanged.",
+            "example": "0x4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318"
           },
           "public_address": {
             "type": [
@@ -27413,7 +27474,8 @@
               "string",
               "null"
             ],
-            "description": "New lifecycle status. Valid values: `active`, `disabled`."
+            "description": "New lifecycle status. Valid values: `active`, `disabled`.",
+            "example": "disabled"
           }
         }
       },
@@ -27429,7 +27491,12 @@
             "items": {
               "type": "string"
             },
-            "description": "New capability allowlist. Outer `None` leaves the field unchanged."
+            "description": "New capability allowlist. Outer `None` leaves the field unchanged.",
+            "example": [
+              "weather.lookup",
+              "shipping.quote",
+              "currency.convert"
+            ]
           },
           "allowed_hosts": {
             "type": [
@@ -27439,7 +27506,12 @@
             "items": {
               "type": "string"
             },
-            "description": "New host allowlist. Outer `None` leaves the field unchanged."
+            "description": "New host allowlist. Outer `None` leaves the field unchanged.",
+            "example": [
+              "api.shippo.com",
+              "api.openweathermap.org",
+              "api.exchangerate.host"
+            ]
           },
           "max_amount_usd_per_day": {
             "type": [
@@ -27466,7 +27538,7 @@
             "description": "New per-turn cap (USD). **Advisory only — not yet enforced.** Outer `None` leaves the field unchanged; inner `None` clears the cap."
           },
           "metadata": {
-            "description": "New free-form metadata. Replaces the existing metadata blob entirely when set."
+            "description": "New free-form metadata. Replaces the existing metadata blob entirely when set.\nExample: `{\"owner_team\": \"ops\", \"ticket\": \"OPS-1248\", \"review_due\": \"2026-09-01\"}`."
           },
           "rail_preference": {
             "type": [
@@ -27476,7 +27548,11 @@
             "items": {
               "type": "string"
             },
-            "description": "New rail preference order. Outer `None` leaves the field unchanged."
+            "description": "New rail preference order. Outer `None` leaves the field unchanged.",
+            "example": [
+              "mpp_tempo",
+              "x402_base"
+            ]
           },
           "require_approval_above_usd": {
             "type": [
@@ -27491,7 +27567,8 @@
               "string",
               "null"
             ],
-            "description": "New lifecycle status. Valid values: `active`, `disabled`."
+            "description": "New lifecycle status. Valid values: `active`, `disabled`.",
+            "example": "disabled"
           }
         }
       },
@@ -27528,14 +27605,16 @@
               "string",
               "null"
             ],
-            "description": "Human-readable description. Safe to render in user-facing messages."
+            "description": "Human-readable description. Safe to render in user-facing messages.",
+            "example": "Rolling 60-day window; widened from 30d after the Q3 product launch."
           },
           "name": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Human-readable name. Safe to render in user-facing messages."
+            "description": "Human-readable name. Safe to render in user-facing messages.",
+            "example": "Weekly active agents — last 60 days"
           },
           "query": {
             "$ref": "#/components/schemas/ReportQuery"
@@ -27777,7 +27856,8 @@
         "properties": {
           "skill_md": {
             "type": "string",
-            "description": "SKILL.md content to validate"
+            "description": "Full SKILL.md content to validate, including the YAML frontmatter and the markdown body.",
+            "example": "---\nname: refund-policy\ndescription: Issue refunds inside the policy window.\n---\n\nUse this when a customer asks for a refund within 30 days of purchase."
           }
         }
       },
@@ -27973,7 +28053,8 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Free-text reason recorded with the session-ended event. Useful for operator forensics.\nExample: `User hung up after refund confirmed.`."
           }
         }
       },
@@ -28007,16 +28088,21 @@
               "null"
             ],
             "format": "int64",
+            "description": "Total wall-clock duration of the connection in milliseconds. `None` when the connection\nnever completed an audio handshake.",
+            "example": 184500,
             "minimum": 0
           },
           "reason": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Free-text end reason captured from the client or server. `None` when no reason was supplied.\nExample: `User hung up after refund confirmed.`."
           },
           "voice_connection_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Prefixed voice connection identifier for the ended session.",
+            "example": "voice_01933b5a00007000800000000000001"
           }
         }
       },
@@ -28029,10 +28115,14 @@
         ],
         "properties": {
           "error": {
-            "type": "string"
+            "type": "string",
+            "description": "Error message captured at failure. Provider-formatted; not stable for parsing.",
+            "example": "realtime provider closed stream: 1011 internal_error"
           },
           "voice_connection_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Prefixed voice connection identifier for the failed session.",
+            "example": "voice_01933b5a00007000800000000000001"
           }
         }
       },
@@ -28043,25 +28133,29 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Extra system instructions appended to the realtime session prompt.\nExample: `Always confirm before placing an order.`."
           },
           "model": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Provider-side realtime model identifier. When omitted the server picks the agent's configured default.\nExample: `gpt-realtime`."
           },
           "reasoning_effort": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Reasoning effort hint passed through to the realtime model. One of `low`, `medium`, `high`.\nWhen omitted the server picks the provider's default.\nExample: `medium`."
           },
           "voice": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Realtime voice preset (provider-specific). When omitted the server picks the agent's configured default.\nExample: `alloy`."
           }
         }
       },
@@ -28140,19 +28234,29 @@
         ],
         "properties": {
           "model": {
-            "type": "string"
+            "type": "string",
+            "description": "Provider-side realtime model identifier negotiated for this session.",
+            "example": "gpt-realtime"
           },
           "reasoning_effort": {
-            "type": "string"
+            "type": "string",
+            "description": "Reasoning effort applied to the realtime model. One of `low`, `medium`, `high`.",
+            "example": "medium"
           },
           "transport": {
-            "type": "string"
+            "type": "string",
+            "description": "Transport carrying the audio stream. One of `webrtc`, `sip`, `websocket`.",
+            "example": "webrtc"
           },
           "voice": {
-            "type": "string"
+            "type": "string",
+            "description": "Realtime voice preset selected for this session.",
+            "example": "alloy"
           },
           "voice_connection_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Prefixed voice connection identifier for the started session.",
+            "example": "voice_01933b5a00007000800000000000001"
           }
         }
       },

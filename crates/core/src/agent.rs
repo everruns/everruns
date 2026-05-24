@@ -40,8 +40,10 @@ pub enum AgentStatus {
 }
 
 /// Reason a version was created. Stored as lower_snake_case text.
+/// One of `auto`, `manual`, `patch`, `minor`, `major`, `import`, `rollback`, `fork`.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[cfg_attr(feature = "openapi", schema(example = "manual"))]
 #[serde(rename_all = "snake_case")]
 pub enum AgentVersionChangeKind {
     Auto,

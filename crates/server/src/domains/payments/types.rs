@@ -4,21 +4,28 @@ use utoipa::{IntoParams, ToSchema};
 /// Request body for the `create_payment_account` operation.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreatePaymentAccountRequest {
-    /// Principal class that owns the account (user, agent identity, or organization).
+    /// Principal class that owns the account. One of: `user`, `agent_identity`, `organization`.
+    #[schema(example = "agent_identity")]
     pub owner_type: String,
     /// Prefixed identifier of the owning principal (e.g. `user_…`, `agent_…`, `org_…`).
+    #[schema(example = "agent_01933b5a00007000800000000000001")]
     pub owner_id: String,
-    /// Settlement rail this account operates on (e.g. `mpp_tempo`, `x402_base`).
+    /// Settlement rail this account operates on. One of: `mpp_tempo`, `x402_base`.
+    #[schema(example = "x402_base")]
     pub rail: String,
     /// Human-readable label. Safe to render in user-facing messages.
+    #[schema(example = "Refund agent · USDC on Base")]
     pub label: String,
     /// Public address on the rail (chain address, account number, etc.). Optional; can be filled in later.
     #[serde(default)]
+    #[schema(example = "0x742d35Cc6634C0532925a3b844Bc454e4438f44e")]
     pub public_address: Option<String>,
     /// Private key material for the rail. Stored encrypted; never returned in responses.
     #[serde(default)]
+    #[schema(example = "0x4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318")]
     pub private_key: Option<String>,
     /// Free-form metadata attached to this account (caller-defined; opaque to the platform).
+    /// Example: `{"team": "support", "cost_center": "ops"}`.
     #[serde(default)]
     pub metadata: Option<serde_json::Value>,
 }
@@ -27,14 +34,18 @@ pub struct CreatePaymentAccountRequest {
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct UpdatePaymentAccountRequest {
     /// New label, if changing.
+    #[schema(example = "Refund agent · USDC on Base (prod)")]
     pub label: Option<String>,
     /// New public address. The outer `Option` indicates whether to update; the inner allows clearing the field.
     pub public_address: Option<Option<String>>,
     /// New private key material. Set to `Some(...)` to rotate; omit to leave unchanged.
+    #[schema(example = "0x4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318")]
     pub private_key: Option<String>,
     /// New lifecycle status. Valid values: `active`, `disabled`.
+    #[schema(example = "disabled")]
     pub status: Option<String>,
     /// New free-form metadata. Replaces the existing metadata blob entirely when set.
+    /// Example: `{"team": "support", "cost_center": "ops-2026"}`.
     pub metadata: Option<serde_json::Value>,
 }
 
@@ -50,29 +61,40 @@ pub struct ListPaymentAccountsQuery {
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreatePaymentPolicyRequest {
     /// Payment account this policy authorizes spending from.
+    #[schema(example = "pay_account_01933b5a00007000800000000000001")]
     pub payment_account_id: String,
-    /// Class of subject this policy binds to (e.g. `agent_identity`, `session`).
+    /// Class of subject this policy binds to. One of: `user`, `agent_identity`, `agent`, `app`, `session`, `org`.
+    #[schema(example = "agent_identity")]
     pub subject_type: String,
     /// Prefixed identifier of the bound subject.
+    #[schema(example = "agent_01933b5a00007000800000000000001")]
     pub subject_id: String,
     /// Capability IDs this policy permits paid calls for. Empty list means no capability gating.
     #[serde(default)]
+    #[schema(example = json!(["weather.lookup", "shipping.quote"]))]
     pub allowed_capabilities: Vec<String>,
     /// HTTP host allowlist for paid outbound calls. Empty list means no host gating.
     #[serde(default)]
+    #[schema(example = json!(["api.shippo.com", "api.openweathermap.org"]))]
     pub allowed_hosts: Vec<String>,
     /// Preferred settlement rails in priority order; the authority picks the first available.
     #[serde(default)]
+    #[schema(example = json!(["x402_base", "mpp_tempo"]))]
     pub rail_preference: Vec<String>,
     /// Maximum amount (USD) any single paid request may settle for. **Enforced** by the payment authority at policy selection. `None` means no per-request cap.
+    #[schema(example = 5.0)]
     pub max_amount_usd_per_request: Option<f64>,
     /// Maximum cumulative amount (USD) per agent turn. **Advisory only — not yet enforced.** Stored for forward compatibility; the authority currently checks only `max_amount_usd_per_request`. `None` means no per-turn cap.
+    #[schema(example = 20.0)]
     pub max_amount_usd_per_turn: Option<f64>,
     /// Maximum cumulative amount (USD) per UTC day. **Advisory only — not yet enforced.** Stored for forward compatibility; the authority currently checks only `max_amount_usd_per_request`. `None` means no per-day cap.
+    #[schema(example = 100.0)]
     pub max_amount_usd_per_day: Option<f64>,
     /// Threshold (USD) above which a request would require explicit human approval. **Advisory only — not yet enforced.** Stored for forward compatibility; no approval gate is wired up yet. `None` disables the (future) gate.
+    #[schema(example = 10.0)]
     pub require_approval_above_usd: Option<f64>,
     /// Free-form metadata attached to this policy.
+    /// Example: `{"owner_team": "ops", "ticket": "OPS-1248"}`.
     #[serde(default)]
     pub metadata: Option<serde_json::Value>,
 }
@@ -81,10 +103,13 @@ pub struct CreatePaymentPolicyRequest {
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct UpdatePaymentPolicyRequest {
     /// New capability allowlist. Outer `None` leaves the field unchanged.
+    #[schema(example = json!(["weather.lookup", "shipping.quote", "currency.convert"]))]
     pub allowed_capabilities: Option<Vec<String>>,
     /// New host allowlist. Outer `None` leaves the field unchanged.
+    #[schema(example = json!(["api.shippo.com", "api.openweathermap.org", "api.exchangerate.host"]))]
     pub allowed_hosts: Option<Vec<String>>,
     /// New rail preference order. Outer `None` leaves the field unchanged.
+    #[schema(example = json!(["mpp_tempo", "x402_base"]))]
     pub rail_preference: Option<Vec<String>>,
     /// New per-request cap (USD). **Enforced** by the payment authority. Outer `None` leaves the field unchanged; inner `None` clears the cap.
     pub max_amount_usd_per_request: Option<Option<f64>>,
@@ -95,8 +120,10 @@ pub struct UpdatePaymentPolicyRequest {
     /// New approval threshold (USD). **Advisory only — not yet enforced.** Outer `None` leaves the field unchanged; inner `None` disables the (future) gate.
     pub require_approval_above_usd: Option<Option<f64>>,
     /// New lifecycle status. Valid values: `active`, `disabled`.
+    #[schema(example = "disabled")]
     pub status: Option<String>,
     /// New free-form metadata. Replaces the existing metadata blob entirely when set.
+    /// Example: `{"owner_team": "ops", "ticket": "OPS-1248", "review_due": "2026-09-01"}`.
     pub metadata: Option<serde_json::Value>,
 }
 

@@ -29,7 +29,8 @@ use super::common::{ListResponse, impl_auth_state};
 /// Request body for creating a database.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateDatabaseRequest {
-    /// Database name (alphanumeric + underscores, max 64 chars)
+    /// Database name (alphanumeric + underscores, max 64 chars).
+    #[schema(example = "refund_history")]
     pub name: String,
 }
 
