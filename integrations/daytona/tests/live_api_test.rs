@@ -768,7 +768,10 @@ async fn test_live_api_call_sandbox_lifecycle_with_labels() {
     let mut pages_scanned: usize = 0;
     loop {
         let path = match &next {
-            Some(cursor) => format!("/sandbox?cursor={cursor}"),
+            // Cursors are opaque server-issued strings and can contain
+            // reserved characters (`+`, `=`, `&`, `/`); percent-encode the
+            // value before splicing it into the query string.
+            Some(cursor) => format!("/sandbox?cursor={}", urlencoding::encode(cursor)),
             None => "/sandbox".to_string(),
         };
         let page = client
@@ -782,7 +785,7 @@ async fn test_live_api_call_sandbox_lifecycle_with_labels() {
             .or_else(|| page["data"].as_array())
             .unwrap_or_else(|| {
                 panic!(
-                    "expected /sandbox response to be a bare array or a wrapped {{ items: [...] }} object, got: {page}"
+                    "expected /sandbox response to be a bare array or a wrapped {{ items: [...] }} / {{ data: [...] }} object, got: {page}"
                 )
             });
         pages_scanned += 1;
