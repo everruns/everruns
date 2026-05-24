@@ -520,7 +520,8 @@ fn default_provider_config() -> Value {
 }
 
 fn default_output_mode() -> String {
-    "concise".to_string()
+    // EVE-489: persistence-first default for exec-style sandbox tools.
+    "auto".to_string()
 }
 
 fn now_rfc3339() -> String {

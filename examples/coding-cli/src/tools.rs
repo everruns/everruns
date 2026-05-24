@@ -88,10 +88,15 @@ impl Tool for BashTool {
             Some(c) => c.to_string(),
             None => return ToolExecutionResult::tool_error("'command' is required"),
         };
+        // EVE-489: default to `auto` (persistence-first). On success, returns
+        // a compact ~512 B summary while full output stays in `/outputs/` via
+        // ToolOutputPersistenceCapability. On failure, returns a `normal`
+        // (~8 KiB) diagnostic window. Explicit modes (silent/concise/normal/
+        // verbose/full) still override this behavior.
         let output_mode = arguments
             .get("output")
             .and_then(Value::as_str)
-            .unwrap_or("concise");
+            .unwrap_or("auto");
         let approved = self
             .gate
             .approve(ApprovalRequest::Bash {
@@ -294,5 +299,183 @@ mod tests {
             .await
             .expect("persisted stdout should be readable from the outputs folder");
         assert!(saved.contains("saved-line-3000"));
+    }
+
+    // ====================================================================
+    // EVE-489: persistence-first `auto` output mode
+    // ====================================================================
+
+    /// Issue EVE-489 reproducer: successful bash output should be a compact
+    /// inline summary when full output is persisted to `/outputs/`. Before
+    /// the fix, requesting `output: "normal"` returned ~8 KiB inline even
+    /// though the full log was already saved. With `auto` (the new default),
+    /// successful runs return ≤512 bytes inline.
+    #[tokio::test]
+    async fn bash_success_output_should_be_persistent_first_when_output_is_saved() {
+        let dir = tempfile::tempdir().unwrap();
+        let tool = BashTool::new(
+            Workspace::new(dir.path().to_path_buf()),
+            ApprovalGate::auto(),
+        );
+        let call = ToolCall {
+            id: "call-auto-compact".to_string(),
+            name: "bash".to_string(),
+            arguments: json!({
+                "command": "for i in {1..2000}; do echo success-line-$i; done",
+                "output": "auto"
+            }),
+        };
+        let mut result = tool
+            .execute(call.arguments.clone())
+            .await
+            .into_tool_result(&call.id, &call.name);
+        let file_store = Arc::new(RealDiskFileStore::new(dir.path()).unwrap());
+        let context = ToolContext::with_file_store(Default::default(), file_store);
+        let tool_def = tool.to_definition();
+
+        for hook in ToolOutputPersistenceCapability.post_tool_exec_hooks() {
+            hook.after_exec(&call, &tool_def, &mut result, &context)
+                .await;
+        }
+
+        let value = result.result.expect("bash result should be present");
+        let stdout = value["stdout"].as_str().expect("stdout should be a string");
+        assert_eq!(value["success"], true);
+        assert!(
+            value["output_files"]
+                .as_array()
+                .is_some_and(|files| !files.is_empty()),
+            "full output should be persisted"
+        );
+        assert!(
+            stdout.len() <= 512,
+            "successful persisted bash output should be a compact inline summary, got {} bytes",
+            stdout.len()
+        );
+    }
+
+    #[tokio::test]
+    async fn bash_defaults_to_auto_mode_for_compact_success() {
+        // No `output` parameter at all — the new default must behave like `auto`.
+        let dir = tempfile::tempdir().unwrap();
+        let tool = BashTool::new(
+            Workspace::new(dir.path().to_path_buf()),
+            ApprovalGate::auto(),
+        );
+
+        let result = tool
+            .execute(json!({
+                "command": "for i in {1..2000}; do echo line-$i; done"
+            }))
+            .await;
+
+        let ToolExecutionResult::Success(value) = result else {
+            panic!("expected success");
+        };
+        assert_eq!(value["success"], true);
+        let stdout = value["stdout"].as_str().unwrap();
+        assert!(
+            stdout.len() <= 512,
+            "default mode should compact successful output, got {} bytes",
+            stdout.len()
+        );
+        // raw_output retains full content for persistence hook.
+        let raw = value["_raw_output"].as_str().unwrap();
+        assert!(raw.contains("line-2000"));
+    }
+
+    #[tokio::test]
+    async fn bash_auto_failure_returns_diagnostic_inline_output() {
+        let dir = tempfile::tempdir().unwrap();
+        let tool = BashTool::new(
+            Workspace::new(dir.path().to_path_buf()),
+            ApprovalGate::auto(),
+        );
+
+        // Produce lots of stdout, then exit non-zero with a useful stderr line.
+        let result = tool
+            .execute(json!({
+                "command": "for i in {1..2000}; do echo line-$i; done; echo 'error: something broke' 1>&2; exit 7",
+                "output": "auto"
+            }))
+            .await;
+
+        let ToolExecutionResult::Success(value) = result else {
+            panic!("expected success-wrapped tool result");
+        };
+        assert_eq!(value["success"], false);
+        assert_eq!(value["exit_code"], 7);
+        let stderr = value["stderr"].as_str().unwrap();
+        assert!(
+            stderr.contains("error: something broke"),
+            "failure stderr should expose diagnostics inline, got: {stderr}"
+        );
+        let stdout = value["stdout"].as_str().unwrap();
+        // Failure path should give substantially more than the success compact budget.
+        assert!(
+            stdout.len() > 512,
+            "auto+failure stdout should not collapse to the success compact budget, got {} bytes",
+            stdout.len()
+        );
+    }
+
+    #[tokio::test]
+    async fn bash_explicit_normal_still_returns_larger_inline_output() {
+        let dir = tempfile::tempdir().unwrap();
+        let tool = BashTool::new(
+            Workspace::new(dir.path().to_path_buf()),
+            ApprovalGate::auto(),
+        );
+
+        let result = tool
+            .execute(json!({
+                "command": "for i in {1..2000}; do echo line-$i; done",
+                "output": "normal"
+            }))
+            .await;
+
+        let ToolExecutionResult::Success(value) = result else {
+            panic!("expected success");
+        };
+        let stdout = value["stdout"].as_str().unwrap();
+        // Explicit `normal` must keep the larger inline window even on success.
+        assert!(
+            stdout.len() > 512,
+            "explicit normal should not collapse to auto-success budget, got {} bytes",
+            stdout.len()
+        );
+        assert!(
+            stdout.len() <= 8 * 1024,
+            "explicit normal should respect NORMAL_BUDGET, got {} bytes",
+            stdout.len()
+        );
+    }
+
+    #[tokio::test]
+    async fn bash_explicit_full_returns_unlimited_inline_output() {
+        let dir = tempfile::tempdir().unwrap();
+        let tool = BashTool::new(
+            Workspace::new(dir.path().to_path_buf()),
+            ApprovalGate::auto(),
+        );
+
+        let result = tool
+            .execute(json!({
+                "command": "for i in {1..200}; do echo line-$i; done",
+                "output": "full"
+            }))
+            .await;
+
+        let ToolExecutionResult::Success(value) = result else {
+            panic!("expected success");
+        };
+        let stdout = value["stdout"].as_str().unwrap();
+        // `full` must include every line — first and last.
+        assert!(
+            stdout.contains("line-1\n"),
+            "stdout must contain first line"
+        );
+        assert!(stdout.contains("line-200"), "stdout must contain last line");
+        assert_eq!(value["truncated"], false);
     }
 }

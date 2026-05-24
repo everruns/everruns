@@ -10,6 +10,7 @@ use everruns_core::ToolHints;
 use everruns_core::tool_output_sanitizer::{
     READ_FILE_DEFAULT_LIMIT, build_bytes_read_file_result, clean_exec_output,
     output_verbosity_budget, parse_read_file_window_args, priority_aware_truncate,
+    resolve_auto_mode,
 };
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::ToolContext;
@@ -246,10 +247,12 @@ impl Tool for SandboxExecTool {
             Err(e) => return e,
         };
 
+        // EVE-489: persistence-first default. `auto` returns a compact
+        // summary on success and a `normal`-sized diagnostic window on failure.
         let output_mode = arguments
             .get("output")
             .and_then(|v| v.as_str())
-            .unwrap_or("concise");
+            .unwrap_or("auto");
 
         let state = match get_sandbox_state(context).await {
             Ok(s) => s,
@@ -279,15 +282,21 @@ impl Tool for SandboxExecTool {
         // Refresh lease on successful exec
         let _ = touch_sandbox_lease(context, &state).await;
 
-        // Sanitize output
+        // Sanitize output. EVE-489: resolve `auto` against the exit code so
+        // successes get a compact summary and failures still get a diagnostic
+        // window. `resolve_auto_mode` only branches on `== 0`, so reduce the
+        // (possibly i64) Docker exit code to a sentinel that preserves that
+        // distinction without lossy casting.
+        let exit_code = result.exit_code;
+        let success_sentinel: i32 = if exit_code == 0 { 0 } else { 1 };
+        let effective_mode = resolve_auto_mode(output_mode, success_sentinel);
         let clean_output = clean_exec_output(&result.output);
-        let output = if let Some(budget) = output_verbosity_budget(output_mode) {
+        let output = if let Some(budget) = output_verbosity_budget(effective_mode) {
             priority_aware_truncate(&clean_output, budget)
         } else {
             clean_output
         };
 
-        let exit_code = result.exit_code;
         if exit_code == 0 {
             ToolExecutionResult::success(output)
         } else {

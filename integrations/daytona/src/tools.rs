@@ -504,7 +504,7 @@ impl Tool for DaytonaExecTool {
         let output_mode = arguments
             .get("output")
             .and_then(|v| v.as_str())
-            .unwrap_or("concise");
+            .unwrap_or("auto");
         let timeout = arguments
             .get("timeout")
             .and_then(|v| v.as_u64())

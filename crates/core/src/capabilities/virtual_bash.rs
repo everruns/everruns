@@ -241,10 +241,12 @@ impl Tool for BashTool {
             .unwrap_or(30000)
             .min(60000);
 
+        // EVE-489: persistence-first default. `auto` returns a compact
+        // summary on success and a `normal`-sized diagnostic window on failure.
         let output_mode = arguments
             .get("output")
             .and_then(|v| v.as_str())
-            .unwrap_or("concise");
+            .unwrap_or("auto");
 
         let file_store = match &context.file_store {
             Some(store) => store.clone(),
@@ -409,9 +411,13 @@ impl Tool for BashTool {
                 } else {
                     use crate::tool_output_sanitizer::{
                         clean_exec_output, output_verbosity_budget, priority_aware_truncate,
+                        resolve_auto_mode,
                     };
+                    // EVE-489: a timeout is a failure — `auto` resolves to
+                    // `normal` so the model gets useful diagnostics.
+                    let effective = resolve_auto_mode(output_mode, 1);
                     let clean = clean_exec_output(&partial);
-                    let truncated = if let Some(budget) = output_verbosity_budget(output_mode) {
+                    let truncated = if let Some(budget) = output_verbosity_budget(effective) {
                         priority_aware_truncate(&clean, budget)
                     } else {
                         clean.clone()
@@ -462,10 +468,11 @@ impl BackgroundExecutableTool for BashTool {
             .unwrap_or(30000)
             .min(60000);
 
+        // EVE-489: persistence-first default for background execution as well.
         let output_mode = arguments
             .get("output")
             .and_then(|v| v.as_str())
-            .unwrap_or("concise");
+            .unwrap_or("auto");
 
         let file_store = match &context.file_store {
             Some(store) => store.clone(),
@@ -604,9 +611,13 @@ impl BackgroundExecutableTool for BashTool {
                 } else {
                     use crate::tool_output_sanitizer::{
                         clean_exec_output, output_verbosity_budget, priority_aware_truncate,
+                        resolve_auto_mode,
                     };
+                    // EVE-489: a timeout is a failure — resolve `auto` to
+                    // `normal` so the model gets useful diagnostics.
+                    let effective = resolve_auto_mode(output_mode, 1);
                     let clean = clean_exec_output(&partial);
-                    let truncated = if let Some(budget) = output_verbosity_budget(output_mode) {
+                    let truncated = if let Some(budget) = output_verbosity_budget(effective) {
                         priority_aware_truncate(&clean, budget)
                     } else {
                         clean.clone()

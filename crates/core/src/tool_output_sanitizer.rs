@@ -13,10 +13,11 @@
 // Follow-ups:
 // - EVE-222: persist_output hint drives VFS persistence via PostToolExecHook
 // - EVE-223: EXEC_OUTPUT_HINT constant for system prompt additions
+// - EVE-489: `auto` output mode — persistence-first defaults for exec tools
 
 /// Legacy output budget constant (16 KiB). Kept for backward compatibility
 /// with any code not yet migrated to `output_verbosity_budget()`.
-/// New code should use the verbosity modes instead (default: `concise` = 2 KiB).
+/// New code should use the verbosity modes instead (default: `auto`).
 pub const EXEC_OUTPUT_BUDGET: usize = 16 * 1024;
 
 /// Output verbosity budgets (EVE-236).
@@ -28,8 +29,25 @@ pub const CONCISE_BUDGET: usize = 2 * 1024;
 pub const NORMAL_BUDGET: usize = 8 * 1024;
 pub const VERBOSE_BUDGET: usize = 16 * 1024;
 
+/// Compact "success summary" budget used by `auto` mode (EVE-489).
+/// When an exec call succeeds and full output is persisted to `/outputs/`,
+/// the inline payload only needs enough bytes to confirm completion — the
+/// model can `read_file` the persisted log when it needs more detail.
+///
+/// Sized so that even after the `PersistOutputHook` appends its
+/// `[full output saved to /workspace/outputs/... (NN KiB) — use read_file ...]`
+/// pointer (~120 bytes), the full inline `stdout` field stays ≤ ~512 bytes.
+pub const AUTO_SUCCESS_BUDGET: usize = 384;
+
 /// Resolve output verbosity mode string to byte budget.
 /// Returns `None` for "full" (no truncation).
+///
+/// Note: `auto` is exec-tool specific and depends on the process exit code,
+/// so callers should run [`resolve_auto_mode`] first to map `auto` to a
+/// concrete mode. A bare `auto` reaching this function resolves to the
+/// tight `AUTO_SUCCESS_BUDGET` rather than silently falling back to
+/// `CONCISE_BUDGET` — callers that forget to resolve will at worst
+/// over-truncate, never silently widen.
 pub fn output_verbosity_budget(mode: &str) -> Option<usize> {
     match mode {
         "silent" => Some(SILENT_BUDGET),
@@ -37,7 +55,29 @@ pub fn output_verbosity_budget(mode: &str) -> Option<usize> {
         "normal" => Some(NORMAL_BUDGET),
         "verbose" => Some(VERBOSE_BUDGET),
         "full" => None,
+        "auto" | "auto_success" => Some(AUTO_SUCCESS_BUDGET),
         _ => Some(CONCISE_BUDGET), // unknown → default
+    }
+}
+
+/// Resolve the exec-tool `auto` mode to a concrete verbosity mode based on
+/// the process exit code (EVE-489).
+///
+/// - `auto` + success (`exit_code == 0`) → `auto_success` (tight summary).
+///   Full output remains in `raw_output` and is persisted via
+///   `ToolOutputPersistenceCapability` when the tool opts in.
+/// - `auto` + failure → `normal` so the model can debug without immediately
+///   reading the persisted log.
+/// - Any other (explicit) mode is returned unchanged.
+pub fn resolve_auto_mode(mode: &str, exit_code: i32) -> &str {
+    if mode == "auto" {
+        if exit_code == 0 {
+            "auto_success"
+        } else {
+            "normal"
+        }
+    } else {
+        mode
     }
 }
 
@@ -46,21 +86,19 @@ pub fn output_verbosity_budget(mode: &str) -> Option<usize> {
 pub fn output_verbosity_schema() -> serde_json::Value {
     serde_json::json!({
         "type": "string",
-        "enum": ["silent", "concise", "normal", "verbose", "full"],
-        "default": "concise",
-        "description": "Output verbosity: silent (~200B, truncated to exit code + minimal output), concise (~2KiB, default), normal (~8KiB), verbose (~16KiB), full (unlimited, capped by 64KiB hard limit). For tools with output persistence enabled, full output is saved to /outputs/{tool_call_id}.stdout and /outputs/{tool_call_id}.stderr — use read_file to retrieve."
+        "enum": ["auto", "silent", "concise", "normal", "verbose", "full"],
+        "default": "auto",
+        "description": "Output verbosity: auto (default — compact summary on success, ~8KiB on failure for diagnostics), silent (~200B), concise (~2KiB), normal (~8KiB), verbose (~16KiB), full (unlimited, capped by 64KiB hard limit). For tools with output persistence enabled, full output is saved to /outputs/{tool_call_id}.stdout and /outputs/{tool_call_id}.stderr — use read_file to retrieve."
     })
 }
 
-/// System prompt hint for exec tool capabilities (EVE-223, EVE-236).
+/// System prompt hint for exec tool capabilities (EVE-223, EVE-236, EVE-489).
 /// Appended to each sandbox capability's `system_prompt_addition()` to guide
 /// the LLM toward less verbose command usage.
-pub const EXEC_OUTPUT_HINT: &str = "\n\n**Output economy:** Command output is truncated based on the `output` parameter (default: `concise` ~2 KiB). \
-Use `verbose` or `full` when debugging failures. Tools with output persistence enabled save full output — stdout to `/outputs/{tool_call_id}.stdout`, stderr to `/outputs/{tool_call_id}.stderr`. \
-When output exceeds the budget, the result includes an `output_files` array with paths you can `read_file` with offset/limit.\n\
-Available modes: `silent` (~200B), `concise` (~2KiB), `normal` (~8KiB), `verbose` (~16KiB), `full` (unlimited).\n\
-For build/install commands, the default `concise` is usually sufficient — check exit code first.\n\
-If you need more detail, re-run with `output: \"verbose\"` or read the persisted output files via `read_file`.";
+pub const EXEC_OUTPUT_HINT: &str = "\n\n**Output economy:** The `output` parameter shapes command output (default: `auto` — compact summary on success, ~8 KiB diagnostic window on failure). \
+Persistence-enabled tools save full output to `/outputs/{tool_call_id}.stdout`/`.stderr`; oversized results include an `output_files` array of paths to `read_file` with offset/limit.\n\
+Modes: `auto` (default), `silent` (~200B), `concise` (~2KiB), `normal` (~8KiB), `verbose` (~16KiB), `full` (unlimited).\n\
+`auto` is usually sufficient — check `exit_code` first; use `verbose` or read the persisted files when more detail is needed.";
 
 /// System prompt hint for file reading economy (EVE-244).
 /// Appended to the FileSystem capability's `system_prompt_addition()` to guide
@@ -1254,5 +1292,69 @@ mod tests {
         let regions = find_error_regions(&lines);
         // Should merge into one region since they're within 2*ERROR_CONTEXT_LINES+1 of each other
         assert_eq!(regions.len(), 1, "nearby errors should merge");
+    }
+
+    // ====================================================================
+    // auto mode resolution (EVE-489)
+    // ====================================================================
+
+    #[test]
+    fn test_resolve_auto_success_maps_to_auto_success() {
+        assert_eq!(resolve_auto_mode("auto", 0), "auto_success");
+    }
+
+    #[test]
+    fn test_resolve_auto_failure_maps_to_normal() {
+        assert_eq!(resolve_auto_mode("auto", 1), "normal");
+        assert_eq!(resolve_auto_mode("auto", -1), "normal");
+        assert_eq!(resolve_auto_mode("auto", 137), "normal");
+    }
+
+    #[test]
+    fn test_resolve_auto_passes_through_explicit_modes() {
+        assert_eq!(resolve_auto_mode("concise", 0), "concise");
+        assert_eq!(resolve_auto_mode("normal", 1), "normal");
+        assert_eq!(resolve_auto_mode("verbose", 0), "verbose");
+        assert_eq!(resolve_auto_mode("full", 1), "full");
+        assert_eq!(resolve_auto_mode("silent", 0), "silent");
+    }
+
+    #[test]
+    fn test_auto_success_budget_matches_constant() {
+        assert_eq!(
+            output_verbosity_budget("auto_success"),
+            Some(AUTO_SUCCESS_BUDGET)
+        );
+    }
+
+    #[test]
+    fn test_bare_auto_budget_defaults_to_auto_success() {
+        // A caller that forgets to run `resolve_auto_mode` first must not
+        // silently widen to `concise`. EVE-489 keeps the tight budget so
+        // the worst case is an over-truncated payload, never a silently
+        // expanded one.
+        assert_eq!(
+            output_verbosity_budget("auto"),
+            Some(AUTO_SUCCESS_BUDGET),
+            "bare `auto` should resolve to the tight success budget, not silently widen to concise"
+        );
+    }
+
+    #[test]
+    fn test_output_verbosity_schema_includes_auto() {
+        let schema = output_verbosity_schema();
+        let variants: Vec<&str> = schema["enum"]
+            .as_array()
+            .expect("enum should be an array")
+            .iter()
+            .map(|v| v.as_str().unwrap())
+            .collect();
+        assert!(variants.contains(&"auto"), "auto must be in enum");
+        assert!(variants.contains(&"silent"));
+        assert!(variants.contains(&"concise"));
+        assert!(variants.contains(&"normal"));
+        assert!(variants.contains(&"verbose"));
+        assert!(variants.contains(&"full"));
+        assert_eq!(schema["default"], "auto", "auto must be the default");
     }
 }
