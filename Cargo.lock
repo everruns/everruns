@@ -4,9 +4,9 @@ version = 4
 
 [[package]]
 name = "a2a-client-lf"
-version = "0.1.16"
+version = "0.1.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "60b4ed8c8e815c4ca1947f9dcab76dd0d0878ab429d8f37875ce398fb0165982"
+checksum = "1da8f6ca9f460fc47231a78165abec30e9ab60886a6c62c599b6055f7f5429cc"
 dependencies = [
  "a2a-lf",
  "a2a-pb",
@@ -17,6 +17,7 @@ dependencies = [
  "pin-project-lite",
  "reqwest 0.12.28",
  "rustls",
+ "rustls-pemfile",
  "semver",
  "serde",
  "serde_json",
@@ -24,6 +25,7 @@ dependencies = [
  "tokio-stream",
  "tracing",
  "uuid 1.23.1",
+ "webpki-roots 1.0.7",
 ]
 
 [[package]]
@@ -63,9 +65,9 @@ dependencies = [
 
 [[package]]
 name = "a2a-server-lf"
-version = "0.3.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d2ce4366a92d8be42bbd6d1057179d74d7c79fc8697f79f4072b5fc55579fa47"
+checksum = "5027f0f4919b0fea22831bd75521974efdf4561658c3df768d9a84dbe8313062"
 dependencies = [
  "a2a-lf",
  "a2a-pb",
@@ -421,9 +423,9 @@ dependencies = [
 
 [[package]]
 name = "autocfg"
-version = "1.5.0"
+version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c08606f8c3cbf4ce6ec8e28fb0014a2c086708fe954eaa885384a6165172e7e8"
+checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
 name = "aws-lc-rs"
@@ -786,9 +788,9 @@ dependencies = [
 
 [[package]]
 name = "bumpalo"
-version = "3.20.2"
+version = "3.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d20789868f4b01b2f2caec9f5c4e0213b41e3e5702a50157d699ae31ced2fcb"
+checksum = "72f5acc6cb2ba439de613abc23857ec3d78374d8ed5ac84e9d11336e87da8649"
 
 [[package]]
 name = "byte-slice-cast"
@@ -1149,9 +1151,9 @@ dependencies = [
 
 [[package]]
 name = "const-hex"
-version = "1.19.0"
+version = "1.19.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "20d9a563d167a9cce0f94153382b33cb6eded6dfabff03c69ad65a28ea1514e0"
+checksum = "33e2a781ebdf4467d1428dc4593067825fb646f6871475098d8577421af73558"
 dependencies = [
  "cfg-if",
  "cpufeatures 0.2.17",
@@ -1761,9 +1763,9 @@ dependencies = [
 
 [[package]]
 name = "either"
-version = "1.15.0"
+version = "1.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "48c757948c5ede0e46177b7add2e67155f70e33c07fea8284df6576da70b3719"
+checksum = "91622ff5e7162018101f2fea40d6ebf4a78bbe5a49736a2020649edf9693679e"
 dependencies = [
  "serde",
 ]
@@ -1988,11 +1990,11 @@ dependencies = [
 
 [[package]]
 name = "everruns-a2ui"
-version = "0.8.33"
+version = "0.8.34"
 
 [[package]]
 name = "everruns-anthropic"
-version = "0.8.33"
+version = "0.8.34"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2008,7 +2010,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-cli"
-version = "0.8.33"
+version = "0.8.34"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -2061,14 +2063,14 @@ dependencies = [
 
 [[package]]
 name = "everruns-config"
-version = "0.8.33"
+version = "0.8.34"
 dependencies = [
  "thiserror 2.0.18",
 ]
 
 [[package]]
 name = "everruns-container-sandbox"
-version = "0.8.33"
+version = "0.8.34"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -2088,7 +2090,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-core"
-version = "0.8.33"
+version = "0.8.34"
 dependencies = [
  "a2a-client-lf",
  "a2a-lf",
@@ -2140,7 +2142,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-durable"
-version = "0.8.33"
+version = "0.8.34"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2165,7 +2167,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-gemini"
-version = "0.8.33"
+version = "0.8.34"
 dependencies = [
  "async-trait",
  "everruns-core",
@@ -2179,7 +2181,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-brave-search"
-version = "0.8.33"
+version = "0.8.34"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2195,7 +2197,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-browserless"
-version = "0.8.33"
+version = "0.8.34"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -2216,7 +2218,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-cursor"
-version = "0.8.33"
+version = "0.8.34"
 dependencies = [
  "async-trait",
  "everruns-core",
@@ -2231,7 +2233,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-daytona"
-version = "0.8.33"
+version = "0.8.34"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2247,7 +2249,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-deno"
-version = "0.8.33"
+version = "0.8.34"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -2270,7 +2272,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-docker"
-version = "0.8.33"
+version = "0.8.34"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -2285,7 +2287,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-duckduckgo"
-version = "0.8.33"
+version = "0.8.34"
 dependencies = [
  "async-trait",
  "everruns-core",
@@ -2300,7 +2302,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-e2b"
-version = "0.8.33"
+version = "0.8.34"
 dependencies = [
  "async-trait",
  "buffa",
@@ -2327,7 +2329,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-github"
-version = "0.8.33"
+version = "0.8.34"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -2344,7 +2346,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-parallel"
-version = "0.8.33"
+version = "0.8.34"
 dependencies = [
  "async-trait",
  "everruns-core",
@@ -2356,7 +2358,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-sprites"
-version = "0.8.33"
+version = "0.8.34"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2372,7 +2374,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-internal-protocol"
-version = "0.8.33"
+version = "0.8.34"
 dependencies = [
  "chrono",
  "everruns-core",
@@ -2389,7 +2391,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-llm-tests"
-version = "0.8.33"
+version = "0.8.34"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2408,7 +2410,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-macros"
-version = "0.8.33"
+version = "0.8.34"
 dependencies = [
  "quote",
  "syn 2.0.117",
@@ -2416,7 +2418,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-openai"
-version = "0.8.33"
+version = "0.8.34"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2436,11 +2438,11 @@ dependencies = [
 
 [[package]]
 name = "everruns-openui"
-version = "0.8.33"
+version = "0.8.34"
 
 [[package]]
 name = "everruns-runtime"
-version = "0.8.33"
+version = "0.8.34"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2477,7 +2479,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-server"
-version = "0.8.33"
+version = "0.8.34"
 dependencies = [
  "aes-gcm",
  "ag-ui-core",
@@ -2565,7 +2567,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-session-sqldb"
-version = "0.8.33"
+version = "0.8.34"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -2582,7 +2584,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-worker"
-version = "0.8.33"
+version = "0.8.34"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2995,9 +2997,9 @@ checksum = "037711b3d59c33004d3856fbdc83b99d4ff37a24768fa1be9ce3538a1cde4393"
 
 [[package]]
 name = "futures-timer"
-version = "3.0.3"
+version = "3.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f288b0a4f20f9a56b5d1da57e2227c661b7b16168e2f72365f57b63326e29b24"
+checksum = "af43fadb8a98512d547e37b4e92e0ced13e205c061b87b4623eff01d918d6968"
 
 [[package]]
 name = "futures-util"
@@ -4052,9 +4054,9 @@ dependencies = [
 
 [[package]]
 name = "js-sys"
-version = "0.3.98"
+version = "0.3.99"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "67df7112613f8bfd9150013a0314e196f4800d3201ae742489d999db2f979f08"
+checksum = "142bc4740e452c1e57ade0cbc129f139c9093e354346f0872ef985f4f5cf5f11"
 dependencies = [
  "cfg-if",
  "futures-util",
@@ -4511,9 +4513,9 @@ dependencies = [
 
 [[package]]
 name = "minijinja"
-version = "2.19.0"
+version = "2.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "805bfd7352166bae857ee569628b52bcd85a1cecf7810861ebceb1686b72b75d"
+checksum = "2929e494b2280e1e18959bb2e121da03347ae896896fdfaceaab43c88a02803f"
 dependencies = [
  "memo-map",
  "serde",
@@ -5676,9 +5678,9 @@ dependencies = [
 
 [[package]]
 name = "pulldown-cmark"
-version = "0.13.3"
+version = "0.13.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7c3a14896dfa883796f1cb410461aef38810ea05f2b2c33c5aded3649095fdad"
+checksum = "e9f068eba8e7071c5f9511831b44f32c740d5adf574e990f946ddb53db2f314e"
 dependencies = [
  "bitflags 2.11.1",
  "memchr",
@@ -6450,6 +6452,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustls-pemfile"
+version = "2.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dce314e5fee3f39953d46bb63bb8a46d40c2f8fb7cc5a3b6cab2bde9721d6e50"
+dependencies = [
+ "rustls-pki-types",
+]
+
+[[package]]
 name = "rustls-pki-types"
 version = "1.14.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6725,9 +6736,9 @@ dependencies = [
 
 [[package]]
 name = "serde_json"
-version = "1.0.149"
+version = "1.0.150"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "83fc039473c5595ace860d8c4fafa220ff474b3fc6bfdb4293327f1a37e94d86"
+checksum = "e8014e44b4736ed0538adeecded0fce2a272f22dc9578a7eb6b2d9993c74cfb9"
 dependencies = [
  "itoa",
  "memchr",
@@ -8495,9 +8506,9 @@ checksum = "b8dad83b4f25e74f184f64c43b150b91efe7647395b42289f38e50566d82855b"
 
 [[package]]
 name = "wasm-bindgen"
-version = "0.2.121"
+version = "0.2.122"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "49ace1d07c165b0864824eee619580c4689389afa9dc9ed3a4c75040d82e6790"
+checksum = "3ed04576f974d2b2fba0f38c51dbc5518011e38c36bf1143164be765528fd409"
 dependencies = [
  "cfg-if",
  "once_cell",
@@ -8508,9 +8519,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-futures"
-version = "0.4.71"
+version = "0.4.72"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "96492d0d3ffba25305a7dc88720d250b1401d7edca02cc3bcd50633b424673b8"
+checksum = "9473dbd2991ae90b6291c3c32c30c6187ac49aa32f9905d1cce280ec1e110b0f"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
@@ -8518,9 +8529,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-macro"
-version = "0.2.121"
+version = "0.2.122"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8e68e6f4afd367a562002c05637acb8578ff2dea1943df76afb9e83d177c8578"
+checksum = "916151b09da36bd82f6615cbf3a419e2f0ba23a03c6160e8e92eb6bd4aa1dec6"
 dependencies = [
  "quote",
  "wasm-bindgen-macro-support",
@@ -8528,9 +8539,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-macro-support"
-version = "0.2.121"
+version = "0.2.122"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d95a9ec35c64b2a7cb35d3fead40c4238d0940c86d107136999567a4703259f2"
+checksum = "299047362ccbfce148b67ab7e73349f77748e00c8296f9542adfad2ad82c5c5e"
 dependencies = [
  "bumpalo",
  "proc-macro2",
@@ -8541,9 +8552,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-shared"
-version = "0.2.121"
+version = "0.2.122"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c4e0100b01e9f0d03189a92b96772a1fb998639d981193d7dbab487302513441"
+checksum = "9a929b2c61f11ba3e9bc35b50c1f25cb38e0e892c0c231ae2b8cf78d5dad4437"
 dependencies = [
  "unicode-ident",
 ]
@@ -8610,9 +8621,9 @@ dependencies = [
 
 [[package]]
 name = "web-sys"
-version = "0.3.98"
+version = "0.3.99"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4b572dff8bcf38bad0fa19729c89bb5748b2b9b1d8be70cf90df697e3a8f32aa"
+checksum = "6d621441cfc37b84979402712047321980c178f299193a3589d05b99e8763436"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
