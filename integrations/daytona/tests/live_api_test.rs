@@ -768,10 +768,13 @@ async fn test_live_api_call_sandbox_lifecycle_with_labels() {
     // works and returns sandboxes whose entries look like sandboxes.
     let mut next: Option<String> = None;
     let mut found_self = false;
+    let mut found_on_page: Option<usize> = None;
     let mut pages_scanned: usize = 0;
     let mut total_items_seen: usize = 0;
-    let mut last_page_for_diagnostic: Option<serde_json::Value>;
-    loop {
+    // The loop is an expression so the final page falls out as a value with
+    // no dummy/uninitialized binding for `unused_assignments` to complain
+    // about.
+    let last_page: serde_json::Value = loop {
         let path = match &next {
             // Cursors are opaque server-issued strings and can contain
             // reserved characters (`+`, `=`, `&`, `/`); percent-encode the
@@ -797,57 +800,54 @@ async fn test_live_api_call_sandbox_lifecycle_with_labels() {
         total_items_seen += items.len();
         if items.iter().any(|s| s["id"].as_str() == Some(sandbox_id)) {
             found_self = true;
-            last_page_for_diagnostic = Some(page);
-            break;
+            found_on_page = Some(pages_scanned);
+            break page;
         }
         next = page["next_cursor"]
             .as_str()
             .or_else(|| page["nextCursor"].as_str())
             .filter(|s| !s.is_empty())
             .map(String::from);
-        last_page_for_diagnostic = Some(page);
         // Cap follow-on pages so a runaway listing never makes the test hang.
         if next.is_none() || pages_scanned >= 5 {
-            break;
+            break page;
         }
-    }
+    };
 
     // The listing must at least be a non-empty list of objects that look
     // like sandboxes — that proves the endpoint is wired up correctly.
-    let page = last_page_for_diagnostic
-        .as_ref()
-        .expect("at least one listing page should have been fetched");
-    let first_items = page
+    let last_page_items = last_page
         .as_array()
-        .or_else(|| page["items"].as_array())
-        .or_else(|| page["data"].as_array())
+        .or_else(|| last_page["items"].as_array())
+        .or_else(|| last_page["data"].as_array())
         .expect("listing should expose items in array / items / data");
     assert!(
-        !first_items.is_empty(),
+        !last_page_items.is_empty(),
         "listing returned no sandboxes at all; expected at least our own ({sandbox_id})"
     );
     assert!(
-        first_items
+        last_page_items
             .iter()
             .all(|s| s.is_object() && s["id"].is_string()),
-        "listing entries should be objects with `id` strings, got: {page}"
+        "listing entries should be objects with `id` strings, got: {last_page}"
     );
 
     if found_self {
         eprintln!(
-            "[test] Sandbox {sandbox_id} found in /sandbox listing (page {pages_scanned} of {pages_scanned})"
+            "[test] Sandbox {sandbox_id} found in /sandbox listing (on page {} after scanning {pages_scanned} page(s), {total_items_seen} items)",
+            found_on_page.unwrap_or(pages_scanned),
         );
     } else {
         // Don't fail — the lifecycle has already been proven via direct
         // GET /sandbox/{id} + toolbox exec above. Log the diagnostic so
         // pagination-related drifts are still visible in CI output.
-        let sample_ids: Vec<&str> = first_items
+        let sample_ids: Vec<&str> = last_page_items
             .iter()
             .take(5)
             .filter_map(|s| s["id"].as_str())
             .collect();
         eprintln!(
-            "[test] Sandbox {sandbox_id} not present in {pages_scanned} listed page(s) ({total_items_seen} items scanned); sample ids on last page: {sample_ids:?}. \
+            "[test] Sandbox {sandbox_id} not present after scanning {pages_scanned} page(s) ({total_items_seen} items scanned); sample ids on last page: {sample_ids:?}. \
             Direct GET succeeded, so this is treated as a pagination/visibility quirk rather than a failure."
         );
     }
