@@ -147,21 +147,21 @@ pub fn routes(state: AppState) -> Router {
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct VoiceSessionOptions {
     /// Provider-side realtime model identifier. When omitted the server picks the agent's configured default.
-    /// Example: `gpt-realtime`.
     #[serde(default)]
+    #[schema(example = "gpt-realtime")]
     pub model: Option<String>,
     /// Realtime voice preset (provider-specific). When omitted the server picks the agent's configured default.
-    /// Example: `alloy`.
     #[serde(default)]
+    #[schema(example = "alloy")]
     pub voice: Option<String>,
     /// Reasoning effort hint passed through to the realtime model. One of `low`, `medium`, `high`.
     /// When omitted the server picks the provider's default.
-    /// Example: `medium`.
     #[serde(default)]
+    #[schema(example = "medium")]
     pub reasoning_effort: Option<String>,
     /// Extra system instructions appended to the realtime session prompt.
-    /// Example: `Always confirm before placing an order.`.
     #[serde(default)]
+    #[schema(example = "Always confirm before placing an order.")]
     pub instructions: Option<String>,
 }
 
@@ -192,8 +192,8 @@ pub struct VoiceAttachRequest {
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct VoiceEndRequest {
     /// Free-text reason recorded with the session-ended event. Useful for operator forensics.
-    /// Example: `User hung up after refund confirmed.`.
     #[serde(default)]
+    #[schema(example = "User hung up after refund confirmed.")]
     pub reason: Option<String>,
 }
 

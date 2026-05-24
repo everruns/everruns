@@ -2063,8 +2063,11 @@ pub struct VoiceSessionEndedData {
     )]
     pub voice_connection_id: String,
     /// Free-text end reason captured from the client or server. `None` when no reason was supplied.
-    /// Example: `User hung up after refund confirmed.`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(
+        feature = "openapi",
+        schema(example = "User hung up after refund confirmed.")
+    )]
     pub reason: Option<String>,
     /// Total wall-clock duration of the connection in milliseconds. `None` when the connection
     /// never completed an audio handshake.

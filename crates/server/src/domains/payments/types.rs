@@ -5,10 +5,13 @@ use utoipa::{IntoParams, ToSchema};
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreatePaymentAccountRequest {
     /// Principal class that owns the account. One of: `user`, `agent_identity`, `organization`.
+    /// The prefix on `owner_id` must match this: `user` → `user_…`, `agent_identity` → `identity_…`,
+    /// `organization` → `org_…`.
     #[schema(example = "agent_identity")]
     pub owner_type: String,
-    /// Prefixed identifier of the owning principal (e.g. `user_…`, `agent_…`, `org_…`).
-    #[schema(example = "agent_01933b5a00007000800000000000001")]
+    /// Prefixed identifier of the owning principal. Must use the prefix that matches `owner_type`
+    /// (see above). Example below pairs with `owner_type = "agent_identity"`.
+    #[schema(example = "identity_01933b5a00007000800000000000001")]
     pub owner_id: String,
     /// Settlement rail this account operates on. One of: `mpp_tempo`, `x402_base`.
     #[schema(example = "x402_base")]
@@ -21,8 +24,9 @@ pub struct CreatePaymentAccountRequest {
     #[schema(example = "0x742d35Cc6634C0532925a3b844Bc454e4438f44e")]
     pub public_address: Option<String>,
     /// Private key material for the rail. Stored encrypted; never returned in responses.
+    /// Example shown as an obvious placeholder — supply a real 32-byte hex value at create time.
     #[serde(default)]
-    #[schema(example = "0x4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318")]
+    #[schema(example = "0x<your-32-byte-hex-private-key>")]
     pub private_key: Option<String>,
     /// Free-form metadata attached to this account (caller-defined; opaque to the platform).
     /// Example: `{"team": "support", "cost_center": "ops"}`.
@@ -39,7 +43,8 @@ pub struct UpdatePaymentAccountRequest {
     /// New public address. The outer `Option` indicates whether to update; the inner allows clearing the field.
     pub public_address: Option<Option<String>>,
     /// New private key material. Set to `Some(...)` to rotate; omit to leave unchanged.
-    #[schema(example = "0x4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318")]
+    /// Example shown as an obvious placeholder — supply a real 32-byte hex value when rotating.
+    #[schema(example = "0x<your-32-byte-hex-private-key>")]
     pub private_key: Option<String>,
     /// New lifecycle status. Valid values: `active`, `disabled`.
     #[schema(example = "disabled")]
@@ -60,14 +65,18 @@ pub struct ListPaymentAccountsQuery {
 /// Request body for the `create_payment_policy` operation.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct CreatePaymentPolicyRequest {
-    /// Payment account this policy authorizes spending from.
-    #[schema(example = "pay_account_01933b5a00007000800000000000001")]
+    /// Payment account this policy authorizes spending from. Accepts a prefixed `payacct_…`
+    /// identifier or a bare UUID.
+    #[schema(example = "payacct_01933b5a00007000800000000000001")]
     pub payment_account_id: String,
     /// Class of subject this policy binds to. One of: `user`, `agent_identity`, `agent`, `app`, `session`, `org`.
+    /// The prefix on `subject_id` must match: `user`→`user_…`, `agent_identity`→`identity_…`,
+    /// `agent`→`agent_…`, `app`→`app_…`, `session`→`session_…`, `org`→`org_…`.
     #[schema(example = "agent_identity")]
     pub subject_type: String,
-    /// Prefixed identifier of the bound subject.
-    #[schema(example = "agent_01933b5a00007000800000000000001")]
+    /// Prefixed identifier of the bound subject. Must use the prefix matching `subject_type`
+    /// (see above). Example below pairs with `subject_type = "agent_identity"`.
+    #[schema(example = "identity_01933b5a00007000800000000000001")]
     pub subject_id: String,
     /// Capability IDs this policy permits paid calls for. Empty list means no capability gating.
     #[serde(default)]

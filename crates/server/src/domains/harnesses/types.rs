@@ -124,13 +124,13 @@ pub struct PreviewHarnessRequest {
     #[schema(value_type = Option<String>, example = "harness_01933b5a000070008000000000000602")]
     pub parent_harness_id: Option<HarnessId>,
     /// Capability configurations to layer onto the preview. Empty list means none.
-    /// Example: `[{"id": "web.search", "enabled": true}]`.
     #[serde(default)]
+    #[schema(example = json!([{"ref": "web.search", "config": {}}, {"ref": "filesystem.read", "config": {"root": "/workspace"}}]))]
     pub capabilities: Vec<AgentCapabilityConfig>,
-    /// MCP servers scoped to this preview. Use the camelCase key `mcpServers` (preferred) or
-    /// the snake_case alias `mcp_servers`. Empty by default.
-    /// Example: `{"shared": [{"name": "filesystem", "transport": "stdio", "command": "mcp-fs"}]}`.
+    /// MCP servers scoped to this preview, keyed by scope (`shared` / per-agent / etc.).
+    /// Use the camelCase key `mcpServers` (preferred) or the snake_case alias `mcp_servers`. Empty by default.
     #[serde(default, rename = "mcpServers", alias = "mcp_servers")]
+    #[schema(example = json!({"shared": {"name": "filesystem", "transport": "stdio", "command": "mcp-fs", "args": ["--root", "/workspace"]}}))]
     pub mcp_servers: ScopedMcpServers,
 }
 

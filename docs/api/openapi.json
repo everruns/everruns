@@ -14162,12 +14162,12 @@
           },
           "owner_id": {
             "type": "string",
-            "description": "Prefixed identifier of the owning principal (e.g. `user_…`, `agent_…`, `org_…`).",
-            "example": "agent_01933b5a00007000800000000000001"
+            "description": "Prefixed identifier of the owning principal. Must use the prefix that matches `owner_type`\n(see above). Example below pairs with `owner_type = \"agent_identity\"`.",
+            "example": "identity_01933b5a00007000800000000000001"
           },
           "owner_type": {
             "type": "string",
-            "description": "Principal class that owns the account. One of: `user`, `agent_identity`, `organization`.",
+            "description": "Principal class that owns the account. One of: `user`, `agent_identity`, `organization`.\nThe prefix on `owner_id` must match this: `user` → `user_…`, `agent_identity` → `identity_…`,\n`organization` → `org_…`.",
             "example": "agent_identity"
           },
           "private_key": {
@@ -14175,8 +14175,8 @@
               "string",
               "null"
             ],
-            "description": "Private key material for the rail. Stored encrypted; never returned in responses.",
-            "example": "0x4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318"
+            "description": "Private key material for the rail. Stored encrypted; never returned in responses.\nExample shown as an obvious placeholder — supply a real 32-byte hex value at create time.",
+            "example": "0x<your-32-byte-hex-private-key>"
           },
           "public_address": {
             "type": [
@@ -14256,8 +14256,8 @@
           },
           "payment_account_id": {
             "type": "string",
-            "description": "Payment account this policy authorizes spending from.",
-            "example": "pay_account_01933b5a00007000800000000000001"
+            "description": "Payment account this policy authorizes spending from. Accepts a prefixed `payacct_…`\nidentifier or a bare UUID.",
+            "example": "payacct_01933b5a00007000800000000000001"
           },
           "rail_preference": {
             "type": "array",
@@ -14281,12 +14281,12 @@
           },
           "subject_id": {
             "type": "string",
-            "description": "Prefixed identifier of the bound subject.",
-            "example": "agent_01933b5a00007000800000000000001"
+            "description": "Prefixed identifier of the bound subject. Must use the prefix matching `subject_type`\n(see above). Example below pairs with `subject_type = \"agent_identity\"`.",
+            "example": "identity_01933b5a00007000800000000000001"
           },
           "subject_type": {
             "type": "string",
-            "description": "Class of subject this policy binds to. One of: `user`, `agent_identity`, `agent`, `app`, `session`, `org`.",
+            "description": "Class of subject this policy binds to. One of: `user`, `agent_identity`, `agent`, `app`, `session`, `org`.\nThe prefix on `subject_id` must match: `user`→`user_…`, `agent_identity`→`identity_…`,\n`agent`→`agent_…`, `app`→`app_…`, `session`→`session_…`, `org`→`org_…`.",
             "example": "agent_identity"
           }
         }
@@ -23321,11 +23321,23 @@
             "items": {
               "$ref": "#/components/schemas/AgentCapabilityConfig"
             },
-            "description": "Capability configurations to layer onto the preview. Empty list means none.\nExample: `[{\"id\": \"web.search\", \"enabled\": true}]`."
+            "description": "Capability configurations to layer onto the preview. Empty list means none.",
+            "example": [
+              {
+                "config": {},
+                "ref": "web.search"
+              },
+              {
+                "config": {
+                  "root": "/workspace"
+                },
+                "ref": "filesystem.read"
+              }
+            ]
           },
           "mcpServers": {
             "$ref": "#/components/schemas/BTreeMap",
-            "description": "MCP servers scoped to this preview. Use the camelCase key `mcpServers` (preferred) or\nthe snake_case alias `mcp_servers`. Empty by default.\nExample: `{\"shared\": [{\"name\": \"filesystem\", \"transport\": \"stdio\", \"command\": \"mcp-fs\"}]}`."
+            "description": "MCP servers scoped to this preview, keyed by scope (`shared` / per-agent / etc.).\nUse the camelCase key `mcpServers` (preferred) or the snake_case alias `mcp_servers`. Empty by default."
           },
           "parent_harness_id": {
             "type": [
@@ -27459,8 +27471,8 @@
               "string",
               "null"
             ],
-            "description": "New private key material. Set to `Some(...)` to rotate; omit to leave unchanged.",
-            "example": "0x4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318"
+            "description": "New private key material. Set to `Some(...)` to rotate; omit to leave unchanged.\nExample shown as an obvious placeholder — supply a real 32-byte hex value when rotating.",
+            "example": "0x<your-32-byte-hex-private-key>"
           },
           "public_address": {
             "type": [
@@ -28054,7 +28066,8 @@
               "string",
               "null"
             ],
-            "description": "Free-text reason recorded with the session-ended event. Useful for operator forensics.\nExample: `User hung up after refund confirmed.`."
+            "description": "Free-text reason recorded with the session-ended event. Useful for operator forensics.",
+            "example": "User hung up after refund confirmed."
           }
         }
       },
@@ -28097,7 +28110,8 @@
               "string",
               "null"
             ],
-            "description": "Free-text end reason captured from the client or server. `None` when no reason was supplied.\nExample: `User hung up after refund confirmed.`."
+            "description": "Free-text end reason captured from the client or server. `None` when no reason was supplied.",
+            "example": "User hung up after refund confirmed."
           },
           "voice_connection_id": {
             "type": "string",
@@ -28134,28 +28148,32 @@
               "string",
               "null"
             ],
-            "description": "Extra system instructions appended to the realtime session prompt.\nExample: `Always confirm before placing an order.`."
+            "description": "Extra system instructions appended to the realtime session prompt.",
+            "example": "Always confirm before placing an order."
           },
           "model": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Provider-side realtime model identifier. When omitted the server picks the agent's configured default.\nExample: `gpt-realtime`."
+            "description": "Provider-side realtime model identifier. When omitted the server picks the agent's configured default.",
+            "example": "gpt-realtime"
           },
           "reasoning_effort": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Reasoning effort hint passed through to the realtime model. One of `low`, `medium`, `high`.\nWhen omitted the server picks the provider's default.\nExample: `medium`."
+            "description": "Reasoning effort hint passed through to the realtime model. One of `low`, `medium`, `high`.\nWhen omitted the server picks the provider's default.",
+            "example": "medium"
           },
           "voice": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Realtime voice preset (provider-specific). When omitted the server picks the agent's configured default.\nExample: `alloy`."
+            "description": "Realtime voice preset (provider-specific). When omitted the server picks the agent's configured default.",
+            "example": "alloy"
           }
         }
       },
