@@ -9,6 +9,79 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.8.34] - 2026-05-24
+
+### Highlights
+
+- **Coding-cli supports OpenRouter and Ollama** - The embedded coding CLI now talks to OpenRouter and Ollama in addition to the existing providers, broadening local and BYO-model setups.
+- **Capability-provided slash commands in the embedded CLI** - Capabilities can register their own slash commands inside the embedded coding CLI ([#1903](https://github.com/everruns/everruns/pull/1903)).
+- **Fingerprint-based loop detection** - Runtime now detects repeating-output loops via fingerprints and breaks them automatically.
+- **Stale tool result masking for cost control** - Compaction masks stale tool results so long sessions stay within budget without losing recent context.
+- **GitHub Scout blueprint** - New built-in GitHub Scout blueprint plus a fallback to the parent session token when the scout runs ([#1951](https://github.com/everruns/everruns/pull/1951)).
+- **Hypermedia pagination links** - Paginated API responses now include `next_url` / `prev_url` for HATEOAS-style navigation ([#1889](https://github.com/everruns/everruns/pull/1889)).
+- **OpenAPI examples expansion** - Examples and field descriptions added across Create*/Update* schemas, Schedules, A2A channel, volume sources, Memory + Knowledge clusters, and file/git/durable/tool-results endpoints; field-example floor ratcheted from 15% to 21% ([#1904](https://github.com/everruns/everruns/pull/1904), [#1915](https://github.com/everruns/everruns/pull/1915), [#1923](https://github.com/everruns/everruns/pull/1923), [#1949](https://github.com/everruns/everruns/pull/1949), [#1952](https://github.com/everruns/everruns/pull/1952)).
+
+### What's Changed
+
+- feat(api): examples on file ops, git, durable, tool-results; floor 21% ([#1952](https://github.com/everruns/everruns/pull/1952)) by [@chaliy](https://github.com/chaliy)
+- chore(ui): adopt Turbopack and drop hoisted-linker custom ([#1950](https://github.com/everruns/everruns/pull/1950)) by [@chaliy](https://github.com/chaliy)
+- fix(github): fallback to parent session token for scout ([#1951](https://github.com/everruns/everruns/pull/1951)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): clean up jsx-a11y and react lint warnings ([#1955](https://github.com/everruns/everruns/pull/1955)) by [@chaliy](https://github.com/chaliy)
+- fix(ci): restore docker build triggers for rust inputs ([#1933](https://github.com/everruns/everruns/pull/1933)) by [@chaliy](https://github.com/chaliy)
+- fix(runtime): preserve CAS semantics in approval-gated writes ([#1930](https://github.com/everruns/everruns/pull/1930)) by [@chaliy](https://github.com/chaliy)
+- fix(coding-cli): bound write_todos transcript rendering ([#1932](https://github.com/everruns/everruns/pull/1932)) by [@chaliy](https://github.com/chaliy)
+- fix(coding-cli): redact credentials in git remote context ([#1931](https://github.com/everruns/everruns/pull/1931)) by [@chaliy](https://github.com/chaliy)
+- fix(core): bound infinity candidate load with max cap ([#1929](https://github.com/everruns/everruns/pull/1929)) by [@chaliy](https://github.com/chaliy)
+- fix(core): tighten token-efficient tool outputs ([#1954](https://github.com/everruns/everruns/pull/1954)) by [@chaliy](https://github.com/chaliy)
+- feat(events): persist opaque assistant reasoning items ([#1948](https://github.com/everruns/everruns/pull/1948)) by [@chaliy](https://github.com/chaliy)
+- feat(api): examples on Memory + Knowledge clusters; floor 19% ([#1949](https://github.com/everruns/everruns/pull/1949)) by [@chaliy](https://github.com/chaliy)
+- feat(ercode): store session artifacts in folders by [@chaliy](https://github.com/chaliy)
+- fix(core): keep model view masking capability-owned ([#1945](https://github.com/everruns/everruns/pull/1945)) by [@chaliy](https://github.com/chaliy)
+- feat(coding-cli): support OpenRouter and Ollama by [@chaliy](https://github.com/chaliy)
+- feat(context): attribute session usage sources by [@chaliy](https://github.com/chaliy)
+- feat(core): bound prompt tool output by default ([#1943](https://github.com/everruns/everruns/pull/1943)) by [@chaliy](https://github.com/chaliy)
+- feat(core): add fingerprint loop detection by [@chaliy](https://github.com/chaliy)
+- fix(cli): group consecutive tool output rows by [@chaliy](https://github.com/chaliy)
+- fix(coding-cli): support multiline TUI input by [@chaliy](https://github.com/chaliy)
+- chore(ui,docs): adopt pnpm for UI dev across all environments ([#1927](https://github.com/everruns/everruns/pull/1927)) by [@chaliy](https://github.com/chaliy)
+- feat(compaction): mask stale tool results for cost control by [@chaliy](https://github.com/chaliy)
+- feat(core): add utility llm service by [@chaliy](https://github.com/chaliy)
+- feat(api): examples on Schedules, A2A channel, volume sources; floor 17% ([#1923](https://github.com/everruns/everruns/pull/1923)) by [@chaliy](https://github.com/chaliy)
+- fix(runtime): avoid lossy in-process org id folding ([#1924](https://github.com/everruns/everruns/pull/1924)) by [@chaliy](https://github.com/chaliy)
+- fix(agents): bound automatic snapshots by [@chaliy](https://github.com/chaliy)
+- feat(github): add github scout blueprint by [@chaliy](https://github.com/chaliy)
+- perf(prompts): trim remaining capability prompts by [@chaliy](https://github.com/chaliy)
+- docs(crates): prepare published packages ([#1919](https://github.com/everruns/everruns/pull/1919)) by [@chaliy](https://github.com/chaliy)
+- fix(agent-handoff): require explicit target harness for child session ([#1921](https://github.com/everruns/everruns/pull/1921)) by [@chaliy](https://github.com/chaliy)
+- perf(prompts): trim hot capability and harness prompts ([#1913](https://github.com/everruns/everruns/pull/1913)) by [@chaliy](https://github.com/chaliy)
+- feat(api): examples on Update* request schemas; status enums; floor 15% ([#1915](https://github.com/everruns/everruns/pull/1915)) by [@chaliy](https://github.com/chaliy)
+- docs(capabilities): order overview first by [@chaliy](https://github.com/chaliy)
+- feat(events): summarize completed turns ([#1918](https://github.com/everruns/everruns/pull/1918)) by [@chaliy](https://github.com/chaliy)
+- fix(events): persist llm generation events ([#1917](https://github.com/everruns/everruns/pull/1917)) by [@chaliy](https://github.com/chaliy)
+- feat(ercode): inject environment context by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump distroless/cc-debian12 from `e2d29ae` to `bd2899c` in /crates/server ([#1900](https://github.com/everruns/everruns/pull/1900)) by [@dependabot](https://github.com/dependabot)
+- fix(cli): hide assistant thinking in session logs by [@chaliy](https://github.com/chaliy)
+- fix(runtime): derive in-process org id from session org ([#1890](https://github.com/everruns/everruns/pull/1890)) by [@chaliy](https://github.com/chaliy)
+- fix(core): trim infinity context by token budget by [@chaliy](https://github.com/chaliy)
+- ci: filter postgres integration tests by [@chaliy](https://github.com/chaliy)
+- feat(api): examples on high-traffic Create*/Update* schemas; field-example gate ([#1904](https://github.com/everruns/everruns/pull/1904)) by [@chaliy](https://github.com/chaliy)
+- feat(coding-cli): persist bash output by [@chaliy](https://github.com/chaliy)
+- fix(coding-cli): tighten todo rendering by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump distroless/cc-debian12 from `e2d29ae` to `bd2899c` in /crates/worker ([#1901](https://github.com/everruns/everruns/pull/1901)) by [@dependabot](https://github.com/dependabot)
+- chore(deps): bump distroless/cc-debian12 from `e2d29ae` to `bd2899c` in /docker ([#1902](https://github.com/everruns/everruns/pull/1902)) by [@dependabot](https://github.com/dependabot)
+- refactor(examples): move coding CLI capabilities by [@chaliy](https://github.com/chaliy)
+- refactor(coding-cli): split runtime wiring result by [@chaliy](https://github.com/chaliy)
+- chore(docs): slim agent instructions by [@chaliy](https://github.com/chaliy)
+- feat(coding-cli): improve turn progress rendering by [@chaliy](https://github.com/chaliy)
+- feat(core,runtime,examples): capability-provided slash commands in the embedded CLI ([#1903](https://github.com/everruns/everruns/pull/1903)) by [@chaliy](https://github.com/chaliy)
+- test(api): count utoipa oneOf-nested descriptions; ratchet field floor to 85% ([#1898](https://github.com/everruns/everruns/pull/1898)) by [@chaliy](https://github.com/chaliy)
+- feat(coding-cli): show live turn progress by [@chaliy](https://github.com/chaliy)
+- feat(api): hypermedia next_url / prev_url on paginated responses ([#1889](https://github.com/everruns/everruns/pull/1889)) by [@chaliy](https://github.com/chaliy)
+- feat(examples): coding-cli — seed event collector on resume ([#1896](https://github.com/everruns/everruns/pull/1896)) by [@chaliy](https://github.com/chaliy)
+- ci: bump actions/checkout to v5 (Node 24) ([#1893](https://github.com/everruns/everruns/pull/1893)) by [@chaliy](https://github.com/chaliy)
+- feat(runtime): SingleSessionBuilder::session_id setter ([#1894](https://github.com/everruns/everruns/pull/1894)) by [@chaliy](https://github.com/chaliy)
+- ci(publish-crates): allow manual dispatch + retry on rate limit ([#1895](https://github.com/everruns/everruns/pull/1895)) by [@chaliy](https://github.com/chaliy)
+
 ## [0.8.33] - 2026-05-19
 
 ### What's Changed
