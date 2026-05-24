@@ -632,6 +632,21 @@ fn compute_delta_input_items(items: Vec<ResponsesInputItem>) -> Vec<ResponsesInp
     }
 }
 
+/// The single decision point for whether a Responses request `input` should be
+/// trimmed to the delta window. Extracted so the call path can be regression-tested
+/// without spinning up an HTTP mock — protects against accidentally removing the
+/// `previous_response_id.is_some()` guard that enforces the stateful invariant.
+fn finalize_input_for_request(
+    input_items: Vec<ResponsesInputItem>,
+    previous_response_id: &Option<String>,
+) -> Vec<ResponsesInputItem> {
+    if previous_response_id.is_some() {
+        compute_delta_input_items(input_items)
+    } else {
+        input_items
+    }
+}
+
 #[async_trait]
 impl LlmDriver for OpenResponsesProtocolLlmDriver {
     async fn chat_completion_stream(
@@ -653,11 +668,7 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
         // the prior transcript input the provider already holds server-side. When a
         // continuation handle is present, trim `input_items` to the delta window so
         // the request only carries new tool results / user messages.
-        let input_items = if config.previous_response_id.is_some() {
-            compute_delta_input_items(input_items)
-        } else {
-            input_items
-        };
+        let input_items = finalize_input_for_request(input_items, &config.previous_response_id);
 
         let tools = if config.tools.is_empty() {
             None
@@ -1744,8 +1755,14 @@ enum ResponsesInputItem {
         output: String,
     },
     /// Reasoning item for o-series and GPT-5 models
-    /// Contains encrypted reasoning content that must be included in subsequent API calls
-    /// to preserve reasoning context across turns (similar to Anthropic's thinking signature)
+    /// Contains encrypted reasoning content that preserves reasoning context across turns
+    /// (similar to Anthropic's thinking signature).
+    ///
+    /// Stateless requests must re-send prior `Reasoning` items in `input` so the model can
+    /// continue from them. Stateful continuations (those carrying `previous_response_id`)
+    /// rely on OpenAI to hold the prior reasoning chain server-side, so [`compute_delta_input_items`]
+    /// intentionally drops `Reasoning` items that belong to a prior assistant turn — re-sending
+    /// them alongside `previous_response_id` would violate the no-mixing invariant.
     Reasoning {
         r#type: String,
         /// Unique ID for this reasoning item
@@ -2517,6 +2534,76 @@ mod tests {
         assert_eq!(trimmed.len(), 1);
         let json = serde_json::to_value(&trimmed[0]).unwrap();
         assert_eq!(json["type"], "function_call_output");
+    }
+
+    // ------------------------------------------------------------------------
+    // Request-builder integration: `finalize_input_for_request` is the single
+    // gate that chooses whether the request `input` is trimmed. These tests
+    // pin the exact decision the call path makes — they catch regressions
+    // where the `previous_response_id`-presence check is accidentally dropped
+    // or inverted, which is what would re-introduce the bug even if the trim
+    // helper itself stays correct.
+    // ------------------------------------------------------------------------
+
+    fn sample_full_transcript_items() -> Vec<ResponsesInputItem> {
+        vec![
+            ResponsesInputItem::Message {
+                r#type: "message".to_string(),
+                role: "user".to_string(),
+                content: ResponsesContent::Text("first request".to_string()),
+                phase: None,
+            },
+            ResponsesInputItem::Message {
+                r#type: "message".to_string(),
+                role: "assistant".to_string(),
+                content: ResponsesContent::Text("first reply".to_string()),
+                phase: None,
+            },
+            ResponsesInputItem::Message {
+                r#type: "message".to_string(),
+                role: "user".to_string(),
+                content: ResponsesContent::Text("follow-up".to_string()),
+                phase: None,
+            },
+        ]
+    }
+
+    #[test]
+    fn finalize_input_skips_trim_when_previous_response_id_is_none() {
+        let items = sample_full_transcript_items();
+        let original_len = items.len();
+        let out = finalize_input_for_request(items, &None);
+        assert_eq!(
+            out.len(),
+            original_len,
+            "stateless mode keeps the full transcript so the model has context"
+        );
+    }
+
+    #[test]
+    fn finalize_input_trims_when_previous_response_id_is_set() {
+        let items = sample_full_transcript_items();
+        let out = finalize_input_for_request(items, &Some("resp_prev_42".to_string()));
+        assert_eq!(
+            out.len(),
+            1,
+            "stateful continuation must drop everything up to and including the prior assistant message"
+        );
+        let json = serde_json::to_value(&out[0]).unwrap();
+        assert_eq!(json["type"], "message");
+        assert_eq!(json["role"], "user");
+        // Only the post-assistant follow-up survives.
+        let txt = json["content"].as_str().unwrap_or("");
+        assert_eq!(txt, "follow-up");
+    }
+
+    #[test]
+    fn finalize_input_allows_empty_input_with_previous_response_id() {
+        let out = finalize_input_for_request(vec![], &Some("resp_anything".to_string()));
+        assert!(
+            out.is_empty(),
+            "empty delta is valid — the provider can resume purely from the response id"
+        );
     }
 
     // ========================================================================
