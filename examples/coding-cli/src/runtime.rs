@@ -137,13 +137,15 @@ impl SessionFileSystemFactory for CodingCliSessionFileSystemFactory {
 struct CodingCliSessionFileStore {
     workspace: RealDiskFileStore,
     session: RealDiskFileStore,
+    session_dir: PathBuf,
 }
 
 impl CodingCliSessionFileStore {
     fn new(workspace_root: PathBuf, session_dir: PathBuf) -> everruns_core::Result<Self> {
         Ok(Self {
             workspace: RealDiskFileStore::new(workspace_root)?,
-            session: RealDiskFileStore::new(session_dir)?,
+            session: RealDiskFileStore::new(session_dir.clone())?,
+            session_dir,
         })
     }
 
@@ -180,6 +182,48 @@ impl CodingCliSessionFileStore {
             Some(path) => (&self.session, path),
             None => (&self.workspace, path.to_string()),
         }
+    }
+
+    #[cfg(unix)]
+    fn secure_session_artifact_path(&self, path: &str) -> everruns_core::Result<()> {
+        use std::os::unix::fs::PermissionsExt;
+
+        let absolute = self.session_dir.join(path.trim_start_matches('/'));
+
+        // For arbitrarily nested paths under `/outputs`, harden every
+        // ancestor from the artifact's immediate parent up to and including
+        // `<session_dir>/outputs`. Stopping at the outputs root keeps the
+        // session root and unrelated sibling directories untouched.
+        let outputs_root = self.session_dir.join("outputs");
+        let mut current = absolute.parent();
+        while let Some(dir) = current {
+            std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700)).map_err(|e| {
+                AgentLoopError::config(format!(
+                    "set private permissions on session output dir {}: {e}",
+                    dir.display()
+                ))
+            })?;
+            if dir == outputs_root {
+                break;
+            }
+            current = dir.parent();
+        }
+
+        std::fs::set_permissions(&absolute, std::fs::Permissions::from_mode(0o600)).map_err(
+            |e| {
+                AgentLoopError::config(format!(
+                    "set private permissions on session output file {}: {e}",
+                    absolute.display()
+                ))
+            },
+        )?;
+
+        Ok(())
+    }
+
+    #[cfg(not(unix))]
+    fn secure_session_artifact_path(&self, _path: &str) -> everruns_core::Result<()> {
+        Ok(())
     }
 
     fn grep_filter_path(path: &str) -> Option<String> {
@@ -220,7 +264,15 @@ impl SessionFileSystem for CodingCliSessionFileStore {
         encoding: &str,
     ) -> everruns_core::Result<SessionFile> {
         let (store, path) = self.store_for_path(path);
-        store.write_file(session_id, &path, content, encoding).await
+        let file = store
+            .write_file(session_id, &path, content, encoding)
+            .await?;
+
+        if Self::session_output_path(&path).is_some() {
+            self.secure_session_artifact_path(&path)?;
+        }
+
+        Ok(file)
     }
 
     async fn write_file_if_content_matches(
@@ -1086,6 +1138,76 @@ mod tests {
         assert_eq!(workspace_grep[0].path, "/src/lib.rs");
     }
 
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn coding_cli_file_store_secures_output_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let workspace = tempfile::tempdir().expect("workspace");
+        let session = tempfile::tempdir().expect("session");
+        let store = CodingCliSessionFileStore::new(workspace.path().into(), session.path().into())
+            .expect("store");
+        let session_id = SessionId::from_seed(3);
+
+        store
+            .write_file(
+                session_id,
+                "/outputs/private.stdout",
+                "sensitive output",
+                "text",
+            )
+            .await
+            .expect("write output file");
+
+        let output_mode = std::fs::metadata(session.path().join("outputs/private.stdout"))
+            .expect("output metadata")
+            .permissions()
+            .mode()
+            & 0o777;
+        let output_dir_mode = std::fs::metadata(session.path().join("outputs"))
+            .expect("output dir metadata")
+            .permissions()
+            .mode()
+            & 0o777;
+
+        assert_eq!(output_mode, 0o600);
+        assert_eq!(output_dir_mode, 0o700);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn coding_cli_file_store_secures_nested_output_directories() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let workspace = tempfile::tempdir().expect("workspace");
+        let session = tempfile::tempdir().expect("session");
+        let store = CodingCliSessionFileStore::new(workspace.path().into(), session.path().into())
+            .expect("store");
+        let session_id = SessionId::from_seed(4);
+
+        store
+            .write_file(
+                session_id,
+                "/outputs/run/log/output.txt",
+                "deep artifact",
+                "text",
+            )
+            .await
+            .expect("write nested output file");
+
+        let mode_of = |relative: &str| -> u32 {
+            std::fs::metadata(session.path().join(relative))
+                .expect("metadata")
+                .permissions()
+                .mode()
+                & 0o777
+        };
+
+        assert_eq!(mode_of("outputs/run/log/output.txt"), 0o600);
+        assert_eq!(mode_of("outputs/run/log"), 0o700);
+        assert_eq!(mode_of("outputs/run"), 0o700);
+        assert_eq!(mode_of("outputs"), 0o700);
+    }
     #[test]
     fn openai_input_message_carries_reasoning_effort() {
         let provider = ProviderChoice::OpenAi {
