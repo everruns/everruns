@@ -16093,7 +16093,7 @@
               "string",
               "null"
             ],
-            "description": "Unified-diff patch text covering all `entries`. `None` when the\ncaller requested a name-only diff (no `+`/`-` lines computed)."
+            "description": "Unified-diff patch text covering all `entries`, truncated to ~64 KiB\n(with a trailing `... (truncated)` marker when the cap is hit).\n`None` when the diff produced no patch text — typically because the\ntwo trees are identical."
           },
           "stats": {
             "$ref": "#/components/schemas/GitDiffStats",

@@ -58,8 +58,10 @@ pub struct GitDiffEntry {
 pub struct GitDiff {
     /// Per-file change records. Empty when the two trees are identical.
     pub entries: Vec<GitDiffEntry>,
-    /// Unified-diff patch text covering all `entries`. `None` when the
-    /// caller requested a name-only diff (no `+`/`-` lines computed).
+    /// Unified-diff patch text covering all `entries`, truncated to ~64 KiB
+    /// (with a trailing `... (truncated)` marker when the cap is hit).
+    /// `None` when the diff produced no patch text — typically because the
+    /// two trees are identical.
     pub patch: Option<String>,
     /// Aggregate line/file counts across `entries`.
     pub stats: GitDiffStats,
