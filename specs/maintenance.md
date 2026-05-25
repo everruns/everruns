@@ -45,6 +45,7 @@ Relevant references:
 - When maintenance covers repo workflow hygiene, treat Codex and Claude Code plugin surfaces as maintained workflow artifacts. Review recent upstream plugin-platform changes before claiming either plugin is current, verify the shared Everruns Dev plugin metadata stays in parity across Codex and Claude manifests, and resolve contradictions between plugin manifests, skills, MCP/app behavior, docs, and marketplace entries.
 - Specs should not duplicate operational workflow text that belongs in skills or commands.
 - Maintenance should prefer concrete fixes over ceremonial audits when a safe local fix exists.
+- Dependency installs and updates must use a seven-day release-age floor across package ecosystems when the registry exposes publish timestamps. If the package manager cannot enforce that floor, maintenance must verify candidate release dates before accepting the update.
 
 ## Feature Completeness Drift
 
@@ -84,6 +85,7 @@ Before a release, maintenance should cover:
 - GitHub Security tab: security overview, Dependabot alerts, and open secret scanning alerts
 - dependency versions across all packages (Cargo workspace crates, pnpm-managed UI/docs packages, CLI) checked for outdated major versions and deprecated crates
   - `cargo outdated --root-deps-only --workspace` currently fails with a `libsqlite3-sys` `links` conflict because its temporary solve combines the workspace `sqlx 0.8` pin with the latest `rusqlite`. The real lockfile builds, so treat that failure as a tooling artifact and inspect `Cargo.toml` plus `cargo tree -i sqlx` / `cargo tree -i rusqlite` instead until `sqlx` and `rusqlite` are upgraded together
+  - pnpm-managed packages enforce the seven-day release-age floor with `minimumReleaseAge: 10080`; do not bypass that gate for routine dependency maintenance
   - major pnpm upgrades (TypeScript, lucide-react, marked, openui packages) ship as separate PRs per framework family so each can be validated by the matching UI or docs build
   - bump pnpm packages that have transitive runtime dependencies (e.g. `@ag-ui/core`) together with the packages that pin them (e.g. `@openuidev/*`), otherwise pnpm installs duplicate copies in the lockfile
 - feature completeness across product surfaces: changed or recently shipped features should have their intended UI, backend, MCP, CLI, docs, tests, and manual-test coverage checked for disconnected, stubbed, or contradictory behavior
