@@ -26,7 +26,8 @@ env:
   CARGO_INCREMENTAL: 0
   # DOPPLER_TOKEN is intentionally NOT exposed at workflow scope so it
   # cannot reach the PR-triggered unit-test job (which runs untrusted
-  # code). It is scoped to live-test below, which only runs on push.
+  # code). It is scoped to live-test below, which only runs on push or
+  # workflow_dispatch.
 
 jobs:
   unit-test:
