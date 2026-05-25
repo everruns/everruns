@@ -14964,7 +14964,7 @@
           "id": {
             "type": "string",
             "format": "uuid",
-            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/)."
+            "description": "UUID of the DLQ entry."
           },
           "input": {
             "description": "Task input payload at the time of failure (used for inspection and replay)."
@@ -18616,7 +18616,7 @@
                 "id": {
                   "type": "string",
                   "format": "uuid",
-                  "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/)."
+                  "description": "UUID of the saved report."
                 },
                 "name": {
                   "type": "string",
@@ -24326,7 +24326,7 @@
           "id": {
             "type": "string",
             "format": "uuid",
-            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/)."
+            "description": "UUID of the saved report."
           },
           "name": {
             "type": "string",
@@ -24415,12 +24415,12 @@
           "id": {
             "type": "string",
             "format": "uuid",
-            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/)."
+            "description": "UUID of the schedule execution."
           },
           "schedule_id": {
             "type": "string",
             "format": "uuid",
-            "description": "Schedule's prefixed public identifier."
+            "description": "UUID of the owning schedule."
           },
           "scheduled_at": {
             "type": "string",
@@ -24518,7 +24518,7 @@
           "id": {
             "type": "string",
             "format": "uuid",
-            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/)."
+            "description": "UUID of the schedule."
           },
           "last_triggered_at": {
             "type": [
@@ -25888,7 +25888,7 @@
           "id": {
             "type": "string",
             "format": "uuid",
-            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/)."
+            "description": "UUID of the task."
           },
           "last_error": {
             "type": [
@@ -28053,7 +28053,7 @@
           },
           "voice_connection_id": {
             "type": "string",
-            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/)."
+            "description": "Prefixed public identifier of the voice connection. See [ID Schema](https://docs.everruns.com/advanced/id-schema/)."
           }
         }
       },
@@ -30617,7 +30617,7 @@
           },
           "id": {
             "type": "string",
-            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/)."
+            "description": "Opaque durable worker identifier (defaults to `worker-<uuid>`)."
           },
           "last_heartbeat_at": {
             "type": "string",
@@ -30758,7 +30758,7 @@
           "id": {
             "type": "integer",
             "format": "int64",
-            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/)."
+            "description": "Monotonically-assigned internal event identifier."
           },
           "sequence_num": {
             "type": "integer",
@@ -30823,7 +30823,7 @@
           "id": {
             "type": "string",
             "format": "uuid",
-            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/)."
+            "description": "UUID of the workflow."
           },
           "input": {},
           "result": {},

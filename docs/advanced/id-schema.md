@@ -27,7 +27,7 @@ Example:
 agent_5c7f3a91b24e48d6a0e91f3b7c4d2e85
 ```
 
-Identifiers must match the regular expression `^{prefix}_[0-9a-f]{32}$`. The API rejects malformed values with `400 Bad Request`.
+Identifiers match a fixed pattern: the resource's prefix, an underscore, then exactly 32 lowercase hexadecimal characters. For an `agent`, the literal regex is `^agent_[0-9a-f]{32}$`. The API rejects malformed values with `400 Bad Request`.
 
 ## Treat the suffix as opaque
 
@@ -39,16 +39,11 @@ The suffix carries no public meaning. In particular:
 
 This decoupling is intentional. The internal database key for a resource and its public ID are deliberately separate concepts — clients only ever see the public ID.
 
-## Client-Supplied IDs and Upsert
+## Client-Supplied IDs
 
-You can supply your own `id` when creating a resource, as long as it matches the format above and uses the correct prefix for the resource type. If you omit `id`, the server assigns one.
+For resources that accept client-supplied IDs on create, you can pass your own `id` as long as it matches the format above and uses the correct prefix for the resource type. If you omit `id`, the server assigns one.
 
-Because IDs are stable and unique per organization, `PUT /v1/{resource}/{id}` performs an upsert:
-
-- If no resource with that ID exists, it is created (`201 Created`).
-- If one already exists, it is updated in place (`200 OK`).
-
-This makes idempotent provisioning straightforward — replay the same `PUT` and the end state is identical.
+A subset of resources additionally expose `PUT /v1/{resource}/{id}` as an upsert: the same call creates the resource if it does not exist (`201 Created`) and updates it in place if it does (`200 OK`). Where supported, this makes idempotent provisioning straightforward — replay the same `PUT` and the end state is identical. The OpenAPI reference is the source of truth for which resources support this; not every resource has a `PUT` route.
 
 ## Serialization
 
@@ -65,19 +60,21 @@ IDs are always serialized as JSON strings. The field name is `id` for the resour
 
 The prefix is part of the public contract for each resource. The most common ones are listed below; the canonical list lives in the OpenAPI specification.
 
+The prefix in the table below is the token that appears before the `_` separator — an `agent` resource has IDs that start with `agent_`.
+
 | Resource | Prefix |
 |----------|--------|
-| Agent | `agent_` |
-| Agent version | `agentver_` |
-| Session | `session_` |
-| Skill | `skill_` |
-| Knowledge base | `kb_` |
-| Volume | `vol_` |
-| MCP server | `mcp_` |
-| Schedule | `sched_` |
-| Image | `img_` |
-| User | `user_` |
-| Organization | `org_` |
+| Agent | `agent` |
+| Agent version | `agentver` |
+| Session | `session` |
+| Skill | `skill` |
+| Knowledge base | `kb` |
+| Volume | `vol` |
+| MCP server | `mcp` |
+| Schedule | `sched` |
+| Image | `img` |
+| User | `user` |
+| Organization | `org` |
 
 ## Design Notes
 
