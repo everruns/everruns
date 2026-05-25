@@ -29,7 +29,6 @@ async fn get_github_token(context: &ToolContext) -> Result<String, ToolExecution
     }
 
     if let Some(storage) = context.storage_store.as_ref() {
-        let mut last_error: Option<String> = None;
         match storage
             .get_secret(context.session_id, GITHUB_TOKEN_SECRET)
             .await
@@ -37,20 +36,14 @@ async fn get_github_token(context: &ToolContext) -> Result<String, ToolExecution
             Ok(Some(token)) if !token.trim().is_empty() => return Ok(token),
             Ok(_) => {}
             Err(e) => {
-                debug!(
+                error!(
                     "Failed to read {GITHUB_TOKEN_SECRET} session secret for {}: {e}",
                     context.session_id
                 );
-                last_error = Some(e.to_string());
+                return Err(ToolExecutionResult::internal_error_msg(
+                    "Failed to read GitHub token",
+                ));
             }
-        }
-        if let Some(err) = last_error {
-            error!(
-                "Failed to read {GITHUB_TOKEN_SECRET} session secret across all candidate sessions; last error: {err}"
-            );
-            return Err(ToolExecutionResult::internal_error_msg(
-                "Failed to read GitHub token",
-            ));
         }
     }
 
@@ -485,11 +478,13 @@ impl Tool for SearchGitHubIssuesTool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::Utc;
     use everruns_core::error::Result;
     use everruns_core::traits::{
-        KeyInfo, SecretInfo, SessionStorageStore, UserConnectionResolver,
+        KeyInfo, SecretInfo, SessionStorageStore, SessionStore, UserConnectionResolver,
     };
     use everruns_core::typed_id::SessionId;
+    use everruns_core::{HarnessId, PrincipalId, Session, SessionStatus};
     use std::collections::HashMap;
     use std::sync::Arc;
     use tokio::sync::Mutex;
@@ -602,15 +597,102 @@ mod tests {
         }
     }
 
+    struct MockSessionStore {
+        session: Session,
+    }
+
+    #[async_trait]
+    impl SessionStore for MockSessionStore {
+        async fn get_session(&self, session_id: SessionId) -> Result<Option<Session>> {
+            if self.session.id == session_id {
+                return Ok(Some(self.session.clone()));
+            }
+            Ok(None)
+        }
+    }
+
+    fn child_session_with_parent(session_id: SessionId, parent_session_id: SessionId) -> Session {
+        Session {
+            id: session_id,
+            organization_id: "org_00000000000000000000000000000001".to_string(),
+            harness_id: HarnessId::new(),
+            agent_id: None,
+            agent_version_id: None,
+            agent_identity_id: None,
+            owner_principal_id: PrincipalId::from_seed(1),
+            resolved_owner_user_id: None,
+            owner: None,
+            effective_owner: None,
+            title: Some("child".to_string()),
+            locale: None,
+            preview: None,
+            output_preview: None,
+            tags: vec![],
+            model_id: None,
+            capabilities: vec![],
+            tools: vec![],
+            mcp_servers: Default::default(),
+            system_prompt: None,
+            initial_files: vec![],
+            hints: None,
+            network_access: None,
+            max_iterations: None,
+            status: SessionStatus::Idle,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            started_at: None,
+            finished_at: None,
+            usage: None,
+            is_pinned: None,
+            active_schedule_count: None,
+            features: vec![],
+            parent_session_id: Some(parent_session_id),
+            subagent_name: None,
+            subagent_task: None,
+            subagent_status: None,
+            blueprint_id: None,
+            blueprint_config: None,
+        }
+    }
+
+    // Regression: even when the session has a parent and the connection
+    // resolver holds a token for the parent, the active session must not
+    // fall back to the parent's GitHub credentials.
     #[tokio::test]
     async fn token_does_not_fall_back_to_parent_session_connection() {
         let session_id = SessionId::new();
         let parent_session_id = SessionId::new();
-        let context = ToolContext::new(session_id).with_connection_resolver(Arc::new(
-            MockConnectionResolver {
+        let session = child_session_with_parent(session_id, parent_session_id);
+
+        let context = ToolContext::new(session_id)
+            .with_session_store(Arc::new(MockSessionStore { session }))
+            .with_connection_resolver(Arc::new(MockConnectionResolver {
                 tokens: HashMap::from([(parent_session_id, "parent-connection-token".into())]),
-            },
-        ));
+            }));
+
+        match get_github_token(&context).await {
+            Err(ToolExecutionResult::ConnectionRequired { provider }) => {
+                assert_eq!(provider, GITHUB_CONNECTION_PROVIDER)
+            }
+            other => panic!("expected connection required, got {other:?}"),
+        }
+    }
+
+    // Regression: same as above for the session storage secret path —
+    // a secret seeded against the parent must not satisfy the child.
+    #[tokio::test]
+    async fn token_does_not_fall_back_to_parent_session_secret() {
+        let session_id = SessionId::new();
+        let parent_session_id = SessionId::new();
+        let session = child_session_with_parent(session_id, parent_session_id);
+
+        let storage = Arc::new(MockStorageStore::new());
+        storage
+            .seed_secret(parent_session_id, GITHUB_TOKEN_SECRET, "parent-secret")
+            .await;
+
+        let mut context = ToolContext::with_storage_store(session_id, storage);
+        context = context.with_session_store(Arc::new(MockSessionStore { session }));
 
         match get_github_token(&context).await {
             Err(ToolExecutionResult::ConnectionRequired { provider }) => {
