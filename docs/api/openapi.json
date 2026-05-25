@@ -20236,7 +20236,7 @@
         "description": "Metadata about an LLM generation",
         "required": [
           "model",
-          "completed"
+          "success"
         ],
         "properties": {
           "compaction": {
@@ -20316,7 +20316,7 @@
               }
             ]
           },
-          "completed": {
+          "success": {
             "type": "boolean",
             "description": "Whether the generation was successful"
           },
@@ -23473,7 +23473,7 @@
         "type": "object",
         "description": "Data for reason.completed event",
         "required": [
-          "completed",
+          "success",
           "has_tool_calls",
           "tool_call_count"
         ],
@@ -23498,7 +23498,7 @@
             "type": "boolean",
             "description": "Whether tool calls were requested"
           },
-          "completed": {
+          "success": {
             "type": "boolean",
             "description": "Whether the LLM call succeeded"
           },
@@ -25797,7 +25797,7 @@
         "type": "object",
         "description": "Response from switch org endpoint",
         "required": [
-          "completed",
+          "success",
           "org_id"
         ],
         "properties": {
@@ -25805,7 +25805,7 @@
             "type": "string",
             "description": "The organization ID that was switched to"
           },
-          "completed": {
+          "success": {
             "type": "boolean",
             "description": "Whether the switch was successful"
           }
@@ -25836,7 +25836,7 @@
               "status": {
                 "type": "string",
                 "enum": [
-                  "completed"
+                  "success"
                 ]
               },
               "updated": {
@@ -26130,7 +26130,7 @@
         "required": [
           "tool_call_id",
           "tool_name",
-          "completed",
+          "success",
           "status"
         ],
         "properties": {
@@ -26192,7 +26192,7 @@
             "type": "string",
             "description": "Status: \"success\", \"error\", \"timeout\", \"cancelled\""
           },
-          "completed": {
+          "success": {
             "type": "boolean",
             "description": "Whether the tool call succeeded"
           },
