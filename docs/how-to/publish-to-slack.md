@@ -72,4 +72,3 @@ Set this on the app's `agent_version_mode` field.
 
 - [Apps feature](/features/apps/)
 - [Slack Integration](/integrations/slack/) — the prerequisite Slack-side configuration.
-- [App invocation channels](https://github.com/everruns/everruns/blob/main/specs/app-invocation-channels.md) — webhook and schedule channels.

@@ -65,4 +65,3 @@ For deployments that outgrow a single primary, the migration path is to a sharde
 
 - [The agentic loop](/explanation/agentic-loop/) — what each step inside a turn looks like.
 - [Architecture](/explanation/architecture/) — how the control plane and workers interact.
-- [`specs/durable-execution-engine.md`](https://github.com/everruns/everruns/blob/main/specs/durable-execution-engine.md) — internal specification.

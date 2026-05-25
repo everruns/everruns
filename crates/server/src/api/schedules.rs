@@ -232,7 +232,7 @@ pub struct UpdateScheduleRequest {
 /// Schedule response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ScheduleResponse {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: Uuid,
     /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
@@ -323,7 +323,7 @@ pub struct SchedulesListResponse {
 /// Schedule execution response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ScheduleExecutionResponse {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: Uuid,
     /// Schedule's prefixed public identifier.
     pub schedule_id: Uuid,

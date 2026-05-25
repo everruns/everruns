@@ -160,7 +160,7 @@ inventory::submit! { CommandDescriptor::of::<ListSkills>() }
 /// Get a single skill by ID.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct GetSkill {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
 }
 
@@ -212,7 +212,7 @@ inventory::submit! { CommandDescriptor::of::<GetSkill>() }
 /// Get full skill content (SKILL.md + files).
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct GetSkillContent {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
 }
 
@@ -310,7 +310,7 @@ inventory::submit! { CommandDescriptor::of::<GetSkillContent>() }
 /// Update a skill. Only provided fields are changed.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateSkillCmd {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
     #[serde(flatten)]
     pub req: UpdateSkillRequest,
@@ -453,7 +453,7 @@ inventory::submit! { CommandDescriptor::of::<UpdateSkillCmd>() }
 /// Archive a skill (soft delete).
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct DeleteSkill {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
 }
 
@@ -510,7 +510,7 @@ inventory::submit! { CommandDescriptor::of::<DeleteSkill>() }
 /// Permanently delete an archived skill.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct DestroySkill {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
 }
 

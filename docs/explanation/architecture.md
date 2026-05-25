@@ -59,8 +59,6 @@ Everruns is organization-scoped end-to-end:
 - Sessions are isolated at the database row level — there is no cross-session filesystem or key-value access.
 - Secrets are encrypted at rest with an organization-scoped key chain.
 
-The threat model is documented in [`specs/threat-model.md`](https://github.com/everruns/everruns/blob/main/specs/threat-model.md).
-
 ## Where the boundaries are
 
 Things the control plane owns: auth, durable task queue, event log, virtual filesystem, key-value storage, capability registry, MCP catalog.

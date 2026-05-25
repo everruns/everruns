@@ -38,8 +38,6 @@ Registry skills automatically depend on `session_file_system` so bundled resourc
 - Skill names are unique per organization.
 - Disabled skills are hidden from listings.
 
-See [TM-TOOL-010 through TM-TOOL-014](https://github.com/everruns/everruns/blob/main/specs/threat-model.md) in the threat model for the detailed analysis.
-
 ## Do something
 
 - [Publish a skill to the registry](/how-to/publish-a-skill-to-the-registry/) — full upload, validate, assign flow.

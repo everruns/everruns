@@ -198,7 +198,7 @@ inventory::submit! { CommandDescriptor::of::<ListMcpServers>() }
 /// Get a single MCP server by ID.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct GetMcpServer {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
 }
 
@@ -245,7 +245,7 @@ inventory::submit! { CommandDescriptor::of::<GetMcpServer>() }
 /// Update an MCP server. Only provided fields are changed.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateMcpServerCmd {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
     #[serde(flatten)]
     pub req: UpdateMcpServerRequest,
@@ -381,7 +381,7 @@ inventory::submit! { CommandDescriptor::of::<UpdateMcpServerCmd>() }
 /// Archive an MCP server (soft delete).
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct DeleteMcpServer {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
 }
 
@@ -435,7 +435,7 @@ inventory::submit! { CommandDescriptor::of::<DeleteMcpServer>() }
 /// Permanently delete an archived MCP server.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct DestroyMcpServer {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
 }
 

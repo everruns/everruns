@@ -54,7 +54,7 @@ Send a follow-up message to an existing subagent. Use this to steer a running su
 
 ## See Also
 
-- [GitHub Scout](./github-scout.md) — blueprint-only GitHub repository exploration
-- [Session](./session.md) — session metadata and lifecycle
-- [Platform Management](./platform-management.md) — agent and platform configuration
-- [Capabilities Overview](./index.md) — full list of available capabilities
+- [GitHub Scout](/capabilities/github-scout/) — blueprint-only GitHub repository exploration
+- [Session](/capabilities/session/) — session metadata and lifecycle
+- [Platform Management](/capabilities/platform-management/) — agent and platform configuration
+- [Capabilities Overview](/capabilities/) — full list of available capabilities

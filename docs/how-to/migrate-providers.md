@@ -83,7 +83,7 @@ A safe migration sequence:
 
 1. Add the new provider and verify discovered models.
 2. Create a test agent that mirrors production, with `default_model_id` set to a model on the new provider.
-3. Run an evaluation suite against the test agent (see [Evals](https://github.com/everruns/everruns/blob/main/specs/evals.md)).
+3. Run an evaluation suite against the test agent.
 4. Once happy, update the production agent's `default_model_id` — new sessions migrate over.
 5. Leave old sessions on the old model; they age out naturally.
 

@@ -52,5 +52,4 @@ The full list of built-in capabilities, organised by category, lives in the refe
 
 ## See also
 
-- [MCP servers as virtual capabilities](https://github.com/everruns/everruns/blob/main/specs/mcp-servers.md) — internal spec on remote MCP integration.
 - [Concepts](/explanation/concepts/) — the entity model in full.

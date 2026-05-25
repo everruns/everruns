@@ -200,7 +200,7 @@ pub struct VoiceEndRequest {
 /// Response body for voice client secret.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct VoiceClientSecretResponse {
-    /// Prefixed public identifier of the voice connection (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub voice_connection_id: String,
     /// Realtime provider routing this connection (e.g. `openai`).
     pub provider: String,
@@ -219,7 +219,7 @@ pub struct VoiceClientSecretResponse {
 /// Response body for voice call.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct VoiceCallResponse {
-    /// Prefixed public identifier of the voice connection.
+    /// Prefixed public identifier of the voice connection. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub voice_connection_id: String,
     /// Provider-side call identifier once issued. `None` until the realtime call is established.
     pub provider_call_id: Option<String>,
@@ -240,7 +240,7 @@ pub struct VoiceCallResponse {
 /// Response body for voice attach.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct VoiceAttachResponse {
-    /// Prefixed public identifier of the voice connection.
+    /// Prefixed public identifier of the voice connection. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub voice_connection_id: String,
     /// Provider-side call identifier of the connected realtime call.
     pub provider_call_id: String,

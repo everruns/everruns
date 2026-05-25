@@ -19,7 +19,7 @@ This is intentionally narrow: a single substring match against one normalized ne
 
 ## Tools
 
-None — this capability hooks the streaming output via [`output_guardrails()`](/specs/capabilities/#output-guardrails).
+None — this capability hooks the streaming output via the capability framework's output-guardrail extension point.
 
 ## How It Works
 
@@ -84,7 +84,7 @@ Do **not** rely on this for:
 
 - General-purpose data-loss prevention (PII, secrets in tool output, etc.) — those need their own surfaces
 - Defense against paraphrased or summarized prompt leaks — the canary only catches verbatim or near-verbatim copies of the first sentence
-- Tool output or extended-thinking surfaces — the canary only inspects assistant text. See [the spec](/specs/capabilities/#output-guardrails) for surface scope
+- Tool output or extended-thinking surfaces — the canary only inspects assistant text
 
 ## Limitations
 
@@ -94,5 +94,5 @@ Do **not** rely on this for:
 
 ## See Also
 
-- [Output Guardrails](/specs/capabilities/#output-guardrails) — the underlying extension point
-- [`output.message.replaced` event](/specs/events/#outputmessagereplaced) — the wire format clients need to handle
+- [Events](/features/events/) — the streaming event protocol that carries `output.message.replaced`
+- [Capabilities](/features/capabilities/) — the extension model these guardrails plug into

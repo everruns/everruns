@@ -364,7 +364,7 @@ impl HealthResponse {
 /// Worker response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct WorkerResponse {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
     /// Logical group this worker belongs to (used for routing). `None` for ungrouped workers.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -455,7 +455,7 @@ pub struct WorkersListResponse {
 /// Workflow response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct WorkflowResponse {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: Uuid,
     pub workflow_type: String,
     /// Current lifecycle status.
@@ -504,7 +504,7 @@ pub struct WorkflowsListResponse {
 /// Workflow event response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct WorkflowEventResponse {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: i64,
     /// Durable workflow's identifier.
     pub workflow_id: Uuid,
@@ -540,7 +540,7 @@ pub struct WorkflowEventsListResponse {
 /// Task response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct TaskResponse {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: Uuid,
     /// Owning workflow's identifier. `None` for one-off tasks not tied to a workflow.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -610,7 +610,7 @@ pub struct TasksListResponse {
 /// DLQ entry response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct DlqEntryResponse {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: Uuid,
     /// Task ID that was originally retried and ultimately failed (matches the `tasks` record before its move to the DLQ).
     pub original_task_id: Uuid,

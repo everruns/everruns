@@ -12,7 +12,7 @@ pub use crate::storage::models::{AuditLogQuery, AuditLogRow};
 /// shape returned by the HTTP and MCP adapters.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct AuditLogEntry {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
     pub domain: String,
     pub action: String,

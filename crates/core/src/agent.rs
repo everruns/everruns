@@ -90,7 +90,7 @@ impl From<&str> for AgentVersionChangeKind {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct AgentVersion {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     #[serde(rename = "id")]
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "agentver_01933b5a000070008000000000000001"))]
     pub public_id: AgentVersionId,

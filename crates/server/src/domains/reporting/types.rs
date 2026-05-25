@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct SavedReport {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: Uuid,
     /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,

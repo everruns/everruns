@@ -336,7 +336,7 @@ inventory::submit! { CommandDescriptor::of::<ListAgents>() }
 /// Get a single agent by ID or name.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct GetAgent {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
 }
 
@@ -378,7 +378,7 @@ inventory::submit! { CommandDescriptor::of::<GetAgent>() }
 /// Update an agent. Only provided fields are changed.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateAgentCmd {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
     #[serde(flatten)]
     pub req: UpdateAgentRequest,
@@ -562,7 +562,7 @@ inventory::submit! { CommandDescriptor::of::<UpdateAgentCmd>() }
 /// Archive an agent (soft delete).
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct DeleteAgent {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
 }
 
@@ -625,7 +625,7 @@ inventory::submit! { CommandDescriptor::of::<DeleteAgent>() }
 /// Upsert agent — create or update by ID.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpsertAgent {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
     #[serde(flatten)]
     pub req: CreateAgentRequest,
@@ -766,7 +766,7 @@ inventory::submit! { CommandDescriptor::of::<UpsertAgent>() }
 /// Copy an agent. Generates a unique name ({name}-copy, -copy-2, etc.)
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CopyAgent {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
 }
 
@@ -831,7 +831,7 @@ inventory::submit! { CommandDescriptor::of::<CopyAgent>() }
 /// Get agent data for export.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ExportAgent {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
 }
 
@@ -2142,7 +2142,7 @@ mod tests {
 /// Permanently delete an archived agent.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct DestroyAgent {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
 }
 

@@ -43,7 +43,7 @@ impl FromRef<ApiKeyState> for AuthState {
 /// API key response (shown only once at creation)
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ApiKeyResponse {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
     /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
@@ -58,7 +58,7 @@ pub struct ApiKeyResponse {
 /// API key list item (without full key)
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ApiKeyListItem {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
     /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
