@@ -259,6 +259,7 @@ pub struct VoiceAttachResponse {
 /// Response body for voice end.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct VoiceEndResponse {
+    /// Prefixed public identifier of the voice connection that was ended.
     pub voice_connection_id: String,
     /// Current lifecycle status.
     pub status: String,
@@ -266,7 +267,12 @@ pub struct VoiceEndResponse {
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct VoiceSessionResponse<T> {
+    /// The session this voice connection is attached to. Returned alongside
+    /// the voice payload so a caller has a single round-trip view of both.
     pub session: everruns_core::Session,
+    /// Voice connection details — concrete shape depends on the endpoint
+    /// (e.g. `VoiceCallResponse` for `/voice/call`, `VoiceAttachResponse`
+    /// for `/voice/attach`).
     pub voice: T,
 }
 
