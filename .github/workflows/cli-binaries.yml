@@ -167,7 +167,7 @@ jobs:
           VERSION="${TAG#v}"
 
           # Fetch the GitHub PAT from Doppler (has push access to homebrew-tap)
-          GH_PAT=$(doppler secrets get GITHUB_TOKEN --plain)
+          GH_PAT=$(doppler secrets get HOMEBREW_TAP_GITHUB_TOKEN --plain)
           echo "::add-mask::${GH_PAT}"
 
           # Use askpass instead of embedding credentials in the clone URL
