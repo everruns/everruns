@@ -1,13 +1,13 @@
 ---
 title: ID Schema
-description: How Everruns formats and validates public resource identifiers (Stripe-style prefixed IDs backed by UUIDv7)
+description: How Everruns formats and validates public resource identifiers — Stripe-style prefixed IDs.
 sidebar:
   order: 40
 ---
 
-Every resource in the Everruns API — agents, sessions, skills, knowledge bases, and so on — is identified by a **prefixed public ID**. The prefix tells you at a glance what kind of resource you are looking at; the suffix is a UUIDv7 rendered as 32 lowercase hex characters with no dashes.
+Every resource in the Everruns API — agents, sessions, skills, knowledge bases, and so on — is identified by a **prefixed public ID**. The prefix tells you at a glance what kind of resource you are looking at; the suffix is an opaque 32-character token.
 
-This pattern was popularized by Stripe (`cus_`, `sub_`, `pi_`) and formalized by the [TypeID spec](https://github.com/jetpack-io/typeid). Everruns uses hex encoding (32 characters) instead of TypeID's base32 (26 characters) for simpler debugging and direct UUID compatibility.
+This pattern was popularized by Stripe (`cus_`, `sub_`, `pi_`). Treat the suffix as a meaningless string — do not parse it, sort by it, or infer information from it. The only guarantees the API makes about an ID are its format, its uniqueness within an organization, and its stability over the lifetime of the resource.
 
 ## Format
 
@@ -19,23 +19,29 @@ All resource identifiers use the same shape:
 
 - `{prefix}` is a short lowercase token that identifies the resource type (for example `agent`, `session`, `skill`).
 - `_` separates the prefix from the suffix.
-- `{32-hex-chars}` is a UUIDv7 serialized as lowercase hex with no dashes.
+- `{32-hex-chars}` is an opaque 32-character lowercase hexadecimal token.
 
 Example:
 
 ```
-agent_01933b5a00007000800000000000001
+agent_5c7f3a91b24e48d6a0e91f3b7c4d2e85
 ```
 
 Identifiers must match the regular expression `^{prefix}_[0-9a-f]{32}$`. The API rejects malformed values with `400 Bad Request`.
 
-## Why UUIDv7?
+## Treat the suffix as opaque
 
-UUIDv7 embeds a millisecond timestamp in its leading bits, so IDs sort roughly in creation order. That makes paginated listings stable, makes log lines easier to scan chronologically, and avoids the index fragmentation that random UUIDv4 keys cause.
+The suffix carries no public meaning. In particular:
+
+- **Do not sort by it.** Use `created_at` (or whatever timestamp field the resource exposes) for chronological ordering.
+- **Do not infer age, ordering, or shard placement from it.** The encoding may change without notice.
+- **Do not parse it as a UUID.** The hex format is a transport convenience; future resources may use different internal schemes while keeping the same wire format.
+
+This decoupling is intentional. The internal database key for a resource and its public ID are deliberately separate concepts — clients only ever see the public ID.
 
 ## Client-Supplied IDs and Upsert
 
-You can supply your own `id` when creating a resource as long as it matches the format above and uses the correct prefix for the resource type. If you omit `id`, the server generates one.
+You can supply your own `id` when creating a resource, as long as it matches the format above and uses the correct prefix for the resource type. If you omit `id`, the server assigns one.
 
 Because IDs are stable and unique per organization, `PUT /v1/{resource}/{id}` performs an upsert:
 
@@ -50,8 +56,8 @@ IDs are always serialized as JSON strings. The field name is `id` for the resour
 
 ```json
 {
-  "id": "agent_01933b5a00007000800000000000001",
-  "session_id": "session_01933b5a00007000800000000000003"
+  "id": "agent_5c7f3a91b24e48d6a0e91f3b7c4d2e85",
+  "session_id": "session_2b8a4d12c673491fae058b7d9c1f6a40"
 }
 ```
 
@@ -78,6 +84,6 @@ The prefix is part of the public contract for each resource. The most common one
 | Question | Answer |
 |----------|--------|
 | Why prefixed IDs? | They make IDs self-describing and prevent accidentally passing, say, an agent ID where a session ID is expected. |
-| Why UUIDv7? | Time-ordered, globally unique, index-friendly. |
+| Why opaque suffixes? | Decoupling the wire format from internal storage gives the platform room to evolve without breaking clients, and prevents callers from leaning on accidental properties (ordering, creation time) that aren't part of the contract. |
 | Why lowercase hex? | Case-insensitive matching, URL-safe, easy to copy and paste. |
 | Are IDs unique across organizations? | Each ID is unique within its owning organization. The same `id` value could in principle appear in two different orgs, but you only ever see IDs scoped to orgs you belong to. |
