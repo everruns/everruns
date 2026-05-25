@@ -1,6 +1,7 @@
 name: Brave Search Integration
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
@@ -22,14 +23,43 @@ env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
   CARGO_INCREMENTAL: 0
-  DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+  # DOPPLER_TOKEN is intentionally NOT exposed at workflow scope so it
+  # cannot reach the PR-triggered unit-test job (which runs untrusted
+  # code). It is scoped to live-test below, which only runs on push.
 
 jobs:
-  integration-test:
-    name: Brave Search API Tests
+  unit-test:
+    name: Brave Search Unit Tests
     runs-on: ubuntu-latest
     if: github.event_name != 'pull_request' || (((github.event.action != 'labeled' && github.event.action != 'unlabeled') || github.event.label.name == 'ci:skip-integration-workflows') && !contains(github.event.pull_request.labels.*.name, 'ci:skip-integration-workflows'))
     timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: "debug"
+
+      - name: Run unit tests
+        run: cargo test -p everruns-integrations-brave-search
+
+  # Live tests hit the real Brave Search API and need DOPPLER_TOKEN.
+  # Restricted to push/workflow_dispatch so the secret is never available
+  # in a fork-PR context where untrusted code (build.rs, proc-macros,
+  # tests) could exfiltrate it. The weekly `integration-live-sweep.yml`
+  # backstop catches shared-crate regressions that slip past this gate.
+  live-test:
+    name: Brave Search Live API Tests
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    timeout-minutes: 10
+    env:
+      DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
 
     steps:
       - uses: actions/checkout@v5

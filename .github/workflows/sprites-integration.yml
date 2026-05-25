@@ -26,7 +26,9 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
-  DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+  # DOPPLER_TOKEN is intentionally NOT exposed at workflow scope so it
+  # cannot reach the PR-triggered unit-test job (which runs untrusted
+  # code). It is scoped to live-test below, which only runs on push.
 
 jobs:
   unit-test:
@@ -56,6 +58,8 @@ jobs:
     # immediately after Doppler changes without waiting for the weekly sweep.
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     timeout-minutes: 10
+    env:
+      DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
 
     steps:
       - uses: actions/checkout@v5

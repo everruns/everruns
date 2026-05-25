@@ -20,7 +20,10 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
-  DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+  # DOPPLER_TOKEN is intentionally NOT exposed at workflow scope: PR code
+  # would inherit it and could exfiltrate the whole Doppler vault via
+  # build.rs, proc-macros, or tests. Inject it per step under a push-only
+  # gate (see Slack + live-test jobs below).
 
 jobs:
   # Detect which parts of the codebase changed to skip irrelevant jobs
@@ -383,6 +386,8 @@ jobs:
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.daytona == 'true' && github.event_name == 'push'
     timeout-minutes: 10
+    env:
+      DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
 
     steps:
       - uses: actions/checkout@v5
@@ -408,6 +413,8 @@ jobs:
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.browserless == 'true' && github.event_name == 'push'
     timeout-minutes: 10
+    env:
+      DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
 
     steps:
       - uses: actions/checkout@v5
@@ -433,6 +440,8 @@ jobs:
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.e2b == 'true' && github.event_name == 'push'
     timeout-minutes: 10
+    env:
+      DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
 
     steps:
       - uses: actions/checkout@v5
@@ -460,6 +469,7 @@ jobs:
     timeout-minutes: 10
     env:
       DENO_SANDBOX_REGION: ams
+      DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
 
     steps:
       - uses: actions/checkout@v5
@@ -577,12 +587,17 @@ jobs:
       - name: Run durable failpoint tests
         run: cargo test -p everruns-durable --test failure_injection_test --features "failpoints,postgres-tests" -- --test-threads=1
 
+      # Slack live tests need DOPPLER_TOKEN. Restrict to push events so the
+      # token is never instantiated in a fork-PR context where untrusted
+      # code (build.rs, proc-macros, test bodies) would see it via env.
       - name: Install Doppler CLI
-        if: env.DOPPLER_TOKEN != ''
+        if: github.event_name == 'push'
         uses: dopplerhq/cli-action@v3
 
       - name: Run Slack integration tests (real API via Doppler)
-        if: env.DOPPLER_TOKEN != ''
+        if: github.event_name == 'push'
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
         run: doppler run --preserve-env="DATABASE_URL" -- cargo test -p everruns-server --test slack_integration_test -- --test-threads=1
 
       - name: Run LLM integration tests (skips providers without API keys)
