@@ -17294,7 +17294,7 @@
               "null"
             ],
             "description": "Filter by execution status",
-            "example": "success"
+            "example": "completed"
           }
         }
       },
@@ -20236,7 +20236,7 @@
         "description": "Metadata about an LLM generation",
         "required": [
           "model",
-          "success"
+          "completed"
         ],
         "properties": {
           "compaction": {
@@ -20316,7 +20316,7 @@
               }
             ]
           },
-          "success": {
+          "completed": {
             "type": "boolean",
             "description": "Whether the generation was successful"
           },
@@ -23473,7 +23473,7 @@
         "type": "object",
         "description": "Data for reason.completed event",
         "required": [
-          "success",
+          "completed",
           "has_tool_calls",
           "tool_call_count"
         ],
@@ -23498,7 +23498,7 @@
             "type": "boolean",
             "description": "Whether tool calls were requested"
           },
-          "success": {
+          "completed": {
             "type": "boolean",
             "description": "Whether the LLM call succeeded"
           },
@@ -25797,7 +25797,7 @@
         "type": "object",
         "description": "Response from switch org endpoint",
         "required": [
-          "success",
+          "completed",
           "org_id"
         ],
         "properties": {
@@ -25805,7 +25805,7 @@
             "type": "string",
             "description": "The organization ID that was switched to"
           },
-          "success": {
+          "completed": {
             "type": "boolean",
             "description": "Whether the switch was successful"
           }
@@ -25836,7 +25836,7 @@
               "status": {
                 "type": "string",
                 "enum": [
-                  "success"
+                  "completed"
                 ]
               },
               "updated": {
@@ -26130,7 +26130,7 @@
         "required": [
           "tool_call_id",
           "tool_name",
-          "success",
+          "completed",
           "status"
         ],
         "properties": {
@@ -26192,7 +26192,7 @@
             "type": "string",
             "description": "Status: \"success\", \"error\", \"timeout\", \"cancelled\""
           },
-          "success": {
+          "completed": {
             "type": "boolean",
             "description": "Whether the tool call succeeded"
           },

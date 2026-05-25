@@ -459,7 +459,7 @@ pub struct ListSchedulesQuery {
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ListExecutionsQuery {
     /// Filter by execution status
-    #[schema(example = "success")]
+    #[schema(example = "completed")]
     pub status: Option<String>,
     /// Pagination offset
     #[schema(example = 0)]
