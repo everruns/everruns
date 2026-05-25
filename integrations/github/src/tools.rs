@@ -17,53 +17,31 @@ const DEFAULT_LIMIT: u32 = 10;
 const MAX_LIMIT: u32 = 30;
 
 async fn get_github_token(context: &ToolContext) -> Result<String, ToolExecutionResult> {
-    let mut token_session_ids = vec![context.session_id];
-    if let Some(session_store) = context.session_store.as_ref() {
-        match session_store.get_session(context.session_id).await {
-            Ok(Some(session)) => {
-                if let Some(parent_session_id) = session.parent_session_id
-                    && !token_session_ids.contains(&parent_session_id)
-                {
-                    token_session_ids.push(parent_session_id);
-                }
-            }
-            Ok(None) => {
-                debug!(
-                    "GitHub token resolver: session_store returned no session for {} — no parent fallback",
-                    context.session_id
-                );
-            }
-            Err(e) => debug!(
-                "GitHub token resolver: session_store lookup failed; no parent fallback: {e}"
-            ),
-        }
-    }
-
     if let Some(resolver) = context.connection_resolver.as_ref() {
-        for session_id in &token_session_ids {
-            match resolver
-                .get_connection_token(*session_id, GITHUB_CONNECTION_PROVIDER)
-                .await
-            {
-                Ok(Some(token)) if !token.trim().is_empty() => return Ok(token),
-                Ok(_) => {}
-                Err(e) => debug!("GitHub connection resolver failed: {e}"),
-            }
+        match resolver
+            .get_connection_token(context.session_id, GITHUB_CONNECTION_PROVIDER)
+            .await
+        {
+            Ok(Some(token)) if !token.trim().is_empty() => return Ok(token),
+            Ok(_) => {}
+            Err(e) => debug!("GitHub connection resolver failed: {e}"),
         }
     }
 
     if let Some(storage) = context.storage_store.as_ref() {
         let mut last_error: Option<String> = None;
-        for session_id in &token_session_ids {
-            match storage.get_secret(*session_id, GITHUB_TOKEN_SECRET).await {
-                Ok(Some(token)) if !token.trim().is_empty() => return Ok(token),
-                Ok(_) => {}
-                Err(e) => {
-                    debug!(
-                        "Failed to read {GITHUB_TOKEN_SECRET} session secret for {session_id}: {e}"
-                    );
-                    last_error = Some(e.to_string());
-                }
+        match storage
+            .get_secret(context.session_id, GITHUB_TOKEN_SECRET)
+            .await
+        {
+            Ok(Some(token)) if !token.trim().is_empty() => return Ok(token),
+            Ok(_) => {}
+            Err(e) => {
+                debug!(
+                    "Failed to read {GITHUB_TOKEN_SECRET} session secret for {}: {e}",
+                    context.session_id
+                );
+                last_error = Some(e.to_string());
             }
         }
         if let Some(err) = last_error {
@@ -507,13 +485,11 @@ impl Tool for SearchGitHubIssuesTool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Utc;
     use everruns_core::error::Result;
     use everruns_core::traits::{
-        KeyInfo, SecretInfo, SessionStorageStore, SessionStore, UserConnectionResolver,
+        KeyInfo, SecretInfo, SessionStorageStore, UserConnectionResolver,
     };
     use everruns_core::typed_id::SessionId;
-    use everruns_core::{HarnessId, ModelId, PrincipalId, Session, SessionStatus};
     use std::collections::HashMap;
     use std::sync::Arc;
     use tokio::sync::Mutex;
@@ -550,26 +526,6 @@ mod tests {
                 .lock()
                 .await
                 .insert(format!("{session_id}:{name}"), value.to_string());
-        }
-    }
-
-    struct MockSessionStore {
-        session: Session,
-    }
-
-    #[async_trait]
-    impl SessionStore for MockSessionStore {
-        async fn get_session(&self, session_id: SessionId) -> Result<Option<Session>> {
-            if self.session.id == session_id {
-                return Ok(Some(self.session.clone()));
-            }
-            if self.session.parent_session_id == Some(session_id) {
-                let mut parent = self.session.clone();
-                parent.id = session_id;
-                parent.parent_session_id = None;
-                return Ok(Some(parent));
-            }
-            Ok(None)
         }
     }
 
@@ -647,61 +603,21 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn token_falls_back_to_parent_session_connection() {
+    async fn token_does_not_fall_back_to_parent_session_connection() {
         let session_id = SessionId::new();
         let parent_session_id = SessionId::new();
-        let session = Session {
-            id: session_id,
-            organization_id: "org_00000000000000000000000000000001".to_string(),
-            harness_id: HarnessId::new(),
-            agent_id: None,
-            agent_version_id: None,
-            agent_identity_id: None,
-            owner_principal_id: PrincipalId::from_seed(1),
-            resolved_owner_user_id: None,
-            owner: None,
-            effective_owner: None,
-            title: Some("child".to_string()),
-            locale: None,
-            preview: None,
-            output_preview: None,
-            tags: vec![],
-            model_id: Some(ModelId::new()),
-            capabilities: vec![],
-            tools: vec![],
-            mcp_servers: Default::default(),
-            system_prompt: None,
-            initial_files: vec![],
-            hints: None,
-            network_access: None,
-            max_iterations: None,
-            status: SessionStatus::Idle,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-            started_at: None,
-            finished_at: None,
-            usage: None,
-            is_pinned: None,
-            active_schedule_count: None,
-            features: vec![],
-            parent_session_id: Some(parent_session_id),
-            subagent_name: None,
-            subagent_task: None,
-            subagent_status: None,
-            blueprint_id: None,
-            blueprint_config: None,
-        };
-
-        let context = ToolContext::new(session_id)
-            .with_session_store(Arc::new(MockSessionStore { session }))
-            .with_connection_resolver(Arc::new(MockConnectionResolver {
+        let context = ToolContext::new(session_id).with_connection_resolver(Arc::new(
+            MockConnectionResolver {
                 tokens: HashMap::from([(parent_session_id, "parent-connection-token".into())]),
-            }));
+            },
+        ));
 
-        assert_eq!(
-            get_github_token(&context).await.unwrap(),
-            "parent-connection-token"
-        );
+        match get_github_token(&context).await {
+            Err(ToolExecutionResult::ConnectionRequired { provider }) => {
+                assert_eq!(provider, GITHUB_CONNECTION_PROVIDER)
+            }
+            other => panic!("expected connection required, got {other:?}"),
+        }
     }
 
     #[test]
