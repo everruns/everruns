@@ -1,3 +1,4 @@
+packages: []
 minimumReleaseAge: 10080
 minimumReleaseAgeStrict: true
 nodeLinker: hoisted
