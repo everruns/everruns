@@ -166,8 +166,12 @@ jobs:
           TAG="${{ inputs.tag }}"
           VERSION="${TAG#v}"
 
-          # Fetch the GitHub PAT from Doppler (has push access to homebrew-tap)
+          # Fetch the Homebrew tap PAT from Doppler (has push access to homebrew-tap)
           GH_PAT=$(doppler secrets get HOMEBREW_TAP_GITHUB_TOKEN --plain)
+          if [[ -z "${GH_PAT}" ]]; then
+            echo "::error::HOMEBREW_TAP_GITHUB_TOKEN is missing or empty in Doppler."
+            exit 1
+          fi
           echo "::add-mask::${GH_PAT}"
 
           # Use askpass instead of embedding credentials in the clone URL
