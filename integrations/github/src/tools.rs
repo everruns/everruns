@@ -17,62 +17,33 @@ const DEFAULT_LIMIT: u32 = 10;
 const MAX_LIMIT: u32 = 30;
 
 async fn get_github_token(context: &ToolContext) -> Result<String, ToolExecutionResult> {
-    let mut token_session_ids = vec![context.session_id];
-    if let Some(session_store) = context.session_store.as_ref() {
-        match session_store.get_session(context.session_id).await {
-            Ok(Some(session)) => {
-                if let Some(parent_session_id) = session.parent_session_id
-                    && !token_session_ids.contains(&parent_session_id)
-                {
-                    token_session_ids.push(parent_session_id);
-                }
-            }
-            Ok(None) => {
-                debug!(
-                    "GitHub token resolver: session_store returned no session for {} — no parent fallback",
-                    context.session_id
-                );
-            }
-            Err(e) => debug!(
-                "GitHub token resolver: session_store lookup failed; no parent fallback: {e}"
-            ),
-        }
-    }
-
     if let Some(resolver) = context.connection_resolver.as_ref() {
-        for session_id in &token_session_ids {
-            match resolver
-                .get_connection_token(*session_id, GITHUB_CONNECTION_PROVIDER)
-                .await
-            {
-                Ok(Some(token)) if !token.trim().is_empty() => return Ok(token),
-                Ok(_) => {}
-                Err(e) => debug!("GitHub connection resolver failed: {e}"),
-            }
+        match resolver
+            .get_connection_token(context.session_id, GITHUB_CONNECTION_PROVIDER)
+            .await
+        {
+            Ok(Some(token)) if !token.trim().is_empty() => return Ok(token),
+            Ok(_) => {}
+            Err(e) => debug!("GitHub connection resolver failed: {e}"),
         }
     }
 
     if let Some(storage) = context.storage_store.as_ref() {
-        let mut last_error: Option<String> = None;
-        for session_id in &token_session_ids {
-            match storage.get_secret(*session_id, GITHUB_TOKEN_SECRET).await {
-                Ok(Some(token)) if !token.trim().is_empty() => return Ok(token),
-                Ok(_) => {}
-                Err(e) => {
-                    debug!(
-                        "Failed to read {GITHUB_TOKEN_SECRET} session secret for {session_id}: {e}"
-                    );
-                    last_error = Some(e.to_string());
-                }
+        match storage
+            .get_secret(context.session_id, GITHUB_TOKEN_SECRET)
+            .await
+        {
+            Ok(Some(token)) if !token.trim().is_empty() => return Ok(token),
+            Ok(_) => {}
+            Err(e) => {
+                error!(
+                    "Failed to read {GITHUB_TOKEN_SECRET} session secret for {}: {e}",
+                    context.session_id
+                );
+                return Err(ToolExecutionResult::internal_error_msg(
+                    "Failed to read GitHub token",
+                ));
             }
-        }
-        if let Some(err) = last_error {
-            error!(
-                "Failed to read {GITHUB_TOKEN_SECRET} session secret across all candidate sessions; last error: {err}"
-            );
-            return Err(ToolExecutionResult::internal_error_msg(
-                "Failed to read GitHub token",
-            ));
         }
     }
 
@@ -513,7 +484,7 @@ mod tests {
         KeyInfo, SecretInfo, SessionStorageStore, SessionStore, UserConnectionResolver,
     };
     use everruns_core::typed_id::SessionId;
-    use everruns_core::{HarnessId, ModelId, PrincipalId, Session, SessionStatus};
+    use everruns_core::{HarnessId, PrincipalId, Session, SessionStatus};
     use std::collections::HashMap;
     use std::sync::Arc;
     use tokio::sync::Mutex;
@@ -550,26 +521,6 @@ mod tests {
                 .lock()
                 .await
                 .insert(format!("{session_id}:{name}"), value.to_string());
-        }
-    }
-
-    struct MockSessionStore {
-        session: Session,
-    }
-
-    #[async_trait]
-    impl SessionStore for MockSessionStore {
-        async fn get_session(&self, session_id: SessionId) -> Result<Option<Session>> {
-            if self.session.id == session_id {
-                return Ok(Some(self.session.clone()));
-            }
-            if self.session.parent_session_id == Some(session_id) {
-                let mut parent = self.session.clone();
-                parent.id = session_id;
-                parent.parent_session_id = None;
-                return Ok(Some(parent));
-            }
-            Ok(None)
         }
     }
 
@@ -646,11 +597,22 @@ mod tests {
         }
     }
 
-    #[tokio::test]
-    async fn token_falls_back_to_parent_session_connection() {
-        let session_id = SessionId::new();
-        let parent_session_id = SessionId::new();
-        let session = Session {
+    struct MockSessionStore {
+        session: Session,
+    }
+
+    #[async_trait]
+    impl SessionStore for MockSessionStore {
+        async fn get_session(&self, session_id: SessionId) -> Result<Option<Session>> {
+            if self.session.id == session_id {
+                return Ok(Some(self.session.clone()));
+            }
+            Ok(None)
+        }
+    }
+
+    fn child_session_with_parent(session_id: SessionId, parent_session_id: SessionId) -> Session {
+        Session {
             id: session_id,
             organization_id: "org_00000000000000000000000000000001".to_string(),
             harness_id: HarnessId::new(),
@@ -666,7 +628,7 @@ mod tests {
             preview: None,
             output_preview: None,
             tags: vec![],
-            model_id: Some(ModelId::new()),
+            model_id: None,
             capabilities: vec![],
             tools: vec![],
             mcp_servers: Default::default(),
@@ -690,7 +652,17 @@ mod tests {
             subagent_status: None,
             blueprint_id: None,
             blueprint_config: None,
-        };
+        }
+    }
+
+    // Regression: even when the session has a parent and the connection
+    // resolver holds a token for the parent, the active session must not
+    // fall back to the parent's GitHub credentials.
+    #[tokio::test]
+    async fn token_does_not_fall_back_to_parent_session_connection() {
+        let session_id = SessionId::new();
+        let parent_session_id = SessionId::new();
+        let session = child_session_with_parent(session_id, parent_session_id);
 
         let context = ToolContext::new(session_id)
             .with_session_store(Arc::new(MockSessionStore { session }))
@@ -698,10 +670,36 @@ mod tests {
                 tokens: HashMap::from([(parent_session_id, "parent-connection-token".into())]),
             }));
 
-        assert_eq!(
-            get_github_token(&context).await.unwrap(),
-            "parent-connection-token"
-        );
+        match get_github_token(&context).await {
+            Err(ToolExecutionResult::ConnectionRequired { provider }) => {
+                assert_eq!(provider, GITHUB_CONNECTION_PROVIDER)
+            }
+            other => panic!("expected connection required, got {other:?}"),
+        }
+    }
+
+    // Regression: same as above for the session storage secret path —
+    // a secret seeded against the parent must not satisfy the child.
+    #[tokio::test]
+    async fn token_does_not_fall_back_to_parent_session_secret() {
+        let session_id = SessionId::new();
+        let parent_session_id = SessionId::new();
+        let session = child_session_with_parent(session_id, parent_session_id);
+
+        let storage = Arc::new(MockStorageStore::new());
+        storage
+            .seed_secret(parent_session_id, GITHUB_TOKEN_SECRET, "parent-secret")
+            .await;
+
+        let mut context = ToolContext::with_storage_store(session_id, storage);
+        context = context.with_session_store(Arc::new(MockSessionStore { session }));
+
+        match get_github_token(&context).await {
+            Err(ToolExecutionResult::ConnectionRequired { provider }) => {
+                assert_eq!(provider, GITHUB_CONNECTION_PROVIDER)
+            }
+            other => panic!("expected connection required, got {other:?}"),
+        }
     }
 
     #[test]
