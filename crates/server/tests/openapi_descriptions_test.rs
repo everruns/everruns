@@ -16,7 +16,7 @@ use utoipa::OpenApi;
 /// Lowest acceptable coverage. Bump up when you fix a batch.
 const MIN_OP_DESC_PCT: u32 = 100;
 const MIN_SCHEMA_DESC_PCT: u32 = 88;
-const MIN_FIELD_DESC_PCT: u32 = 85;
+const MIN_FIELD_DESC_PCT: u32 = 92;
 /// Field example coverage is an AI-friendliness signal in its own right:
 /// even an accurately described `Vec<ToolDefinition>` is far easier for an
 /// LLM to populate when it has seen one concrete instance. The floor starts
