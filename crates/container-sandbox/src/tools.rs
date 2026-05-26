@@ -294,7 +294,7 @@ impl Tool for SandboxExecTool {
         let output = if let Some(budget) = output_verbosity_budget(effective_mode) {
             priority_aware_truncate(&clean_output, budget)
         } else {
-            clean_output
+            clean_output.clone()
         };
 
         if exit_code == 0 {
