@@ -19,7 +19,7 @@
 // observability into session execution.
 
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -288,7 +288,7 @@ impl EventContext {
 /// - `data`: Event-specific payload (typed via EventData enum)
 /// - `metadata`: Optional arbitrary metadata
 /// - `tags`: Optional list of tags for filtering
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct Event {
     /// Unique event identifier (format: event_{32-hex})
@@ -324,6 +324,42 @@ pub struct Event {
     /// Sequence number within session (for ordering)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sequence: Option<i32>,
+}
+
+
+#[derive(Debug, Deserialize)]
+struct RawEvent {
+    id: EventId,
+    #[serde(rename = "type")]
+    event_type: String,
+    ts: DateTime<Utc>,
+    session_id: SessionId,
+    context: EventContext,
+    data: serde_json::Value,
+    metadata: Option<serde_json::Value>,
+    tags: Option<Vec<String>>,
+    sequence: Option<i32>,
+}
+
+impl<'de> Deserialize<'de> for Event {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let raw = RawEvent::deserialize(deserializer)?;
+        let data = deserialize_event_data(&raw.event_type, raw.data);
+        Ok(Self {
+            id: raw.id,
+            event_type: raw.event_type,
+            ts: raw.ts,
+            session_id: raw.session_id,
+            context: raw.context,
+            data,
+            metadata: raw.metadata,
+            tags: raw.tags,
+            sequence: raw.sequence,
+        })
+    }
 }
 
 impl Event {
@@ -2552,7 +2588,7 @@ impl EventData {
 /// This is the input type for event ingestion. It contains all the data
 /// needed to create an event, but without the `id` and `sequence` fields
 /// which are assigned by the storage layer.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct EventRequest {
     /// Event type in dot notation
@@ -2578,6 +2614,38 @@ pub struct EventRequest {
     /// Tags for filtering and categorization
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tags: Option<Vec<String>>,
+}
+
+
+#[derive(Debug, Deserialize)]
+struct RawEventRequest {
+    #[serde(rename = "type")]
+    event_type: String,
+    ts: DateTime<Utc>,
+    session_id: SessionId,
+    context: EventContext,
+    data: serde_json::Value,
+    metadata: Option<serde_json::Value>,
+    tags: Option<Vec<String>>,
+}
+
+impl<'de> Deserialize<'de> for EventRequest {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let raw = RawEventRequest::deserialize(deserializer)?;
+        let data = deserialize_event_data(&raw.event_type, raw.data);
+        Ok(Self {
+            event_type: raw.event_type,
+            ts: raw.ts,
+            session_id: raw.session_id,
+            context: raw.context,
+            data,
+            metadata: raw.metadata,
+            tags: raw.tags,
+        })
+    }
 }
 
 impl EventRequest {
@@ -3290,6 +3358,66 @@ mod tests {
         assert!(json.contains("rs_abc"));
         assert!(json.contains("OPAQUE_BLOB"));
         assert!(json.contains("safe summary"));
+    }
+
+    #[test]
+    fn test_event_deserialize_reason_item_uses_event_type_dispatch() {
+        let turn_id = TurnId::from_uuid(Uuid::now_v7());
+        let payload = serde_json::json!({
+            "id": EventId::new().to_string(),
+            "type": REASON_ITEM,
+            "ts": Utc::now().to_rfc3339(),
+            "session_id": SessionId::from_uuid(Uuid::now_v7()).to_string(),
+            "context": {"trace_id": "t", "span_id": "s", "parent_span_id": null},
+            "data": {
+                "turn_id": turn_id.to_string(),
+                "provider": "openai",
+                "model": "gpt-5",
+                "item_id": "rs_event",
+                "encrypted_content": "ENC",
+                "summary": ["safe"],
+                "token_count": 9
+            }
+        });
+
+        let event: Event = serde_json::from_value(payload).expect("event deserializes");
+        match event.data {
+            EventData::ReasonItem(data) => {
+                assert_eq!(data.turn_id, turn_id);
+                assert_eq!(data.provider, "openai");
+                assert_eq!(data.item_id, "rs_event");
+                assert_eq!(data.token_count, Some(9));
+            }
+            other => panic!("expected reason.item data, got {}", other.event_type()),
+        }
+    }
+
+    #[test]
+    fn test_event_request_deserialize_reason_item_uses_event_type_dispatch() {
+        let turn_id = TurnId::from_uuid(Uuid::now_v7());
+        let payload = serde_json::json!({
+            "type": REASON_ITEM,
+            "ts": Utc::now().to_rfc3339(),
+            "session_id": SessionId::from_uuid(Uuid::now_v7()).to_string(),
+            "context": {"trace_id": "t", "span_id": "s", "parent_span_id": null},
+            "data": {
+                "turn_id": turn_id.to_string(),
+                "provider": "openai",
+                "item_id": "rs_request",
+                "encrypted_content": "ENC",
+                "summary": ["safe"]
+            }
+        });
+
+        let req: EventRequest = serde_json::from_value(payload).expect("request deserializes");
+        match req.data {
+            EventData::ReasonItem(data) => {
+                assert_eq!(data.turn_id, turn_id);
+                assert_eq!(data.provider, "openai");
+                assert_eq!(data.item_id, "rs_request");
+            }
+            other => panic!("expected reason.item data, got {}", other.event_type()),
+        }
     }
 
     #[test]
