@@ -243,8 +243,8 @@ Every page gets a per-page Open Graph image for rich link previews on Twitter, S
 
 Doc pages can include a hero image (screenshot, diagram, logo) that gets composited into the right half of the OG card. Detection order:
 
-1. **Frontmatter `hero` field** (preferred): `hero: ../images/path/to/image.png`
-2. **First markdown image**: The first `![...](path)` in the page body (e.g. `![Daytona Integration](daytona.png)`)
+1. **Frontmatter `hero` field** (preferred): `hero: ./my-feature-screenshot.png` (relative to the page; co-located with it per the placement rule below)
+2. **First markdown image**: The first `![...](path)` in the page body (e.g. `![Daytona Integration](./daytona.png)`)
 
 When a hero is detected, the card layout shifts to a split view: text on the left, hero image on the right. Pages without a hero image use the full-width text layout.
 
@@ -256,9 +256,11 @@ When creating or editing a doc page that has a visual asset (integration logo, a
 ---
 title: My Feature
 description: What this feature does
-hero: ../images/features/my-feature-screenshot.png
+hero: ./my-feature-screenshot.png
 ---
 ```
+
+(The legacy form `hero: ../images/features/my-feature-screenshot.png` still resolves for grandfathered assets under `docs/images/{section}/`, but new pages should follow the co-located form above.)
 
 Place new hero images (and any other diagrams or screenshots used by a single page) in the **same directory as the page that embeds them**, and reference them with relative paths (`hero: ./my-feature-screenshot.png`). Existing assets under `docs/images/{section}/` continue to work and are not migrated en masse. See `specs/diagrams.md` for the colocation rule applied to diagrams.
 
