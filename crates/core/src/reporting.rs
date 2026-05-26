@@ -37,14 +37,17 @@ pub struct ReportTimeRange {
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ReportQuery {
     /// Dataset name to query (see `GET /v1/reports/catalog` for the list of available datasets).
+    #[cfg_attr(feature = "openapi", schema(example = "sessions"))]
     pub dataset: String,
     /// Time window for the query. The dataset selects which timestamp column the range applies to.
     pub time_range: ReportTimeRange,
     /// Columns to group by. Empty list returns one aggregate row.
     #[serde(default)]
+    #[cfg_attr(feature = "openapi", schema(example = json!(["status"])))]
     pub dimensions: Vec<String>,
     /// Aggregations to compute (count, sum, avg, etc.). Empty list returns row counts only.
     #[serde(default)]
+    #[cfg_attr(feature = "openapi", schema(example = json!(["session_count", "avg_duration_ms"])))]
     pub measures: Vec<String>,
     /// Predicate filters applied before aggregation.
     #[serde(default)]
@@ -54,6 +57,7 @@ pub struct ReportQuery {
     pub order_by: Vec<ReportOrderBy>,
     /// Maximum number of rows to return (defaults to 100).
     #[serde(default = "default_report_limit")]
+    #[cfg_attr(feature = "openapi", schema(example = 100))]
     pub limit: u32,
 }
 

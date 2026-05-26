@@ -16,22 +16,31 @@ use utoipa::ToSchema;
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct FileInfo {
     /// Internal database UUID for this file entry.
+    #[cfg_attr(feature = "openapi", schema(example = "550e8400-e29b-41d4-a716-446655440000"))]
     pub id: Uuid,
     /// UUID of the owning session.
+    #[cfg_attr(feature = "openapi", schema(example = "01933b5a-0000-7000-8000-000000000001"))]
     pub session_id: Uuid,
     /// Absolute path within the session workspace (e.g. `/notes.md`).
+    #[cfg_attr(feature = "openapi", schema(example = "/notes.md"))]
     pub path: String,
     /// File or directory name (the last segment of `path`).
+    #[cfg_attr(feature = "openapi", schema(example = "notes.md"))]
     pub name: String,
     /// `true` when this entry represents a directory; `false` for a regular file.
+    #[cfg_attr(feature = "openapi", schema(example = false))]
     pub is_directory: bool,
     /// Whether the entry was marked read-only at creation. Read-only entries cannot be edited or deleted by the session.
+    #[cfg_attr(feature = "openapi", schema(example = false))]
     pub is_readonly: bool,
     /// File size in bytes. `0` for directories.
+    #[cfg_attr(feature = "openapi", schema(example = 4096))]
     pub size_bytes: i64,
     /// Timestamp when this entry was created (RFC 3339).
+    #[cfg_attr(feature = "openapi", schema(example = "2026-05-25T10:14:00Z"))]
     pub created_at: DateTime<Utc>,
     /// Timestamp when this entry was last updated (RFC 3339).
+    #[cfg_attr(feature = "openapi", schema(example = "2026-05-25T10:15:30Z"))]
     pub updated_at: DateTime<Utc>,
 }
 

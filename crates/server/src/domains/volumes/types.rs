@@ -15,38 +15,50 @@ pub struct VolumeResponse {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: VolumeId,
     /// Human-readable name. Safe to render in user-facing messages.
+    #[schema(example = "design-docs")]
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     /// Human-readable description. Safe to render in user-facing messages.
+    #[schema(example = "Living design documents synced from GitHub")]
     pub description: Option<String>,
     /// Source kind discriminator (`manual`, `git`, `github`). Determines which `source` variant is populated.
+    #[schema(example = "github")]
     pub source_type: String,
     /// Source-specific configuration (git remote, github repo, manual upload).
     pub source: VolumeSourceResponse,
     /// Whether the volume is mounted read-only into sessions. Read-only volumes accept no writes from the session sandbox.
+    #[schema(example = false)]
     pub is_readonly: bool,
     /// Current sync status (`idle`, `syncing`, `succeeded`, `failed`). Only meaningful when `source_type` is `git` or `github`.
+    #[schema(example = "succeeded")]
     pub sync_status: String,
     /// Timestamp of the most recent successful sync (RFC 3339). `None` if never synced.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "2026-05-25T08:00:00Z")]
     pub last_synced_at: Option<DateTime<Utc>>,
     /// Most recent sync error message; cleared on the next successful sync.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "ssh: connect to host github.com port 22: Connection timed out")]
     pub last_sync_error: Option<String>,
     #[serde(skip)]
     /// Internal database UUID. Not part of the public identifier surface.
     pub internal_id: Uuid,
     /// Current lifecycle status.
+    #[schema(example = "active")]
     pub status: String,
     /// Timestamp when this resource was created (RFC 3339).
+    #[schema(example = "2026-04-01T10:00:00Z")]
     pub created_at: DateTime<Utc>,
     /// Timestamp when this resource was last updated (RFC 3339).
+    #[schema(example = "2026-05-25T08:00:00Z")]
     pub updated_at: DateTime<Utc>,
     #[serde(skip_serializing_if = "Option::is_none")]
     /// Timestamp when this resource was archived, if any (RFC 3339).
+    #[schema(example = "2026-05-26T00:00:00Z")]
     pub archived_at: Option<DateTime<Utc>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     /// Timestamp when this resource was soft-deleted, if any (RFC 3339).
+    #[schema(example = "2026-05-26T00:00:00Z")]
     pub deleted_at: Option<DateTime<Utc>>,
 }
 

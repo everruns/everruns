@@ -11468,7 +11468,8 @@
               "null"
             ],
             "format": "date-time",
-            "description": "Timestamp when the agent was archived."
+            "description": "Timestamp when the agent was archived.",
+            "example": "2026-05-26T00:00:00Z"
           },
           "capabilities": {
             "type": "array",
@@ -11480,7 +11481,8 @@
           "created_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Timestamp when the agent was created."
+            "description": "Timestamp when the agent was created.",
+            "example": "2026-04-01T10:00:00Z"
           },
           "default_model_id": {
             "type": [
@@ -11504,21 +11506,24 @@
               "null"
             ],
             "format": "date-time",
-            "description": "Timestamp when the agent was deleted."
+            "description": "Timestamp when the agent was deleted.",
+            "example": "2026-05-26T00:00:00Z"
           },
           "description": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Human-readable description of what the agent does."
+            "description": "Human-readable description of what the agent does.",
+            "example": "Handles refund and shipping questions; escalates billing disputes."
           },
           "display_name": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Human-readable display name shown in UI (e.g. \"Customer Support Agent\").\nFalls back to `name` when absent."
+            "description": "Human-readable display name shown in UI (e.g. \"Customer Support Agent\").\nFalls back to `name` when absent.",
+            "example": "Customer Support Agent"
           },
           "forked_from_agent_id": {
             "type": [
@@ -11554,6 +11559,7 @@
               "null"
             ],
             "description": "Maximum number of LLM iterations per turn for this agent.",
+            "example": 50,
             "minimum": 0
           },
           "mcpServers": {
@@ -11562,7 +11568,8 @@
           },
           "name": {
             "type": "string",
-            "description": "Name, unique per org (e.g. \"customer-support\")."
+            "description": "Name, unique per org (e.g. \"customer-support\").",
+            "example": "customer-support"
           },
           "network_access": {
             "oneOf": [
@@ -11589,14 +11596,19 @@
           },
           "system_prompt": {
             "type": "string",
-            "description": "System prompt that defines the agent's behavior.\nSent as the first message in every conversation."
+            "description": "System prompt that defines the agent's behavior.\nSent as the first message in every conversation.",
+            "example": "You are a friendly customer support agent for Acme Corp. Verify orders before issuing refunds. Escalate any billing disputes to a human."
           },
           "tags": {
             "type": "array",
             "items": {
               "type": "string"
             },
-            "description": "Tags for organizing and filtering agents."
+            "description": "Tags for organizing and filtering agents.",
+            "example": [
+              "support",
+              "production"
+            ]
           },
           "tools": {
             "type": "array",
@@ -11608,7 +11620,8 @@
           "updated_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Timestamp when the agent was last updated."
+            "description": "Timestamp when the agent was last updated.",
+            "example": "2026-05-20T14:00:00Z"
           },
           "usage": {
             "oneOf": [
@@ -11704,12 +11717,14 @@
           },
           "config_hash": {
             "type": "string",
-            "description": "Stable hash of `resolved_config` used to deduplicate adjacent identical snapshots."
+            "description": "Stable hash of `resolved_config` used to deduplicate adjacent identical snapshots.",
+            "example": "blake3:9f1e2a4c3d5b6e8a0b2c4d6e8f0a1b3c5d7e9f0a1b2c4d6e8f0a1b2c4d6e8f0a"
           },
           "created_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Timestamp when this version was created (RFC 3339)."
+            "description": "Timestamp when this version was created (RFC 3339).",
+            "example": "2026-04-20T14:22:00Z"
           },
           "created_by_principal_id": {
             "type": [
@@ -11725,7 +11740,8 @@
           },
           "is_published": {
             "type": "boolean",
-            "description": "Whether this version was explicitly published by a user. Published versions are user-controlled semver releases; unpublished rows are automatic draft snapshots kept for audit and rollback."
+            "description": "Whether this version was explicitly published by a user. Published versions are user-controlled semver releases; unpublished rows are automatic draft snapshots kept for audit and rollback.",
+            "example": true
           },
           "parent_version_id": {
             "type": [
@@ -11741,17 +11757,20 @@
           "semver_major": {
             "type": "integer",
             "format": "int32",
-            "description": "Semantic version major component."
+            "description": "Semantic version major component.",
+            "example": 1
           },
           "semver_minor": {
             "type": "integer",
             "format": "int32",
-            "description": "Semantic version minor component."
+            "description": "Semantic version minor component.",
+            "example": 4
           },
           "semver_patch": {
             "type": "integer",
             "format": "int32",
-            "description": "Semantic version patch component."
+            "description": "Semantic version patch component.",
+            "example": 2
           },
           "source_version_id": {
             "type": [
@@ -11765,16 +11784,19 @@
               "string",
               "null"
             ],
-            "description": "Human-readable summary of changes in this version (release notes). `None` if not provided."
+            "description": "Human-readable summary of changes in this version (release notes). `None` if not provided.",
+            "example": "Switched default model to claude-sonnet-4-6; added refund-runbook capability."
           },
           "version": {
             "type": "string",
-            "description": "Combined semver string for display (e.g. `1.4.2`)."
+            "description": "Combined semver string for display (e.g. `1.4.2`).",
+            "example": "1.4.2"
           },
           "version_number": {
             "type": "integer",
             "format": "int32",
-            "description": "Monotonic per-agent version sequence number (1, 2, 3, ...). Increments on every snapshot."
+            "description": "Monotonic per-agent version sequence number (1, 2, 3, ...). Increments on every snapshot.",
+            "example": 7
           }
         }
       },
@@ -15114,21 +15136,24 @@
               "string",
               "null"
             ],
-            "description": "Stable, machine-readable error code (snake_case)."
+            "description": "Stable, machine-readable error code (snake_case).",
+            "example": "session_not_found"
           },
           "detail": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Human-readable explanation specific to this occurrence."
+            "description": "Human-readable explanation specific to this occurrence.",
+            "example": "Session session_01933b5a000070008000000000000001 not found in org org_01933b5a000070008000000000000001."
           },
           "instance": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Request URI for this occurrence."
+            "description": "Request URI for this occurrence.",
+            "example": "/v1/sessions/session_01933b5a000070008000000000000001"
           },
           "retry_after_seconds": {
             "type": [
@@ -15137,24 +15162,28 @@
             ],
             "format": "int32",
             "description": "Seconds the caller should wait before retrying (429 / transient 503).",
+            "example": 30,
             "minimum": 0
           },
           "status": {
             "type": "integer",
             "format": "int32",
             "description": "HTTP status code; mirrors the response status line.",
+            "example": 404,
             "minimum": 0
           },
           "title": {
             "type": "string",
-            "description": "Short, human-readable summary of the problem (e.g. \"Not Found\")."
+            "description": "Short, human-readable summary of the problem (e.g. \"Not Found\").",
+            "example": "Session not found"
           },
           "type": {
             "type": [
               "string",
               "null"
             ],
-            "description": "RFC 9457 problem type URI. Optional; identifies the problem class."
+            "description": "RFC 9457 problem type URI. Optional; identifies the problem class.",
+            "example": "https://docs.everruns.com/errors/session_not_found"
           }
         }
       },
@@ -15537,20 +15566,25 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ExportedApiKey"
-            }
+            },
+            "description": "API keys owned by the user (no sensitive secrets — just metadata)."
           },
           "exported_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp the export was generated (RFC 3339).",
+            "example": "2026-05-25T12:00:00Z"
           },
           "organizations": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ExportedOrganization"
-            }
+            },
+            "description": "All organizations the user is a member of, plus their role in each."
           },
           "user": {
-            "$ref": "#/components/schemas/ExportedUserProfile"
+            "$ref": "#/components/schemas/ExportedUserProfile",
+            "description": "Profile data for the exporting user."
           }
         }
       },
@@ -15568,34 +15602,45 @@
           "created_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Timestamp when this resource was created (RFC 3339)."
+            "description": "Timestamp when this resource was created (RFC 3339).",
+            "example": "2026-01-15T10:30:00Z"
           },
           "expires_at": {
             "type": [
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Expiry timestamp (RFC 3339). `None` for non-expiring keys.",
+            "example": "2027-01-01T00:00:00Z"
           },
           "id": {
             "type": "string",
-            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/)."
+            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+            "example": "apikey_01933b5a000070008000000000000001"
           },
           "key_prefix": {
-            "type": "string"
+            "type": "string",
+            "description": "First few characters of the key, safe to display for identification.",
+            "example": "ev_live_x4z2"
           },
           "last_used_at": {
             "type": [
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp of the key's most recent successful use (RFC 3339). `None` if never used.",
+            "example": "2026-05-25T09:14:00Z"
           },
           "name": {
             "type": "string",
-            "description": "Human-readable name. Safe to render in user-facing messages."
+            "description": "Human-readable name. Safe to render in user-facing messages.",
+            "example": "CI/CD deploy key"
           },
-          "scopes": {}
+          "scopes": {
+            "description": "Granted scopes as a JSON array of strings."
+          }
         }
       },
       "ExportedOrganization": {
@@ -15610,19 +15655,24 @@
         "properties": {
           "name": {
             "type": "string",
-            "description": "Human-readable name. Safe to render in user-facing messages."
+            "description": "Human-readable name. Safe to render in user-facing messages.",
+            "example": "Acme Corp"
           },
           "org_id": {
             "type": "integer",
             "format": "int64",
-            "description": "Owning organization's prefixed public identifier."
+            "description": "Owning organization's internal numeric id (not part of the public identifier surface).",
+            "example": 42
           },
           "public_id": {
             "type": "string",
-            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/)."
+            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+            "example": "org_01933b5a000070008000000000000001"
           },
           "role": {
-            "type": "string"
+            "type": "string",
+            "description": "User's role within this organization (`owner`, `admin`, `member`).",
+            "example": "owner"
           }
         }
       },
@@ -15642,37 +15692,49 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Auth provider that issued this identity (`google`, `github`, `password`, etc.).",
+            "example": "google"
           },
           "avatar_url": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "URL to the user's avatar image. `None` when the user hasn't set one.",
+            "example": "https://cdn.example.com/avatars/alex.png"
           },
           "created_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Timestamp when this resource was created (RFC 3339)."
+            "description": "Timestamp when this resource was created (RFC 3339).",
+            "example": "2026-01-15T10:30:00Z"
           },
           "email": {
-            "type": "string"
+            "type": "string",
+            "description": "Email address associated with the user account.",
+            "example": "alex@example.com"
           },
           "email_verified": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether the user's email address has been verified via the auth provider.",
+            "example": true
           },
           "id": {
             "type": "string",
-            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/)."
+            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+            "example": "user_01933b5a000070008000000000000001"
           },
           "name": {
             "type": "string",
-            "description": "Human-readable name. Safe to render in user-facing messages."
+            "description": "Human-readable name. Safe to render in user-facing messages.",
+            "example": "Alex Rivera"
           },
           "updated_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Timestamp when this resource was last updated (RFC 3339)."
+            "description": "Timestamp when this resource was last updated (RFC 3339).",
+            "example": "2026-04-20T14:22:00Z"
           }
         }
       },
@@ -15781,43 +15843,52 @@
           "created_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Timestamp when this entry was created (RFC 3339)."
+            "description": "Timestamp when this entry was created (RFC 3339).",
+            "example": "2026-05-25T10:14:00Z"
           },
           "id": {
             "type": "string",
             "format": "uuid",
-            "description": "Internal database UUID for this file entry."
+            "description": "Internal database UUID for this file entry.",
+            "example": "550e8400-e29b-41d4-a716-446655440000"
           },
           "is_directory": {
             "type": "boolean",
-            "description": "`true` when this entry represents a directory; `false` for a regular file."
+            "description": "`true` when this entry represents a directory; `false` for a regular file.",
+            "example": false
           },
           "is_readonly": {
             "type": "boolean",
-            "description": "Whether the entry was marked read-only at creation. Read-only entries cannot be edited or deleted by the session."
+            "description": "Whether the entry was marked read-only at creation. Read-only entries cannot be edited or deleted by the session.",
+            "example": false
           },
           "name": {
             "type": "string",
-            "description": "File or directory name (the last segment of `path`)."
+            "description": "File or directory name (the last segment of `path`).",
+            "example": "notes.md"
           },
           "path": {
             "type": "string",
-            "description": "Absolute path within the session workspace (e.g. `/notes.md`)."
+            "description": "Absolute path within the session workspace (e.g. `/notes.md`).",
+            "example": "/notes.md"
           },
           "session_id": {
             "type": "string",
             "format": "uuid",
-            "description": "UUID of the owning session."
+            "description": "UUID of the owning session.",
+            "example": "01933b5a-0000-7000-8000-000000000001"
           },
           "size_bytes": {
             "type": "integer",
             "format": "int64",
-            "description": "File size in bytes. `0` for directories."
+            "description": "File size in bytes. `0` for directories.",
+            "example": 4096
           },
           "updated_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Timestamp when this entry was last updated (RFC 3339)."
+            "description": "Timestamp when this entry was last updated (RFC 3339).",
+            "example": "2026-05-25T10:15:30Z"
           }
         }
       },
@@ -16417,7 +16488,8 @@
               "null"
             ],
             "format": "date-time",
-            "description": "Timestamp when the harness was archived."
+            "description": "Timestamp when the harness was archived.",
+            "example": "2026-05-26T00:00:00Z"
           },
           "capabilities": {
             "type": "array",
@@ -16429,7 +16501,8 @@
           "created_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Timestamp when the harness was created."
+            "description": "Timestamp when the harness was created.",
+            "example": "2026-04-01T10:00:00Z"
           },
           "default_model_id": {
             "type": [
@@ -16445,21 +16518,24 @@
               "null"
             ],
             "format": "date-time",
-            "description": "Timestamp when the harness was deleted."
+            "description": "Timestamp when the harness was deleted.",
+            "example": "2026-05-26T00:00:00Z"
           },
           "description": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Human-readable description of what the harness does."
+            "description": "Human-readable description of what the harness does.",
+            "example": "Default harness with file-system + secrets capabilities; safe baseline for new agents."
           },
           "display_name": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Human-readable display name shown in UI."
+            "description": "Human-readable display name shown in UI.",
+            "example": "Generic Harness"
           },
           "id": {
             "type": "string",
@@ -16475,7 +16551,8 @@
           },
           "is_built_in": {
             "type": "boolean",
-            "description": "Whether this harness is built-in (system-managed, readonly).\nBuilt-in harnesses are provisioned during org initialization and\ncannot be modified or deleted via the API. Users can copy them."
+            "description": "Whether this harness is built-in (system-managed, readonly).\nBuilt-in harnesses are provisioned during org initialization and\ncannot be modified or deleted via the API. Users can copy them.",
+            "example": false
           },
           "mcpServers": {
             "$ref": "#/components/schemas/BTreeMap",
@@ -16483,7 +16560,8 @@
           },
           "name": {
             "type": "string",
-            "description": "Name, unique per org (e.g. \"generic\")."
+            "description": "Name, unique per org (e.g. \"generic\").",
+            "example": "generic"
           },
           "network_access": {
             "oneOf": [
@@ -16510,19 +16588,25 @@
           },
           "system_prompt": {
             "type": "string",
-            "description": "System prompt that defines the harness's base behavior.\nForms the foundation of the prompt stack."
+            "description": "System prompt that defines the harness's base behavior.\nForms the foundation of the prompt stack.",
+            "example": "You are an Everruns agent. Be concise, cite sources when possible, and decline tasks outside your assigned scope."
           },
           "tags": {
             "type": "array",
             "items": {
               "type": "string"
             },
-            "description": "Tags for organizing and filtering harnesses."
+            "description": "Tags for organizing and filtering harnesses.",
+            "example": [
+              "baseline",
+              "production"
+            ]
           },
           "updated_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Timestamp when the harness was last updated."
+            "description": "Timestamp when the harness was last updated.",
+            "example": "2026-05-20T14:00:00Z"
           }
         }
       },
@@ -16633,31 +16717,37 @@
           "active_workers": {
             "type": "integer",
             "description": "Number of workers in the `running` state, ready to claim tasks.",
+            "example": 4,
             "minimum": 0
           },
           "claimed_tasks": {
             "type": "integer",
             "description": "Tasks currently claimed by a worker (gauge).",
+            "example": 7,
             "minimum": 0
           },
           "completed_tasks": {
             "type": "integer",
             "description": "Cumulative count of tasks that completed successfully (monotonic counter).",
+            "example": 12041,
             "minimum": 0
           },
           "completed_workflows": {
             "type": "integer",
             "description": "Cumulative count of workflows that completed successfully (monotonic counter).",
+            "example": 4128,
             "minimum": 0
           },
           "current_load": {
             "type": "integer",
             "description": "Total tasks currently in flight across all workers.",
+            "example": 7,
             "minimum": 0
           },
           "dlq_size": {
             "type": "integer",
             "description": "Size of the dead-letter queue (gauge). High values indicate stuck activities.",
+            "example": 0,
             "minimum": 0
           },
           "event_delivery": {
@@ -16665,65 +16755,78 @@
               "string",
               "null"
             ],
-            "description": "Event-delivery backend in use: `nats` for distributed deployments, `in_memory` for single-instance. `None` if the field was omitted by an older server."
+            "description": "Event-delivery backend in use: `nats` for distributed deployments, `in_memory` for single-instance. `None` if the field was omitted by an older server.",
+            "example": "nats"
           },
           "failed_tasks": {
             "type": "integer",
             "description": "Cumulative count of tasks that failed terminally or were sent to the DLQ (monotonic counter).",
+            "example": 34,
             "minimum": 0
           },
           "failed_workflows": {
             "type": "integer",
             "description": "Cumulative count of workflows that ended in failure (monotonic counter).",
+            "example": 12,
             "minimum": 0
           },
           "load_percentage": {
             "type": "number",
             "format": "double",
-            "description": "`current_load / total_capacity * 100`. 0.0 when no workers are registered."
+            "description": "`current_load / total_capacity * 100`. 0.0 when no workers are registered.",
+            "example": 21.875
           },
           "pending_tasks": {
             "type": "integer",
             "description": "Tasks waiting to be claimed (gauge).",
+            "example": 2,
             "minimum": 0
           },
           "pending_workflows": {
             "type": "integer",
             "description": "Workflows waiting to be claimed (gauge).",
+            "example": 1,
             "minimum": 0
           },
           "running_workflows": {
             "type": "integer",
             "description": "Workflows currently executing (gauge).",
+            "example": 3,
             "minimum": 0
           },
           "started_tasks": {
             "type": "integer",
             "description": "Cumulative count of tasks claimed at least once (monotonic counter).",
+            "example": 12082,
             "minimum": 0
           },
           "started_workflows": {
             "type": "integer",
             "description": "Cumulative count of workflows that started (monotonic counter).",
+            "example": 4144,
             "minimum": 0
           },
           "status": {
             "type": "string",
-            "description": "Aggregate system status: `healthy`, `degraded`, or `unhealthy`. Derived from worker availability, load, and queue depths."
+            "description": "Aggregate system status: `healthy`, `degraded`, or `unhealthy`. Derived from worker availability, load, and queue depths.",
+            "example": "healthy"
           },
           "total_capacity": {
             "type": "integer",
             "description": "Sum of `max_concurrency` across all workers (the upper bound on concurrent task execution).",
+            "example": 32,
             "minimum": 0
           },
           "total_workers": {
             "type": "integer",
             "description": "Total number of workers registered (heartbeating in the last window).",
+            "example": 4,
             "minimum": 0
           },
           "workers_accepting": {
             "type": "integer",
             "description": "Number of workers currently accepting new task assignments (subset of `active_workers`; drains/backpressure excluded).",
+            "example": 4,
             "minimum": 0
           }
         }
@@ -17156,6 +17259,7 @@
             "type": "integer",
             "format": "int32",
             "description": "Number of cleanup attempts so far.",
+            "example": 0,
             "minimum": 0
           },
           "cleanup_completed_at": {
@@ -17164,7 +17268,8 @@
               "null"
             ],
             "format": "date-time",
-            "description": "Cleanup completion time for released resources."
+            "description": "Cleanup completion time for released resources.",
+            "example": "2026-05-25T10:30:04Z"
           },
           "cleanup_started_at": {
             "type": [
@@ -17172,22 +17277,27 @@
               "null"
             ],
             "format": "date-time",
-            "description": "Cleanup attempt start time when the resource is currently claimed."
+            "description": "Cleanup attempt start time when the resource is currently claimed.",
+            "example": "2026-05-25T10:30:00Z"
           },
           "created_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this leased resource was created (RFC 3339).",
+            "example": "2026-05-25T10:00:00Z"
           },
           "display_name": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Optional user-facing label."
+            "description": "Optional user-facing label.",
+            "example": "Customer 42 — Q3 brief"
           },
           "external_id": {
             "type": "string",
-            "description": "Stable provider identifier for cleanup calls."
+            "description": "Stable provider identifier for cleanup calls.",
+            "example": "sbx_a3f1c9d2e8"
           },
           "id": {
             "type": "string",
@@ -17199,23 +17309,27 @@
               "string",
               "null"
             ],
-            "description": "Last cleanup error message, if any."
+            "description": "Last cleanup error message, if any.",
+            "example": "daytona.api.timeout: provider call exceeded 10s"
           },
           "last_touched_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Last successful touch from tool activity."
+            "description": "Last successful touch from tool activity.",
+            "example": "2026-05-25T10:14:00Z"
           },
           "lease_duration_seconds": {
             "type": "integer",
             "format": "int32",
             "description": "Lease duration used when refreshing the lease.",
+            "example": 900,
             "minimum": 0
           },
           "lease_expires_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Absolute deadline after which cleanup becomes due."
+            "description": "Absolute deadline after which cleanup becomes due.",
+            "example": "2026-05-25T10:29:00Z"
           },
           "metadata": {
             "description": "Provider-specific non-secret metadata for UI/debugging.\nTHREAT[TM-API-015]: This field is returned by the session resources API\nand rendered in the UI, so providers must never persist bearer tokens or\nother secrets here."
@@ -17226,15 +17340,18 @@
               "null"
             ],
             "format": "uuid",
-            "description": "User connection owner used for provider cleanup, if known."
+            "description": "User connection owner used for provider cleanup, if known.",
+            "example": "550e8400-e29b-41d4-a716-446655440000"
           },
           "provider": {
             "type": "string",
-            "description": "External provider responsible for the resource (e.g. \"daytona\")."
+            "description": "External provider responsible for the resource (e.g. \"daytona\").",
+            "example": "daytona"
           },
           "resource_type": {
             "type": "string",
-            "description": "Provider-specific resource type (e.g. \"sandbox\", \"browser_session\")."
+            "description": "Provider-specific resource type (e.g. \"sandbox\", \"browser_session\").",
+            "example": "sandbox"
           },
           "session_id": {
             "type": [
@@ -17250,7 +17367,9 @@
           },
           "updated_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp when this leased resource was last updated (RFC 3339).",
+            "example": "2026-05-25T10:14:00Z"
           }
         }
       },
@@ -17464,7 +17583,8 @@
                     "null"
                   ],
                   "format": "date-time",
-                  "description": "Timestamp when the agent was archived."
+                  "description": "Timestamp when the agent was archived.",
+                  "example": "2026-05-26T00:00:00Z"
                 },
                 "capabilities": {
                   "type": "array",
@@ -17476,7 +17596,8 @@
                 "created_at": {
                   "type": "string",
                   "format": "date-time",
-                  "description": "Timestamp when the agent was created."
+                  "description": "Timestamp when the agent was created.",
+                  "example": "2026-04-01T10:00:00Z"
                 },
                 "default_model_id": {
                   "type": [
@@ -17500,21 +17621,24 @@
                     "null"
                   ],
                   "format": "date-time",
-                  "description": "Timestamp when the agent was deleted."
+                  "description": "Timestamp when the agent was deleted.",
+                  "example": "2026-05-26T00:00:00Z"
                 },
                 "description": {
                   "type": [
                     "string",
                     "null"
                   ],
-                  "description": "Human-readable description of what the agent does."
+                  "description": "Human-readable description of what the agent does.",
+                  "example": "Handles refund and shipping questions; escalates billing disputes."
                 },
                 "display_name": {
                   "type": [
                     "string",
                     "null"
                   ],
-                  "description": "Human-readable display name shown in UI (e.g. \"Customer Support Agent\").\nFalls back to `name` when absent."
+                  "description": "Human-readable display name shown in UI (e.g. \"Customer Support Agent\").\nFalls back to `name` when absent.",
+                  "example": "Customer Support Agent"
                 },
                 "forked_from_agent_id": {
                   "type": [
@@ -17550,6 +17674,7 @@
                     "null"
                   ],
                   "description": "Maximum number of LLM iterations per turn for this agent.",
+                  "example": 50,
                   "minimum": 0
                 },
                 "mcpServers": {
@@ -17558,7 +17683,8 @@
                 },
                 "name": {
                   "type": "string",
-                  "description": "Name, unique per org (e.g. \"customer-support\")."
+                  "description": "Name, unique per org (e.g. \"customer-support\").",
+                  "example": "customer-support"
                 },
                 "network_access": {
                   "oneOf": [
@@ -17585,14 +17711,19 @@
                 },
                 "system_prompt": {
                   "type": "string",
-                  "description": "System prompt that defines the agent's behavior.\nSent as the first message in every conversation."
+                  "description": "System prompt that defines the agent's behavior.\nSent as the first message in every conversation.",
+                  "example": "You are a friendly customer support agent for Acme Corp. Verify orders before issuing refunds. Escalate any billing disputes to a human."
                 },
                 "tags": {
                   "type": "array",
                   "items": {
                     "type": "string"
                   },
-                  "description": "Tags for organizing and filtering agents."
+                  "description": "Tags for organizing and filtering agents.",
+                  "example": [
+                    "support",
+                    "production"
+                  ]
                 },
                 "tools": {
                   "type": "array",
@@ -17604,7 +17735,8 @@
                 "updated_at": {
                   "type": "string",
                   "format": "date-time",
-                  "description": "Timestamp when the agent was last updated."
+                  "description": "Timestamp when the agent was last updated.",
+                  "example": "2026-05-20T14:00:00Z"
                 },
                 "usage": {
                   "oneOf": [
@@ -17893,43 +18025,52 @@
                 "created_at": {
                   "type": "string",
                   "format": "date-time",
-                  "description": "Timestamp when this entry was created (RFC 3339)."
+                  "description": "Timestamp when this entry was created (RFC 3339).",
+                  "example": "2026-05-25T10:14:00Z"
                 },
                 "id": {
                   "type": "string",
                   "format": "uuid",
-                  "description": "Internal database UUID for this file entry."
+                  "description": "Internal database UUID for this file entry.",
+                  "example": "550e8400-e29b-41d4-a716-446655440000"
                 },
                 "is_directory": {
                   "type": "boolean",
-                  "description": "`true` when this entry represents a directory; `false` for a regular file."
+                  "description": "`true` when this entry represents a directory; `false` for a regular file.",
+                  "example": false
                 },
                 "is_readonly": {
                   "type": "boolean",
-                  "description": "Whether the entry was marked read-only at creation. Read-only entries cannot be edited or deleted by the session."
+                  "description": "Whether the entry was marked read-only at creation. Read-only entries cannot be edited or deleted by the session.",
+                  "example": false
                 },
                 "name": {
                   "type": "string",
-                  "description": "File or directory name (the last segment of `path`)."
+                  "description": "File or directory name (the last segment of `path`).",
+                  "example": "notes.md"
                 },
                 "path": {
                   "type": "string",
-                  "description": "Absolute path within the session workspace (e.g. `/notes.md`)."
+                  "description": "Absolute path within the session workspace (e.g. `/notes.md`).",
+                  "example": "/notes.md"
                 },
                 "session_id": {
                   "type": "string",
                   "format": "uuid",
-                  "description": "UUID of the owning session."
+                  "description": "UUID of the owning session.",
+                  "example": "01933b5a-0000-7000-8000-000000000001"
                 },
                 "size_bytes": {
                   "type": "integer",
                   "format": "int64",
-                  "description": "File size in bytes. `0` for directories."
+                  "description": "File size in bytes. `0` for directories.",
+                  "example": 4096
                 },
                 "updated_at": {
                   "type": "string",
                   "format": "date-time",
-                  "description": "Timestamp when this entry was last updated (RFC 3339)."
+                  "description": "Timestamp when this entry was last updated (RFC 3339).",
+                  "example": "2026-05-25T10:15:30Z"
                 }
               }
             },
@@ -17996,7 +18137,8 @@
                     "null"
                   ],
                   "format": "date-time",
-                  "description": "Timestamp when the harness was archived."
+                  "description": "Timestamp when the harness was archived.",
+                  "example": "2026-05-26T00:00:00Z"
                 },
                 "capabilities": {
                   "type": "array",
@@ -18008,7 +18150,8 @@
                 "created_at": {
                   "type": "string",
                   "format": "date-time",
-                  "description": "Timestamp when the harness was created."
+                  "description": "Timestamp when the harness was created.",
+                  "example": "2026-04-01T10:00:00Z"
                 },
                 "default_model_id": {
                   "type": [
@@ -18024,21 +18167,24 @@
                     "null"
                   ],
                   "format": "date-time",
-                  "description": "Timestamp when the harness was deleted."
+                  "description": "Timestamp when the harness was deleted.",
+                  "example": "2026-05-26T00:00:00Z"
                 },
                 "description": {
                   "type": [
                     "string",
                     "null"
                   ],
-                  "description": "Human-readable description of what the harness does."
+                  "description": "Human-readable description of what the harness does.",
+                  "example": "Default harness with file-system + secrets capabilities; safe baseline for new agents."
                 },
                 "display_name": {
                   "type": [
                     "string",
                     "null"
                   ],
-                  "description": "Human-readable display name shown in UI."
+                  "description": "Human-readable display name shown in UI.",
+                  "example": "Generic Harness"
                 },
                 "id": {
                   "type": "string",
@@ -18054,7 +18200,8 @@
                 },
                 "is_built_in": {
                   "type": "boolean",
-                  "description": "Whether this harness is built-in (system-managed, readonly).\nBuilt-in harnesses are provisioned during org initialization and\ncannot be modified or deleted via the API. Users can copy them."
+                  "description": "Whether this harness is built-in (system-managed, readonly).\nBuilt-in harnesses are provisioned during org initialization and\ncannot be modified or deleted via the API. Users can copy them.",
+                  "example": false
                 },
                 "mcpServers": {
                   "$ref": "#/components/schemas/BTreeMap",
@@ -18062,7 +18209,8 @@
                 },
                 "name": {
                   "type": "string",
-                  "description": "Name, unique per org (e.g. \"generic\")."
+                  "description": "Name, unique per org (e.g. \"generic\").",
+                  "example": "generic"
                 },
                 "network_access": {
                   "oneOf": [
@@ -18089,19 +18237,25 @@
                 },
                 "system_prompt": {
                   "type": "string",
-                  "description": "System prompt that defines the harness's base behavior.\nForms the foundation of the prompt stack."
+                  "description": "System prompt that defines the harness's base behavior.\nForms the foundation of the prompt stack.",
+                  "example": "You are an Everruns agent. Be concise, cite sources when possible, and decline tasks outside your assigned scope."
                 },
                 "tags": {
                   "type": "array",
                   "items": {
                     "type": "string"
                   },
-                  "description": "Tags for organizing and filtering harnesses."
+                  "description": "Tags for organizing and filtering harnesses.",
+                  "example": [
+                    "baseline",
+                    "production"
+                  ]
                 },
                 "updated_at": {
                   "type": "string",
                   "format": "date-time",
-                  "description": "Timestamp when the harness was last updated."
+                  "description": "Timestamp when the harness was last updated.",
+                  "example": "2026-05-20T14:00:00Z"
                 }
               }
             },
@@ -18918,12 +19072,14 @@
                     "null"
                   ],
                   "format": "date-time",
-                  "description": "Timestamp when this resource was archived, if any (RFC 3339)."
+                  "description": "Timestamp when this resource was archived, if any (RFC 3339).",
+                  "example": "2026-05-26T00:00:00Z"
                 },
                 "created_at": {
                   "type": "string",
                   "format": "date-time",
-                  "description": "Timestamp when this resource was created (RFC 3339)."
+                  "description": "Timestamp when this resource was created (RFC 3339).",
+                  "example": "2026-04-01T10:00:00Z"
                 },
                 "deleted_at": {
                   "type": [
@@ -18931,14 +19087,16 @@
                     "null"
                   ],
                   "format": "date-time",
-                  "description": "Timestamp when this resource was soft-deleted, if any (RFC 3339)."
+                  "description": "Timestamp when this resource was soft-deleted, if any (RFC 3339).",
+                  "example": "2026-05-26T00:00:00Z"
                 },
                 "description": {
                   "type": [
                     "string",
                     "null"
                   ],
-                  "description": "Human-readable description. Safe to render in user-facing messages."
+                  "description": "Human-readable description. Safe to render in user-facing messages.",
+                  "example": "Living design documents synced from GitHub"
                 },
                 "id": {
                   "type": "string",
@@ -18947,14 +19105,16 @@
                 },
                 "is_readonly": {
                   "type": "boolean",
-                  "description": "Whether the volume is mounted read-only into sessions. Read-only volumes accept no writes from the session sandbox."
+                  "description": "Whether the volume is mounted read-only into sessions. Read-only volumes accept no writes from the session sandbox.",
+                  "example": false
                 },
                 "last_sync_error": {
                   "type": [
                     "string",
                     "null"
                   ],
-                  "description": "Most recent sync error message; cleared on the next successful sync."
+                  "description": "Most recent sync error message; cleared on the next successful sync.",
+                  "example": "ssh: connect to host github.com port 22: Connection timed out"
                 },
                 "last_synced_at": {
                   "type": [
@@ -18962,11 +19122,13 @@
                     "null"
                   ],
                   "format": "date-time",
-                  "description": "Timestamp of the most recent successful sync (RFC 3339). `None` if never synced."
+                  "description": "Timestamp of the most recent successful sync (RFC 3339). `None` if never synced.",
+                  "example": "2026-05-25T08:00:00Z"
                 },
                 "name": {
                   "type": "string",
-                  "description": "Human-readable name. Safe to render in user-facing messages."
+                  "description": "Human-readable name. Safe to render in user-facing messages.",
+                  "example": "design-docs"
                 },
                 "source": {
                   "$ref": "#/components/schemas/VolumeSourceResponse",
@@ -18974,20 +19136,24 @@
                 },
                 "source_type": {
                   "type": "string",
-                  "description": "Source kind discriminator (`manual`, `git`, `github`). Determines which `source` variant is populated."
+                  "description": "Source kind discriminator (`manual`, `git`, `github`). Determines which `source` variant is populated.",
+                  "example": "github"
                 },
                 "status": {
                   "type": "string",
-                  "description": "Current lifecycle status."
+                  "description": "Current lifecycle status.",
+                  "example": "active"
                 },
                 "sync_status": {
                   "type": "string",
-                  "description": "Current sync status (`idle`, `syncing`, `succeeded`, `failed`). Only meaningful when `source_type` is `git` or `github`."
+                  "description": "Current sync status (`idle`, `syncing`, `succeeded`, `failed`). Only meaningful when `source_type` is `git` or `github`.",
+                  "example": "succeeded"
                 },
                 "updated_at": {
                   "type": "string",
                   "format": "date-time",
-                  "description": "Timestamp when this resource was last updated (RFC 3339)."
+                  "description": "Timestamp when this resource was last updated (RFC 3339).",
+                  "example": "2026-05-25T08:00:00Z"
                 }
               }
             },
@@ -19804,7 +19970,8 @@
                             "null"
                           ],
                           "format": "date-time",
-                          "description": "Timestamp when the harness was archived."
+                          "description": "Timestamp when the harness was archived.",
+                          "example": "2026-05-26T00:00:00Z"
                         },
                         "capabilities": {
                           "type": "array",
@@ -19816,7 +19983,8 @@
                         "created_at": {
                           "type": "string",
                           "format": "date-time",
-                          "description": "Timestamp when the harness was created."
+                          "description": "Timestamp when the harness was created.",
+                          "example": "2026-04-01T10:00:00Z"
                         },
                         "default_model_id": {
                           "type": [
@@ -19832,21 +20000,24 @@
                             "null"
                           ],
                           "format": "date-time",
-                          "description": "Timestamp when the harness was deleted."
+                          "description": "Timestamp when the harness was deleted.",
+                          "example": "2026-05-26T00:00:00Z"
                         },
                         "description": {
                           "type": [
                             "string",
                             "null"
                           ],
-                          "description": "Human-readable description of what the harness does."
+                          "description": "Human-readable description of what the harness does.",
+                          "example": "Default harness with file-system + secrets capabilities; safe baseline for new agents."
                         },
                         "display_name": {
                           "type": [
                             "string",
                             "null"
                           ],
-                          "description": "Human-readable display name shown in UI."
+                          "description": "Human-readable display name shown in UI.",
+                          "example": "Generic Harness"
                         },
                         "id": {
                           "type": "string",
@@ -19862,7 +20033,8 @@
                         },
                         "is_built_in": {
                           "type": "boolean",
-                          "description": "Whether this harness is built-in (system-managed, readonly).\nBuilt-in harnesses are provisioned during org initialization and\ncannot be modified or deleted via the API. Users can copy them."
+                          "description": "Whether this harness is built-in (system-managed, readonly).\nBuilt-in harnesses are provisioned during org initialization and\ncannot be modified or deleted via the API. Users can copy them.",
+                          "example": false
                         },
                         "mcpServers": {
                           "$ref": "#/components/schemas/BTreeMap",
@@ -19870,7 +20042,8 @@
                         },
                         "name": {
                           "type": "string",
-                          "description": "Name, unique per org (e.g. \"generic\")."
+                          "description": "Name, unique per org (e.g. \"generic\").",
+                          "example": "generic"
                         },
                         "network_access": {
                           "oneOf": [
@@ -19897,19 +20070,25 @@
                         },
                         "system_prompt": {
                           "type": "string",
-                          "description": "System prompt that defines the harness's base behavior.\nForms the foundation of the prompt stack."
+                          "description": "System prompt that defines the harness's base behavior.\nForms the foundation of the prompt stack.",
+                          "example": "You are an Everruns agent. Be concise, cite sources when possible, and decline tasks outside your assigned scope."
                         },
                         "tags": {
                           "type": "array",
                           "items": {
                             "type": "string"
                           },
-                          "description": "Tags for organizing and filtering harnesses."
+                          "description": "Tags for organizing and filtering harnesses.",
+                          "example": [
+                            "baseline",
+                            "production"
+                          ]
                         },
                         "updated_at": {
                           "type": "string",
                           "format": "date-time",
-                          "description": "Timestamp when the harness was last updated."
+                          "description": "Timestamp when the harness was last updated.",
+                          "example": "2026-05-20T14:00:00Z"
                         }
                       }
                     },
@@ -21849,6 +22028,7 @@
                   ],
                   "format": "int32",
                   "description": "Number of active (enabled) schedules for this session.\nPopulated when the session is fetched for API responses.",
+                  "example": 2,
                   "minimum": 0
                 },
                 "agent_id": {
@@ -21883,7 +22063,8 @@
                     "string",
                     "null"
                   ],
-                  "description": "Blueprint ID. When set, reason_activity and act_activity build RuntimeAgent\nfrom the blueprint definition instead of from harness_id/agent_id."
+                  "description": "Blueprint ID. When set, reason_activity and act_activity build RuntimeAgent\nfrom the blueprint definition instead of from harness_id/agent_id.",
+                  "example": "blueprint_research_pack"
                 },
                 "capabilities": {
                   "type": "array",
@@ -21895,7 +22076,8 @@
                 "created_at": {
                   "type": "string",
                   "format": "date-time",
-                  "description": "Timestamp when the session was created."
+                  "description": "Timestamp when the session was created.",
+                  "example": "2026-05-25T10:00:00Z"
                 },
                 "effective_owner": {
                   "oneOf": [
@@ -21913,7 +22095,11 @@
                   "items": {
                     "type": "string"
                   },
-                  "description": "Aggregated UI features from all active capabilities (harness + agent + session).\nComputed at read time from the capability registry.\nKnown features: \"file_system\", \"schedules\", \"secrets\", \"key_value\",\n\"sql_database\", \"leased_resources\"."
+                  "description": "Aggregated UI features from all active capabilities (harness + agent + session).\nComputed at read time from the capability registry.\nKnown features: \"file_system\", \"schedules\", \"secrets\", \"key_value\",\n\"sql_database\", \"leased_resources\".",
+                  "example": [
+                    "file_system",
+                    "secrets"
+                  ]
                 },
                 "finished_at": {
                   "type": [
@@ -21921,7 +22107,8 @@
                     "null"
                   ],
                   "format": "date-time",
-                  "description": "Timestamp when the session finished (completed or failed)."
+                  "description": "Timestamp when the session finished (completed or failed).",
+                  "example": "2026-05-25T10:14:32Z"
                 },
                 "harness_id": {
                   "type": "string",
@@ -21956,14 +22143,16 @@
                     "boolean",
                     "null"
                   ],
-                  "description": "Whether this session is pinned by the current user.\nOnly populated when the request has an authenticated user context."
+                  "description": "Whether this session is pinned by the current user.\nOnly populated when the request has an authenticated user context.",
+                  "example": false
                 },
                 "locale": {
                   "type": [
                     "string",
                     "null"
                   ],
-                  "description": "Locale for localized agent behavior and formatting (BCP 47, e.g. `uk-UA`)."
+                  "description": "Locale for localized agent behavior and formatting (BCP 47, e.g. `uk-UA`).",
+                  "example": "en-US"
                 },
                 "max_iterations": {
                   "type": [
@@ -21971,6 +22160,7 @@
                     "null"
                   ],
                   "description": "Maximum number of LLM iterations per turn for this session.",
+                  "example": 50,
                   "minimum": 0
                 },
                 "mcpServers": {
@@ -22006,7 +22196,8 @@
                     "string",
                     "null"
                   ],
-                  "description": "Preview text from the last assistant response (truncated)."
+                  "description": "Preview text from the last assistant response (truncated).",
+                  "example": "Here is a Q3 plan covering the three pillars we discussed..."
                 },
                 "owner": {
                   "oneOf": [
@@ -22036,7 +22227,8 @@
                     "string",
                     "null"
                   ],
-                  "description": "Preview text from the first user message (truncated)."
+                  "description": "Preview text from the first user message (truncated).",
+                  "example": "Help me draft the Q3 marketing plan"
                 },
                 "resolved_owner_user_id": {
                   "type": [
@@ -22044,7 +22236,8 @@
                     "null"
                   ],
                   "format": "uuid",
-                  "description": "Denormalized effective human owner of the owning principal lineage."
+                  "description": "Denormalized effective human owner of the owning principal lineage.",
+                  "example": "550e8400-e29b-41d4-a716-446655440000"
                 },
                 "started_at": {
                   "type": [
@@ -22052,7 +22245,8 @@
                     "null"
                   ],
                   "format": "date-time",
-                  "description": "Timestamp when the session started executing."
+                  "description": "Timestamp when the session started executing.",
+                  "example": "2026-05-25T10:00:01Z"
                 },
                 "status": {
                   "$ref": "#/components/schemas/SessionStatus",
@@ -22063,7 +22257,8 @@
                     "string",
                     "null"
                   ],
-                  "description": "Human-readable subagent name (\"Test Runner\"), unique per parent."
+                  "description": "Human-readable subagent name (\"Test Runner\"), unique per parent.",
+                  "example": "Test Runner"
                 },
                 "subagent_status": {
                   "oneOf": [
@@ -22081,7 +22276,8 @@
                     "string",
                     "null"
                   ],
-                  "description": "Original task description given to this subagent."
+                  "description": "Original task description given to this subagent.",
+                  "example": "Run the integration test suite and report failures."
                 },
                 "system_prompt": {
                   "type": [
@@ -22095,14 +22291,20 @@
                   "items": {
                     "type": "string"
                   },
-                  "description": "Tags for organizing and filtering sessions."
+                  "description": "Tags for organizing and filtering sessions.",
+                  "example": [
+                    "marketing",
+                    "q3",
+                    "draft"
+                  ]
                 },
                 "title": {
                   "type": [
                     "string",
                     "null"
                   ],
-                  "description": "Human-readable title for the session."
+                  "description": "Human-readable title for the session.",
+                  "example": "Q3 marketing brief"
                 },
                 "tools": {
                   "type": "array",
@@ -22114,7 +22316,8 @@
                 "updated_at": {
                   "type": "string",
                   "format": "date-time",
-                  "description": "Timestamp when the session was last updated."
+                  "description": "Timestamp when the session was last updated.",
+                  "example": "2026-05-25T10:14:32Z"
                 },
                 "usage": {
                   "oneOf": [
@@ -22383,7 +22586,8 @@
                             "null"
                           ],
                           "format": "date-time",
-                          "description": "Timestamp when the agent was archived."
+                          "description": "Timestamp when the agent was archived.",
+                          "example": "2026-05-26T00:00:00Z"
                         },
                         "capabilities": {
                           "type": "array",
@@ -22395,7 +22599,8 @@
                         "created_at": {
                           "type": "string",
                           "format": "date-time",
-                          "description": "Timestamp when the agent was created."
+                          "description": "Timestamp when the agent was created.",
+                          "example": "2026-04-01T10:00:00Z"
                         },
                         "default_model_id": {
                           "type": [
@@ -22419,21 +22624,24 @@
                             "null"
                           ],
                           "format": "date-time",
-                          "description": "Timestamp when the agent was deleted."
+                          "description": "Timestamp when the agent was deleted.",
+                          "example": "2026-05-26T00:00:00Z"
                         },
                         "description": {
                           "type": [
                             "string",
                             "null"
                           ],
-                          "description": "Human-readable description of what the agent does."
+                          "description": "Human-readable description of what the agent does.",
+                          "example": "Handles refund and shipping questions; escalates billing disputes."
                         },
                         "display_name": {
                           "type": [
                             "string",
                             "null"
                           ],
-                          "description": "Human-readable display name shown in UI (e.g. \"Customer Support Agent\").\nFalls back to `name` when absent."
+                          "description": "Human-readable display name shown in UI (e.g. \"Customer Support Agent\").\nFalls back to `name` when absent.",
+                          "example": "Customer Support Agent"
                         },
                         "forked_from_agent_id": {
                           "type": [
@@ -22469,6 +22677,7 @@
                             "null"
                           ],
                           "description": "Maximum number of LLM iterations per turn for this agent.",
+                          "example": 50,
                           "minimum": 0
                         },
                         "mcpServers": {
@@ -22477,7 +22686,8 @@
                         },
                         "name": {
                           "type": "string",
-                          "description": "Name, unique per org (e.g. \"customer-support\")."
+                          "description": "Name, unique per org (e.g. \"customer-support\").",
+                          "example": "customer-support"
                         },
                         "network_access": {
                           "oneOf": [
@@ -22504,14 +22714,19 @@
                         },
                         "system_prompt": {
                           "type": "string",
-                          "description": "System prompt that defines the agent's behavior.\nSent as the first message in every conversation."
+                          "description": "System prompt that defines the agent's behavior.\nSent as the first message in every conversation.",
+                          "example": "You are a friendly customer support agent for Acme Corp. Verify orders before issuing refunds. Escalate any billing disputes to a human."
                         },
                         "tags": {
                           "type": "array",
                           "items": {
                             "type": "string"
                           },
-                          "description": "Tags for organizing and filtering agents."
+                          "description": "Tags for organizing and filtering agents.",
+                          "example": [
+                            "support",
+                            "production"
+                          ]
                         },
                         "tools": {
                           "type": "array",
@@ -22523,7 +22738,8 @@
                         "updated_at": {
                           "type": "string",
                           "format": "date-time",
-                          "description": "Timestamp when the agent was last updated."
+                          "description": "Timestamp when the agent was last updated.",
+                          "example": "2026-05-20T14:00:00Z"
                         },
                         "usage": {
                           "oneOf": [
@@ -22657,6 +22873,7 @@
                       ],
                       "format": "int32",
                       "description": "Number of active (enabled) schedules for this session.\nPopulated when the session is fetched for API responses.",
+                      "example": 2,
                       "minimum": 0
                     },
                     "agent_id": {
@@ -22691,7 +22908,8 @@
                         "string",
                         "null"
                       ],
-                      "description": "Blueprint ID. When set, reason_activity and act_activity build RuntimeAgent\nfrom the blueprint definition instead of from harness_id/agent_id."
+                      "description": "Blueprint ID. When set, reason_activity and act_activity build RuntimeAgent\nfrom the blueprint definition instead of from harness_id/agent_id.",
+                      "example": "blueprint_research_pack"
                     },
                     "capabilities": {
                       "type": "array",
@@ -22703,7 +22921,8 @@
                     "created_at": {
                       "type": "string",
                       "format": "date-time",
-                      "description": "Timestamp when the session was created."
+                      "description": "Timestamp when the session was created.",
+                      "example": "2026-05-25T10:00:00Z"
                     },
                     "effective_owner": {
                       "oneOf": [
@@ -22721,7 +22940,11 @@
                       "items": {
                         "type": "string"
                       },
-                      "description": "Aggregated UI features from all active capabilities (harness + agent + session).\nComputed at read time from the capability registry.\nKnown features: \"file_system\", \"schedules\", \"secrets\", \"key_value\",\n\"sql_database\", \"leased_resources\"."
+                      "description": "Aggregated UI features from all active capabilities (harness + agent + session).\nComputed at read time from the capability registry.\nKnown features: \"file_system\", \"schedules\", \"secrets\", \"key_value\",\n\"sql_database\", \"leased_resources\".",
+                      "example": [
+                        "file_system",
+                        "secrets"
+                      ]
                     },
                     "finished_at": {
                       "type": [
@@ -22729,7 +22952,8 @@
                         "null"
                       ],
                       "format": "date-time",
-                      "description": "Timestamp when the session finished (completed or failed)."
+                      "description": "Timestamp when the session finished (completed or failed).",
+                      "example": "2026-05-25T10:14:32Z"
                     },
                     "harness_id": {
                       "type": "string",
@@ -22764,14 +22988,16 @@
                         "boolean",
                         "null"
                       ],
-                      "description": "Whether this session is pinned by the current user.\nOnly populated when the request has an authenticated user context."
+                      "description": "Whether this session is pinned by the current user.\nOnly populated when the request has an authenticated user context.",
+                      "example": false
                     },
                     "locale": {
                       "type": [
                         "string",
                         "null"
                       ],
-                      "description": "Locale for localized agent behavior and formatting (BCP 47, e.g. `uk-UA`)."
+                      "description": "Locale for localized agent behavior and formatting (BCP 47, e.g. `uk-UA`).",
+                      "example": "en-US"
                     },
                     "max_iterations": {
                       "type": [
@@ -22779,6 +23005,7 @@
                         "null"
                       ],
                       "description": "Maximum number of LLM iterations per turn for this session.",
+                      "example": 50,
                       "minimum": 0
                     },
                     "mcpServers": {
@@ -22814,7 +23041,8 @@
                         "string",
                         "null"
                       ],
-                      "description": "Preview text from the last assistant response (truncated)."
+                      "description": "Preview text from the last assistant response (truncated).",
+                      "example": "Here is a Q3 plan covering the three pillars we discussed..."
                     },
                     "owner": {
                       "oneOf": [
@@ -22844,7 +23072,8 @@
                         "string",
                         "null"
                       ],
-                      "description": "Preview text from the first user message (truncated)."
+                      "description": "Preview text from the first user message (truncated).",
+                      "example": "Help me draft the Q3 marketing plan"
                     },
                     "resolved_owner_user_id": {
                       "type": [
@@ -22852,7 +23081,8 @@
                         "null"
                       ],
                       "format": "uuid",
-                      "description": "Denormalized effective human owner of the owning principal lineage."
+                      "description": "Denormalized effective human owner of the owning principal lineage.",
+                      "example": "550e8400-e29b-41d4-a716-446655440000"
                     },
                     "started_at": {
                       "type": [
@@ -22860,7 +23090,8 @@
                         "null"
                       ],
                       "format": "date-time",
-                      "description": "Timestamp when the session started executing."
+                      "description": "Timestamp when the session started executing.",
+                      "example": "2026-05-25T10:00:01Z"
                     },
                     "status": {
                       "$ref": "#/components/schemas/SessionStatus",
@@ -22871,7 +23102,8 @@
                         "string",
                         "null"
                       ],
-                      "description": "Human-readable subagent name (\"Test Runner\"), unique per parent."
+                      "description": "Human-readable subagent name (\"Test Runner\"), unique per parent.",
+                      "example": "Test Runner"
                     },
                     "subagent_status": {
                       "oneOf": [
@@ -22889,7 +23121,8 @@
                         "string",
                         "null"
                       ],
-                      "description": "Original task description given to this subagent."
+                      "description": "Original task description given to this subagent.",
+                      "example": "Run the integration test suite and report failures."
                     },
                     "system_prompt": {
                       "type": [
@@ -22903,14 +23136,20 @@
                       "items": {
                         "type": "string"
                       },
-                      "description": "Tags for organizing and filtering sessions."
+                      "description": "Tags for organizing and filtering sessions.",
+                      "example": [
+                        "marketing",
+                        "q3",
+                        "draft"
+                      ]
                     },
                     "title": {
                       "type": [
                         "string",
                         "null"
                       ],
-                      "description": "Human-readable title for the session."
+                      "description": "Human-readable title for the session.",
+                      "example": "Q3 marketing brief"
                     },
                     "tools": {
                       "type": "array",
@@ -22922,7 +23161,8 @@
                     "updated_at": {
                       "type": "string",
                       "format": "date-time",
-                      "description": "Timestamp when the session was last updated."
+                      "description": "Timestamp when the session was last updated.",
+                      "example": "2026-05-25T10:14:32Z"
                     },
                     "usage": {
                       "oneOf": [
@@ -23017,7 +23257,8 @@
           "created_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Timestamp when this account was created (RFC 3339)."
+            "description": "Timestamp when this account was created (RFC 3339).",
+            "example": "2026-04-01T10:00:00Z"
           },
           "id": {
             "$ref": "#/components/schemas/payacctId",
@@ -23025,18 +23266,21 @@
           },
           "label": {
             "type": "string",
-            "description": "Human-readable label for this account. Safe to render in user-facing messages."
+            "description": "Human-readable label for this account. Safe to render in user-facing messages.",
+            "example": "Production USDC ops wallet"
           },
           "metadata": {
             "description": "Free-form metadata attached to this account (caller-defined; opaque to the platform)."
           },
           "organization_id": {
             "type": "string",
-            "description": "Owning organization's prefixed public identifier."
+            "description": "Owning organization's prefixed public identifier.",
+            "example": "org_01933b5a000070008000000000000001"
           },
           "owner_id": {
             "type": "string",
-            "description": "Prefixed identifier of the owning principal (e.g. `user_…`, `agent_…`, `org_…`)."
+            "description": "Prefixed identifier of the owning principal (e.g. `user_…`, `agent_…`, `org_…`).",
+            "example": "agent_01933b5a000070008000000000000001"
           },
           "owner_type": {
             "$ref": "#/components/schemas/PaymentOwnerType",
@@ -23047,7 +23291,8 @@
               "string",
               "null"
             ],
-            "description": "Public address on the rail (chain address, account number, etc.). Optional; `None` until provisioning completes."
+            "description": "Public address on the rail (chain address, account number, etc.). Optional; `None` until provisioning completes.",
+            "example": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
           },
           "rail": {
             "$ref": "#/components/schemas/PaymentRail",
@@ -23060,7 +23305,8 @@
           "updated_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Timestamp when this account was last updated (RFC 3339)."
+            "description": "Timestamp when this account was last updated (RFC 3339).",
+            "example": "2026-05-20T14:00:00Z"
           }
         }
       },
@@ -23084,27 +23330,32 @@
           "amount_usd": {
             "type": "number",
             "format": "double",
-            "description": "Amount actually charged (USD)."
+            "description": "Amount actually charged (USD).",
+            "example": 0.014
           },
           "capability": {
             "type": "string",
-            "description": "Capability ID that originated this paid call."
+            "description": "Capability ID that originated this paid call.",
+            "example": "paid_search"
           },
           "created_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Timestamp when this attempt was created (RFC 3339)."
+            "description": "Timestamp when this attempt was created (RFC 3339).",
+            "example": "2026-05-25T10:14:00Z"
           },
           "currency": {
             "type": "string",
-            "description": "ISO 4217 currency code for the charge (typically `USD`)."
+            "description": "ISO 4217 currency code for the charge (typically `USD`).",
+            "example": "USD"
           },
           "error_message": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Human-readable error message when `status` is `failed`; `None` otherwise."
+            "description": "Human-readable error message when `status` is `failed`; `None` otherwise.",
+            "example": "rail.insufficient_funds: settled balance below minimum"
           },
           "id": {
             "$ref": "#/components/schemas/payattId",
@@ -23112,11 +23363,13 @@
           },
           "operation": {
             "type": "string",
-            "description": "Capability-specific operation name that originated this paid call."
+            "description": "Capability-specific operation name that originated this paid call.",
+            "example": "search.query"
           },
           "organization_id": {
             "type": "string",
-            "description": "Owning organization's prefixed public identifier."
+            "description": "Owning organization's prefixed public identifier.",
+            "example": "org_01933b5a000070008000000000000001"
           },
           "payment_account_id": {
             "oneOf": [
@@ -23148,14 +23401,16 @@
               "string",
               "null"
             ],
-            "description": "Stable hash of the outbound request used to detect replays. `None` when not applicable."
+            "description": "Stable hash of the outbound request used to detect replays. `None` when not applicable.",
+            "example": "sha256:9f1e2a4c3d5b6e8a0b2c4d6e8f0a1b3c5d7e9f0a1b2c4d6e8f0a1b2c4d6e8f0a"
           },
           "session_id": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Session that initiated the paid call, if any."
+            "description": "Session that initiated the paid call, if any.",
+            "example": "session_01933b5a000070008000000000000001"
           },
           "status": {
             "$ref": "#/components/schemas/PaymentStatus",
@@ -23163,12 +23418,14 @@
           },
           "target_url": {
             "type": "string",
-            "description": "Destination URL of the paid outbound call."
+            "description": "Destination URL of the paid outbound call.",
+            "example": "https://api.example.com/v1/search"
           },
           "updated_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Timestamp when this attempt was last updated (RFC 3339)."
+            "description": "Timestamp when this attempt was last updated (RFC 3339).",
+            "example": "2026-05-25T10:14:02Z"
           }
         }
       },
@@ -23204,19 +23461,28 @@
             "items": {
               "type": "string"
             },
-            "description": "Capability IDs this policy permits paid calls for. Empty list means no capability gating."
+            "description": "Capability IDs this policy permits paid calls for. Empty list means no capability gating.",
+            "example": [
+              "paid_search",
+              "paid_image_gen"
+            ]
           },
           "allowed_hosts": {
             "type": "array",
             "items": {
               "type": "string"
             },
-            "description": "HTTP host allowlist for paid outbound calls. Empty list means no host gating."
+            "description": "HTTP host allowlist for paid outbound calls. Empty list means no host gating.",
+            "example": [
+              "api.openai.com",
+              "api.anthropic.com"
+            ]
           },
           "created_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Timestamp when this policy was created (RFC 3339)."
+            "description": "Timestamp when this policy was created (RFC 3339).",
+            "example": "2026-04-01T10:00:00Z"
           },
           "id": {
             "$ref": "#/components/schemas/paypolId",
@@ -23228,7 +23494,8 @@
               "null"
             ],
             "format": "double",
-            "description": "Maximum cumulative amount (USD) per UTC day. **Advisory only — not yet enforced.** Stored on the policy for forward compatibility; the payment authority currently checks only `max_amount_usd_per_request`. `None` means no per-day cap."
+            "description": "Maximum cumulative amount (USD) per UTC day. **Advisory only — not yet enforced.** Stored on the policy for forward compatibility; the payment authority currently checks only `max_amount_usd_per_request`. `None` means no per-day cap.",
+            "example": 50.0
           },
           "max_amount_usd_per_request": {
             "type": [
@@ -23236,7 +23503,8 @@
               "null"
             ],
             "format": "double",
-            "description": "Maximum amount (USD) any single paid request may settle for. **Enforced** by the payment authority at policy selection. `None` means no per-request cap."
+            "description": "Maximum amount (USD) any single paid request may settle for. **Enforced** by the payment authority at policy selection. `None` means no per-request cap.",
+            "example": 2.5
           },
           "max_amount_usd_per_turn": {
             "type": [
@@ -23244,14 +23512,16 @@
               "null"
             ],
             "format": "double",
-            "description": "Maximum cumulative amount (USD) per agent turn. **Advisory only — not yet enforced.** Stored on the policy for forward compatibility; the payment authority currently checks only `max_amount_usd_per_request`. `None` means no per-turn cap."
+            "description": "Maximum cumulative amount (USD) per agent turn. **Advisory only — not yet enforced.** Stored on the policy for forward compatibility; the payment authority currently checks only `max_amount_usd_per_request`. `None` means no per-turn cap.",
+            "example": 5.0
           },
           "metadata": {
             "description": "Free-form metadata attached to this policy."
           },
           "organization_id": {
             "type": "string",
-            "description": "Owning organization's prefixed public identifier."
+            "description": "Owning organization's prefixed public identifier.",
+            "example": "org_01933b5a000070008000000000000001"
           },
           "payment_account_id": {
             "$ref": "#/components/schemas/payacctId",
@@ -23270,7 +23540,8 @@
               "null"
             ],
             "format": "double",
-            "description": "Threshold (USD) above which a request would require explicit human approval. **Advisory only — not yet enforced.** Stored on the policy for forward compatibility; no approval gate is wired up yet. `None` disables the (future) gate."
+            "description": "Threshold (USD) above which a request would require explicit human approval. **Advisory only — not yet enforced.** Stored on the policy for forward compatibility; no approval gate is wired up yet. `None` disables the (future) gate.",
+            "example": 10.0
           },
           "status": {
             "$ref": "#/components/schemas/PaymentStatus",
@@ -23278,16 +23549,19 @@
           },
           "subject_id": {
             "type": "string",
-            "description": "Prefixed identifier of the bound subject."
+            "description": "Prefixed identifier of the bound subject.",
+            "example": "identity_01933b5a000070008000000000000001"
           },
           "subject_type": {
             "type": "string",
-            "description": "Class of subject this policy binds to (e.g. `agent_identity`, `session`)."
+            "description": "Class of subject this policy binds to (e.g. `agent_identity`, `session`).",
+            "example": "agent_identity"
           },
           "updated_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Timestamp when this policy was last updated (RFC 3339)."
+            "description": "Timestamp when this policy was last updated (RFC 3339).",
+            "example": "2026-05-20T14:00:00Z"
           }
         }
       },
@@ -23955,14 +24229,18 @@
         "properties": {
           "dataset": {
             "type": "string",
-            "description": "Dataset name to query (see `GET /v1/reports/catalog` for the list of available datasets)."
+            "description": "Dataset name to query (see `GET /v1/reports/catalog` for the list of available datasets).",
+            "example": "sessions"
           },
           "dimensions": {
             "type": "array",
             "items": {
               "type": "string"
             },
-            "description": "Columns to group by. Empty list returns one aggregate row."
+            "description": "Columns to group by. Empty list returns one aggregate row.",
+            "example": [
+              "status"
+            ]
           },
           "filters": {
             "type": "array",
@@ -23975,6 +24253,7 @@
             "type": "integer",
             "format": "int32",
             "description": "Maximum number of rows to return (defaults to 100).",
+            "example": 100,
             "minimum": 0
           },
           "measures": {
@@ -23982,7 +24261,11 @@
             "items": {
               "type": "string"
             },
-            "description": "Aggregations to compute (count, sum, avg, etc.). Empty list returns row counts only."
+            "description": "Aggregations to compute (count, sum, avg, etc.). Empty list returns row counts only.",
+            "example": [
+              "session_count",
+              "avg_duration_ms"
+            ]
           },
           "order_by": {
             "type": "array",
@@ -24470,50 +24753,60 @@
               "null"
             ],
             "format": "date-time",
-            "description": "Timestamp when this resource completed, if any (RFC 3339)."
+            "description": "Timestamp when this resource completed, if any (RFC 3339).",
+            "example": "2026-05-25T02:00:12Z"
           },
           "created_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Timestamp when this resource was created (RFC 3339)."
+            "description": "Timestamp when this resource was created (RFC 3339).",
+            "example": "2026-05-25T02:00:00Z"
           },
           "duration_ms": {
             "type": [
               "integer",
               "null"
             ],
-            "format": "int32"
+            "format": "int32",
+            "description": "Total execution duration in milliseconds (`completed_at - started_at`). `None` while still running.",
+            "example": 11000
           },
           "error": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Human-readable error message, populated when this resource is in a failed state."
+            "description": "Human-readable error message, populated when this resource is in a failed state.",
+            "example": "workflow.exec.timeout: activity exceeded 30s budget"
           },
           "id": {
             "type": "string",
             "format": "uuid",
-            "description": "UUID of the schedule execution."
+            "description": "UUID of the schedule execution.",
+            "example": "01933b5b-0000-7000-8000-000000000001"
           },
           "schedule_id": {
             "type": "string",
             "format": "uuid",
-            "description": "UUID of the owning schedule."
+            "description": "UUID of the owning schedule.",
+            "example": "01933b5a-0000-7000-8000-000000000001"
           },
           "scheduled_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Timestamp when this resource is scheduled to run (RFC 3339)."
+            "description": "Timestamp when this resource is scheduled to run (RFC 3339).",
+            "example": "2026-05-25T02:00:00Z"
           },
           "started_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Timestamp when this resource started, if any (RFC 3339)."
+            "description": "Timestamp when this resource started, if any (RFC 3339).",
+            "example": "2026-05-25T02:00:01Z"
           },
           "status": {
             "type": "string",
-            "description": "Current lifecycle status."
+            "description": "Current lifecycle status (`pending`, `running`, `completed`, `failed`, `skipped`).",
+            "example": "completed"
           },
           "task_id": {
             "type": [
@@ -24521,7 +24814,8 @@
               "null"
             ],
             "format": "uuid",
-            "description": "Durable task's identifier."
+            "description": "Durable task's identifier.",
+            "example": "01933b5d-0000-7000-8000-000000000001"
           },
           "workflow_id": {
             "type": [
@@ -24529,7 +24823,8 @@
               "null"
             ],
             "format": "uuid",
-            "description": "Durable workflow's identifier."
+            "description": "Durable workflow's identifier.",
+            "example": "01933b5c-0000-7000-8000-000000000001"
           }
         }
       },
@@ -24551,6 +24846,7 @@
           "total": {
             "type": "integer",
             "description": "Total number of items matching the query, across all pages.",
+            "example": 142,
             "minimum": 0
           }
         }
@@ -24572,32 +24868,38 @@
         "properties": {
           "catch_up_missed": {
             "type": "boolean",
-            "description": "When `true`, missed fires (while the scheduler was down, paused, or unreachable) are queued and run after recovery, subject to `max_catch_up`."
+            "description": "When `true`, missed fires (while the scheduler was down, paused, or unreachable) are queued and run after recovery, subject to `max_catch_up`.",
+            "example": false
           },
           "created_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Timestamp when this resource was created (RFC 3339)."
+            "description": "Timestamp when this resource was created (RFC 3339).",
+            "example": "2026-05-01T12:00:00Z"
           },
           "cron_expression": {
             "type": "string",
-            "description": "Cron expression in the standard `min hour day-of-month month day-of-week` form (6 fields with seconds optional). Evaluated in `timezone`."
+            "description": "Cron expression in the standard `min hour day-of-month month day-of-week` form (6 fields with seconds optional). Evaluated in `timezone`.",
+            "example": "0 2 * * *"
           },
           "description": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Human-readable description. Safe to render in user-facing messages."
+            "description": "Human-readable description. Safe to render in user-facing messages.",
+            "example": "Fires the support-triage agent every night at 02:00 UTC"
           },
           "enabled": {
             "type": "boolean",
-            "description": "When `false`, the schedule is paused — kept in storage but never fires until re-enabled."
+            "description": "When `false`, the schedule is paused — kept in storage but never fires until re-enabled.",
+            "example": true
           },
           "id": {
             "type": "string",
             "format": "uuid",
-            "description": "UUID of the schedule."
+            "description": "UUID of the schedule.",
+            "example": "01933b5a-0000-7000-8000-000000000001"
           },
           "last_triggered_at": {
             "type": [
@@ -24605,7 +24907,8 @@
               "null"
             ],
             "format": "date-time",
-            "description": "Timestamp of the most recent fire (RFC 3339). `None` if never triggered."
+            "description": "Timestamp of the most recent fire (RFC 3339). `None` if never triggered.",
+            "example": "2026-05-25T02:00:00Z"
           },
           "max_catch_up": {
             "type": [
@@ -24614,6 +24917,7 @@
             ],
             "format": "int32",
             "description": "Maximum number of missed fires to replay when `catch_up_missed` is `true`. Older missed fires are dropped. `None` means no cap.",
+            "example": 3,
             "minimum": 0
           },
           "max_concurrent": {
@@ -24623,11 +24927,13 @@
             ],
             "format": "int32",
             "description": "Maximum number of overlapping executions allowed. `None` means no limit beyond the worker pool's concurrency.",
+            "example": 1,
             "minimum": 0
           },
           "name": {
             "type": "string",
-            "description": "Human-readable name. Safe to render in user-facing messages."
+            "description": "Human-readable name. Safe to render in user-facing messages.",
+            "example": "nightly-triage"
           },
           "next_trigger_at": {
             "type": [
@@ -24635,10 +24941,11 @@
               "null"
             ],
             "format": "date-time",
-            "description": "Timestamp of the next scheduled fire (RFC 3339). `None` when the schedule is disabled or the cron expression has no upcoming match."
+            "description": "Timestamp of the next scheduled fire (RFC 3339). `None` when the schedule is disabled or the cron expression has no upcoming match.",
+            "example": "2026-05-26T02:00:00Z"
           },
           "retry_policy": {
-            "description": "Optional retry policy for failed runs (provider-specific JSON; see the durable engine's `RetryPolicy`)."
+            "description": "Optional retry policy for failed runs (provider-specific JSON; see the durable engine's `RetryPolicy`).\nExample: `{\"max_attempts\": 3, \"initial_backoff_secs\": 30, \"backoff_multiplier\": 2.0}`."
           },
           "target": {
             "$ref": "#/components/schemas/ScheduleTargetResponse",
@@ -24646,12 +24953,14 @@
           },
           "timezone": {
             "type": "string",
-            "description": "IANA timezone name used to interpret `cron_expression` (e.g. `UTC`, `America/New_York`)."
+            "description": "IANA timezone name used to interpret `cron_expression` (e.g. `UTC`, `America/New_York`).",
+            "example": "UTC"
           },
           "updated_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Timestamp when this resource was last updated (RFC 3339)."
+            "description": "Timestamp when this resource was last updated (RFC 3339).",
+            "example": "2026-05-20T12:00:00Z"
           }
         }
       },
@@ -24672,12 +24981,14 @@
             ],
             "format": "int64",
             "description": "Average execution duration in milliseconds across `total_executions`. `None` when no executions exist yet.",
+            "example": 8421,
             "minimum": 0
           },
           "failed_executions": {
             "type": "integer",
             "format": "int64",
             "description": "Count of executions that ended in failure (after exhausting retries).",
+            "example": 3,
             "minimum": 0
           },
           "last_execution_status": {
@@ -24685,24 +24996,28 @@
               "string",
               "null"
             ],
-            "description": "Status of the most recent execution (`succeeded`, `failed`, `skipped`, `running`). `None` if the schedule has never fired."
+            "description": "Status of the most recent execution (`succeeded`, `failed`, `skipped`, `running`). `None` if the schedule has never fired.",
+            "example": "completed"
           },
           "skipped_executions": {
             "type": "integer",
             "format": "int64",
             "description": "Count of fires that were intentionally skipped (e.g. blocked by `max_concurrent` or disabled mid-fire).",
+            "example": 2,
             "minimum": 0
           },
           "successful_executions": {
             "type": "integer",
             "format": "int64",
             "description": "Count of executions that completed successfully.",
+            "example": 137,
             "minimum": 0
           },
           "total_executions": {
             "type": "integer",
             "format": "int64",
             "description": "Total number of executions recorded for this schedule (sum of successful + failed + skipped).",
+            "example": 142,
             "minimum": 0
           }
         }
@@ -24746,13 +25061,18 @@
           "input"
         ],
         "properties": {
-          "input": {},
+          "input": {
+            "description": "Input JSON payload passed to the workflow/activity on each fire."
+          },
           "name": {
             "type": "string",
-            "description": "Human-readable name. Safe to render in user-facing messages."
+            "description": "Human-readable name. Safe to render in user-facing messages.",
+            "example": "session.run"
           },
           "type": {
-            "type": "string"
+            "type": "string",
+            "description": "Target type discriminator (`workflow` or `activity`).",
+            "example": "workflow"
           }
         }
       },
@@ -24775,6 +25095,7 @@
             "type": "integer",
             "format": "int64",
             "description": "Total number of items matching the query, across all pages.",
+            "example": 17,
             "minimum": 0
           }
         }
@@ -24856,6 +25177,7 @@
             ],
             "format": "int32",
             "description": "Number of active (enabled) schedules for this session.\nPopulated when the session is fetched for API responses.",
+            "example": 2,
             "minimum": 0
           },
           "agent_id": {
@@ -24890,7 +25212,8 @@
               "string",
               "null"
             ],
-            "description": "Blueprint ID. When set, reason_activity and act_activity build RuntimeAgent\nfrom the blueprint definition instead of from harness_id/agent_id."
+            "description": "Blueprint ID. When set, reason_activity and act_activity build RuntimeAgent\nfrom the blueprint definition instead of from harness_id/agent_id.",
+            "example": "blueprint_research_pack"
           },
           "capabilities": {
             "type": "array",
@@ -24902,7 +25225,8 @@
           "created_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Timestamp when the session was created."
+            "description": "Timestamp when the session was created.",
+            "example": "2026-05-25T10:00:00Z"
           },
           "effective_owner": {
             "oneOf": [
@@ -24920,7 +25244,11 @@
             "items": {
               "type": "string"
             },
-            "description": "Aggregated UI features from all active capabilities (harness + agent + session).\nComputed at read time from the capability registry.\nKnown features: \"file_system\", \"schedules\", \"secrets\", \"key_value\",\n\"sql_database\", \"leased_resources\"."
+            "description": "Aggregated UI features from all active capabilities (harness + agent + session).\nComputed at read time from the capability registry.\nKnown features: \"file_system\", \"schedules\", \"secrets\", \"key_value\",\n\"sql_database\", \"leased_resources\".",
+            "example": [
+              "file_system",
+              "secrets"
+            ]
           },
           "finished_at": {
             "type": [
@@ -24928,7 +25256,8 @@
               "null"
             ],
             "format": "date-time",
-            "description": "Timestamp when the session finished (completed or failed)."
+            "description": "Timestamp when the session finished (completed or failed).",
+            "example": "2026-05-25T10:14:32Z"
           },
           "harness_id": {
             "type": "string",
@@ -24963,14 +25292,16 @@
               "boolean",
               "null"
             ],
-            "description": "Whether this session is pinned by the current user.\nOnly populated when the request has an authenticated user context."
+            "description": "Whether this session is pinned by the current user.\nOnly populated when the request has an authenticated user context.",
+            "example": false
           },
           "locale": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Locale for localized agent behavior and formatting (BCP 47, e.g. `uk-UA`)."
+            "description": "Locale for localized agent behavior and formatting (BCP 47, e.g. `uk-UA`).",
+            "example": "en-US"
           },
           "max_iterations": {
             "type": [
@@ -24978,6 +25309,7 @@
               "null"
             ],
             "description": "Maximum number of LLM iterations per turn for this session.",
+            "example": 50,
             "minimum": 0
           },
           "mcpServers": {
@@ -25013,7 +25345,8 @@
               "string",
               "null"
             ],
-            "description": "Preview text from the last assistant response (truncated)."
+            "description": "Preview text from the last assistant response (truncated).",
+            "example": "Here is a Q3 plan covering the three pillars we discussed..."
           },
           "owner": {
             "oneOf": [
@@ -25043,7 +25376,8 @@
               "string",
               "null"
             ],
-            "description": "Preview text from the first user message (truncated)."
+            "description": "Preview text from the first user message (truncated).",
+            "example": "Help me draft the Q3 marketing plan"
           },
           "resolved_owner_user_id": {
             "type": [
@@ -25051,7 +25385,8 @@
               "null"
             ],
             "format": "uuid",
-            "description": "Denormalized effective human owner of the owning principal lineage."
+            "description": "Denormalized effective human owner of the owning principal lineage.",
+            "example": "550e8400-e29b-41d4-a716-446655440000"
           },
           "started_at": {
             "type": [
@@ -25059,7 +25394,8 @@
               "null"
             ],
             "format": "date-time",
-            "description": "Timestamp when the session started executing."
+            "description": "Timestamp when the session started executing.",
+            "example": "2026-05-25T10:00:01Z"
           },
           "status": {
             "$ref": "#/components/schemas/SessionStatus",
@@ -25070,7 +25406,8 @@
               "string",
               "null"
             ],
-            "description": "Human-readable subagent name (\"Test Runner\"), unique per parent."
+            "description": "Human-readable subagent name (\"Test Runner\"), unique per parent.",
+            "example": "Test Runner"
           },
           "subagent_status": {
             "oneOf": [
@@ -25088,7 +25425,8 @@
               "string",
               "null"
             ],
-            "description": "Original task description given to this subagent."
+            "description": "Original task description given to this subagent.",
+            "example": "Run the integration test suite and report failures."
           },
           "system_prompt": {
             "type": [
@@ -25102,14 +25440,20 @@
             "items": {
               "type": "string"
             },
-            "description": "Tags for organizing and filtering sessions."
+            "description": "Tags for organizing and filtering sessions.",
+            "example": [
+              "marketing",
+              "q3",
+              "draft"
+            ]
           },
           "title": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Human-readable title for the session."
+            "description": "Human-readable title for the session.",
+            "example": "Q3 marketing brief"
           },
           "tools": {
             "type": "array",
@@ -25121,7 +25465,8 @@
           "updated_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Timestamp when the session was last updated."
+            "description": "Timestamp when the session was last updated.",
+            "example": "2026-05-25T10:14:32Z"
           },
           "usage": {
             "oneOf": [
@@ -28430,12 +28775,14 @@
               "null"
             ],
             "format": "date-time",
-            "description": "Timestamp when this resource was archived, if any (RFC 3339)."
+            "description": "Timestamp when this resource was archived, if any (RFC 3339).",
+            "example": "2026-05-26T00:00:00Z"
           },
           "created_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Timestamp when this resource was created (RFC 3339)."
+            "description": "Timestamp when this resource was created (RFC 3339).",
+            "example": "2026-04-01T10:00:00Z"
           },
           "deleted_at": {
             "type": [
@@ -28443,14 +28790,16 @@
               "null"
             ],
             "format": "date-time",
-            "description": "Timestamp when this resource was soft-deleted, if any (RFC 3339)."
+            "description": "Timestamp when this resource was soft-deleted, if any (RFC 3339).",
+            "example": "2026-05-26T00:00:00Z"
           },
           "description": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Human-readable description. Safe to render in user-facing messages."
+            "description": "Human-readable description. Safe to render in user-facing messages.",
+            "example": "Living design documents synced from GitHub"
           },
           "id": {
             "type": "string",
@@ -28459,14 +28808,16 @@
           },
           "is_readonly": {
             "type": "boolean",
-            "description": "Whether the volume is mounted read-only into sessions. Read-only volumes accept no writes from the session sandbox."
+            "description": "Whether the volume is mounted read-only into sessions. Read-only volumes accept no writes from the session sandbox.",
+            "example": false
           },
           "last_sync_error": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Most recent sync error message; cleared on the next successful sync."
+            "description": "Most recent sync error message; cleared on the next successful sync.",
+            "example": "ssh: connect to host github.com port 22: Connection timed out"
           },
           "last_synced_at": {
             "type": [
@@ -28474,11 +28825,13 @@
               "null"
             ],
             "format": "date-time",
-            "description": "Timestamp of the most recent successful sync (RFC 3339). `None` if never synced."
+            "description": "Timestamp of the most recent successful sync (RFC 3339). `None` if never synced.",
+            "example": "2026-05-25T08:00:00Z"
           },
           "name": {
             "type": "string",
-            "description": "Human-readable name. Safe to render in user-facing messages."
+            "description": "Human-readable name. Safe to render in user-facing messages.",
+            "example": "design-docs"
           },
           "source": {
             "$ref": "#/components/schemas/VolumeSourceResponse",
@@ -28486,20 +28839,24 @@
           },
           "source_type": {
             "type": "string",
-            "description": "Source kind discriminator (`manual`, `git`, `github`). Determines which `source` variant is populated."
+            "description": "Source kind discriminator (`manual`, `git`, `github`). Determines which `source` variant is populated.",
+            "example": "github"
           },
           "status": {
             "type": "string",
-            "description": "Current lifecycle status."
+            "description": "Current lifecycle status.",
+            "example": "active"
           },
           "sync_status": {
             "type": "string",
-            "description": "Current sync status (`idle`, `syncing`, `succeeded`, `failed`). Only meaningful when `source_type` is `git` or `github`."
+            "description": "Current sync status (`idle`, `syncing`, `succeeded`, `failed`). Only meaningful when `source_type` is `git` or `github`.",
+            "example": "succeeded"
           },
           "updated_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Timestamp when this resource was last updated (RFC 3339)."
+            "description": "Timestamp when this resource was last updated (RFC 3339).",
+            "example": "2026-05-25T08:00:00Z"
           }
         }
       },
@@ -28612,7 +28969,8 @@
                   "null"
                 ],
                 "format": "date-time",
-                "description": "Timestamp when the agent was archived."
+                "description": "Timestamp when the agent was archived.",
+                "example": "2026-05-26T00:00:00Z"
               },
               "capabilities": {
                 "type": "array",
@@ -28624,7 +28982,8 @@
               "created_at": {
                 "type": "string",
                 "format": "date-time",
-                "description": "Timestamp when the agent was created."
+                "description": "Timestamp when the agent was created.",
+                "example": "2026-04-01T10:00:00Z"
               },
               "default_model_id": {
                 "type": [
@@ -28648,21 +29007,24 @@
                   "null"
                 ],
                 "format": "date-time",
-                "description": "Timestamp when the agent was deleted."
+                "description": "Timestamp when the agent was deleted.",
+                "example": "2026-05-26T00:00:00Z"
               },
               "description": {
                 "type": [
                   "string",
                   "null"
                 ],
-                "description": "Human-readable description of what the agent does."
+                "description": "Human-readable description of what the agent does.",
+                "example": "Handles refund and shipping questions; escalates billing disputes."
               },
               "display_name": {
                 "type": [
                   "string",
                   "null"
                 ],
-                "description": "Human-readable display name shown in UI (e.g. \"Customer Support Agent\").\nFalls back to `name` when absent."
+                "description": "Human-readable display name shown in UI (e.g. \"Customer Support Agent\").\nFalls back to `name` when absent.",
+                "example": "Customer Support Agent"
               },
               "forked_from_agent_id": {
                 "type": [
@@ -28698,6 +29060,7 @@
                   "null"
                 ],
                 "description": "Maximum number of LLM iterations per turn for this agent.",
+                "example": 50,
                 "minimum": 0
               },
               "mcpServers": {
@@ -28706,7 +29069,8 @@
               },
               "name": {
                 "type": "string",
-                "description": "Name, unique per org (e.g. \"customer-support\")."
+                "description": "Name, unique per org (e.g. \"customer-support\").",
+                "example": "customer-support"
               },
               "network_access": {
                 "oneOf": [
@@ -28733,14 +29097,19 @@
               },
               "system_prompt": {
                 "type": "string",
-                "description": "System prompt that defines the agent's behavior.\nSent as the first message in every conversation."
+                "description": "System prompt that defines the agent's behavior.\nSent as the first message in every conversation.",
+                "example": "You are a friendly customer support agent for Acme Corp. Verify orders before issuing refunds. Escalate any billing disputes to a human."
               },
               "tags": {
                 "type": "array",
                 "items": {
                   "type": "string"
                 },
-                "description": "Tags for organizing and filtering agents."
+                "description": "Tags for organizing and filtering agents.",
+                "example": [
+                  "support",
+                  "production"
+                ]
               },
               "tools": {
                 "type": "array",
@@ -28752,7 +29121,8 @@
               "updated_at": {
                 "type": "string",
                 "format": "date-time",
-                "description": "Timestamp when the agent was last updated."
+                "description": "Timestamp when the agent was last updated.",
+                "example": "2026-05-20T14:00:00Z"
               },
               "usage": {
                 "oneOf": [
@@ -29225,7 +29595,8 @@
                   "null"
                 ],
                 "format": "date-time",
-                "description": "Timestamp when the harness was archived."
+                "description": "Timestamp when the harness was archived.",
+                "example": "2026-05-26T00:00:00Z"
               },
               "capabilities": {
                 "type": "array",
@@ -29237,7 +29608,8 @@
               "created_at": {
                 "type": "string",
                 "format": "date-time",
-                "description": "Timestamp when the harness was created."
+                "description": "Timestamp when the harness was created.",
+                "example": "2026-04-01T10:00:00Z"
               },
               "default_model_id": {
                 "type": [
@@ -29253,21 +29625,24 @@
                   "null"
                 ],
                 "format": "date-time",
-                "description": "Timestamp when the harness was deleted."
+                "description": "Timestamp when the harness was deleted.",
+                "example": "2026-05-26T00:00:00Z"
               },
               "description": {
                 "type": [
                   "string",
                   "null"
                 ],
-                "description": "Human-readable description of what the harness does."
+                "description": "Human-readable description of what the harness does.",
+                "example": "Default harness with file-system + secrets capabilities; safe baseline for new agents."
               },
               "display_name": {
                 "type": [
                   "string",
                   "null"
                 ],
-                "description": "Human-readable display name shown in UI."
+                "description": "Human-readable display name shown in UI.",
+                "example": "Generic Harness"
               },
               "id": {
                 "type": "string",
@@ -29283,7 +29658,8 @@
               },
               "is_built_in": {
                 "type": "boolean",
-                "description": "Whether this harness is built-in (system-managed, readonly).\nBuilt-in harnesses are provisioned during org initialization and\ncannot be modified or deleted via the API. Users can copy them."
+                "description": "Whether this harness is built-in (system-managed, readonly).\nBuilt-in harnesses are provisioned during org initialization and\ncannot be modified or deleted via the API. Users can copy them.",
+                "example": false
               },
               "mcpServers": {
                 "$ref": "#/components/schemas/BTreeMap",
@@ -29291,7 +29667,8 @@
               },
               "name": {
                 "type": "string",
-                "description": "Name, unique per org (e.g. \"generic\")."
+                "description": "Name, unique per org (e.g. \"generic\").",
+                "example": "generic"
               },
               "network_access": {
                 "oneOf": [
@@ -29318,19 +29695,25 @@
               },
               "system_prompt": {
                 "type": "string",
-                "description": "System prompt that defines the harness's base behavior.\nForms the foundation of the prompt stack."
+                "description": "System prompt that defines the harness's base behavior.\nForms the foundation of the prompt stack.",
+                "example": "You are an Everruns agent. Be concise, cite sources when possible, and decline tasks outside your assigned scope."
               },
               "tags": {
                 "type": "array",
                 "items": {
                   "type": "string"
                 },
-                "description": "Tags for organizing and filtering harnesses."
+                "description": "Tags for organizing and filtering harnesses.",
+                "example": [
+                  "baseline",
+                  "production"
+                ]
               },
               "updated_at": {
                 "type": "string",
                 "format": "date-time",
-                "description": "Timestamp when the harness was last updated."
+                "description": "Timestamp when the harness was last updated.",
+                "example": "2026-05-20T14:00:00Z"
               }
             }
           },
@@ -29804,7 +30187,8 @@
                       "null"
                     ],
                     "format": "date-time",
-                    "description": "Timestamp when the agent was archived."
+                    "description": "Timestamp when the agent was archived.",
+                    "example": "2026-05-26T00:00:00Z"
                   },
                   "capabilities": {
                     "type": "array",
@@ -29816,7 +30200,8 @@
                   "created_at": {
                     "type": "string",
                     "format": "date-time",
-                    "description": "Timestamp when the agent was created."
+                    "description": "Timestamp when the agent was created.",
+                    "example": "2026-04-01T10:00:00Z"
                   },
                   "default_model_id": {
                     "type": [
@@ -29840,21 +30225,24 @@
                       "null"
                     ],
                     "format": "date-time",
-                    "description": "Timestamp when the agent was deleted."
+                    "description": "Timestamp when the agent was deleted.",
+                    "example": "2026-05-26T00:00:00Z"
                   },
                   "description": {
                     "type": [
                       "string",
                       "null"
                     ],
-                    "description": "Human-readable description of what the agent does."
+                    "description": "Human-readable description of what the agent does.",
+                    "example": "Handles refund and shipping questions; escalates billing disputes."
                   },
                   "display_name": {
                     "type": [
                       "string",
                       "null"
                     ],
-                    "description": "Human-readable display name shown in UI (e.g. \"Customer Support Agent\").\nFalls back to `name` when absent."
+                    "description": "Human-readable display name shown in UI (e.g. \"Customer Support Agent\").\nFalls back to `name` when absent.",
+                    "example": "Customer Support Agent"
                   },
                   "forked_from_agent_id": {
                     "type": [
@@ -29890,6 +30278,7 @@
                       "null"
                     ],
                     "description": "Maximum number of LLM iterations per turn for this agent.",
+                    "example": 50,
                     "minimum": 0
                   },
                   "mcpServers": {
@@ -29898,7 +30287,8 @@
                   },
                   "name": {
                     "type": "string",
-                    "description": "Name, unique per org (e.g. \"customer-support\")."
+                    "description": "Name, unique per org (e.g. \"customer-support\").",
+                    "example": "customer-support"
                   },
                   "network_access": {
                     "oneOf": [
@@ -29925,14 +30315,19 @@
                   },
                   "system_prompt": {
                     "type": "string",
-                    "description": "System prompt that defines the agent's behavior.\nSent as the first message in every conversation."
+                    "description": "System prompt that defines the agent's behavior.\nSent as the first message in every conversation.",
+                    "example": "You are a friendly customer support agent for Acme Corp. Verify orders before issuing refunds. Escalate any billing disputes to a human."
                   },
                   "tags": {
                     "type": "array",
                     "items": {
                       "type": "string"
                     },
-                    "description": "Tags for organizing and filtering agents."
+                    "description": "Tags for organizing and filtering agents.",
+                    "example": [
+                      "support",
+                      "production"
+                    ]
                   },
                   "tools": {
                     "type": "array",
@@ -29944,7 +30339,8 @@
                   "updated_at": {
                     "type": "string",
                     "format": "date-time",
-                    "description": "Timestamp when the agent was last updated."
+                    "description": "Timestamp when the agent was last updated.",
+                    "example": "2026-05-20T14:00:00Z"
                   },
                   "usage": {
                     "oneOf": [
@@ -30030,7 +30426,8 @@
                       "null"
                     ],
                     "format": "date-time",
-                    "description": "Timestamp when the harness was archived."
+                    "description": "Timestamp when the harness was archived.",
+                    "example": "2026-05-26T00:00:00Z"
                   },
                   "capabilities": {
                     "type": "array",
@@ -30042,7 +30439,8 @@
                   "created_at": {
                     "type": "string",
                     "format": "date-time",
-                    "description": "Timestamp when the harness was created."
+                    "description": "Timestamp when the harness was created.",
+                    "example": "2026-04-01T10:00:00Z"
                   },
                   "default_model_id": {
                     "type": [
@@ -30058,21 +30456,24 @@
                       "null"
                     ],
                     "format": "date-time",
-                    "description": "Timestamp when the harness was deleted."
+                    "description": "Timestamp when the harness was deleted.",
+                    "example": "2026-05-26T00:00:00Z"
                   },
                   "description": {
                     "type": [
                       "string",
                       "null"
                     ],
-                    "description": "Human-readable description of what the harness does."
+                    "description": "Human-readable description of what the harness does.",
+                    "example": "Default harness with file-system + secrets capabilities; safe baseline for new agents."
                   },
                   "display_name": {
                     "type": [
                       "string",
                       "null"
                     ],
-                    "description": "Human-readable display name shown in UI."
+                    "description": "Human-readable display name shown in UI.",
+                    "example": "Generic Harness"
                   },
                   "id": {
                     "type": "string",
@@ -30088,7 +30489,8 @@
                   },
                   "is_built_in": {
                     "type": "boolean",
-                    "description": "Whether this harness is built-in (system-managed, readonly).\nBuilt-in harnesses are provisioned during org initialization and\ncannot be modified or deleted via the API. Users can copy them."
+                    "description": "Whether this harness is built-in (system-managed, readonly).\nBuilt-in harnesses are provisioned during org initialization and\ncannot be modified or deleted via the API. Users can copy them.",
+                    "example": false
                   },
                   "mcpServers": {
                     "$ref": "#/components/schemas/BTreeMap",
@@ -30096,7 +30498,8 @@
                   },
                   "name": {
                     "type": "string",
-                    "description": "Name, unique per org (e.g. \"generic\")."
+                    "description": "Name, unique per org (e.g. \"generic\").",
+                    "example": "generic"
                   },
                   "network_access": {
                     "oneOf": [
@@ -30123,19 +30526,25 @@
                   },
                   "system_prompt": {
                     "type": "string",
-                    "description": "System prompt that defines the harness's base behavior.\nForms the foundation of the prompt stack."
+                    "description": "System prompt that defines the harness's base behavior.\nForms the foundation of the prompt stack.",
+                    "example": "You are an Everruns agent. Be concise, cite sources when possible, and decline tasks outside your assigned scope."
                   },
                   "tags": {
                     "type": "array",
                     "items": {
                       "type": "string"
                     },
-                    "description": "Tags for organizing and filtering harnesses."
+                    "description": "Tags for organizing and filtering harnesses.",
+                    "example": [
+                      "baseline",
+                      "production"
+                    ]
                   },
                   "updated_at": {
                     "type": "string",
                     "format": "date-time",
-                    "description": "Timestamp when the harness was last updated."
+                    "description": "Timestamp when the harness was last updated.",
+                    "example": "2026-05-20T14:00:00Z"
                   }
                 }
               },
@@ -30210,6 +30619,7 @@
                 ],
                 "format": "int32",
                 "description": "Number of active (enabled) schedules for this session.\nPopulated when the session is fetched for API responses.",
+                "example": 2,
                 "minimum": 0
               },
               "agent_id": {
@@ -30244,7 +30654,8 @@
                   "string",
                   "null"
                 ],
-                "description": "Blueprint ID. When set, reason_activity and act_activity build RuntimeAgent\nfrom the blueprint definition instead of from harness_id/agent_id."
+                "description": "Blueprint ID. When set, reason_activity and act_activity build RuntimeAgent\nfrom the blueprint definition instead of from harness_id/agent_id.",
+                "example": "blueprint_research_pack"
               },
               "capabilities": {
                 "type": "array",
@@ -30256,7 +30667,8 @@
               "created_at": {
                 "type": "string",
                 "format": "date-time",
-                "description": "Timestamp when the session was created."
+                "description": "Timestamp when the session was created.",
+                "example": "2026-05-25T10:00:00Z"
               },
               "effective_owner": {
                 "oneOf": [
@@ -30274,7 +30686,11 @@
                 "items": {
                   "type": "string"
                 },
-                "description": "Aggregated UI features from all active capabilities (harness + agent + session).\nComputed at read time from the capability registry.\nKnown features: \"file_system\", \"schedules\", \"secrets\", \"key_value\",\n\"sql_database\", \"leased_resources\"."
+                "description": "Aggregated UI features from all active capabilities (harness + agent + session).\nComputed at read time from the capability registry.\nKnown features: \"file_system\", \"schedules\", \"secrets\", \"key_value\",\n\"sql_database\", \"leased_resources\".",
+                "example": [
+                  "file_system",
+                  "secrets"
+                ]
               },
               "finished_at": {
                 "type": [
@@ -30282,7 +30698,8 @@
                   "null"
                 ],
                 "format": "date-time",
-                "description": "Timestamp when the session finished (completed or failed)."
+                "description": "Timestamp when the session finished (completed or failed).",
+                "example": "2026-05-25T10:14:32Z"
               },
               "harness_id": {
                 "type": "string",
@@ -30317,14 +30734,16 @@
                   "boolean",
                   "null"
                 ],
-                "description": "Whether this session is pinned by the current user.\nOnly populated when the request has an authenticated user context."
+                "description": "Whether this session is pinned by the current user.\nOnly populated when the request has an authenticated user context.",
+                "example": false
               },
               "locale": {
                 "type": [
                   "string",
                   "null"
                 ],
-                "description": "Locale for localized agent behavior and formatting (BCP 47, e.g. `uk-UA`)."
+                "description": "Locale for localized agent behavior and formatting (BCP 47, e.g. `uk-UA`).",
+                "example": "en-US"
               },
               "max_iterations": {
                 "type": [
@@ -30332,6 +30751,7 @@
                   "null"
                 ],
                 "description": "Maximum number of LLM iterations per turn for this session.",
+                "example": 50,
                 "minimum": 0
               },
               "mcpServers": {
@@ -30367,7 +30787,8 @@
                   "string",
                   "null"
                 ],
-                "description": "Preview text from the last assistant response (truncated)."
+                "description": "Preview text from the last assistant response (truncated).",
+                "example": "Here is a Q3 plan covering the three pillars we discussed..."
               },
               "owner": {
                 "oneOf": [
@@ -30397,7 +30818,8 @@
                   "string",
                   "null"
                 ],
-                "description": "Preview text from the first user message (truncated)."
+                "description": "Preview text from the first user message (truncated).",
+                "example": "Help me draft the Q3 marketing plan"
               },
               "resolved_owner_user_id": {
                 "type": [
@@ -30405,7 +30827,8 @@
                   "null"
                 ],
                 "format": "uuid",
-                "description": "Denormalized effective human owner of the owning principal lineage."
+                "description": "Denormalized effective human owner of the owning principal lineage.",
+                "example": "550e8400-e29b-41d4-a716-446655440000"
               },
               "started_at": {
                 "type": [
@@ -30413,7 +30836,8 @@
                   "null"
                 ],
                 "format": "date-time",
-                "description": "Timestamp when the session started executing."
+                "description": "Timestamp when the session started executing.",
+                "example": "2026-05-25T10:00:01Z"
               },
               "status": {
                 "$ref": "#/components/schemas/SessionStatus",
@@ -30424,7 +30848,8 @@
                   "string",
                   "null"
                 ],
-                "description": "Human-readable subagent name (\"Test Runner\"), unique per parent."
+                "description": "Human-readable subagent name (\"Test Runner\"), unique per parent.",
+                "example": "Test Runner"
               },
               "subagent_status": {
                 "oneOf": [
@@ -30442,7 +30867,8 @@
                   "string",
                   "null"
                 ],
-                "description": "Original task description given to this subagent."
+                "description": "Original task description given to this subagent.",
+                "example": "Run the integration test suite and report failures."
               },
               "system_prompt": {
                 "type": [
@@ -30456,14 +30882,20 @@
                 "items": {
                   "type": "string"
                 },
-                "description": "Tags for organizing and filtering sessions."
+                "description": "Tags for organizing and filtering sessions.",
+                "example": [
+                  "marketing",
+                  "q3",
+                  "draft"
+                ]
               },
               "title": {
                 "type": [
                   "string",
                   "null"
                 ],
-                "description": "Human-readable title for the session."
+                "description": "Human-readable title for the session.",
+                "example": "Q3 marketing brief"
               },
               "tools": {
                 "type": "array",
@@ -30475,7 +30907,8 @@
               "updated_at": {
                 "type": "string",
                 "format": "date-time",
-                "description": "Timestamp when the session was last updated."
+                "description": "Timestamp when the session was last updated.",
+                "example": "2026-05-25T10:14:32Z"
               },
               "usage": {
                 "oneOf": [

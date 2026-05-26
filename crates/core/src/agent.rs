@@ -101,16 +101,22 @@ pub struct AgentVersion {
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "agent_01933b5a000070008000000000000001"))]
     pub agent_id: AgentId,
     /// Monotonic per-agent version sequence number (1, 2, 3, ...). Increments on every snapshot.
+    #[cfg_attr(feature = "openapi", schema(example = 7))]
     pub version_number: i32,
     /// Semantic version major component.
+    #[cfg_attr(feature = "openapi", schema(example = 1))]
     pub semver_major: i32,
     /// Semantic version minor component.
+    #[cfg_attr(feature = "openapi", schema(example = 4))]
     pub semver_minor: i32,
     /// Semantic version patch component.
+    #[cfg_attr(feature = "openapi", schema(example = 2))]
     pub semver_patch: i32,
     /// Combined semver string for display (e.g. `1.4.2`).
+    #[cfg_attr(feature = "openapi", schema(example = "1.4.2"))]
     pub version: String,
     /// Whether this version was explicitly published by a user. Published versions are user-controlled semver releases; unpublished rows are automatic draft snapshots kept for audit and rollback.
+    #[cfg_attr(feature = "openapi", schema(example = true))]
     pub is_published: bool,
     /// Version this one was forked or branched from, if any.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -128,8 +134,10 @@ pub struct AgentVersion {
     pub change_kind: AgentVersionChangeKind,
     /// Human-readable summary of changes in this version (release notes). `None` if not provided.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "Switched default model to claude-sonnet-4-6; added refund-runbook capability."))]
     pub summary: Option<String>,
     /// Stable hash of `resolved_config` used to deduplicate adjacent identical snapshots.
+    #[cfg_attr(feature = "openapi", schema(example = "blake3:9f1e2a4c3d5b6e8a0b2c4d6e8f0a1b3c5d7e9f0a1b2c4d6e8f0a1b2c4d6e8f0a"))]
     pub config_hash: String,
     /// User-authored agent configuration JSON, exactly as submitted. Capabilities, MCP refs, model selection live here.
     #[cfg_attr(feature = "openapi", schema(value_type = Object))]
@@ -138,6 +146,7 @@ pub struct AgentVersion {
     #[cfg_attr(feature = "openapi", schema(value_type = Object))]
     pub resolved_config: serde_json::Value,
     /// Timestamp when this version was created (RFC 3339).
+    #[cfg_attr(feature = "openapi", schema(example = "2026-04-20T14:22:00Z"))]
     pub created_at: DateTime<Utc>,
 }
 
@@ -175,16 +184,20 @@ pub struct Agent {
     #[serde(skip, default = "Uuid::nil")]
     pub internal_id: Uuid,
     /// Name, unique per org (e.g. "customer-support").
+    #[cfg_attr(feature = "openapi", schema(example = "customer-support"))]
     pub name: String,
     /// Human-readable display name shown in UI (e.g. "Customer Support Agent").
     /// Falls back to `name` when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "Customer Support Agent"))]
     pub display_name: Option<String>,
     /// Human-readable description of what the agent does.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "Handles refund and shipping questions; escalates billing disputes."))]
     pub description: Option<String>,
     /// System prompt that defines the agent's behavior.
     /// Sent as the first message in every conversation.
+    #[cfg_attr(feature = "openapi", schema(example = "You are a friendly customer support agent for Acme Corp. Verify orders before issuing refunds. Escalate any billing disputes to a human."))]
     pub system_prompt: String,
     /// Default LLM model ID for this agent.
     /// Can be overridden at the session level.
@@ -209,6 +222,7 @@ pub struct Agent {
     pub root_agent_id: Option<AgentId>,
     /// Tags for organizing and filtering agents.
     #[serde(default)]
+    #[cfg_attr(feature = "openapi", schema(example = json!(["support", "production"])))]
     pub tags: Vec<String>,
     /// Capabilities enabled for this agent with per-agent configuration.
     /// Capabilities add tools and system prompt modifications.
@@ -223,6 +237,7 @@ pub struct Agent {
     pub network_access: Option<NetworkAccessList>,
     /// Maximum number of LLM iterations per turn for this agent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = 50))]
     pub max_iterations: Option<usize>,
     /// Client-side tools registered for this agent.
     /// These tools are executed by the client, not the server.
@@ -239,14 +254,18 @@ pub struct Agent {
     /// Current lifecycle status of the agent.
     pub status: AgentStatus,
     /// Timestamp when the agent was created.
+    #[cfg_attr(feature = "openapi", schema(example = "2026-04-01T10:00:00Z"))]
     pub created_at: DateTime<Utc>,
     /// Timestamp when the agent was last updated.
+    #[cfg_attr(feature = "openapi", schema(example = "2026-05-20T14:00:00Z"))]
     pub updated_at: DateTime<Utc>,
     /// Timestamp when the agent was archived.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "2026-05-26T00:00:00Z"))]
     pub archived_at: Option<DateTime<Utc>>,
     /// Timestamp when the agent was deleted.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "2026-05-26T00:00:00Z"))]
     pub deleted_at: Option<DateTime<Utc>>,
     /// Cumulative token usage across all sessions for this agent.
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -138,6 +138,7 @@ pub struct Session {
     pub owner_principal_id: PrincipalId,
     /// Denormalized effective human owner of the owning principal lineage.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "550e8400-e29b-41d4-a716-446655440000"))]
     pub resolved_owner_user_id: Option<uuid::Uuid>,
     /// Owning principal summary.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -147,18 +148,23 @@ pub struct Session {
     pub effective_owner: Option<PrincipalSummary>,
     /// Human-readable title for the session.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "Q3 marketing brief"))]
     pub title: Option<String>,
     /// Locale for localized agent behavior and formatting (BCP 47, e.g. `uk-UA`).
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "en-US"))]
     pub locale: Option<String>,
     /// Preview text from the first user message (truncated).
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "Help me draft the Q3 marketing plan"))]
     pub preview: Option<String>,
     /// Preview text from the last assistant response (truncated).
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "Here is a Q3 plan covering the three pillars we discussed..."))]
     pub output_preview: Option<String>,
     /// Tags for organizing and filtering sessions.
     #[serde(default)]
+    #[cfg_attr(feature = "openapi", schema(example = json!(["marketing", "q3", "draft"])))]
     pub tags: Vec<String>,
     /// LLM model ID to use for this session (format: model_{32-hex}).
     /// Overrides the agent's default model if set.
@@ -201,18 +207,23 @@ pub struct Session {
     pub network_access: Option<NetworkAccessList>,
     /// Maximum number of LLM iterations per turn for this session.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = 50))]
     pub max_iterations: Option<usize>,
     /// Current execution status of the session.
     pub status: SessionStatus,
     /// Timestamp when the session was created.
+    #[cfg_attr(feature = "openapi", schema(example = "2026-05-25T10:00:00Z"))]
     pub created_at: DateTime<Utc>,
     /// Timestamp when the session was last updated.
+    #[cfg_attr(feature = "openapi", schema(example = "2026-05-25T10:14:32Z"))]
     pub updated_at: DateTime<Utc>,
     /// Timestamp when the session started executing.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "2026-05-25T10:00:01Z"))]
     pub started_at: Option<DateTime<Utc>>,
     /// Timestamp when the session finished (completed or failed).
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "2026-05-25T10:14:32Z"))]
     pub finished_at: Option<DateTime<Utc>>,
     /// Cumulative token usage for all LLM calls in this session.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -220,16 +231,19 @@ pub struct Session {
     /// Whether this session is pinned by the current user.
     /// Only populated when the request has an authenticated user context.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = false))]
     pub is_pinned: Option<bool>,
     /// Number of active (enabled) schedules for this session.
     /// Populated when the session is fetched for API responses.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = 2))]
     pub active_schedule_count: Option<u32>,
     /// Aggregated UI features from all active capabilities (harness + agent + session).
     /// Computed at read time from the capability registry.
     /// Known features: "file_system", "schedules", "secrets", "key_value",
     /// "sql_database", "leased_resources".
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[cfg_attr(feature = "openapi", schema(example = json!(["file_system", "secrets"])))]
     pub features: Vec<String>,
 
     // -- Subagent fields (only set when this session is a subagent) --
@@ -239,9 +253,11 @@ pub struct Session {
     pub parent_session_id: Option<SessionId>,
     /// Human-readable subagent name ("Test Runner"), unique per parent.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "Test Runner"))]
     pub subagent_name: Option<String>,
     /// Original task description given to this subagent.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "Run the integration test suite and report failures."))]
     pub subagent_task: Option<String>,
     /// Subagent lifecycle status: spawning, running, completed, failed, cancelled.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -251,8 +267,10 @@ pub struct Session {
     /// Blueprint ID. When set, reason_activity and act_activity build RuntimeAgent
     /// from the blueprint definition instead of from harness_id/agent_id.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "blueprint_research_pack"))]
     pub blueprint_id: Option<String>,
     /// Validated config passed by host at blueprint spawn time.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = json!({"target_repo": "acme/everruns"})))]
     pub blueprint_config: Option<serde_json::Value>,
 }

@@ -106,30 +106,47 @@ pub struct DeleteAccountResponse {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ExportedUserProfile {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    #[schema(example = "user_01933b5a000070008000000000000001")]
     pub id: String,
+    /// Email address associated with the user account.
+    #[schema(example = "alex@example.com")]
     pub email: String,
     /// Human-readable name. Safe to render in user-facing messages.
+    #[schema(example = "Alex Rivera")]
     pub name: String,
+    /// URL to the user's avatar image. `None` when the user hasn't set one.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "https://cdn.example.com/avatars/alex.png")]
     pub avatar_url: Option<String>,
+    /// Whether the user's email address has been verified via the auth provider.
+    #[schema(example = true)]
     pub email_verified: bool,
+    /// Auth provider that issued this identity (`google`, `github`, `password`, etc.).
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "google")]
     pub auth_provider: Option<String>,
     /// Timestamp when this resource was created (RFC 3339).
+    #[schema(example = "2026-01-15T10:30:00Z")]
     pub created_at: DateTime<Utc>,
     /// Timestamp when this resource was last updated (RFC 3339).
+    #[schema(example = "2026-04-20T14:22:00Z")]
     pub updated_at: DateTime<Utc>,
 }
 
 /// Exported organization membership
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ExportedOrganization {
-    /// Owning organization's prefixed public identifier.
+    /// Owning organization's internal numeric id (not part of the public identifier surface).
+    #[schema(example = 42)]
     pub org_id: i64,
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    #[schema(example = "org_01933b5a000070008000000000000001")]
     pub public_id: String,
     /// Human-readable name. Safe to render in user-facing messages.
+    #[schema(example = "Acme Corp")]
     pub name: String,
+    /// User's role within this organization (`owner`, `admin`, `member`).
+    #[schema(example = "owner")]
     pub role: String,
 }
 
@@ -137,25 +154,41 @@ pub struct ExportedOrganization {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ExportedApiKey {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
+    #[schema(example = "apikey_01933b5a000070008000000000000001")]
     pub id: String,
     /// Human-readable name. Safe to render in user-facing messages.
+    #[schema(example = "CI/CD deploy key")]
     pub name: String,
+    /// First few characters of the key, safe to display for identification.
+    #[schema(example = "ev_live_x4z2")]
     pub key_prefix: String,
+    /// Granted scopes as a JSON array of strings.
+    #[schema(example = json!(["sessions:read", "sessions:write"]))]
     pub scopes: serde_json::Value,
+    /// Expiry timestamp (RFC 3339). `None` for non-expiring keys.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "2027-01-01T00:00:00Z")]
     pub expires_at: Option<DateTime<Utc>>,
+    /// Timestamp of the key's most recent successful use (RFC 3339). `None` if never used.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "2026-05-25T09:14:00Z")]
     pub last_used_at: Option<DateTime<Utc>>,
     /// Timestamp when this resource was created (RFC 3339).
+    #[schema(example = "2026-01-15T10:30:00Z")]
     pub created_at: DateTime<Utc>,
 }
 
 /// Full user data export response (GDPR compliance)
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ExportUserDataResponse {
+    /// Profile data for the exporting user.
     pub user: ExportedUserProfile,
+    /// All organizations the user is a member of, plus their role in each.
     pub organizations: Vec<ExportedOrganization>,
+    /// API keys owned by the user (no sensitive secrets — just metadata).
     pub api_keys: Vec<ExportedApiKey>,
+    /// Timestamp the export was generated (RFC 3339).
+    #[schema(example = "2026-05-25T12:00:00Z")]
     pub exported_at: DateTime<Utc>,
 }
 
