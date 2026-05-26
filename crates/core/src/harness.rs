@@ -62,15 +62,29 @@ pub struct Harness {
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "harness_01933b5a00007000800000000000001"))]
     pub id: HarnessId,
     /// Name, unique per org (e.g. "generic").
+    #[cfg_attr(feature = "openapi", schema(example = "generic"))]
     pub name: String,
     /// Human-readable display name shown in UI.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "Generic Harness"))]
     pub display_name: Option<String>,
     /// Human-readable description of what the harness does.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(
+        feature = "openapi",
+        schema(
+            example = "Default harness with file-system + secrets capabilities; safe baseline for new agents."
+        )
+    )]
     pub description: Option<String>,
     /// System prompt that defines the harness's base behavior.
     /// Forms the foundation of the prompt stack.
+    #[cfg_attr(
+        feature = "openapi",
+        schema(
+            example = "You are an Everruns agent. Be concise, cite sources when possible, and decline tasks outside your assigned scope."
+        )
+    )]
     pub system_prompt: String,
     /// Optional parent harness that this harness inherits from.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -83,6 +97,7 @@ pub struct Harness {
     pub default_model_id: Option<ModelId>,
     /// Tags for organizing and filtering harnesses.
     #[serde(default)]
+    #[cfg_attr(feature = "openapi", schema(example = json!(["baseline", "production"])))]
     pub tags: Vec<String>,
     /// Capabilities enabled for this harness with per-harness configuration.
     #[serde(default)]
@@ -106,18 +121,23 @@ pub struct Harness {
     /// Built-in harnesses are provisioned during org initialization and
     /// cannot be modified or deleted via the API. Users can copy them.
     #[serde(default)]
+    #[cfg_attr(feature = "openapi", schema(example = false))]
     pub is_built_in: bool,
     /// Current lifecycle status of the harness.
     pub status: HarnessStatus,
     /// Timestamp when the harness was created.
+    #[cfg_attr(feature = "openapi", schema(example = "2026-04-01T10:00:00Z"))]
     pub created_at: DateTime<Utc>,
     /// Timestamp when the harness was last updated.
+    #[cfg_attr(feature = "openapi", schema(example = "2026-05-20T14:00:00Z"))]
     pub updated_at: DateTime<Utc>,
     /// Timestamp when the harness was archived.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "2026-05-26T00:00:00Z"))]
     pub archived_at: Option<DateTime<Utc>>,
     /// Timestamp when the harness was deleted.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "2026-05-26T00:00:00Z"))]
     pub deleted_at: Option<DateTime<Utc>>,
 }
 

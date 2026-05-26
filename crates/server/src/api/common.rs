@@ -126,25 +126,34 @@ pub(crate) use impl_auth_state;
 pub struct ErrorResponse {
     /// RFC 9457 problem type URI. Optional; identifies the problem class.
     #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    #[schema(example = "https://docs.everruns.com/errors/session_not_found")]
     pub type_uri: Option<String>,
     /// Short, human-readable summary of the problem (e.g. "Not Found").
+    #[schema(example = "Session not found")]
     pub title: String,
     /// HTTP status code; mirrors the response status line.
+    #[schema(example = 404)]
     pub status: u16,
     /// Human-readable explanation specific to this occurrence.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(
+        example = "Session session_01933b5a000070008000000000000001 not found in org org_01933b5a000070008000000000000001."
+    )]
     pub detail: Option<String>,
     /// Request URI for this occurrence.
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "/v1/sessions/session_01933b5a000070008000000000000001")]
     pub instance: Option<String>,
     /// Stable, machine-readable error code (snake_case).
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "session_not_found")]
     pub code: Option<String>,
     /// Recovery actions the caller can take next.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub allowed_actions: Vec<AllowedAction>,
     /// Seconds the caller should wait before retrying (429 / transient 503).
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = 30)]
     pub retry_after_seconds: Option<u32>,
 }
 
