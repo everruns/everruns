@@ -77,6 +77,8 @@ pub struct ListMemoriesResponse {
     pub total: i64,
 }
 
+/// Query parameters for listing memories within a store — optional content
+/// search and kind filter.
 #[derive(Debug, Clone, Default, Deserialize, IntoParams, ToSchema)]
 pub struct ListMemoriesQuery {
     /// Substring filter applied to memory content.

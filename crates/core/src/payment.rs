@@ -94,6 +94,9 @@ impl From<&str> for PaymentOwnerType {
     }
 }
 
+/// Lifecycle state of a payment account, policy, or attempt. The shared
+/// vocabulary keeps account/policy admin and attempt settlement on the
+/// same status taxonomy.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(rename_all = "snake_case")]
@@ -138,6 +141,9 @@ impl From<&str> for PaymentStatus {
     }
 }
 
+/// A payment account — the org-scoped source of funds for paid agent calls.
+/// Each account binds an owning principal (user, agent identity, or org)
+/// to one settlement rail and tracks its provisioning lifecycle.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct PaymentAccount {
@@ -165,6 +171,9 @@ pub struct PaymentAccount {
     pub updated_at: DateTime<Utc>,
 }
 
+/// A payment policy — the binding between a paying account and a subject
+/// (agent identity, session) that controls which paid calls are
+/// authorized and at what spend caps.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct PaymentPolicy {
@@ -202,6 +211,9 @@ pub struct PaymentPolicy {
     pub updated_at: DateTime<Utc>,
 }
 
+/// A single paid-call settlement attempt — the durable record of one
+/// authorization+settlement cycle issued through the payment authority.
+/// Persisted regardless of outcome so failed attempts remain auditable.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct PaymentAttempt {

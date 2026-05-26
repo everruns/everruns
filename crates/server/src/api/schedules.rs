@@ -440,6 +440,8 @@ pub struct TriggerResponse {
 // Query parameters
 // ============================================================================
 
+/// Query parameters for `GET /v1/schedules` — optional enabled/target-type
+/// filters plus standard offset/limit paging.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ListSchedulesQuery {
     /// Filter by enabled status
@@ -456,6 +458,8 @@ pub struct ListSchedulesQuery {
     pub limit: Option<u32>,
 }
 
+/// Query parameters for listing executions of a schedule — optional status
+/// filter plus offset/limit paging.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ListExecutionsQuery {
     /// Filter by execution status

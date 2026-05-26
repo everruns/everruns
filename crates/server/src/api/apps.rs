@@ -339,6 +339,8 @@ pub async fn unpublish_app(
         .await
 }
 
+/// Query parameters for listing recent app invocation runs — a relative
+/// time window and an optional bucketing hint for the dashboard.
 #[derive(Debug, Default, Deserialize, IntoParams, ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ListAppRunsQuery {

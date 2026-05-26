@@ -21,6 +21,8 @@ use utoipa::ToSchema;
 
 use super::common::{ApiResult, impl_auth_state};
 
+/// Wire-facing status of a session sandbox. Mirrors
+/// `everruns_core::SessionSandboxStatus` for the public API.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SessionSandboxStatusValue {
@@ -37,6 +39,9 @@ impl From<everruns_core::SessionSandboxStatus> for SessionSandboxStatusValue {
     }
 }
 
+/// Operator action to take against a session's managed sandbox. `Pause`
+/// suspends the instance, `Resume` restarts it, `Delete` releases the
+/// lease.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SessionSandboxAction {

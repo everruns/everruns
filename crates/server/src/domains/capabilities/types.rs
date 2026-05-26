@@ -15,6 +15,9 @@ pub use crate::storage::models::{
     CreateDeclarativeCapabilityRow, DeclarativeCapabilityRow, UpdateDeclarativeCapability,
 };
 
+/// Persisted, org-scoped declarative capability — a YAML/JSON-defined
+/// bundle of skills, files, and tool defs that an agent or harness can
+/// reference by `capability_id` or name.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct DeclarativeCapability {
     /// Public resource ID for this persisted declarative capability.

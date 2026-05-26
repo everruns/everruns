@@ -305,13 +305,18 @@ impl Command for ListEvents {
 
 inventory::submit! { CommandDescriptor::of::<ListEvents>() }
 
+/// One row of `EventsSummaryResult.by_type` — the per-event-type count
+/// produced by the events summary query.
 #[derive(Debug, Serialize, ToSchema)]
 pub struct EventTypeCountOut {
+    /// Event-type discriminator (e.g. `turn.started`, `tool.completed`).
     pub event_type: String,
     /// Count of items matching the query.
     pub count: i64,
 }
 
+/// Aggregate result of the events summary query — total count, per-type
+/// breakdown, and a few convenience rollups (turn count, failure count).
 #[derive(Debug, Serialize, ToSchema)]
 pub struct EventsSummaryResult {
     /// Total event count across all types.

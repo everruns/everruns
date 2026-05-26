@@ -8,6 +8,8 @@ use crate::tool_types::ToolDefinition;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+/// One logical section of the assembled LLM context (system prompt, tool
+/// definitions, message history, etc.) with its rolled-up token budget.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ContextReportSection {
@@ -21,6 +23,9 @@ pub struct ContextReportSection {
     pub items: u32,
 }
 
+/// Single-source token contribution within a `ContextReportSection` — the
+/// per-tool / per-capability / per-message attribution that lets operators
+/// see which source is eating the context window.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ContextReportContribution {
@@ -34,6 +39,10 @@ pub struct ContextReportContribution {
     pub tokens: u32,
 }
 
+/// Token-budget report for a session — a model-aware breakdown of the
+/// context window into named sections plus per-source contributions, so
+/// callers can answer "what's filling the context?" without reverse-
+/// engineering the prompt assembly.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct SessionContextReport {
