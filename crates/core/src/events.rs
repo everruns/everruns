@@ -2480,6 +2480,14 @@ pub fn deserialize_event_data(event_type: &str, data: serde_json::Value) -> Even
                 .map(EventData::VoiceSessionEnded),
             VOICE_SESSION_FAILED => serde_json::from_value::<VoiceSessionFailedData>(data.clone())
                 .map(EventData::VoiceSessionFailed),
+            SUBAGENT_SPAWNED => serde_json::from_value::<SubagentEventData>(data.clone())
+                .map(EventData::SubagentSpawned),
+            SUBAGENT_COMPLETED => serde_json::from_value::<SubagentEventData>(data.clone())
+                .map(EventData::SubagentCompleted),
+            SUBAGENT_FAILED => serde_json::from_value::<SubagentEventData>(data.clone())
+                .map(EventData::SubagentFailed),
+            SUBAGENT_CANCELLED => serde_json::from_value::<SubagentEventData>(data.clone())
+                .map(EventData::SubagentCancelled),
             _ => {
                 // Unknown event type - return as unsupported with warning
                 return EventData::unsupported(event_type.to_string(), data);
@@ -3415,6 +3423,35 @@ mod tests {
                 assert_eq!(data.item_id, "rs_request");
             }
             other => panic!("expected reason.item data, got {}", other.event_type()),
+        }
+    }
+
+    #[test]
+    fn test_event_deserialize_subagent_uses_event_type_dispatch() {
+        let subagent_session_id = SessionId::from_uuid(Uuid::now_v7());
+        let payload = serde_json::json!({
+            "id": EventId::new().to_string(),
+            "type": SUBAGENT_COMPLETED,
+            "ts": Utc::now().to_rfc3339(),
+            "session_id": SessionId::from_uuid(Uuid::now_v7()).to_string(),
+            "context": {"trace_id": "t", "span_id": "s", "parent_span_id": null},
+            "data": {
+                "subagent_session_id": subagent_session_id.to_string(),
+                "subagent_name": "researcher",
+                "task": "summarize docs",
+                "status": "completed",
+                "result": "done"
+            }
+        });
+
+        let event: Event = serde_json::from_value(payload).expect("event deserializes");
+        match event.data {
+            EventData::SubagentCompleted(data) => {
+                assert_eq!(data.subagent_session_id, subagent_session_id);
+                assert_eq!(data.subagent_name, "researcher");
+                assert_eq!(data.status, "completed");
+            }
+            other => panic!("expected subagent.completed, got {}", other.event_type()),
         }
     }
 
