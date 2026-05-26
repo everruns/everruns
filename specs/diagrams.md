@@ -7,8 +7,11 @@ Adopted from [`everruns/landing/specs/diagrams.md`](https://github.com/everruns/
 ## Placement
 
 - **File format**: SVG (rendered), Mermaid `.mmd` (source of truth)
-- **Location**: `docs/images/<category>/<diagram-name>.svg` and `docs/images/<category>/<diagram-name>.mmd`
-- **Embedding**: `![alt text](../images/<category>/<diagram-name>.svg)` in markdown
+- **Location**: Co-locate the `.svg` and `.mmd` in the **same directory as the markdown page that embeds the diagram** (e.g. `docs/advanced/physical-architecture.md` + `docs/advanced/physical-architecture.svg` + `docs/advanced/physical-architecture.mmd`).
+- **Embedding**: `![alt text](./<diagram-name>.svg)` in markdown — relative to the page.
+- **Naming**: When a diagram is used by exactly one page, name it after the page (`<page-slug>.svg`). When a single page has multiple diagrams, use `<page-slug>-<short-suffix>.svg`.
+- **Shared diagrams**: A diagram referenced by multiple pages may live alongside its primary owner page; secondary pages embed it with a relative path.
+- **Legacy `docs/images/<category>/`** paths remain valid for existing diagrams and are not subject to mass migration, but new diagrams must follow the co-located convention.
 
 Every SVG diagram **must** have a co-located `.mmd` file containing the Mermaid source that describes the same content. The `.mmd` file is the **source of truth** for the diagram's information architecture — entity names, relationships, and flow. The hand-authored SVG is the rendered artifact that follows this visual spec. When updating a diagram, update the `.mmd` first, then regenerate/update the SVG to match.
 
@@ -162,7 +165,7 @@ After creating or modifying an SVG, **rasterize it to PNG and visually inspect**
 
 ```bash
 pip install cairosvg  # once
-cairosvg docs/images/<category>/<name>.svg -o /tmp/<name>.png --output-width 800
+cairosvg docs/<page-section>/<name>.svg -o /tmp/<name>.png --output-width 800
 ```
 
 Check the PNG for:

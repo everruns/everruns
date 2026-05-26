@@ -7,7 +7,7 @@ sidebar:
 
 The [getting-started architecture](/getting-started/architecture/) page describes the *logical* shape of Everruns: a control plane, a worker tier, and a shared database. This page goes one level deeper and describes the *physical* components an operator actually deploys, what each one is for, when it is optional, and how data flows between them.
 
-![Physical Architecture](../images/advanced/physical-architecture.svg)
+![Physical Architecture](./physical-architecture.svg)
 
 ## Components at a glance
 
