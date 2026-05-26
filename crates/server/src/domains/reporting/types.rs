@@ -158,7 +158,7 @@ pub struct ReportExport {
 
 /// Point-in-time health snapshot of the reporting layer — projector
 /// freshness plus outbox processing health. Returned from
-/// `GET /v1/reports/diagnostics`.
+/// `GET /v1/reports/admin/diagnostics`.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct ReportingDiagnostics {
     /// Server-side wall-clock timestamp when this snapshot was assembled

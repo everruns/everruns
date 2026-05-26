@@ -24107,7 +24107,7 @@
       },
       "ReportingDiagnostics": {
         "type": "object",
-        "description": "Point-in-time health snapshot of the reporting layer — projector\nfreshness plus outbox processing health. Returned from\n`GET /v1/reports/diagnostics`.",
+        "description": "Point-in-time health snapshot of the reporting layer — projector\nfreshness plus outbox processing health. Returned from\n`GET /v1/reports/admin/diagnostics`.",
         "required": [
           "generated_at",
           "projector_lag",
@@ -28227,7 +28227,7 @@
       },
       "VoiceSessionOptions": {
         "type": "object",
-        "description": "Realtime-session knobs shared by every voice endpoint\n(`/voice/client-secret`, `/voice/calls`, `/voice/attach`,\n`/voice/sessions`). All fields are optional; omitted ones fall back to\nthe agent's or provider's default.",
+        "description": "Realtime-session knobs flattened into the voice request bodies that\ncreate or attach a realtime connection — `VoiceClientSecretRequest`,\n`VoiceCallRequest`, and `VoiceAttachRequest`. The `/voice/.../end`\nendpoint takes `VoiceEndRequest` and does not accept these options.\nAll fields are optional; omitted ones fall back to the agent's or\nprovider's default.",
         "properties": {
           "instructions": {
             "type": [

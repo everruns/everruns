@@ -144,10 +144,12 @@ pub fn routes(state: AppState) -> Router {
         .with_state(state)
 }
 
-/// Realtime-session knobs shared by every voice endpoint
-/// (`/voice/client-secret`, `/voice/calls`, `/voice/attach`,
-/// `/voice/sessions`). All fields are optional; omitted ones fall back to
-/// the agent's or provider's default.
+/// Realtime-session knobs flattened into the voice request bodies that
+/// create or attach a realtime connection — `VoiceClientSecretRequest`,
+/// `VoiceCallRequest`, and `VoiceAttachRequest`. The `/voice/.../end`
+/// endpoint takes `VoiceEndRequest` and does not accept these options.
+/// All fields are optional; omitted ones fall back to the agent's or
+/// provider's default.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct VoiceSessionOptions {
     /// Provider-side realtime model identifier. When omitted the server picks the agent's configured default.
