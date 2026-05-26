@@ -17294,7 +17294,7 @@
               "null"
             ],
             "description": "Filter by execution status",
-            "example": "success"
+            "example": "completed"
           }
         }
       },
