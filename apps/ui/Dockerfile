@@ -13,7 +13,7 @@ WORKDIR /app
 RUN npm install -g pnpm@10.33.0
 
 # Install dependencies (fail if pnpm-lock.yaml is out of sync with package.json)
-COPY package.json pnpm-lock.yaml .npmrc ./
+COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 
 # Copy source and build
