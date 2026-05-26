@@ -21,6 +21,8 @@ Everruns is a **headless durable agentic harness engine** built for reliability 
 
 ## Components
 
+For the deployable shape of these components — which run as separate processes, which are required, and which are optional infrastructure like NATS and Valkey — see [Physical Architecture](/advanced/physical-architecture/).
+
 ### Control Plane
 
 Central coordinator that exposes the REST API and manages all state in PostgreSQL:
@@ -48,6 +50,7 @@ See [Management UI](/features/ui/) for details.
 
 ## Further Reading
 
+- [Physical Architecture](/advanced/physical-architecture/) - The deployable components: PostgreSQL, NATS, Valkey, workers, and how they connect
 - [Introduction](/getting-started/introduction/) - Getting started
 - [API Reference](/api/) - Full API documentation
 - [Capabilities](/features/capabilities/) - Extend agent functionality
