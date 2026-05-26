@@ -312,7 +312,6 @@ RESEND_API_KEY=re_...
 - Set these on the control-plane process that performs system email sends.
 - The sender is fixed in code as `Everruns <no-replay@everruns.com>`.
 - The Resend account must have `everruns.com` verified and enabled for sending.
-- See `specs/email.md` for the internal abstraction and provider contract.
 
 ## UI API Proxy Architecture
 

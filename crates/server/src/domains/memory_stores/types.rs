@@ -9,7 +9,7 @@ pub use crate::storage::models::{MemoryDbRow, MemoryStoreDbRow};
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct MemoryStoreResponse {
     #[schema(value_type = String, example = "mst_01933b5a000070008000000000000001")]
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: MemoryStoreId,
     /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
@@ -50,7 +50,7 @@ pub struct UpdateMemoryStoreRequest {
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct MemoryResponse {
     #[schema(value_type = String, example = "mem_01933b5a000070008000000000000001")]
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: MemoryId,
     #[schema(value_type = String, example = "mst_01933b5a000070008000000000000001")]
     pub store_id: MemoryStoreId,

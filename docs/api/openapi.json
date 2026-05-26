@@ -7924,7 +7924,7 @@
           "users"
         ],
         "summary": "GET /v1/resolve-org — resolve the owning org for a resource id.",
-        "description": "Returns the owning organization only when it is one the authenticated\ncaller already belongs to. For every other case (unknown id, unknown\nprefix, resource belongs to a non-member org) the endpoint returns 404 —\nthis preserves the existing org-enumeration guarantee documented in\nspecs/multitenancy.md.",
+        "description": "Returns the owning organization only when it is one the authenticated\ncaller already belongs to. For every other case (unknown id, unknown\nprefix, resource belongs to a non-member org) the endpoint returns 404 —\nthis preserves the org-enumeration guarantee: callers cannot use this\nendpoint to probe for the existence of resources outside their own orgs.",
         "operationId": "resolve_org",
         "parameters": [
           {
@@ -11720,7 +11720,7 @@
           },
           "id": {
             "type": "string",
-            "description": "Prefixed public identifier (see `specs/id-schema.md`).",
+            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
             "example": "agentver_01933b5a000070008000000000000001"
           },
           "is_published": {
@@ -14964,7 +14964,7 @@
           "id": {
             "type": "string",
             "format": "uuid",
-            "description": "Prefixed public identifier (see `specs/id-schema.md`)."
+            "description": "UUID of the DLQ entry."
           },
           "input": {
             "description": "Task input payload at the time of failure (used for inspection and replay)."
@@ -15559,7 +15559,7 @@
           },
           "id": {
             "type": "string",
-            "description": "Prefixed public identifier (see `specs/id-schema.md`)."
+            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/)."
           },
           "key_prefix": {
             "type": "string"
@@ -15599,7 +15599,7 @@
           },
           "public_id": {
             "type": "string",
-            "description": "Prefixed public identifier (see `specs/id-schema.md`)."
+            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/)."
           },
           "role": {
             "type": "string"
@@ -15643,7 +15643,7 @@
           },
           "id": {
             "type": "string",
-            "description": "Prefixed public identifier (see `specs/id-schema.md`)."
+            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/)."
           },
           "name": {
             "type": "string",
@@ -16769,7 +16769,7 @@
           },
           "id": {
             "type": "string",
-            "description": "Prefixed public identifier (see `specs/id-schema.md`).",
+            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
             "example": "img_01933b5a00007000800000000000001"
           },
           "metadata": {
@@ -16805,7 +16805,7 @@
           },
           "id": {
             "type": "string",
-            "description": "Prefixed public identifier (see `specs/id-schema.md`).",
+            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
             "example": "img_01933b5a00007000800000000000001"
           },
           "size_bytes": {
@@ -17034,7 +17034,7 @@
           },
           "id": {
             "type": "string",
-            "description": "Prefixed public identifier (see `specs/id-schema.md`).",
+            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
             "example": "kb_01933b5a000070008000000000000001"
           },
           "name": {
@@ -17076,7 +17076,7 @@
           },
           "id": {
             "type": "string",
-            "description": "Prefixed public identifier (see `specs/id-schema.md`).",
+            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
             "example": "kbe_01933b5a000070008000000000000001"
           },
           "kb_id": {
@@ -18166,7 +18166,7 @@
                 },
                 "id": {
                   "type": "string",
-                  "description": "Prefixed public identifier (see `specs/id-schema.md`).",
+                  "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
                   "example": "kb_01933b5a000070008000000000000001"
                 },
                 "name": {
@@ -18221,7 +18221,7 @@
                 },
                 "id": {
                   "type": "string",
-                  "description": "Prefixed public identifier (see `specs/id-schema.md`).",
+                  "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
                   "example": "kbe_01933b5a000070008000000000000001"
                 },
                 "kb_id": {
@@ -18398,7 +18398,7 @@
                 },
                 "id": {
                   "type": "string",
-                  "description": "Prefixed public identifier (see `specs/id-schema.md`).",
+                  "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
                   "example": "mst_01933b5a000070008000000000000001"
                 },
                 "is_default": {
@@ -18616,7 +18616,7 @@
                 "id": {
                   "type": "string",
                   "format": "uuid",
-                  "description": "Prefixed public identifier (see `specs/id-schema.md`)."
+                  "description": "UUID of the saved report."
                 },
                 "name": {
                   "type": "string",
@@ -18741,7 +18741,7 @@
                 },
                 "id": {
                   "type": "string",
-                  "description": "Prefixed public identifier (see `specs/id-schema.md`).",
+                  "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
                   "example": "skill_01933b5a00007000800000000000001"
                 },
                 "license": {
@@ -18833,7 +18833,7 @@
                 },
                 "id": {
                   "type": "string",
-                  "description": "Prefixed public identifier (see `specs/id-schema.md`)."
+                  "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/)."
                 },
                 "name": {
                   "type": "string",
@@ -18905,7 +18905,7 @@
                 },
                 "id": {
                   "type": "string",
-                  "description": "Prefixed public identifier (see `specs/id-schema.md`).",
+                  "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
                   "example": "vol_01933b5a000070008000000000000001"
                 },
                 "is_readonly": {
@@ -19309,7 +19309,7 @@
                     },
                     "id": {
                       "type": "string",
-                      "description": "Prefixed public identifier (see `specs/id-schema.md`).",
+                      "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
                       "example": "model_01933b5a00007000800000000000001"
                     },
                     "is_favorite": {
@@ -19421,7 +19421,7 @@
                     },
                     "id": {
                       "type": "string",
-                      "description": "Prefixed public identifier (see `specs/id-schema.md`).",
+                      "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
                       "example": "model_01933b5a00007000800000000000001"
                     },
                     "is_favorite": {
@@ -19538,7 +19538,7 @@
                     },
                     "id": {
                       "type": "string",
-                      "description": "Prefixed public identifier (see `specs/id-schema.md`).",
+                      "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
                       "example": "provider_01933b5a00007000800000000000001"
                     },
                     "last_synced_at": {
@@ -19999,7 +19999,7 @@
                     },
                     "id": {
                       "type": "string",
-                      "description": "Prefixed public identifier (see `specs/id-schema.md`).",
+                      "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
                       "example": "skill_01933b5a00007000800000000000001"
                     },
                     "license": {
@@ -20387,7 +20387,7 @@
           },
           "id": {
             "type": "string",
-            "description": "Prefixed public identifier (see `specs/id-schema.md`).",
+            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
             "example": "model_01933b5a00007000800000000000001"
           },
           "is_favorite": {
@@ -20691,7 +20691,7 @@
           },
           "id": {
             "type": "string",
-            "description": "Prefixed public identifier (see `specs/id-schema.md`).",
+            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
             "example": "model_01933b5a00007000800000000000001"
           },
           "is_favorite": {
@@ -20793,7 +20793,7 @@
           },
           "id": {
             "type": "string",
-            "description": "Prefixed public identifier (see `specs/id-schema.md`).",
+            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
             "example": "provider_01933b5a00007000800000000000001"
           },
           "last_synced_at": {
@@ -21209,7 +21209,7 @@
           },
           "id": {
             "type": "string",
-            "description": "Prefixed public identifier (see `specs/id-schema.md`).",
+            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
             "example": "mem_01933b5a000070008000000000000001"
           },
           "importance": {
@@ -21261,7 +21261,7 @@
           },
           "id": {
             "type": "string",
-            "description": "Prefixed public identifier (see `specs/id-schema.md`).",
+            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
             "example": "mst_01933b5a000070008000000000000001"
           },
           "is_default": {
@@ -22980,7 +22980,7 @@
           },
           "id": {
             "$ref": "#/components/schemas/payacctId",
-            "description": "Prefixed public identifier (see `specs/id-schema.md`)."
+            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/)."
           },
           "label": {
             "type": "string",
@@ -23066,7 +23066,7 @@
           },
           "id": {
             "$ref": "#/components/schemas/payattId",
-            "description": "Prefixed public identifier (see `specs/id-schema.md`)."
+            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/)."
           },
           "operation": {
             "type": "string",
@@ -23177,7 +23177,7 @@
           },
           "id": {
             "$ref": "#/components/schemas/paypolId",
-            "description": "Prefixed public identifier (see `specs/id-schema.md`)."
+            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/)."
           },
           "max_amount_usd_per_day": {
             "type": [
@@ -23406,7 +23406,7 @@
           },
           "id": {
             "type": "string",
-            "description": "Prefixed public identifier (see `specs/id-schema.md`)."
+            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/)."
           },
           "name": {
             "type": "string",
@@ -24326,7 +24326,7 @@
           "id": {
             "type": "string",
             "format": "uuid",
-            "description": "Prefixed public identifier (see `specs/id-schema.md`)."
+            "description": "UUID of the saved report."
           },
           "name": {
             "type": "string",
@@ -24415,12 +24415,12 @@
           "id": {
             "type": "string",
             "format": "uuid",
-            "description": "Prefixed public identifier (see `specs/id-schema.md`)."
+            "description": "UUID of the schedule execution."
           },
           "schedule_id": {
             "type": "string",
             "format": "uuid",
-            "description": "Schedule's prefixed public identifier."
+            "description": "UUID of the owning schedule."
           },
           "scheduled_at": {
             "type": "string",
@@ -24518,7 +24518,7 @@
           "id": {
             "type": "string",
             "format": "uuid",
-            "description": "Prefixed public identifier (see `specs/id-schema.md`)."
+            "description": "UUID of the schedule."
           },
           "last_triggered_at": {
             "type": [
@@ -25469,7 +25469,7 @@
           },
           "id": {
             "type": "string",
-            "description": "Prefixed public identifier (see `specs/id-schema.md`).",
+            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
             "example": "skill_01933b5a00007000800000000000001"
           },
           "license": {
@@ -25888,7 +25888,7 @@
           "id": {
             "type": "string",
             "format": "uuid",
-            "description": "Prefixed public identifier (see `specs/id-schema.md`)."
+            "description": "UUID of the task."
           },
           "last_error": {
             "type": [
@@ -27845,7 +27845,7 @@
           },
           "id": {
             "type": "string",
-            "description": "Prefixed public identifier (see `specs/id-schema.md`)."
+            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/)."
           },
           "name": {
             "type": "string",
@@ -27932,7 +27932,7 @@
           },
           "voice_connection_id": {
             "type": "string",
-            "description": "Prefixed public identifier of the voice connection."
+            "description": "Prefixed public identifier of the voice connection. See [ID Schema](https://docs.everruns.com/advanced/id-schema/)."
           }
         }
       },
@@ -28002,7 +28002,7 @@
           },
           "voice_connection_id": {
             "type": "string",
-            "description": "Prefixed public identifier of the voice connection."
+            "description": "Prefixed public identifier of the voice connection. See [ID Schema](https://docs.everruns.com/advanced/id-schema/)."
           }
         }
       },
@@ -28053,7 +28053,7 @@
           },
           "voice_connection_id": {
             "type": "string",
-            "description": "Prefixed public identifier of the voice connection (see `specs/id-schema.md`)."
+            "description": "Prefixed public identifier of the voice connection. See [ID Schema](https://docs.everruns.com/advanced/id-schema/)."
           }
         }
       },
@@ -28234,7 +28234,7 @@
               },
               "voice_connection_id": {
                 "type": "string",
-                "description": "Prefixed public identifier of the voice connection."
+                "description": "Prefixed public identifier of the voice connection. See [ID Schema](https://docs.everruns.com/advanced/id-schema/)."
               }
             }
           }
@@ -28366,7 +28366,7 @@
           },
           "id": {
             "type": "string",
-            "description": "Prefixed public identifier (see `specs/id-schema.md`).",
+            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
             "example": "vol_01933b5a000070008000000000000001"
           },
           "is_readonly": {
@@ -29310,7 +29310,7 @@
               },
               "id": {
                 "type": "string",
-                "description": "Prefixed public identifier (see `specs/id-schema.md`).",
+                "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
                 "example": "model_01933b5a00007000800000000000001"
               },
               "is_favorite": {
@@ -29409,7 +29409,7 @@
               },
               "id": {
                 "type": "string",
-                "description": "Prefixed public identifier (see `specs/id-schema.md`).",
+                "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
                 "example": "model_01933b5a00007000800000000000001"
               },
               "is_favorite": {
@@ -29513,7 +29513,7 @@
               },
               "id": {
                 "type": "string",
-                "description": "Prefixed public identifier (see `specs/id-schema.md`).",
+                "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
                 "example": "provider_01933b5a00007000800000000000001"
               },
               "last_synced_at": {
@@ -30488,7 +30488,7 @@
               },
               "id": {
                 "type": "string",
-                "description": "Prefixed public identifier (see `specs/id-schema.md`).",
+                "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
                 "example": "skill_01933b5a00007000800000000000001"
               },
               "license": {
@@ -30617,7 +30617,7 @@
           },
           "id": {
             "type": "string",
-            "description": "Prefixed public identifier (see `specs/id-schema.md`)."
+            "description": "Opaque durable worker identifier (defaults to `worker-<uuid>`)."
           },
           "last_heartbeat_at": {
             "type": "string",
@@ -30758,7 +30758,7 @@
           "id": {
             "type": "integer",
             "format": "int64",
-            "description": "Prefixed public identifier (see `specs/id-schema.md`)."
+            "description": "Monotonically-assigned internal event identifier."
           },
           "sequence_num": {
             "type": "integer",
@@ -30823,7 +30823,7 @@
           "id": {
             "type": "string",
             "format": "uuid",
-            "description": "Prefixed public identifier (see `specs/id-schema.md`)."
+            "description": "UUID of the workflow."
           },
           "input": {},
           "result": {},

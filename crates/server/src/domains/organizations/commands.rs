@@ -92,7 +92,7 @@ inventory::submit! { CommandDescriptor::of::<GetOrg>() }
 // (Cross-Org Resource Resolution).
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ResolveOrg {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
 }
 

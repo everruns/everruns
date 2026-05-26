@@ -151,7 +151,7 @@ inventory::submit! { CommandDescriptor::of::<ListModels>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct GetModel {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
 }
 
@@ -190,7 +190,7 @@ inventory::submit! { CommandDescriptor::of::<GetModel>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateModel {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
     /// LLM provider's prefixed public identifier.
     pub provider_id: Option<String>,
@@ -255,7 +255,7 @@ inventory::submit! { CommandDescriptor::of::<UpdateModel>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct DeleteModel {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
 }
 

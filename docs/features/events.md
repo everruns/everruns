@@ -105,4 +105,3 @@ Your deserializer should ignore unknown fields, ignore unknown event types, and 
 
 - [Event Reference](/event-reference/) — complete event type catalog with payloads.
 - [Events as the primary store](/explanation/events/) — design rationale.
-- [`specs/events.md`](https://github.com/everruns/everruns/blob/main/specs/events.md) — internal spec with the full compatibility contract.

@@ -96,7 +96,7 @@ inventory::submit! { CommandDescriptor::of::<ListProviders>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct GetProvider {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
 }
 
@@ -135,7 +135,7 @@ inventory::submit! { CommandDescriptor::of::<GetProvider>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateProvider {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
     /// Human-readable name. Safe to render in user-facing messages.
     pub name: Option<String>,
@@ -187,7 +187,7 @@ inventory::submit! { CommandDescriptor::of::<UpdateProvider>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct DeleteProvider {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
 }
 
@@ -229,7 +229,7 @@ inventory::submit! { CommandDescriptor::of::<DeleteProvider>() }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SyncProviderModels {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
 }
 

@@ -33,7 +33,7 @@ use futures::{
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct Notification {
     #[schema(value_type = String, example = "notification_01933b5a00007000800000000000001")]
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: NotificationId,
     /// Discriminator selecting the variant of this resource.
     pub kind: String,

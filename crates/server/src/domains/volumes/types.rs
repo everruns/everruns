@@ -12,7 +12,7 @@ pub use crate::storage::models::{CreateVolumeRow, UpdateVolume, VolumeRow};
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct VolumeResponse {
     #[schema(value_type = String, example = "vol_01933b5a000070008000000000000001")]
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: VolumeId,
     /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,

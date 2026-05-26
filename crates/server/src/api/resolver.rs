@@ -52,8 +52,8 @@ pub struct ResolveOrgResponse {
 /// Returns the owning organization only when it is one the authenticated
 /// caller already belongs to. For every other case (unknown id, unknown
 /// prefix, resource belongs to a non-member org) the endpoint returns 404 —
-/// this preserves the existing org-enumeration guarantee documented in
-/// specs/multitenancy.md.
+/// this preserves the org-enumeration guarantee: callers cannot use this
+/// endpoint to probe for the existence of resources outside their own orgs.
 #[utoipa::path(
     get,
     path = "/v1/resolve-org",

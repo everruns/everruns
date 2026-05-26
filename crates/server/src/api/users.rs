@@ -37,7 +37,7 @@ impl_auth_state!(UsersState);
 /// User response for listing
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct User {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
     pub email: String,
     /// Human-readable name. Safe to render in user-facing messages.
@@ -87,7 +87,7 @@ pub struct UpdateProfileRequest {
 /// Response from profile update
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct ProfileResponse {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
     pub email: String,
     /// Human-readable name. Safe to render in user-facing messages.
@@ -105,7 +105,7 @@ pub struct DeleteAccountResponse {
 /// Exported user profile data
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ExportedUserProfile {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
     pub email: String,
     /// Human-readable name. Safe to render in user-facing messages.
@@ -126,7 +126,7 @@ pub struct ExportedUserProfile {
 pub struct ExportedOrganization {
     /// Owning organization's prefixed public identifier.
     pub org_id: i64,
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub public_id: String,
     /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
@@ -136,7 +136,7 @@ pub struct ExportedOrganization {
 /// Exported API key metadata (no sensitive data)
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ExportedApiKey {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
     /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,

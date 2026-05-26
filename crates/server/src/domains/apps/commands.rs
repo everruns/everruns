@@ -1732,7 +1732,7 @@ inventory::submit! { CommandDescriptor::of::<ListApps>() }
 /// Get a single app by ID.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct GetApp {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
 }
 
@@ -2119,7 +2119,7 @@ fn bucket_app_runs_by_hour(runs: &[AppRunEvent]) -> Vec<AppRunBucket> {
 /// Update an app. Only provided fields are changed.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateAppCmd {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
     #[serde(flatten)]
     pub req: UpdateAppRequest,
@@ -2319,7 +2319,7 @@ inventory::submit! { CommandDescriptor::of::<UpdateAppCmd>() }
 /// Archive an app (soft delete).
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct DeleteApp {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
 }
 
@@ -2385,7 +2385,7 @@ inventory::submit! { CommandDescriptor::of::<DeleteApp>() }
 /// Permanently delete an archived app.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct DestroyApp {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
 }
 
@@ -2456,7 +2456,7 @@ inventory::submit! { CommandDescriptor::of::<DestroyApp>() }
 /// Publish an app (start accepting requests).
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct PublishApp {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
 }
 
@@ -2528,7 +2528,7 @@ inventory::submit! { CommandDescriptor::of::<PublishApp>() }
 /// Unpublish an app (stop accepting requests).
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UnpublishApp {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
 }
 

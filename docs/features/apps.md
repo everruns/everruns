@@ -29,7 +29,7 @@ The same agent can back multiple apps (e.g., a Slack deployment and a webhook de
 | WhatsApp | Planned | — |
 | Web Widget | Planned | — |
 
-See [Slack Integration](/integrations/slack/) for the Slack-side setup, and [app invocation channels](https://github.com/everruns/everruns/blob/main/specs/app-invocation-channels.md) for the spec on schedule/webhook channels.
+See [Slack Integration](/integrations/slack/) for the Slack-side setup.
 
 ## Session routing
 

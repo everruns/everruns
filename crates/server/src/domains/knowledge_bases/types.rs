@@ -15,7 +15,7 @@ pub use crate::storage::models::{
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct KnowledgeBaseResponse {
     #[schema(value_type = String, example = "kb_01933b5a000070008000000000000001")]
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: KnowledgeBaseId,
     /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
@@ -94,7 +94,7 @@ pub fn knowledge_base_response(row: KnowledgeBaseRow) -> anyhow::Result<Knowledg
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct KnowledgeEntryResponse {
     #[schema(value_type = String, example = "kbe_01933b5a000070008000000000000001")]
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: KnowledgeEntryId,
     #[schema(value_type = String, example = "kb_01933b5a000070008000000000000001")]
     /// Knowledge base's prefixed public identifier.

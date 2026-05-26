@@ -49,7 +49,7 @@ pub(crate) const ALLOWED_CONTENT_TYPES: &[&str] =
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ImageInfo {
     #[schema(value_type = String, example = "img_01933b5a00007000800000000000001")]
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: ImageId,
     pub filename: String,
     pub content_type: String,
@@ -64,7 +64,7 @@ pub struct ImageInfo {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct ImageUploadResponse {
     #[schema(value_type = String, example = "img_01933b5a00007000800000000000001")]
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: ImageId,
     pub filename: String,
     pub content_type: String,

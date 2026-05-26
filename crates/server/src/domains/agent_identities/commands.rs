@@ -144,7 +144,7 @@ inventory::submit! { CommandDescriptor::of::<ListAgentIdentities>() }
 /// Get a single agent identity by ID.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct GetAgentIdentity {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
 }
 
@@ -191,7 +191,7 @@ inventory::submit! { CommandDescriptor::of::<GetAgentIdentity>() }
 /// Update an agent identity. Only provided fields are changed.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateAgentIdentityCmd {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
     #[serde(flatten)]
     pub req: UpdateAgentIdentityRequest,
@@ -289,7 +289,7 @@ inventory::submit! { CommandDescriptor::of::<UpdateAgentIdentityCmd>() }
 /// Archive an agent identity (soft delete).
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct DeleteAgentIdentity {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
 }
 
@@ -354,7 +354,7 @@ inventory::submit! { CommandDescriptor::of::<DeleteAgentIdentity>() }
 /// Permanently delete an agent identity.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct DestroyAgentIdentity {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
 }
 

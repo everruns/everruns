@@ -118,7 +118,7 @@ pub struct CliExchangeResponse {
 /// User info returned from CLI exchange
 #[derive(Debug, Serialize, ToSchema)]
 pub struct CliUserInfo {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
     pub email: String,
     /// Human-readable name. Safe to render in user-facing messages.

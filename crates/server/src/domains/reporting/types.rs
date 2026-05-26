@@ -12,7 +12,7 @@ use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct SavedReport {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// UUID of the saved report.
     pub id: Uuid,
     /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,

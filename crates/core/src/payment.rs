@@ -141,7 +141,7 @@ impl From<&str> for PaymentStatus {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct PaymentAccount {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: PaymentAccountId,
     /// Owning organization's prefixed public identifier.
     pub organization_id: String,
@@ -168,7 +168,7 @@ pub struct PaymentAccount {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct PaymentPolicy {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: PaymentPolicyId,
     /// Owning organization's prefixed public identifier.
     pub organization_id: String,
@@ -205,7 +205,7 @@ pub struct PaymentPolicy {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct PaymentAttempt {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: PaymentAttemptId,
     /// Owning organization's prefixed public identifier.
     pub organization_id: String,

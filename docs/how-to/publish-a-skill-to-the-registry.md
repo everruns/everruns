@@ -100,8 +100,6 @@ Deleting a skill hides it from capability listings. Agents that reference it via
 - Skill names are unique per organization.
 - Disabled skills are hidden from listings.
 
-See [TM-TOOL-010 through TM-TOOL-014](https://github.com/everruns/everruns/blob/main/specs/threat-model.md) in the threat model for the detailed analysis.
-
 ## See also
 
 - [Skills Registry feature](/features/skills-registry/)

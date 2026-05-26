@@ -269,7 +269,7 @@ inventory::submit! { CommandDescriptor::of::<ListHarnesses>() }
 /// Get a single harness by ID or name.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct GetHarness {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
 }
 
@@ -311,7 +311,7 @@ inventory::submit! { CommandDescriptor::of::<GetHarness>() }
 /// Update a harness. Only provided fields are changed.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateHarnessCmd {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
     #[serde(flatten)]
     pub req: UpdateHarnessRequest,
@@ -501,7 +501,7 @@ inventory::submit! { CommandDescriptor::of::<UpdateHarnessCmd>() }
 /// Archive a harness (soft delete).
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct DeleteHarness {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
 }
 
@@ -574,7 +574,7 @@ inventory::submit! { CommandDescriptor::of::<DeleteHarness>() }
 /// Permanently delete an archived harness.
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct DestroyHarness {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
 }
 
@@ -660,7 +660,7 @@ inventory::submit! { CommandDescriptor::of::<DestroyHarness>() }
 /// Copy a harness. Generates a unique name ({name}-copy, -copy-2, etc.)
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CopyHarness {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
     pub id: String,
 }
 

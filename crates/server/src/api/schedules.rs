@@ -232,7 +232,7 @@ pub struct UpdateScheduleRequest {
 /// Schedule response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ScheduleResponse {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// UUID of the schedule.
     pub id: Uuid,
     /// Human-readable name. Safe to render in user-facing messages.
     pub name: String,
@@ -323,9 +323,9 @@ pub struct SchedulesListResponse {
 /// Schedule execution response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ScheduleExecutionResponse {
-    /// Prefixed public identifier (see `specs/id-schema.md`).
+    /// UUID of the schedule execution.
     pub id: Uuid,
-    /// Schedule's prefixed public identifier.
+    /// UUID of the owning schedule.
     pub schedule_id: Uuid,
     /// Timestamp when this resource is scheduled to run (RFC 3339).
     pub scheduled_at: DateTime<Utc>,
