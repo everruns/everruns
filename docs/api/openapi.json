@@ -14305,7 +14305,8 @@
                 "type": "null"
               },
               {
-                "$ref": "#/components/schemas/SavedReportDashboardMetadata"
+                "$ref": "#/components/schemas/SavedReportDashboardMetadata",
+                "description": "Optional dashboard placement metadata. Omit to create a library-only\nreport that isn't pinned to any dashboard layout."
               }
             ]
           },
@@ -14323,7 +14324,8 @@
             "example": "Weekly active agents — last 30 days"
           },
           "query": {
-            "$ref": "#/components/schemas/ReportQuery"
+            "$ref": "#/components/schemas/ReportQuery",
+            "description": "The query this report executes when run or exported. See `ReportQuery`\nfor the full field breakdown."
           }
         }
       },
@@ -15489,7 +15491,8 @@
             "description": "Export format. Defaults to `csv` when omitted."
           },
           "query": {
-            "$ref": "#/components/schemas/ReportQuery"
+            "$ref": "#/components/schemas/ReportQuery",
+            "description": "Ad-hoc query to materialize and export. Same shape as the body of\n`POST /v1/reports/query` — see `ReportQuery` for the field breakdown."
           }
         }
       },
@@ -16082,16 +16085,19 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/GitDiffEntry"
-            }
+            },
+            "description": "Per-file change records. Empty when the two trees are identical."
           },
           "patch": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Unified-diff patch text covering all `entries`, truncated to ~64 KiB\n(with a trailing `... (truncated)` marker when the cap is hit).\n`None` when the diff produced no patch text — typically because the\ntwo trees are identical."
           },
           "stats": {
-            "$ref": "#/components/schemas/GitDiffStats"
+            "$ref": "#/components/schemas/GitDiffStats",
+            "description": "Aggregate line/file counts across `entries`."
           }
         }
       },
@@ -16107,10 +16113,12 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Pre-change path. Only set when `status == \"renamed\"`; otherwise\n`None` (including for `added`/`deleted`/`modified`)."
           },
           "path": {
-            "type": "string"
+            "type": "string",
+            "description": "File path on the \"new\" side of the diff (the post-change path). For\na rename, the pre-rename path is in `old_path`. Repo-root-relative,\nforward-slash separated."
           },
           "status": {
             "type": "string",
@@ -16129,14 +16137,17 @@
         "properties": {
           "deletions": {
             "type": "integer",
+            "description": "Total removed lines summed across all files (the `-` count in a\nunified diff).",
             "minimum": 0
           },
           "files_changed": {
             "type": "integer",
+            "description": "Number of files with at least one changed line (matches the length\nof `GitDiff.entries`).",
             "minimum": 0
           },
           "insertions": {
             "type": "integer",
+            "description": "Total added lines summed across all files (the `+` count in a\nunified diff).",
             "minimum": 0
           }
         }
@@ -18602,7 +18613,8 @@
                       "type": "null"
                     },
                     {
-                      "$ref": "#/components/schemas/SavedReportDashboardMetadata"
+                      "$ref": "#/components/schemas/SavedReportDashboardMetadata",
+                      "description": "Optional dashboard placement metadata. `None` means the report is\n\"library-only\" and not pinned to a dashboard layout."
                     }
                   ]
                 },
@@ -18623,7 +18635,8 @@
                   "description": "Human-readable name. Safe to render in user-facing messages."
                 },
                 "query": {
-                  "$ref": "#/components/schemas/ReportQuery"
+                  "$ref": "#/components/schemas/ReportQuery",
+                  "description": "The query this report executes when run or exported. Same shape as the\n`body` of `POST /v1/reports/query` — see `ReportQuery` for the field\nbreakdown."
                 },
                 "updated_at": {
                   "type": "string",
@@ -23758,7 +23771,8 @@
         ],
         "properties": {
           "kind": {
-            "$ref": "#/components/schemas/ReportColumnKind"
+            "$ref": "#/components/schemas/ReportColumnKind",
+            "description": "Whether this column is a grouping `dimension` or an aggregate\n`measure` — the same distinction made on `ReportQuery`."
           },
           "name": {
             "type": "string",
@@ -23836,7 +23850,8 @@
             "example": "status"
           },
           "op": {
-            "$ref": "#/components/schemas/ReportFilterOp"
+            "$ref": "#/components/schemas/ReportFilterOp",
+            "description": "Comparison operator. Determines the expected shape of `value`\n(scalar for `eq`/`neq`/`gt`/`gte`/`lt`/`lte`, array for `in`)."
           },
           "value": {
             "description": "Comparison value. Type depends on `op`: a scalar for `eq`/`neq`/`gt`/`gte`/`lt`/`lte`,\nan array for `in`. Example for `op = in`: `[\"completed\", \"failed\"]`."
@@ -23948,24 +23963,28 @@
         "properties": {
           "as_of": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Timestamp the underlying data was materialized (RFC 3339). Useful as\nan \"as of\" footer when rendering — distinct from when the query ran."
           },
           "columns": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ReportColumn"
-            }
+            },
+            "description": "Column metadata in the same order as the entries of each row in\n`rows`. Use the `kind` field to tell dimensions from measures."
           },
           "freshness_lag_ms": {
             "type": [
               "integer",
               "null"
             ],
-            "format": "int64"
+            "format": "int64",
+            "description": "How stale the data is relative to the server's wall clock at query\ntime, in milliseconds. `None` when freshness can't be determined\n(e.g. backends that don't track projector lag)."
           },
           "rows": {
             "type": "array",
-            "items": {}
+            "items": {},
+            "description": "Result rows. Each row is a JSON object keyed by column name; cell\ntypes match the underlying dataset (numbers for measures, strings\nor numbers for dimensions). Length is capped by `ReportQuery.limit`."
           }
         }
       },
@@ -24048,16 +24067,19 @@
         "properties": {
           "generated_at": {
             "type": "string",
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Server-side wall-clock timestamp when this snapshot was assembled\n(RFC 3339). Use as the \"as-of\" for any displayed lag metrics."
           },
           "outbox": {
-            "$ref": "#/components/schemas/ReportingOutboxDiagnostics"
+            "$ref": "#/components/schemas/ReportingOutboxDiagnostics",
+            "description": "Reporting outbox health — counts of pending/processing/failed/\ncompleted rows plus a sample of the most recent failures."
           },
           "projector_lag": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/DatasetProjectorLag"
-            }
+            },
+            "description": "Per-dataset projector freshness. One entry per active reporting\ndataset; missing datasets mean the projector hasn't produced any\nrows yet."
           }
         }
       },
@@ -24312,7 +24334,8 @@
                 "type": "null"
               },
               {
-                "$ref": "#/components/schemas/SavedReportDashboardMetadata"
+                "$ref": "#/components/schemas/SavedReportDashboardMetadata",
+                "description": "Optional dashboard placement metadata. `None` means the report is\n\"library-only\" and not pinned to a dashboard layout."
               }
             ]
           },
@@ -24333,7 +24356,8 @@
             "description": "Human-readable name. Safe to render in user-facing messages."
           },
           "query": {
-            "$ref": "#/components/schemas/ReportQuery"
+            "$ref": "#/components/schemas/ReportQuery",
+            "description": "The query this report executes when run or exported. Same shape as the\n`body` of `POST /v1/reports/query` — see `ReportQuery` for the field\nbreakdown."
           },
           "updated_at": {
             "type": "string",
@@ -24349,20 +24373,23 @@
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Rendering hint for the UI (e.g. `\"line\"`, `\"bar\"`, `\"table\"`,\n`\"big_number\"`). Free-form string — the server doesn't enforce a\nclosed set so new chart types can roll out client-side first."
           },
           "position": {
             "type": [
               "integer",
               "null"
             ],
-            "format": "int32"
+            "format": "int32",
+            "description": "Sort key within `section`. Lower values render first. `None` means\n\"place at the end\"."
           },
           "section": {
             "type": [
               "string",
               "null"
-            ]
+            ],
+            "description": "Dashboard section/group this report belongs to (free-form bucket name\nlike `\"Operations\"` or `\"Finance\"`). Used to cluster related reports\nin the UI."
           },
           "title": {
             "type": [
@@ -27608,7 +27635,8 @@
                 "type": "null"
               },
               {
-                "$ref": "#/components/schemas/SavedReportDashboardMetadata"
+                "$ref": "#/components/schemas/SavedReportDashboardMetadata",
+                "description": "Replace dashboard placement metadata. Omit to keep current placement;\nsend `null` to detach the report from its dashboard; send an object\nto overwrite the placement."
               }
             ]
           },
@@ -27629,7 +27657,8 @@
             "example": "Weekly active agents — last 60 days"
           },
           "query": {
-            "$ref": "#/components/schemas/ReportQuery"
+            "$ref": "#/components/schemas/ReportQuery",
+            "description": "Replace the saved report's query wholesale. Omit to keep the existing\nquery; send a new `ReportQuery` to swap it."
           }
         }
       },
@@ -28084,7 +28113,8 @@
             "description": "Current lifecycle status."
           },
           "voice_connection_id": {
-            "type": "string"
+            "type": "string",
+            "description": "Prefixed public identifier of the voice connection that was ended."
           }
         }
       },
@@ -28185,7 +28215,8 @@
         ],
         "properties": {
           "session": {
-            "$ref": "#/components/schemas/Session"
+            "$ref": "#/components/schemas/Session",
+            "description": "The session this voice connection is attached to. Returned alongside\nthe voice payload so a caller has a single round-trip view of both."
           },
           "voice": {
             "type": "object",

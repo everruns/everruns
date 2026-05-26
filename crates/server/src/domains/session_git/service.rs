@@ -42,25 +42,42 @@ pub struct GitCommitInfo {
 /// A diff entry between two commits
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct GitDiffEntry {
+    /// File path on the "new" side of the diff (the post-change path). For
+    /// a rename, the pre-rename path is in `old_path`. Repo-root-relative,
+    /// forward-slash separated.
     pub path: String,
     /// Current lifecycle status.
     pub status: String, // "added", "modified", "deleted", "renamed"
+    /// Pre-change path. Only set when `status == "renamed"`; otherwise
+    /// `None` (including for `added`/`deleted`/`modified`).
     pub old_path: Option<String>,
 }
 
 /// A diff with full patch output
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct GitDiff {
+    /// Per-file change records. Empty when the two trees are identical.
     pub entries: Vec<GitDiffEntry>,
+    /// Unified-diff patch text covering all `entries`, truncated to ~64 KiB
+    /// (with a trailing `... (truncated)` marker when the cap is hit).
+    /// `None` when the diff produced no patch text — typically because the
+    /// two trees are identical.
     pub patch: Option<String>,
+    /// Aggregate line/file counts across `entries`.
     pub stats: GitDiffStats,
 }
 
 /// Diff statistics
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct GitDiffStats {
+    /// Number of files with at least one changed line (matches the length
+    /// of `GitDiff.entries`).
     pub files_changed: usize,
+    /// Total added lines summed across all files (the `+` count in a
+    /// unified diff).
     pub insertions: usize,
+    /// Total removed lines summed across all files (the `-` count in a
+    /// unified diff).
     pub deletions: usize,
 }
 

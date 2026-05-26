@@ -62,6 +62,8 @@ pub struct ReportFilter {
     /// Field to filter on. Must be a filter field exposed by the dataset (see `filter_fields` in the catalog).
     #[cfg_attr(feature = "openapi", schema(example = "status"))]
     pub field: String,
+    /// Comparison operator. Determines the expected shape of `value`
+    /// (scalar for `eq`/`neq`/`gt`/`gte`/`lt`/`lte`, array for `in`).
     pub op: ReportFilterOp,
     /// Comparison value. Type depends on `op`: a scalar for `eq`/`neq`/`gt`/`gte`/`lt`/`lte`,
     /// an array for `in`. Example for `op = in`: `["completed", "failed"]`.
@@ -112,10 +114,20 @@ pub enum ReportOrderDirection {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct ReportResult {
+    /// Timestamp the underlying data was materialized (RFC 3339). Useful as
+    /// an "as of" footer when rendering — distinct from when the query ran.
     pub as_of: DateTime<Utc>,
+    /// How stale the data is relative to the server's wall clock at query
+    /// time, in milliseconds. `None` when freshness can't be determined
+    /// (e.g. backends that don't track projector lag).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub freshness_lag_ms: Option<i64>,
+    /// Column metadata in the same order as the entries of each row in
+    /// `rows`. Use the `kind` field to tell dimensions from measures.
     pub columns: Vec<ReportColumn>,
+    /// Result rows. Each row is a JSON object keyed by column name; cell
+    /// types match the underlying dataset (numbers for measures, strings
+    /// or numbers for dimensions). Length is capped by `ReportQuery.limit`.
     pub rows: Vec<Value>,
 }
 
@@ -125,6 +137,8 @@ pub struct ReportColumn {
     /// Column name as it appears in `rows`.
     #[cfg_attr(feature = "openapi", schema(example = "session_count"))]
     pub name: String,
+    /// Whether this column is a grouping `dimension` or an aggregate
+    /// `measure` — the same distinction made on `ReportQuery`.
     pub kind: ReportColumnKind,
 }
 

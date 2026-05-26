@@ -19,7 +19,12 @@ pub struct SavedReport {
     #[serde(skip_serializing_if = "Option::is_none")]
     /// Human-readable description. Safe to render in user-facing messages.
     pub description: Option<String>,
+    /// The query this report executes when run or exported. Same shape as the
+    /// `body` of `POST /v1/reports/query` — see `ReportQuery` for the field
+    /// breakdown.
     pub query: ReportQuery,
+    /// Optional dashboard placement metadata. `None` means the report is
+    /// "library-only" and not pinned to a dashboard layout.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dashboard: Option<SavedReportDashboardMetadata>,
     /// Timestamp when this resource was created (RFC 3339).
@@ -33,10 +38,18 @@ pub struct SavedReportDashboardMetadata {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     /// Human-readable title. Safe to render in user-facing messages.
     pub title: Option<String>,
+    /// Dashboard section/group this report belongs to (free-form bucket name
+    /// like `"Operations"` or `"Finance"`). Used to cluster related reports
+    /// in the UI.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub section: Option<String>,
+    /// Rendering hint for the UI (e.g. `"line"`, `"bar"`, `"table"`,
+    /// `"big_number"`). Free-form string — the server doesn't enforce a
+    /// closed set so new chart types can roll out client-side first.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub chart_type: Option<String>,
+    /// Sort key within `section`. Lower values render first. `None` means
+    /// "place at the end".
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub position: Option<i32>,
 }
@@ -53,7 +66,11 @@ pub struct CreateSavedReportRequest {
         example = "Rolling 30-day count of agents with at least one session per day, grouped by org."
     )]
     pub description: Option<String>,
+    /// The query this report executes when run or exported. See `ReportQuery`
+    /// for the full field breakdown.
     pub query: ReportQuery,
+    /// Optional dashboard placement metadata. Omit to create a library-only
+    /// report that isn't pinned to any dashboard layout.
     #[serde(default)]
     pub dashboard: Option<SavedReportDashboardMetadata>,
 }
@@ -69,9 +86,14 @@ pub struct UpdateSavedReportRequest {
     #[serde(default, deserialize_with = "deserialize_nullable_update_field")]
     #[schema(value_type = Option<String>, nullable = true, example = "Rolling 60-day window; widened from 30d after the Q3 product launch.")]
     pub description: UpdateField<String>,
+    /// Replace the saved report's query wholesale. Omit to keep the existing
+    /// query; send a new `ReportQuery` to swap it.
     #[serde(default, deserialize_with = "deserialize_nullable_update_field")]
     #[schema(value_type = ReportQuery, nullable = false)]
     pub query: UpdateField<ReportQuery>,
+    /// Replace dashboard placement metadata. Omit to keep current placement;
+    /// send `null` to detach the report from its dashboard; send an object
+    /// to overwrite the placement.
     #[serde(default, deserialize_with = "deserialize_nullable_update_field")]
     #[schema(value_type = Option<SavedReportDashboardMetadata>, nullable = true)]
     pub dashboard: UpdateField<SavedReportDashboardMetadata>,
@@ -87,6 +109,8 @@ pub enum ReportExportFormat {
 /// Request body for the `export_report_query` operation.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct ExportReportQueryRequest {
+    /// Ad-hoc query to materialize and export. Same shape as the body of
+    /// `POST /v1/reports/query` — see `ReportQuery` for the field breakdown.
     pub query: ReportQuery,
     /// Export format. Defaults to `csv` when omitted.
     #[serde(default = "default_export_format")]
@@ -124,8 +148,15 @@ pub struct ReportExport {
 
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct ReportingDiagnostics {
+    /// Server-side wall-clock timestamp when this snapshot was assembled
+    /// (RFC 3339). Use as the "as-of" for any displayed lag metrics.
     pub generated_at: DateTime<Utc>,
+    /// Per-dataset projector freshness. One entry per active reporting
+    /// dataset; missing datasets mean the projector hasn't produced any
+    /// rows yet.
     pub projector_lag: Vec<DatasetProjectorLag>,
+    /// Reporting outbox health — counts of pending/processing/failed/
+    /// completed rows plus a sample of the most recent failures.
     pub outbox: ReportingOutboxDiagnostics,
 }
 
