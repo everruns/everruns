@@ -168,19 +168,39 @@ impl PostToolExecHook for OutputHardLimitHook {
         }
 
         // Cap native image payloads too. These bypass `result.result` JSON size
-        // checks and are appended directly as ContentPart::Image later.
+        // checks and are appended directly as ContentPart::Image later. Enforce
+        // both a per-image ceiling (no single image larger than the budget) and
+        // a cumulative budget (many smaller images cannot blow past it either).
         if let Some(images) = result.images.as_mut() {
             let original_count = images.len();
-            images.retain(|img| img.base64.len() <= MAX_TOOL_RESULT_BYTES);
+            let mut cumulative = 0usize;
+            images.retain(|img| {
+                let len = img.base64.len();
+                if len > MAX_TOOL_RESULT_BYTES {
+                    return false;
+                }
+                match cumulative.checked_add(len) {
+                    Some(total) if total <= MAX_TOOL_RESULT_BYTES => {
+                        cumulative = total;
+                        true
+                    }
+                    _ => false,
+                }
+            });
             let dropped = original_count.saturating_sub(images.len());
             if dropped > 0 {
                 tracing::warn!(
                     tool_name = %tool_call.name,
                     tool_call_id = %tool_call.id,
                     dropped_images = dropped,
+                    kept_images = images.len(),
+                    kept_bytes = cumulative,
                     limit = MAX_TOOL_RESULT_BYTES,
                     "Tool images exceeded hard limit and were dropped"
                 );
+            }
+            if images.is_empty() {
+                result.images = None;
             }
         }
     }
@@ -668,6 +688,76 @@ mod tests {
         let images = result.images.unwrap();
         assert_eq!(images.len(), 1);
         assert_eq!(images[0].base64.len(), 32);
+    }
+
+    #[tokio::test]
+    async fn test_output_hard_limit_enforces_cumulative_image_budget() {
+        let hook = OutputHardLimitHook;
+        let tc = make_tool_call();
+        let td = make_tool_def();
+        let ctx = ToolContext::new(SessionId::new());
+
+        // Each image is half the limit, so the third one tips the cumulative
+        // budget past MAX_TOOL_RESULT_BYTES and must be dropped.
+        let half = MAX_TOOL_RESULT_BYTES / 2;
+        let mut result = ToolResult {
+            tool_call_id: "call_test".into(),
+            result: Some(json!({"ok": true})),
+            images: Some(vec![
+                crate::tools::ToolResultImage {
+                    base64: "a".repeat(half),
+                    media_type: "image/png".to_string(),
+                },
+                crate::tools::ToolResultImage {
+                    base64: "b".repeat(half),
+                    media_type: "image/png".to_string(),
+                },
+                crate::tools::ToolResultImage {
+                    base64: "c".repeat(half),
+                    media_type: "image/png".to_string(),
+                },
+            ]),
+            error: None,
+            connection_required: None,
+            raw_output: None,
+        };
+
+        hook.after_exec(&tc, &td, &mut result, &ctx).await;
+
+        let images = result.images.unwrap();
+        assert_eq!(
+            images.len(),
+            2,
+            "third image should be dropped by cumulative budget"
+        );
+        assert!(images.iter().all(|i| i.base64.len() == half));
+    }
+
+    #[tokio::test]
+    async fn test_output_hard_limit_normalizes_empty_images_to_none() {
+        let hook = OutputHardLimitHook;
+        let tc = make_tool_call();
+        let td = make_tool_def();
+        let ctx = ToolContext::new(SessionId::new());
+
+        let mut result = ToolResult {
+            tool_call_id: "call_test".into(),
+            result: Some(json!({"ok": true})),
+            images: Some(vec![crate::tools::ToolResultImage {
+                base64: "a".repeat(MAX_TOOL_RESULT_BYTES + 1),
+                media_type: "image/png".to_string(),
+            }]),
+            error: None,
+            connection_required: None,
+            raw_output: None,
+        };
+
+        hook.after_exec(&tc, &td, &mut result, &ctx).await;
+
+        assert!(
+            result.images.is_none(),
+            "images vec emptied by retain should normalize to None"
+        );
     }
 
     #[test]
