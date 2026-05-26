@@ -109,9 +109,19 @@ impl ToolExecutionResult {
     /// The raw output is transferred to `ToolResult.raw_output` during `into_tool_result()`.
     pub fn success_with_raw_output(value: impl Into<Value>, raw_output: String) -> Self {
         let mut value = value.into();
-        // Embed raw output in a sidecar key — extracted in into_tool_result()
-        if let Some(obj) = value.as_object_mut() {
-            obj.insert("_raw_output".to_string(), Value::String(raw_output));
+        // Embed raw output in a sidecar key — extracted in into_tool_result().
+        // Non-object values are wrapped in a scalar carrier so raw_output still
+        // flows through; the carrier is unwrapped on extraction.
+        match value.as_object_mut() {
+            Some(obj) => {
+                obj.insert("_raw_output".to_string(), Value::String(raw_output));
+            }
+            None => {
+                value = serde_json::json!({
+                    "_raw_output_scalar": value,
+                    "_raw_output": raw_output,
+                });
+            }
         }
         ToolExecutionResult::Success(value)
     }
@@ -182,9 +192,14 @@ impl ToolExecutionResult {
                     .as_object_mut()
                     .and_then(|obj| obj.remove("_raw_output"))
                     .and_then(|v| v.as_str().map(|s| s.to_string()));
+                // Unwrap scalar carrier (set by success_with_raw_output for non-object inputs)
+                let result_value = value
+                    .as_object_mut()
+                    .and_then(|obj| obj.remove("_raw_output_scalar"))
+                    .unwrap_or(value);
                 ToolResult {
                     tool_call_id: tool_call_id.to_string(),
-                    result: Some(value),
+                    result: Some(result_value),
                     images: None,
                     error: None,
                     connection_required: None,
@@ -2339,6 +2354,41 @@ mod tests {
 
         let def = tool.to_definition();
         assert_eq!(def.display_name(), Some("Get Current Time"));
+    }
+
+    #[test]
+    fn test_success_with_raw_output_object_preserves_shape() {
+        let res = ToolExecutionResult::success_with_raw_output(
+            serde_json::json!({"stdout": "hello"}),
+            "raw stdout bytes".to_string(),
+        );
+        let tr = res.into_tool_result("call_1", "demo");
+        assert_eq!(tr.result.as_ref().unwrap()["stdout"], "hello");
+        assert!(
+            tr.result
+                .as_ref()
+                .unwrap()
+                .as_object()
+                .unwrap()
+                .get("_raw_output")
+                .is_none(),
+            "sidecar key must not leak to the LLM-visible result"
+        );
+        assert_eq!(tr.raw_output.as_deref(), Some("raw stdout bytes"));
+    }
+
+    #[test]
+    fn test_success_with_raw_output_scalar_unwraps_to_string() {
+        let res = ToolExecutionResult::success_with_raw_output(
+            "compact summary".to_string(),
+            "full output bytes".to_string(),
+        );
+        let tr = res.into_tool_result("call_1", "demo");
+        assert_eq!(
+            tr.result,
+            Some(serde_json::Value::String("compact summary".into()))
+        );
+        assert_eq!(tr.raw_output.as_deref(), Some("full output bytes"));
     }
 
     #[test]

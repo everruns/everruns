@@ -294,11 +294,11 @@ impl Tool for SandboxExecTool {
         let output = if let Some(budget) = output_verbosity_budget(effective_mode) {
             priority_aware_truncate(&clean_output, budget)
         } else {
-            clean_output
+            clean_output.clone()
         };
 
         if exit_code == 0 {
-            ToolExecutionResult::success(output)
+            ToolExecutionResult::success_with_raw_output(output, clean_output)
         } else {
             ToolExecutionResult::success(format!("Exit code: {exit_code}\n\n{output}"))
         }
