@@ -1201,6 +1201,34 @@ And on update, the preserved-secrets merger reinjects the existing encrypted tok
 **TM-FCP-008 — Session ownership invariant:**
 `SessionService::create_from_app` sets `session.owner_principal_id = app.owner_principal_id` and tags every session with `fcp:app:<app_public_id>`. The reuse path (`find_app_session_by_tags`) requires the `org_id`, `app.internal_id`, AND the routing tag to all match — so even an attacker who guesses a victim app's id and forges a cookie cannot adopt a session owned by a different org or app.
 
+## 24. CI / Build Pipeline (TM-CI)
+
+GitHub Actions workflows in `.github/workflows/` are part of the trust boundary because they execute on push to `main` and on fork pull requests once the first-time-contributor approval is granted. After that one-time approval, every subsequent PR from the same fork runs CI automatically; the only barrier between attacker-controlled code and the repo's secrets is the per-workflow secret scoping.
+
+Key GitHub guarantee: for `pull_request` triggers, the workflow YAML is read from the BASE branch, so a fork PR cannot directly add an exfiltration step to a workflow. The risk is indirect — workflow YAML in the base branch may execute PR-controlled code (cargo build/test runs `build.rs`, proc-macros, and test bodies; PR-built server/worker/CLI binaries execute) with secrets injected into the process env. Any secret available to that code is exfiltratable.
+
+| ID | Threat | Severity | Mitigation | Status |
+|----|--------|----------|------------|--------|
+| TM-CI-001 | Workflow-level `DOPPLER_TOKEN` exfil via PR-controlled cargo build/test | Critical | `DOPPLER_TOKEN` is no longer declared at workflow `env:` in `ci.yml`, `brave-search-integration.yml`, `cursor-integration.yml`, or `sprites-integration.yml`. It is injected only into jobs/steps gated on `github.event_name == 'push'` (live-test jobs in ci.yml + per-integration live-test jobs). The Slack step in `integration-test` was changed from `if: env.DOPPLER_TOKEN != ''` to `if: github.event_name == 'push'` with step-scoped env | MITIGATED |
+| TM-CI-002 | LLM provider keys (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`) exfil from `integration-test` job env via PR-controlled cargo test | High | Three keys removed from `integration-test` job env. The single step that needs them (`Run LLM integration tests`) gates on `github.event_name == 'push'` and sets them via step env | MITIGATED |
+| TM-CI-003 | LLM provider keys exfil from PR-built `everruns-server`/`everruns-worker` binaries in `workflow-test` | High | `workflow-test` job condition now requires `github.event_name == 'push'`. Compile-time PR coverage of the binaries is preserved via `build-binaries` | MITIGATED |
+| TM-CI-004 | LLM provider keys exfil via `DEFAULT_*_API_KEY` from PR-built CLI in `cli-e2e-test` | High | `cli-e2e-test` job condition now requires `github.event_name == 'push'`. PR-side CLI coverage continues via `unit-test`'s CLI integration tests, which run without keys | MITIGATED |
+| TM-CI-005 | Brave Search live tests exposing Doppler vault on fork PRs | High | `brave-search-integration.yml` split into a PR-safe `unit-test` job (no secrets) and a push-only `live-test` job. Weekly `integration-live-sweep.yml` backstops shared-crate regression coverage | MITIGATED |
+| TM-CI-006 | First-time-contributor approval grants persistent CI access | Medium | GitHub setting "Require approval for all outside collaborators" recommended at the org/repo level. Not enforced in this repo's workflows; orthogonal to the per-secret scoping above | **OPERATIONAL** |
+| TM-CI-007 | `GITHUB_TOKEN` exfil on PR | Low | GitHub scopes the fork-PR `GITHUB_TOKEN` to read-only by default. `docker-publish.yml` uses it only on `push`/tag jobs; PR-validation jobs do not log in to GHCR | MITIGATED |
+
+### Mitigation Details
+
+**TM-CI-001 / TM-CI-002 / TM-CI-003 / TM-CI-004 — `pull_request` vs `push` gating:**
+The four workflows touched in this category previously declared secrets at workflow `env:` or at job `env:` on jobs that ran on `pull_request`. After the fix, every step that has any secret in its env satisfies one of:
+- The enclosing job condition includes `github.event_name == 'push'` (or `workflow_dispatch`), or
+- The step itself has an `if: github.event_name == 'push'` guard, and the secret is set at step `env:` only.
+
+This ensures GitHub never instantiates the secret value into a runner that is executing fork-PR-controlled code (build.rs, proc-macros, test bodies, or PR-built binaries).
+
+**TM-CI-006 — Outside-collaborator approval gate:**
+Even with per-secret scoping, an attacker who controls a previously-approved fork can submit malicious PRs that the workflow base-branch YAML still runs. The remaining defense layer is the GitHub org setting "Require approval for all outside collaborators" under Actions → General → Fork pull request workflows. This is a repo/org-level operational control, not a workflow change, and is therefore tracked here for visibility.
+
 ## Vulnerability Summary
 
 ### Open Threats (Require Action)
@@ -1298,6 +1326,7 @@ And on update, the preserved-secrets merger reinjects the existing encrypted tok
 | A2A Agent Card disclosure | TM-A2A-009 | Card never echoes API key / hash / internal IDs; only published while app is live and channel enabled |
 | A2A runaway client DoS | TM-A2A-013 | Configurable per-app, per-IP cap (`A2aChannelConfig::rate_limit_per_minute`) enforced after API key check via shared `ChannelRateLimiter` (in-memory governor or Valkey) |
 | A2A replay of captured request | TM-A2A-010 | Opt-in scope-bound HMAC signing (`A2aChannelConfig::signing_secret`) — basestring `v0:{ts}:{app_id}:{channel_id}:{body}` so signatures are non-reusable across channels; 5-minute timestamp window plus signature-keyed dedup; in-memory or Valkey backend |
+| CI secret scoping | TM-CI-001..005 | No `secrets.*` at workflow `env:`; secrets are injected only into jobs/steps gated on `github.event_name == 'push'` (or `workflow_dispatch`) so fork-PR-controlled cargo/binary code cannot read them from process env |
 
 ## References
 

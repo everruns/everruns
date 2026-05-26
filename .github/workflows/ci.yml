@@ -20,7 +20,10 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
-  DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+  # DOPPLER_TOKEN is intentionally NOT exposed at workflow scope: PR code
+  # would inherit it and could exfiltrate the whole Doppler vault via
+  # build.rs, proc-macros, or tests. Inject it per step under a push-only
+  # gate (see Slack + live-test jobs below).
 
 jobs:
   # Detect which parts of the codebase changed to skip irrelevant jobs
@@ -383,6 +386,8 @@ jobs:
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.daytona == 'true' && github.event_name == 'push'
     timeout-minutes: 10
+    env:
+      DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
 
     steps:
       - uses: actions/checkout@v5
@@ -408,6 +413,8 @@ jobs:
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.browserless == 'true' && github.event_name == 'push'
     timeout-minutes: 10
+    env:
+      DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
 
     steps:
       - uses: actions/checkout@v5
@@ -433,6 +440,8 @@ jobs:
     needs: changes
     if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.e2b == 'true' && github.event_name == 'push'
     timeout-minutes: 10
+    env:
+      DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
 
     steps:
       - uses: actions/checkout@v5
@@ -460,6 +469,7 @@ jobs:
     timeout-minutes: 10
     env:
       DENO_SANDBOX_REGION: ams
+      DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
 
     steps:
       - uses: actions/checkout@v5
@@ -502,10 +512,13 @@ jobs:
 
     env:
       DATABASE_URL: postgres://everruns:everruns@localhost:5432/everruns_test
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       SECRETS_ENCRYPTION_KEY: kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=
+      # LLM provider keys are intentionally NOT exposed at job scope:
+      # this job runs PR-controlled cargo test (and therefore arbitrary
+      # build.rs / proc-macro / test code) which would otherwise be able
+      # to read the keys from process env. The single step that needs
+      # them (Run LLM integration tests) is gated to push events and
+      # sets them via step env below.
 
     steps:
       - uses: actions/checkout@v5
@@ -577,15 +590,24 @@ jobs:
       - name: Run durable failpoint tests
         run: cargo test -p everruns-durable --test failure_injection_test --features "failpoints,postgres-tests" -- --test-threads=1
 
+      # Slack live tests need DOPPLER_TOKEN. Restrict to push events so the
+      # token is never instantiated in a fork-PR context where untrusted
+      # code (build.rs, proc-macros, test bodies) would see it via env.
       - name: Install Doppler CLI
-        if: env.DOPPLER_TOKEN != ''
+        if: github.event_name == 'push'
         uses: dopplerhq/cli-action@v3
 
       - name: Run Slack integration tests (real API via Doppler)
-        if: env.DOPPLER_TOKEN != ''
+        if: github.event_name == 'push'
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
         run: doppler run --preserve-env="DATABASE_URL" -- cargo test -p everruns-server --test slack_integration_test -- --test-threads=1
 
+      # Gated to push events so PR-controlled cargo test cannot exfiltrate
+      # the LLM provider keys via env. PR coverage of the LLM matrix is
+      # still provided by `unit-test` (mocked) and the weekly live sweep.
       - name: Run LLM integration tests (skips providers without API keys)
+        if: github.event_name == 'push'
         timeout-minutes: 10
         # Gemini cases chronically hit 429 `RESOURCE_EXHAUSTED` on the shared
         # CI key regardless of the 2 in-test retries. Skip the `gemini` provider
@@ -594,6 +616,9 @@ jobs:
         # regressions, not upstream quota pressure. Revisit when quota is raised.
         env:
           SKIP_LLM_INTEGRATION_TESTS_PROVIDERS: gemini
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: cargo test -p everruns-llm-tests --test agent_run_basic --test agent_run_with_thinking --all-features
 
   # Build release binaries and upload as artifacts for E2E jobs and openapi-check
@@ -645,13 +670,18 @@ jobs:
           path: target/release/export-openapi
           retention-days: 1
 
+  # Gated to push events: this job launches PR-built `everruns-server` and
+  # `everruns-worker` binaries with ANTHROPIC/OPENAI/GEMINI keys in env, so
+  # running it on fork PRs would let attacker-controlled binary code exfil
+  # the keys. PR coverage of the binaries is still provided by build-binaries
+  # (compile-time) and the workflow tests run on push to main.
   workflow-test:
     name: Workflow Tests (Server + Worker)
     runs-on: ubuntu-latest
     needs:
       - changes
       - build-binaries
-    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true' && needs.changes.outputs.skip_slow_rust != 'true'
+    if: github.event_name == 'push' && needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true' && needs.changes.outputs.skip_slow_rust != 'true'
     services:
       postgres:
         image: postgres:17-alpine
@@ -773,13 +803,18 @@ jobs:
           echo "=== Worker logs ==="
           cat worker.log 2>/dev/null || echo "No worker log"
 
+  # Gated to push events: this job launches the PR-built `everruns-server`
+  # binary with DEFAULT_*_API_KEY in env (which map to the same secrets as
+  # workflow-test), so running it on fork PRs would let attacker-controlled
+  # binary code exfil the keys. PR coverage of the CLI is still provided by
+  # the CLI integration tests under `unit-test` (which run without keys).
   cli-e2e-test:
     name: CLI E2E Tests
     runs-on: ubuntu-latest
     needs:
       - changes
       - build-binaries
-    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true' && needs.changes.outputs.skip_slow_rust != 'true'
+    if: github.event_name == 'push' && needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true' && needs.changes.outputs.skip_slow_rust != 'true'
     timeout-minutes: 10
 
     env:
