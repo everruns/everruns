@@ -166,6 +166,23 @@ impl PostToolExecHook for OutputHardLimitHook {
             }
             result.error = Some(Self::truncate(err));
         }
+
+        // Cap native image payloads too. These bypass `result.result` JSON size
+        // checks and are appended directly as ContentPart::Image later.
+        if let Some(images) = result.images.as_mut() {
+            let original_count = images.len();
+            images.retain(|img| img.base64.len() <= MAX_TOOL_RESULT_BYTES);
+            let dropped = original_count.saturating_sub(images.len());
+            if dropped > 0 {
+                tracing::warn!(
+                    tool_name = %tool_call.name,
+                    tool_call_id = %tool_call.id,
+                    dropped_images = dropped,
+                    limit = MAX_TOOL_RESULT_BYTES,
+                    "Tool images exceeded hard limit and were dropped"
+                );
+            }
+        }
     }
 }
 
@@ -619,6 +636,38 @@ mod tests {
 
         // Should remain as-is (small non-string JSON)
         assert_eq!(result.result, Some(json!({"key": "value", "num": 42})));
+    }
+
+    #[tokio::test]
+    async fn test_output_hard_limit_drops_oversized_images() {
+        let hook = OutputHardLimitHook;
+        let tc = make_tool_call();
+        let td = make_tool_def();
+        let ctx = ToolContext::new(SessionId::new());
+
+        let mut result = ToolResult {
+            tool_call_id: "call_test".into(),
+            result: Some(json!({"ok": true})),
+            images: Some(vec![
+                crate::tools::ToolResultImage {
+                    base64: "a".repeat(32),
+                    media_type: "image/png".to_string(),
+                },
+                crate::tools::ToolResultImage {
+                    base64: "b".repeat(MAX_TOOL_RESULT_BYTES + 1),
+                    media_type: "image/png".to_string(),
+                },
+            ]),
+            error: None,
+            connection_required: None,
+            raw_output: None,
+        };
+
+        hook.after_exec(&tc, &td, &mut result, &ctx).await;
+
+        let images = result.images.unwrap();
+        assert_eq!(images.len(), 1);
+        assert_eq!(images[0].base64.len(), 32);
     }
 
     #[test]
