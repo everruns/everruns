@@ -134,10 +134,20 @@ pub struct AgentVersion {
     pub change_kind: AgentVersionChangeKind,
     /// Human-readable summary of changes in this version (release notes). `None` if not provided.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "openapi", schema(example = "Switched default model to claude-sonnet-4-6; added refund-runbook capability."))]
+    #[cfg_attr(
+        feature = "openapi",
+        schema(
+            example = "Switched default model to claude-sonnet-4-6; added refund-runbook capability."
+        )
+    )]
     pub summary: Option<String>,
     /// Stable hash of `resolved_config` used to deduplicate adjacent identical snapshots.
-    #[cfg_attr(feature = "openapi", schema(example = "blake3:9f1e2a4c3d5b6e8a0b2c4d6e8f0a1b3c5d7e9f0a1b2c4d6e8f0a1b2c4d6e8f0a"))]
+    #[cfg_attr(
+        feature = "openapi",
+        schema(
+            example = "blake3:9f1e2a4c3d5b6e8a0b2c4d6e8f0a1b3c5d7e9f0a1b2c4d6e8f0a1b2c4d6e8f0a"
+        )
+    )]
     pub config_hash: String,
     /// User-authored agent configuration JSON, exactly as submitted. Capabilities, MCP refs, model selection live here.
     #[cfg_attr(feature = "openapi", schema(value_type = Object))]
@@ -193,11 +203,19 @@ pub struct Agent {
     pub display_name: Option<String>,
     /// Human-readable description of what the agent does.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "openapi", schema(example = "Handles refund and shipping questions; escalates billing disputes."))]
+    #[cfg_attr(
+        feature = "openapi",
+        schema(example = "Handles refund and shipping questions; escalates billing disputes.")
+    )]
     pub description: Option<String>,
     /// System prompt that defines the agent's behavior.
     /// Sent as the first message in every conversation.
-    #[cfg_attr(feature = "openapi", schema(example = "You are a friendly customer support agent for Acme Corp. Verify orders before issuing refunds. Escalate any billing disputes to a human."))]
+    #[cfg_attr(
+        feature = "openapi",
+        schema(
+            example = "You are a friendly customer support agent for Acme Corp. Verify orders before issuing refunds. Escalate any billing disputes to a human."
+        )
+    )]
     pub system_prompt: String,
     /// Default LLM model ID for this agent.
     /// Can be overridden at the session level.

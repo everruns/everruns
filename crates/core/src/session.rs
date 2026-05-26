@@ -138,7 +138,10 @@ pub struct Session {
     pub owner_principal_id: PrincipalId,
     /// Denormalized effective human owner of the owning principal lineage.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "openapi", schema(example = "550e8400-e29b-41d4-a716-446655440000"))]
+    #[cfg_attr(
+        feature = "openapi",
+        schema(example = "550e8400-e29b-41d4-a716-446655440000")
+    )]
     pub resolved_owner_user_id: Option<uuid::Uuid>,
     /// Owning principal summary.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -156,11 +159,17 @@ pub struct Session {
     pub locale: Option<String>,
     /// Preview text from the first user message (truncated).
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "openapi", schema(example = "Help me draft the Q3 marketing plan"))]
+    #[cfg_attr(
+        feature = "openapi",
+        schema(example = "Help me draft the Q3 marketing plan")
+    )]
     pub preview: Option<String>,
     /// Preview text from the last assistant response (truncated).
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "openapi", schema(example = "Here is a Q3 plan covering the three pillars we discussed..."))]
+    #[cfg_attr(
+        feature = "openapi",
+        schema(example = "Here is a Q3 plan covering the three pillars we discussed...")
+    )]
     pub output_preview: Option<String>,
     /// Tags for organizing and filtering sessions.
     #[serde(default)]
@@ -257,7 +266,10 @@ pub struct Session {
     pub subagent_name: Option<String>,
     /// Original task description given to this subagent.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "openapi", schema(example = "Run the integration test suite and report failures."))]
+    #[cfg_attr(
+        feature = "openapi",
+        schema(example = "Run the integration test suite and report failures.")
+    )]
     pub subagent_task: Option<String>,
     /// Subagent lifecycle status: spawning, running, completed, failed, cancelled.
     #[serde(skip_serializing_if = "Option::is_none")]

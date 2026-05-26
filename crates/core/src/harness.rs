@@ -70,11 +70,21 @@ pub struct Harness {
     pub display_name: Option<String>,
     /// Human-readable description of what the harness does.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "openapi", schema(example = "Default harness with file-system + secrets capabilities; safe baseline for new agents."))]
+    #[cfg_attr(
+        feature = "openapi",
+        schema(
+            example = "Default harness with file-system + secrets capabilities; safe baseline for new agents."
+        )
+    )]
     pub description: Option<String>,
     /// System prompt that defines the harness's base behavior.
     /// Forms the foundation of the prompt stack.
-    #[cfg_attr(feature = "openapi", schema(example = "You are an Everruns agent. Be concise, cite sources when possible, and decline tasks outside your assigned scope."))]
+    #[cfg_attr(
+        feature = "openapi",
+        schema(
+            example = "You are an Everruns agent. Be concise, cite sources when possible, and decline tasks outside your assigned scope."
+        )
+    )]
     pub system_prompt: String,
     /// Optional parent harness that this harness inherits from.
     #[serde(skip_serializing_if = "Option::is_none")]

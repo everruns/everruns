@@ -136,7 +136,9 @@ pub struct ErrorResponse {
     pub status: u16,
     /// Human-readable explanation specific to this occurrence.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[schema(example = "Session session_01933b5a000070008000000000000001 not found in org org_01933b5a000070008000000000000001.")]
+    #[schema(
+        example = "Session session_01933b5a000070008000000000000001 not found in org org_01933b5a000070008000000000000001."
+    )]
     pub detail: Option<String>,
     /// Request URI for this occurrence.
     #[serde(skip_serializing_if = "Option::is_none")]

@@ -99,7 +99,10 @@ pub struct LeasedResource {
     pub cleanup_attempts: u32,
     /// Last cleanup error message, if any.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "openapi", schema(example = "daytona.api.timeout: provider call exceeded 10s"))]
+    #[cfg_attr(
+        feature = "openapi",
+        schema(example = "daytona.api.timeout: provider call exceeded 10s")
+    )]
     pub last_cleanup_error: Option<String>,
     /// Provider-specific non-secret metadata for UI/debugging.
     /// THREAT[TM-API-015]: This field is returned by the session resources API

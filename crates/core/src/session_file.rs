@@ -16,10 +16,16 @@ use utoipa::ToSchema;
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct FileInfo {
     /// Internal database UUID for this file entry.
-    #[cfg_attr(feature = "openapi", schema(example = "550e8400-e29b-41d4-a716-446655440000"))]
+    #[cfg_attr(
+        feature = "openapi",
+        schema(example = "550e8400-e29b-41d4-a716-446655440000")
+    )]
     pub id: Uuid,
     /// UUID of the owning session.
-    #[cfg_attr(feature = "openapi", schema(example = "01933b5a-0000-7000-8000-000000000001"))]
+    #[cfg_attr(
+        feature = "openapi",
+        schema(example = "01933b5a-0000-7000-8000-000000000001")
+    )]
     pub session_id: Uuid,
     /// Absolute path within the session workspace (e.g. `/notes.md`).
     #[cfg_attr(feature = "openapi", schema(example = "/notes.md"))]
