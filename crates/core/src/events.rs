@@ -326,7 +326,6 @@ pub struct Event {
     pub sequence: Option<i32>,
 }
 
-
 #[derive(Debug, Deserialize)]
 struct RawEvent {
     id: EventId,
@@ -2615,7 +2614,6 @@ pub struct EventRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tags: Option<Vec<String>>,
 }
-
 
 #[derive(Debug, Deserialize)]
 struct RawEventRequest {
