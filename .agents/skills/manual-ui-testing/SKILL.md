@@ -1,6 +1,8 @@
 ---
 name: manual-ui-testing
 description: Run manual UI test cases using agent-browser against a running stack. Use when the user asks to run UI tests, test the UI, run manual tests, or verify UI behavior.
+metadata:
+  internal: true
 user-invocable: true
 allowed-tools: Bash(npx agent-browser:*), Bash(agent-browser:*), Bash(just:*), Bash(doppler:*)
 ---

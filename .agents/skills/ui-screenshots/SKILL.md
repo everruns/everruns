@@ -1,6 +1,8 @@
 ---
 name: ui-screenshots
 description: Take UI screenshots using agent-browser. Use this skill to capture visual state of UI components for code review, visual regression testing, or documentation.
+metadata:
+  internal: true
 ---
 
 # UI Screenshots Skill

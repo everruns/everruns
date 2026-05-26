@@ -1,6 +1,8 @@
 ---
 name: maintenance
 description: Goal-oriented repository maintenance and release-readiness work. Use when the user asks for maintenance, release prep, repo health review, dependency refreshes, spec/docs alignment, test gap review, technical debt analysis, or general cleanup without prescribing an exact sequence.
+metadata:
+  internal: true
 user-invocable: true
 ---
 
