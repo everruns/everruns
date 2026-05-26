@@ -244,6 +244,14 @@ capabilities. The backend remains authoritative for config semantics through
 `validate_config(config)`, which is called on capability write paths before
 config is persisted.
 
+##### Outbound Network Calls
+
+Capabilities that call external HTTP/API endpoints must use `ToolContext`'s
+`EgressService` and must pass `ToolContext.network_access` when the destination
+URL is authored by the agent, session, capability config, or user input. New
+capabilities must not construct direct external HTTP clients in tool execution.
+See [egress.md](egress.md) and [network-access.md](network-access.md).
+
 ##### Collection Functions
 
 - **`collect_capabilities()`** — Sync. Collects tools, mounts, static prompts.

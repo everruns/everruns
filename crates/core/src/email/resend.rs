@@ -4,18 +4,17 @@
 // capability. Resend credentials are process-level deployment configuration.
 
 use async_trait::async_trait;
-use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
+use std::sync::Arc;
 
 use super::{
     EmailAddress, EmailError, EmailMessage, EmailResult, EmailSender, EmailTag, RenderedEmail,
     SentEmail, system_email_from,
 };
+use crate::{EgressError, EgressRequest, EgressRequestKind, EgressService};
 
 const RESEND_API_BASE_URL: &str = "https://api.resend.com";
-const RESEND_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
-const RESEND_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+const RESEND_REQUEST_TIMEOUT_MS: u64 = 30_000;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResendEmailConfig {
@@ -58,7 +57,7 @@ impl ResendEmailConfig {
 
 #[derive(Clone)]
 pub struct ResendEmailSender {
-    client: Client,
+    egress_service: Arc<dyn EgressService>,
     config: ResendEmailConfig,
 }
 
@@ -72,12 +71,15 @@ impl std::fmt::Debug for ResendEmailSender {
 
 impl ResendEmailSender {
     pub fn new(config: ResendEmailConfig) -> Self {
+        Self::with_egress_service(config, Arc::new(crate::DirectEgressService::default()))
+    }
+
+    pub fn with_egress_service(
+        config: ResendEmailConfig,
+        egress_service: Arc<dyn EgressService>,
+    ) -> Self {
         Self {
-            client: Client::builder()
-                .connect_timeout(RESEND_CONNECT_TIMEOUT)
-                .timeout(RESEND_REQUEST_TIMEOUT)
-                .build()
-                .expect("build Resend HTTP client"),
+            egress_service,
             config,
         }
     }
@@ -92,31 +94,39 @@ impl EmailSender for ResendEmailSender {
     async fn send_email(&self, message: EmailMessage) -> EmailResult<SentEmail> {
         let rendered = message.validate()?;
         let request = ResendSendEmailRequest::from_message(system_email_from(), message, rendered);
-        let mut builder = self
-            .client
-            .post(format!("{}/emails", self.config.api_base_url))
-            .header("Authorization", format!("Bearer {}", self.config.api_key))
-            .header("Content-Type", "application/json");
+        let mut egress_request = EgressRequest::new(
+            "POST",
+            format!("{}/emails", self.config.api_base_url),
+            EgressRequestKind::SystemEmail,
+        )
+        .header("Authorization", format!("Bearer {}", self.config.api_key))
+        .header("Content-Type", "application/json")
+        .timeout_ms(RESEND_REQUEST_TIMEOUT_MS)
+        .body(serde_json::to_vec(&request).map_err(|error| {
+            EmailError::Transport(format!("failed to encode Resend request: {error}"))
+        })?);
 
         if let Some(key) = &request.idempotency_key {
-            builder = builder.header("Idempotency-Key", key);
+            egress_request = egress_request.header("Idempotency-Key", key);
         }
 
-        let response = builder
-            .json(&request)
-            .send()
+        let response = self
+            .egress_service
+            .send(egress_request)
             .await
-            .map_err(EmailError::transport)?;
-        let status = response.status();
-        if !status.is_success() {
+            .map_err(EmailError::egress)?;
+        if !(200..300).contains(&response.status) {
             return Err(EmailError::Provider {
                 provider: "resend",
-                status: status.as_u16(),
-                body: response.text().await.unwrap_or_default(),
+                status: response.status,
+                body: String::from_utf8_lossy(&response.body).into_owned(),
             });
         }
 
-        let body: ResendSendEmailResponse = response.json().await.map_err(EmailError::transport)?;
+        let body: ResendSendEmailResponse =
+            serde_json::from_slice(&response.body).map_err(|error| {
+                EmailError::Transport(format!("failed to decode Resend response: {error}"))
+            })?;
         Ok(SentEmail {
             provider: "resend",
             id: body.id,
@@ -125,6 +135,12 @@ impl EmailSender for ResendEmailSender {
 
     fn name(&self) -> &'static str {
         "ResendEmailSender"
+    }
+}
+
+impl EmailError {
+    fn egress(error: EgressError) -> Self {
+        Self::Transport(error.to_string())
     }
 }
 

@@ -25,9 +25,9 @@ use everruns_core::traits::{
 };
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId, TurnId};
 use everruns_core::{
-    Agent, CapabilityRegistry, DependencyBlocker, DriverRegistry, Harness, Session, TokenUsage,
-    ToolDefinition, ToolRegistry, UserFacingError, UtilityLlmService, org_public_id_from_internal,
-    resolve_runtime_capabilities,
+    Agent, CapabilityRegistry, DependencyBlocker, DriverRegistry, EgressService, Harness, Session,
+    TokenUsage, ToolDefinition, ToolRegistry, UserFacingError, UtilityLlmService,
+    org_public_id_from_internal, resolve_runtime_capabilities,
 };
 use std::sync::Arc;
 use tracing::warn;
@@ -112,6 +112,10 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
     }
 
     fn utility_llm_service(&self) -> Option<Arc<dyn UtilityLlmService>> {
+        None
+    }
+
+    fn egress_service(&self) -> Option<Arc<dyn EgressService>> {
         None
     }
 
@@ -676,6 +680,9 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
     }
     if let Some(utility_llm_service) = adapter.utility_llm_service() {
         atom = atom.with_utility_llm_service(utility_llm_service);
+    }
+    if let Some(egress_service) = adapter.egress_service() {
+        atom = atom.with_egress_service(egress_service);
     }
     if let Some(memory_store) = adapter.memory_store(org_id) {
         atom = atom.with_memory_store(memory_store);

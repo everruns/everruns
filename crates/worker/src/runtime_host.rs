@@ -10,7 +10,8 @@ use everruns_core::traits::{
 };
 use everruns_core::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_core::{
-    Agent, CapabilityRegistry, DriverRegistry, Harness, Session, SessionStatus, UtilityLlmService,
+    Agent, CapabilityRegistry, DriverRegistry, EgressService, Harness, Session, SessionStatus,
+    UtilityLlmService,
 };
 use everruns_runtime::{RuntimeHostAdapter, RuntimeHostTurnContext};
 use std::sync::Arc;
@@ -142,6 +143,10 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
 
     fn utility_llm_service(&self) -> Option<Arc<dyn UtilityLlmService>> {
         self.adapters.utility_llm_service()
+    }
+
+    fn egress_service(&self) -> Option<Arc<dyn EgressService>> {
+        self.adapters.egress_service()
     }
 
     fn storage_store(&self) -> Option<Arc<dyn everruns_core::traits::SessionStorageStore>> {

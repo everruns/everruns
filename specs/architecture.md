@@ -23,6 +23,7 @@ graph TB
     subgraph Workers
         Worker[TaskWorker]
         Atoms[Atoms<br/>Input/Reason/Act]
+        Egress[Egress Service]
         LLM[LLM Providers]
     end
 
@@ -35,7 +36,8 @@ graph TB
     Worker -->|gRPC only| GRPC
     REST -->|Queue Task| Services
     Worker --> Atoms
-    Atoms --> LLM
+    Atoms --> Egress
+    Egress --> LLM
 ```
 
 **Key Design Decision**: Workers communicate with the control-plane **exclusively via gRPC** (port 9001). Workers have no direct database access - all storage operations go through the gRPC service layer. This provides:
@@ -91,7 +93,7 @@ Production event routing therefore prefers:
 2. **Crate Separation** (folder → package name):
    - `server/` → `everruns-server` - **Control plane**: HTTP API (axum) + gRPC server (tonic), SSE streaming, database layer
    - `worker/` → `everruns-worker` - TaskWorker, WorkerAdapters, activities, gRPC adapters, durable task execution
-   - `core/` → `everruns-core` - Core agent abstractions (traits, atoms, tools, events, capabilities, LLM drivers, internal system services, shared types)
+   - `core/` → `everruns-core` - Core agent abstractions (traits, atoms, tools, events, capabilities, LLM drivers, egress service, internal system services, shared types)
    - `runtime/` → `everruns-runtime` - Public in-process runtime plus reusable host-phase execution for embedded and durable/server-backed execution
    - `internal-protocol/` → `everruns-internal-protocol` - gRPC protocol for worker ↔ server
    - `durable/` → `everruns-durable` - PostgreSQL-backed durable execution engine
@@ -168,6 +170,7 @@ Everruns runtime composition is centered on `PlatformDefinition` in `crates/core
 - Connection providers
 - Built-in harness templates
 - System email sender
+- Outbound egress service
 
 The server and worker builders both accept an explicit `PlatformDefinition`. If none is supplied, they fall back to crate-local presets:
 
@@ -298,6 +301,7 @@ sequenceDiagram
     participant W as Worker
     participant CP as Control Plane (gRPC)
     participant DB as PostgreSQL
+    participant EG as Egress Service
     participant LLM as LLM Provider
 
     W->>CP: ClaimDurableTasks
@@ -314,8 +318,10 @@ sequenceDiagram
         end
     and Task Execution
         loop Reason-Act Loop
-            W->>LLM: Generate completion
-            LLM-->>W: Response + Tool calls
+            W->>EG: Generate completion request
+            EG->>LLM: Provider HTTP request
+            LLM-->>EG: Response + Tool calls
+            EG-->>W: Provider response stream
             W->>CP: EmitEvent(llm.generation)
 
             opt Tool Execution

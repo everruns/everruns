@@ -23,6 +23,8 @@ Email is not an agent capability, public API, or UI surface. It is a host servic
 - `EmailError` separates configuration, request validation, transport, and provider failures.
 - Platform/application state stores the sender as `Arc<dyn EmailSender>` when it must be shared across services.
 - `PlatformDefinition` carries the active system email sender as part of the platform profile.
+- Concrete senders use `EgressService` for provider HTTP; email remains a
+  domain-specific service above the outbound transport boundary.
 
 Messages support:
 

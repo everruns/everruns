@@ -817,6 +817,10 @@ impl RuntimeHostAdapter for InProcessRuntime {
         Some(self.platform_definition.utility_llm_service())
     }
 
+    fn egress_service(&self) -> Option<Arc<dyn everruns_core::EgressService>> {
+        Some(self.platform_definition.egress_service())
+    }
+
     fn memory_store(&self, _org_id: i64) -> Option<Arc<dyn MemoryStoreBackend>> {
         Some(self.memory_store.clone())
     }

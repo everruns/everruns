@@ -38,6 +38,7 @@ pub mod tool_types;
 
 // Deployment configuration
 pub mod deployment;
+pub mod egress;
 pub mod email;
 pub mod exec_tool_result;
 pub mod utility_llm;
@@ -219,6 +220,13 @@ pub use event_listeners::{CompositeEventListener, EventListener, NoopEventListen
 // Error reporter re-exports
 pub use error_reporter::{
     ErrorReport, ErrorReporter, ErrorScope, ErrorSeverity, NoopErrorReporter, SharedErrorReporter,
+};
+
+// Outbound egress service re-exports
+pub use egress::{
+    DirectEgressService, DisabledEgressService, EgressByteStream, EgressError, EgressRequest,
+    EgressRequestKind, EgressResponse, EgressResult, EgressService, EgressSigning,
+    EgressStreamResponse,
 };
 
 // System email re-exports

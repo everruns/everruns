@@ -9,8 +9,8 @@
 use everruns_core::connection_provider::{ConnectionProviderPlugin, ConnectionProviderRegistry};
 use everruns_core::deployment::DeploymentGrade;
 use everruns_core::{
-    BuiltInHarnessDefinition, CapabilityRegistry, PlatformDefinition, SystemEmailConfig,
-    SystemUtilityLlmConfig,
+    BuiltInHarnessDefinition, CapabilityRegistry, DirectEgressService, PlatformDefinition,
+    SystemEmailConfig, SystemUtilityLlmConfig,
 };
 use std::sync::Arc;
 
@@ -24,9 +24,10 @@ pub fn oss_platform_definition_for_grade(grade: DeploymentGrade) -> PlatformDefi
     let capability_registry = CapabilityRegistry::with_builtins_for_grade(grade);
     let driver_registry = everruns_worker::create_driver_registry();
     let connection_providers = oss_connection_provider_registry_for_grade(grade);
+    let egress_service = Arc::new(DirectEgressService::default());
     let email_sender = SystemEmailConfig::from_env()
         .expect("Invalid system email configuration")
-        .into_sender();
+        .into_sender_with_egress(egress_service.clone());
     let utility_llm_service = SystemUtilityLlmConfig::from_env().into_service();
 
     PlatformDefinition::builder()
@@ -34,6 +35,7 @@ pub fn oss_platform_definition_for_grade(grade: DeploymentGrade) -> PlatformDefi
         .driver_registry(driver_registry)
         .connection_providers(connection_providers)
         .built_in_harnesses(oss_built_in_harnesses())
+        .egress_service(egress_service)
         .email_sender(email_sender)
         .utility_llm_service(utility_llm_service)
         .session_file_system_factory(Arc::new(

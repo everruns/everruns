@@ -12,7 +12,7 @@
 
 use crate::{
     Capability, CapabilityRegistry, ConnectionProvider, ConnectionProviderRegistry, DriverRegistry,
-    EmailSender, UtilityLlmService,
+    EgressService, EmailSender, UtilityLlmService,
     traits::{DisabledSessionFileSystemFactory, SessionFileSystemFactory},
 };
 use serde_json::Value;
@@ -185,6 +185,7 @@ pub struct PlatformDefinition {
     driver_registry: DriverRegistry,
     connection_providers: ConnectionProviderRegistry,
     built_in_harnesses: Vec<BuiltInHarnessDefinition>,
+    egress_service: Arc<dyn EgressService>,
     email_sender: Arc<dyn EmailSender>,
     utility_llm_service: Arc<dyn UtilityLlmService>,
     session_file_system_factory: Arc<dyn SessionFileSystemFactory>,
@@ -198,6 +199,7 @@ impl PlatformDefinition {
             driver_registry,
             connection_providers: ConnectionProviderRegistry::new(),
             built_in_harnesses: Vec::new(),
+            egress_service: Arc::new(crate::DirectEgressService::default()),
             email_sender: Arc::new(crate::DisabledEmailSender),
             utility_llm_service: Arc::new(crate::DisabledUtilityLlmService),
             session_file_system_factory: Arc::new(DisabledSessionFileSystemFactory),
@@ -249,6 +251,11 @@ impl PlatformDefinition {
         &mut self.built_in_harnesses
     }
 
+    /// System-wide outbound network boundary.
+    pub fn egress_service(&self) -> Arc<dyn EgressService> {
+        self.egress_service.clone()
+    }
+
     /// System-wide email sender for product and operational flows.
     pub fn email_sender(&self) -> Arc<dyn EmailSender> {
         self.email_sender.clone()
@@ -289,6 +296,7 @@ impl std::fmt::Debug for PlatformDefinition {
             .field("drivers", &self.driver_registry.registered_providers())
             .field("connection_providers", &self.connection_providers)
             .field("built_in_harnesses", &harness_keys)
+            .field("egress_service", &self.egress_service.name())
             .field("email_sender", &self.email_sender.name())
             .field("utility_llm_service", &self.utility_llm_service.name())
             .field(
@@ -354,6 +362,12 @@ impl PlatformDefinitionBuilder {
     /// Append a built-in harness template.
     pub fn add_built_in_harness(mut self, harness: BuiltInHarnessDefinition) -> Self {
         self.platform.built_in_harnesses.push(harness);
+        self
+    }
+
+    /// Set the system-wide outbound egress service.
+    pub fn egress_service(mut self, service: Arc<dyn EgressService>) -> Self {
+        self.platform.egress_service = service;
         self
     }
 

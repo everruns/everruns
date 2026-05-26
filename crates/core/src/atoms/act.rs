@@ -167,6 +167,8 @@ where
     provider_credential_store: Option<Arc<dyn crate::traits::ProviderCredentialStore>>,
     /// Optional utility LLM service for capability internals
     utility_llm_service: Option<Arc<dyn crate::UtilityLlmService>>,
+    /// Optional outbound egress service for HTTP/API traffic.
+    egress_service: Option<Arc<dyn crate::EgressService>>,
     /// Optional resolver for user connection tokens
     connection_resolver: Option<Arc<dyn crate::traits::UserConnectionResolver>>,
     /// Optional session store for session metadata reads
@@ -227,6 +229,7 @@ where
             image_store: None,
             provider_credential_store: None,
             utility_llm_service: None,
+            egress_service: None,
             connection_resolver: None,
             session_store: None,
             session_mutator: None,
@@ -264,6 +267,7 @@ where
             image_store: None,
             provider_credential_store: None,
             utility_llm_service: None,
+            egress_service: None,
             connection_resolver: None,
             session_store: None,
             session_mutator: None,
@@ -343,6 +347,12 @@ where
     /// Set the utility LLM service on this atom.
     pub fn with_utility_llm_service(mut self, service: Arc<dyn crate::UtilityLlmService>) -> Self {
         self.utility_llm_service = Some(service);
+        self
+    }
+
+    /// Set the outbound egress service on this atom.
+    pub fn with_egress_service(mut self, service: Arc<dyn crate::EgressService>) -> Self {
+        self.egress_service = Some(service);
         self
     }
 
@@ -950,6 +960,9 @@ where
         }
         if let Some(ref service) = self.utility_llm_service {
             tool_context.utility_llm_service = Some(service.clone());
+        }
+        if let Some(ref service) = self.egress_service {
+            tool_context.egress_service = Some(service.clone());
         }
         if let Some(ref resolver) = self.connection_resolver {
             tool_context.connection_resolver = Some(resolver.clone());

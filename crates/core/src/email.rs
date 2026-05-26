@@ -51,10 +51,6 @@ impl EmailError {
     fn invalid(message: impl Into<String>) -> Self {
         Self::InvalidRequest(message.into())
     }
-
-    fn transport(error: reqwest::Error) -> Self {
-        Self::Transport(error.to_string())
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -334,9 +330,19 @@ impl SystemEmailConfig {
     }
 
     pub fn into_sender(self) -> Arc<dyn EmailSender> {
+        self.into_sender_with_egress(Arc::new(crate::DirectEgressService::default()))
+    }
+
+    pub fn into_sender_with_egress(
+        self,
+        egress_service: Arc<dyn crate::EgressService>,
+    ) -> Arc<dyn EmailSender> {
         match self {
             Self::Disabled => Arc::new(DisabledEmailSender),
-            Self::Resend(config) => Arc::new(ResendEmailSender::new(config)),
+            Self::Resend(config) => Arc::new(ResendEmailSender::with_egress_service(
+                config,
+                egress_service,
+            )),
         }
     }
 }
