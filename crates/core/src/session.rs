@@ -282,7 +282,8 @@ pub struct Session {
     #[cfg_attr(feature = "openapi", schema(example = "blueprint_research_pack"))]
     pub blueprint_id: Option<String>,
     /// Validated config passed by host at blueprint spawn time.
+    /// Example: `{"target_repo": "acme/everruns"}`.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "openapi", schema(example = json!({"target_repo": "acme/everruns"})))]
+    #[cfg_attr(feature = "openapi", schema(value_type = Option<Object>))]
     pub blueprint_config: Option<serde_json::Value>,
 }

@@ -295,7 +295,8 @@ pub struct ScheduleTargetResponse {
     #[schema(example = "session.run")]
     pub name: String,
     /// Input JSON payload passed to the workflow/activity on each fire.
-    #[schema(example = json!({"session_id": "session_01933b5a000070008000000000000001"}))]
+    /// Example: `{"session_id": "session_01933b5a000070008000000000000001"}`.
+    #[schema(value_type = Object)]
     pub input: serde_json::Value,
 }
 
@@ -438,7 +439,8 @@ pub struct ScheduleStatsResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = 8421)]
     pub avg_duration_ms: Option<u64>,
-    /// Status of the most recent execution (`succeeded`, `failed`, `skipped`, `running`). `None` if the schedule has never fired.
+    /// Status of the most recent execution (one of the `ScheduleExecutionResponse.status` values:
+    /// `pending`, `running`, `completed`, `failed`, `skipped`). `None` if the schedule has never fired.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "completed")]
     pub last_execution_status: Option<String>,

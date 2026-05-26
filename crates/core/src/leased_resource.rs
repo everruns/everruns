@@ -104,12 +104,14 @@ pub struct LeasedResource {
         schema(example = "daytona.api.timeout: provider call exceeded 10s")
     )]
     pub last_cleanup_error: Option<String>,
-    /// Provider-specific non-secret metadata for UI/debugging.
+    /// Provider-specific non-secret metadata for UI/debugging. Free-form JSON
+    /// object — shape is provider-defined.
+    /// Example: `{"region": "us-west-2", "snapshot_id": "snap_42"}`.
     /// THREAT[TM-API-015]: This field is returned by the session resources API
     /// and rendered in the UI, so providers must never persist bearer tokens or
     /// other secrets here.
     #[serde(default)]
-    #[cfg_attr(feature = "openapi", schema(example = json!({"region": "us-west-2", "snapshot_id": "snap_42"})))]
+    #[cfg_attr(feature = "openapi", schema(value_type = Object))]
     pub metadata: serde_json::Value,
     /// Timestamp when this leased resource was created (RFC 3339).
     #[cfg_attr(feature = "openapi", schema(example = "2026-05-25T10:00:00Z"))]

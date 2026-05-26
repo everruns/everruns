@@ -15639,7 +15639,15 @@
             "example": "CI/CD deploy key"
           },
           "scopes": {
-            "description": "Granted scopes as a JSON array of strings."
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Granted scopes as a JSON array of strings.",
+            "example": [
+              "sessions:read",
+              "sessions:write"
+            ]
           }
         }
       },
@@ -17332,7 +17340,8 @@
             "example": "2026-05-25T10:29:00Z"
           },
           "metadata": {
-            "description": "Provider-specific non-secret metadata for UI/debugging.\nTHREAT[TM-API-015]: This field is returned by the session resources API\nand rendered in the UI, so providers must never persist bearer tokens or\nother secrets here."
+            "type": "object",
+            "description": "Provider-specific non-secret metadata for UI/debugging. Free-form JSON\nobject — shape is provider-defined.\nExample: `{\"region\": \"us-west-2\", \"snapshot_id\": \"snap_42\"}`.\nTHREAT[TM-API-015]: This field is returned by the session resources API\nand rendered in the UI, so providers must never persist bearer tokens or\nother secrets here."
           },
           "owner_user_id": {
             "type": [
@@ -22056,7 +22065,11 @@
                   "example": "agentver_01933b5a00007000800000000000001"
                 },
                 "blueprint_config": {
-                  "description": "Validated config passed by host at blueprint spawn time."
+                  "type": [
+                    "object",
+                    "null"
+                  ],
+                  "description": "Validated config passed by host at blueprint spawn time.\nExample: `{\"target_repo\": \"acme/everruns\"}`."
                 },
                 "blueprint_id": {
                   "type": [
@@ -22901,7 +22914,11 @@
                       "example": "agentver_01933b5a00007000800000000000001"
                     },
                     "blueprint_config": {
-                      "description": "Validated config passed by host at blueprint spawn time."
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "description": "Validated config passed by host at blueprint spawn time.\nExample: `{\"target_repo\": \"acme/everruns\"}`."
                     },
                     "blueprint_id": {
                       "type": [
@@ -24996,7 +25013,7 @@
               "string",
               "null"
             ],
-            "description": "Status of the most recent execution (`succeeded`, `failed`, `skipped`, `running`). `None` if the schedule has never fired.",
+            "description": "Status of the most recent execution (one of the `ScheduleExecutionResponse.status` values:\n`pending`, `running`, `completed`, `failed`, `skipped`). `None` if the schedule has never fired.",
             "example": "completed"
           },
           "skipped_executions": {
@@ -25062,7 +25079,8 @@
         ],
         "properties": {
           "input": {
-            "description": "Input JSON payload passed to the workflow/activity on each fire."
+            "type": "object",
+            "description": "Input JSON payload passed to the workflow/activity on each fire.\nExample: `{\"session_id\": \"session_01933b5a000070008000000000000001\"}`."
           },
           "name": {
             "type": "string",
@@ -25205,7 +25223,11 @@
             "example": "agentver_01933b5a00007000800000000000001"
           },
           "blueprint_config": {
-            "description": "Validated config passed by host at blueprint spawn time."
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Validated config passed by host at blueprint spawn time.\nExample: `{\"target_repo\": \"acme/everruns\"}`."
           },
           "blueprint_id": {
             "type": [
@@ -30647,7 +30669,11 @@
                 "example": "agentver_01933b5a00007000800000000000001"
               },
               "blueprint_config": {
-                "description": "Validated config passed by host at blueprint spawn time."
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "description": "Validated config passed by host at blueprint spawn time.\nExample: `{\"target_repo\": \"acme/everruns\"}`."
               },
               "blueprint_id": {
                 "type": [

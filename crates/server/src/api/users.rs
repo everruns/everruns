@@ -163,7 +163,7 @@ pub struct ExportedApiKey {
     #[schema(example = "ev_live_x4z2")]
     pub key_prefix: String,
     /// Granted scopes as a JSON array of strings.
-    #[schema(example = json!(["sessions:read", "sessions:write"]))]
+    #[schema(value_type = Vec<String>, example = json!(["sessions:read", "sessions:write"]))]
     pub scopes: serde_json::Value,
     /// Expiry timestamp (RFC 3339). `None` for non-expiring keys.
     #[serde(skip_serializing_if = "Option::is_none")]
