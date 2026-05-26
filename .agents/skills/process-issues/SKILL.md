@@ -1,6 +1,8 @@
 ---
 name: process-issues
 description: Process open Linear issues — pick up, fix, and ship one PR per issue. Use when the user asks to process issues, work on Linear issues, tackle the backlog, or fix open issues.
+metadata:
+  internal: true
 user-invocable: true
 ---
 

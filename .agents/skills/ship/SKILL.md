@@ -1,6 +1,8 @@
 ---
 name: ship
 description: Goal-oriented workflow for landing a requested change safely. Use when the user asks to ship, fix and ship, take a change through validation, or drive PR/CI/merge to completion.
+metadata:
+  internal: true
 user-invocable: true
 ---
 
