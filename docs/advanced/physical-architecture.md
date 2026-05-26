@@ -7,6 +7,8 @@ sidebar:
 
 The [getting-started architecture](/getting-started/architecture/) page describes the *logical* shape of Everruns: a control plane, a worker tier, and a shared database. This page goes one level deeper and describes the *physical* components an operator actually deploys, what each one is for, when it is optional, and how data flows between them.
 
+![Physical Architecture](../images/advanced/physical-architecture.svg)
+
 ## Components at a glance
 
 | Component | Role | Required | Default port |
@@ -20,45 +22,6 @@ The [getting-started architecture](/getting-started/architecture/) page describe
 | Management UI | Operator interface for agent and provider configuration | Optional | — (served by proxy) |
 
 Workers never talk to PostgreSQL, NATS, or Valkey directly. Every read and write goes through the control plane's gRPC service on port 9001. This is what lets workers run with no database credentials, no encryption keys, and no awareness of the data tier.
-
-## How the pieces fit together
-
-```
-                ┌──────────────┐
-                │   Clients    │   (SDK, CLI, browser, your app)
-                └──────┬───────┘
-                       │ HTTPS
-                       ▼
-                ┌──────────────┐
-                │ Reverse proxy│   /api/*, /mcp, /.well-known/*, UI
-                └──────┬───────┘
-                       │
-              ┌────────┴────────┐
-              ▼                 ▼
-       ┌─────────────┐   ┌────────────┐
-       │   UI (opt)  │   │   Server   │  Control plane
-       └─────────────┘   │  REST/SSE  │  REST: 9301
-                         │   gRPC     │  gRPC: 9001
-                         └──┬───┬──┬──┘
-                            │   │  │
-              ┌─────────────┘   │  └────────────┐
-              ▼                 ▼               ▼
-       ┌─────────────┐   ┌────────────┐  ┌──────────────┐
-       │ PostgreSQL  │   │  Valkey    │  │     NATS     │
-       │   (state)   │   │ (limits)   │  │ (JetStream)  │
-       │  required   │   │  optional  │  │   optional   │
-       └─────────────┘   └────────────┘  └──────┬───────┘
-                                                │
-                                       ┌────────┴────────┐
-                                       │                 │
-                                       ▼                 ▼
-                                ┌──────────┐      ┌──────────┐
-                                │ Worker 1 │ ...  │ Worker N │
-                                │  (gRPC)  │      │  (gRPC)  │
-                                └──────────┘      └──────────┘
-                                  Workers connect to the control
-                                  plane via gRPC only.
-```
 
 ## PostgreSQL — the only required stateful component
 

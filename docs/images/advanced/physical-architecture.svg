@@ -1,0 +1,133 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 480" fill="none">
+  <style>
+    text { font-family: 'Geist', 'Inter', system-ui, sans-serif; }
+    .label { font-size: 13px; fill: #0A0A0A; font-weight: 600; }
+    .sublabel { font-size: 11px; fill: #404040; font-weight: 400; }
+    .header-text { font-size: 11px; fill: #A0A0A0; font-weight: 400; letter-spacing: 0.08em; text-transform: uppercase; }
+    .mono { font-family: 'Geist Mono', 'SF Mono', monospace; font-size: 10px; fill: #404040; }
+    .arrow-label { font-size: 10px; fill: #0A1636; font-weight: 500; }
+    .tag-required { font-size: 9px; fill: #0A1636; font-weight: 600; letter-spacing: 0.05em; }
+    .tag-optional { font-size: 9px; fill: #A0A0A0; font-weight: 600; letter-spacing: 0.05em; }
+    .note { font-size: 10px; fill: #6B7280; font-style: italic; }
+  </style>
+
+  <rect width="1000" height="480" fill="#FFFFFF"/>
+
+  <!-- ============================================================== -->
+  <!-- Tier 1: Public surface                                          -->
+  <!-- ============================================================== -->
+  <text x="110" y="30" text-anchor="middle" class="header-text">CLIENT</text>
+  <text x="510" y="30" text-anchor="middle" class="header-text">PUBLIC INGRESS</text>
+  <text x="890" y="30" text-anchor="middle" class="header-text">OPERATOR</text>
+
+  <!-- Clients -->
+  <rect x="40" y="48" width="140" height="62" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="110" y="75" text-anchor="middle" class="label">Clients</text>
+  <text x="110" y="93" text-anchor="middle" class="sublabel">SDK · CLI · App</text>
+
+  <!-- Reverse Proxy -->
+  <rect x="430" y="48" width="160" height="62" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="510" y="75" text-anchor="middle" class="label">Reverse Proxy</text>
+  <text x="510" y="93" text-anchor="middle" class="sublabel">TLS · /api · /mcp</text>
+
+  <!-- Management UI (optional) -->
+  <rect x="820" y="48" width="140" height="62" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="820" y="42" class="tag-optional">OPTIONAL</text>
+  <text x="890" y="75" text-anchor="middle" class="label">Management UI</text>
+  <text x="890" y="93" text-anchor="middle" class="sublabel">Admin console</text>
+
+  <!-- Clients -> Proxy -->
+  <line x1="180" y1="79" x2="422" y2="79" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="430,79 422,75 422,83" fill="#0A1636"/>
+  <text x="301" y="72" text-anchor="middle" class="arrow-label">HTTPS</text>
+
+  <!-- UI -> Proxy -->
+  <line x1="820" y1="79" x2="598" y2="79" stroke="#0A1636" stroke-width="1.5" stroke-dasharray="3 3"/>
+  <polygon points="590,79 598,75 598,83" fill="#0A1636"/>
+  <text x="709" y="72" text-anchor="middle" class="arrow-label">HTTPS</text>
+
+  <!-- ============================================================== -->
+  <!-- Tier 2: Control plane + Workers                                 -->
+  <!-- ============================================================== -->
+  <text x="300" y="150" text-anchor="middle" class="header-text">CONTROL PLANE</text>
+  <text x="770" y="150" text-anchor="middle" class="header-text">EXECUTORS · STATELESS</text>
+
+  <!-- Control Plane -->
+  <rect x="100" y="166" width="400" height="88" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1.5"/>
+  <text x="300" y="195" text-anchor="middle" class="label">Control Plane (Server)</text>
+  <text x="300" y="215" text-anchor="middle" class="sublabel">REST API · SSE event streams · gRPC for workers</text>
+  <text x="300" y="236" text-anchor="middle" class="mono">:9301 (HTTP)   ·   :9001 (gRPC)</text>
+
+  <!-- Worker Pool outer -->
+  <rect x="580" y="166" width="380" height="88" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="770" y="185" text-anchor="middle" class="label">Worker Pool</text>
+  <!-- Inner worker boxes -->
+  <rect x="600" y="200" width="100" height="38" fill="#FFFFFF" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="650" y="223" text-anchor="middle" class="sublabel">Worker 1</text>
+  <rect x="720" y="200" width="100" height="38" fill="#FFFFFF" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="770" y="223" text-anchor="middle" class="sublabel">Worker 2</text>
+  <rect x="840" y="200" width="100" height="38" fill="#FFFFFF" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="890" y="223" text-anchor="middle" class="sublabel">Worker N</text>
+
+  <!-- Proxy -> Control Plane (L-shape) -->
+  <polyline points="510,110 510,140 300,140 300,158" stroke="#0A1636" stroke-width="1.5" fill="none"/>
+  <polygon points="300,166 296,158 304,158" fill="#0A1636"/>
+  <text x="320" y="135" class="arrow-label">HTTP</text>
+
+  <!-- CP <-> Workers (bidirectional gRPC) -->
+  <line x1="508" y1="210" x2="572" y2="210" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="580,210 572,206 572,214" fill="#0A1636"/>
+  <polygon points="500,210 508,206 508,214" fill="#0A1636"/>
+  <text x="540" y="204" text-anchor="middle" class="arrow-label">gRPC</text>
+
+  <!-- ============================================================== -->
+  <!-- Tier 3: State & Messaging                                       -->
+  <!-- ============================================================== -->
+  <text x="180" y="298" text-anchor="middle" class="header-text">STATE</text>
+  <text x="800" y="298" text-anchor="middle" class="header-text">MESSAGING</text>
+
+  <!-- PostgreSQL (required) -->
+  <rect x="60" y="314" width="240" height="90" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1.5"/>
+  <text x="60" y="308" class="tag-required">REQUIRED</text>
+  <text x="180" y="342" text-anchor="middle" class="label">PostgreSQL 17</text>
+  <text x="180" y="361" text-anchor="middle" class="sublabel">All durable state</text>
+  <text x="180" y="378" text-anchor="middle" class="sublabel">Task queue · Event log</text>
+  <text x="180" y="396" text-anchor="middle" class="mono">:5432</text>
+
+  <!-- Valkey (optional) -->
+  <rect x="380" y="314" width="200" height="90" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="380" y="308" class="tag-optional">OPTIONAL</text>
+  <text x="480" y="342" text-anchor="middle" class="label">Valkey</text>
+  <text x="480" y="361" text-anchor="middle" class="sublabel">Distributed rate</text>
+  <text x="480" y="378" text-anchor="middle" class="sublabel">limiting (shared)</text>
+  <text x="480" y="396" text-anchor="middle" class="mono">:6379</text>
+
+  <!-- NATS (optional) -->
+  <rect x="660" y="314" width="280" height="90" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="660" y="308" class="tag-optional">OPTIONAL</text>
+  <text x="800" y="342" text-anchor="middle" class="label">NATS JetStream</text>
+  <text x="800" y="361" text-anchor="middle" class="sublabel">Ephemeral event push</text>
+  <text x="800" y="378" text-anchor="middle" class="sublabel">Task notifications</text>
+  <text x="800" y="396" text-anchor="middle" class="mono">:4222</text>
+
+  <!-- CP -> PG -->
+  <line x1="180" y1="254" x2="180" y2="306" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="180,314 176,306 184,306" fill="#0A1636"/>
+  <text x="196" y="282" class="arrow-label">SQL</text>
+
+  <!-- CP -> Valkey (dashed) -->
+  <line x1="400" y1="254" x2="480" y2="306" stroke="#0A1636" stroke-width="1.5" stroke-dasharray="3 3"/>
+  <polygon points="480,314 475,307 482,302" fill="#0A1636"/>
+
+  <!-- CP -> NATS (dashed, L-shape, routed below header band) -->
+  <polyline points="490,254 490,278 720,278 720,306" stroke="#0A1636" stroke-width="1.5" stroke-dasharray="3 3" fill="none"/>
+  <polygon points="720,314 716,306 724,306" fill="#0A1636"/>
+  <text x="605" y="272" class="arrow-label">Pub/Sub</text>
+
+  <!-- ============================================================== -->
+  <!-- Footer note                                                     -->
+  <!-- ============================================================== -->
+  <line x1="40" y1="430" x2="960" y2="430" stroke="#E5E5E5" stroke-width="1"/>
+  <text x="500" y="452" text-anchor="middle" class="note">Workers reach PostgreSQL, Valkey, and NATS only through the control plane over gRPC — no direct data-tier access.</text>
+  <text x="500" y="468" text-anchor="middle" class="note">Solid borders = required component. Dashed borders = optional component or optional connection.</text>
+</svg>
