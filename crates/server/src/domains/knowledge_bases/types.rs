@@ -64,6 +64,8 @@ pub struct UpdateKnowledgeBaseRequest {
     pub description: UpdateField<String>,
 }
 
+/// Query parameters for `GET /v1/knowledge-bases` — optional name/desc
+/// search plus a flag to include archived knowledge bases.
 #[derive(Debug, Clone, Deserialize, IntoParams, ToSchema)]
 pub struct ListKnowledgeBasesQuery {
     /// Substring filter applied to knowledge-base name and description.
@@ -174,6 +176,8 @@ pub struct UpdateKnowledgeEntryRequest {
     pub tags: Option<Vec<String>>,
 }
 
+/// Query parameters for listing entries inside a knowledge base — optional
+/// text search and tag filter.
 #[derive(Debug, Clone, Deserialize, IntoParams, ToSchema)]
 pub struct ListKnowledgeEntriesQuery {
     /// Substring filter applied to entry title and body.

@@ -144,6 +144,12 @@ pub fn routes(state: AppState) -> Router {
         .with_state(state)
 }
 
+/// Realtime-session knobs flattened into the voice request bodies that
+/// create or attach a realtime connection — `VoiceClientSecretRequest`,
+/// `VoiceCallRequest`, and `VoiceAttachRequest`. The `/voice/.../end`
+/// endpoint takes `VoiceEndRequest` and does not accept these options.
+/// All fields are optional; omitted ones fall back to the agent's or
+/// provider's default.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct VoiceSessionOptions {
     /// Provider-side realtime model identifier. When omitted the server picks the agent's configured default.
@@ -265,6 +271,10 @@ pub struct VoiceEndResponse {
     pub status: String,
 }
 
+/// Generic envelope returned by the agent/chat voice-session endpoints that
+/// create-or-attach a session and a voice connection in one round trip.
+/// `T` is the per-endpoint voice payload (`VoiceCallResponse`,
+/// `VoiceAttachResponse`).
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct VoiceSessionResponse<T> {
     /// The session this voice connection is attached to. Returned alongside

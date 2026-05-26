@@ -13260,6 +13260,7 @@
       },
       "ContextReportContribution": {
         "type": "object",
+        "description": "Single-source token contribution within a `ContextReportSection` — the\nper-tool / per-capability / per-message attribution that lets operators\nsee which source is eating the context window.",
         "required": [
           "section_key",
           "source_id",
@@ -13289,6 +13290,7 @@
       },
       "ContextReportSection": {
         "type": "object",
+        "description": "One logical section of the assembled LLM context (system prompt, tool\ndefinitions, message history, etc.) with its rolled-up token budget.",
         "required": [
           "key",
           "label",
@@ -14710,6 +14712,7 @@
       },
       "DatasetCatalog": {
         "type": "object",
+        "description": "Listing of every dataset the reporting layer can answer queries over.\nReturned from `GET /v1/reports/catalog`.",
         "required": [
           "datasets"
         ],
@@ -14718,12 +14721,14 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/DatasetCatalogEntry"
-            }
+            },
+            "description": "All datasets the caller has access to, in stable alphabetical order."
           }
         }
       },
       "DatasetCatalogEntry": {
         "type": "object",
+        "description": "A single dataset entry in the reporting catalog — the set of dimensions,\nmeasures, and filter fields the dataset exposes to query authors.",
         "required": [
           "name",
           "dimensions",
@@ -14735,52 +14740,61 @@
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Dimensions available to group by."
           },
           "filter_fields": {
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Fields valid as the `field` of a `ReportFilter`."
           },
           "measures": {
             "type": "array",
             "items": {
               "type": "string"
-            }
+            },
+            "description": "Measures available to aggregate."
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Dataset identifier as passed to `ReportQuery.dataset`."
           }
         }
       },
       "DatasetProjectorLag": {
         "type": "object",
+        "description": "Per-dataset projector freshness telemetry. One entry per active dataset\nthe reporting projector is materializing.",
         "required": [
           "dataset"
         ],
         "properties": {
           "dataset": {
-            "type": "string"
+            "type": "string",
+            "description": "Dataset name (matches `ReportQuery.dataset`)."
           },
           "freshness_lag_ms": {
             "type": [
               "integer",
               "null"
             ],
-            "format": "int64"
+            "format": "int64",
+            "description": "Gap between `latest_projected_at` and the diagnostic's\n`generated_at`, in milliseconds. `None` when freshness can't be\ndetermined."
           },
           "latest_projected_at": {
             "type": [
               "string",
               "null"
             ],
-            "format": "date-time"
+            "format": "date-time",
+            "description": "Wall-clock timestamp of the newest fact the projector has\nmaterialized for this dataset (RFC 3339). `None` if the projector\nhasn't produced any rows yet."
           }
         }
       },
       "DeclarativeCapability": {
         "type": "object",
+        "description": "Persisted, org-scoped declarative capability — a YAML/JSON-defined\nbundle of skills, files, and tool defs that an agent or harness can\nreference by `capability_id` or name.",
         "required": [
           "id",
           "capability_id",
@@ -15407,6 +15421,7 @@
       },
       "EventTypeCountOut": {
         "type": "object",
+        "description": "One row of `EventsSummaryResult.by_type` — the per-event-type count\nproduced by the events summary query.",
         "required": [
           "event_type",
           "count"
@@ -15418,12 +15433,14 @@
             "description": "Count of items matching the query."
           },
           "event_type": {
-            "type": "string"
+            "type": "string",
+            "description": "Event-type discriminator (e.g. `turn.started`, `tool.completed`)."
           }
         }
       },
       "EventsSummaryResult": {
         "type": "object",
+        "description": "Aggregate result of the events summary query — total count, per-type\nbreakdown, and a few convenience rollups (turn count, failure count).",
         "required": [
           "total",
           "by_type",
@@ -15699,6 +15716,7 @@
       },
       "FailedReportingOutboxRow": {
         "type": "object",
+        "description": "One failed reporting-outbox row, surfaced in\n`ReportingOutboxDiagnostics.failed_rows` so operators can triage\nprojector failures without dropping to SQL.",
         "required": [
           "id",
           "org_id",
@@ -17248,6 +17266,7 @@
       },
       "ListAppRunsQuery": {
         "type": "object",
+        "description": "Query parameters for listing recent app invocation runs — a relative\ntime window and an optional bucketing hint for the dashboard.",
         "properties": {
           "groupBy": {
             "type": [
@@ -17267,6 +17286,7 @@
       },
       "ListExecutionsQuery": {
         "type": "object",
+        "description": "Query parameters for listing executions of a schedule — optional status\nfilter plus offset/limit paging.",
         "properties": {
           "limit": {
             "type": [
@@ -17300,6 +17320,7 @@
       },
       "ListKnowledgeBasesQuery": {
         "type": "object",
+        "description": "Query parameters for `GET /v1/knowledge-bases` — optional name/desc\nsearch plus a flag to include archived knowledge bases.",
         "properties": {
           "include_archived": {
             "type": [
@@ -17321,6 +17342,7 @@
       },
       "ListKnowledgeEntriesQuery": {
         "type": "object",
+        "description": "Query parameters for listing entries inside a knowledge base — optional\ntext search and tag filter.",
         "properties": {
           "kind": {
             "type": [
@@ -17342,6 +17364,7 @@
       },
       "ListMemoriesQuery": {
         "type": "object",
+        "description": "Query parameters for listing memories within a store — optional content\nsearch and kind filter.",
         "properties": {
           "include_inactive": {
             "type": [
@@ -18594,6 +18617,7 @@
             "type": "array",
             "items": {
               "type": "object",
+              "description": "A user-saved report definition — a named, persistable wrapper around a\n`ReportQuery` with optional dashboard placement metadata.",
               "required": [
                 "id",
                 "name",
@@ -19168,6 +19192,7 @@
               "allOf": [
                 {
                   "type": "object",
+                  "description": "Persisted, org-scoped declarative capability — a YAML/JSON-defined\nbundle of skills, files, and tool defs that an agent or harness can\nreference by `capability_id` or name.",
                   "required": [
                     "id",
                     "capability_id",
@@ -20089,6 +20114,7 @@
       },
       "ListSchedulesQuery": {
         "type": "object",
+        "description": "Query parameters for `GET /v1/schedules` — optional enabled/target-type\nfilters plus standard offset/limit paging.",
         "properties": {
           "enabled": {
             "type": [
@@ -20143,6 +20169,7 @@
       },
       "ListVolumesQuery": {
         "type": "object",
+        "description": "Query parameters for `GET /v1/volumes` — optional name search and a\nflag to include archived volumes in the listing.",
         "properties": {
           "include_archived": {
             "type": [
@@ -22973,6 +23000,7 @@
       },
       "PaymentAccount": {
         "type": "object",
+        "description": "A payment account — the org-scoped source of funds for paid agent calls.\nEach account binds an owning principal (user, agent identity, or org)\nto one settlement rail and tracks its provisioning lifecycle.",
         "required": [
           "id",
           "organization_id",
@@ -23038,6 +23066,7 @@
       },
       "PaymentAttempt": {
         "type": "object",
+        "description": "A single paid-call settlement attempt — the durable record of one\nauthorization+settlement cycle issued through the payment authority.\nPersisted regardless of outcome so failed attempts remain auditable.",
         "required": [
           "id",
           "organization_id",
@@ -23154,6 +23183,7 @@
       },
       "PaymentPolicy": {
         "type": "object",
+        "description": "A payment policy — the binding between a paying account and a subject\n(agent identity, session) that controls which paid calls are\nauthorized and at what spend caps.",
         "required": [
           "id",
           "organization_id",
@@ -23271,6 +23301,7 @@
       },
       "PaymentStatus": {
         "type": "string",
+        "description": "Lifecycle state of a payment account, policy, or attempt. The shared\nvocabulary keeps account/policy admin and attempt settlement on the\nsame status taxonomy.",
         "enum": [
           "active",
           "disabled",
@@ -23369,6 +23400,7 @@
       },
       "PrincipalKind": {
         "type": "string",
+        "description": "Class of principal that can hold permissions or own resources. `system`\nis reserved for platform-internal callers and is never minted via the\npublic API.",
         "enum": [
           "user",
           "agent_identity",
@@ -23377,6 +23409,7 @@
       },
       "PrincipalSummary": {
         "type": "object",
+        "description": "Compact view of a principal — id + kind + the subject-id pointer back\ninto the user/agent-identity row. Used wherever a full `Principal`\nwould be redundant (e.g. as a sub-field of a session or audit record).",
         "required": [
           "id",
           "kind"
@@ -23429,6 +23462,7 @@
       },
       "ProjectorRunQuery": {
         "type": "object",
+        "description": "Query parameters for a manual `POST /v1/reports/projector/run` invocation —\nthe cap on how many outbox rows one run is allowed to claim.",
         "properties": {
           "limit": {
             "type": "integer",
@@ -23439,6 +23473,7 @@
       },
       "ProjectorRunResult": {
         "type": "object",
+        "description": "Outcome of one projector run — how many outbox rows it claimed,\ncompleted, and failed. Returned by manual `POST /v1/reports/projector/run`\ncalls and useful for backfill scripting.",
         "required": [
           "claimed",
           "completed",
@@ -23765,6 +23800,7 @@
       },
       "ReportColumn": {
         "type": "object",
+        "description": "One column header in a `ReportResult`. The ordered `columns` list\ndeclares the key set of each row in `rows`.",
         "required": [
           "name",
           "kind"
@@ -23783,6 +23819,7 @@
       },
       "ReportColumnKind": {
         "type": "string",
+        "description": "Whether a `ReportColumn` is a grouping dimension or an aggregate measure.",
         "enum": [
           "dimension",
           "measure"
@@ -23790,6 +23827,7 @@
       },
       "ReportExport": {
         "type": "object",
+        "description": "Serialized export of a report's data, ready to stream to a caller as a\ndownload. Carries the rendered payload plus the MIME/filename metadata\na client needs to save it.",
         "required": [
           "format",
           "filename",
@@ -23831,6 +23869,7 @@
       },
       "ReportExportFormat": {
         "type": "string",
+        "description": "Output format for a report export. `Csv` emits a header row plus one\nrow per result; `Json` emits an envelope with the same shape as\n`ReportResult`.",
         "enum": [
           "csv",
           "json"
@@ -23838,6 +23877,7 @@
       },
       "ReportFilter": {
         "type": "object",
+        "description": "One predicate filter applied to the dataset before aggregation.\nCombined with other filters via logical AND.",
         "required": [
           "field",
           "op",
@@ -23860,6 +23900,7 @@
       },
       "ReportFilterOp": {
         "type": "string",
+        "description": "Comparison operator used in a `ReportFilter`. The `In` variant takes a\nJSON array as its value; all others take a scalar.",
         "enum": [
           "eq",
           "neq",
@@ -23872,6 +23913,7 @@
       },
       "ReportOrderBy": {
         "type": "object",
+        "description": "One sort clause applied to the aggregated result. Either `dimension`\nOR `measure` is set (mutually exclusive), never both.",
         "properties": {
           "dimension": {
             "type": [
@@ -23897,6 +23939,7 @@
       },
       "ReportOrderDirection": {
         "type": "string",
+        "description": "Sort direction for a `ReportOrderBy` clause.",
         "enum": [
           "asc",
           "desc"
@@ -23904,6 +23947,7 @@
       },
       "ReportQuery": {
         "type": "object",
+        "description": "Semantic query a caller submits to the reporting layer. The backend\ncompiles this to its native query language, scopes it to the calling\norg, and returns a `ReportResult`.",
         "required": [
           "dataset",
           "time_range"
@@ -23955,6 +23999,7 @@
       },
       "ReportResult": {
         "type": "object",
+        "description": "Materialized result of a report query — column metadata, rows, and the\nfreshness of the underlying data.",
         "required": [
           "as_of",
           "columns",
@@ -23990,6 +24035,7 @@
       },
       "ReportTimeRange": {
         "type": "object",
+        "description": "Half-open time window applied to the dataset's primary timestamp column\nduring a report query. `from` is inclusive, `to` is exclusive.",
         "required": [
           "from",
           "to"
@@ -24011,6 +24057,7 @@
       },
       "ReportingBackfillRequest": {
         "type": "object",
+        "description": "Request body for the `reporting_backfill` operation — enqueues source\nrows into the reporting outbox for the projector to re-materialize.",
         "properties": {
           "limit": {
             "type": "integer",
@@ -24022,6 +24069,7 @@
       },
       "ReportingBackfillResult": {
         "type": "object",
+        "description": "Result of a `reporting_backfill` call — per-source counts of outbox rows\nenqueued for re-projection.",
         "required": [
           "enqueued",
           "events",
@@ -24059,6 +24107,7 @@
       },
       "ReportingDiagnostics": {
         "type": "object",
+        "description": "Point-in-time health snapshot of the reporting layer — projector\nfreshness plus outbox processing health. Returned from\n`GET /v1/reports/admin/diagnostics`.",
         "required": [
           "generated_at",
           "projector_lag",
@@ -24085,6 +24134,7 @@
       },
       "ReportingOutboxDiagnostics": {
         "type": "object",
+        "description": "Aggregate health of the reporting outbox — the queue of source rows\nwaiting to be projected into fact tables.",
         "required": [
           "pending",
           "processing",
@@ -24315,6 +24365,7 @@
       },
       "SavedReport": {
         "type": "object",
+        "description": "A user-saved report definition — a named, persistable wrapper around a\n`ReportQuery` with optional dashboard placement metadata.",
         "required": [
           "id",
           "name",
@@ -24368,6 +24419,7 @@
       },
       "SavedReportDashboardMetadata": {
         "type": "object",
+        "description": "Dashboard placement metadata attached to a `SavedReport`. Captures how\nand where to render the report in the operator dashboard UI.",
         "properties": {
           "chart_type": {
             "type": [
@@ -25106,6 +25158,7 @@
       },
       "SessionContextReport": {
         "type": "object",
+        "description": "Token-budget report for a session — a model-aware breakdown of the\ncontext window into named sections plus per-source contributions, so\ncallers can answer \"what's filling the context?\" without reverse-\nengineering the prompt assembly.",
         "required": [
           "session_id",
           "model",
@@ -25325,6 +25378,7 @@
       },
       "SessionSandboxAction": {
         "type": "string",
+        "description": "Operator action to take against a session's managed sandbox. `Pause`\nsuspends the instance, `Resume` restarts it, `Delete` releases the\nlease.",
         "enum": [
           "pause",
           "resume",
@@ -25333,6 +25387,7 @@
       },
       "SessionSandboxStatusValue": {
         "type": "string",
+        "description": "Wire-facing status of a session sandbox. Mirrors\n`everruns_core::SessionSandboxStatus` for the public API.",
         "enum": [
           "running",
           "paused"
@@ -28172,6 +28227,7 @@
       },
       "VoiceSessionOptions": {
         "type": "object",
+        "description": "Realtime-session knobs flattened into the voice request bodies that\ncreate or attach a realtime connection — `VoiceClientSecretRequest`,\n`VoiceCallRequest`, and `VoiceAttachRequest`. The `/voice/.../end`\nendpoint takes `VoiceEndRequest` and does not accept these options.\nAll fields are optional; omitted ones fall back to the agent's or\nprovider's default.",
         "properties": {
           "instructions": {
             "type": [
@@ -28209,6 +28265,7 @@
       },
       "VoiceSessionResponse_VoiceCallResponse": {
         "type": "object",
+        "description": "Generic envelope returned by the agent/chat voice-session endpoints that\ncreate-or-attach a session and a voice connection in one round trip.\n`T` is the per-endpoint voice payload (`VoiceCallResponse`,\n`VoiceAttachResponse`).",
         "required": [
           "session",
           "voice"
@@ -29046,6 +29103,7 @@
         "allOf": [
           {
             "type": "object",
+            "description": "Persisted, org-scoped declarative capability — a YAML/JSON-defined\nbundle of skills, files, and tool defs that an agent or harness can\nreference by `capability_id` or name.",
             "required": [
               "id",
               "capability_id",

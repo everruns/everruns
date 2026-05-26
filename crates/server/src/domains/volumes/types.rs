@@ -81,6 +81,8 @@ pub struct UpdateVolumeRequest {
     pub source: Option<CreateVolumeSourceRequest>,
 }
 
+/// Query parameters for `GET /v1/volumes` — optional name search and a
+/// flag to include archived volumes in the listing.
 #[derive(Debug, Clone, Deserialize, IntoParams, ToSchema)]
 pub struct ListVolumesQuery {
     #[serde(default)]

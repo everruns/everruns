@@ -61,6 +61,8 @@ impl AppState {
 impl_auth_state!(AppState);
 impl_dispatchable!(AppState);
 
+/// Query parameters for a manual `POST /v1/reports/projector/run` invocation —
+/// the cap on how many outbox rows one run is allowed to claim.
 #[derive(Debug, Clone, Deserialize, IntoParams, ToSchema)]
 pub struct ProjectorRunQuery {
     #[serde(default = "default_projector_limit")]

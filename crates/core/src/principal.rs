@@ -15,6 +15,9 @@ use crate::typed_id::PrincipalId;
 #[cfg(feature = "openapi")]
 use utoipa::ToSchema;
 
+/// Class of principal that can hold permissions or own resources. `system`
+/// is reserved for platform-internal callers and is never minted via the
+/// public API.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[serde(rename_all = "snake_case")]
@@ -73,6 +76,9 @@ impl From<&str> for PrincipalStatus {
     }
 }
 
+/// Compact view of a principal — id + kind + the subject-id pointer back
+/// into the user/agent-identity row. Used wherever a full `Principal`
+/// would be redundant (e.g. as a sub-field of a session or audit record).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct PrincipalSummary {

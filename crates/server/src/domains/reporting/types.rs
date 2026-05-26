@@ -10,6 +10,8 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+/// A user-saved report definition — a named, persistable wrapper around a
+/// `ReportQuery` with optional dashboard placement metadata.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct SavedReport {
     /// UUID of the saved report.
@@ -33,6 +35,8 @@ pub struct SavedReport {
     pub updated_at: DateTime<Utc>,
 }
 
+/// Dashboard placement metadata attached to a `SavedReport`. Captures how
+/// and where to render the report in the operator dashboard UI.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct SavedReportDashboardMetadata {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -99,6 +103,9 @@ pub struct UpdateSavedReportRequest {
     pub dashboard: UpdateField<SavedReportDashboardMetadata>,
 }
 
+/// Output format for a report export. `Csv` emits a header row plus one
+/// row per result; `Json` emits an envelope with the same shape as
+/// `ReportResult`.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ReportExportFormat {
@@ -129,6 +136,9 @@ fn default_export_format() -> ReportExportFormat {
     ReportExportFormat::Csv
 }
 
+/// Serialized export of a report's data, ready to stream to a caller as a
+/// download. Carries the rendered payload plus the MIME/filename metadata
+/// a client needs to save it.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct ReportExport {
     /// Export format (currently `csv`).
@@ -146,6 +156,9 @@ pub struct ReportExport {
     pub freshness_lag_ms: Option<i64>,
 }
 
+/// Point-in-time health snapshot of the reporting layer — projector
+/// freshness plus outbox processing health. Returned from
+/// `GET /v1/reports/admin/diagnostics`.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct ReportingDiagnostics {
     /// Server-side wall-clock timestamp when this snapshot was assembled
@@ -160,15 +173,26 @@ pub struct ReportingDiagnostics {
     pub outbox: ReportingOutboxDiagnostics,
 }
 
+/// Per-dataset projector freshness telemetry. One entry per active dataset
+/// the reporting projector is materializing.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct DatasetProjectorLag {
+    /// Dataset name (matches `ReportQuery.dataset`).
     pub dataset: String,
+    /// Wall-clock timestamp of the newest fact the projector has
+    /// materialized for this dataset (RFC 3339). `None` if the projector
+    /// hasn't produced any rows yet.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub latest_projected_at: Option<DateTime<Utc>>,
+    /// Gap between `latest_projected_at` and the diagnostic's
+    /// `generated_at`, in milliseconds. `None` when freshness can't be
+    /// determined.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub freshness_lag_ms: Option<i64>,
 }
 
+/// Aggregate health of the reporting outbox — the queue of source rows
+/// waiting to be projected into fact tables.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct ReportingOutboxDiagnostics {
     /// Outbox rows waiting to be claimed by a projector.
@@ -186,6 +210,9 @@ pub struct ReportingOutboxDiagnostics {
     pub failed_rows: Vec<FailedReportingOutboxRow>,
 }
 
+/// One failed reporting-outbox row, surfaced in
+/// `ReportingOutboxDiagnostics.failed_rows` so operators can triage
+/// projector failures without dropping to SQL.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct FailedReportingOutboxRow {
     /// Outbox row UUID.
@@ -205,6 +232,9 @@ pub struct FailedReportingOutboxRow {
     pub updated_at: DateTime<Utc>,
 }
 
+/// Outcome of one projector run — how many outbox rows it claimed,
+/// completed, and failed. Returned by manual `POST /v1/reports/projector/run`
+/// calls and useful for backfill scripting.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct ProjectorRunResult {
     /// Number of outbox rows claimed by this run.
@@ -215,6 +245,8 @@ pub struct ProjectorRunResult {
     pub failed: usize,
 }
 
+/// Request body for the `reporting_backfill` operation — enqueues source
+/// rows into the reporting outbox for the projector to re-materialize.
 #[derive(Debug, Clone, Deserialize, ToSchema)]
 pub struct ReportingBackfillRequest {
     /// Maximum number of outbox rows to enqueue across all source types. Defaults to 1000.
@@ -227,6 +259,8 @@ fn default_backfill_limit() -> i64 {
     1_000
 }
 
+/// Result of a `reporting_backfill` call — per-source counts of outbox rows
+/// enqueued for re-projection.
 #[derive(Debug, Clone, Default, Serialize, ToSchema)]
 pub struct ReportingBackfillResult {
     /// Total number of outbox rows enqueued across all source types.
