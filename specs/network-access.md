@@ -47,17 +47,24 @@ Merge function: `network_access::merge_network_access(parent, child)`
 
 ## Enforcement
 
+All outbound HTTP/API call paths must use the host `EgressService` described in
+`specs/egress.md`. The egress service is the final enforcement point for
+requests that carry a `NetworkAccessList`.
+
 Merged `NetworkAccessList` flows through:
 1. `ReasonAtom` merges harness + agent + session → stores on `RuntimeAgent.network_access`
 2. `ReasonResult.network_access` carries it to `ActInput`
 3. `ActAtom` sets `ToolContext.network_access`
-4. `WebFetchTool.execute_with_context()` checks URL before fetching (THREAT[TM-AGENT-018])
+4. Tools that send agent-authored or capability-configured URLs pass the list
+   to `EgressRequest.network_access`
+5. `EgressService` denies blocked/disallowed URLs before making the outbound
+   request (THREAT[TM-AGENT-018])
 
 ### Bashkit
 
 Bashkit has no network builtins (TM-BASH-003: curl/wget not available).
-No enforcement needed today. If bashkit gains HTTP support, it must check
-`ToolContext.network_access`.
+No enforcement needed today. If bashkit gains HTTP support, it must route HTTP
+through `EgressService` with `ToolContext.network_access`.
 
 ## API
 

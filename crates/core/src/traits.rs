@@ -858,6 +858,9 @@ pub struct ToolContext {
     /// Optional system utility LLM service for capability internals.
     pub utility_llm_service: Option<Arc<dyn crate::UtilityLlmService>>,
 
+    /// Optional outbound egress service for HTTP/API traffic.
+    pub egress_service: Option<Arc<dyn crate::EgressService>>,
+
     /// Optional session SQL database store
     pub sqldb_store: Option<SessionSqlDbStoreRef>,
 
@@ -937,6 +940,7 @@ impl ToolContext {
             image_store: None,
             provider_credential_store: None,
             utility_llm_service: None,
+            egress_service: None,
             sqldb_store: None,
             message_retriever: None,
             session_store: None,
@@ -970,6 +974,7 @@ impl ToolContext {
             image_store: None,
             provider_credential_store: None,
             utility_llm_service: None,
+            egress_service: None,
             sqldb_store: None,
             message_retriever: None,
             session_store: None,
@@ -1006,6 +1011,7 @@ impl ToolContext {
             image_store: None,
             provider_credential_store: None,
             utility_llm_service: None,
+            egress_service: None,
             sqldb_store: None,
             message_retriever: None,
             session_store: None,
@@ -1044,6 +1050,7 @@ impl ToolContext {
             image_store: None,
             provider_credential_store: None,
             utility_llm_service: None,
+            egress_service: None,
             message_retriever: None,
             session_store: None,
             session_mutator: None,
@@ -1118,6 +1125,7 @@ impl ToolContext {
             image_store: Some(image_store),
             provider_credential_store: None,
             utility_llm_service: None,
+            egress_service: None,
             sqldb_store: None,
             message_retriever: None,
             session_store: None,
@@ -1154,6 +1162,12 @@ impl ToolContext {
     /// Set the utility LLM service on this context.
     pub fn with_utility_llm_service(mut self, service: Arc<dyn crate::UtilityLlmService>) -> Self {
         self.utility_llm_service = Some(service);
+        self
+    }
+
+    /// Set the outbound egress service on this context.
+    pub fn with_egress_service(mut self, service: Arc<dyn crate::EgressService>) -> Self {
+        self.egress_service = Some(service);
         self
     }
 
@@ -1300,6 +1314,7 @@ impl std::fmt::Debug for ToolContext {
                 &self.provider_credential_store.is_some(),
             )
             .field("utility_llm_service", &self.utility_llm_service.is_some())
+            .field("egress_service", &self.egress_service.is_some())
             .field("sqldb_store", &self.sqldb_store.is_some())
             .field("message_retriever", &self.message_retriever.is_some())
             .field("session_store", &self.session_store.is_some())

@@ -19,8 +19,8 @@ use everruns_core::traits::{
 };
 use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId};
 use everruns_core::{
-    Agent, AgentStatus, Caller, ContentPart, DriverRegistry, EventData, Harness, HarnessStatus,
-    LlmProviderType, Message, MessageRole, Session, SessionStatus, ToolDefinition,
+    Agent, AgentStatus, Caller, ContentPart, DriverRegistry, EgressService, EventData, Harness,
+    HarnessStatus, LlmProviderType, Message, MessageRole, Session, SessionStatus, ToolDefinition,
     ToolResultContentPart, UtilityLlmService, merge_harness,
 };
 use everruns_worker::mcp_executor::McpServerInfo;
@@ -270,6 +270,7 @@ pub struct DirectWorkerAdapters {
     capability_registry: CapabilityRegistry,
     driver_registry: DriverRegistry,
     utility_llm_service: Option<Arc<dyn UtilityLlmService>>,
+    egress_service: Option<Arc<dyn EgressService>>,
     sqldb_store: everruns_core::traits::SessionSqlDbStoreRef,
     storage_store: Option<Arc<dyn everruns_core::traits::SessionStorageStore>>,
     connection_resolver: Option<Arc<dyn everruns_core::traits::UserConnectionResolver>>,
@@ -301,6 +302,7 @@ impl DirectWorkerAdapters {
             capability_registry,
             driver_registry,
             utility_llm_service: None,
+            egress_service: None,
             sqldb_store,
             storage_store: None,
             connection_resolver: None,
@@ -371,6 +373,11 @@ impl DirectWorkerAdapters {
 
     pub fn with_utility_llm_service(mut self, service: Arc<dyn UtilityLlmService>) -> Self {
         self.utility_llm_service = Some(service);
+        self
+    }
+
+    pub fn with_egress_service(mut self, service: Arc<dyn EgressService>) -> Self {
+        self.egress_service = Some(service);
         self
     }
 
@@ -1402,6 +1409,10 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
     fn utility_llm_service(&self) -> Option<Arc<dyn UtilityLlmService>> {
         self.utility_llm_service.clone()
+    }
+
+    fn egress_service(&self) -> Option<Arc<dyn EgressService>> {
+        self.egress_service.clone()
     }
 
     fn connection_resolver(&self) -> Arc<dyn everruns_core::traits::UserConnectionResolver> {

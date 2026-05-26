@@ -20,6 +20,10 @@ graph TD
         Gemini[everruns-gemini]
     end
 
+    subgraph Host
+        Egress[EgressService]
+    end
+
     subgraph Consumer
         ReasonAtom[ReasonAtom]
     end
@@ -31,6 +35,9 @@ graph TD
     Anthropic -->|registers| Registry
     Gemini -->|registers| Registry
     ReasonAtom -->|uses| Registry
+    OpenAI -->|outbound HTTP| Egress
+    Anthropic -->|outbound HTTP| Egress
+    Gemini -->|outbound HTTP| Egress
     ReasonAtom -->|handles| Errors
 ```
 
@@ -67,6 +74,15 @@ Each driver MUST implement provider-specific error detection to classify context
 ### Driver Registry
 
 Provider crates register factories at startup. Drivers created on-demand from `ProviderConfig`. All real providers require API keys; `LlmSim` exempted for testing. See `crates/core/src/llm_driver_registry.rs` for `DriverRegistry`.
+
+### Egress Boundary
+
+Provider drivers and model discovery must route outbound HTTP through
+`EgressService` (see `specs/egress.md`). Drivers still own provider-specific
+request construction, streaming parse logic, retry classification, and error
+mapping, but they should not create direct external HTTP clients as the final
+transport. This keeps workers and control-plane processes compatible with a
+future remote Egress Gateway and airgapped deployments.
 
 ### Message Types
 
