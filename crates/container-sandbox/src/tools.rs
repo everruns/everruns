@@ -298,7 +298,7 @@ impl Tool for SandboxExecTool {
         };
 
         if exit_code == 0 {
-            ToolExecutionResult::success(output)
+            ToolExecutionResult::success_with_raw_output(output, clean_output)
         } else {
             ToolExecutionResult::success(format!("Exit code: {exit_code}\n\n{output}"))
         }
