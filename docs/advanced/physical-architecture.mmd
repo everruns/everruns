@@ -1,0 +1,35 @@
+%%{init: {'look': 'handDrawn'}}%%
+graph TB
+    subgraph Public["Public Surface"]
+        Clients["Clients<br/>SDK · CLI · App"]
+        Proxy["Reverse Proxy<br/>TLS · /api · /mcp"]
+        UI["Management UI<br/>(Optional)"]
+    end
+
+    subgraph CP["Control Plane"]
+        Server["Control Plane (Server)<br/>REST :9301 · gRPC :9001"]
+    end
+
+    subgraph Workers["Worker Pool · Stateless"]
+        W1["Worker 1"]
+        W2["Worker 2"]
+        Wn["Worker N"]
+    end
+
+    subgraph Data["State & Messaging"]
+        PG["PostgreSQL 17<br/>Required<br/>Task queue · Event log"]
+        Valkey["Valkey<br/>Optional<br/>Distributed rate limiting"]
+        NATS["NATS JetStream<br/>Optional<br/>Event push · Task notifs"]
+    end
+
+    Clients -->|HTTPS| Proxy
+    UI -.->|HTTPS| Proxy
+    Proxy -->|HTTP| Server
+
+    Server <-->|gRPC| W1
+    Server <-->|gRPC| W2
+    Server <-->|gRPC| Wn
+
+    Server -->|SQL| PG
+    Server -.->|optional| Valkey
+    Server -.->|Pub/Sub| NATS

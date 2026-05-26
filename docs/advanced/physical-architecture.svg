@@ -1,0 +1,119 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 580" fill="none">
+  <style>
+    text { font-family: 'Geist', 'Inter', system-ui, sans-serif; }
+    .label { font-size: 13px; fill: #0A0A0A; font-weight: 600; }
+    .sublabel { font-size: 11px; fill: #404040; font-weight: 400; }
+    .header-text { font-size: 11px; fill: #A0A0A0; font-weight: 400; letter-spacing: 0.08em; text-transform: uppercase; }
+    .mono { font-family: 'Geist Mono', 'SF Mono', monospace; font-size: 10px; fill: #404040; }
+    .arrow-label { font-size: 10px; fill: #0A1636; font-weight: 500; }
+    .tag-required { font-size: 9px; fill: #0A1636; font-weight: 600; letter-spacing: 0.05em; }
+    .tag-optional { font-size: 9px; fill: #A0A0A0; font-weight: 600; letter-spacing: 0.05em; }
+    .note { font-size: 10px; fill: #6B7280; font-style: italic; }
+  </style>
+  <rect width="800" height="580" fill="#FFFFFF"/>
+
+  <!-- North row headers -->
+  <text x="140" y="60" text-anchor="middle" class="header-text">CLIENT</text>
+  <text x="400" y="60" text-anchor="middle" class="header-text">INGRESS</text>
+  <text x="660" y="60" text-anchor="middle" class="header-text">OPERATOR</text>
+
+  <!-- North row -->
+  <rect x="60" y="80" width="160" height="68" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="140" y="106" text-anchor="middle" class="label">Clients</text>
+  <text x="140" y="124" text-anchor="middle" class="sublabel">SDK · CLI · App</text>
+
+  <rect x="320" y="80" width="160" height="68" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="400" y="106" text-anchor="middle" class="label">Reverse Proxy</text>
+  <text x="400" y="124" text-anchor="middle" class="sublabel">TLS · routing</text>
+
+  <rect x="580" y="80" width="160" height="68" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="580" y="74" class="tag-optional">OPTIONAL</text>
+  <text x="660" y="106" text-anchor="middle" class="label">Management UI</text>
+  <text x="660" y="124" text-anchor="middle" class="sublabel">Admin console</text>
+
+  <!-- Center HUB: Control Plane -->
+  <rect x="280" y="240" width="240" height="120" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1.5"/>
+  <text x="400" y="270" text-anchor="middle" class="header-text">CONTROL PLANE</text>
+  <text x="400" y="290" text-anchor="middle" class="label">Server</text>
+  <text x="400" y="310" text-anchor="middle" class="sublabel">REST · SSE event streams</text>
+  <text x="400" y="328" text-anchor="middle" class="sublabel">gRPC for workers</text>
+  <text x="400" y="348" text-anchor="middle" class="mono">:9301 · :9001</text>
+
+  <!-- East spoke: Workers -->
+  <text x="660" y="220" text-anchor="middle" class="header-text">EXECUTORS</text>
+  <rect x="580" y="235" width="160" height="130" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="660" y="256" text-anchor="middle" class="label">Worker Pool</text>
+  <text x="660" y="272" text-anchor="middle" class="sublabel">Stateless</text>
+  <rect x="595" y="282" width="130" height="24" fill="#FFFFFF" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="660" y="299" text-anchor="middle" class="sublabel">Worker 1</text>
+  <rect x="595" y="310" width="130" height="24" fill="#FFFFFF" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="660" y="327" text-anchor="middle" class="sublabel">Worker 2</text>
+  <rect x="595" y="338" width="130" height="24" fill="#FFFFFF" stroke="#0A0A0A" stroke-width="1"/>
+  <text x="660" y="355" text-anchor="middle" class="sublabel">Worker N</text>
+
+  <!-- South row: State & messaging -->
+  <text x="140" y="442" text-anchor="middle" class="header-text">STATE</text>
+  <text x="400" y="442" text-anchor="middle" class="header-text">RATE</text>
+  <text x="660" y="442" text-anchor="middle" class="header-text">MESSAGING</text>
+
+  <rect x="60" y="458" width="160" height="86" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1.5"/>
+  <text x="60" y="452" class="tag-required">REQUIRED</text>
+  <text x="140" y="484" text-anchor="middle" class="label">PostgreSQL 17</text>
+  <text x="140" y="502" text-anchor="middle" class="sublabel">Durable state</text>
+  <text x="140" y="519" text-anchor="middle" class="sublabel">Task queue · Events</text>
+  <text x="140" y="537" text-anchor="middle" class="mono">:5432</text>
+
+  <rect x="320" y="458" width="160" height="86" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="320" y="452" class="tag-optional">OPTIONAL</text>
+  <text x="400" y="484" text-anchor="middle" class="label">Valkey</text>
+  <text x="400" y="502" text-anchor="middle" class="sublabel">Distributed rate</text>
+  <text x="400" y="519" text-anchor="middle" class="sublabel">limiting (shared)</text>
+  <text x="400" y="537" text-anchor="middle" class="mono">:6379</text>
+
+  <rect x="580" y="458" width="160" height="86" fill="#F5F5F5" stroke="#0A0A0A" stroke-width="1" stroke-dasharray="4 3"/>
+  <text x="580" y="452" class="tag-optional">OPTIONAL</text>
+  <text x="660" y="484" text-anchor="middle" class="label">NATS JetStream</text>
+  <text x="660" y="502" text-anchor="middle" class="sublabel">Event push</text>
+  <text x="660" y="519" text-anchor="middle" class="sublabel">Task notifications</text>
+  <text x="660" y="537" text-anchor="middle" class="mono">:4222</text>
+
+  <!-- Arrows from north into hub -->
+  <!-- Clients -> Proxy -->
+  <line x1="220" y1="114" x2="312" y2="114" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="320,114 312,110 312,118" fill="#0A1636"/>
+  <text x="266" y="107" text-anchor="middle" class="arrow-label">HTTPS</text>
+
+  <!-- UI -> Proxy -->
+  <line x1="580" y1="114" x2="488" y2="114" stroke="#0A1636" stroke-width="1.5" stroke-dasharray="3 3"/>
+  <polygon points="480,114 488,110 488,118" fill="#0A1636"/>
+  <text x="534" y="107" text-anchor="middle" class="arrow-label">HTTPS</text>
+
+  <!-- Proxy -> CP -->
+  <line x1="400" y1="148" x2="400" y2="232" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="400,240 396,232 404,232" fill="#0A1636"/>
+  <text x="416" y="195" class="arrow-label">HTTP</text>
+
+  <!-- CP <-> Workers -->
+  <line x1="528" y1="300" x2="572" y2="300" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="580,300 572,296 572,304" fill="#0A1636"/>
+  <polygon points="520,300 528,296 528,304" fill="#0A1636"/>
+  <text x="550" y="291" text-anchor="middle" class="arrow-label">gRPC</text>
+
+  <!-- CP -> PG diagonal -->
+  <line x1="320" y1="360" x2="178" y2="452" stroke="#0A1636" stroke-width="1.5"/>
+  <polygon points="172,456 180,449 184,455" fill="#0A1636"/>
+  <text x="226" y="402" class="arrow-label">SQL</text>
+
+  <!-- CP -> Valkey straight down -->
+  <line x1="400" y1="368" x2="400" y2="450" stroke="#0A1636" stroke-width="1.5" stroke-dasharray="3 3"/>
+  <polygon points="400,458 396,450 404,450" fill="#0A1636"/>
+
+  <!-- CP -> NATS diagonal right -->
+  <line x1="480" y1="360" x2="622" y2="452" stroke="#0A1636" stroke-width="1.5" stroke-dasharray="3 3"/>
+  <polygon points="628,456 624,448 620,454" fill="#0A1636"/>
+  <text x="558" y="402" class="arrow-label">Pub/Sub</text>
+
+  <!-- Footer -->
+  <line x1="40" y1="556" x2="760" y2="556" stroke="#E5E5E5" stroke-width="1"/>
+  <text x="400" y="572" text-anchor="middle" class="note">Solid = required · Dashed = optional. Workers reach state only via the control plane over gRPC.</text>
+</svg>
