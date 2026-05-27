@@ -404,6 +404,9 @@ pub async fn session_config(
         (status = 404, description = "Harness, Agent, or Model not found"),
         (status = 500, description = "Internal server error")
     ),
+    extensions(
+        ("x-cost-tier" = json!("paid")),
+    ),
     tag = "sessions"
 )]
 pub async fn create_session(
@@ -584,6 +587,9 @@ pub async fn update_session(
     path = "/v1/sessions/{session_id}",
     params(
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)")
+    ),
+    extensions(
+        ("x-side-effect" = json!("reversible")),
     ),
     responses(
         (status = 204, description = "Session deleted successfully"),
