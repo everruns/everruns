@@ -10,8 +10,8 @@ use everruns_core::capabilities::{CapabilityRegistry, collect_capability_mcp_ser
 use everruns_core::mcp_server::sanitize_mcp_server_name;
 use everruns_core::traits::UserConnectionResolver;
 use everruns_core::{
-    Agent, Capability, Harness, McpCapability, McpServerAuthMode, ScopedMcpServers, Session,
-    SessionId, ToolDefinition, merge_scoped_mcp_servers, resolve_runtime_capabilities,
+    Agent, Capability, EgressService, Harness, McpCapability, McpServerAuthMode, ScopedMcpServers,
+    Session, SessionId, ToolDefinition, merge_scoped_mcp_servers, resolve_runtime_capabilities,
     validate_safe_url,
 };
 use std::collections::{HashMap, HashSet};
@@ -151,6 +151,7 @@ pub async fn build_scoped_mcp_tool_definitions(
     servers: &ScopedMcpServers,
     session_id: Option<SessionId>,
     connection_resolver: Option<&Arc<dyn UserConnectionResolver>>,
+    egress_service: &dyn EgressService,
 ) -> Result<Vec<ToolDefinition>> {
     let mut definitions = Vec::new();
 
@@ -189,18 +190,24 @@ pub async fn build_scoped_mcp_tool_definitions(
             continue;
         }
 
-        let tools =
-            match fetch_mcp_tools(&server.url, bearer_token.as_deref(), &server.headers).await {
-                Ok(tools) => tools,
-                Err(error) => {
-                    tracing::warn!(
-                        server_name = %name,
-                        error = %error,
-                        "Failed to discover scoped MCP tools, skipping server"
-                    );
-                    continue;
-                }
-            };
+        let tools = match fetch_mcp_tools(
+            egress_service,
+            &server.url,
+            bearer_token.as_deref(),
+            &server.headers,
+        )
+        .await
+        {
+            Ok(tools) => tools,
+            Err(error) => {
+                tracing::warn!(
+                    server_name = %name,
+                    error = %error,
+                    "Failed to discover scoped MCP tools, skipping server"
+                );
+                continue;
+            }
+        };
         let capability_id = session_id
             .map(|id| scoped_mcp_server_uuid(id.uuid(), name))
             .unwrap_or_else(Uuid::nil);

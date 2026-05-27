@@ -450,7 +450,11 @@ impl WorkerServiceImpl {
         };
         let llm_resolver_service = llm_resolver_service
             .unwrap_or_else(|| Arc::new(LlmResolverService::new(db.clone(), encryption.clone())));
-        let mcp_server_service = McpServerService::new(db.clone(), encryption.clone());
+        let mcp_server_service = McpServerService::with_egress_service(
+            db.clone(),
+            encryption.clone(),
+            platform_definition.egress_service(),
+        );
         let capability_service = Arc::new(CapabilityService::with_registry(
             db.clone(),
             encryption.clone(),

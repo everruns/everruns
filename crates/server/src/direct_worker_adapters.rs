@@ -1312,10 +1312,15 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 tracing::warn!(error = %error, "Invalid scoped MCP server config, skipping");
                 vec![]
             } else {
+                let egress = self
+                    .egress_service
+                    .clone()
+                    .unwrap_or_else(|| Arc::new(everruns_core::DirectEgressService::default()));
                 build_scoped_mcp_tool_definitions(
                     &effective,
                     Some(session.id),
                     self.connection_resolver.as_ref(),
+                    egress.as_ref(),
                 )
                 .await
                 .unwrap_or_else(|error| {
@@ -1540,6 +1545,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 encryption: self.encryption.clone(),
                 workflow_store: self.workflow_store.clone(),
                 permission_resolver: self.permission_resolver.clone(),
+                egress_service: self.egress_service.clone(),
             },
         ))
     }
@@ -1884,6 +1890,7 @@ struct DirectPlatformStoreDeps {
     encryption: Option<Arc<EncryptionService>>,
     workflow_store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
     permission_resolver: Arc<dyn PermissionResolver>,
+    egress_service: Option<Arc<dyn EgressService>>,
 }
 
 pub struct DirectPlatformStore {
@@ -1907,11 +1914,15 @@ impl DirectPlatformStore {
         db: Arc<StorageBackend>,
         deps: DirectPlatformStoreDeps,
     ) -> Self {
-        let capability_service = Arc::new(crate::services::CapabilityService::with_registry(
+        let mut capability_service = crate::services::CapabilityService::with_registry(
             db.clone(),
             deps.encryption.clone(),
             deps.capability_registry.clone(),
-        ));
+        );
+        if let Some(egress) = &deps.egress_service {
+            capability_service = capability_service.with_mcp_egress_service(egress.clone());
+        }
+        let capability_service = Arc::new(capability_service);
         let session_service = Arc::new(SessionService::with_registry(
             db.clone(),
             deps.capability_registry.clone(),
@@ -3155,6 +3166,7 @@ mod tests {
                 encryption: None,
                 workflow_store: None,
                 permission_resolver: adapters.permission_resolver.clone(),
+                egress_service: adapters.egress_service.clone(),
             },
         )
     }

@@ -794,6 +794,7 @@ impl Command for PreviewHarness {
                 &effective_mcp_servers,
                 None,
                 None,
+                ctx.capability_service.egress_service().as_ref(),
             )
             .await
             .map_err(classify_anyhow)?,

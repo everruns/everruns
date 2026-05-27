@@ -18,8 +18,9 @@ use anyhow::{Result, anyhow};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use chrono::{DateTime, Utc};
 use everruns_core::{
-    Caller, McpServer, McpServerAuthMode, McpServerStatus, McpServerTransportType,
-    McpToolDefinition, McpToolsListRequest, McpToolsListResponse, mcp_oauth_provider_id_for_uuid,
+    Caller, DirectEgressService, EgressRequest, EgressRequestKind, EgressService, McpServer,
+    McpServerAuthMode, McpServerStatus, McpServerTransportType, McpToolDefinition,
+    McpToolsListRequest, McpToolsListResponse, mcp_oauth_provider_id_for_uuid,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -40,6 +41,7 @@ const MCP_CLIENT_TIMEOUT: Duration = Duration::from_secs(30);
 pub struct McpServerService {
     db: Arc<StorageBackend>,
     encryption: Option<Arc<EncryptionService>>,
+    egress_service: Arc<dyn EgressService>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -70,7 +72,27 @@ pub struct McpServerOAuthSettings {
 
 impl McpServerService {
     pub fn new(db: Arc<StorageBackend>, encryption: Option<Arc<EncryptionService>>) -> Self {
-        Self { db, encryption }
+        Self::with_egress_service(db, encryption, Arc::new(DirectEgressService::default()))
+    }
+
+    pub fn with_egress_service(
+        db: Arc<StorageBackend>,
+        encryption: Option<Arc<EncryptionService>>,
+        egress_service: Arc<dyn EgressService>,
+    ) -> Self {
+        Self {
+            db,
+            encryption,
+            egress_service,
+        }
+    }
+
+    pub fn egress_service(&self) -> Arc<dyn EgressService> {
+        self.egress_service.clone()
+    }
+
+    pub fn encryption(&self) -> Option<Arc<EncryptionService>> {
+        self.encryption.clone()
     }
 
     pub fn oauth_provider_id(server_id: Uuid) -> String {
@@ -372,7 +394,13 @@ impl McpServerService {
         }
 
         // Fetch tools from MCP server
-        let tools = fetch_mcp_tools(&row.url, api_key.as_deref(), &headers).await?;
+        let tools = fetch_mcp_tools(
+            self.egress_service.as_ref(),
+            &row.url,
+            api_key.as_deref(),
+            &headers,
+        )
+        .await?;
 
         // Cache tools in database
         let cached_tools = serde_json::to_value(&tools)?;
@@ -396,7 +424,13 @@ impl McpServerService {
             .ok_or_else(|| anyhow!("MCP server not found"))?;
         let headers: HashMap<String, String> =
             serde_json::from_value(row.headers.clone()).unwrap_or_default();
-        let tools = fetch_mcp_tools(&row.url, Some(token), &headers).await?;
+        let tools = fetch_mcp_tools(
+            self.egress_service.as_ref(),
+            &row.url,
+            Some(token),
+            &headers,
+        )
+        .await?;
         let cached_tools = serde_json::to_value(&tools)?;
         self.db
             .update_mcp_server_tools(caller.org_id, id, UpdateMcpServerTools { cached_tools })
@@ -582,43 +616,46 @@ pub struct McpServerResolved {
     pub headers: HashMap<String, String>,
 }
 
-/// Fetch tools from an MCP server using JSON-RPC over HTTP
+/// Fetch tools from an MCP server using JSON-RPC over HTTP via the platform
+/// `EgressService` (spec: `specs/egress.md`).
 pub(crate) async fn fetch_mcp_tools(
+    egress_service: &dyn EgressService,
     url: &str,
     api_key: Option<&str>,
     headers: &HashMap<String, String>,
 ) -> Result<Vec<McpToolDefinition>> {
-    // Re-validate URL at fetch time (SSRF defense-in-depth)
+    // Re-validate URL at fetch time (SSRF defense-in-depth). This runs before
+    // the egress request is constructed so unsafe URLs never reach the boundary.
     validate_safe_url(url).map_err(|e| anyhow!("MCP server URL blocked: {}", e))?;
 
-    let client = reqwest::Client::builder()
-        .timeout(MCP_CLIENT_TIMEOUT)
-        .build()?;
+    let request_body = serde_json::to_vec(&McpToolsListRequest::default())?;
 
-    let request = McpToolsListRequest::default();
+    let mut egress_request = EgressRequest::new("POST", url, EgressRequestKind::Mcp)
+        .header("Content-Type", "application/json")
+        .header("Accept", "application/json, text/event-stream")
+        .timeout_ms(MCP_CLIENT_TIMEOUT.as_millis() as u64)
+        .body(request_body);
 
-    let mut req_builder = client.post(url).json(&request);
-
-    // Add API key if provided
     if let Some(key) = api_key {
-        req_builder = req_builder.header("Authorization", format!("Bearer {}", key));
+        egress_request = egress_request.header("Authorization", format!("Bearer {}", key));
     }
-
-    // Add custom headers
     for (name, value) in headers {
-        req_builder = req_builder.header(name, value);
+        egress_request = egress_request.header(name, value);
     }
 
-    let response = req_builder.send().await?;
+    let response = egress_service
+        .send(egress_request)
+        .await
+        .map_err(|e| anyhow!("MCP server egress error: {}", e))?;
 
-    if !response.status().is_success() {
+    if !(200..300).contains(&response.status) {
         return Err(anyhow!(
             "MCP server returned error status: {}",
-            response.status()
+            response.status
         ));
     }
 
-    let mcp_response: McpToolsListResponse = response.json().await?;
+    let mcp_response: McpToolsListResponse = serde_json::from_slice(&response.body)?;
 
     if let Some(error) = mcp_response.error {
         return Err(anyhow!(
@@ -872,24 +909,34 @@ mod tests {
 
     // --- SSRF: fetch_mcp_tools blocks unsafe URLs ---
 
+    fn test_egress() -> DirectEgressService {
+        DirectEgressService::default()
+    }
+
     #[tokio::test]
     async fn fetch_tools_blocks_localhost() {
+        let egress = test_egress();
         let result =
-            super::fetch_mcp_tools("http://localhost:9999/mcp", None, &HashMap::new()).await;
+            super::fetch_mcp_tools(&egress, "http://localhost:9999/mcp", None, &HashMap::new())
+                .await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("blocked"));
     }
 
     #[tokio::test]
     async fn fetch_tools_blocks_private_ip() {
-        let result = super::fetch_mcp_tools("http://10.0.0.1/mcp", None, &HashMap::new()).await;
+        let egress = test_egress();
+        let result =
+            super::fetch_mcp_tools(&egress, "http://10.0.0.1/mcp", None, &HashMap::new()).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("blocked"));
     }
 
     #[tokio::test]
     async fn fetch_tools_blocks_metadata_endpoint() {
+        let egress = test_egress();
         let result = super::fetch_mcp_tools(
+            &egress,
             "http://169.254.169.254/latest/meta-data/",
             None,
             &HashMap::new(),
