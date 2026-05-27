@@ -1132,8 +1132,7 @@
             }
           }
         },
-        "x-cost-tier": "paid",
-        "x-side-effect": "reversible"
+        "x-cost-tier": "paid"
       }
     },
     "/v1/apps": {
@@ -8074,7 +8073,6 @@
             "description": "Internal server error"
           }
         },
-        "x-side-effect": "reversible",
         "x-cost-tier": "paid"
       }
     },
@@ -8151,7 +8149,6 @@
             }
           }
         },
-        "x-side-effect": "reversible",
         "x-cost-tier": "paid"
       }
     },

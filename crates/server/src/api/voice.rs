@@ -466,7 +466,6 @@ pub async fn end_call(
     request_body = VoiceCallRequest,
     responses((status = 201, description = "Agent session and realtime call created", body = VoiceSessionResponse<VoiceCallResponse>)),
     extensions(
-        ("x-side-effect" = json!("reversible")),
         ("x-cost-tier" = json!("paid")),
     ),
     tag = "voice"
@@ -515,7 +514,6 @@ pub async fn create_agent_voice_session(
     request_body = VoiceCallRequest,
     responses((status = 200, description = "Platform chat session and realtime call created", body = VoiceSessionResponse<VoiceCallResponse>)),
     extensions(
-        ("x-side-effect" = json!("reversible")),
         ("x-cost-tier" = json!("paid")),
     ),
     tag = "voice"

@@ -405,7 +405,6 @@ pub async fn session_config(
         (status = 500, description = "Internal server error")
     ),
     extensions(
-        ("x-side-effect" = json!("reversible")),
         ("x-cost-tier" = json!("paid")),
     ),
     tag = "sessions"

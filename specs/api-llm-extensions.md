@@ -81,6 +81,23 @@ Extensions are emitted directly under the operation object in
 `docs/api/openapi.json` and survive `scripts/export-openapi.sh`
 unchanged.
 
+### Deterministic ordering caveat
+
+utoipa 5.4 stores `extensions(...)` entries in a `HashMap` internally,
+so multiple entries on a single operation serialize in a
+non-deterministic order. The `openapi-check` CI job diffs the
+committed spec against a fresh re-export, so non-deterministic
+ordering breaks the freshness gate.
+
+Workaround until utoipa stabilises: **emit only one extension per
+operation**. Encode anything you'd want to convey as a second entry
+either as the value of a more general tag, or simply omit it when
+the value would match the default (e.g. `x-side-effect: reversible`
+is the default for non-DELETE operations and can be left off
+implicitly). Multi-entry extensions on the same operation are
+tracked as a follow-on once utoipa switches to a deterministic
+container.
+
 ## First-wave rollout
 
 This convention lands with a small first wave so the vocabulary can
