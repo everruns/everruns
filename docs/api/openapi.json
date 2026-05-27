@@ -1131,7 +1131,9 @@
               }
             }
           }
-        }
+        },
+        "x-cost-tier": "paid",
+        "x-side-effect": "reversible"
       }
     },
     "/v1/apps": {
@@ -8071,7 +8073,9 @@
           "500": {
             "description": "Internal server error"
           }
-        }
+        },
+        "x-side-effect": "reversible",
+        "x-cost-tier": "paid"
       }
     },
     "/v1/sessions/chat": {
@@ -8146,7 +8150,9 @@
               }
             }
           }
-        }
+        },
+        "x-side-effect": "reversible",
+        "x-cost-tier": "paid"
       }
     },
     "/v1/sessions/stats": {
@@ -8243,7 +8249,8 @@
           "500": {
             "description": "Internal server error"
           }
-        }
+        },
+        "x-side-effect": "reversible"
       },
       "patch": {
         "tags": [
