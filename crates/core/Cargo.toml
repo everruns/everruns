@@ -69,7 +69,7 @@ fetchkit = { version = "=0.2.0", features = ["bot-auth"] }
 ed25519-dalek = { version = "2", features = ["rand_core"] }
 
 # Virtual bash interpreter
-bashkit = { version = "0.6.0", features = ["jq"] }
+bashkit = { version = "0.7.2", features = ["jq"] }
 
 # Tree-sitter for structural outlines (EVE-248)
 tree-sitter = { version = "0.24", optional = true }
