@@ -180,28 +180,39 @@ pub struct LlmModelWithProvider {
     #[cfg_attr(feature = "openapi", schema(value_type = String, example = "provider_01933b5a00007000800000000000001"))]
     pub provider_id: ProviderId,
     /// Provider-side model identifier as sent on the wire (e.g. `gpt-4o`).
+    #[cfg_attr(feature = "openapi", schema(example = "claude-sonnet-4-5"))]
     pub model_id: String,
     /// Human-readable display name.
+    #[cfg_attr(feature = "openapi", schema(example = "Claude Sonnet 4.5"))]
     pub display_name: String,
     /// Capability tags supported by this model.
+    #[cfg_attr(feature = "openapi", schema(example = json!(["text", "tools", "vision", "thinking"])))]
     pub capabilities: Vec<String>,
     /// Whether this model is starred in the UI for quick access.
+    #[cfg_attr(feature = "openapi", schema(example = true))]
     pub is_favorite: bool,
     /// Whether this model is selectable. Controls UI visibility AND server-side resolution: `LlmResolverService` requires `enabled = true`, and org default-model validation rejects disabled models.
+    #[cfg_attr(feature = "openapi", schema(example = true))]
     pub enabled: bool,
     /// How this model entry was added (manually, discovered, or seeded as predefined).
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "predefined"))]
     pub source: LlmModelSource,
     /// Timestamp when this model was created (RFC 3339).
+    #[cfg_attr(feature = "openapi", schema(example = "2026-01-04T11:23:00Z"))]
     pub created_at: DateTime<Utc>,
     /// Timestamp when this model was last updated (RFC 3339).
+    #[cfg_attr(feature = "openapi", schema(example = "2026-05-27T15:24:00Z"))]
     pub updated_at: DateTime<Utc>,
     /// Joined provider display name.
+    #[cfg_attr(feature = "openapi", schema(example = "Anthropic"))]
     pub provider_name: String,
     /// Joined provider implementation type.
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "anthropic"))]
     pub provider_type: LlmProviderType,
     /// Derived: model is configured and ready for use. Currently means the
     /// joined provider is active and has an API key set; over time this may
     /// also incorporate live reachability checks. Not persisted.
+    #[cfg_attr(feature = "openapi", schema(example = true))]
     pub healthy: bool,
     /// Readonly profile with model capabilities (limits, pricing, modalities). Not persisted.
     #[serde(skip_serializing_if = "Option::is_none")]

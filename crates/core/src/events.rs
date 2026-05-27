@@ -1340,10 +1340,12 @@ pub struct LlmToolSearchInfo {
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct LlmGenerationMetadata {
     /// Model identifier used for generation
+    #[cfg_attr(feature = "openapi", schema(example = "claude-sonnet-4-5"))]
     pub model: String,
 
     /// Provider type (openai, anthropic, etc.)
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "anthropic"))]
     pub provider: Option<String>,
 
     /// Token usage statistics
@@ -1352,27 +1354,33 @@ pub struct LlmGenerationMetadata {
 
     /// Duration of the generation in milliseconds
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = 1_842u64))]
     pub duration_ms: Option<u64>,
 
     /// Time to first token in milliseconds (streaming latency)
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = 312u64))]
     pub time_to_first_token_ms: Option<u64>,
 
     /// Whether the generation was successful
+    #[cfg_attr(feature = "openapi", schema(example = true))]
     pub success: bool,
 
     /// Error message if generation failed
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "provider returned 503"))]
     pub error: Option<String>,
 
     /// Finish reasons from the LLM (e.g., ["stop"], ["tool_calls"])
     /// Required for gen-ai semantic conventions
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = json!(["tool_calls"])))]
     pub finish_reasons: Option<Vec<String>>,
 
     /// Unique response identifier from the LLM provider
     /// Required for gen-ai semantic conventions
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "msg_01ABCDef0123456789"))]
     pub response_id: Option<String>,
 
     /// Retry information if rate limit retries occurred

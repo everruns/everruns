@@ -12655,6 +12655,7 @@
             "type": "integer",
             "format": "int64",
             "description": "Number of active agents referencing this capability in the org.",
+            "example": 42,
             "minimum": 0
           },
           "category": {
@@ -12662,7 +12663,8 @@
               "string",
               "null"
             ],
-            "description": "Category for grouping in UI"
+            "description": "Category for grouping in UI",
+            "example": "filesystem"
           },
           "config_schema": {
             "type": "object",
@@ -12677,30 +12679,39 @@
             "items": {
               "type": "string"
             },
-            "description": "IDs of capabilities that this capability depends on.\nWhen this capability is selected, its dependencies are automatically included."
+            "description": "IDs of capabilities that this capability depends on.\nWhen this capability is selected, its dependencies are automatically included.",
+            "example": [
+              "approval"
+            ]
           },
           "description": {
             "type": "string",
-            "description": "Description of what this capability provides"
+            "description": "Description of what this capability provides",
+            "example": "Read, write, edit, list, grep, delete, and stat files in the session workspace."
           },
           "docs_slug": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Slug under https://dev.everruns.com/capabilities/ when public docs exist."
+            "description": "Slug under https://dev.everruns.com/capabilities/ when public docs exist.",
+            "example": "session_file_system"
           },
           "features": {
             "type": "array",
             "items": {
               "type": "string"
             },
-            "description": "UI feature strings this capability contributes to.\nMultiple capabilities can contribute the same feature."
+            "description": "UI feature strings this capability contributes to.\nMultiple capabilities can contribute the same feature.",
+            "example": [
+              "file_browser"
+            ]
           },
           "harness_count": {
             "type": "integer",
             "format": "int64",
             "description": "Number of active harnesses referencing this capability in the org.",
+            "example": 7,
             "minimum": 0
           },
           "icon": {
@@ -12708,45 +12719,63 @@
               "string",
               "null"
             ],
-            "description": "Icon name (for UI rendering)"
+            "description": "Icon name (for UI rendering)",
+            "example": "Folder"
           },
           "id": {
             "type": "string",
-            "description": "Unique capability identifier"
+            "description": "Unique capability identifier",
+            "example": "session_file_system"
           },
           "is_mcp": {
             "type": "boolean",
-            "description": "Whether this is an MCP server capability (for UI badge)"
+            "description": "Whether this is an MCP server capability (for UI badge)",
+            "example": false
           },
           "is_skill": {
             "type": "boolean",
-            "description": "Whether this is an Agent Skill capability (for UI badge)"
+            "description": "Whether this is an Agent Skill capability (for UI badge)",
+            "example": false
           },
           "name": {
             "type": "string",
-            "description": "Display name"
+            "description": "Display name",
+            "example": "Session File System"
           },
           "risk_level": {
-            "$ref": "#/components/schemas/RiskLevel",
-            "description": "TM-AGENT-005: Risk level. High-risk capabilities require admin approval."
+            "type": "string",
+            "description": "TM-AGENT-005: Risk level. High-risk capabilities require admin approval.",
+            "example": "low"
           },
           "status": {
             "type": "string",
-            "description": "Current status"
+            "description": "Current status",
+            "example": "active"
           },
           "system_prompt": {
             "type": [
               "string",
               "null"
             ],
-            "description": "System prompt addition contributed by this capability"
+            "description": "System prompt addition contributed by this capability",
+            "example": "You can read and write files in /workspace via the session_file_system tools."
           },
           "tool_definitions": {
             "type": "array",
             "items": {
               "type": "object"
             },
-            "description": "Tool definitions provided by this capability"
+            "description": "Tool definitions provided by this capability",
+            "example": [
+              {
+                "description": "Read a file from the session workspace.",
+                "name": "read_file"
+              },
+              {
+                "description": "Write or overwrite a file in the session workspace.",
+                "name": "write_file"
+              }
+            ]
           }
         }
       },
@@ -12880,6 +12909,7 @@
             "type": "integer",
             "format": "int32",
             "description": "Count of consecutive failures observed within the current rolling window.",
+            "example": 12,
             "minimum": 0
           },
           "half_open_at": {
@@ -12888,11 +12918,13 @@
               "null"
             ],
             "format": "date-time",
-            "description": "Timestamp the breaker is eligible to transition to `half_open` and probe again (RFC 3339)."
+            "description": "Timestamp the breaker is eligible to transition to `half_open` and probe again (RFC 3339).",
+            "example": "2026-05-27T15:30:01Z"
           },
           "key": {
             "type": "string",
-            "description": "Stable key identifying the dependency the breaker guards (e.g. provider URL or activity type)."
+            "description": "Stable key identifying the dependency the breaker guards (e.g. provider URL or activity type).",
+            "example": "anthropic_api"
           },
           "last_failure_at": {
             "type": [
@@ -12900,7 +12932,8 @@
               "null"
             ],
             "format": "date-time",
-            "description": "Timestamp of the most recent failure recorded against this breaker (RFC 3339)."
+            "description": "Timestamp of the most recent failure recorded against this breaker (RFC 3339).",
+            "example": "2026-05-27T15:25:00Z"
           },
           "opened_at": {
             "type": [
@@ -12908,22 +12941,26 @@
               "null"
             ],
             "format": "date-time",
-            "description": "Timestamp the breaker last transitioned to `open` (RFC 3339)."
+            "description": "Timestamp the breaker last transitioned to `open` (RFC 3339).",
+            "example": "2026-05-27T15:25:01Z"
           },
           "state": {
             "type": "string",
-            "description": "Current breaker state (`closed`, `open`, or `half_open`)."
+            "description": "Current breaker state (`closed`, `open`, or `half_open`).",
+            "example": "open"
           },
           "success_count": {
             "type": "integer",
             "format": "int32",
             "description": "Count of consecutive successes observed within the current rolling window.",
+            "example": 0,
             "minimum": 0
           },
           "updated_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Timestamp when this breaker state was last updated (RFC 3339)."
+            "description": "Timestamp when this breaker state was last updated (RFC 3339).",
+            "example": "2026-05-27T15:25:01Z"
           }
         }
       },
@@ -14990,46 +15027,61 @@
         "properties": {
           "activity_id": {
             "type": "string",
-            "description": "Per-workflow activity ID of the failed task."
+            "description": "Per-workflow activity ID of the failed task.",
+            "example": "tool_call_0042"
           },
           "activity_type": {
             "type": "string",
-            "description": "Activity type name of the failed task."
+            "description": "Activity type name of the failed task.",
+            "example": "tool_call"
           },
           "attempts": {
             "type": "integer",
             "format": "int32",
             "description": "Number of attempts made before the task was sent to the DLQ.",
+            "example": 5,
             "minimum": 0
           },
           "dead_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Timestamp when the task was moved to the DLQ (RFC 3339)."
+            "description": "Timestamp when the task was moved to the DLQ (RFC 3339).",
+            "example": "2026-05-27T15:26:11Z"
           },
           "error_history": {
             "type": "array",
             "items": {
               "type": "string"
             },
-            "description": "Full ordered history of error messages, one per attempt."
+            "description": "Full ordered history of error messages, one per attempt.",
+            "example": [
+              "connection reset",
+              "503 Service Unavailable",
+              "upstream gateway timeout",
+              "upstream gateway timeout",
+              "upstream gateway timeout"
+            ]
           },
           "id": {
             "type": "string",
             "format": "uuid",
-            "description": "UUID of the DLQ entry."
+            "description": "UUID of the DLQ entry.",
+            "example": "dead0000-0000-0000-0000-000000000001"
           },
           "input": {
+            "type": "object",
             "description": "Task input payload at the time of failure (used for inspection and replay)."
           },
           "last_error": {
             "type": "string",
-            "description": "Most recent error message (the one that pushed the task to the DLQ)."
+            "description": "Most recent error message (the one that pushed the task to the DLQ).",
+            "example": "upstream gateway timeout"
           },
           "original_task_id": {
             "type": "string",
             "format": "uuid",
-            "description": "Task ID that was originally retried and ultimately failed (matches the `tasks` record before its move to the DLQ)."
+            "description": "Task ID that was originally retried and ultimately failed (matches the `tasks` record before its move to the DLQ).",
+            "example": "550e8400-e29b-41d4-a716-446655440000"
           },
           "workflow_id": {
             "type": [
@@ -15037,7 +15089,8 @@
               "null"
             ],
             "format": "uuid",
-            "description": "Owning workflow's identifier, if the task was part of one."
+            "description": "Owning workflow's identifier, if the task was part of one.",
+            "example": "9a1b2c3d-4e5f-6789-abcd-ef0123456789"
           }
         }
       },
@@ -17802,6 +17855,7 @@
                   "type": "integer",
                   "format": "int64",
                   "description": "Number of active agents referencing this capability in the org.",
+                  "example": 42,
                   "minimum": 0
                 },
                 "category": {
@@ -17809,7 +17863,8 @@
                     "string",
                     "null"
                   ],
-                  "description": "Category for grouping in UI"
+                  "description": "Category for grouping in UI",
+                  "example": "filesystem"
                 },
                 "config_schema": {
                   "type": "object",
@@ -17824,30 +17879,39 @@
                   "items": {
                     "type": "string"
                   },
-                  "description": "IDs of capabilities that this capability depends on.\nWhen this capability is selected, its dependencies are automatically included."
+                  "description": "IDs of capabilities that this capability depends on.\nWhen this capability is selected, its dependencies are automatically included.",
+                  "example": [
+                    "approval"
+                  ]
                 },
                 "description": {
                   "type": "string",
-                  "description": "Description of what this capability provides"
+                  "description": "Description of what this capability provides",
+                  "example": "Read, write, edit, list, grep, delete, and stat files in the session workspace."
                 },
                 "docs_slug": {
                   "type": [
                     "string",
                     "null"
                   ],
-                  "description": "Slug under https://dev.everruns.com/capabilities/ when public docs exist."
+                  "description": "Slug under https://dev.everruns.com/capabilities/ when public docs exist.",
+                  "example": "session_file_system"
                 },
                 "features": {
                   "type": "array",
                   "items": {
                     "type": "string"
                   },
-                  "description": "UI feature strings this capability contributes to.\nMultiple capabilities can contribute the same feature."
+                  "description": "UI feature strings this capability contributes to.\nMultiple capabilities can contribute the same feature.",
+                  "example": [
+                    "file_browser"
+                  ]
                 },
                 "harness_count": {
                   "type": "integer",
                   "format": "int64",
                   "description": "Number of active harnesses referencing this capability in the org.",
+                  "example": 7,
                   "minimum": 0
                 },
                 "icon": {
@@ -17855,45 +17919,63 @@
                     "string",
                     "null"
                   ],
-                  "description": "Icon name (for UI rendering)"
+                  "description": "Icon name (for UI rendering)",
+                  "example": "Folder"
                 },
                 "id": {
                   "type": "string",
-                  "description": "Unique capability identifier"
+                  "description": "Unique capability identifier",
+                  "example": "session_file_system"
                 },
                 "is_mcp": {
                   "type": "boolean",
-                  "description": "Whether this is an MCP server capability (for UI badge)"
+                  "description": "Whether this is an MCP server capability (for UI badge)",
+                  "example": false
                 },
                 "is_skill": {
                   "type": "boolean",
-                  "description": "Whether this is an Agent Skill capability (for UI badge)"
+                  "description": "Whether this is an Agent Skill capability (for UI badge)",
+                  "example": false
                 },
                 "name": {
                   "type": "string",
-                  "description": "Display name"
+                  "description": "Display name",
+                  "example": "Session File System"
                 },
                 "risk_level": {
-                  "$ref": "#/components/schemas/RiskLevel",
-                  "description": "TM-AGENT-005: Risk level. High-risk capabilities require admin approval."
+                  "type": "string",
+                  "description": "TM-AGENT-005: Risk level. High-risk capabilities require admin approval.",
+                  "example": "low"
                 },
                 "status": {
                   "type": "string",
-                  "description": "Current status"
+                  "description": "Current status",
+                  "example": "active"
                 },
                 "system_prompt": {
                   "type": [
                     "string",
                     "null"
                   ],
-                  "description": "System prompt addition contributed by this capability"
+                  "description": "System prompt addition contributed by this capability",
+                  "example": "You can read and write files in /workspace via the session_file_system tools."
                 },
                 "tool_definitions": {
                   "type": "array",
                   "items": {
                     "type": "object"
                   },
-                  "description": "Tool definitions provided by this capability"
+                  "description": "Tool definitions provided by this capability",
+                  "example": [
+                    {
+                      "description": "Read a file from the session workspace.",
+                      "name": "read_file"
+                    },
+                    {
+                      "description": "Write or overwrite a file in the session workspace.",
+                      "name": "write_file"
+                    }
+                  ]
                 }
               }
             },
@@ -19649,24 +19731,34 @@
                       "items": {
                         "type": "string"
                       },
-                      "description": "Capability tags supported by this model."
+                      "description": "Capability tags supported by this model.",
+                      "example": [
+                        "text",
+                        "tools",
+                        "vision",
+                        "thinking"
+                      ]
                     },
                     "created_at": {
                       "type": "string",
                       "format": "date-time",
-                      "description": "Timestamp when this model was created (RFC 3339)."
+                      "description": "Timestamp when this model was created (RFC 3339).",
+                      "example": "2026-01-04T11:23:00Z"
                     },
                     "display_name": {
                       "type": "string",
-                      "description": "Human-readable display name."
+                      "description": "Human-readable display name.",
+                      "example": "Claude Sonnet 4.5"
                     },
                     "enabled": {
                       "type": "boolean",
-                      "description": "Whether this model is selectable. Controls UI visibility AND server-side resolution: `LlmResolverService` requires `enabled = true`, and org default-model validation rejects disabled models."
+                      "description": "Whether this model is selectable. Controls UI visibility AND server-side resolution: `LlmResolverService` requires `enabled = true`, and org default-model validation rejects disabled models.",
+                      "example": true
                     },
                     "healthy": {
                       "type": "boolean",
-                      "description": "Derived: model is configured and ready for use. Currently means the\njoined provider is active and has an API key set; over time this may\nalso incorporate live reachability checks. Not persisted."
+                      "description": "Derived: model is configured and ready for use. Currently means the\njoined provider is active and has an API key set; over time this may\nalso incorporate live reachability checks. Not persisted.",
+                      "example": true
                     },
                     "id": {
                       "type": "string",
@@ -19675,11 +19767,13 @@
                     },
                     "is_favorite": {
                       "type": "boolean",
-                      "description": "Whether this model is starred in the UI for quick access."
+                      "description": "Whether this model is starred in the UI for quick access.",
+                      "example": true
                     },
                     "model_id": {
                       "type": "string",
-                      "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-4o`)."
+                      "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-4o`).",
+                      "example": "claude-sonnet-4-5"
                     },
                     "profile": {
                       "oneOf": [
@@ -19699,20 +19793,24 @@
                     },
                     "provider_name": {
                       "type": "string",
-                      "description": "Joined provider display name."
+                      "description": "Joined provider display name.",
+                      "example": "Anthropic"
                     },
                     "provider_type": {
-                      "$ref": "#/components/schemas/LlmProviderType",
-                      "description": "Joined provider implementation type."
+                      "type": "string",
+                      "description": "Joined provider implementation type.",
+                      "example": "anthropic"
                     },
                     "source": {
-                      "$ref": "#/components/schemas/LlmModelSource",
-                      "description": "How this model entry was added (manually, discovered, or seeded as predefined)."
+                      "type": "string",
+                      "description": "How this model entry was added (manually, discovered, or seeded as predefined).",
+                      "example": "predefined"
                     },
                     "updated_at": {
                       "type": "string",
                       "format": "date-time",
-                      "description": "Timestamp when this model was last updated (RFC 3339)."
+                      "description": "Timestamp when this model was last updated (RFC 3339).",
+                      "example": "2026-05-27T15:24:00Z"
                     }
                   }
                 },
@@ -20543,6 +20641,7 @@
             ],
             "format": "int64",
             "description": "Duration of the generation in milliseconds",
+            "example": 1842,
             "minimum": 0
           },
           "error": {
@@ -20550,7 +20649,8 @@
               "string",
               "null"
             ],
-            "description": "Error message if generation failed"
+            "description": "Error message if generation failed",
+            "example": "provider returned 503"
           },
           "finish_reasons": {
             "type": [
@@ -20560,18 +20660,23 @@
             "items": {
               "type": "string"
             },
-            "description": "Finish reasons from the LLM (e.g., [\"stop\"], [\"tool_calls\"])\nRequired for gen-ai semantic conventions"
+            "description": "Finish reasons from the LLM (e.g., [\"stop\"], [\"tool_calls\"])\nRequired for gen-ai semantic conventions",
+            "example": [
+              "tool_calls"
+            ]
           },
           "model": {
             "type": "string",
-            "description": "Model identifier used for generation"
+            "description": "Model identifier used for generation",
+            "example": "claude-sonnet-4-5"
           },
           "provider": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Provider type (openai, anthropic, etc.)"
+            "description": "Provider type (openai, anthropic, etc.)",
+            "example": "anthropic"
           },
           "request_options": {
             "oneOf": [
@@ -20589,7 +20694,8 @@
               "string",
               "null"
             ],
-            "description": "Unique response identifier from the LLM provider\nRequired for gen-ai semantic conventions"
+            "description": "Unique response identifier from the LLM provider\nRequired for gen-ai semantic conventions",
+            "example": "msg_01ABCDef0123456789"
           },
           "retry": {
             "oneOf": [
@@ -20604,7 +20710,8 @@
           },
           "success": {
             "type": "boolean",
-            "description": "Whether the generation was successful"
+            "description": "Whether the generation was successful",
+            "example": true
           },
           "time_to_first_token_ms": {
             "type": [
@@ -20613,6 +20720,7 @@
             ],
             "format": "int64",
             "description": "Time to first token in milliseconds (streaming latency)",
+            "example": 312,
             "minimum": 0
           },
           "usage": {
@@ -20969,24 +21077,34 @@
             "items": {
               "type": "string"
             },
-            "description": "Capability tags supported by this model."
+            "description": "Capability tags supported by this model.",
+            "example": [
+              "text",
+              "tools",
+              "vision",
+              "thinking"
+            ]
           },
           "created_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Timestamp when this model was created (RFC 3339)."
+            "description": "Timestamp when this model was created (RFC 3339).",
+            "example": "2026-01-04T11:23:00Z"
           },
           "display_name": {
             "type": "string",
-            "description": "Human-readable display name."
+            "description": "Human-readable display name.",
+            "example": "Claude Sonnet 4.5"
           },
           "enabled": {
             "type": "boolean",
-            "description": "Whether this model is selectable. Controls UI visibility AND server-side resolution: `LlmResolverService` requires `enabled = true`, and org default-model validation rejects disabled models."
+            "description": "Whether this model is selectable. Controls UI visibility AND server-side resolution: `LlmResolverService` requires `enabled = true`, and org default-model validation rejects disabled models.",
+            "example": true
           },
           "healthy": {
             "type": "boolean",
-            "description": "Derived: model is configured and ready for use. Currently means the\njoined provider is active and has an API key set; over time this may\nalso incorporate live reachability checks. Not persisted."
+            "description": "Derived: model is configured and ready for use. Currently means the\njoined provider is active and has an API key set; over time this may\nalso incorporate live reachability checks. Not persisted.",
+            "example": true
           },
           "id": {
             "type": "string",
@@ -20995,11 +21113,13 @@
           },
           "is_favorite": {
             "type": "boolean",
-            "description": "Whether this model is starred in the UI for quick access."
+            "description": "Whether this model is starred in the UI for quick access.",
+            "example": true
           },
           "model_id": {
             "type": "string",
-            "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-4o`)."
+            "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-4o`).",
+            "example": "claude-sonnet-4-5"
           },
           "profile": {
             "oneOf": [
@@ -21019,20 +21139,24 @@
           },
           "provider_name": {
             "type": "string",
-            "description": "Joined provider display name."
+            "description": "Joined provider display name.",
+            "example": "Anthropic"
           },
           "provider_type": {
-            "$ref": "#/components/schemas/LlmProviderType",
-            "description": "Joined provider implementation type."
+            "type": "string",
+            "description": "Joined provider implementation type.",
+            "example": "anthropic"
           },
           "source": {
-            "$ref": "#/components/schemas/LlmModelSource",
-            "description": "How this model entry was added (manually, discovered, or seeded as predefined)."
+            "type": "string",
+            "description": "How this model entry was added (manually, discovered, or seeded as predefined).",
+            "example": "predefined"
           },
           "updated_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Timestamp when this model was last updated (RFC 3339)."
+            "description": "Timestamp when this model was last updated (RFC 3339).",
+            "example": "2026-05-27T15:24:00Z"
           }
         }
       },
@@ -21697,77 +21821,91 @@
           "active_workers": {
             "type": "integer",
             "description": "Number of workers actively heartbeating (gauge).",
+            "example": 4,
             "minimum": 0
           },
           "claimed_tasks": {
             "type": "integer",
             "description": "Number of tasks currently claimed by a worker (gauge).",
+            "example": 28,
             "minimum": 0
           },
           "dlq_size": {
             "type": "integer",
             "description": "Size of the dead-letter queue (gauge).",
+            "example": 3,
             "minimum": 0
           },
           "load_percentage": {
             "type": "number",
             "format": "double",
-            "description": "Aggregate worker load as a percentage of total `max_concurrency` (0.0-100.0)."
+            "description": "Aggregate worker load as a percentage of total `max_concurrency` (0.0-100.0).",
+            "example": 62.5
           },
           "pending_tasks": {
             "type": "integer",
             "description": "Number of tasks waiting to be claimed by a worker (gauge).",
+            "example": 12,
             "minimum": 0
           },
           "pending_workflows": {
             "type": "integer",
             "description": "Number of workflows waiting to be claimed by a worker (gauge).",
+            "example": 7,
             "minimum": 0
           },
           "running_workflows": {
             "type": "integer",
             "description": "Number of workflows currently executing (gauge).",
+            "example": 42,
             "minimum": 0
           },
           "tasks_completed_total": {
             "type": "integer",
             "format": "int64",
             "description": "Cumulative count of tasks completed successfully since process start (monotonic counter).",
+            "example": 12843,
             "minimum": 0
           },
           "tasks_failed_total": {
             "type": "integer",
             "format": "int64",
             "description": "Cumulative count of tasks that failed or were sent to the DLQ (monotonic counter).",
+            "example": 17,
             "minimum": 0
           },
           "tasks_started_total": {
             "type": "integer",
             "format": "int64",
             "description": "Cumulative count of tasks claimed at least once (monotonic counter).",
+            "example": 12873,
             "minimum": 0
           },
           "timestamp": {
             "type": "string",
             "format": "date-time",
-            "description": "Sampling timestamp for this data point (RFC 3339)."
+            "description": "Sampling timestamp for this data point (RFC 3339).",
+            "example": "2026-05-27T15:30:00Z"
           },
           "workflows_completed_total": {
             "type": "integer",
             "format": "int64",
             "description": "Cumulative count of workflows that completed successfully (monotonic counter).",
+            "example": 982,
             "minimum": 0
           },
           "workflows_failed_total": {
             "type": "integer",
             "format": "int64",
             "description": "Cumulative count of workflows that ended in failure (monotonic counter).",
+            "example": 3,
             "minimum": 0
           },
           "workflows_started_total": {
             "type": "integer",
             "format": "int64",
             "description": "Cumulative count of workflows that started (monotonic counter).",
+            "example": 1024,
             "minimum": 0
           }
         }
@@ -22480,6 +22618,7 @@
                       "type": "integer",
                       "format": "int64",
                       "description": "Number of active agents referencing this capability in the org.",
+                      "example": 42,
                       "minimum": 0
                     },
                     "category": {
@@ -22487,7 +22626,8 @@
                         "string",
                         "null"
                       ],
-                      "description": "Category for grouping in UI"
+                      "description": "Category for grouping in UI",
+                      "example": "filesystem"
                     },
                     "config_schema": {
                       "type": "object",
@@ -22502,30 +22642,39 @@
                       "items": {
                         "type": "string"
                       },
-                      "description": "IDs of capabilities that this capability depends on.\nWhen this capability is selected, its dependencies are automatically included."
+                      "description": "IDs of capabilities that this capability depends on.\nWhen this capability is selected, its dependencies are automatically included.",
+                      "example": [
+                        "approval"
+                      ]
                     },
                     "description": {
                       "type": "string",
-                      "description": "Description of what this capability provides"
+                      "description": "Description of what this capability provides",
+                      "example": "Read, write, edit, list, grep, delete, and stat files in the session workspace."
                     },
                     "docs_slug": {
                       "type": [
                         "string",
                         "null"
                       ],
-                      "description": "Slug under https://dev.everruns.com/capabilities/ when public docs exist."
+                      "description": "Slug under https://dev.everruns.com/capabilities/ when public docs exist.",
+                      "example": "session_file_system"
                     },
                     "features": {
                       "type": "array",
                       "items": {
                         "type": "string"
                       },
-                      "description": "UI feature strings this capability contributes to.\nMultiple capabilities can contribute the same feature."
+                      "description": "UI feature strings this capability contributes to.\nMultiple capabilities can contribute the same feature.",
+                      "example": [
+                        "file_browser"
+                      ]
                     },
                     "harness_count": {
                       "type": "integer",
                       "format": "int64",
                       "description": "Number of active harnesses referencing this capability in the org.",
+                      "example": 7,
                       "minimum": 0
                     },
                     "icon": {
@@ -22533,45 +22682,63 @@
                         "string",
                         "null"
                       ],
-                      "description": "Icon name (for UI rendering)"
+                      "description": "Icon name (for UI rendering)",
+                      "example": "Folder"
                     },
                     "id": {
                       "type": "string",
-                      "description": "Unique capability identifier"
+                      "description": "Unique capability identifier",
+                      "example": "session_file_system"
                     },
                     "is_mcp": {
                       "type": "boolean",
-                      "description": "Whether this is an MCP server capability (for UI badge)"
+                      "description": "Whether this is an MCP server capability (for UI badge)",
+                      "example": false
                     },
                     "is_skill": {
                       "type": "boolean",
-                      "description": "Whether this is an Agent Skill capability (for UI badge)"
+                      "description": "Whether this is an Agent Skill capability (for UI badge)",
+                      "example": false
                     },
                     "name": {
                       "type": "string",
-                      "description": "Display name"
+                      "description": "Display name",
+                      "example": "Session File System"
                     },
                     "risk_level": {
-                      "$ref": "#/components/schemas/RiskLevel",
-                      "description": "TM-AGENT-005: Risk level. High-risk capabilities require admin approval."
+                      "type": "string",
+                      "description": "TM-AGENT-005: Risk level. High-risk capabilities require admin approval.",
+                      "example": "low"
                     },
                     "status": {
                       "type": "string",
-                      "description": "Current status"
+                      "description": "Current status",
+                      "example": "active"
                     },
                     "system_prompt": {
                       "type": [
                         "string",
                         "null"
                       ],
-                      "description": "System prompt addition contributed by this capability"
+                      "description": "System prompt addition contributed by this capability",
+                      "example": "You can read and write files in /workspace via the session_file_system tools."
                     },
                     "tool_definitions": {
                       "type": "array",
                       "items": {
                         "type": "object"
                       },
-                      "description": "Tool definitions provided by this capability"
+                      "description": "Tool definitions provided by this capability",
+                      "example": [
+                        {
+                          "description": "Read a file from the session workspace.",
+                          "name": "read_file"
+                        },
+                        {
+                          "description": "Write or overwrite a file in the session workspace.",
+                          "name": "write_file"
+                        }
+                      ]
                     }
                   }
                 },
@@ -24630,6 +24797,7 @@
             "type": "integer",
             "format": "int64",
             "description": "Sessions in a running state right now.",
+            "example": 7,
             "minimum": 0
           },
           "avg_session_duration_ms": {
@@ -24639,12 +24807,14 @@
             ],
             "format": "int64",
             "description": "Average session duration in milliseconds. `None` when `session_count` is 0.",
+            "example": 20858,
             "minimum": 0
           },
           "execution_count": {
             "type": "integer",
             "format": "int64",
             "description": "Total number of agent executions (turns) recorded across all sessions for this resource.",
+            "example": 14206,
             "minimum": 0
           },
           "first_session_at": {
@@ -24653,12 +24823,14 @@
               "null"
             ],
             "format": "date-time",
-            "description": "Timestamp of the first session for this resource (RFC 3339). `None` if no sessions exist."
+            "description": "Timestamp of the first session for this resource (RFC 3339). `None` if no sessions exist.",
+            "example": "2026-01-04T11:23:00Z"
           },
           "idle_session_count": {
             "type": "integer",
             "format": "int64",
             "description": "Sessions in an idle state right now (created but no recent activity).",
+            "example": 23,
             "minimum": 0
           },
           "last_execution_at": {
@@ -24667,7 +24839,8 @@
               "null"
             ],
             "format": "date-time",
-            "description": "Timestamp of the most recent execution (turn) for this resource (RFC 3339). `None` if no executions exist."
+            "description": "Timestamp of the most recent execution (turn) for this resource (RFC 3339). `None` if no executions exist.",
+            "example": "2026-05-27T15:24:42Z"
           },
           "last_session_at": {
             "type": [
@@ -24675,66 +24848,66 @@
               "null"
             ],
             "format": "date-time",
-            "description": "Timestamp of the most recent session for this resource (RFC 3339). `None` if no sessions exist."
+            "description": "Timestamp of the most recent session for this resource (RFC 3339). `None` if no sessions exist.",
+            "example": "2026-05-27T15:24:00Z"
           },
           "session_count": {
             "type": "integer",
             "format": "int64",
             "description": "Total number of sessions ever created for this resource.",
+            "example": 1842,
             "minimum": 0
           },
           "started_session_count": {
             "type": "integer",
             "format": "int64",
             "description": "Sessions that have started at least one turn.",
+            "example": 1810,
             "minimum": 0
           },
           "total_cache_creation_tokens": {
             "type": "integer",
             "format": "int64",
             "description": "Cumulative cache-write tokens across all sessions (charged when first writing a cache entry).",
+            "example": 412005,
             "minimum": 0
           },
           "total_cache_read_tokens": {
             "type": "integer",
             "format": "int64",
             "description": "Cumulative cache-read tokens across all sessions (where the provider supports prompt caching).",
+            "example": 5234122,
             "minimum": 0
           },
           "total_input_tokens": {
             "type": "integer",
             "format": "int64",
             "description": "Cumulative LLM input tokens billed across all sessions.",
+            "example": 18457321,
             "minimum": 0
           },
           "total_output_tokens": {
             "type": "integer",
             "format": "int64",
             "description": "Cumulative LLM output tokens billed across all sessions.",
+            "example": 2184109,
             "minimum": 0
           },
           "total_session_duration_ms": {
             "type": "integer",
             "format": "int64",
             "description": "Cumulative session wall-clock duration in milliseconds across all sessions.",
+            "example": 38421500,
             "minimum": 0
           },
           "waiting_for_tool_results_session_count": {
             "type": "integer",
             "format": "int64",
             "description": "Sessions currently paused waiting for client-side tool results.",
+            "example": 2,
             "minimum": 0
           }
         }
-      },
-      "RiskLevel": {
-        "type": "string",
-        "description": "Risk classification for capabilities (TM-AGENT-005).\n\nUsed to enforce approval requirements when assigning capabilities.",
-        "enum": [
-          "low",
-          "medium",
-          "high"
-        ]
       },
       "RollbackAgentVersionRequest": {
         "type": "object",
@@ -26394,16 +26567,19 @@
         "properties": {
           "activity_id": {
             "type": "string",
-            "description": "Stable per-workflow activity ID (used for deduplication within a workflow run)."
+            "description": "Stable per-workflow activity ID (used for deduplication within a workflow run).",
+            "example": "tool_call_0042"
           },
           "activity_type": {
             "type": "string",
-            "description": "Activity type name, used by workers to route the task."
+            "description": "Activity type name, used by workers to route the task.",
+            "example": "tool_call"
           },
           "attempt": {
             "type": "integer",
             "format": "int32",
             "description": "Attempt counter. `0` before the task has ever been claimed; incremented to `1` on the first claim and once more per retry.",
+            "example": 1,
             "minimum": 0
           },
           "claimed_at": {
@@ -26412,46 +26588,54 @@
               "null"
             ],
             "format": "date-time",
-            "description": "Timestamp when this task was last claimed by a worker (RFC 3339). `None` if never claimed."
+            "description": "Timestamp when this task was last claimed by a worker (RFC 3339). `None` if never claimed.",
+            "example": "2026-05-27T15:24:03Z"
           },
           "claimed_by": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Worker ID that holds the current claim; `None` if pending or terminal."
+            "description": "Worker ID that holds the current claim; `None` if pending or terminal.",
+            "example": "worker-7f3a9b2e-1c4d-4a5f-8b6c-9d0e1f2a3b4c"
           },
           "created_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Timestamp when this task was enqueued (RFC 3339)."
+            "description": "Timestamp when this task was enqueued (RFC 3339).",
+            "example": "2026-05-27T15:24:00Z"
           },
           "id": {
             "type": "string",
             "format": "uuid",
-            "description": "UUID of the task."
+            "description": "UUID of the task.",
+            "example": "550e8400-e29b-41d4-a716-446655440000"
           },
           "last_error": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Last error message recorded by the worker; `None` if the task has never failed."
+            "description": "Last error message recorded by the worker; `None` if the task has never failed.",
+            "example": "tool exceeded 30s budget"
           },
           "max_attempts": {
             "type": "integer",
             "format": "int32",
             "description": "Maximum number of attempts before the task is sent to the DLQ.",
+            "example": 5,
             "minimum": 0
           },
           "priority": {
             "type": "integer",
             "format": "int32",
-            "description": "Priority; higher values run first within the same activity type."
+            "description": "Priority; higher values run first within the same activity type.",
+            "example": 10
           },
           "status": {
             "type": "string",
-            "description": "Current lifecycle status (`pending`, `claimed`, `completed`, `failed`, `dead`, `cancelled`)."
+            "description": "Current lifecycle status (`pending`, `claimed`, `completed`, `failed`, `dead`, `cancelled`).",
+            "example": "claimed"
           },
           "workflow_id": {
             "type": [
@@ -26459,7 +26643,8 @@
               "null"
             ],
             "format": "uuid",
-            "description": "Owning workflow's identifier. `None` for one-off tasks not tied to a workflow."
+            "description": "Owning workflow's identifier. `None` for one-off tasks not tied to a workflow.",
+            "example": "9a1b2c3d-4e5f-6789-abcd-ef0123456789"
           }
         }
       },
@@ -29477,6 +29662,7 @@
                 "type": "integer",
                 "format": "int64",
                 "description": "Number of active agents referencing this capability in the org.",
+                "example": 42,
                 "minimum": 0
               },
               "category": {
@@ -29484,7 +29670,8 @@
                   "string",
                   "null"
                 ],
-                "description": "Category for grouping in UI"
+                "description": "Category for grouping in UI",
+                "example": "filesystem"
               },
               "config_schema": {
                 "type": "object",
@@ -29499,30 +29686,39 @@
                 "items": {
                   "type": "string"
                 },
-                "description": "IDs of capabilities that this capability depends on.\nWhen this capability is selected, its dependencies are automatically included."
+                "description": "IDs of capabilities that this capability depends on.\nWhen this capability is selected, its dependencies are automatically included.",
+                "example": [
+                  "approval"
+                ]
               },
               "description": {
                 "type": "string",
-                "description": "Description of what this capability provides"
+                "description": "Description of what this capability provides",
+                "example": "Read, write, edit, list, grep, delete, and stat files in the session workspace."
               },
               "docs_slug": {
                 "type": [
                   "string",
                   "null"
                 ],
-                "description": "Slug under https://dev.everruns.com/capabilities/ when public docs exist."
+                "description": "Slug under https://dev.everruns.com/capabilities/ when public docs exist.",
+                "example": "session_file_system"
               },
               "features": {
                 "type": "array",
                 "items": {
                   "type": "string"
                 },
-                "description": "UI feature strings this capability contributes to.\nMultiple capabilities can contribute the same feature."
+                "description": "UI feature strings this capability contributes to.\nMultiple capabilities can contribute the same feature.",
+                "example": [
+                  "file_browser"
+                ]
               },
               "harness_count": {
                 "type": "integer",
                 "format": "int64",
                 "description": "Number of active harnesses referencing this capability in the org.",
+                "example": 7,
                 "minimum": 0
               },
               "icon": {
@@ -29530,45 +29726,63 @@
                   "string",
                   "null"
                 ],
-                "description": "Icon name (for UI rendering)"
+                "description": "Icon name (for UI rendering)",
+                "example": "Folder"
               },
               "id": {
                 "type": "string",
-                "description": "Unique capability identifier"
+                "description": "Unique capability identifier",
+                "example": "session_file_system"
               },
               "is_mcp": {
                 "type": "boolean",
-                "description": "Whether this is an MCP server capability (for UI badge)"
+                "description": "Whether this is an MCP server capability (for UI badge)",
+                "example": false
               },
               "is_skill": {
                 "type": "boolean",
-                "description": "Whether this is an Agent Skill capability (for UI badge)"
+                "description": "Whether this is an Agent Skill capability (for UI badge)",
+                "example": false
               },
               "name": {
                 "type": "string",
-                "description": "Display name"
+                "description": "Display name",
+                "example": "Session File System"
               },
               "risk_level": {
-                "$ref": "#/components/schemas/RiskLevel",
-                "description": "TM-AGENT-005: Risk level. High-risk capabilities require admin approval."
+                "type": "string",
+                "description": "TM-AGENT-005: Risk level. High-risk capabilities require admin approval.",
+                "example": "low"
               },
               "status": {
                 "type": "string",
-                "description": "Current status"
+                "description": "Current status",
+                "example": "active"
               },
               "system_prompt": {
                 "type": [
                   "string",
                   "null"
                 ],
-                "description": "System prompt addition contributed by this capability"
+                "description": "System prompt addition contributed by this capability",
+                "example": "You can read and write files in /workspace via the session_file_system tools."
               },
               "tool_definitions": {
                 "type": "array",
                 "items": {
                   "type": "object"
                 },
-                "description": "Tool definitions provided by this capability"
+                "description": "Tool definitions provided by this capability",
+                "example": [
+                  {
+                    "description": "Read a file from the session workspace.",
+                    "name": "read_file"
+                  },
+                  {
+                    "description": "Write or overwrite a file in the session workspace.",
+                    "name": "write_file"
+                  }
+                ]
               }
             }
           },
@@ -30016,24 +30230,34 @@
                 "items": {
                   "type": "string"
                 },
-                "description": "Capability tags supported by this model."
+                "description": "Capability tags supported by this model.",
+                "example": [
+                  "text",
+                  "tools",
+                  "vision",
+                  "thinking"
+                ]
               },
               "created_at": {
                 "type": "string",
                 "format": "date-time",
-                "description": "Timestamp when this model was created (RFC 3339)."
+                "description": "Timestamp when this model was created (RFC 3339).",
+                "example": "2026-01-04T11:23:00Z"
               },
               "display_name": {
                 "type": "string",
-                "description": "Human-readable display name."
+                "description": "Human-readable display name.",
+                "example": "Claude Sonnet 4.5"
               },
               "enabled": {
                 "type": "boolean",
-                "description": "Whether this model is selectable. Controls UI visibility AND server-side resolution: `LlmResolverService` requires `enabled = true`, and org default-model validation rejects disabled models."
+                "description": "Whether this model is selectable. Controls UI visibility AND server-side resolution: `LlmResolverService` requires `enabled = true`, and org default-model validation rejects disabled models.",
+                "example": true
               },
               "healthy": {
                 "type": "boolean",
-                "description": "Derived: model is configured and ready for use. Currently means the\njoined provider is active and has an API key set; over time this may\nalso incorporate live reachability checks. Not persisted."
+                "description": "Derived: model is configured and ready for use. Currently means the\njoined provider is active and has an API key set; over time this may\nalso incorporate live reachability checks. Not persisted.",
+                "example": true
               },
               "id": {
                 "type": "string",
@@ -30042,11 +30266,13 @@
               },
               "is_favorite": {
                 "type": "boolean",
-                "description": "Whether this model is starred in the UI for quick access."
+                "description": "Whether this model is starred in the UI for quick access.",
+                "example": true
               },
               "model_id": {
                 "type": "string",
-                "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-4o`)."
+                "description": "Provider-side model identifier as sent on the wire (e.g. `gpt-4o`).",
+                "example": "claude-sonnet-4-5"
               },
               "profile": {
                 "oneOf": [
@@ -30066,20 +30292,24 @@
               },
               "provider_name": {
                 "type": "string",
-                "description": "Joined provider display name."
+                "description": "Joined provider display name.",
+                "example": "Anthropic"
               },
               "provider_type": {
-                "$ref": "#/components/schemas/LlmProviderType",
-                "description": "Joined provider implementation type."
+                "type": "string",
+                "description": "Joined provider implementation type.",
+                "example": "anthropic"
               },
               "source": {
-                "$ref": "#/components/schemas/LlmModelSource",
-                "description": "How this model entry was added (manually, discovered, or seeded as predefined)."
+                "type": "string",
+                "description": "How this model entry was added (manually, discovered, or seeded as predefined).",
+                "example": "predefined"
               },
               "updated_at": {
                 "type": "string",
                 "format": "date-time",
-                "description": "Timestamp when this model was last updated (RFC 3339)."
+                "description": "Timestamp when this model was last updated (RFC 3339).",
+                "example": "2026-05-27T15:24:00Z"
               }
             }
           },
@@ -31308,14 +31538,19 @@
         "properties": {
           "accepting_tasks": {
             "type": "boolean",
-            "description": "Whether the worker is currently accepting new task assignments. Disabled briefly during drains or backpressure."
+            "description": "Whether the worker is currently accepting new task assignments. Disabled briefly during drains or backpressure.",
+            "example": true
           },
           "activity_types": {
             "type": "array",
             "items": {
               "type": "string"
             },
-            "description": "Activity types this worker accepts. Tasks with other activity types skip this worker."
+            "description": "Activity types this worker accepts. Tasks with other activity types skip this worker.",
+            "example": [
+              "agent_loop",
+              "tool_call"
+            ]
           },
           "avg_task_duration_ms": {
             "type": [
@@ -31324,6 +31559,7 @@
             ],
             "format": "int64",
             "description": "Average task duration in milliseconds across recent activity.",
+            "example": 184,
             "minimum": 0
           },
           "backpressure_reason": {
@@ -31331,12 +31567,14 @@
               "string",
               "null"
             ],
-            "description": "Human-readable reason the worker is rejecting tasks, when `accepting_tasks` is `false`."
+            "description": "Human-readable reason the worker is rejecting tasks, when `accepting_tasks` is `false`.",
+            "example": "draining for deploy"
           },
           "current_load": {
             "type": "integer",
             "format": "int32",
             "description": "Number of tasks currently executing on this worker.",
+            "example": 3,
             "minimum": 0
           },
           "hostname": {
@@ -31344,45 +31582,54 @@
               "string",
               "null"
             ],
-            "description": "Hostname / pod name the worker is running on. Operator hint; not used for routing."
+            "description": "Hostname / pod name the worker is running on. Operator hint; not used for routing.",
+            "example": "worker-prod-7c8b9d-r2x4p"
           },
           "id": {
             "type": "string",
-            "description": "Opaque durable worker identifier (defaults to `worker-<uuid>`)."
+            "description": "Opaque durable worker identifier (defaults to `worker-<uuid>`).",
+            "example": "worker-7f3a9b2e-1c4d-4a5f-8b6c-9d0e1f2a3b4c"
           },
           "last_heartbeat_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Timestamp of the most recent heartbeat from this worker (RFC 3339)."
+            "description": "Timestamp of the most recent heartbeat from this worker (RFC 3339).",
+            "example": "2026-05-27T15:30:42Z"
           },
           "max_concurrency": {
             "type": "integer",
             "format": "int32",
             "description": "Maximum number of tasks the worker will run concurrently.",
+            "example": 8,
             "minimum": 0
           },
           "metadata": {
+            "type": "object",
             "description": "Free-form worker-reported metadata (deployment, capabilities flag set, etc.)."
           },
           "started_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Timestamp when this worker started accepting tasks (RFC 3339)."
+            "description": "Timestamp when this worker started accepting tasks (RFC 3339).",
+            "example": "2026-05-27T08:00:00Z"
           },
           "status": {
             "type": "string",
-            "description": "Current lifecycle status (`running`, `draining`, `stopped`, etc.)."
+            "description": "Current lifecycle status (`running`, `draining`, `stopped`, etc.).",
+            "example": "running"
           },
           "tasks_completed": {
             "type": "integer",
             "format": "int64",
             "description": "Total tasks this worker has completed successfully.",
+            "example": 12843,
             "minimum": 0
           },
           "tasks_failed": {
             "type": "integer",
             "format": "int64",
             "description": "Total tasks this worker has failed (including retries that were ultimately abandoned).",
+            "example": 17,
             "minimum": 0
           },
           "version": {
@@ -31390,14 +31637,16 @@
               "string",
               "null"
             ],
-            "description": "Build version of the worker binary."
+            "description": "Build version of the worker binary.",
+            "example": "0.8.35"
           },
           "worker_group": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Logical group this worker belongs to (used for routing). `None` for ungrouped workers."
+            "description": "Logical group this worker belongs to (used for routing). `None` for ungrouped workers.",
+            "example": "session-agents"
           }
         }
       },
@@ -31541,37 +31790,51 @@
               "null"
             ],
             "format": "date-time",
-            "description": "Timestamp when this resource completed, if any (RFC 3339)."
+            "description": "Timestamp when this resource completed, if any (RFC 3339).",
+            "example": "2026-05-27T15:24:42Z"
           },
           "created_at": {
             "type": "string",
             "format": "date-time",
-            "description": "Timestamp when this resource was created (RFC 3339)."
+            "description": "Timestamp when this resource was created (RFC 3339).",
+            "example": "2026-05-27T15:24:00Z"
           },
           "error": {
+            "type": "object",
             "description": "Human-readable error message, populated when this resource is in a failed state."
           },
           "id": {
             "type": "string",
             "format": "uuid",
-            "description": "UUID of the workflow."
+            "description": "UUID of the workflow.",
+            "example": "550e8400-e29b-41d4-a716-446655440000"
           },
-          "input": {},
-          "result": {},
+          "input": {
+            "type": "object",
+            "description": "Initial input the workflow was started with. Shape varies by `workflow_type`."
+          },
+          "result": {
+            "type": "object",
+            "description": "Terminal result, populated when the workflow has completed successfully."
+          },
           "started_at": {
             "type": [
               "string",
               "null"
             ],
             "format": "date-time",
-            "description": "Timestamp when this resource started, if any (RFC 3339)."
+            "description": "Timestamp when this resource started, if any (RFC 3339).",
+            "example": "2026-05-27T15:24:01Z"
           },
           "status": {
             "type": "string",
-            "description": "Current lifecycle status."
+            "description": "Current lifecycle status.",
+            "example": "running"
           },
           "workflow_type": {
-            "type": "string"
+            "type": "string",
+            "description": "Workflow type identifier registered with the durable executor.",
+            "example": "session_agent_loop"
           }
         }
       },

@@ -19,62 +19,109 @@ use crate::tool_types::ToolDefinition;
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 pub struct CapabilityInfo {
     /// Unique capability identifier
-    #[cfg_attr(feature = "openapi", schema(value_type = String))]
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "session_file_system"))]
     pub id: CapabilityId,
     /// Display name
+    #[cfg_attr(feature = "openapi", schema(example = "Session File System"))]
     pub name: String,
     /// Description of what this capability provides
+    #[cfg_attr(
+        feature = "openapi",
+        schema(
+            example = "Read, write, edit, list, grep, delete, and stat files in the session workspace."
+        )
+    )]
     pub description: String,
     /// Current status
-    #[cfg_attr(feature = "openapi", schema(value_type = String))]
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "active"))]
     pub status: CapabilityStatus,
     /// Icon name (for UI rendering)
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "Folder"))]
     pub icon: Option<String>,
     /// Category for grouping in UI
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "filesystem"))]
     pub category: Option<String>,
     /// System prompt addition contributed by this capability
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(
+        feature = "openapi",
+        schema(
+            example = "You can read and write files in /workspace via the session_file_system tools."
+        )
+    )]
     pub system_prompt: Option<String>,
     /// Tool definitions provided by this capability
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
-    #[cfg_attr(feature = "openapi", schema(value_type = Vec<Object>))]
+    #[cfg_attr(
+        feature = "openapi",
+        schema(
+            value_type = Vec<Object>,
+            example = json!([
+                {"name": "read_file", "description": "Read a file from the session workspace."},
+                {"name": "write_file", "description": "Write or overwrite a file in the session workspace."}
+            ])
+        )
+    )]
     pub tool_definitions: Vec<ToolDefinition>,
     /// Whether this is an MCP server capability (for UI badge)
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(feature = "openapi", schema(example = false))]
     pub is_mcp: bool,
     /// Whether this is an Agent Skill capability (for UI badge)
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[cfg_attr(feature = "openapi", schema(example = false))]
     pub is_skill: bool,
     /// IDs of capabilities that this capability depends on.
     /// When this capability is selected, its dependencies are automatically included.
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    #[cfg_attr(feature = "openapi", schema(example = json!(["approval"])))]
     pub dependencies: Vec<String>,
     /// UI feature strings this capability contributes to.
     /// Multiple capabilities can contribute the same feature.
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    #[cfg_attr(feature = "openapi", schema(example = json!(["file_browser"])))]
     pub features: Vec<String>,
     /// JSON Schema for capability-specific per-agent config.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "openapi", schema(value_type = Object))]
+    #[cfg_attr(
+        feature = "openapi",
+        schema(
+            value_type = Object,
+            example = json!({
+                "type": "object",
+                "properties": {"max_file_bytes": {"type": "integer", "default": 1048576}}
+            })
+        )
+    )]
     pub config_schema: Option<serde_json::Value>,
     /// react-jsonschema-form uiSchema hints for rendering config_schema.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[cfg_attr(feature = "openapi", schema(value_type = Object))]
+    #[cfg_attr(
+        feature = "openapi",
+        schema(
+            value_type = Object,
+            example = json!({"max_file_bytes": {"ui:widget": "updown"}})
+        )
+    )]
     pub config_ui_schema: Option<serde_json::Value>,
     /// TM-AGENT-005: Risk level. High-risk capabilities require admin approval.
     #[serde(skip_serializing_if = "is_low_risk", default = "default_risk_level")]
+    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "low"))]
     pub risk_level: RiskLevel,
     /// Number of active agents referencing this capability in the org.
     #[serde(default, skip_serializing_if = "is_zero_u64")]
+    #[cfg_attr(feature = "openapi", schema(example = 42u64))]
     pub agent_count: u64,
     /// Number of active harnesses referencing this capability in the org.
     #[serde(default, skip_serializing_if = "is_zero_u64")]
+    #[cfg_attr(feature = "openapi", schema(example = 7u64))]
     pub harness_count: u64,
     #[allow(rustdoc::bare_urls)]
     /// Slug under https://dev.everruns.com/capabilities/ when public docs exist.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(feature = "openapi", schema(example = "session_file_system"))]
     pub docs_slug: Option<String>,
 }
 

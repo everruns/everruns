@@ -37,34 +37,49 @@ pub type ApiResult<T> = Result<Json<T>, (StatusCode, Json<ErrorResponse>)>;
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct ResourceStatsResponse {
     /// Total number of sessions ever created for this resource.
+    #[schema(example = 1_842u64)]
     pub session_count: u64,
     /// Sessions in a running state right now.
+    #[schema(example = 7u64)]
     pub active_session_count: u64,
     /// Sessions in an idle state right now (created but no recent activity).
+    #[schema(example = 23u64)]
     pub idle_session_count: u64,
     /// Sessions that have started at least one turn.
+    #[schema(example = 1_810u64)]
     pub started_session_count: u64,
     /// Sessions currently paused waiting for client-side tool results.
+    #[schema(example = 2u64)]
     pub waiting_for_tool_results_session_count: u64,
     /// Total number of agent executions (turns) recorded across all sessions for this resource.
+    #[schema(example = 14_206u64)]
     pub execution_count: u64,
     /// Cumulative session wall-clock duration in milliseconds across all sessions.
+    #[schema(example = 38_421_500u64)]
     pub total_session_duration_ms: u64,
     /// Average session duration in milliseconds. `None` when `session_count` is 0.
+    #[schema(example = 20_858u64)]
     pub avg_session_duration_ms: Option<u64>,
     /// Cumulative LLM input tokens billed across all sessions.
+    #[schema(example = 18_457_321u64)]
     pub total_input_tokens: u64,
     /// Cumulative LLM output tokens billed across all sessions.
+    #[schema(example = 2_184_109u64)]
     pub total_output_tokens: u64,
     /// Cumulative cache-read tokens across all sessions (where the provider supports prompt caching).
+    #[schema(example = 5_234_122u64)]
     pub total_cache_read_tokens: u64,
     /// Cumulative cache-write tokens across all sessions (charged when first writing a cache entry).
+    #[schema(example = 412_005u64)]
     pub total_cache_creation_tokens: u64,
     /// Timestamp of the first session for this resource (RFC 3339). `None` if no sessions exist.
+    #[schema(example = "2026-01-04T11:23:00Z")]
     pub first_session_at: Option<DateTime<Utc>>,
     /// Timestamp of the most recent session for this resource (RFC 3339). `None` if no sessions exist.
+    #[schema(example = "2026-05-27T15:24:00Z")]
     pub last_session_at: Option<DateTime<Utc>>,
     /// Timestamp of the most recent execution (turn) for this resource (RFC 3339). `None` if no executions exist.
+    #[schema(example = "2026-05-27T15:24:42Z")]
     pub last_execution_at: Option<DateTime<Utc>>,
 }
 
