@@ -274,7 +274,22 @@ pub fn routes(state: AppState) -> Router {
         EventsQuery
     ),
     responses(
-        (status = 200, description = "Event stream. Includes 'connected' on open, domain events during streaming, and 'disconnecting' before graceful close.", content_type = "text/event-stream"),
+        (
+            status = 200,
+            description = "Server-Sent Events stream. Each SSE message has the wire \
+                shape `event: <type>\\nid: <sequence>\\ndata: <json>\\n\\n`, where \
+                `<type>` is one of the event types in the `EventData` catalog \
+                (`turn.started`, `tool.completed`, `reason.thinking.delta`, …), \
+                `<sequence>` is a monotonically increasing per-session sequence id \
+                (usable as `since_id` on reconnect), and `<json>` is the body \
+                schema below — a serialized `Event` whose `data` field carries \
+                the event-type-specific payload defined in `EventData`. Lifecycle \
+                framing events (`connected`, `disconnecting`) use the same SSE \
+                shape but carry a minimal JSON object in `data` rather than a \
+                full `Event`. See `specs/api-streaming.md` for the SSE convention.",
+            body = Event,
+            content_type = "text/event-stream",
+        ),
         (status = 400, description = "Invalid session ID"),
         (status = 404, description = "Session not found"),
         (status = 500, description = "Internal server error")
