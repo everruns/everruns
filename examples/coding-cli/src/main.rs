@@ -11,16 +11,13 @@ mod session_log;
 mod tools;
 
 use anyhow::Result;
-use app::App;
+use app::{App, COMPOSER_VIEWPORT_HEIGHT};
 use approval::ApprovalGate;
 use clap::Parser;
-use crossterm::execute;
-use crossterm::terminal::{
-    EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
-};
+use crossterm::terminal::{disable_raw_mode, enable_raw_mode};
 use everruns_core::message::MessageRole;
-use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
+use ratatui::{Terminal, TerminalOptions, Viewport};
 use runtime::{BuiltRuntime, ProviderChoice};
 use std::io::{self, IsTerminal};
 use std::path::PathBuf;
@@ -209,18 +206,52 @@ async fn run_tui(
     )>,
 ) -> Result<()> {
     enable_raw_mode()?;
-    let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen)?;
+    let stdout = io::stdout();
     let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend)?;
+    let mut terminal = Terminal::with_options(
+        backend,
+        TerminalOptions {
+            viewport: Viewport::Inline(COMPOSER_VIEWPORT_HEIGHT),
+        },
+    )?;
 
     let mut app = App::new(runtime, approval_rx);
     let result = app.run(&mut terminal).await;
+    let show_resume_hint = app.should_show_resume_hint();
+    let session_id = app.session_id();
 
-    disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
+    terminal.clear()?;
     terminal.show_cursor()?;
+    disable_raw_mode()?;
+    drop(terminal);
+    if show_resume_hint {
+        println!();
+        print_resume_divider();
+        println!("Resume with ercode --session {session_id}");
+        println!();
+        print_centered_ukraine_banner();
+    }
     result
+}
+
+fn print_resume_divider() {
+    let width = crossterm::terminal::size()
+        .map(|(width, _)| width as usize)
+        .unwrap_or(80)
+        .max(1);
+    println!("\x1b[38;2;45;91;158m{}\x1b[0m", "─".repeat(width));
+}
+
+fn print_centered_ukraine_banner() {
+    let text = ">> Зроблено в Україні <<";
+    let width = crossterm::terminal::size()
+        .map(|(width, _)| width as usize)
+        .unwrap_or(0);
+    let pad = width.saturating_sub(text.chars().count()) / 2;
+    println!(
+        "{}\x1b[38;2;45;91;158m>> Зроблено в \x1b[38;2;126;94;19mУкраїні <<\x1b[0m",
+        " ".repeat(pad)
+    );
 }
 
 async fn run_print_mode(runtime: BuiltRuntime, prompt: String) -> Result<()> {

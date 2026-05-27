@@ -1,25 +1,24 @@
 // TUI app state and event loop.
-// Decision: keep the rendering layer tiny — a scrolling chat above a single
-// input box, plus a modal approval bar for destructive tools. The event loop
-// multiplexes terminal keystrokes with a background turn task and an approval
-// channel so the UI stays responsive while the model is thinking.
+// Decision: keep the TUI surface tiny. Transcript output is inserted into the
+// native terminal scrollback; ratatui owns only a short inline composer at the
+// bottom, with approvals handled through the same status delimiter.
 
 use crate::approval::ApprovalRequest;
 use crate::runtime::{BuiltRuntime, ModelState, RuntimeHandles, StartupInfo};
 use anyhow::Result;
 use crossterm::event::{
-    self, Event as CrosstermEvent, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseEvent,
-    MouseEventKind,
+    self, Event as CrosstermEvent, KeyCode, KeyEvent, KeyEventKind, KeyModifiers,
 };
 use everruns_core::command::{CommandDescriptor, CommandSource};
 use everruns_core::events::{Event as RuntimeEvent, EventData, ToolCompletedData};
-use everruns_core::message::{ContentPart, MessageRole};
+use everruns_core::message::{ContentPart, Message, MessageRole};
+use everruns_core::typed_id::SessionId;
 use ratatui::Terminal;
 use ratatui::backend::Backend;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
+use ratatui::widgets::{Paragraph, Widget};
 use ratatui_textarea::{CursorMove, TextArea, WrapMode};
 use serde_json::Value;
 use std::collections::HashSet;
@@ -49,12 +48,12 @@ impl Author {
     }
     pub fn color(&self) -> Color {
         match self {
-            Author::User => Color::LightCyan,
-            Author::Assistant => Color::LightGreen,
-            Author::Tool => Color::Yellow,
-            Author::ToolDetail => Color::Gray,
-            Author::Diff => Color::Magenta,
-            Author::System => Color::DarkGray,
+            Author::User => ACCENT_BLUE,
+            Author::Assistant => ACCENT_GOLD,
+            Author::Tool => TEXT_MUTED,
+            Author::ToolDetail => TEXT_MUTED,
+            Author::Diff => ACCENT_BLUE,
+            Author::System => TEXT_DIM,
         }
     }
 }
@@ -68,7 +67,6 @@ pub struct ChatLine {
 type ApprovalRx = mpsc::UnboundedReceiver<(ApprovalRequest, oneshot::Sender<bool>)>;
 
 struct PendingApproval {
-    req: ApprovalRequest,
     responder: oneshot::Sender<bool>,
 }
 
@@ -113,20 +111,24 @@ const COMMANDS: &[CommandSpec] = &[
     },
 ];
 
+pub const COMPOSER_VIEWPORT_HEIGHT: u16 = 5;
+const ACCENT_BLUE: Color = Color::Rgb(45, 91, 158);
+const ACCENT_GOLD: Color = Color::Rgb(126, 94, 19);
+const TEXT_PRIMARY: Color = Color::Rgb(230, 230, 232);
+const TEXT_MUTED: Color = Color::Rgb(140, 140, 145);
+const TEXT_DIM: Color = Color::Rgb(72, 72, 78);
+const CODE_BG: Color = Color::Rgb(18, 18, 20);
+
 pub struct App {
     handles: RuntimeHandles,
     startup: StartupInfo,
     model: ModelState,
     pub lines: Vec<ChatLine>,
+    printed_lines: usize,
     pub input: TextArea<'static>,
     pub busy: bool,
     pub should_quit: bool,
-    /// Lines scrolled back from the bottom of the transcript. 0 = stuck to bottom.
-    pub scroll: u32,
-    /// Last rendered total line count for the chat area, used to clamp scroll.
-    pub last_total_lines: u32,
-    /// Last rendered visible-line height for the chat area, used for page jumps.
-    pub last_chat_height: u32,
+    ctrl_c_exit: bool,
     busy_frame: u64,
     turn_activity: Option<String>,
     rx: Option<mpsc::UnboundedReceiver<TurnEvent>>,
@@ -155,12 +157,11 @@ impl App {
             startup: runtime.startup,
             model: runtime.model,
             lines: Vec::new(),
+            printed_lines: 0,
             input: new_input_area(vec![String::new()]),
             busy: false,
             should_quit: false,
-            scroll: 0,
-            last_total_lines: 0,
-            last_chat_height: 0,
+            ctrl_c_exit: false,
             busy_frame: 0,
             turn_activity: None,
             rx: None,
@@ -169,6 +170,14 @@ impl App {
         };
         app.emit_system_banner();
         app
+    }
+
+    pub fn should_show_resume_hint(&self) -> bool {
+        self.ctrl_c_exit
+    }
+
+    pub fn session_id(&self) -> SessionId {
+        self.handles.session_id
     }
 
     fn emit_system_banner(&mut self) {
@@ -215,10 +224,12 @@ impl App {
         B: Backend,
         B::Error: std::error::Error + Send + Sync + 'static,
     {
+        self.emit_replayed_transcript().await;
         loop {
             if self.busy {
                 self.busy_frame = self.busy_frame.wrapping_add(1);
             }
+            self.flush_transcript(terminal)?;
             terminal.draw(|f| draw(f, self))?;
 
             // 1) drain background turn events
@@ -271,20 +282,22 @@ impl App {
                         text: line.to_string(),
                     });
                 }
-                self.pending = Some(PendingApproval { req, responder });
+                self.pending = Some(PendingApproval { responder });
             }
 
-            // 3) keystrokes / mouse
-            if event::poll(Duration::from_millis(80))? {
-                match event::read()? {
-                    CrosstermEvent::Key(key) => {
-                        if key.kind == KeyEventKind::Release {
-                            continue;
-                        }
-                        self.handle_key(key).await;
+            // 3) keystrokes. Mouse wheel/drag stays native terminal behavior
+            // because the transcript lives in scrollback, not in this viewport.
+            let mut poll_timeout = Duration::from_millis(80);
+            while event::poll(poll_timeout)? {
+                poll_timeout = Duration::ZERO;
+                if let CrosstermEvent::Key(key) = event::read()? {
+                    if key.kind == KeyEventKind::Release {
+                        continue;
                     }
-                    CrosstermEvent::Mouse(m) => self.handle_mouse(m),
-                    _ => {}
+                    self.handle_key(key).await;
+                }
+                if self.should_quit {
+                    break;
                 }
             }
             if self.should_quit {
@@ -299,12 +312,74 @@ impl App {
         Ok(())
     }
 
-    async fn handle_key(&mut self, key: KeyEvent) {
-        if key.modifiers.contains(KeyModifiers::CONTROL)
-            && (key.code == KeyCode::Char('c') || key.code == KeyCode::Char('d'))
-        {
-            self.should_quit = true;
+    async fn emit_replayed_transcript(&mut self) {
+        if self.startup.replayed_events == 0 {
             return;
+        }
+
+        let events = match self.handles.runtime.events().await {
+            Ok(events) => events,
+            Err(err) => {
+                self.push_system(format!("load replayed transcript: {err}"));
+                return;
+            }
+        };
+        let replayed_lines = events
+            .iter()
+            .take(self.startup.replayed_events)
+            .flat_map(lines_for_replayed_event)
+            .collect::<Vec<_>>();
+        self.lines.extend(replayed_lines);
+    }
+
+    fn flush_transcript<B>(&mut self, terminal: &mut Terminal<B>) -> Result<()>
+    where
+        B: Backend,
+        B::Error: std::error::Error + Send + Sync + 'static,
+    {
+        if self.printed_lines >= self.lines.len() {
+            return Ok(());
+        }
+
+        let width = terminal.size()?.width.saturating_sub(2).max(20) as usize;
+        let mut rendered: Vec<Line<'static>> = Vec::new();
+        for (index, chat) in self.lines[self.printed_lines..].iter().enumerate() {
+            append_chat_lines(&mut rendered, chat, width);
+            let absolute = self.printed_lines + index;
+            if should_insert_chat_gap(
+                &chat.author,
+                self.lines.get(absolute + 1).map(|line| &line.author),
+            ) {
+                rendered.push(Line::from(""));
+            }
+        }
+        if rendered.is_empty() {
+            self.printed_lines = self.lines.len();
+            return Ok(());
+        }
+
+        let height = rendered.len().min(u16::MAX as usize) as u16;
+        terminal.insert_before(height, |buf| {
+            Paragraph::new(rendered).render(buf.area, buf);
+        })?;
+        self.printed_lines = self.lines.len();
+        Ok(())
+    }
+
+    async fn handle_key(&mut self, key: KeyEvent) {
+        if key.modifiers.contains(KeyModifiers::CONTROL) {
+            match key.code {
+                KeyCode::Char('c') => {
+                    self.ctrl_c_exit = true;
+                    self.should_quit = true;
+                    return;
+                }
+                KeyCode::Char('d') => {
+                    self.should_quit = true;
+                    return;
+                }
+                _ => {}
+            }
         }
 
         // Approval mode: only y / n / Esc.
@@ -327,38 +402,9 @@ impl App {
             return;
         }
 
-        // Keys that always work, whether or not a turn is running:
-        // exit (Esc) and transcript scroll. Input editing is gated below.
-        match key.code {
-            KeyCode::Esc => {
-                self.should_quit = true;
-                return;
-            }
-            KeyCode::Up if key.modifiers.contains(KeyModifiers::CONTROL) || self.busy => {
-                self.scroll_by(1);
-                return;
-            }
-            KeyCode::Down if key.modifiers.contains(KeyModifiers::CONTROL) || self.busy => {
-                self.scroll_by(-1);
-                return;
-            }
-            KeyCode::PageUp => {
-                self.scroll_by(self.page_step() as i32);
-                return;
-            }
-            KeyCode::PageDown => {
-                self.scroll_by(-(self.page_step() as i32));
-                return;
-            }
-            KeyCode::Home if key.modifiers.contains(KeyModifiers::CONTROL) || self.busy => {
-                self.scroll_to_top();
-                return;
-            }
-            KeyCode::End if key.modifiers.contains(KeyModifiers::CONTROL) || self.busy => {
-                self.scroll = 0;
-                return;
-            }
-            _ => {}
+        if matches!(key.code, KeyCode::Esc) {
+            self.should_quit = true;
+            return;
         }
 
         if self.busy {
@@ -384,32 +430,6 @@ impl App {
                 let _ = self.input.input(key);
             }
         }
-    }
-
-    fn handle_mouse(&mut self, m: MouseEvent) {
-        match m.kind {
-            MouseEventKind::ScrollUp => self.scroll_by(3),
-            MouseEventKind::ScrollDown => self.scroll_by(-3),
-            _ => {}
-        }
-    }
-
-    fn page_step(&self) -> u32 {
-        (self.last_chat_height / 2).max(1)
-    }
-
-    fn scroll_by(&mut self, delta: i32) {
-        let max = self.max_scroll();
-        let cur = self.scroll as i64 + delta as i64;
-        self.scroll = cur.clamp(0, max as i64) as u32;
-    }
-
-    fn scroll_to_top(&mut self) {
-        self.scroll = self.max_scroll();
-    }
-
-    fn max_scroll(&self) -> u32 {
-        self.last_total_lines.saturating_sub(self.last_chat_height)
     }
 
     fn suggestions(&self) -> Vec<CommandSuggestion> {
@@ -438,8 +458,7 @@ impl App {
     }
 
     fn input_height(&self) -> u16 {
-        let visible_lines = self.input.lines().len().clamp(1, 6) as u16;
-        visible_lines + 2
+        1
     }
 
     async fn submit_input(&mut self) {
@@ -482,7 +501,7 @@ impl App {
                     self.push_system(format!("capability commands: {caps}"));
                 }
                 self.push_system(
-                    "input: ←/→ edit · Alt/Shift-Enter newline · scroll: Ctrl-↑/↓ line · PgUp/PgDn half-page · Ctrl-Home/End top/bottom · mouse wheel"
+                    "input: ←/→ edit · Alt/Shift-Enter newline · scroll: use the terminal scrollback"
                         .into(),
                 );
                 self.push_system("approvals: y allow · n / Esc deny · exit: Esc / Ctrl-D".into());
@@ -498,6 +517,7 @@ impl App {
             }
             "clear" => {
                 self.lines.clear();
+                self.printed_lines = 0;
                 self.emit_system_banner();
             }
             "quit" | "exit" => self.should_quit = true,
@@ -765,6 +785,36 @@ pub fn lines_for_event(event: &RuntimeEvent) -> Vec<ChatLine> {
     }
 }
 
+fn lines_for_replayed_event(event: &RuntimeEvent) -> Vec<ChatLine> {
+    match &event.data {
+        EventData::InputMessage(data) => message_line(Author::User, &data.message)
+            .into_iter()
+            .collect(),
+        EventData::OutputMessageCompleted(data) => {
+            if data.message.role == MessageRole::Agent {
+                message_line(Author::Assistant, &data.message)
+                    .into_iter()
+                    .collect()
+            } else {
+                Vec::new()
+            }
+        }
+        _ => lines_for_event(event),
+    }
+}
+
+fn message_line(author: Author, message: &Message) -> Option<ChatLine> {
+    let text = message.text()?;
+    let text = text.trim();
+    if text.is_empty() {
+        return None;
+    }
+    Some(ChatLine {
+        author,
+        text: text.to_string(),
+    })
+}
+
 pub fn status_for_event(event: &RuntimeEvent) -> Option<ActivityStatus> {
     match &event.data {
         EventData::ReasonStarted(_) => Some(fallback_status("thinking")),
@@ -938,6 +988,7 @@ fn capability_command_usage(descriptor: &CommandDescriptor) -> String {
 fn new_input_area(lines: Vec<String>) -> TextArea<'static> {
     let mut input = TextArea::new(lines);
     input.set_wrap_mode(WrapMode::Word);
+    input.set_style(Style::default().fg(TEXT_PRIMARY));
     input.set_cursor_line_style(Style::default());
     input.set_cursor_style(Style::default().add_modifier(Modifier::REVERSED));
     input
@@ -1149,81 +1200,27 @@ fn first_line(s: &str, max: usize) -> String {
 // ---------- rendering ----------
 
 fn draw(f: &mut ratatui::Frame, app: &mut App) {
-    let has_approval = app.pending.is_some();
-    let suggestions = if !app.busy && !has_approval {
-        app.suggestions()
-    } else {
-        Vec::new()
-    };
-    let has_suggestions = !suggestions.is_empty();
     let input_height = app.input_height();
-    let approval_height: u16 = if has_approval { 3 } else { 0 };
-    let suggestions_height: u16 = if has_suggestions { 3 } else { 0 };
-
-    let mut constraints = vec![Constraint::Min(3)];
-    if has_approval {
-        constraints.push(Constraint::Length(approval_height));
-    }
-    if has_suggestions {
-        constraints.push(Constraint::Length(suggestions_height));
-    }
-    constraints.push(Constraint::Length(input_height));
-    constraints.push(Constraint::Length(1));
-
     let chunks = Layout::default()
         .direction(Direction::Vertical)
-        .constraints(constraints)
+        .constraints([
+            Constraint::Length(1),
+            Constraint::Length(1),
+            Constraint::Length(input_height),
+            Constraint::Length(1),
+            Constraint::Length(1),
+        ])
         .split(f.area());
 
     let mut idx = 0;
-    draw_chat(f, chunks[idx], app);
     idx += 1;
-    if has_approval {
-        draw_approval(f, chunks[idx], &*app);
-        idx += 1;
-    }
-    if has_suggestions {
-        draw_suggestions(f, chunks[idx], &suggestions);
-        idx += 1;
-    }
+    draw_message_separator(f, chunks[idx], &*app);
+    idx += 1;
     draw_input(f, chunks[idx], app);
     idx += 1;
-    draw_status(f, chunks[idx], &*app);
-}
-
-fn draw_chat(f: &mut ratatui::Frame, area: Rect, app: &mut App) {
-    let inner_width = area.width.saturating_sub(2).max(10) as usize;
-    let mut lines: Vec<Line> = Vec::new();
-    for (index, chat) in app.lines.iter().enumerate() {
-        append_chat_lines(&mut lines, chat, inner_width);
-        if should_insert_chat_gap(
-            &chat.author,
-            app.lines.get(index + 1).map(|line| &line.author),
-        ) {
-            lines.push(Line::from(""));
-        }
-    }
-    let height = area.height.saturating_sub(2) as usize;
-    let total = lines.len();
-    app.last_total_lines = total as u32;
-    app.last_chat_height = height as u32;
-    let max_scroll = total.saturating_sub(height);
-    if (app.scroll as usize) > max_scroll {
-        app.scroll = max_scroll as u32;
-    }
-    let scroll_back = app.scroll as usize;
-    let end = total.saturating_sub(scroll_back);
-    let start = end.saturating_sub(height);
-    let view: Vec<Line> = lines[start..end].to_vec();
-
-    let title = if scroll_back == 0 {
-        " Everruns Coding CLI ".to_string()
-    } else {
-        format!(" Everruns Coding CLI · ↑{scroll_back}/{max_scroll}  ↑↓ PgUp/PgDn Home/End ")
-    };
-    let block = Block::default().borders(Borders::ALL).title(title);
-    let para = Paragraph::new(view).block(block).wrap(Wrap { trim: false });
-    f.render_widget(para, area);
+    draw_status_separator(f, chunks[idx]);
+    idx += 1;
+    draw_session_status(f, chunks[idx], &*app);
 }
 
 fn should_insert_chat_gap(current: &Author, next: Option<&Author>) -> bool {
@@ -1245,7 +1242,7 @@ fn append_chat_lines<'a>(lines: &mut Vec<Line<'a>>, chat: &ChatLine, inner_width
         append_wrapped_plain(
             lines,
             "           ",
-            Style::default().fg(Color::Gray),
+            Style::default().fg(TEXT_MUTED),
             &chat.text,
             inner_width,
         );
@@ -1347,9 +1344,7 @@ fn append_markdown_lines<'a>(
                 &mut first,
                 vec![Span::styled(
                     label,
-                    Style::default()
-                        .fg(Color::DarkGray)
-                        .add_modifier(Modifier::ITALIC),
+                    Style::default().fg(TEXT_DIM).add_modifier(Modifier::ITALIC),
                 )],
             );
             continue;
@@ -1420,14 +1415,14 @@ fn markdown_text_spans(text: &str) -> Vec<Span<'static>> {
         return vec![Span::styled(
             heading.to_string(),
             Style::default()
-                .fg(Color::White)
+                .fg(TEXT_PRIMARY)
                 .add_modifier(Modifier::BOLD),
         )];
     }
     if let Some(rest) = trimmed.strip_prefix("> ") {
         return vec![
-            Span::styled("| ", Style::default().fg(Color::DarkGray)),
-            Span::styled(rest.to_string(), Style::default().fg(Color::Gray)),
+            Span::styled("| ", Style::default().fg(ACCENT_BLUE)),
+            Span::styled(rest.to_string(), Style::default().fg(TEXT_MUTED)),
         ];
     }
     if let Some(rest) = trimmed
@@ -1435,13 +1430,13 @@ fn markdown_text_spans(text: &str) -> Vec<Span<'static>> {
         .or_else(|| trimmed.strip_prefix("* "))
     {
         return vec![
-            Span::styled("- ", Style::default().fg(Color::Gray)),
+            Span::styled("- ", Style::default().fg(ACCENT_GOLD)),
             Span::raw(rest.to_string()),
         ];
     }
     if let Some((marker, rest)) = numbered_marker(trimmed) {
         return vec![
-            Span::styled(marker, Style::default().fg(Color::Gray)),
+            Span::styled(marker, Style::default().fg(ACCENT_GOLD)),
             Span::raw(rest.to_string()),
         ];
     }
@@ -1449,7 +1444,7 @@ fn markdown_text_spans(text: &str) -> Vec<Span<'static>> {
 }
 
 fn markdown_code_spans(text: &str) -> Vec<Span<'static>> {
-    let mut spans = vec![Span::styled("    ", Style::default().fg(Color::DarkGray))];
+    let mut spans = vec![Span::styled("    ", Style::default().fg(TEXT_DIM))];
     spans.extend(simple_code_highlight(text));
     spans
 }
@@ -1465,7 +1460,7 @@ fn inline_code_spans(text: &str) -> Vec<Span<'static>> {
         if let Some((inside, after)) = after_tick.split_once('`') {
             spans.push(Span::styled(
                 inside.to_string(),
-                Style::default().fg(Color::White).bg(Color::Black),
+                Style::default().fg(TEXT_PRIMARY).bg(CODE_BG),
             ));
             rest = after;
             code = true;
@@ -1500,29 +1495,26 @@ fn simple_code_highlight(text: &str) -> Vec<Span<'static>> {
         if !token.is_empty() {
             let style = if keywords.contains(&token.as_str()) {
                 Style::default()
-                    .fg(Color::White)
+                    .fg(ACCENT_GOLD)
                     .add_modifier(Modifier::BOLD)
             } else if token.chars().all(|c| c.is_ascii_digit()) {
-                Style::default().fg(Color::Gray)
+                Style::default().fg(TEXT_MUTED)
             } else {
-                Style::default().fg(Color::LightCyan)
+                Style::default().fg(ACCENT_BLUE)
             };
             spans.push(Span::styled(std::mem::take(&mut token), style));
         }
-        spans.push(Span::styled(
-            ch.to_string(),
-            Style::default().fg(Color::Gray),
-        ));
+        spans.push(Span::styled(ch.to_string(), Style::default().fg(TEXT_DIM)));
     }
     if !token.is_empty() {
         let style = if keywords.contains(&token.as_str()) {
             Style::default()
-                .fg(Color::White)
+                .fg(ACCENT_GOLD)
                 .add_modifier(Modifier::BOLD)
         } else if token.chars().all(|c| c.is_ascii_digit()) {
-            Style::default().fg(Color::Gray)
+            Style::default().fg(TEXT_MUTED)
         } else {
-            Style::default().fg(Color::LightCyan)
+            Style::default().fg(ACCENT_BLUE)
         };
         spans.push(Span::styled(token, style));
     }
@@ -1541,51 +1533,67 @@ fn spans_plain_text(spans: &[Span]) -> String {
     spans.iter().map(|span| span.content.as_ref()).collect()
 }
 
-fn draw_approval(f: &mut ratatui::Frame, area: Rect, app: &App) {
-    let title = " approve? press y to allow, n / Esc to deny ";
-    let text = app
-        .pending
-        .as_ref()
-        .map(|p| p.req.headline())
-        .unwrap_or_default();
-    let para = Paragraph::new(Span::styled(
-        text,
-        Style::default()
-            .fg(Color::Black)
-            .bg(Color::Yellow)
-            .add_modifier(Modifier::BOLD),
-    ))
-    .block(
-        Block::default()
-            .borders(Borders::ALL)
-            .title(title)
-            .border_style(Style::default().fg(Color::Yellow)),
-    );
-    f.render_widget(para, area);
+fn inset_x(area: Rect, pad: u16) -> Rect {
+    let total = pad.saturating_mul(2);
+    if area.width <= total {
+        return area;
+    }
+    Rect {
+        x: area.x.saturating_add(pad),
+        width: area.width.saturating_sub(total),
+        ..area
+    }
 }
 
-fn draw_suggestions(f: &mut ratatui::Frame, area: Rect, suggestions: &[CommandSuggestion]) {
-    let text = suggestions
+fn line_width(line: &Line) -> usize {
+    line.spans
         .iter()
-        .map(|suggestion| suggestion.label.as_str())
-        .collect::<Vec<_>>()
-        .join("  ·  ");
-    let para = Paragraph::new(text)
-        .style(Style::default().fg(Color::LightBlue))
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title(" suggestions (Tab to accept) "),
-        );
-    f.render_widget(para, area);
+        .map(|span| span.content.chars().count())
+        .sum()
+}
+
+fn separator_line(mut title: Line<'static>, width: u16, style: Style) -> Line<'static> {
+    let fill_width = (width as usize).saturating_sub(line_width(&title));
+    title
+        .spans
+        .push(Span::styled("─".repeat(fill_width), style));
+    title
+}
+
+fn draw_separator(f: &mut ratatui::Frame, area: Rect, title: Line<'static>, style: Style) {
+    if area.height == 0 {
+        return;
+    }
+    f.render_widget(
+        Paragraph::new(separator_line(title, area.width, style)),
+        area,
+    );
 }
 
 fn draw_input(f: &mut ratatui::Frame, area: Rect, app: &mut App) {
-    let title = input_title(app);
-    app.input
-        .set_block(Block::default().borders(Borders::ALL).title(title));
-    f.render_widget(&app.input, area);
-    draw_input_cursor(f, area, app);
+    let area = inset_x(area, 0);
+    let prompt_width = area.width.min(2);
+    let prompt_area = Rect {
+        width: prompt_width,
+        ..area
+    };
+    let input_area = Rect {
+        x: area.x.saturating_add(prompt_width),
+        width: area.width.saturating_sub(prompt_width),
+        ..area
+    };
+    f.render_widget(
+        Paragraph::new(Span::styled(
+            "> ",
+            Style::default()
+                .fg(ACCENT_BLUE)
+                .add_modifier(Modifier::BOLD),
+        )),
+        prompt_area,
+    );
+    app.input.set_block(ratatui::widgets::Block::default());
+    f.render_widget(&app.input, input_area);
+    draw_input_cursor(f, input_area, app);
 }
 
 fn draw_input_cursor(f: &mut ratatui::Frame, area: Rect, app: &App) {
@@ -1593,8 +1601,8 @@ fn draw_input_cursor(f: &mut ratatui::Frame, area: Rect, app: &App) {
         return;
     }
 
-    let inner_width = area.width.saturating_sub(2);
-    let inner_height = area.height.saturating_sub(2);
+    let inner_width = area.width;
+    let inner_height = area.height;
     if inner_width == 0 || inner_height == 0 {
         return;
     }
@@ -1602,18 +1610,24 @@ fn draw_input_cursor(f: &mut ratatui::Frame, area: Rect, app: &App) {
     let cursor = app.input.screen_cursor();
     let x = area
         .x
-        .saturating_add(1)
         .saturating_add((cursor.col as u16).min(inner_width.saturating_sub(1)));
     let y = area
         .y
-        .saturating_add(1)
         .saturating_add((cursor.row as u16).min(inner_height.saturating_sub(1)));
     f.set_cursor_position((x, y));
 }
 
-fn input_title(app: &App) -> Line<'static> {
+fn message_separator_title(app: &App) -> Line<'static> {
     if app.pending.is_some() {
-        return Line::from(" approval pending — answer y / n above ");
+        return Line::from(vec![
+            Span::styled("─── ", Style::default().fg(ACCENT_GOLD)),
+            Span::styled(
+                "approval pending - answer y / n above ",
+                Style::default()
+                    .fg(ACCENT_GOLD)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ]);
     }
     if app.busy {
         return thinking_title(
@@ -1621,43 +1635,87 @@ fn input_title(app: &App) -> Line<'static> {
             app.turn_activity.as_deref().unwrap_or("thinking"),
         );
     }
-    Line::from(" message (Enter to send, Alt/Shift-Enter for newline) ")
+    Line::from(vec![
+        Span::styled("─── ", Style::default().fg(ACCENT_BLUE)),
+        Span::styled(
+            "(Enter to send, Alt/Shift-Enter for newline) ",
+            Style::default().fg(TEXT_MUTED),
+        ),
+    ])
 }
 
 fn thinking_title(frame: u64, activity: &str) -> Line<'static> {
     const SPINNER: [&str; 4] = ["-", "\\", "|", "/"];
     let spinner = SPINNER[((frame / 2) as usize) % SPINNER.len()];
     let text = format!("{activity}...");
-    let text_style = Style::default()
-        .fg(Color::Gray)
-        .add_modifier(Modifier::BOLD);
+    let text_style = Style::default().fg(TEXT_MUTED).add_modifier(Modifier::BOLD);
     let spans = vec![
-        Span::raw(" "),
-        Span::styled(spinner.to_string(), text_style),
+        Span::styled("─── ", Style::default().fg(ACCENT_BLUE)),
+        Span::styled(spinner.to_string(), Style::default().fg(ACCENT_GOLD)),
         Span::raw(" "),
         Span::styled(text, text_style),
-        Span::styled(" (input disabled) ", Style::default().fg(Color::DarkGray)),
+        Span::styled(" (input disabled) ", Style::default().fg(TEXT_DIM)),
     ];
     Line::from(spans)
 }
 
-fn draw_status(f: &mut ratatui::Frame, area: Rect, app: &App) {
-    let status = format!(
-        " {} · {} · {}msgs ",
-        app.model.provider_label(),
-        app.startup.workspace_root.display(),
-        app.lines.len()
+fn draw_message_separator(f: &mut ratatui::Frame, area: Rect, app: &App) {
+    draw_separator(
+        f,
+        area,
+        message_separator_title(app),
+        Style::default().fg(ACCENT_BLUE),
     );
-    let para = Paragraph::new(Span::styled(status, Style::default().fg(Color::DarkGray)));
-    f.render_widget(para, area);
+}
+
+fn draw_status_separator(f: &mut ratatui::Frame, area: Rect) {
+    draw_separator(f, area, Line::from(""), Style::default().fg(ACCENT_GOLD));
+}
+
+fn draw_session_status(f: &mut ratatui::Frame, area: Rect, app: &App) {
+    f.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled(" ", Style::default().fg(TEXT_MUTED)),
+            Span::styled(app.model.provider_label(), Style::default().fg(TEXT_MUTED)),
+            Span::styled("  ·  ", Style::default().fg(TEXT_DIM)),
+            Span::styled(
+                display_path(&app.startup.workspace_root),
+                Style::default().fg(TEXT_MUTED),
+            ),
+            Span::styled("  ·  ", Style::default().fg(TEXT_DIM)),
+            Span::styled(
+                format!("{} msgs", app.lines.len()),
+                Style::default().fg(TEXT_MUTED),
+            ),
+            Span::styled("  ·  session ", Style::default().fg(TEXT_DIM)),
+            Span::styled(
+                app.handles.session_id.to_string(),
+                Style::default().fg(TEXT_MUTED),
+            ),
+            Span::styled(" ", Style::default().fg(TEXT_MUTED)),
+        ])),
+        area,
+    );
+}
+
+fn display_path(path: &std::path::Path) -> String {
+    if let Ok(home) = std::env::var("HOME") {
+        let home = std::path::Path::new(&home);
+        if let Ok(rest) = path.strip_prefix(home) {
+            return format!("~/{}", rest.display());
+        }
+    }
+    path.display().to_string()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use everruns_core::events::{
-        EventContext, OutputMessageCompletedData, OutputMessageStartedData, ReasonCompletedData,
+        EventContext, InputMessageData, OutputMessageCompletedData, OutputMessageStartedData,
+        ReasonCompletedData,
     };
+    use everruns_core::message::Message;
     use everruns_core::tool_types::ToolCall;
     use everruns_core::{SessionId, TurnId};
 
@@ -1798,6 +1856,48 @@ mod tests {
         }
 
         assert_eq!(input.lines(), ["abc", "d"]);
+    }
+
+    #[test]
+    fn replayed_events_render_user_assistant_and_tool_lines() {
+        let session_id = SessionId::new();
+        let user_event = RuntimeEvent::new(
+            session_id,
+            EventContext::empty(),
+            InputMessageData::new(Message::user("What changed?")),
+        );
+        let assistant_event = RuntimeEvent::new(
+            session_id,
+            EventContext::empty(),
+            OutputMessageCompletedData::new(Message::assistant("I updated the renderer.")),
+        );
+        let mut tool_data = ToolCompletedData::success(
+            "call_bash".to_string(),
+            "bash".to_string(),
+            vec![ContentPart::text(
+                serde_json::json!({
+                    "command": "cargo test",
+                    "exit_code": 0
+                })
+                .to_string(),
+            )],
+            None,
+        );
+        tool_data.narration = Some("Ran tests".to_string());
+        let tool_event = RuntimeEvent::new(session_id, EventContext::empty(), tool_data);
+
+        let lines = [user_event, assistant_event, tool_event]
+            .iter()
+            .flat_map(lines_for_replayed_event)
+            .map(|line| (line.author, line.text))
+            .collect::<Vec<_>>();
+
+        assert!(matches!(lines[0].0, Author::User));
+        assert_eq!(lines[0].1, "What changed?");
+        assert!(matches!(lines[1].0, Author::Assistant));
+        assert_eq!(lines[1].1, "I updated the renderer.");
+        assert!(matches!(lines[2].0, Author::Tool));
+        assert!(lines[2].1.contains("Ran tests"));
     }
 
     #[test]
