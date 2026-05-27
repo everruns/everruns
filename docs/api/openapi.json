@@ -11847,7 +11847,7 @@
       },
       "AllowedAction": {
         "type": "object",
-        "description": "Agent-actionable recovery hint attached to an error response.",
+        "description": "Agent-actionable link describing a follow-up the caller can take. Used in\ntwo contexts:\n\n* **Error recovery** — `ErrorResponse.allowed_actions` carries `rel`s like\n  `retry`, `retry-later`, `unarchive`, `get-existing` so the agent knows\n  the right next call after a 4xx/429.\n* **Entity hypermedia** — `WithUrls<T>.allowed_actions` carries state-aware\n  `rel`s like `cancel`, `events`, `self`, `update` on the entity itself\n  so the agent can follow links instead of reconstructing routes from\n  prose.\n\nThe shape is intentionally identical across both contexts; the closed\n`rel` vocabulary documented in `specs/api-conventions.md` distinguishes\nthem.",
         "required": [
           "rel"
         ],
@@ -11857,25 +11857,40 @@
               "string",
               "null"
             ],
-            "description": "Short, agent-readable hint (e.g. \"Shorten 'name' to <= 200 chars.\")."
+            "description": "Short, agent-readable hint (e.g. \"Shorten 'name' to <= 200 chars.\",\n\"Cancel the active turn for this session.\")."
           },
           "href": {
             "type": [
               "string",
               "null"
             ],
-            "description": "Optional absolute or relative URL the caller may invoke directly."
+            "description": "Absolute or relative URL the caller may invoke directly."
+          },
+          "method": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "HTTP method to use against `href`. Required for entity hypermedia\nactions; usually omitted on error-recovery actions where the same\noperation is retried with its original method.",
+            "example": "POST"
           },
           "operation_id": {
             "type": [
               "string",
               "null"
             ],
-            "description": "OpenAPI `operationId` the caller should invoke to recover."
+            "description": "OpenAPI `operationId` the caller should invoke. Lets an MCP client\nresolve the call without parsing `href`."
           },
           "rel": {
             "type": "string",
-            "description": "Link relation describing the action (e.g. `retry`, `get-existing`,\n`unarchive`, `retry-later`)."
+            "description": "Link relation describing the action. Closed vocabulary documented\nin `specs/api-conventions.md` — examples: `self`, `cancel`, `pause`,\n`resume`, `events`, `retry`, `retry-later`, `unarchive`,\n`get-existing`, `delete`, `update`."
+          },
+          "schema_ref": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "OpenAPI `$ref` to the request-body schema, when the action takes one\n(e.g. `#/components/schemas/UpdateSessionRequest`). Lets a tool-calling\nagent fetch the input shape without scanning the whole spec."
           }
         }
       },
@@ -19333,6 +19348,13 @@
                     "ui_link"
                   ],
                   "properties": {
+                    "allowed_actions": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AllowedAction"
+                      },
+                      "description": "State-aware hypermedia actions the caller can take on this resource\nnext (e.g. `cancel`, `events`, `update`). Omitted from the wire\nshape when empty so resources that haven't opted into the\nconvention don't grow their payloads."
+                    },
                     "self_url": {
                       "type": "string",
                       "description": "Full API endpoint URL for this resource."
@@ -19348,7 +19370,7 @@
                   }
                 }
               ],
-              "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer)."
+              "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
             },
             "description": "Array of items returned by the list operation."
           }
@@ -19452,6 +19474,13 @@
                     "ui_link"
                   ],
                   "properties": {
+                    "allowed_actions": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AllowedAction"
+                      },
+                      "description": "State-aware hypermedia actions the caller can take on this resource\nnext (e.g. `cancel`, `events`, `update`). Omitted from the wire\nshape when empty so resources that haven't opted into the\nconvention don't grow their payloads."
+                    },
                     "self_url": {
                       "type": "string",
                       "description": "Full API endpoint URL for this resource."
@@ -19467,7 +19496,7 @@
                   }
                 }
               ],
-              "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer)."
+              "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
             },
             "description": "Array of items returned by the list operation."
           }
@@ -19557,6 +19586,13 @@
                     "ui_link"
                   ],
                   "properties": {
+                    "allowed_actions": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AllowedAction"
+                      },
+                      "description": "State-aware hypermedia actions the caller can take on this resource\nnext (e.g. `cancel`, `events`, `update`). Omitted from the wire\nshape when empty so resources that haven't opted into the\nconvention don't grow their payloads."
+                    },
                     "self_url": {
                       "type": "string",
                       "description": "Full API endpoint URL for this resource."
@@ -19572,7 +19608,7 @@
                   }
                 }
               ],
-              "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer)."
+              "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
             },
             "description": "Array of items returned by the list operation."
           }
@@ -19688,6 +19724,13 @@
                     "ui_link"
                   ],
                   "properties": {
+                    "allowed_actions": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AllowedAction"
+                      },
+                      "description": "State-aware hypermedia actions the caller can take on this resource\nnext (e.g. `cancel`, `events`, `update`). Omitted from the wire\nshape when empty so resources that haven't opted into the\nconvention don't grow their payloads."
+                    },
                     "self_url": {
                       "type": "string",
                       "description": "Full API endpoint URL for this resource."
@@ -19703,7 +19746,7 @@
                   }
                 }
               ],
-              "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer)."
+              "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
             },
             "description": "Array of items returned by the list operation."
           }
@@ -19789,6 +19832,13 @@
                     "ui_link"
                   ],
                   "properties": {
+                    "allowed_actions": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AllowedAction"
+                      },
+                      "description": "State-aware hypermedia actions the caller can take on this resource\nnext (e.g. `cancel`, `events`, `update`). Omitted from the wire\nshape when empty so resources that haven't opted into the\nconvention don't grow their payloads."
+                    },
                     "self_url": {
                       "type": "string",
                       "description": "Full API endpoint URL for this resource."
@@ -19804,7 +19854,7 @@
                   }
                 }
               ],
-              "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer)."
+              "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
             },
             "description": "Array of items returned by the list operation."
           }
@@ -19927,6 +19977,13 @@
                     "ui_link"
                   ],
                   "properties": {
+                    "allowed_actions": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AllowedAction"
+                      },
+                      "description": "State-aware hypermedia actions the caller can take on this resource\nnext (e.g. `cancel`, `events`, `update`). Omitted from the wire\nshape when empty so resources that haven't opted into the\nconvention don't grow their payloads."
+                    },
                     "self_url": {
                       "type": "string",
                       "description": "Full API endpoint URL for this resource."
@@ -19942,7 +19999,7 @@
                   }
                 }
               ],
-              "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer)."
+              "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
             },
             "description": "Array of items returned by the list operation."
           }
@@ -20133,6 +20190,13 @@
                     "ui_link"
                   ],
                   "properties": {
+                    "allowed_actions": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AllowedAction"
+                      },
+                      "description": "State-aware hypermedia actions the caller can take on this resource\nnext (e.g. `cancel`, `events`, `update`). Omitted from the wire\nshape when empty so resources that haven't opted into the\nconvention don't grow their payloads."
+                    },
                     "self_url": {
                       "type": "string",
                       "description": "Full API endpoint URL for this resource."
@@ -20148,7 +20212,7 @@
                   }
                 }
               ],
-              "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer)."
+              "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
             },
             "description": "Array of items returned by the list operation."
           }
@@ -20279,6 +20343,13 @@
                     "ui_link"
                   ],
                   "properties": {
+                    "allowed_actions": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AllowedAction"
+                      },
+                      "description": "State-aware hypermedia actions the caller can take on this resource\nnext (e.g. `cancel`, `events`, `update`). Omitted from the wire\nshape when empty so resources that haven't opted into the\nconvention don't grow their payloads."
+                    },
                     "self_url": {
                       "type": "string",
                       "description": "Full API endpoint URL for this resource."
@@ -20294,7 +20365,7 @@
                   }
                 }
               ],
-              "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer)."
+              "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
             },
             "description": "Array of items returned by the list operation."
           }
@@ -22512,6 +22583,13 @@
                     "ui_link"
                   ],
                   "properties": {
+                    "allowed_actions": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AllowedAction"
+                      },
+                      "description": "State-aware hypermedia actions the caller can take on this resource\nnext (e.g. `cancel`, `events`, `update`). Omitted from the wire\nshape when empty so resources that haven't opted into the\nconvention don't grow their payloads."
+                    },
                     "self_url": {
                       "type": "string",
                       "description": "Full API endpoint URL for this resource."
@@ -22527,7 +22605,7 @@
                   }
                 }
               ],
-              "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer)."
+              "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
             },
             "description": "Array of items returned by the list operation."
           },
@@ -22799,6 +22877,13 @@
                     "ui_link"
                   ],
                   "properties": {
+                    "allowed_actions": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AllowedAction"
+                      },
+                      "description": "State-aware hypermedia actions the caller can take on this resource\nnext (e.g. `cancel`, `events`, `update`). Omitted from the wire\nshape when empty so resources that haven't opted into the\nconvention don't grow their payloads."
+                    },
                     "self_url": {
                       "type": "string",
                       "description": "Full API endpoint URL for this resource."
@@ -22814,7 +22899,7 @@
                   }
                 }
               ],
-              "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer)."
+              "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
             },
             "description": "Array of items returned by the list operation."
           },
@@ -23202,6 +23287,13 @@
                     "ui_link"
                   ],
                   "properties": {
+                    "allowed_actions": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AllowedAction"
+                      },
+                      "description": "State-aware hypermedia actions the caller can take on this resource\nnext (e.g. `cancel`, `events`, `update`). Omitted from the wire\nshape when empty so resources that haven't opted into the\nconvention don't grow their payloads."
+                    },
                     "self_url": {
                       "type": "string",
                       "description": "Full API endpoint URL for this resource."
@@ -23217,7 +23309,7 @@
                   }
                 }
               ],
-              "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer)."
+              "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
             },
             "description": "Array of items returned by the list operation."
           },
@@ -29167,6 +29259,13 @@
               "ui_link"
             ],
             "properties": {
+              "allowed_actions": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AllowedAction"
+                },
+                "description": "State-aware hypermedia actions the caller can take on this resource\nnext (e.g. `cancel`, `events`, `update`). Omitted from the wire\nshape when empty so resources that haven't opted into the\nconvention don't grow their payloads."
+              },
               "self_url": {
                 "type": "string",
                 "description": "Full API endpoint URL for this resource."
@@ -29182,7 +29281,7 @@
             }
           }
         ],
-        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer)."
+        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
       },
       "WithUrls_App": {
         "allOf": [
@@ -29338,6 +29437,13 @@
               "ui_link"
             ],
             "properties": {
+              "allowed_actions": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AllowedAction"
+                },
+                "description": "State-aware hypermedia actions the caller can take on this resource\nnext (e.g. `cancel`, `events`, `update`). Omitted from the wire\nshape when empty so resources that haven't opted into the\nconvention don't grow their payloads."
+              },
               "self_url": {
                 "type": "string",
                 "description": "Full API endpoint URL for this resource."
@@ -29353,7 +29459,7 @@
             }
           }
         ],
-        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer)."
+        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
       },
       "WithUrls_CapabilityInfo": {
         "allOf": [
@@ -29474,6 +29580,13 @@
               "ui_link"
             ],
             "properties": {
+              "allowed_actions": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AllowedAction"
+                },
+                "description": "State-aware hypermedia actions the caller can take on this resource\nnext (e.g. `cancel`, `events`, `update`). Omitted from the wire\nshape when empty so resources that haven't opted into the\nconvention don't grow their payloads."
+              },
               "self_url": {
                 "type": "string",
                 "description": "Full API endpoint URL for this resource."
@@ -29489,7 +29602,7 @@
             }
           }
         ],
-        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer)."
+        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
       },
       "WithUrls_DeclarativeCapability": {
         "allOf": [
@@ -29580,6 +29693,13 @@
               "ui_link"
             ],
             "properties": {
+              "allowed_actions": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AllowedAction"
+                },
+                "description": "State-aware hypermedia actions the caller can take on this resource\nnext (e.g. `cancel`, `events`, `update`). Omitted from the wire\nshape when empty so resources that haven't opted into the\nconvention don't grow their payloads."
+              },
               "self_url": {
                 "type": "string",
                 "description": "Full API endpoint URL for this resource."
@@ -29595,7 +29715,7 @@
             }
           }
         ],
-        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer)."
+        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
       },
       "WithUrls_Harness": {
         "allOf": [
@@ -29747,6 +29867,13 @@
               "ui_link"
             ],
             "properties": {
+              "allowed_actions": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AllowedAction"
+                },
+                "description": "State-aware hypermedia actions the caller can take on this resource\nnext (e.g. `cancel`, `events`, `update`). Omitted from the wire\nshape when empty so resources that haven't opted into the\nconvention don't grow their payloads."
+              },
               "self_url": {
                 "type": "string",
                 "description": "Full API endpoint URL for this resource."
@@ -29762,7 +29889,7 @@
             }
           }
         ],
-        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer)."
+        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
       },
       "WithUrls_LlmModel": {
         "allOf": [
@@ -29839,6 +29966,13 @@
               "ui_link"
             ],
             "properties": {
+              "allowed_actions": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AllowedAction"
+                },
+                "description": "State-aware hypermedia actions the caller can take on this resource\nnext (e.g. `cancel`, `events`, `update`). Omitted from the wire\nshape when empty so resources that haven't opted into the\nconvention don't grow their payloads."
+              },
               "self_url": {
                 "type": "string",
                 "description": "Full API endpoint URL for this resource."
@@ -29854,7 +29988,7 @@
             }
           }
         ],
-        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer)."
+        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
       },
       "WithUrls_LlmModelWithProvider": {
         "allOf": [
@@ -29957,6 +30091,13 @@
               "ui_link"
             ],
             "properties": {
+              "allowed_actions": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AllowedAction"
+                },
+                "description": "State-aware hypermedia actions the caller can take on this resource\nnext (e.g. `cancel`, `events`, `update`). Omitted from the wire\nshape when empty so resources that haven't opted into the\nconvention don't grow their payloads."
+              },
               "self_url": {
                 "type": "string",
                 "description": "Full API endpoint URL for this resource."
@@ -29972,7 +30113,7 @@
             }
           }
         ],
-        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer)."
+        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
       },
       "WithUrls_LlmProvider": {
         "allOf": [
@@ -30045,6 +30186,13 @@
               "ui_link"
             ],
             "properties": {
+              "allowed_actions": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AllowedAction"
+                },
+                "description": "State-aware hypermedia actions the caller can take on this resource\nnext (e.g. `cancel`, `events`, `update`). Omitted from the wire\nshape when empty so resources that haven't opted into the\nconvention don't grow their payloads."
+              },
               "self_url": {
                 "type": "string",
                 "description": "Full API endpoint URL for this resource."
@@ -30060,7 +30208,7 @@
             }
           }
         ],
-        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer)."
+        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
       },
       "WithUrls_McpServer": {
         "allOf": [
@@ -30170,6 +30318,13 @@
               "ui_link"
             ],
             "properties": {
+              "allowed_actions": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AllowedAction"
+                },
+                "description": "State-aware hypermedia actions the caller can take on this resource\nnext (e.g. `cancel`, `events`, `update`). Omitted from the wire\nshape when empty so resources that haven't opted into the\nconvention don't grow their payloads."
+              },
               "self_url": {
                 "type": "string",
                 "description": "Full API endpoint URL for this resource."
@@ -30185,7 +30340,7 @@
             }
           }
         ],
-        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer)."
+        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
       },
       "WithUrls_ResourceWithCounts_Agent": {
         "allOf": [
@@ -30409,6 +30564,13 @@
               "ui_link"
             ],
             "properties": {
+              "allowed_actions": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AllowedAction"
+                },
+                "description": "State-aware hypermedia actions the caller can take on this resource\nnext (e.g. `cancel`, `events`, `update`). Omitted from the wire\nshape when empty so resources that haven't opted into the\nconvention don't grow their payloads."
+              },
               "self_url": {
                 "type": "string",
                 "description": "Full API endpoint URL for this resource."
@@ -30424,7 +30586,7 @@
             }
           }
         ],
-        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer)."
+        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
       },
       "WithUrls_ResourceWithCounts_Harness": {
         "allOf": [
@@ -30602,6 +30764,13 @@
               "ui_link"
             ],
             "properties": {
+              "allowed_actions": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AllowedAction"
+                },
+                "description": "State-aware hypermedia actions the caller can take on this resource\nnext (e.g. `cancel`, `events`, `update`). Omitted from the wire\nshape when empty so resources that haven't opted into the\nconvention don't grow their payloads."
+              },
               "self_url": {
                 "type": "string",
                 "description": "Full API endpoint URL for this resource."
@@ -30617,7 +30786,7 @@
             }
           }
         ],
-        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer)."
+        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
       },
       "WithUrls_Session": {
         "allOf": [
@@ -30957,6 +31126,13 @@
               "ui_link"
             ],
             "properties": {
+              "allowed_actions": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AllowedAction"
+                },
+                "description": "State-aware hypermedia actions the caller can take on this resource\nnext (e.g. `cancel`, `events`, `update`). Omitted from the wire\nshape when empty so resources that haven't opted into the\nconvention don't grow their payloads."
+              },
               "self_url": {
                 "type": "string",
                 "description": "Full API endpoint URL for this resource."
@@ -30972,7 +31148,7 @@
             }
           }
         ],
-        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer)."
+        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
       },
       "WithUrls_Skill": {
         "allOf": [
@@ -31090,6 +31266,13 @@
               "ui_link"
             ],
             "properties": {
+              "allowed_actions": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/AllowedAction"
+                },
+                "description": "State-aware hypermedia actions the caller can take on this resource\nnext (e.g. `cancel`, `events`, `update`). Omitted from the wire\nshape when empty so resources that haven't opted into the\nconvention don't grow their payloads."
+              },
               "self_url": {
                 "type": "string",
                 "description": "Full API endpoint URL for this resource."
@@ -31105,7 +31288,7 @@
             }
           }
         ],
-        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer)."
+        "description": "Wrapper that adds API and UI links to a serialized resource.\n\nUses `self_url` (not `url`) for the API link to avoid collision with\nresources that already have a `url` field (e.g. McpServer). The\n`allowed_actions` array carries state-aware hypermedia links — empty\n(and omitted from the wire shape) until the underlying resource opts\ninto the convention by overriding `ResourceUrlable::allowed_actions`."
       },
       "WorkerResponse": {
         "type": "object",
