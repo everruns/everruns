@@ -660,8 +660,26 @@ impl McpExecuteError {
 /// rewriting every tool first.
 pub fn classify_mcp_execute_error(message: &str) -> McpExecuteError {
     let lower = message.to_ascii_lowercase();
+    // Catalog-backed query/execute tools format their dispatch errors as
+    // `<kind>: <message>` (see `crates/server/src/api/mcp_endpoint/catalog.rs::format_dispatch_error`
+    // and the public contract in `specs/domains.md`). Map those prefixes
+    // first so the most common real-world MCP failures get a precise code
+    // rather than landing in the `Internal` catch-all.
+    let code = if lower.starts_with("bad_request:") || lower.starts_with("unprocessable:") {
+        McpErrorCode::InvalidArguments
+    } else if lower.starts_with("not_found:") {
+        McpErrorCode::ToolNotFound
+    } else if lower.starts_with("conflict:") {
+        // No dedicated `conflict` code today; surface as a validation
+        // failure since the caller's input is the proximate cause and
+        // a retry without changes won't succeed.
+        McpErrorCode::InvalidArguments
+    } else if lower.starts_with("forbidden:") {
+        McpErrorCode::PermissionDenied
+    } else if lower.starts_with("internal:") {
+        McpErrorCode::Internal
     // Order matters: more specific patterns first.
-    let code = if lower.contains("timed out") || lower.contains("timeout") {
+    } else if lower.contains("timed out") || lower.contains("timeout") {
         McpErrorCode::ToolTimeout
     } else if lower.starts_with("unknown tool") {
         McpErrorCode::ToolNotFound
@@ -900,6 +918,44 @@ mod tests {
 
         let err = classify_mcp_execute_error("Rate limit hit");
         assert_eq!(err.code, McpErrorCode::QuotaExceeded);
+    }
+
+    #[test]
+    fn classify_recognises_catalog_dispatch_prefixes() {
+        // `crates/server/src/api/mcp_endpoint/catalog.rs::format_dispatch_error`
+        // emits `<kind>: <message>` for inventory-backed query/execute
+        // tools. These are the public MCP contract per specs/domains.md,
+        // so the classifier must route them to precise codes rather than
+        // the catch-all `Internal` bucket.
+        for (prefix, expected) in [
+            (
+                "bad_request: name must be <=200 chars",
+                McpErrorCode::InvalidArguments,
+            ),
+            (
+                "unprocessable: cycle detected in capability graph",
+                McpErrorCode::InvalidArguments,
+            ),
+            (
+                "conflict: session is already paused",
+                McpErrorCode::InvalidArguments,
+            ),
+            (
+                "not_found: agent agent_xyz not in this org",
+                McpErrorCode::ToolNotFound,
+            ),
+            (
+                "forbidden: principal lacks SESSION_WRITE",
+                McpErrorCode::PermissionDenied,
+            ),
+            (
+                "internal: storage backend returned 503",
+                McpErrorCode::Internal,
+            ),
+        ] {
+            let err = classify_mcp_execute_error(prefix);
+            assert_eq!(err.code, expected, "expected {expected:?} for {prefix:?}");
+        }
     }
 
     #[test]

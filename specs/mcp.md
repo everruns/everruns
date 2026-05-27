@@ -393,14 +393,20 @@ machine-readable code instead of regexing prose.
       "code": "tool_timeout",
       "category": "transient",
       "retryable": true,
-      "retry_after_seconds": 10,
-      "message": "Tool timed out after 30000ms",
-      "hint": "Retry once; if still failing, narrow the input or fall back to a cheaper tool.",
-      "cause_chain": []
+      "message": "Tool timed out after 30000ms"
     }
   }
 }
 ```
+
+`retry_after_seconds`, `hint`, and `cause_chain` are all optional and
+omitted from the wire shape when the server doesn't have a concrete
+value to set. Today they are populated only on the cases the server
+can reason about — for example, `tool_not_found` ships a fixed `hint`
+pointing the caller at `tools/list`. As more tool implementations
+construct `McpExecuteError` directly (instead of going through the
+prose-string classifier), more occurrences will populate the
+optional fields with case-specific values.
 
 The legacy `content[0].text` channel is preserved verbatim for MCP
 clients that predate the envelope — `structuredContent` is additive,
