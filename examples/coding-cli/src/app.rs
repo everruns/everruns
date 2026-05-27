@@ -732,6 +732,9 @@ pub fn lines_for_event(event: &RuntimeEvent) -> Vec<ChatLine> {
     match &event.data {
         EventData::ReasonStarted(_) => Vec::new(),
         EventData::ReasonCompleted(data) => {
+            // Render pre-tool-call narration. When there are no tool calls
+            // the final assistant message will arrive via the message loop
+            // shortly, so we'd duplicate it; keep the has_tool_calls gate.
             if data.success && data.has_tool_calls {
                 let mut lines = Vec::new();
                 if let Some(text) = data
@@ -750,6 +753,17 @@ pub fn lines_for_event(event: &RuntimeEvent) -> Vec<ChatLine> {
                 Vec::new()
             }
         }
+        EventData::ReasonItem(data) => data
+            .summary
+            .iter()
+            .filter_map(|segment| {
+                let trimmed = segment.trim();
+                (!trimmed.is_empty()).then(|| ChatLine {
+                    author: Author::Assistant,
+                    text: trimmed.to_string(),
+                })
+            })
+            .collect(),
         EventData::OutputMessageCompleted(_) => Vec::new(),
         EventData::ToolCompleted(data) => {
             if data.tool_name == "write_todos" {
@@ -1923,6 +1937,36 @@ mod tests {
                 .as_deref(),
             Some("planned 2 tool call(s)")
         );
+    }
+
+    #[test]
+    fn lines_for_event_renders_reason_item_summary_segments() {
+        use everruns_core::events::ReasonItemData;
+
+        let event = RuntimeEvent::new(
+            SessionId::new(),
+            EventContext::empty(),
+            ReasonItemData {
+                turn_id: TurnId::new(),
+                provider: "openai".to_string(),
+                model: Some("gpt-5".to_string()),
+                item_id: "rs_abc".to_string(),
+                encrypted_content: Some("opaque".to_string()),
+                summary: vec![
+                    "Considering file layout".to_string(),
+                    "".to_string(),
+                    "  Plan the read order  ".to_string(),
+                ],
+                token_count: None,
+            },
+        );
+
+        let lines = lines_for_event(&event);
+
+        assert_eq!(lines.len(), 2, "blank summary segments are dropped");
+        assert!(matches!(lines[0].author, Author::Assistant));
+        assert_eq!(lines[0].text, "Considering file layout");
+        assert_eq!(lines[1].text, "Plan the read order");
     }
 
     #[test]
