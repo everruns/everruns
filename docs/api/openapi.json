@@ -11864,7 +11864,7 @@
               "string",
               "null"
             ],
-            "description": "Absolute or relative URL the caller may invoke directly."
+            "description": "Absolute (preferred) or relative URL the caller may invoke\ndirectly. **Always present on entity hypermedia actions**\n(`WithUrls<T>.allowed_actions`); **optional on error-recovery\nactions** (`ErrorResponse.allowed_actions`) where the matching\n`operation_id` is enough and the URI is implicit from the failed\ncall."
           },
           "method": {
             "type": [

@@ -192,7 +192,12 @@ pub struct AllowedAction {
     /// "Cancel the active turn for this session.").
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hint: Option<String>,
-    /// Absolute or relative URL the caller may invoke directly.
+    /// Absolute (preferred) or relative URL the caller may invoke
+    /// directly. **Always present on entity hypermedia actions**
+    /// (`WithUrls<T>.allowed_actions`); **optional on error-recovery
+    /// actions** (`ErrorResponse.allowed_actions`) where the matching
+    /// `operation_id` is enough and the URI is implicit from the failed
+    /// call.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub href: Option<String>,
     /// OpenAPI `$ref` to the request-body schema, when the action takes one
@@ -1081,10 +1086,12 @@ pub trait ResourceUrlable {
     }
     /// State-aware hypermedia actions for this resource. Overridden per-type
     /// to map (entity state) → (next-action links); the default is empty so
-    /// existing types stay wire-compatible until they opt in. `api_base` is
-    /// the absolute API base URL (e.g. `https://everruns.example/v1`) the
-    /// resolver should prefix to its hrefs. See `specs/api-conventions.md`
-    /// for the closed `rel` vocabulary.
+    /// existing types stay wire-compatible until they opt in. `api_base`
+    /// is the absolute API base URL from `AuthConfig.base_url` —
+    /// **without the `/v1` resource prefix** (e.g.
+    /// `https://app.everruns.com/api`, not `…/api/v1`). The resolver is
+    /// responsible for the versioned path. See
+    /// `specs/api-conventions.md` for the closed `rel` vocabulary.
     fn allowed_actions(&self, _api_base: &str) -> Vec<AllowedAction> {
         Vec::new()
     }
@@ -1228,9 +1235,16 @@ pub fn session_allowed_actions(
     actions.push(
         AllowedAction::new("events")
             .with_method("GET")
-            .with_operation_id("get_session_events")
+            .with_operation_id("list_events")
             .with_href(format!("{api_base}/v1/sessions/{id}/events"))
-            .with_hint("Stream session events (SSE)."),
+            .with_hint("List session events (JSON polling; supports type filters and pagination)."),
+    );
+    actions.push(
+        AllowedAction::new("stream")
+            .with_method("GET")
+            .with_operation_id("stream_sse")
+            .with_href(format!("{api_base}/v1/sessions/{id}/sse"))
+            .with_hint("Subscribe to session events live over Server-Sent Events."),
     );
     if matches!(
         status,
@@ -2037,7 +2051,7 @@ mod tests {
     }
 
     #[test]
-    fn session_actions_always_include_self_events_update_delete() {
+    fn session_actions_always_include_self_events_stream_update_delete() {
         use everruns_core::session::SessionStatus;
         let actions = session_allowed_actions(
             "session_xyz",
@@ -2046,7 +2060,7 @@ mod tests {
             "https://api.example",
         );
         let rels: Vec<&str> = actions.iter().map(|a| a.rel.as_str()).collect();
-        for expected in ["self", "events", "update", "delete"] {
+        for expected in ["self", "events", "stream", "update", "delete"] {
             assert!(
                 rels.contains(&expected),
                 "missing rel `{expected}` in {rels:?}"
@@ -2058,6 +2072,14 @@ mod tests {
             Some("#/components/schemas/UpdateSessionRequest"),
             "update action must reference its request body schema"
         );
+        // `events` is JSON polling (operationId list_events); `stream` is SSE
+        // (operationId stream_sse, /sse path).
+        let events = actions.iter().find(|a| a.rel == "events").unwrap();
+        assert_eq!(events.operation_id.as_deref(), Some("list_events"));
+        assert!(events.href.as_deref().unwrap().ends_with("/events"));
+        let stream = actions.iter().find(|a| a.rel == "stream").unwrap();
+        assert_eq!(stream.operation_id.as_deref(), Some("stream_sse"));
+        assert!(stream.href.as_deref().unwrap().ends_with("/sse"));
     }
 
     #[test]

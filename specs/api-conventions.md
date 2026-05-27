@@ -7,11 +7,18 @@ durable contract for **hypermedia, link relations, and `allowed_actions`**.
 
 ## Hypermedia entity actions
 
-Every entity response wraps its body in `WithUrls<T>` and may carry an
-`allowed_actions: Vec<AllowedAction>` field. The field is omitted from
-the wire shape when no actions apply. Action membership is computed
-server-side from the current entity state — a `completed` session does
-not get a `cancel` action, an `idle` session does.
+Top-level resource responses (those wrapped via `UrlBuilder::wrap` in
+`WithUrls<T>`) may carry an `allowed_actions: Vec<AllowedAction>` field.
+The field is omitted from the wire shape when no actions apply. Action
+membership is computed server-side from the current entity state — a
+`completed` session does not get a `cancel` action, an `idle` session
+does.
+
+Nested or composite payloads that don't go through `WithUrls` (e.g.
+filesystem `SessionFile` entries) currently rely on the JSON link
+decoration middleware in `decorate_value_links` for `self_url` /
+`view_url` and don't carry `allowed_actions`. Opting them into the
+convention is a per-cluster follow-on.
 
 ```json
 {
@@ -29,9 +36,16 @@ not get a `cancel` action, an `idle` session does.
     {
       "rel": "events",
       "method": "GET",
-      "operation_id": "get_session_events",
+      "operation_id": "list_events",
       "href": "https://api.example/v1/sessions/session_…/events",
-      "hint": "Stream session events (SSE)."
+      "hint": "List session events (JSON polling; supports type filters and pagination)."
+    },
+    {
+      "rel": "stream",
+      "method": "GET",
+      "operation_id": "stream_sse",
+      "href": "https://api.example/v1/sessions/session_…/sse",
+      "hint": "Subscribe to session events live over Server-Sent Events."
     }
   ],
   "id": "session_…",
@@ -73,7 +87,8 @@ vocabulary differs by surface.
 | `resume`  | Resume a paused resource.                                          | POST    |
 | `pin`     | Pin this resource (toggle on).                                     | PUT     |
 | `unpin`   | Unpin this resource (toggle off).                                  | DELETE  |
-| `events`  | Subscribe to the entity's event stream (SSE).                      | GET     |
+| `events`  | Read the entity's events (JSON polling, supports filters/pagination). | GET  |
+| `stream`  | Subscribe to the entity's event stream live over Server-Sent Events. | GET   |
 
 ### Error-recovery rels
 
