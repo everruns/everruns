@@ -286,14 +286,25 @@ struct PlannedEdit {
 }
 
 fn parse_text_edits(arguments: &Value) -> std::result::Result<Vec<TextEdit>, String> {
-    let has_single = arguments.get("old_text").is_some() || arguments.get("new_text").is_some();
+    let old_text_arg = arguments.get("old_text");
+    let new_text_arg = arguments.get("new_text");
+    let has_single = old_text_arg.is_some() || new_text_arg.is_some();
     let has_batch = arguments.get("edits").is_some();
 
     if has_single && has_batch {
-        return Err("Provide either old_text/new_text or edits, not both".to_string());
+        let has_empty_single_placeholders = matches!(
+            (
+                old_text_arg.and_then(Value::as_str),
+                new_text_arg.and_then(Value::as_str)
+            ),
+            (Some(""), Some(""))
+        );
+        if !has_empty_single_placeholders {
+            return Err("Provide either old_text/new_text or edits, not both".to_string());
+        }
     }
 
-    if has_single {
+    if has_single && !has_batch {
         let old_text = arguments
             .get("old_text")
             .and_then(Value::as_str)
@@ -2551,6 +2562,37 @@ mod tests {
         assert_eq!(store.content("/batch.txt").unwrap(), "ONE\ntwo\nTHREE\n");
         assert_eq!(value["applied_edits"], 2);
         assert_eq!(value["first_changed_line"], 1);
+    }
+
+    #[tokio::test]
+    async fn test_edit_file_batch_replace_ignores_empty_single_placeholders() {
+        let store = Arc::new(MockFileStore::default());
+        store.add_text_file("/batch-placeholders.txt", "one\ntwo\nthree\n");
+        let context = make_context(store.clone());
+        let expected_hash = read_hash(&context, "/workspace/batch-placeholders.txt").await;
+
+        let result = EditFileTool
+            .execute_with_context(
+                json!({
+                    "path": "/workspace/batch-placeholders.txt",
+                    "expected_hash": expected_hash,
+                    "edits": [
+                        {"old_text": "one", "new_text": "ONE"},
+                        {"old_text": "three", "new_text": "THREE"}
+                    ],
+                    "old_text": "",
+                    "new_text": ""
+                }),
+                &context,
+            )
+            .await;
+        let value = expect_success(result);
+
+        assert_eq!(
+            store.content("/batch-placeholders.txt").unwrap(),
+            "ONE\ntwo\nTHREE\n"
+        );
+        assert_eq!(value["applied_edits"], 2);
     }
 
     #[tokio::test]
