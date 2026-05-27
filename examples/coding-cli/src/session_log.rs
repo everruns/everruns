@@ -13,16 +13,24 @@
 // every line so a crash mid-session loses at most the event in flight.
 //
 // Concerns explicitly handled below:
-// * 0o600 file mode on Unix (owner-only): session logs contain prompts,
-//   tool arguments, and tool output.
-// * Replay only keeps event types we can reconstruct into messages
-//   (`input.message`, `output.message.completed`, `tool.completed`).
+// * Owner-only on Unix: `events.jsonl` is opened with `0o600` and the
+//   per-session folder is `chmod`-ed to `0o700` on open. Session logs
+//   contain prompts, tool arguments, and tool output, plus the
+//   reasoning artifacts described below.
+// * Replay keeps event types that (a) round-trip into the conversation
+//   (`input.message`, `output.message.completed`, `tool.completed`) and
+//   (b) the agent needs to restore the live transcript view and provider
+//   continuation state on resume (`reason.completed`, `reason.item`).
 //   Streaming `*.delta` events have no replay value and would otherwise
 //   inflate the log O(n²) for long streamed responses.
-// * Assistant `thinking` / `thinking_signature` fields are stripped before
-//   JSONL persistence. The CLI keeps the live runtime event unchanged, but
-//   session logs are user-facing durable history and must not expose hidden
-//   model reasoning material.
+// * Assistant `thinking` / `thinking_signature` fields ARE persisted in
+//   ercode's per-session JSONL. The per-session folder is the local
+//   private session store (owner-only on Unix, see above) and provider
+//   continuation on resume requires the signature/encrypted_content
+//   (e.g. OpenAI Responses threads the encrypted reasoning context back
+//   via `thinking_signature`). The contract is local-store, not
+//   user-facing transcript export — see the coding-cli README for the
+//   public/private distinction.
 // * Replay rejects events whose `session_id` doesn't match the resumed
 //   session — guards against accidentally merging logs across sessions.
 // * On open, if the file does not end with `\n` (previous run crashed
@@ -45,9 +53,9 @@ use chrono::Utc;
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::events::{
     Event, EventData, EventRequest, INPUT_MESSAGE, OUTPUT_MESSAGE_COMPLETED,
-    OutputMessageCompletedData, TOOL_COMPLETED,
+    OutputMessageCompletedData, REASON_COMPLETED, REASON_ITEM, TOOL_COMPLETED,
 };
-use everruns_core::message::{ContentPart, Message, MessageRole};
+use everruns_core::message::{ContentPart, Message};
 use everruns_core::tools::ToolResultImage;
 use everruns_core::traits::EventEmitter;
 use everruns_core::typed_id::EventId;
@@ -183,15 +191,21 @@ pub fn replay(path: &Path, expected: SessionId) -> Result<ReplayedSession> {
     Ok(out)
 }
 
-/// Event types that are useful to keep on disk: they're the ones replay
-/// can map back into the conversation. Everything else (streaming
-/// `*.delta`, `*.started`, lifecycle, etc.) adds bytes without adding
-/// resume value, and the delta types in particular bloat the log
-/// O(n²) since each delta carries the accumulated text so far.
+/// Event types that are useful to keep on disk: those that replay can map
+/// back into the conversation (`input.message`, `output.message.completed`,
+/// `tool.completed`) plus the agent reasoning artifacts the CLI uses to
+/// restore the live transcript view and provider continuation state on
+/// resume (`reason.completed` carries the safe `text_preview` narration,
+/// `reason.item` carries opaque/encrypted reasoning context curated by the
+/// provider). Streaming `*.delta` events and pure lifecycle markers
+/// (`reason.started`, `reason.thinking.*`, `output.message.started`) are
+/// dropped — they are live status signals only and the delta types would
+/// bloat the log O(n²) since each delta carries the accumulated text so
+/// far.
 fn is_replay_relevant(event_type: &str) -> bool {
     matches!(
         event_type,
-        INPUT_MESSAGE | OUTPUT_MESSAGE_COMPLETED | TOOL_COMPLETED
+        INPUT_MESSAGE | OUTPUT_MESSAGE_COMPLETED | TOOL_COMPLETED | REASON_COMPLETED | REASON_ITEM
     )
 }
 
@@ -217,6 +231,25 @@ impl JsonlEventEmitter {
             std::fs::create_dir_all(parent).map_err(|e| {
                 AgentLoopError::config(format!("create session log dir {}: {e}", parent.display()))
             })?;
+            // Per-session folder is owner-only on Unix. The events.jsonl
+            // file gets `0o600` below, but the folder may also hold tool
+            // outputs (`/outputs/`) and other per-session artifacts;
+            // tightening the directory keeps every file inside private
+            // even if a caller later creates one without an explicit
+            // mode. Idempotent — set on every open so a session folder
+            // that pre-dates this change gets corrected next resume.
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700)).map_err(
+                    |e| {
+                        AgentLoopError::config(format!(
+                            "tighten session dir permissions on {}: {e}",
+                            parent.display()
+                        ))
+                    },
+                )?;
+            }
         }
         let mut opts = OpenOptions::new();
         // `read(true)` is required so we can read the file's last byte
@@ -321,8 +354,14 @@ impl EventEmitter for JsonlEventEmitter {
         self.events.write().await.push(event.clone());
 
         if is_replay_relevant(&event.event_type) {
-            let persisted_event = event_for_session_log(&event);
-            let line = serde_json::to_string(&persisted_event).map_err(|e| {
+            // ercode's per-session JSONL is the local session store; we
+            // persist `thinking` / `thinking_signature` and opaque
+            // `reason.item` content as-is so provider continuation
+            // (e.g. OpenAI Responses replays encrypted reasoning via
+            // `thinking_signature`) works after `--session <id>` resume.
+            // Privacy lives in the 0o600 file mode and per-user
+            // platform data dir, not in field stripping.
+            let line = serde_json::to_string(&event).map_err(|e| {
                 AgentLoopError::config(format!("serialize event for session log: {e}"))
             })?;
             let mut file = self.file.lock().await;
@@ -332,21 +371,6 @@ impl EventEmitter for JsonlEventEmitter {
                 .map_err(|e| AgentLoopError::config(format!("flush session log: {e}")))?;
         }
         Ok(event)
-    }
-}
-
-fn event_for_session_log(event: &Event) -> Event {
-    let mut persisted = event.clone();
-    if let EventData::OutputMessageCompleted(data) = &mut persisted.data {
-        strip_hidden_thinking(&mut data.message);
-    }
-    persisted
-}
-
-fn strip_hidden_thinking(message: &mut Message) {
-    if message.role == MessageRole::Agent {
-        message.thinking = None;
-        message.thinking_signature = None;
     }
 }
 
@@ -540,8 +564,70 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[tokio::test]
-    async fn output_message_thinking_is_not_written_to_session_log() {
+    async fn open_tightens_session_dir_to_owner_only_on_unix() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let session_id = SessionId::from_seed(48222);
+        let session_dir = session_dir_path(dir.path(), session_id);
+        let path = session_log_path(&session_dir);
+
+        let _emitter = JsonlEventEmitter::open(&path, 1).expect("open");
+
+        let mode = std::fs::metadata(&session_dir)
+            .expect("session dir exists")
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(
+            mode, 0o700,
+            "per-session folder must be owner-only on Unix, got {mode:o}"
+        );
+
+        let file_mode = std::fs::metadata(&path)
+            .expect("events.jsonl exists")
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(
+            file_mode, 0o600,
+            "events.jsonl must be owner-only on Unix, got {file_mode:o}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn open_corrects_loose_session_dir_permissions_on_resume() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let session_id = SessionId::from_seed(48223);
+        let session_dir = session_dir_path(dir.path(), session_id);
+        let path = session_log_path(&session_dir);
+
+        std::fs::create_dir_all(&session_dir).expect("pre-create");
+        std::fs::set_permissions(&session_dir, std::fs::Permissions::from_mode(0o755))
+            .expect("loosen for test");
+
+        let _emitter = JsonlEventEmitter::open(&path, 1).expect("open");
+
+        let mode = std::fs::metadata(&session_dir)
+            .expect("session dir exists")
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(
+            mode, 0o700,
+            "resume must re-tighten an existing loose session folder, got {mode:o}"
+        );
+    }
+
+    #[tokio::test]
+    async fn output_message_thinking_is_persisted_for_provider_continuation() {
+        // ercode's per-session JSONL is the local session store: thinking
+        // and thinking_signature must round-trip so providers that thread
+        // encrypted reasoning context back (e.g. OpenAI Responses via
+        // `thinking_signature`) can continue across `--session <id>` resume.
         let dir = tempfile::tempdir().expect("tempdir");
         let session_id = SessionId::from_seed(4821);
         let session_dir = session_dir_path(dir.path(), session_id);
@@ -561,28 +647,122 @@ mod tests {
 
         let on_disk = std::fs::read_to_string(&path).expect("read");
         assert!(
-            !on_disk.contains("private model reasoning"),
-            "session log must not persist assistant thinking: {on_disk}"
+            on_disk.contains("private model reasoning"),
+            "session log must persist assistant thinking for restore: {on_disk}"
         );
         assert!(
-            !on_disk.contains("thinking_signature"),
-            "session log must not persist thinking signatures: {on_disk}"
+            on_disk.contains("encrypted-thinking-token"),
+            "session log must persist thinking_signature for provider continuation: {on_disk}"
         );
+
         let replayed = replay(&path, session_id).expect("replay");
         let replayed_message = replayed.messages.first().expect("message replayed");
-        assert!(replayed_message.thinking.is_none());
-        assert!(replayed_message.thinking_signature.is_none());
+        assert_eq!(
+            replayed_message.thinking.as_deref(),
+            Some("private model reasoning")
+        );
+        assert_eq!(
+            replayed_message.thinking_signature.as_deref(),
+            Some("encrypted-thinking-token")
+        );
+    }
 
-        let collected = emitter.collected_events().await;
-        match &collected[0].data {
-            EventData::OutputMessageCompleted(data) => {
+    #[tokio::test]
+    async fn reason_completed_event_is_persisted_and_replayed() {
+        use everruns_core::events::ReasonCompletedData;
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let session_id = SessionId::from_seed(4822);
+        let session_dir = session_dir_path(dir.path(), session_id);
+        let path = session_log_path(&session_dir);
+        let emitter = JsonlEventEmitter::open(&path, 1).expect("open");
+
+        let req = EventRequest::new(
+            session_id,
+            EventContext::default(),
+            ReasonCompletedData::success("Will read the lib.rs file", true, 1, Some(120), None),
+        );
+        emitter.emit(req).await.expect("emit");
+
+        let on_disk = std::fs::read_to_string(&path).expect("read");
+        assert!(
+            on_disk.contains("\"reason.completed\""),
+            "reason.completed should be persisted to JSONL: {on_disk}"
+        );
+        assert!(
+            on_disk.contains("Will read the lib.rs file"),
+            "text_preview narration should round-trip on disk: {on_disk}"
+        );
+
+        let replayed = replay(&path, session_id).expect("replay");
+        assert_eq!(replayed.events.len(), 1);
+        match &replayed.events[0].data {
+            EventData::ReasonCompleted(data) => {
                 assert_eq!(
-                    data.message.thinking.as_deref(),
-                    Some("private model reasoning")
+                    data.text_preview.as_deref(),
+                    Some("Will read the lib.rs file")
                 );
+                assert!(data.has_tool_calls);
+                assert_eq!(data.tool_call_count, 1);
             }
-            other => panic!("unexpected event data: {other:?}"),
+            other => panic!("expected ReasonCompleted, got {other:?}"),
         }
+        // reason.completed is not a conversation message — it must not
+        // pollute the replayed messages vec.
+        assert!(replayed.messages.is_empty());
+    }
+
+    #[tokio::test]
+    async fn reason_item_event_is_persisted_and_replayed() {
+        use everruns_core::events::ReasonItemData;
+        use everruns_core::typed_id::TurnId;
+
+        let dir = tempfile::tempdir().expect("tempdir");
+        let session_id = SessionId::from_seed(4823);
+        let session_dir = session_dir_path(dir.path(), session_id);
+        let path = session_log_path(&session_dir);
+        let emitter = JsonlEventEmitter::open(&path, 1).expect("open");
+
+        let req = EventRequest::new(
+            session_id,
+            EventContext::default(),
+            ReasonItemData {
+                turn_id: TurnId::new(),
+                provider: "openai".to_string(),
+                model: Some("gpt-5".to_string()),
+                item_id: "rs_abc123".to_string(),
+                encrypted_content: Some("opaque-encrypted-blob".to_string()),
+                summary: vec!["Considered file structure.".to_string()],
+                token_count: Some(42),
+            },
+        );
+        emitter.emit(req).await.expect("emit");
+
+        let on_disk = std::fs::read_to_string(&path).expect("read");
+        assert!(
+            on_disk.contains("\"reason.item\""),
+            "reason.item should be persisted: {on_disk}"
+        );
+        assert!(
+            on_disk.contains("opaque-encrypted-blob"),
+            "encrypted_content must round-trip for provider continuation: {on_disk}"
+        );
+
+        let replayed = replay(&path, session_id).expect("replay");
+        assert_eq!(replayed.events.len(), 1);
+        match &replayed.events[0].data {
+            EventData::ReasonItem(data) => {
+                assert_eq!(data.provider, "openai");
+                assert_eq!(data.item_id, "rs_abc123");
+                assert_eq!(
+                    data.encrypted_content.as_deref(),
+                    Some("opaque-encrypted-blob")
+                );
+                assert_eq!(data.summary, vec!["Considered file structure.".to_string()]);
+            }
+            other => panic!("expected ReasonItem, got {other:?}"),
+        }
+        assert!(replayed.messages.is_empty());
     }
 
     #[test]

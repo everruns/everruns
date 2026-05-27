@@ -169,17 +169,35 @@ resume after upgrading from the old flat-log layout, ercode copies
 `events.jsonl` exists yet. The folder layout leaves room for other
 session-scoped stores, such as key/value data, to sit beside the event log.
 
-One serialized `Event` per line, flushed after every write. On Unix the
-event file is created with `0o600` (owner-only) because session logs contain
-user prompts, tool arguments, and tool output. The session id is
-generated fresh on every plain `ercode` invocation and printed in the
-startup banner (`[session] session_… (folder: …; log: …)`).
+One serialized `Event` per line, flushed after every write. On Unix
+`events.jsonl` is created with `0o600` and its parent session folder
+is set to `0o700` (both owner-only) because session logs contain user
+prompts, tool arguments, tool output, and the reasoning artifacts
+discussed below. The session id is generated fresh on every plain
+`ercode` invocation and printed in the startup banner (`[session]
+session_… (folder: …; log: …)`).
 
-Only the event types that round-trip into the conversation are persisted
-(`input.message`, `output.message.completed`, `tool.completed`).
-Streaming `*.delta` events are dropped from the log — they carry the
-accumulated text so far and would inflate the file O(n²) without adding
-resume value.
+The event types kept on disk are those that round-trip into the
+conversation (`input.message`, `output.message.completed`,
+`tool.completed`) plus the agent reasoning artifacts ercode needs to
+restore the live transcript view and provider continuation state on
+resume (`reason.completed` carries the safe `text_preview` narration;
+`reason.item` carries opaque/encrypted reasoning context curated by the
+provider, such as OpenAI Responses reasoning items). Assistant
+`thinking` / `thinking_signature` are persisted alongside
+`output.message.completed` — providers that resume via encrypted
+reasoning continuation (e.g. OpenAI Responses replays
+`thinking_signature` as `encrypted_content`) cannot continue without
+them. Streaming `*.delta` events and lifecycle markers
+(`reason.started`, `reason.thinking.*`, `output.message.started`) are
+dropped from the log — they are live status signals only and the delta
+types would inflate the file O(n²) without adding resume value.
+
+This persistence contract is **local-store**, not user-facing
+transcript export. On Unix, the per-session folder is set to `0o700`
+and the `events.jsonl` file inside it to `0o600` on every open, both
+under the platform-native user data directory; treat the folder
+contents as sensitive (see [Sensitivity](#sensitivity) below).
 
 To continue a previous conversation, pass `--session <id>`:
 
@@ -209,6 +227,13 @@ serialized `Event` that fired during a turn, which may include:
   to `bash`, `write_file`, `edit_file`, `web_fetch`, etc.
 - Tool output — `bash` stdout/stderr, file contents, HTTP response
   bodies (capped per-tool but not redacted).
+- Agent reasoning artifacts — `reason.completed.text_preview`
+  narration, `reason.item` opaque/encrypted reasoning context, and the
+  `thinking` / `thinking_signature` fields on assistant messages.
+  Persisting these is what lets `--session <id>` resume restore the
+  transcript view and lets providers (e.g. OpenAI Responses) continue
+  encrypted reasoning across resumes; they are deliberately not
+  redacted from the local log.
 
 There is no retention policy or rotation — files grow until you delete
 them. If you'd rather a session not be persisted, point `--session-dir`
