@@ -9,6 +9,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.8.35] - 2026-05-27
+
+### Highlights
+
+- **Outbound egress service** - Core gains a dedicated outbound egress service for governing external network calls from runtime components.
+- **Auto output mode for exec tools** - Exec tools default to a smarter `auto` output mode that adapts presentation to result size ([#1961](https://github.com/everruns/everruns/pull/1961)).
+- **Security hardening across CI and tokens** - Fork PRs can no longer read Doppler or LLM keys via env ([#1970](https://github.com/everruns/everruns/pull/1970)), the GitHub integration blocks implicit parent-token fallback ([#1966](https://github.com/everruns/everruns/pull/1966)), and the coding CLI tightens session output artifact permissions ([#1967](https://github.com/everruns/everruns/pull/1967)).
+- **OpenAPI documentation completeness** - Field-example coverage climbed from 24% to 37% ([#1980](https://github.com/everruns/everruns/pull/1980)) and Reporting/Payment/Voice/list-query schemas reached a 99% description floor ([#1972](https://github.com/everruns/everruns/pull/1972)).
+
+### What's Changed
+
+- chore(deps): bump bashkit to 0.7.2 ([#1982](https://github.com/everruns/everruns/pull/1982)) by [@chaliy](https://github.com/chaliy)
+- chore(docs): switch docs app to pnpm isolated linker ([#1953](https://github.com/everruns/everruns/pull/1953)) by [@chaliy](https://github.com/chaliy)
+- fix(core): harden edit_file placeholders by [@chaliy](https://github.com/chaliy)
+- docs(api): field-example coverage 24% -> 37% (grand finale) ([#1980](https://github.com/everruns/everruns/pull/1980)) by [@chaliy](https://github.com/chaliy)
+- docs(api): describe Reporting/Payment/Voice/list-query schemas; floor 99% ([#1972](https://github.com/everruns/everruns/pull/1972)) by [@chaliy](https://github.com/chaliy)
+- fix(core): type-dispatch Event and EventRequest deserialization ([#1979](https://github.com/everruns/everruns/pull/1979)) by [@chaliy](https://github.com/chaliy)
+- fix(core): cap oversized native tool images ([#1976](https://github.com/everruns/everruns/pull/1976)) by [@chaliy](https://github.com/chaliy)
+- fix(container-sandbox): persist raw output in auto success ([#1977](https://github.com/everruns/everruns/pull/1977)) by [@chaliy](https://github.com/chaliy)
+- fix(api): correct schedule execution status example ([#1968](https://github.com/everruns/everruns/pull/1968)) by [@chaliy](https://github.com/chaliy)
+- fix(ui): remove deleted .npmrc from Docker build inputs ([#1978](https://github.com/everruns/everruns/pull/1978)) by [@chaliy](https://github.com/chaliy)
+- feat(core): add outbound egress service by [@chaliy](https://github.com/chaliy)
+- docs: add physical-architecture page covering deployable components ([#1973](https://github.com/everruns/everruns/pull/1973)) by [@chaliy](https://github.com/chaliy)
+- chore(skills): mark internal repo skills by [@chaliy](https://github.com/chaliy)
+- fix(ci): stop fork PRs from reading Doppler + LLM keys via env ([#1970](https://github.com/everruns/everruns/pull/1970)) by [@chaliy](https://github.com/chaliy)
+- docs(api): describe Voice/Report/GitDiff fields; floor 92% ([#1965](https://github.com/everruns/everruns/pull/1965)) by [@chaliy](https://github.com/chaliy)
+- docs: remove internal spec references from public docs ([#1969](https://github.com/everruns/everruns/pull/1969)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): enforce pnpm release age floor by [@chaliy](https://github.com/chaliy)
+- fix(coding-cli): secure session output artifact permissions ([#1967](https://github.com/everruns/everruns/pull/1967)) by [@chaliy](https://github.com/chaliy)
+- fix(github): block implicit parent token fallback ([#1966](https://github.com/everruns/everruns/pull/1966)) by [@chaliy](https://github.com/chaliy)
+- ci(release): use homebrew tap token by [@chaliy](https://github.com/chaliy)
+- feat(api): examples on payments, reports, voice, misc; floor 24% ([#1958](https://github.com/everruns/everruns/pull/1958)) by [@chaliy](https://github.com/chaliy)
+- fix(tests): make Daytona /sandbox listing assertion best-effort ([#1963](https://github.com/everruns/everruns/pull/1963)) by [@chaliy](https://github.com/chaliy)
+- fix(tests): tolerate Daytona /sandbox pagination shape ([#1962](https://github.com/everruns/everruns/pull/1962)) by [@chaliy](https://github.com/chaliy)
+- feat(tools): add auto output mode and make it default for exec ([#1961](https://github.com/everruns/everruns/pull/1961)) by [@chaliy](https://github.com/chaliy)
+- fix(llm): avoid mixing previous_response_id with full transcript ([#1960](https://github.com/everruns/everruns/pull/1960)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump starlight-openapi from 0.24.0 to 0.25.3 in /apps/docs ([#1937](https://github.com/everruns/everruns/pull/1937)) by @dependabot
+- chore(deps-dev): bump typescript from 5.9.3 to 6.0.3 in /apps/ui ([#1940](https://github.com/everruns/everruns/pull/1940)) by @dependabot
+- chore(deps-dev): bump @ag-ui/core from 0.0.45 to 0.0.53 in /apps/ui ([#1938](https://github.com/everruns/everruns/pull/1938)) by @dependabot
+- chore(deps): bump astro from 6.3.6 to 6.3.7 in /apps/docs ([#1936](https://github.com/everruns/everruns/pull/1936)) by @dependabot
+- chore(deps-dev): bump oxfmt from 0.48.0 to 0.51.0 in /apps/ui ([#1939](https://github.com/everruns/everruns/pull/1939)) by @dependabot
+- fix(llm): stabilize prompt cache requests by [@chaliy](https://github.com/chaliy)
+- chore(examples): upgrade ercode similar dependency by [@chaliy](https://github.com/chaliy)
+
 ## [0.8.34] - 2026-05-24
 
 ### Highlights
