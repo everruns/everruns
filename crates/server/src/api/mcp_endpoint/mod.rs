@@ -39,6 +39,7 @@ use axum::{
     routing::post,
 };
 use bashkit::ScriptingToolSet;
+use everruns_core::mcp_server::{McpErrorCode, McpExecuteError, classify_mcp_execute_error};
 use everruns_core::session_sqldb::SessionSqlDbStore;
 use everruns_core::{Caller, OrgRole, PlatformDefinition, validate_org_public_id};
 use everruns_durable::WorkflowEventStore;
@@ -659,13 +660,11 @@ async fn handle_tools_call(
         .unwrap_or(Value::Object(Default::default()));
 
     let Some(tool_def) = find_tool_definition(tool_name, _protocol_version) else {
-        return JsonRpcResponse::success(
-            id,
-            json!({
-                "content": [{ "type": "text", "text": format!("Unknown tool: {tool_name}") }],
-                "isError": true
-            }),
+        let msg = format!("Unknown tool: {tool_name}");
+        let envelope = McpExecuteError::new(McpErrorCode::ToolNotFound, &msg).with_hint(
+            "Call tools/list to discover the current tool catalog for this protocol version.",
         );
+        return JsonRpcResponse::success(id, error_result_payload(&msg, Some(&envelope)));
     };
 
     // Card tools return an MCP content array directly (resource + summary
@@ -686,13 +685,10 @@ async fn handle_tools_call(
 
         return match card_result {
             Ok(content_array) => JsonRpcResponse::success(id, json!({ "content": content_array })),
-            Err(msg) => JsonRpcResponse::success(
-                id,
-                json!({
-                    "content": [{ "type": "text", "text": msg }],
-                    "isError": true
-                }),
-            ),
+            Err(msg) => {
+                let envelope = classify_mcp_execute_error(&msg);
+                JsonRpcResponse::success(id, error_result_payload(&msg, Some(&envelope)))
+            }
         };
     }
 
@@ -761,14 +757,30 @@ async fn handle_tools_call(
 
             JsonRpcResponse::success(id, result)
         }
-        Err(msg) => JsonRpcResponse::success(
-            id,
-            json!({
-                "content": [{ "type": "text", "text": msg }],
-                "isError": true
-            }),
-        ),
+        Err(msg) => {
+            let envelope = classify_mcp_execute_error(&msg);
+            JsonRpcResponse::success(id, error_result_payload(&msg, Some(&envelope)))
+        }
     }
+}
+
+/// Build the `result` payload for a tools/call error response. Always
+/// emits the legacy `content[0].text` + `isError: true` so MCP clients
+/// that predate the structured envelope keep working; when an envelope
+/// is supplied, also emits `structuredContent` carrying the typed
+/// [`McpExecuteError`] so newer SDKs can branch on a machine-readable
+/// `code`/`category`/`retryable` triple. See `specs/mcp.md`.
+fn error_result_payload(message: &str, envelope: Option<&McpExecuteError>) -> Value {
+    let mut payload = json!({
+        "content": [{ "type": "text", "text": message }],
+        "isError": true,
+    });
+    if let Some(envelope) = envelope
+        && let Ok(structured) = serde_json::to_value(envelope)
+    {
+        payload["structuredContent"] = structured;
+    }
+    payload
 }
 
 // ============================================================================

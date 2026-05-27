@@ -460,6 +460,252 @@ pub fn mcp_oauth_session_secret_name(server_id: uuid::Uuid, field: &str) -> Stri
     format!("mcp_oauth:{}:{}", server_id, field)
 }
 
+// ============================================================================
+// Structured execute errors (EVE-492)
+// ============================================================================
+
+/// Closed vocabulary of error codes for Everruns' own MCP `tools/call`
+/// execute path. Surfaces in [`McpExecuteError::code`] so LLM toolcallers
+/// can branch on a machine-readable value instead of regexing prose.
+///
+/// New variants are a spec change. SDKs should treat any value they don't
+/// recognise as `unknown` (forward-compat) — serde's `#[serde(other)]`
+/// catch-all enables that on the deserialize side.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum McpErrorCode {
+    /// Tool name doesn't match any registered tool.
+    ToolNotFound,
+    /// Tool timed out (server-imposed budget exceeded).
+    ToolTimeout,
+    /// Tool panicked or hit an unrecoverable internal error.
+    ToolPanicked,
+    /// Required argument missing or argument failed validation.
+    InvalidArguments,
+    /// Caller is authenticated but not authorized for the requested action
+    /// or org scope.
+    PermissionDenied,
+    /// Org/user quota or rate limit hit.
+    QuotaExceeded,
+    /// Outbound network call blocked by egress policy.
+    NetworkBlocked,
+    /// Upstream MCP server unreachable or returned an error we couldn't
+    /// classify.
+    McpServerUnreachable,
+    /// Catch-all for unclassified internal failures. Treat as transient
+    /// only if `retryable` is also true.
+    Internal,
+    /// Forward-compat sentinel — SDKs see this when the server returns a
+    /// code they don't know yet.
+    #[serde(other)]
+    Unknown,
+}
+
+impl McpErrorCode {
+    /// Stable wire string for this variant. Mirrors what `serde` emits so
+    /// non-Rust SDKs and tests can match on the same value.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            McpErrorCode::ToolNotFound => "tool_not_found",
+            McpErrorCode::ToolTimeout => "tool_timeout",
+            McpErrorCode::ToolPanicked => "tool_panicked",
+            McpErrorCode::InvalidArguments => "invalid_arguments",
+            McpErrorCode::PermissionDenied => "permission_denied",
+            McpErrorCode::QuotaExceeded => "quota_exceeded",
+            McpErrorCode::NetworkBlocked => "network_blocked",
+            McpErrorCode::McpServerUnreachable => "mcp_server_unreachable",
+            McpErrorCode::Internal => "internal",
+            McpErrorCode::Unknown => "unknown",
+        }
+    }
+
+    /// Default category for this code. Callers may override per-occurrence
+    /// when context narrows the classification (e.g. an `Internal` with a
+    /// known-transient root cause).
+    pub fn default_category(&self) -> McpErrorCategory {
+        match self {
+            McpErrorCode::ToolTimeout
+            | McpErrorCode::McpServerUnreachable
+            | McpErrorCode::QuotaExceeded => McpErrorCategory::Transient,
+            McpErrorCode::InvalidArguments => McpErrorCategory::Validation,
+            McpErrorCode::PermissionDenied => McpErrorCategory::Auth,
+            McpErrorCode::ToolNotFound
+            | McpErrorCode::ToolPanicked
+            | McpErrorCode::NetworkBlocked => McpErrorCategory::Permanent,
+            McpErrorCode::Internal | McpErrorCode::Unknown => McpErrorCategory::Permanent,
+        }
+    }
+
+    /// Default retryability for this code. Same override caveat as
+    /// `default_category`.
+    pub fn default_retryable(&self) -> bool {
+        matches!(
+            self,
+            McpErrorCode::ToolTimeout
+                | McpErrorCode::McpServerUnreachable
+                | McpErrorCode::QuotaExceeded
+        )
+    }
+}
+
+/// Broad-strokes routing hint sitting alongside the precise [`McpErrorCode`].
+/// The categories are stable enough that an LLM can pick a recovery
+/// strategy from this field alone (e.g. retry transients with backoff,
+/// surface validation errors to the user, escalate auth failures).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[serde(rename_all = "snake_case")]
+pub enum McpErrorCategory {
+    /// Worth retrying — same call, possibly after `retry_after_seconds`.
+    Transient,
+    /// Repeating the same call will fail the same way.
+    Permanent,
+    /// Caller-side problem (bad arguments, schema mismatch).
+    Validation,
+    /// Authentication/authorization issue.
+    Auth,
+    /// Forward-compat sentinel.
+    #[serde(other)]
+    Unknown,
+}
+
+/// Typed structured-error envelope returned by Everruns' MCP `tools/call`
+/// execute path. Serialized into the MCP `structuredContent` field on
+/// error responses so the legacy `content[0].text` channel stays
+/// backward-compatible; new SDKs prefer the typed envelope.
+///
+/// See `specs/mcp.md` for the error contract.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "openapi", derive(ToSchema))]
+pub struct McpExecuteError {
+    /// Machine-readable error code. Closed vocabulary; SDKs that see an
+    /// unrecognised value should map it to `unknown`.
+    pub code: McpErrorCode,
+    /// Human-readable error message. Mirrors the legacy
+    /// `content[0].text` string for backward compat.
+    pub message: String,
+    /// Broad-strokes recovery category.
+    pub category: McpErrorCategory,
+    /// `true` when the same call is worth retrying. Distinct from
+    /// `category == "transient"` because a server may know about a
+    /// non-transient retry path (e.g. a transient `Internal`).
+    pub retryable: bool,
+    /// Seconds the caller should wait before retrying. Set on
+    /// `tool_timeout`, `quota_exceeded`, and upstream-unreachable cases
+    /// when the server has a concrete back-off hint.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retry_after_seconds: Option<u32>,
+    /// Short, agent-readable recovery hint. Free-form; one or two sentences.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hint: Option<String>,
+    /// Chain of upstream error messages, oldest cause first. Useful for
+    /// debugging; SDKs should not treat this as machine-readable.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cause_chain: Vec<String>,
+}
+
+impl McpExecuteError {
+    /// Construct an error using the code's default category and
+    /// retryability. Callers can chain `.with_*` to override.
+    pub fn new(code: McpErrorCode, message: impl Into<String>) -> Self {
+        Self {
+            category: code.default_category(),
+            retryable: code.default_retryable(),
+            code,
+            message: message.into(),
+            retry_after_seconds: None,
+            hint: None,
+            cause_chain: Vec::new(),
+        }
+    }
+
+    pub fn with_category(mut self, category: McpErrorCategory) -> Self {
+        self.category = category;
+        self
+    }
+
+    pub fn with_retryable(mut self, retryable: bool) -> Self {
+        self.retryable = retryable;
+        self
+    }
+
+    pub fn with_retry_after_seconds(mut self, seconds: u32) -> Self {
+        self.retry_after_seconds = Some(seconds);
+        self
+    }
+
+    pub fn with_hint(mut self, hint: impl Into<String>) -> Self {
+        self.hint = Some(hint.into());
+        self
+    }
+
+    pub fn with_cause(mut self, cause: impl Into<String>) -> Self {
+        self.cause_chain.push(cause.into());
+        self
+    }
+}
+
+/// Classify a free-form error string raised by an internal MCP tool
+/// implementation into a structured envelope. The implementations
+/// currently return `Result<String, String>`; this is the boundary
+/// where we recover the structure from prose. Pattern matches are
+/// intentionally narrow (substrings, not regexes) so the classifier
+/// fails open to `Internal` rather than mis-categorising.
+///
+/// **Convention for new error messages**: prefer constructing the
+/// `McpExecuteError` directly (via a future `McpExecuteError`-typed
+/// `Result`) instead of relying on this classifier. The classifier
+/// exists to give the legacy `String` error path structure without
+/// rewriting every tool first.
+pub fn classify_mcp_execute_error(message: &str) -> McpExecuteError {
+    let lower = message.to_ascii_lowercase();
+    // Catalog-backed query/execute tools format their dispatch errors as
+    // `<kind>: <message>` (see `crates/server/src/api/mcp_endpoint/catalog.rs::format_dispatch_error`
+    // and the public contract in `specs/domains.md`). Map those prefixes
+    // first so the most common real-world MCP failures get a precise code
+    // rather than landing in the `Internal` catch-all.
+    let code = if lower.starts_with("bad_request:") || lower.starts_with("unprocessable:") {
+        McpErrorCode::InvalidArguments
+    } else if lower.starts_with("not_found:") {
+        McpErrorCode::ToolNotFound
+    } else if lower.starts_with("conflict:") {
+        // No dedicated `conflict` code today; surface as a validation
+        // failure since the caller's input is the proximate cause and
+        // a retry without changes won't succeed.
+        McpErrorCode::InvalidArguments
+    } else if lower.starts_with("forbidden:") {
+        McpErrorCode::PermissionDenied
+    } else if lower.starts_with("internal:") {
+        McpErrorCode::Internal
+    // Order matters: more specific patterns first.
+    } else if lower.contains("timed out") || lower.contains("timeout") {
+        McpErrorCode::ToolTimeout
+    } else if lower.starts_with("unknown tool") {
+        McpErrorCode::ToolNotFound
+    } else if lower.starts_with("missing required parameter") || lower.contains("invalid argument")
+    {
+        McpErrorCode::InvalidArguments
+    } else if lower.contains("permission denied")
+        || lower.contains("forbidden")
+        || lower.contains("not authorized")
+        || lower.contains("unauthorized")
+    {
+        McpErrorCode::PermissionDenied
+    } else if lower.contains("quota") || lower.contains("rate limit") {
+        McpErrorCode::QuotaExceeded
+    } else if lower.contains("network blocked") || lower.contains("egress") {
+        McpErrorCode::NetworkBlocked
+    } else if lower.contains("mcp server") && lower.contains("unreachable") {
+        McpErrorCode::McpServerUnreachable
+    } else if lower.contains("panicked") {
+        McpErrorCode::ToolPanicked
+    } else {
+        McpErrorCode::Internal
+    };
+    McpExecuteError::new(code, message)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -569,6 +815,188 @@ mod tests {
         assert_eq!(
             parsed,
             Some(("microsoft_learn".to_string(), "docs_search".to_string()))
+        );
+    }
+
+    // ------------------------------------------------------------------
+    // McpExecuteError / McpErrorCode (EVE-492)
+    // ------------------------------------------------------------------
+
+    #[test]
+    fn mcp_error_code_serializes_to_snake_case_wire_string() {
+        assert_eq!(
+            serde_json::to_string(&McpErrorCode::ToolTimeout).unwrap(),
+            "\"tool_timeout\""
+        );
+        assert_eq!(
+            serde_json::to_string(&McpErrorCode::McpServerUnreachable).unwrap(),
+            "\"mcp_server_unreachable\""
+        );
+    }
+
+    #[test]
+    fn mcp_error_code_as_str_matches_serde_wire() {
+        for code in [
+            McpErrorCode::ToolNotFound,
+            McpErrorCode::ToolTimeout,
+            McpErrorCode::ToolPanicked,
+            McpErrorCode::InvalidArguments,
+            McpErrorCode::PermissionDenied,
+            McpErrorCode::QuotaExceeded,
+            McpErrorCode::NetworkBlocked,
+            McpErrorCode::McpServerUnreachable,
+            McpErrorCode::Internal,
+            McpErrorCode::Unknown,
+        ] {
+            let wire = serde_json::to_string(&code).unwrap();
+            assert_eq!(
+                wire,
+                format!("\"{}\"", code.as_str()),
+                "as_str() must match serde wire for {code:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn mcp_error_code_unknown_variant_is_forward_compat_sentinel() {
+        // SDKs that receive a code they don't recognise should land on
+        // `Unknown`, not fail to deserialise.
+        let code: McpErrorCode = serde_json::from_str("\"future_code_we_dont_know_yet\"").unwrap();
+        assert_eq!(code, McpErrorCode::Unknown);
+    }
+
+    #[test]
+    fn classify_recognises_timeout_substrings() {
+        let err = classify_mcp_execute_error("Tool timed out after 30000ms");
+        assert_eq!(err.code, McpErrorCode::ToolTimeout);
+        assert_eq!(err.category, McpErrorCategory::Transient);
+        assert!(err.retryable);
+
+        let err = classify_mcp_execute_error("Command timed out after 5000ms");
+        assert_eq!(err.code, McpErrorCode::ToolTimeout);
+    }
+
+    #[test]
+    fn classify_recognises_tool_not_found() {
+        let err = classify_mcp_execute_error("Unknown tool: github.foo");
+        assert_eq!(err.code, McpErrorCode::ToolNotFound);
+        assert_eq!(err.category, McpErrorCategory::Permanent);
+        assert!(!err.retryable);
+    }
+
+    #[test]
+    fn classify_recognises_invalid_arguments() {
+        let err = classify_mcp_execute_error("Missing required parameter: query");
+        assert_eq!(err.code, McpErrorCode::InvalidArguments);
+        assert_eq!(err.category, McpErrorCategory::Validation);
+        assert!(!err.retryable);
+    }
+
+    #[test]
+    fn classify_recognises_permission_denied() {
+        for msg in [
+            "permission denied for org",
+            "Forbidden: org scope not allowed",
+            "not authorized to call this tool",
+            "Unauthorized request",
+        ] {
+            let err = classify_mcp_execute_error(msg);
+            assert_eq!(
+                err.code,
+                McpErrorCode::PermissionDenied,
+                "expected PermissionDenied for {msg:?}"
+            );
+            assert_eq!(err.category, McpErrorCategory::Auth);
+        }
+    }
+
+    #[test]
+    fn classify_recognises_quota_and_rate_limit() {
+        let err = classify_mcp_execute_error("Quota exceeded for org");
+        assert_eq!(err.code, McpErrorCode::QuotaExceeded);
+        assert!(err.retryable);
+
+        let err = classify_mcp_execute_error("Rate limit hit");
+        assert_eq!(err.code, McpErrorCode::QuotaExceeded);
+    }
+
+    #[test]
+    fn classify_recognises_catalog_dispatch_prefixes() {
+        // `crates/server/src/api/mcp_endpoint/catalog.rs::format_dispatch_error`
+        // emits `<kind>: <message>` for inventory-backed query/execute
+        // tools. These are the public MCP contract per specs/domains.md,
+        // so the classifier must route them to precise codes rather than
+        // the catch-all `Internal` bucket.
+        for (prefix, expected) in [
+            (
+                "bad_request: name must be <=200 chars",
+                McpErrorCode::InvalidArguments,
+            ),
+            (
+                "unprocessable: cycle detected in capability graph",
+                McpErrorCode::InvalidArguments,
+            ),
+            (
+                "conflict: session is already paused",
+                McpErrorCode::InvalidArguments,
+            ),
+            (
+                "not_found: agent agent_xyz not in this org",
+                McpErrorCode::ToolNotFound,
+            ),
+            (
+                "forbidden: principal lacks SESSION_WRITE",
+                McpErrorCode::PermissionDenied,
+            ),
+            (
+                "internal: storage backend returned 503",
+                McpErrorCode::Internal,
+            ),
+        ] {
+            let err = classify_mcp_execute_error(prefix);
+            assert_eq!(err.code, expected, "expected {expected:?} for {prefix:?}");
+        }
+    }
+
+    #[test]
+    fn classify_falls_open_to_internal() {
+        // No known pattern → Internal, not a wrong guess. Retryable
+        // defaults to false so callers don't burn retries on unknown
+        // permanent failures.
+        let err = classify_mcp_execute_error("strange unanticipated message");
+        assert_eq!(err.code, McpErrorCode::Internal);
+        assert_eq!(err.category, McpErrorCategory::Permanent);
+        assert!(!err.retryable);
+    }
+
+    #[test]
+    fn mcp_execute_error_skips_empty_optional_fields() {
+        let err = McpExecuteError::new(McpErrorCode::ToolNotFound, "no such tool");
+        let value = serde_json::to_value(&err).unwrap();
+        // Required fields present.
+        assert_eq!(value["code"], "tool_not_found");
+        assert_eq!(value["message"], "no such tool");
+        assert_eq!(value["category"], "permanent");
+        assert_eq!(value["retryable"], false);
+        // Optional fields omitted entirely from the wire when empty.
+        assert!(value.get("retry_after_seconds").is_none());
+        assert!(value.get("hint").is_none());
+        assert!(value.get("cause_chain").is_none());
+    }
+
+    #[test]
+    fn mcp_execute_error_builders_chain() {
+        let err = McpExecuteError::new(McpErrorCode::ToolTimeout, "tool timed out after 30000ms")
+            .with_retry_after_seconds(10)
+            .with_hint("Reduce input size before retrying.")
+            .with_cause("downstream: upstream gateway timeout");
+        let value = serde_json::to_value(&err).unwrap();
+        assert_eq!(value["code"], "tool_timeout");
+        assert_eq!(value["retry_after_seconds"], 10);
+        assert_eq!(value["hint"], "Reduce input size before retrying.");
+        assert_eq!(
+            value["cause_chain"][0],
+            "downstream: upstream gateway timeout"
         );
     }
 }

@@ -379,6 +379,9 @@ use utoipa::OpenApi;
             // MCP Server types
             McpServer, McpServerStatus, McpServerTransportType,
             everruns_core::mcp_server::McpToolAnnotations,
+            everruns_core::mcp_server::McpExecuteError,
+            everruns_core::mcp_server::McpErrorCode,
+            everruns_core::mcp_server::McpErrorCategory,
             domains::mcp_servers::types::CreateMcpServerRequest,
             domains::mcp_servers::types::UpdateMcpServerRequest,
             ListResponse<McpServer>,
