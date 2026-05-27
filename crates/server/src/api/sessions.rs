@@ -398,10 +398,46 @@ pub async fn session_config(
 #[utoipa::path(
     post,
     path = "/v1/sessions",
-    request_body = CreateSessionRequest,
+    request_body(
+        content = CreateSessionRequest,
+        example = json!({
+            "harness_name": "generic",
+            "title": "Debug login issue",
+            "tags": ["debugging", "urgent"]
+        })
+    ),
     responses(
-        (status = 201, description = "Session created successfully", body = WithUrls<Session>),
-        (status = 404, description = "Harness, Agent, or Model not found"),
+        (
+            status = 201,
+            description = "Session created successfully",
+            body = WithUrls<Session>,
+            example = json!({
+                "self_url": "https://app.everruns.com/api/v1/sessions/session_01933b5a00007000800000000000001",
+                "view_url": "https://app.everruns.com/sessions/session_01933b5a00007000800000000000001/chat",
+                "ui_link":  "https://app.everruns.com/sessions/session_01933b5a00007000800000000000001/chat",
+                "id": "session_01933b5a00007000800000000000001",
+                "status": "started",
+                "organization_id": "org_00000000000000000000000000000001",
+                "harness_id": "harness_01933b5a00007000800000000000001",
+                "owner_principal_id": "principal_01933b5a000070008000000000000001",
+                "title": "Debug login issue",
+                "tags": ["debugging", "urgent"],
+                "created_at": "2026-05-27T15:24:00Z",
+                "updated_at": "2026-05-27T15:24:00Z"
+            })
+        ),
+        (
+            status = 404,
+            description = "Harness, Agent, or Model not found",
+            body = ErrorResponse,
+            example = json!({
+                "type": "https://docs.everruns.com/errors/harness_not_found",
+                "title": "Not Found",
+                "status": 404,
+                "detail": "Harness 'generic' not found in org org_00000000000000000000000000000001.",
+                "code": "harness_not_found"
+            })
+        ),
         (status = 500, description = "Internal server error")
     ),
     extensions(
@@ -688,9 +724,29 @@ pub async fn unpin_session(
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., session_...)")
     ),
     responses(
-        (status = 200, description = "Turn cancelled successfully (or no-op if idle)", body = CancelTurnResponse),
+        (
+            status = 200,
+            description = "Turn cancelled successfully (or no-op if idle)",
+            body = CancelTurnResponse,
+            example = json!({
+                "session_id": "session_01933b5a00007000800000000000001",
+                "status": "idle",
+                "cancelled_turn_id": "turn_01933b5a00007000800000000000001"
+            })
+        ),
+        (
+            status = 404,
+            description = "Session not found",
+            body = ErrorResponse,
+            example = json!({
+                "type": "https://docs.everruns.com/errors/session_not_found",
+                "title": "Not Found",
+                "status": 404,
+                "detail": "Session session_01933b5a000070008000000000000001 not found in org org_00000000000000000000000000000001.",
+                "code": "session_not_found"
+            })
+        ),
         (status = 400, description = "Invalid session ID"),
-        (status = 404, description = "Session not found"),
         (status = 500, description = "Internal server error")
     ),
     tag = "sessions"
