@@ -1034,9 +1034,9 @@ dependencies = [
 
 [[package]]
 name = "compact_str"
-version = "0.9.0"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3fdb1325a1cece981e8a296ab8f0f9b63ae357bd0784a9faaf548cc7b480707a"
+checksum = "9dfdd1c2274d9aa354115b09dc9a901d6c5576818cdf70d14cae2bdb47df00ab"
 dependencies = [
  "castaway",
  "cfg-if",
@@ -1990,18 +1990,18 @@ dependencies = [
 
 [[package]]
 name = "everruns-a2ui"
-version = "0.8.34"
+version = "0.8.35"
 
 [[package]]
 name = "everruns-anthropic"
-version = "0.8.34"
+version = "0.8.35"
 dependencies = [
  "async-trait",
  "chrono",
  "eventsource-stream",
  "everruns-core",
  "futures",
- "reqwest 0.13.3",
+ "reqwest 0.13.4",
  "serde",
  "serde_json",
  "tokio",
@@ -2010,7 +2010,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-cli"
-version = "0.8.34"
+version = "0.8.35"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -2023,7 +2023,7 @@ dependencies = [
  "hostname",
  "ignore",
  "notify",
- "reqwest 0.13.3",
+ "reqwest 0.13.4",
  "rustls",
  "serde",
  "serde_json",
@@ -2063,14 +2063,14 @@ dependencies = [
 
 [[package]]
 name = "everruns-config"
-version = "0.8.34"
+version = "0.8.35"
 dependencies = [
  "thiserror 2.0.18",
 ]
 
 [[package]]
 name = "everruns-container-sandbox"
-version = "0.8.34"
+version = "0.8.35"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -2078,7 +2078,7 @@ dependencies = [
  "everruns-core",
  "hex",
  "inventory",
- "reqwest 0.13.3",
+ "reqwest 0.13.4",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -2090,7 +2090,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-core"
-version = "0.8.34"
+version = "0.8.35"
 dependencies = [
  "a2a-client-lf",
  "a2a-lf",
@@ -2117,7 +2117,7 @@ dependencies = [
  "opentelemetry_sdk",
  "rand 0.9.4",
  "regex",
- "reqwest 0.13.3",
+ "reqwest 0.13.4",
  "rustls",
  "serde",
  "serde_json",
@@ -2142,7 +2142,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-durable"
-version = "0.8.34"
+version = "0.8.35"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2167,12 +2167,12 @@ dependencies = [
 
 [[package]]
 name = "everruns-gemini"
-version = "0.8.34"
+version = "0.8.35"
 dependencies = [
  "async-trait",
  "everruns-core",
  "futures",
- "reqwest 0.13.3",
+ "reqwest 0.13.4",
  "serde",
  "serde_json",
  "tokio",
@@ -2181,13 +2181,13 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-brave-search"
-version = "0.8.34"
+version = "0.8.35"
 dependencies = [
  "async-trait",
  "chrono",
  "everruns-core",
  "inventory",
- "reqwest 0.13.3",
+ "reqwest 0.13.4",
  "serde",
  "serde_json",
  "tokio",
@@ -2197,7 +2197,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-browserless"
-version = "0.8.34"
+version = "0.8.35"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -2205,7 +2205,7 @@ dependencies = [
  "everruns-core",
  "futures-util",
  "inventory",
- "reqwest 0.13.3",
+ "reqwest 0.13.4",
  "rustls",
  "rustls-native-certs",
  "serde",
@@ -2218,12 +2218,12 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-cursor"
-version = "0.8.34"
+version = "0.8.35"
 dependencies = [
  "async-trait",
  "everruns-core",
  "inventory",
- "reqwest 0.13.3",
+ "reqwest 0.13.4",
  "serde",
  "serde_json",
  "tokio",
@@ -2233,13 +2233,13 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-daytona"
-version = "0.8.34"
+version = "0.8.35"
 dependencies = [
  "async-trait",
  "chrono",
  "everruns-core",
  "inventory",
- "reqwest 0.13.3",
+ "reqwest 0.13.4",
  "serde",
  "serde_json",
  "tokio",
@@ -2250,7 +2250,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-deno"
-version = "0.8.34"
+version = "0.8.35"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -2260,7 +2260,7 @@ dependencies = [
  "hickory-resolver",
  "http",
  "inventory",
- "reqwest 0.13.3",
+ "reqwest 0.13.4",
  "rustls",
  "rustls-native-certs",
  "serde",
@@ -2273,7 +2273,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-docker"
-version = "0.8.34"
+version = "0.8.35"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -2288,12 +2288,12 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-duckduckgo"
-version = "0.8.34"
+version = "0.8.35"
 dependencies = [
  "async-trait",
  "everruns-core",
  "inventory",
- "reqwest 0.13.3",
+ "reqwest 0.13.4",
  "serde",
  "serde_json",
  "tokio",
@@ -2303,7 +2303,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-e2b"
-version = "0.8.34"
+version = "0.8.35"
 dependencies = [
  "async-trait",
  "buffa",
@@ -2317,7 +2317,7 @@ dependencies = [
  "inventory",
  "prost",
  "protox",
- "reqwest 0.13.3",
+ "reqwest 0.13.4",
  "rustls",
  "rustls-native-certs",
  "serde",
@@ -2330,14 +2330,14 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-github"
-version = "0.8.34"
+version = "0.8.35"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
  "chrono",
  "everruns-core",
  "inventory",
- "reqwest 0.13.3",
+ "reqwest 0.13.4",
  "serde",
  "serde_json",
  "tokio",
@@ -2347,25 +2347,25 @@ dependencies = [
 
 [[package]]
 name = "everruns-integrations-parallel"
-version = "0.8.34"
+version = "0.8.35"
 dependencies = [
  "async-trait",
  "everruns-core",
  "inventory",
- "reqwest 0.13.3",
+ "reqwest 0.13.4",
  "serde_json",
  "tokio",
 ]
 
 [[package]]
 name = "everruns-integrations-sprites"
-version = "0.8.34"
+version = "0.8.35"
 dependencies = [
  "async-trait",
  "chrono",
  "everruns-core",
  "inventory",
- "reqwest 0.13.3",
+ "reqwest 0.13.4",
  "serde",
  "serde_json",
  "tokio",
@@ -2375,7 +2375,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-internal-protocol"
-version = "0.8.34"
+version = "0.8.35"
 dependencies = [
  "chrono",
  "everruns-core",
@@ -2392,7 +2392,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-llm-tests"
-version = "0.8.34"
+version = "0.8.35"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2411,7 +2411,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-macros"
-version = "0.8.34"
+version = "0.8.35"
 dependencies = [
  "quote",
  "syn 2.0.117",
@@ -2419,7 +2419,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-openai"
-version = "0.8.34"
+version = "0.8.35"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2429,7 +2429,7 @@ dependencies = [
  "everruns-core",
  "futures",
  "inventory",
- "reqwest 0.13.3",
+ "reqwest 0.13.4",
  "serde",
  "serde_json",
  "tokio",
@@ -2439,11 +2439,11 @@ dependencies = [
 
 [[package]]
 name = "everruns-openui"
-version = "0.8.34"
+version = "0.8.35"
 
 [[package]]
 name = "everruns-runtime"
-version = "0.8.34"
+version = "0.8.35"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2480,7 +2480,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-server"
-version = "0.8.34"
+version = "0.8.35"
 dependencies = [
  "aes-gcm",
  "ag-ui-core",
@@ -2538,7 +2538,7 @@ dependencies = [
  "prost-types",
  "rand 0.9.4",
  "regex",
- "reqwest 0.13.3",
+ "reqwest 0.13.4",
  "serde",
  "serde_html_form",
  "serde_json",
@@ -2568,7 +2568,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-session-sqldb"
-version = "0.8.34"
+version = "0.8.35"
 dependencies = [
  "async-trait",
  "base64 0.22.1",
@@ -2585,7 +2585,7 @@ dependencies = [
 
 [[package]]
 name = "everruns-worker"
-version = "0.8.34"
+version = "0.8.35"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2612,7 +2612,7 @@ dependencies = [
  "everruns-openai",
  "everruns-runtime",
  "prost-types",
- "reqwest 0.13.3",
+ "reqwest 0.13.4",
  "serde",
  "serde_json",
  "sqlx",
@@ -2705,7 +2705,7 @@ dependencies = [
  "ed25519-dalek",
  "futures",
  "rand 0.8.6",
- "reqwest 0.13.3",
+ "reqwest 0.13.4",
  "schemars",
  "serde",
  "serde_json",
@@ -3379,9 +3379,9 @@ dependencies = [
 
 [[package]]
 name = "http"
-version = "1.4.0"
+version = "1.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e3ba2a386d7f85a81f119ad7498ebe444d2e22c2af0b86b069416ace48b3311a"
+checksum = "8be7462df143984c4598a256ef469b251d7d7f9e271135073e78fc535414f3d0"
 dependencies = [
  "bytes",
  "itoa",
@@ -3955,9 +3955,9 @@ dependencies = [
 
 [[package]]
 name = "jiff"
-version = "0.2.24"
+version = "0.2.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f00b5dbd620d61dfdcb6007c9c1f6054ebd75319f163d886a9055cec1155073d"
+checksum = "392c70591e8749fe235ddaf513e6f58b26bce3dcc16524cecc8936f75afa161e"
 dependencies = [
  "jiff-static",
  "jiff-tzdb-platform",
@@ -3965,14 +3965,14 @@ dependencies = [
  "portable-atomic",
  "portable-atomic-util",
  "serde_core",
- "windows-sys 0.61.2",
+ "windows-link",
 ]
 
 [[package]]
 name = "jiff-static"
-version = "0.2.24"
+version = "0.2.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e000de030ff8022ea1da3f466fbb0f3a809f5e51ed31f6dd931c35181ad8e6d7"
+checksum = "47b605b0c050d845fc355bb11eb3f9a8deddc218ea60c76e61aa1f2adfb2c96a"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4309,9 +4309,9 @@ dependencies = [
 
 [[package]]
 name = "log"
-version = "0.4.29"
+version = "0.4.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
+checksum = "616ec5685824bcc94416c6d4a7a446eea774a31efd7062c8480ba6fd06d7a6e5"
 
 [[package]]
 name = "logos"
@@ -4319,7 +4319,16 @@ version = "0.15.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ff472f899b4ec2d99161c51f60ff7075eeb3097069a36050d8037a6325eb8154"
 dependencies = [
- "logos-derive",
+ "logos-derive 0.15.1",
+]
+
+[[package]]
+name = "logos"
+version = "0.16.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eb2c55a318a87600ea870ff8c2012148b44bf18b74fad48d0f835c38c7d07c5f"
+dependencies = [
+ "logos-derive 0.16.1",
 ]
 
 [[package]]
@@ -4339,12 +4348,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "logos-codegen"
+version = "0.16.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "58b3ffaa284e1350d017a57d04ada118c4583cf260c8fb01e0fe28a2e9cf8970"
+dependencies = [
+ "fnv",
+ "proc-macro2",
+ "quote",
+ "regex-automata",
+ "regex-syntax",
+ "syn 2.0.117",
+]
+
+[[package]]
 name = "logos-derive"
 version = "0.15.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "605d9697bcd5ef3a42d38efc51541aa3d6a4a25f7ab6d1ed0da5ac632a26b470"
 dependencies = [
- "logos-codegen",
+ "logos-codegen 0.15.1",
+]
+
+[[package]]
+name = "logos-derive"
+version = "0.16.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "52d3a9855747c17eaf4383823f135220716ab49bea5fbea7dd42cc9a92f8aa31"
+dependencies = [
+ "logos-codegen 0.16.1",
 ]
 
 [[package]]
@@ -4409,9 +4441,9 @@ dependencies = [
 
 [[package]]
 name = "memchr"
-version = "2.8.0"
+version = "2.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
+checksum = "6b947ae49db0d222b1dbc6b113ce7248a3fc3a6ca21b696717bfc000ba4484d8"
 
 [[package]]
 name = "memmem"
@@ -5567,11 +5599,11 @@ dependencies = [
 
 [[package]]
 name = "prost-reflect"
-version = "0.16.3"
+version = "0.16.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b89455ef41ed200cafc47c76c552ee7792370ac420497e551f16123a9135f76e"
+checksum = "590aa145fee8f7a26b5a6055365e7c5e89a5c1caae9869de76ec0ee73181a2f9"
 dependencies = [
- "logos",
+ "logos 0.16.1",
  "miette",
  "prost",
  "prost-types",
@@ -5671,7 +5703,7 @@ version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "072eee358134396a4643dff81cfff1c255c9fbd3fb296be14bdb6a26f9156366"
 dependencies = [
- "logos",
+ "logos 0.15.1",
  "miette",
  "prost-types",
  "thiserror 2.0.18",
@@ -6200,9 +6232,9 @@ dependencies = [
 
 [[package]]
 name = "reqwest"
-version = "0.13.3"
+version = "0.13.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "62e0021ea2c22aed41653bc7e1419abb2c97e038ff2c33d0e1309e49a97deec0"
+checksum = "219c5811de6525e5416c7d5d53bb656d3afdbc6c5af816e0802bcfa42dbdc1c3"
 dependencies = [
  "base64 0.22.1",
  "bytes",
