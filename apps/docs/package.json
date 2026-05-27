@@ -21,11 +21,12 @@
     "astro": "^6.3.7",
     "js-yaml": "^4.1.0",
     "marked": "^18.0.3",
-    "shiki": "^4.0.2",
     "sharp": "^0.34.5",
+    "shiki": "^4.0.2",
     "starlight-openapi": "^0.25.3",
     "starlight-sidebar-topics": "^0.7.1",
-    "typescript": "^6.0.3"
+    "typescript": "^6.0.3",
+    "zod": "^4.4.3"
   },
   "pnpm": {
     "overrides": {
