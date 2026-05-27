@@ -124,10 +124,33 @@ disagree about what's offered.
 `self`, `events`, `update`, `delete`, and `pin`/`unpin` (chosen by
 `is_pinned`) are unconditional.
 
+**Agents**: `self`, `update`, `versions`, `delete` unconditional;
+`copy` only on `active` (archived/deleted agents can't be forked).
+
+**Harnesses**: `self`, `update`, `delete` unconditional; `copy` only
+on `active`.
+
+**Apps**: `self`, `update`, `runs`, `delete` unconditional. The
+`draft` ↔ `published` lifecycle pair gates `publish` (on `draft`)
+vs `unpublish` (on `published`); `archived`/`deleted` apps expose
+neither.
+
+**Skills**: `self`, `update`, `content` unconditional; `delete` only
+on `active`/`disabled` (not on already-archived/deleted skills, which
+are already terminal-state tombstones).
+
+Each resolver is a pure function over `(id, status, …, api_base)`,
+unit-tested alongside `session_allowed_actions` in
+`crates/server/src/api/common.rs`.
+
 ## Out of scope (tracked separately)
 
-* Rolling the convention out to Agents, Harnesses, Volumes, Schedules,
-  Skills, Apps, etc. (follow-on issue).
-* A ratchet gate for "% of entity responses carrying allowed_actions" —
-  designable after a few clusters have opted in so the floor isn't
-  premature.
+* Rolling the convention out to Volumes, Schedules, Memory stores,
+  Knowledge bases, Payment accounts/policies, API keys, and Saved
+  reports — these don't currently flow through `UrlBuilder::wrap`
+  with `WithUrls<T>` (most rely on the `decorate_value_links`
+  middleware for `self_url`/`view_url`). Opting them in requires a
+  per-handler change to the response wrapper.
+* A ratchet gate for "% of entity responses carrying allowed_actions"
+  — designable after the remaining clusters have opted in so the
+  floor isn't premature.
