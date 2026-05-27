@@ -13,8 +13,10 @@
 // every line so a crash mid-session loses at most the event in flight.
 //
 // Concerns explicitly handled below:
-// * 0o600 file mode on Unix (owner-only): session logs contain prompts,
-//   tool arguments, and tool output.
+// * Owner-only on Unix: `events.jsonl` is opened with `0o600` and the
+//   per-session folder is `chmod`-ed to `0o700` on open. Session logs
+//   contain prompts, tool arguments, and tool output, plus the
+//   reasoning artifacts described below.
 // * Replay keeps event types that (a) round-trip into the conversation
 //   (`input.message`, `output.message.completed`, `tool.completed`) and
 //   (b) the agent needs to restore the live transcript view and provider
@@ -23,12 +25,12 @@
 //   inflate the log O(n²) for long streamed responses.
 // * Assistant `thinking` / `thinking_signature` fields ARE persisted in
 //   ercode's per-session JSONL. The per-session folder is the local
-//   private session store (0o600 on Unix) and provider continuation on
-//   resume requires the signature/encrypted_content (e.g. OpenAI
-//   Responses threads the encrypted reasoning context back via
-//   `thinking_signature`). The contract is local-store, not user-facing
-//   transcript export — see the coding-cli README for the public/private
-//   distinction.
+//   private session store (owner-only on Unix, see above) and provider
+//   continuation on resume requires the signature/encrypted_content
+//   (e.g. OpenAI Responses threads the encrypted reasoning context back
+//   via `thinking_signature`). The contract is local-store, not
+//   user-facing transcript export — see the coding-cli README for the
+//   public/private distinction.
 // * Replay rejects events whose `session_id` doesn't match the resumed
 //   session — guards against accidentally merging logs across sessions.
 // * On open, if the file does not end with `\n` (previous run crashed
@@ -229,6 +231,25 @@ impl JsonlEventEmitter {
             std::fs::create_dir_all(parent).map_err(|e| {
                 AgentLoopError::config(format!("create session log dir {}: {e}", parent.display()))
             })?;
+            // Per-session folder is owner-only on Unix. The events.jsonl
+            // file gets `0o600` below, but the folder may also hold tool
+            // outputs (`/outputs/`) and other per-session artifacts;
+            // tightening the directory keeps every file inside private
+            // even if a caller later creates one without an explicit
+            // mode. Idempotent — set on every open so a session folder
+            // that pre-dates this change gets corrected next resume.
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700)).map_err(
+                    |e| {
+                        AgentLoopError::config(format!(
+                            "tighten session dir permissions on {}: {e}",
+                            parent.display()
+                        ))
+                    },
+                )?;
+            }
         }
         let mut opts = OpenOptions::new();
         // `read(true)` is required so we can read the file's last byte
@@ -540,6 +561,64 @@ mod tests {
         assert_eq!(
             std::fs::read_to_string(&current_path).expect("read current"),
             "current event\n"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn open_tightens_session_dir_to_owner_only_on_unix() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let session_id = SessionId::from_seed(48222);
+        let session_dir = session_dir_path(dir.path(), session_id);
+        let path = session_log_path(&session_dir);
+
+        let _emitter = JsonlEventEmitter::open(&path, 1).expect("open");
+
+        let mode = std::fs::metadata(&session_dir)
+            .expect("session dir exists")
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(
+            mode, 0o700,
+            "per-session folder must be owner-only on Unix, got {mode:o}"
+        );
+
+        let file_mode = std::fs::metadata(&path)
+            .expect("events.jsonl exists")
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(
+            file_mode, 0o600,
+            "events.jsonl must be owner-only on Unix, got {file_mode:o}"
+        );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn open_corrects_loose_session_dir_permissions_on_resume() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().expect("tempdir");
+        let session_id = SessionId::from_seed(48223);
+        let session_dir = session_dir_path(dir.path(), session_id);
+        let path = session_log_path(&session_dir);
+
+        std::fs::create_dir_all(&session_dir).expect("pre-create");
+        std::fs::set_permissions(&session_dir, std::fs::Permissions::from_mode(0o755))
+            .expect("loosen for test");
+
+        let _emitter = JsonlEventEmitter::open(&path, 1).expect("open");
+
+        let mode = std::fs::metadata(&session_dir)
+            .expect("session dir exists")
+            .permissions()
+            .mode()
+            & 0o777;
+        assert_eq!(
+            mode, 0o700,
+            "resume must re-tighten an existing loose session folder, got {mode:o}"
         );
     }
 

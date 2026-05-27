@@ -169,11 +169,13 @@ resume after upgrading from the old flat-log layout, ercode copies
 `events.jsonl` exists yet. The folder layout leaves room for other
 session-scoped stores, such as key/value data, to sit beside the event log.
 
-One serialized `Event` per line, flushed after every write. On Unix the
-event file is created with `0o600` (owner-only) because session logs contain
-user prompts, tool arguments, and tool output. The session id is
-generated fresh on every plain `ercode` invocation and printed in the
-startup banner (`[session] session_… (folder: …; log: …)`).
+One serialized `Event` per line, flushed after every write. On Unix
+`events.jsonl` is created with `0o600` and its parent session folder
+is set to `0o700` (both owner-only) because session logs contain user
+prompts, tool arguments, tool output, and the reasoning artifacts
+discussed below. The session id is generated fresh on every plain
+`ercode` invocation and printed in the startup banner (`[session]
+session_… (folder: …; log: …)`).
 
 The event types kept on disk are those that round-trip into the
 conversation (`input.message`, `output.message.completed`,
@@ -192,8 +194,9 @@ dropped from the log — they are live status signals only and the delta
 types would inflate the file O(n²) without adding resume value.
 
 This persistence contract is **local-store**, not user-facing
-transcript export. The per-session folder is owner-only (0o600 on
-Unix) under the platform-native user data directory; treat its
+transcript export. On Unix, the per-session folder is set to `0o700`
+and the `events.jsonl` file inside it to `0o600` on every open, both
+under the platform-native user data directory; treat the folder
 contents as sensitive (see [Sensitivity](#sensitivity) below).
 
 To continue a previous conversation, pass `--session <id>`:
