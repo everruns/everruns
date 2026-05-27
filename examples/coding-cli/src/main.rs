@@ -205,7 +205,7 @@ async fn run_tui(
         tokio::sync::oneshot::Sender<bool>,
     )>,
 ) -> Result<()> {
-    enable_raw_mode()?;
+    let mut raw_mode = RawModeGuard::new()?;
     let stdout = io::stdout();
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::with_options(
@@ -220,10 +220,11 @@ async fn run_tui(
     let show_resume_hint = app.should_show_resume_hint();
     let session_id = app.session_id();
 
-    terminal.clear()?;
-    terminal.show_cursor()?;
-    disable_raw_mode()?;
+    let cleanup_result = terminal.clear().and_then(|_| terminal.show_cursor());
     drop(terminal);
+    raw_mode.disable()?;
+    cleanup_result?;
+
     if show_resume_hint {
         println!();
         print_resume_divider();
@@ -232,6 +233,34 @@ async fn run_tui(
         print_centered_ukraine_banner();
     }
     result
+}
+
+struct RawModeGuard {
+    active: bool,
+}
+
+impl RawModeGuard {
+    fn new() -> Result<Self> {
+        enable_raw_mode()?;
+        Ok(Self { active: true })
+    }
+
+    fn disable(&mut self) -> Result<()> {
+        if self.active {
+            disable_raw_mode()?;
+            self.active = false;
+        }
+        Ok(())
+    }
+}
+
+impl Drop for RawModeGuard {
+    fn drop(&mut self) {
+        if self.active {
+            let _ = disable_raw_mode();
+            self.active = false;
+        }
+    }
 }
 
 fn print_resume_divider() {

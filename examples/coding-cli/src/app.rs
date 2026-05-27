@@ -358,10 +358,11 @@ impl App {
             return Ok(());
         }
 
-        let height = rendered.len().min(u16::MAX as usize) as u16;
-        terminal.insert_before(height, |buf| {
-            Paragraph::new(rendered).render(buf.area, buf);
-        })?;
+        for chunk in rendered.chunks(u16::MAX as usize) {
+            terminal.insert_before(chunk.len() as u16, |buf| {
+                Paragraph::new(chunk.to_vec()).render(buf.area, buf);
+            })?;
+        }
         self.printed_lines = self.lines.len();
         Ok(())
     }
@@ -1622,7 +1623,7 @@ fn message_separator_title(app: &App) -> Line<'static> {
         return Line::from(vec![
             Span::styled("─── ", Style::default().fg(ACCENT_GOLD)),
             Span::styled(
-                "approval pending - answer y / n above ",
+                "approval pending - press y / n ",
                 Style::default()
                     .fg(ACCENT_GOLD)
                     .add_modifier(Modifier::BOLD),
@@ -1702,6 +1703,9 @@ fn display_path(path: &std::path::Path) -> String {
     if let Ok(home) = std::env::var("HOME") {
         let home = std::path::Path::new(&home);
         if let Ok(rest) = path.strip_prefix(home) {
+            if rest.as_os_str().is_empty() {
+                return "~".to_string();
+            }
             return format!("~/{}", rest.display());
         }
     }
