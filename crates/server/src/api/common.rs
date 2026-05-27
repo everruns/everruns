@@ -1189,25 +1189,194 @@ impl<T: ResourceUrlable + Serialize> ListResponse<T> {
 
 // ── ResourceUrlable implementations ──────────────────────────────────────────
 
-macro_rules! impl_resource_urlable {
-    ($ty:ty, $api:expr, $ui:expr, $id_field:ident) => {
-        impl ResourceUrlable for $ty {
-            fn api_path() -> &'static str {
-                $api
-            }
-            fn ui_path() -> &'static str {
-                $ui
-            }
-            fn resource_id(&self) -> String {
-                self.$id_field.to_string()
-            }
-        }
-    };
+// ---------------------------------------------------------------
+// Hypermedia rollout — EVE-494.
+//
+// One pure resolver per cluster, kept here so the (state → rel set)
+// mapping is testable without constructing a full entity. The
+// `ResourceUrlable` impl delegates to the resolver. New `rel`s must
+// also be documented in `specs/api-conventions.md`.
+// ---------------------------------------------------------------
+
+/// Hypermedia actions for an `Agent`. See `specs/api-conventions.md`.
+pub fn agent_allowed_actions(
+    id: &str,
+    status: &everruns_core::AgentStatus,
+    api_base: &str,
+) -> Vec<AllowedAction> {
+    use everruns_core::AgentStatus;
+    let mut actions = vec![
+        AllowedAction::new("self")
+            .with_method("GET")
+            .with_operation_id("get_agent")
+            .with_href(format!("{api_base}/v1/agents/{id}"))
+            .with_hint("Fetch the latest representation of this agent."),
+        AllowedAction::new("update")
+            .with_method("PATCH")
+            .with_operation_id("update_agent")
+            .with_href(format!("{api_base}/v1/agents/{id}"))
+            .with_schema_ref("#/components/schemas/UpdateAgentRequest")
+            .with_hint("Edit agent metadata (name, system prompt, capabilities, etc.)."),
+        AllowedAction::new("versions")
+            .with_method("GET")
+            .with_operation_id("list_agent_versions")
+            .with_href(format!("{api_base}/v1/agents/{id}/versions"))
+            .with_hint("List the immutable version history for this agent."),
+    ];
+    if matches!(status, AgentStatus::Active) {
+        actions.push(
+            AllowedAction::new("copy")
+                .with_method("POST")
+                .with_operation_id("copy_agent")
+                .with_href(format!("{api_base}/v1/agents/{id}/copy"))
+                .with_hint("Fork this agent into a new editable copy."),
+        );
+    }
+    actions.push(
+        AllowedAction::new("delete")
+            .with_method("DELETE")
+            .with_operation_id("delete_agent")
+            .with_href(format!("{api_base}/v1/agents/{id}"))
+            .with_hint("Delete (or tombstone) this agent."),
+    );
+    actions
 }
 
-impl_resource_urlable!(everruns_core::Agent, "v1/agents", "agents", public_id);
-impl_resource_urlable!(everruns_core::Harness, "v1/harnesses", "harnesses", id);
-impl_resource_urlable!(everruns_core::App, "v1/apps", "apps", public_id);
+impl ResourceUrlable for everruns_core::Agent {
+    fn api_path() -> &'static str {
+        "v1/agents"
+    }
+    fn ui_path() -> &'static str {
+        "agents"
+    }
+    fn resource_id(&self) -> String {
+        self.public_id.to_string()
+    }
+    fn allowed_actions(&self, api_base: &str) -> Vec<AllowedAction> {
+        agent_allowed_actions(&self.public_id.to_string(), &self.status, api_base)
+    }
+}
+
+/// Hypermedia actions for a `Harness`. See `specs/api-conventions.md`.
+pub fn harness_allowed_actions(
+    id: &str,
+    status: &everruns_core::HarnessStatus,
+    api_base: &str,
+) -> Vec<AllowedAction> {
+    use everruns_core::HarnessStatus;
+    let mut actions = vec![
+        AllowedAction::new("self")
+            .with_method("GET")
+            .with_operation_id("get_harness")
+            .with_href(format!("{api_base}/v1/harnesses/{id}"))
+            .with_hint("Fetch the latest representation of this harness."),
+        AllowedAction::new("update")
+            .with_method("PATCH")
+            .with_operation_id("update_harness")
+            .with_href(format!("{api_base}/v1/harnesses/{id}"))
+            .with_schema_ref("#/components/schemas/UpdateHarnessRequest")
+            .with_hint("Edit harness metadata and configuration."),
+    ];
+    if matches!(status, HarnessStatus::Active) {
+        actions.push(
+            AllowedAction::new("copy")
+                .with_method("POST")
+                .with_operation_id("copy_harness")
+                .with_href(format!("{api_base}/v1/harnesses/{id}/copy"))
+                .with_hint("Fork this harness into a new editable copy."),
+        );
+    }
+    actions.push(
+        AllowedAction::new("delete")
+            .with_method("DELETE")
+            .with_operation_id("delete_harness")
+            .with_href(format!("{api_base}/v1/harnesses/{id}"))
+            .with_hint("Delete (or tombstone) this harness."),
+    );
+    actions
+}
+
+impl ResourceUrlable for everruns_core::Harness {
+    fn api_path() -> &'static str {
+        "v1/harnesses"
+    }
+    fn ui_path() -> &'static str {
+        "harnesses"
+    }
+    fn resource_id(&self) -> String {
+        self.id.to_string()
+    }
+    fn allowed_actions(&self, api_base: &str) -> Vec<AllowedAction> {
+        harness_allowed_actions(&self.id.to_string(), &self.status, api_base)
+    }
+}
+
+/// Hypermedia actions for an `App`. See `specs/api-conventions.md`.
+pub fn app_allowed_actions(
+    id: &str,
+    status: &everruns_core::AppStatus,
+    api_base: &str,
+) -> Vec<AllowedAction> {
+    use everruns_core::AppStatus;
+    let mut actions = vec![
+        AllowedAction::new("self")
+            .with_method("GET")
+            .with_operation_id("get_app")
+            .with_href(format!("{api_base}/v1/apps/{id}"))
+            .with_hint("Fetch the latest representation of this app."),
+        AllowedAction::new("update")
+            .with_method("PATCH")
+            .with_operation_id("update_app")
+            .with_href(format!("{api_base}/v1/apps/{id}"))
+            .with_schema_ref("#/components/schemas/UpdateAppRequest")
+            .with_hint("Edit app metadata, channels, or agent binding."),
+        AllowedAction::new("runs")
+            .with_method("GET")
+            .with_operation_id("list_app_runs")
+            .with_href(format!("{api_base}/v1/apps/{id}/runs"))
+            .with_hint("List recent runs (sessions) initiated through this app."),
+    ];
+    match status {
+        AppStatus::Draft => actions.push(
+            AllowedAction::new("publish")
+                .with_method("POST")
+                .with_operation_id("publish_app")
+                .with_href(format!("{api_base}/v1/apps/{id}/publish"))
+                .with_hint("Publish this draft app so its configured channels accept traffic."),
+        ),
+        AppStatus::Published => actions.push(
+            AllowedAction::new("unpublish")
+                .with_method("POST")
+                .with_operation_id("unpublish_app")
+                .with_href(format!("{api_base}/v1/apps/{id}/unpublish"))
+                .with_hint("Revert this app to draft and stop accepting channel traffic."),
+        ),
+        AppStatus::Archived | AppStatus::Deleted => {}
+    }
+    actions.push(
+        AllowedAction::new("delete")
+            .with_method("DELETE")
+            .with_operation_id("delete_app")
+            .with_href(format!("{api_base}/v1/apps/{id}"))
+            .with_hint("Delete (or tombstone) this app."),
+    );
+    actions
+}
+
+impl ResourceUrlable for everruns_core::App {
+    fn api_path() -> &'static str {
+        "v1/apps"
+    }
+    fn ui_path() -> &'static str {
+        "apps"
+    }
+    fn resource_id(&self) -> String {
+        self.public_id.to_string()
+    }
+    fn allowed_actions(&self, api_base: &str) -> Vec<AllowedAction> {
+        app_allowed_actions(&self.public_id.to_string(), &self.status, api_base)
+    }
+}
 
 impl ResourceUrlable for everruns_core::budget::Budget {
     fn api_path() -> &'static str {
@@ -1369,6 +1538,43 @@ impl ResourceUrlable for everruns_core::McpServer {
     }
 }
 
+/// Hypermedia actions for a `Skill`. See `specs/api-conventions.md`.
+pub fn skill_allowed_actions(
+    id: &str,
+    status: &everruns_core::SkillStatus,
+    api_base: &str,
+) -> Vec<AllowedAction> {
+    use everruns_core::SkillStatus;
+    let mut actions = vec![
+        AllowedAction::new("self")
+            .with_method("GET")
+            .with_operation_id("get_skill")
+            .with_href(format!("{api_base}/v1/skills/{id}"))
+            .with_hint("Fetch the latest representation of this skill."),
+        AllowedAction::new("update")
+            .with_method("PATCH")
+            .with_operation_id("update_skill")
+            .with_href(format!("{api_base}/v1/skills/{id}"))
+            .with_schema_ref("#/components/schemas/UpdateSkillRequest")
+            .with_hint("Edit skill metadata or contents."),
+        AllowedAction::new("content")
+            .with_method("GET")
+            .with_operation_id("get_skill_content")
+            .with_href(format!("{api_base}/v1/skills/{id}/content"))
+            .with_hint("Fetch the raw SKILL.md content."),
+    ];
+    if matches!(status, SkillStatus::Active | SkillStatus::Disabled) {
+        actions.push(
+            AllowedAction::new("delete")
+                .with_method("DELETE")
+                .with_operation_id("delete_skill")
+                .with_href(format!("{api_base}/v1/skills/{id}"))
+                .with_hint("Delete (or tombstone) this skill."),
+        );
+    }
+    actions
+}
+
 impl ResourceUrlable for everruns_core::Skill {
     fn api_path() -> &'static str {
         "v1/skills"
@@ -1381,6 +1587,9 @@ impl ResourceUrlable for everruns_core::Skill {
     }
     fn ui_url_path(&self) -> String {
         "skills".to_string()
+    }
+    fn allowed_actions(&self, api_base: &str) -> Vec<AllowedAction> {
+        skill_allowed_actions(&self.id.to_string(), &self.status, api_base)
     }
 }
 
@@ -2108,5 +2317,102 @@ mod tests {
             value.get("allowed_actions").is_none(),
             "resources that didn't opt in must not emit allowed_actions: {value}"
         );
+    }
+
+    // ----------------------------------------------------------------
+    // Hypermedia rollout — EVE-494
+    // ----------------------------------------------------------------
+
+    #[test]
+    fn agent_actions_offer_copy_only_when_active() {
+        use everruns_core::AgentStatus;
+        let active = agent_allowed_actions("agent_01", &AgentStatus::Active, "https://api.example");
+        let archived =
+            agent_allowed_actions("agent_01", &AgentStatus::Archived, "https://api.example");
+        assert!(
+            active.iter().any(|a| a.rel == "copy"),
+            "active agent should expose copy"
+        );
+        assert!(
+            !archived.iter().any(|a| a.rel == "copy"),
+            "archived agent should not expose copy"
+        );
+        let rels: Vec<&str> = active.iter().map(|a| a.rel.as_str()).collect();
+        for expected in ["self", "update", "versions", "delete"] {
+            assert!(
+                rels.contains(&expected),
+                "missing rel `{expected}` for active agent: {rels:?}"
+            );
+        }
+        let update = active.iter().find(|a| a.rel == "update").unwrap();
+        assert_eq!(
+            update.schema_ref.as_deref(),
+            Some("#/components/schemas/UpdateAgentRequest")
+        );
+    }
+
+    #[test]
+    fn harness_actions_offer_copy_only_when_active() {
+        use everruns_core::HarnessStatus;
+        let active =
+            harness_allowed_actions("harness_01", &HarnessStatus::Active, "https://api.example");
+        let archived = harness_allowed_actions(
+            "harness_01",
+            &HarnessStatus::Archived,
+            "https://api.example",
+        );
+        assert!(active.iter().any(|a| a.rel == "copy"));
+        assert!(!archived.iter().any(|a| a.rel == "copy"));
+    }
+
+    #[test]
+    fn app_actions_flip_publish_unpublish_on_status() {
+        use everruns_core::AppStatus;
+        let draft = app_allowed_actions("app_01", &AppStatus::Draft, "https://api.example");
+        let published = app_allowed_actions("app_01", &AppStatus::Published, "https://api.example");
+        let archived = app_allowed_actions("app_01", &AppStatus::Archived, "https://api.example");
+
+        let draft_rels: Vec<&str> = draft.iter().map(|a| a.rel.as_str()).collect();
+        let published_rels: Vec<&str> = published.iter().map(|a| a.rel.as_str()).collect();
+        let archived_rels: Vec<&str> = archived.iter().map(|a| a.rel.as_str()).collect();
+
+        assert!(
+            draft_rels.contains(&"publish") && !draft_rels.contains(&"unpublish"),
+            "draft app offers publish, not unpublish: {draft_rels:?}"
+        );
+        assert!(
+            published_rels.contains(&"unpublish") && !published_rels.contains(&"publish"),
+            "published app offers unpublish, not publish: {published_rels:?}"
+        );
+        assert!(
+            !archived_rels.contains(&"publish") && !archived_rels.contains(&"unpublish"),
+            "archived app offers neither: {archived_rels:?}"
+        );
+        // `runs` is always present.
+        for rels in [&draft_rels, &published_rels, &archived_rels] {
+            assert!(
+                rels.contains(&"runs"),
+                "expected runs rel in every state: {rels:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn skill_actions_omit_delete_for_terminal_states() {
+        use everruns_core::SkillStatus;
+        for status in [SkillStatus::Active, SkillStatus::Disabled] {
+            let actions = skill_allowed_actions("skill_01", &status, "https://api.example");
+            assert!(
+                actions.iter().any(|a| a.rel == "delete"),
+                "{status:?}: expected delete"
+            );
+        }
+        for status in [SkillStatus::Archived, SkillStatus::Deleted] {
+            let actions = skill_allowed_actions("skill_01", &status, "https://api.example");
+            assert!(
+                !actions.iter().any(|a| a.rel == "delete"),
+                "{status:?}: delete should not appear on already-terminal states"
+            );
+        }
     }
 }
