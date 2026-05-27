@@ -157,21 +157,54 @@ pub struct ErrorResponse {
     pub retry_after_seconds: Option<u32>,
 }
 
-/// Agent-actionable recovery hint attached to an error response.
+/// Agent-actionable link describing a follow-up the caller can take. Used in
+/// two contexts:
+///
+/// * **Error recovery** — `ErrorResponse.allowed_actions` carries `rel`s like
+///   `retry`, `retry-later`, `unarchive`, `get-existing` so the agent knows
+///   the right next call after a 4xx/429.
+/// * **Entity hypermedia** — `WithUrls<T>.allowed_actions` carries state-aware
+///   `rel`s like `cancel`, `events`, `self`, `update` on the entity itself
+///   so the agent can follow links instead of reconstructing routes from
+///   prose.
+///
+/// The shape is intentionally identical across both contexts; the closed
+/// `rel` vocabulary documented in `specs/api-conventions.md` distinguishes
+/// them.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema, Default)]
 pub struct AllowedAction {
-    /// Link relation describing the action (e.g. `retry`, `get-existing`,
-    /// `unarchive`, `retry-later`).
+    /// Link relation describing the action. Closed vocabulary documented
+    /// in `specs/api-conventions.md` — examples: `self`, `cancel`, `pause`,
+    /// `resume`, `events`, `retry`, `retry-later`, `unarchive`,
+    /// `get-existing`, `delete`, `update`.
     pub rel: String,
-    /// OpenAPI `operationId` the caller should invoke to recover.
+    /// OpenAPI `operationId` the caller should invoke. Lets an MCP client
+    /// resolve the call without parsing `href`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub operation_id: Option<String>,
-    /// Short, agent-readable hint (e.g. "Shorten 'name' to <= 200 chars.").
+    /// HTTP method to use against `href`. Required for entity hypermedia
+    /// actions; usually omitted on error-recovery actions where the same
+    /// operation is retried with its original method.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(example = "POST")]
+    pub method: Option<String>,
+    /// Short, agent-readable hint (e.g. "Shorten 'name' to <= 200 chars.",
+    /// "Cancel the active turn for this session.").
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hint: Option<String>,
-    /// Optional absolute or relative URL the caller may invoke directly.
+    /// Absolute (preferred) or relative URL the caller may invoke
+    /// directly. **Always present on entity hypermedia actions**
+    /// (`WithUrls<T>.allowed_actions`); **optional on error-recovery
+    /// actions** (`ErrorResponse.allowed_actions`) where the matching
+    /// `operation_id` is enough and the URI is implicit from the failed
+    /// call.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub href: Option<String>,
+    /// OpenAPI `$ref` to the request-body schema, when the action takes one
+    /// (e.g. `#/components/schemas/UpdateSessionRequest`). Lets a tool-calling
+    /// agent fetch the input shape without scanning the whole spec.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub schema_ref: Option<String>,
 }
 
 impl AllowedAction {
@@ -187,6 +220,11 @@ impl AllowedAction {
         self
     }
 
+    pub fn with_method(mut self, method: impl Into<String>) -> Self {
+        self.method = Some(method.into());
+        self
+    }
+
     pub fn with_hint(mut self, hint: impl Into<String>) -> Self {
         self.hint = Some(hint.into());
         self
@@ -194,6 +232,11 @@ impl AllowedAction {
 
     pub fn with_href(mut self, href: impl Into<String>) -> Self {
         self.href = Some(href.into());
+        self
+    }
+
+    pub fn with_schema_ref(mut self, schema_ref: impl Into<String>) -> Self {
+        self.schema_ref = Some(schema_ref.into());
         self
     }
 }
@@ -585,15 +628,18 @@ impl UrlBuilder {
         Self::new(&config.base_url, &config.frontend_url)
     }
 
-    /// Wrap a single resource with API and UI links.
+    /// Wrap a single resource with API and UI links plus its state-aware
+    /// hypermedia actions (see `ResourceUrlable::allowed_actions`).
     pub fn wrap<T: ResourceUrlable + Serialize>(&self, item: T) -> WithUrls<T> {
         let api_path = item.api_url_path();
         let ui_path = item.ui_url_path();
         let view_url = format!("{}/{}", self.ui_base, ui_path);
+        let allowed_actions = item.allowed_actions(&self.api_base);
         WithUrls {
             self_url: format!("{}/{}", self.api_base, api_path),
             view_url: view_url.clone(),
             ui_link: view_url,
+            allowed_actions,
             inner: item,
         }
     }
@@ -1038,12 +1084,26 @@ pub trait ResourceUrlable {
     fn ui_url_path(&self) -> String {
         format!("{}/{}", Self::ui_path(), self.resource_id())
     }
+    /// State-aware hypermedia actions for this resource. Overridden per-type
+    /// to map (entity state) → (next-action links); the default is empty so
+    /// existing types stay wire-compatible until they opt in. `api_base`
+    /// is the absolute API base URL from `AuthConfig.base_url` —
+    /// **without the `/v1` resource prefix** (e.g.
+    /// `https://app.everruns.com/api`, not `…/api/v1`). The resolver is
+    /// responsible for the versioned path. See
+    /// `specs/api-conventions.md` for the closed `rel` vocabulary.
+    fn allowed_actions(&self, _api_base: &str) -> Vec<AllowedAction> {
+        Vec::new()
+    }
 }
 
 /// Wrapper that adds API and UI links to a serialized resource.
 ///
 /// Uses `self_url` (not `url`) for the API link to avoid collision with
-/// resources that already have a `url` field (e.g. McpServer).
+/// resources that already have a `url` field (e.g. McpServer). The
+/// `allowed_actions` array carries state-aware hypermedia links — empty
+/// (and omitted from the wire shape) until the underlying resource opts
+/// into the convention by overriding `ResourceUrlable::allowed_actions`.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct WithUrls<T: Serialize> {
     /// Full API endpoint URL for this resource.
@@ -1052,6 +1112,12 @@ pub struct WithUrls<T: Serialize> {
     pub view_url: String,
     /// Alias for `view_url`, used by command and MCP outputs.
     pub ui_link: String,
+    /// State-aware hypermedia actions the caller can take on this resource
+    /// next (e.g. `cancel`, `events`, `update`). Omitted from the wire
+    /// shape when empty so resources that haven't opted into the
+    /// convention don't grow their payloads.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub allowed_actions: Vec<AllowedAction>,
     /// The resource itself (fields are flattened into the parent object).
     #[serde(flatten)]
     pub inner: T,
@@ -1143,6 +1209,85 @@ impl ResourceUrlable for everruns_core::budget::Budget {
     }
 }
 
+/// Pure resolver for session hypermedia actions — split out from the
+/// `ResourceUrlable` impl below so unit tests can exercise the state →
+/// rel set mapping without constructing a full `Session`.
+///
+/// Cancel is offered only while a turn is mid-flight (`Active` /
+/// `WaitingForToolResults`); pin/unpin flips on `is_pinned`; events
+/// streaming, metadata edits, and delete are unconditional because the
+/// API exposes them regardless of run state.
+pub fn session_allowed_actions(
+    id: &str,
+    status: &everruns_core::session::SessionStatus,
+    is_pinned: bool,
+    api_base: &str,
+) -> Vec<AllowedAction> {
+    use everruns_core::session::SessionStatus;
+    let mut actions = Vec::new();
+    actions.push(
+        AllowedAction::new("self")
+            .with_method("GET")
+            .with_operation_id("get_session")
+            .with_href(format!("{api_base}/v1/sessions/{id}"))
+            .with_hint("Fetch the latest representation of this session."),
+    );
+    actions.push(
+        AllowedAction::new("events")
+            .with_method("GET")
+            .with_operation_id("list_events")
+            .with_href(format!("{api_base}/v1/sessions/{id}/events"))
+            .with_hint("List session events (JSON polling; supports type filters and pagination)."),
+    );
+    actions.push(
+        AllowedAction::new("stream")
+            .with_method("GET")
+            .with_operation_id("stream_sse")
+            .with_href(format!("{api_base}/v1/sessions/{id}/sse"))
+            .with_hint("Subscribe to session events live over Server-Sent Events."),
+    );
+    if matches!(
+        status,
+        SessionStatus::Active | SessionStatus::WaitingForToolResults
+    ) {
+        actions.push(
+            AllowedAction::new("cancel")
+                .with_method("POST")
+                .with_operation_id("cancel_turn")
+                .with_href(format!("{api_base}/v1/sessions/{id}/cancel"))
+                .with_hint("Cancel the active turn for this session."),
+        );
+    }
+    actions.push(
+        AllowedAction::new("update")
+            .with_method("PATCH")
+            .with_operation_id("update_session")
+            .with_href(format!("{api_base}/v1/sessions/{id}"))
+            .with_schema_ref("#/components/schemas/UpdateSessionRequest")
+            .with_hint("Edit session metadata (title, tags, pin, etc.)."),
+    );
+    let pin_rel = if is_pinned {
+        ("unpin", "DELETE", "unpin_session", "Unpin this session.")
+    } else {
+        ("pin", "PUT", "pin_session", "Pin this session.")
+    };
+    actions.push(
+        AllowedAction::new(pin_rel.0)
+            .with_method(pin_rel.1)
+            .with_operation_id(pin_rel.2)
+            .with_href(format!("{api_base}/v1/sessions/{id}/pin"))
+            .with_hint(pin_rel.3),
+    );
+    actions.push(
+        AllowedAction::new("delete")
+            .with_method("DELETE")
+            .with_operation_id("delete_session")
+            .with_href(format!("{api_base}/v1/sessions/{id}"))
+            .with_hint("Delete this session."),
+    );
+    actions
+}
+
 impl ResourceUrlable for everruns_core::Session {
     fn api_path() -> &'static str {
         "v1/sessions"
@@ -1155,6 +1300,18 @@ impl ResourceUrlable for everruns_core::Session {
     }
     fn ui_url_path(&self) -> String {
         format!("sessions/{}/chat", self.id)
+    }
+    /// Sessions hypermedia: pilot for EVE-493. Delegates to
+    /// [`session_allowed_actions`] so the state → action mapping stays
+    /// testable independently of the full `Session` struct. Closed
+    /// `rel` vocabulary documented in `specs/api-conventions.md`.
+    fn allowed_actions(&self, api_base: &str) -> Vec<AllowedAction> {
+        session_allowed_actions(
+            &self.id.to_string(),
+            &self.status,
+            self.is_pinned.unwrap_or(false),
+            api_base,
+        )
     }
 }
 
@@ -1808,5 +1965,133 @@ mod tests {
         assert_eq!(value["code"], "rate_limited");
         assert_eq!(value["retry_after_seconds"], 60);
         assert_eq!(value["allowed_actions"][0]["rel"], "retry-later");
+    }
+
+    #[test]
+    fn session_actions_include_cancel_when_turn_is_active() {
+        use everruns_core::session::SessionStatus;
+        let actions = session_allowed_actions(
+            "session_01",
+            &SessionStatus::Active,
+            false,
+            "https://api.example",
+        );
+        let rels: Vec<&str> = actions.iter().map(|a| a.rel.as_str()).collect();
+        assert!(
+            rels.contains(&"cancel"),
+            "active turn should expose cancel: {rels:?}"
+        );
+        let cancel = actions.iter().find(|a| a.rel == "cancel").unwrap();
+        assert_eq!(cancel.method.as_deref(), Some("POST"));
+        assert_eq!(cancel.operation_id.as_deref(), Some("cancel_turn"));
+        assert_eq!(
+            cancel.href.as_deref(),
+            Some("https://api.example/v1/sessions/session_01/cancel")
+        );
+    }
+
+    #[test]
+    fn session_actions_include_cancel_when_waiting_for_tool_results() {
+        use everruns_core::session::SessionStatus;
+        let actions = session_allowed_actions(
+            "session_01",
+            &SessionStatus::WaitingForToolResults,
+            false,
+            "https://api.example",
+        );
+        assert!(actions.iter().any(|a| a.rel == "cancel"));
+    }
+
+    #[test]
+    fn session_actions_omit_cancel_in_idle_or_paused_states() {
+        use everruns_core::session::SessionStatus;
+        for status in [
+            SessionStatus::Started,
+            SessionStatus::Idle,
+            SessionStatus::Paused,
+        ] {
+            let actions =
+                session_allowed_actions("session_01", &status, false, "https://api.example");
+            assert!(
+                actions.iter().all(|a| a.rel != "cancel"),
+                "{status:?}: cancel must not appear when no turn is mid-flight"
+            );
+        }
+    }
+
+    #[test]
+    fn session_actions_flip_pin_rel_on_is_pinned() {
+        use everruns_core::session::SessionStatus;
+        let unpinned = session_allowed_actions(
+            "session_01",
+            &SessionStatus::Idle,
+            false,
+            "https://api.example",
+        );
+        let pinned = session_allowed_actions(
+            "session_01",
+            &SessionStatus::Idle,
+            true,
+            "https://api.example",
+        );
+        let unpinned_rels: Vec<&str> = unpinned.iter().map(|a| a.rel.as_str()).collect();
+        let pinned_rels: Vec<&str> = pinned.iter().map(|a| a.rel.as_str()).collect();
+        assert!(
+            unpinned_rels.contains(&"pin") && !unpinned_rels.contains(&"unpin"),
+            "unpinned session offers pin, not unpin: {unpinned_rels:?}"
+        );
+        assert!(
+            pinned_rels.contains(&"unpin") && !pinned_rels.contains(&"pin"),
+            "pinned session offers unpin, not pin: {pinned_rels:?}"
+        );
+        let pin = unpinned.iter().find(|a| a.rel == "pin").unwrap();
+        assert_eq!(pin.method.as_deref(), Some("PUT"));
+        let unpin = pinned.iter().find(|a| a.rel == "unpin").unwrap();
+        assert_eq!(unpin.method.as_deref(), Some("DELETE"));
+    }
+
+    #[test]
+    fn session_actions_always_include_self_events_stream_update_delete() {
+        use everruns_core::session::SessionStatus;
+        let actions = session_allowed_actions(
+            "session_xyz",
+            &SessionStatus::Idle,
+            false,
+            "https://api.example",
+        );
+        let rels: Vec<&str> = actions.iter().map(|a| a.rel.as_str()).collect();
+        for expected in ["self", "events", "stream", "update", "delete"] {
+            assert!(
+                rels.contains(&expected),
+                "missing rel `{expected}` in {rels:?}"
+            );
+        }
+        let update = actions.iter().find(|a| a.rel == "update").unwrap();
+        assert_eq!(
+            update.schema_ref.as_deref(),
+            Some("#/components/schemas/UpdateSessionRequest"),
+            "update action must reference its request body schema"
+        );
+        // `events` is JSON polling (operationId list_events); `stream` is SSE
+        // (operationId stream_sse, /sse path).
+        let events = actions.iter().find(|a| a.rel == "events").unwrap();
+        assert_eq!(events.operation_id.as_deref(), Some("list_events"));
+        assert!(events.href.as_deref().unwrap().ends_with("/events"));
+        let stream = actions.iter().find(|a| a.rel == "stream").unwrap();
+        assert_eq!(stream.operation_id.as_deref(), Some("stream_sse"));
+        assert!(stream.href.as_deref().unwrap().ends_with("/sse"));
+    }
+
+    #[test]
+    fn with_urls_skips_empty_allowed_actions() {
+        let builder = UrlBuilder::new("https://api.example/api", "https://app.example");
+        let wrapped = builder.wrap(TestResource {
+            id: "resource_1".to_string(),
+        });
+        let value = serde_json::to_value(&wrapped).unwrap();
+        assert!(
+            value.get("allowed_actions").is_none(),
+            "resources that didn't opt in must not emit allowed_actions: {value}"
+        );
     }
 }
