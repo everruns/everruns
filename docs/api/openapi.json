@@ -21321,6 +21321,84 @@
         "type": "object",
         "description": "Response body for manual volume source."
       },
+      "McpErrorCategory": {
+        "type": "string",
+        "description": "Broad-strokes routing hint sitting alongside the precise [`McpErrorCode`].\nThe categories are stable enough that an LLM can pick a recovery\nstrategy from this field alone (e.g. retry transients with backoff,\nsurface validation errors to the user, escalate auth failures).",
+        "enum": [
+          "transient",
+          "permanent",
+          "validation",
+          "auth",
+          "unknown"
+        ]
+      },
+      "McpErrorCode": {
+        "type": "string",
+        "description": "Closed vocabulary of error codes for Everruns' own MCP `tools/call`\nexecute path. Surfaces in [`McpExecuteError::code`] so LLM toolcallers\ncan branch on a machine-readable value instead of regexing prose.\n\nNew variants are a spec change. SDKs should treat any value they don't\nrecognise as `unknown` (forward-compat) — serde's `#[serde(other)]`\ncatch-all enables that on the deserialize side.",
+        "enum": [
+          "tool_not_found",
+          "tool_timeout",
+          "tool_panicked",
+          "invalid_arguments",
+          "permission_denied",
+          "quota_exceeded",
+          "network_blocked",
+          "mcp_server_unreachable",
+          "internal",
+          "unknown"
+        ]
+      },
+      "McpExecuteError": {
+        "type": "object",
+        "description": "Typed structured-error envelope returned by Everruns' MCP `tools/call`\nexecute path. Serialized into the MCP `structuredContent` field on\nerror responses so the legacy `content[0].text` channel stays\nbackward-compatible; new SDKs prefer the typed envelope.\n\nSee `specs/mcp.md` for the error contract.",
+        "required": [
+          "code",
+          "message",
+          "category",
+          "retryable"
+        ],
+        "properties": {
+          "category": {
+            "$ref": "#/components/schemas/McpErrorCategory",
+            "description": "Broad-strokes recovery category."
+          },
+          "cause_chain": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Chain of upstream error messages, oldest cause first. Useful for\ndebugging; SDKs should not treat this as machine-readable."
+          },
+          "code": {
+            "$ref": "#/components/schemas/McpErrorCode",
+            "description": "Machine-readable error code. Closed vocabulary; SDKs that see an\nunrecognised value should map it to `unknown`."
+          },
+          "hint": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Short, agent-readable recovery hint. Free-form; one or two sentences."
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable error message. Mirrors the legacy\n`content[0].text` string for backward compat."
+          },
+          "retry_after_seconds": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Seconds the caller should wait before retrying. Set on\n`tool_timeout`, `quota_exceeded`, and upstream-unreachable cases\nwhen the server has a concrete back-off hint.",
+            "minimum": 0
+          },
+          "retryable": {
+            "type": "boolean",
+            "description": "`true` when the same call is worth retrying. Distinct from\n`category == \"transient\"` because a server may know about a\nnon-transient retry path (e.g. a transient `Internal`)."
+          }
+        }
+      },
       "McpServer": {
         "type": "object",
         "description": "MCP Server configuration.\nRepresents a remote MCP server that can provide tools and resources.",

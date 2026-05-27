@@ -632,6 +632,42 @@ async fn test_mcp_tools_call_unknown_tool() {
     assert!(tool_text(&resp).contains("Unknown tool"));
 }
 
+/// EVE-492: unknown-tool errors carry the typed `structuredContent`
+/// envelope alongside the legacy `content[0].text`. The legacy text path
+/// stays the same for back-compat; new SDKs branch on the structured
+/// envelope's machine-readable `code` / `category` / `retryable`.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_mcp_tools_call_unknown_tool_emits_structured_envelope() {
+    let server = TestServer::new().await;
+    let resp = mcp_tool_call(&server, "nonexistent_tool", json!({})).await;
+
+    assert!(tool_is_error(&resp));
+    let envelope = &resp["result"]["structuredContent"];
+    assert!(
+        envelope.is_object(),
+        "expected structuredContent envelope on error response, got: {resp}"
+    );
+    assert_eq!(envelope["code"], "tool_not_found");
+    assert_eq!(envelope["category"], "permanent");
+    assert_eq!(envelope["retryable"], false);
+    assert!(
+        envelope["message"]
+            .as_str()
+            .unwrap_or("")
+            .contains("Unknown tool"),
+        "envelope.message should mirror the legacy text content: {envelope}"
+    );
+    // Hint must be populated for tool_not_found so the agent has a
+    // concrete recovery action without parsing prose.
+    assert!(
+        envelope["hint"]
+            .as_str()
+            .unwrap_or("")
+            .contains("tools/list"),
+        "tool_not_found envelope should hint at tools/list: {envelope}"
+    );
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_mcp_tools_call_missing_name() {
     let server = TestServer::new().await;

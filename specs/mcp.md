@@ -375,7 +375,73 @@ When omitted, the default org is used (first org from the user's membership list
 3. **`discover` accepts `organization_id` for consistency** — catalog search itself is effectively org-agnostic today, but the argument keeps org-scoped routing uniform across tools and leaves room for future org-specific catalog visibility.
 4. **No `switch_organization` tool** — the MCP transport is stateless, so there is no server-side "current org" to switch. Tool descriptions tell clients to call `list_organizations` and pass `organization_id` directly on org-scoped calls.
 
+## Error contract
+
+`tools/call` failures use the MCP-standard error shape
+(`isError: true` plus a `content[0].text` string) **and** carry a
+typed `structuredContent` envelope so LLM toolcallers can branch on a
+machine-readable code instead of regexing prose.
+
+```json
+{
+  "result": {
+    "content": [
+      { "type": "text", "text": "Tool timed out after 30000ms" }
+    ],
+    "isError": true,
+    "structuredContent": {
+      "code": "tool_timeout",
+      "category": "transient",
+      "retryable": true,
+      "retry_after_seconds": 10,
+      "message": "Tool timed out after 30000ms",
+      "hint": "Retry once; if still failing, narrow the input or fall back to a cheaper tool.",
+      "cause_chain": []
+    }
+  }
+}
+```
+
+The legacy `content[0].text` channel is preserved verbatim for MCP
+clients that predate the envelope — `structuredContent` is additive,
+not a replacement.
+
+### `McpErrorCode` (closed vocabulary)
+
+| Code                     | Default category | Default retryable | Meaning                                                                  |
+| ------------------------ | ---------------- | ----------------- | ------------------------------------------------------------------------ |
+| `tool_not_found`         | `permanent`      | no                | Tool name doesn't match any registered tool for the negotiated protocol. |
+| `tool_timeout`           | `transient`      | yes               | Tool exceeded its server-imposed budget.                                 |
+| `tool_panicked`          | `permanent`      | no                | Tool hit an unrecoverable internal error.                                |
+| `invalid_arguments`      | `validation`     | no                | Required argument missing or argument failed schema validation.          |
+| `permission_denied`      | `auth`           | no                | Caller is authenticated but not authorized for the requested action.     |
+| `quota_exceeded`         | `transient`      | yes               | Org/user quota or rate limit hit.                                        |
+| `network_blocked`        | `permanent`      | no                | Outbound network call blocked by egress policy.                          |
+| `mcp_server_unreachable` | `transient`      | yes               | Upstream MCP server unreachable or returned an error we couldn't classify. |
+| `internal`               | `permanent`      | no                | Catch-all for unclassified internal failures.                            |
+| `unknown`                | `permanent`      | no                | Forward-compat sentinel — emitted by SDKs when they see a code they don't know yet. |
+
+`category` and `retryable` are per-occurrence overridable; e.g. an
+`internal` with a known-transient root cause may still set
+`retryable: true`. Treat the table as defaults, not invariants.
+
+### Closed vocabulary rules
+
+* Adding a new code is a spec change. Update this table and the
+  `McpErrorCode` enum in `crates/core/src/mcp_server.rs` together.
+* SDKs deserialise any unrecognised code into `unknown` (serde
+  `#[serde(other)]`); they must not crash on a value they don't know.
+* The classifier `classify_mcp_execute_error` in the same module
+  recovers a structured envelope from the legacy `Result<String,
+  String>` error path. New tool implementations should construct
+  `McpExecuteError` directly when they have a precise code; the
+  classifier exists for forward-compat with the existing prose-string
+  failures.
+
 ## Implementation
 
 See `crates/server/src/auth/mcp_oauth.rs` for the OAuth implementation.
 See `crates/server/src/api/mcp_endpoint/mod.rs` for the MCP endpoint and multi-org tool handlers.
+See `crates/core/src/mcp_server.rs` for the `McpExecuteError` /
+`McpErrorCode` / `McpErrorCategory` types backing the structured
+error envelope.
