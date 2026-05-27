@@ -571,14 +571,15 @@ checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 
 [[package]]
 name = "bashkit"
-version = "0.6.0"
+version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bec5470c94eddec899a8048070259e6209f04b367c4f05a455ed0a0c9075ceca"
+checksum = "fa7892a1440c479f5b70dfddf760fe9671c5436d4c7b5ba39bb05216e2e3f301"
 dependencies = [
  "anyhow",
  "async-trait",
  "base64 0.22.1",
  "bigdecimal",
+ "bitflags 2.11.1",
  "chrono",
  "clap",
  "fancy-regex 0.18.0",
@@ -594,7 +595,6 @@ dependencies = [
  "num-traits",
  "os_display",
  "regex",
- "schemars",
  "serde",
  "serde_json",
  "sha1 0.11.0",

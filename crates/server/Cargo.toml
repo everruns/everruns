@@ -71,7 +71,7 @@ mime_guess = "2"
 tokio-tungstenite.workspace = true
 futures-util.workspace = true
 
-bashkit = { version = "0.6.0", features = ["scripted_tool", "jq"] }
+bashkit = { version = "0.7.2", features = ["scripted_tool", "jq"] }
 
 everruns-config = { path = "../config" }
 everruns-core = { path = "../core", features = ["embedded-platform-docs", "openapi", "sqlx", "tree-sitter-outlines", "ui-capabilities"] }
