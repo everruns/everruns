@@ -214,6 +214,8 @@ This applies to built-in `bash` and provider-backed exec tools such as `daytona_
 
 `spawn_background` is a built-in meta-tool that schedules another built-in tool to run asynchronously and returns immediately with a run handle. It is generic: the caller passes `tool` plus `args`; the target tool determines whether background execution is supported.
 
+`spawn_background` is contributed by the `background_execution` capability, which auto-activates whenever the collected tool set contains a background-capable tool. See `specs/background-execution.md` for the cross-cutting capability contract.
+
 Background eligibility rules:
 - The target tool must set `ToolHints.supports_background = Some(true)`.
 - The target tool must implement `BackgroundExecutableTool`.

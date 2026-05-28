@@ -542,7 +542,15 @@ impl ToolRegistry {
         ToolRegistry::builder()
             .tool(GetCurrentTimeTool)
             .tool(EchoTool)
-            .tool(SpawnBackgroundTool)
+            // NOTE: `spawn_background` is intentionally NOT a default tool —
+            // it is contributed by the `background_execution` capability,
+            // which is auto-activated by
+            // `collect_capabilities_with_configs` whenever a collected tool
+            // declares `ToolHints::supports_background = Some(true)`. Keeping
+            // it out of defaults preserves the lockstep contract between
+            // model-visible tools and the worker execution registry: the
+            // executor only knows about `spawn_background` when the model
+            // can also see it.
             .tool(ReportProgressTool)
             // TestMath capability tools
             .tool(AddTool)
@@ -2454,9 +2462,12 @@ mod tests {
             "should have get_current_time"
         );
         assert!(registry.has("echo"), "should have echo");
+        // spawn_background is contributed by the background_execution
+        // capability (auto-activated) — it must NOT be in defaults.
         assert!(
-            registry.has("spawn_background"),
-            "should have spawn_background"
+            !registry.has("spawn_background"),
+            "spawn_background must NOT be in defaults — it comes from the \
+             background_execution capability"
         );
         assert!(
             registry.has("report_progress"),
@@ -2488,8 +2499,8 @@ mod tests {
         // WebFetch capability tools
         assert!(registry.has("web_fetch"), "should have web_fetch");
 
-        // Total count
-        assert_eq!(registry.len(), 19, "should have 19 default tools");
+        // Total count: 19 - 1 (spawn_background, moved to capability) = 18
+        assert_eq!(registry.len(), 18, "should have 18 default tools");
     }
 
     #[tokio::test]
@@ -2545,6 +2556,14 @@ mod tests {
         assert!(
             !registry.has("kv_store"),
             "kv_store must not be in defaults — it comes from session_storage capability"
+        );
+        // spawn_background comes from background_execution capability and is
+        // auto-activated by `collect_capabilities_with_configs` when a
+        // background-capable tool is present (see EVE-501).
+        assert!(
+            !registry.has("spawn_background"),
+            "spawn_background must not be in defaults — it comes from the \
+             background_execution capability (auto-activated by tool hints)"
         );
     }
 
