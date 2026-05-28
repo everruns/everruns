@@ -52,7 +52,7 @@ fn clear_progress_handler(conn: &Connection) {
 
 /// Execute a read-only SQL query, returning columns and rows as JSON.
 pub fn execute_query(conn: &Connection, sql: &str) -> Result<SqlQueryResult, SqlDbError> {
-    install_authorizer(conn);
+    install_authorizer(conn)?;
 
     let interrupted = Arc::new(AtomicBool::new(false));
     install_progress_handler(conn, interrupted.clone());
@@ -142,7 +142,7 @@ fn execute_query_inner(conn: &Connection, sql: &str) -> Result<SqlQueryResult, S
 
 /// Execute a write SQL statement, returning affected row count.
 pub fn execute_statement(conn: &Connection, sql: &str) -> Result<SqlExecuteResult, SqlDbError> {
-    install_authorizer(conn);
+    install_authorizer(conn)?;
 
     let interrupted = Arc::new(AtomicBool::new(false));
     install_progress_handler(conn, interrupted.clone());
@@ -183,7 +183,7 @@ pub fn execute_statement(conn: &Connection, sql: &str) -> Result<SqlExecuteResul
 
 /// Get schema for all tables in the database.
 pub fn get_schema(conn: &Connection) -> Result<Vec<TableSchema>, SqlDbError> {
-    install_authorizer(conn);
+    install_authorizer(conn)?;
 
     let mut stmt = conn
         .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
