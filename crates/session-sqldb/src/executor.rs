@@ -14,7 +14,7 @@ use serde_json::Value;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
-use tracing::debug;
+use tracing::{debug, warn};
 
 /// Configure a connection with safe defaults.
 ///
@@ -31,19 +31,23 @@ pub fn configure_connection(conn: &Connection) -> Result<(), SqlDbError> {
 
 /// Install a progress handler that interrupts after timeout.
 ///
-/// rusqlite 0.39+ returns `Result` from `progress_handler`; the only failure
-/// mode is the connection already being closed, in which case the timeout
-/// check is moot.
+/// rusqlite 0.39+ returns `Result`. A failure here means the timeout
+/// interrupt won't fire; log so this isn't invisible if SQLite ever starts
+/// rejecting the install at runtime.
 fn install_progress_handler(conn: &Connection, interrupted: Arc<AtomicBool>) {
-    let _ = conn.progress_handler(
+    if let Err(err) = conn.progress_handler(
         PROGRESS_HANDLER_INTERVAL,
         Some(move || interrupted.load(Ordering::Relaxed)),
-    );
+    ) {
+        warn!(error = %err, "failed to install SQLite progress handler; query timeout degraded");
+    }
 }
 
 /// Remove the progress handler.
 fn clear_progress_handler(conn: &Connection) {
-    let _ = conn.progress_handler(0, None::<fn() -> bool>);
+    if let Err(err) = conn.progress_handler(0, None::<fn() -> bool>) {
+        warn!(error = %err, "failed to clear SQLite progress handler");
+    }
 }
 
 /// Execute a read-only SQL query, returning columns and rows as JSON.
