@@ -98,7 +98,7 @@ eventsource-stream = "0.2"
 inventory.workspace = true
 
 # LLM simulation for testing
-llmsim = "0.3.0"
+llmsim = "0.4.0"
 
 # OpenUI component definitions and prompt generator
 everruns-openui = { path = "../openui", version = "0.8.35", optional = true }
