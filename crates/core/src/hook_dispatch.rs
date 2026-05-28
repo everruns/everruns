@@ -580,6 +580,133 @@ mod tests {
         }
     }
 
+    // ------------------------------------------------------------------
+    // End-to-end: a real post_tool_use hook spec runs through the whole
+    // chain (UserHookSpec -> PostToolUseHookAdapter -> BashHookExecutor ->
+    // VirtualBashHookDispatcher -> bashkit -> session VFS) and writes an
+    // audit log line for the tool call. Mirrors the
+    // examples/hook-bundles/audit-every-tool.json bundle.
+    // ------------------------------------------------------------------
+    #[tokio::test]
+    async fn end_to_end_audit_log_hook_writes_workspace_file() {
+        use crate::atoms::PostToolExecHook;
+        use crate::hook_adapter::PostToolUseHookAdapter;
+        use crate::tool_types::{BuiltinTool, DeferrablePolicy, ToolHints, ToolPolicy};
+        use crate::user_hook_types::{ExecutorSpec, HookEvent, HookSource, OnError, UserHookSpec};
+
+        let mock = Arc::new(MockFileStore::default());
+        let store: Arc<dyn SessionFileSystem> = mock.clone();
+
+        let spec = UserHookSpec {
+            id: Some("audit_tool_calls".into()),
+            event: HookEvent::PostToolUse,
+            matcher: Default::default(),
+            executor: ExecutorSpec::Bash {
+                command:
+                    "printf '%s\\n' \"$EVERRUNS_HOOK_TOOL_NAME:$EVERRUNS_HOOK_TOOL_CALL_ID\" >> /workspace/.audit.log; echo '{}'"
+                        .into(),
+                env: Default::default(),
+            },
+            timeout_ms: 5000,
+            on_error: OnError::Warn,
+            description: None,
+            source: HookSource::UserConfig,
+        };
+
+        let dispatcher: Arc<dyn BashHookDispatcher> =
+            Arc::new(VirtualBashHookDispatcher::new(store.clone()));
+        let executor: Arc<dyn HookExecutor> = Arc::new(BashHookExecutor::with_dispatcher(
+            match &spec.executor {
+                ExecutorSpec::Bash { command, .. } => command.clone(),
+            },
+            match &spec.executor {
+                ExecutorSpec::Bash { env, .. } => env.clone(),
+            },
+            dispatcher,
+        ));
+        let adapter = PostToolUseHookAdapter::new(spec, executor);
+
+        let tool_call = crate::tool_types::ToolCall {
+            id: "call_first".into(),
+            name: "edit_file".into(),
+            arguments: serde_json::json!({"path": "/workspace/foo.rs"}),
+        };
+        let tool_def = crate::tool_types::ToolDefinition::Builtin(BuiltinTool {
+            name: "edit_file".into(),
+            display_name: None,
+            description: "x".into(),
+            parameters: serde_json::json!({}),
+            policy: ToolPolicy::Auto,
+            category: None,
+            deferrable: DeferrablePolicy::Never,
+            hints: ToolHints::default(),
+        });
+        let mut result = crate::tool_types::ToolResult {
+            tool_call_id: "call_first".into(),
+            result: Some(serde_json::json!({"changed": true})),
+            images: None,
+            error: None,
+            connection_required: None,
+            raw_output: None,
+        };
+        let ctx = crate::traits::ToolContext::new(SessionId::from(Uuid::nil()));
+
+        adapter
+            .after_exec(&tool_call, &tool_def, &mut result, &ctx)
+            .await;
+
+        // First call: fresh audit log file.
+        let log = mock
+            .read("/.audit.log")
+            .or_else(|| mock.read("/workspace/.audit.log"))
+            .expect("audit log written");
+        assert!(log.contains("edit_file:call_first"), "log = {log:?}");
+
+        // Second call appends.
+        let tool_call_2 = crate::tool_types::ToolCall {
+            id: "call_second".into(),
+            name: "bash".into(),
+            arguments: serde_json::json!({"command": "ls"}),
+        };
+        let tool_def_2 = crate::tool_types::ToolDefinition::Builtin(BuiltinTool {
+            name: "bash".into(),
+            display_name: None,
+            description: "x".into(),
+            parameters: serde_json::json!({}),
+            policy: ToolPolicy::Auto,
+            category: None,
+            deferrable: DeferrablePolicy::Never,
+            hints: ToolHints::default(),
+        });
+        let mut result_2 = crate::tool_types::ToolResult {
+            tool_call_id: "call_second".into(),
+            result: Some(serde_json::json!({"ok": true})),
+            images: None,
+            error: None,
+            connection_required: None,
+            raw_output: None,
+        };
+        adapter
+            .after_exec(&tool_call_2, &tool_def_2, &mut result_2, &ctx)
+            .await;
+
+        let log2 = mock
+            .read("/.audit.log")
+            .or_else(|| mock.read("/workspace/.audit.log"))
+            .expect("audit log present after second call");
+        assert!(log2.contains("edit_file:call_first"), "log2 = {log2:?}");
+        assert!(log2.contains("bash:call_second"), "log2 = {log2:?}");
+
+        // The dispatcher cleans up its payload file each call — the audit
+        // log should be the only artifact under /.
+        let files = mock.files.lock().unwrap();
+        let payload_files: Vec<_> = files
+            .keys()
+            .filter(|k| k.starts_with(HOOK_PAYLOAD_DIR))
+            .collect();
+        assert!(payload_files.is_empty(), "leftover: {payload_files:?}");
+    }
+
     #[tokio::test]
     async fn jq_can_read_payload_from_env_path() {
         // Smoke test for the documented `jq` workflow. We use a tiny

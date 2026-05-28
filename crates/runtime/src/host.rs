@@ -255,7 +255,7 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
         registry.register_boxed(tool);
     }
 
-    let post_tool_hooks = resolved
+    let mut post_tool_hooks: Vec<Arc<dyn everruns_core::PostToolExecHook>> = resolved
         .resolved_capability_configs
         .iter()
         .flat_map(|config| {
@@ -265,6 +265,33 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
                 .unwrap_or_default()
         })
         .collect();
+
+    // User-hook contributions (see `specs/user-hooks.md`).
+    // Collect specs across every resolved capability — both the
+    // user-facing `user_hooks` capability (user-config-authored) and any
+    // capability that bundles hooks via `Capability::user_hooks_with_config()`.
+    // Construct a single bash dispatcher backed by the session's file store
+    // and translate each PostToolUse spec into a `PostToolExecHook` adapter.
+    let user_hook_specs: Vec<everruns_core::user_hook_types::UserHookSpec> = resolved
+        .resolved_capability_configs
+        .iter()
+        .flat_map(|config| {
+            capability_registry
+                .get(config.capability_id())
+                .map(|capability| capability.user_hooks_with_config(&config.config))
+                .unwrap_or_default()
+        })
+        .collect();
+    if !user_hook_specs.is_empty() {
+        let dispatcher: Arc<dyn everruns_core::hook_executor::BashHookDispatcher> = Arc::new(
+            everruns_core::hook_dispatch::VirtualBashHookDispatcher::new(adapter.file_store()),
+        );
+        post_tool_hooks.extend(everruns_core::hook_adapter::build_post_tool_use_hooks(
+            &user_hook_specs,
+            dispatcher,
+        ));
+    }
+
     let tool_call_hooks = resolved
         .resolved_capability_configs
         .iter()

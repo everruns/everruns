@@ -960,6 +960,29 @@ Verify each action by re-listing the affected resource type.
             SeedCapability::new("fake_aws"),
             SeedCapability::new("current_time"),
             SeedCapability::new("session_file_system"),
+            // Hook bundle: append one line per tool call to
+            // /workspace/.audit.log. Demonstrates `user_hooks` end-to-end —
+            // the auditor agent gets a verifiable audit trail "for free",
+            // independent of what the LLM remembers to record. See
+            // examples/hook-bundles/audit-every-tool.json for the same
+            // bundle as a standalone file.
+            SeedCapability::with_config("user_hooks", || {
+                serde_json::json!({
+                    "hooks": [
+                        {
+                            "id": "audit_tool_calls",
+                            "event": "post_tool_use",
+                            "executor": {
+                                "type": "bash",
+                                "command": "printf '[%s] %s:%s\\n' \"$(date -u +%FT%TZ)\" \"$EVERRUNS_HOOK_TOOL_NAME\" \"$EVERRUNS_HOOK_TOOL_CALL_ID\" >> /workspace/.audit.log; echo '{}'"
+                            },
+                            "timeout_ms": 3000,
+                            "on_error": "warn",
+                            "description": "Append a timestamped one-line record per tool call to /workspace/.audit.log"
+                        }
+                    ]
+                })
+            }),
         ],
         dev_only: false,
     },

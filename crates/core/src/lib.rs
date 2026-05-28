@@ -37,6 +37,7 @@ pub mod tool_fingerprint;
 pub mod tool_types;
 
 // User-defined hooks (see specs/user-hooks.md)
+pub mod hook_adapter;
 pub mod hook_dispatch;
 pub mod hook_executor;
 pub mod user_hook_types;
