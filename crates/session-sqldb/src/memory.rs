@@ -12,7 +12,7 @@ use crate::validation::validate_database_name;
 use chrono::Utc;
 use everruns_core::typed_id::SessionId;
 use parking_lot::{Mutex, RwLock};
-use rusqlite::{Connection, DatabaseName};
+use rusqlite::Connection;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tracing::debug;
@@ -49,7 +49,7 @@ impl InMemorySqlDbBackend {
 
     /// Get the current database size by serializing (for tracking only).
     fn estimate_db_size(conn: &Connection) -> i64 {
-        conn.serialize(DatabaseName::Main)
+        conn.serialize("main")
             .map(|data| data.len() as i64)
             .unwrap_or(0)
     }

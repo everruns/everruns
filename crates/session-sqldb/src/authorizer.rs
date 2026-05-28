@@ -4,6 +4,7 @@
 // and write-mode PRAGMAs. This is the primary security boundary for
 // session SQL databases.
 
+use crate::error::SqlDbError;
 use rusqlite::Connection;
 use rusqlite::hooks::{AuthAction, AuthContext, Authorization};
 use tracing::warn;
@@ -26,14 +27,24 @@ const ALLOWED_PRAGMAS: &[&str] = &[
 
 /// Install the authorizer on a connection.
 ///
-/// Must be called before executing any user-provided SQL.
-pub fn install_authorizer(conn: &Connection) {
-    conn.authorizer(Some(authorizer_callback));
+/// Must be called before executing any user-provided SQL. This is the
+/// primary security boundary for the session SQL sandbox; if the install
+/// fails the caller MUST fail closed and abort the operation rather than
+/// run unrestricted SQL.
+pub fn install_authorizer(conn: &Connection) -> Result<(), SqlDbError> {
+    conn.authorizer(Some(authorizer_callback)).map_err(|err| {
+        warn!(error = %err, "failed to install SQLite authorizer");
+        SqlDbError::Internal(format!("failed to install SQLite authorizer: {err}"))
+    })
 }
 
-/// Remove the authorizer from a connection.
+/// Remove the authorizer from a connection. Removal is best-effort cleanup —
+/// a failure here cannot widen the trust posture since the connection is
+/// about to be dropped, so a warn-level log is sufficient.
 pub fn remove_authorizer(conn: &Connection) {
-    conn.authorizer(None::<fn(AuthContext<'_>) -> Authorization>);
+    if let Err(err) = conn.authorizer(None::<fn(AuthContext<'_>) -> Authorization>) {
+        warn!(error = %err, "failed to remove SQLite authorizer");
+    }
 }
 
 fn authorizer_callback(ctx: AuthContext<'_>) -> Authorization {
@@ -89,7 +100,7 @@ mod tests {
 
     fn setup_conn() -> Connection {
         let conn = Connection::open_in_memory().unwrap();
-        install_authorizer(&conn);
+        install_authorizer(&conn).unwrap();
         conn
     }
 
@@ -152,7 +163,7 @@ mod tests {
     #[test]
     fn test_authorizer_removal() {
         let conn = Connection::open_in_memory().unwrap();
-        install_authorizer(&conn);
+        install_authorizer(&conn).unwrap();
         assert!(
             conn.execute_batch("ATTACH DATABASE ':memory:' AS other")
                 .is_err()

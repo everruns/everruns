@@ -14,7 +14,7 @@ use serde_json::Value;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
-use tracing::debug;
+use tracing::{debug, warn};
 
 /// Configure a connection with safe defaults.
 ///
@@ -30,21 +30,29 @@ pub fn configure_connection(conn: &Connection) -> Result<(), SqlDbError> {
 }
 
 /// Install a progress handler that interrupts after timeout.
+///
+/// rusqlite 0.39+ returns `Result`. A failure here means the timeout
+/// interrupt won't fire; log so this isn't invisible if SQLite ever starts
+/// rejecting the install at runtime.
 fn install_progress_handler(conn: &Connection, interrupted: Arc<AtomicBool>) {
-    conn.progress_handler(
+    if let Err(err) = conn.progress_handler(
         PROGRESS_HANDLER_INTERVAL,
         Some(move || interrupted.load(Ordering::Relaxed)),
-    );
+    ) {
+        warn!(error = %err, "failed to install SQLite progress handler; query timeout degraded");
+    }
 }
 
 /// Remove the progress handler.
 fn clear_progress_handler(conn: &Connection) {
-    conn.progress_handler(0, None::<fn() -> bool>);
+    if let Err(err) = conn.progress_handler(0, None::<fn() -> bool>) {
+        warn!(error = %err, "failed to clear SQLite progress handler");
+    }
 }
 
 /// Execute a read-only SQL query, returning columns and rows as JSON.
 pub fn execute_query(conn: &Connection, sql: &str) -> Result<SqlQueryResult, SqlDbError> {
-    install_authorizer(conn);
+    install_authorizer(conn)?;
 
     let interrupted = Arc::new(AtomicBool::new(false));
     install_progress_handler(conn, interrupted.clone());
@@ -134,7 +142,7 @@ fn execute_query_inner(conn: &Connection, sql: &str) -> Result<SqlQueryResult, S
 
 /// Execute a write SQL statement, returning affected row count.
 pub fn execute_statement(conn: &Connection, sql: &str) -> Result<SqlExecuteResult, SqlDbError> {
-    install_authorizer(conn);
+    install_authorizer(conn)?;
 
     let interrupted = Arc::new(AtomicBool::new(false));
     install_progress_handler(conn, interrupted.clone());
@@ -175,7 +183,7 @@ pub fn execute_statement(conn: &Connection, sql: &str) -> Result<SqlExecuteResul
 
 /// Get schema for all tables in the database.
 pub fn get_schema(conn: &Connection) -> Result<Vec<TableSchema>, SqlDbError> {
-    install_authorizer(conn);
+    install_authorizer(conn)?;
 
     let mut stmt = conn
         .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")

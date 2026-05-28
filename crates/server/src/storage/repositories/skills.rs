@@ -99,7 +99,8 @@ impl Database {
                 WHERE org_id = $1{status_sql}{search_sql}
                 ORDER BY created_at DESC"#
         );
-        let mut query = sqlx::query_as::<_, SkillRow>(&sql).bind(org_id);
+        let mut query =
+            sqlx::query_as::<_, SkillRow>(sqlx::AssertSqlSafe(sql.as_str())).bind(org_id);
         for pat in &patterns {
             query = query.bind(pat);
         }

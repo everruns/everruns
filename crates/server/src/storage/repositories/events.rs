@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 /// Shared filter builder for `list_events_advanced` (and its `around_id` branch).
 /// Pushes type/time/context/tag/tool/search predicates onto the running query.
-fn push_common_filters(qb: &mut sqlx::QueryBuilder<'_, sqlx::Postgres>, params: &ListEventsParams) {
+fn push_common_filters(qb: &mut sqlx::QueryBuilder<sqlx::Postgres>, params: &ListEventsParams) {
     if !params.filter_types.is_empty() {
         qb.push(" AND event_type = ANY(");
         qb.push_bind(params.filter_types.clone());
@@ -663,7 +663,7 @@ impl Database {
         // Build and execute query with dynamic bindings
         // sqlx doesn't support truly dynamic queries, so we need to use raw SQL
         // with all possible parameters, binding None for unused ones
-        let mut db_query = sqlx::query_as::<_, EventRow>(&sql)
+        let mut db_query = sqlx::query_as::<_, EventRow>(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(query.session_id.uuid())
             .bind(&types);
 

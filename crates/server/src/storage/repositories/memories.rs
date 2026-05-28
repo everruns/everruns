@@ -388,7 +388,8 @@ impl Database {
             " ORDER BY m.importance DESC, m.created_at DESC LIMIT ${idx}"
         ));
 
-        let mut q = sqlx::query_as::<_, MemoryWithTotalRow>(&sql).bind(org_id);
+        let mut q =
+            sqlx::query_as::<_, MemoryWithTotalRow>(sqlx::AssertSqlSafe(sql.as_str())).bind(org_id);
         if let Some(sid) = store_id {
             q = q.bind(sid);
         }

@@ -174,7 +174,8 @@ impl Database {
         let count_sql = format!(
             "SELECT COUNT(*) as count FROM agents WHERE org_id = $1{status_sql}{search_sql}"
         );
-        let mut count_query = sqlx::query_as::<_, (i64,)>(&count_sql).bind(org_id);
+        let mut count_query =
+            sqlx::query_as::<_, (i64,)>(sqlx::AssertSqlSafe(count_sql.as_str())).bind(org_id);
         for pat in &patterns {
             count_query = count_query.bind(pat);
         }
@@ -191,7 +192,8 @@ impl Database {
                 ORDER BY created_at DESC
                 LIMIT ${limit_idx} OFFSET ${offset_idx}"#
         );
-        let mut query = sqlx::query_as::<_, AgentRow>(&sql).bind(org_id);
+        let mut query =
+            sqlx::query_as::<_, AgentRow>(sqlx::AssertSqlSafe(sql.as_str())).bind(org_id);
         for pat in &patterns {
             query = query.bind(pat);
         }

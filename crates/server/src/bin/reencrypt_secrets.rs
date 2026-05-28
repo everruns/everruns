@@ -222,10 +222,11 @@ async fn process_table(
             table.id_column, table.column, table.name, table.id_column, batch_size, offset
         );
 
-        let rows: Vec<(uuid::Uuid, Option<Vec<u8>>)> = sqlx::query_as(&query)
-            .fetch_all(pool)
-            .await
-            .context("Failed to fetch records")?;
+        let rows: Vec<(uuid::Uuid, Option<Vec<u8>>)> =
+            sqlx::query_as(sqlx::AssertSqlSafe(query.as_str()))
+                .fetch_all(pool)
+                .await
+                .context("Failed to fetch records")?;
 
         if rows.is_empty() {
             break;
@@ -260,7 +261,7 @@ async fn process_table(
                                         "UPDATE {} SET {} = $1 WHERE {} = $2",
                                         table.name, table.column, table.id_column
                                     );
-                                    sqlx::query(&update_query)
+                                    sqlx::query(sqlx::AssertSqlSafe(update_query.as_str()))
                                         .bind(&new_data)
                                         .bind(id)
                                         .execute(pool)

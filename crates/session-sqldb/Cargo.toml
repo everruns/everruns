@@ -8,7 +8,7 @@ description = "Session-scoped SQLite databases backed by PostgreSQL page-level s
 
 [dependencies]
 # SQLite
-rusqlite = { version = "0.32", features = ["bundled", "serialize", "column_decltype", "hooks"] }
+rusqlite = { version = "0.39", features = ["bundled", "serialize", "column_decltype", "hooks"] }
 
 # Core types
 everruns-core = { path = "../core" }

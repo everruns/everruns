@@ -712,7 +712,7 @@ async fn dataset_lag(
 ) -> Result<DatasetProjectorLag, CommandError> {
     let sql =
         format!("SELECT MAX(projected_at) AS latest_projected_at FROM {table} WHERE org_id = $1");
-    let row = sqlx::query(&sql)
+    let row = sqlx::query(sqlx::AssertSqlSafe(sql.as_str()))
         .bind(org_id)
         .fetch_one(pool)
         .await

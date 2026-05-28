@@ -156,10 +156,7 @@ impl ReportingQueryBackend for PostgresReportingQueryBackend {
     }
 }
 
-fn bind_scalar_as_text<'a>(
-    builder: &mut QueryBuilder<'a, sqlx::Postgres>,
-    value: &Value,
-) -> Result<()> {
+fn bind_scalar_as_text(builder: &mut QueryBuilder<sqlx::Postgres>, value: &Value) -> Result<()> {
     let value = match value {
         Value::String(value) => value.clone(),
         Value::Number(value) => value.to_string(),
@@ -170,10 +167,7 @@ fn bind_scalar_as_text<'a>(
     Ok(())
 }
 
-fn bind_comparable<'a>(
-    builder: &mut QueryBuilder<'a, sqlx::Postgres>,
-    value: &Value,
-) -> Result<()> {
+fn bind_comparable(builder: &mut QueryBuilder<sqlx::Postgres>, value: &Value) -> Result<()> {
     match value {
         Value::Number(number) => {
             builder.push_bind(number.as_f64().context("invalid numeric filter value")?);
@@ -205,7 +199,7 @@ async fn latest_projection_lag_ms(pool: &PgPool, table: &str, org_id: i64) -> Re
     let sql = format!(
         "SELECT EXTRACT(EPOCH FROM (NOW() - MAX(projected_at))) * 1000 FROM {table} WHERE org_id = $1"
     );
-    let row: Option<(Option<f64>,)> = sqlx::query_as(&sql)
+    let row: Option<(Option<f64>,)> = sqlx::query_as(sqlx::AssertSqlSafe(sql.as_str()))
         .bind(org_id)
         .fetch_optional(pool)
         .await?;
