@@ -559,9 +559,9 @@ checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 
 [[package]]
 name = "bashkit"
-version = "0.7.2"
+version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fa7892a1440c479f5b70dfddf760fe9671c5436d4c7b5ba39bb05216e2e3f301"
+checksum = "5e20c182deb47b8ce2c8ba724f602cf73bdd6a566971f0f3525b6af60ea2a4c6"
 dependencies = [
  "anyhow",
  "async-trait",
