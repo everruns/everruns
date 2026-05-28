@@ -126,10 +126,27 @@ sandbox error):
 
 ## Bash hook contract
 
-The bash executor mirrors Claude Code so existing scripts port with
-minimal changes.
+The bash executor is modeled after Claude Code hooks with one departure:
+the payload is delivered via env vars (and a session-VFS file) rather than
+stdin, because the bashkit interpreter doesn't expose process-level stdin
+to user scripts.
 
-### Input — stdin
+### Input — env vars + VFS file
+
+Every hook invocation sets these env vars:
+
+| Var | Meaning |
+|---|---|
+| `EVERRUNS_HOOK_PAYLOAD_JSON` | Full payload, JSON-encoded as one string. Read with `jq -n 'env.EVERRUNS_HOOK_PAYLOAD_JSON \| fromjson'`. |
+| `EVERRUNS_HOOK_PAYLOAD_PATH` | Path on the session VFS to a file containing the same JSON. Cleaned up after the hook returns. Use for `cat "$EVERRUNS_HOOK_PAYLOAD_PATH" \| jq` workflows. |
+| `EVERRUNS_HOOK_EVENT` | One of `session_start`, `user_prompt_submit`, `pre_tool_use`, `post_tool_use`, `turn_end`, `session_end`. |
+| `EVERRUNS_HOOK_ID` | Stable hook id (`{capability_id}:{name}` or `user:{name}`). |
+| `EVERRUNS_HOOK_SESSION_ID` | Current session id. |
+| `EVERRUNS_HOOK_TURN_ID` | Set when a turn is in flight. |
+| `EVERRUNS_HOOK_TOOL_NAME` | Set for `pre_tool_use` / `post_tool_use`. |
+| `EVERRUNS_HOOK_TOOL_CALL_ID` | Set for `pre_tool_use` / `post_tool_use`. |
+
+Payload envelope:
 
 ```json
 {

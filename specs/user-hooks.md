@@ -71,13 +71,48 @@ Block semantics:
 
 ## Wire contract: bash executor
 
-Bash is the v1 executor. The contract intentionally mirrors Claude Code so
-existing hook scripts can be ported with minimal changes.
+Bash is the v1 executor. The contract is shaped after Claude Code hooks with
+one deliberate departure: payload delivery uses env vars + a session-VFS
+payload file rather than process stdin, because the bashkit interpreter
+does not expose process-level stdin to user scripts (bashkit interprets the
+script in-process; there is no spawned shell to write to). Scripts that
+prefer a `cat | jq` flow can `cat "$EVERRUNS_HOOK_PAYLOAD_PATH" | jq`.
 
 ### Input
 
-The hook receives a JSON object on stdin. Shape varies by event but every
-payload carries this envelope:
+Every invocation carries this envelope. The shape is identical across the
+env-var (`EVERRUNS_HOOK_PAYLOAD_JSON`) and file
+(`EVERRUNS_HOOK_PAYLOAD_PATH`) delivery channels:
+
+```json
+{
+  "event": "pre_tool_use",
+### Input — payload delivery
+
+The hook script receives the payload via three sources, redundantly, so
+authors can pick whichever fits their script style:
+
+1. **`$EVERRUNS_HOOK_PAYLOAD_JSON`** — the full payload, JSON-encoded as
+   a single string. The canonical source. Read with
+   `jq -n 'env.EVERRUNS_HOOK_PAYLOAD_JSON | fromjson'` or
+   `printf '%s' "$EVERRUNS_HOOK_PAYLOAD_JSON" | jq`.
+2. **`$EVERRUNS_HOOK_PAYLOAD_PATH`** — path to the same payload written
+   to the session VFS (default `/.hooks/payload-<call-id>.json`). The
+   dispatcher cleans this up after the hook returns. Useful when the
+   payload is large enough to be cumbersome in an env var.
+3. **Convenience env vars** — `EVERRUNS_HOOK_EVENT`,
+   `EVERRUNS_HOOK_ID`, `EVERRUNS_HOOK_SESSION_ID`,
+   `EVERRUNS_HOOK_TURN_ID`, `EVERRUNS_HOOK_TOOL_NAME` (tool events
+   only), `EVERRUNS_HOOK_TOOL_CALL_ID` (tool events only). Set unset
+   when not applicable.
+
+Why not stdin? The bashkit interpreter does not expose a process-level
+stdin to user scripts (it interprets the script directly rather than
+spawning a shell process). Env-var delivery is the closest equivalent
+that preserves sandbox isolation. Scripts that want a `cat | jq`-style
+flow can use `cat "$EVERRUNS_HOOK_PAYLOAD_PATH" | jq`.
+
+Payload schema (the same object both env-var and file carry):
 
 ```json
 {

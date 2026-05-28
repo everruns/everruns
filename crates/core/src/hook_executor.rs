@@ -20,8 +20,10 @@ use crate::user_hook_types::{HookEvent, HookId, HookOutcome};
 // HookPayload
 // ============================================================================
 
-/// Envelope passed to the executor on stdin (or equivalent for non-bash
-/// backends). `data` is event-specific; see `specs/user-hooks.md` for the
+/// Envelope handed to every executor. For bash hooks this is serialized
+/// into `$EVERRUNS_HOOK_PAYLOAD_JSON` / `$EVERRUNS_HOOK_PAYLOAD_PATH`;
+/// other backends (webhook, wasm, blueprint) consume it in their own
+/// format. `data` is event-specific; see `specs/user-hooks.md` for the
 /// per-event shape.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HookPayload {
@@ -87,15 +89,17 @@ pub trait HookExecutor: Send + Sync {
 // ============================================================================
 
 /// Bash backend. Runs the configured command inside `virtual_bash` against
-/// the session VFS. JSON payload on stdin; JSON decision on stdout. Falls
-/// back to exit-code semantics when stdout is empty (Git-hook compatibility).
+/// the session VFS. JSON payload is delivered to the script via
+/// `$EVERRUNS_HOOK_PAYLOAD_JSON` (and the same JSON written to
+/// `$EVERRUNS_HOOK_PAYLOAD_PATH` on the session VFS); the script writes a
+/// JSON decision to stdout. Falls back to exit-code semantics when stdout is
+/// empty (Git-hook compatibility).
 ///
-/// v1 status: this is a *skeleton* that wires the contract end-to-end at the
-/// types level. The actual `virtual_bash` invocation is delegated to the
-/// runtime adapter that owns the bashkit handle for a given session; this
-/// executor turns the payload + command into a structured invocation the
-/// adapter dispatches. Tests below cover output parsing, which is the only
-/// piece this struct owns directly.
+/// This struct is backend-agnostic: it serializes the payload, hands it to a
+/// `BashHookDispatcher`, and parses the dispatcher's stdout/exit_code/stderr
+/// into a `HookOutcome`. The production dispatcher
+/// (`crate::hook_dispatch::VirtualBashHookDispatcher`) runs the command
+/// through the same bashkit interpreter the `virtual_bash` capability uses.
 pub struct BashHookExecutor {
     /// Command the user authored (validated non-empty).
     pub command: String,
@@ -107,24 +111,117 @@ pub struct BashHookExecutor {
     pub dispatcher: Option<Arc<dyn BashHookDispatcher>>,
 }
 
+impl BashHookExecutor {
+    /// Build an executor wired to the given dispatcher. This is the
+    /// production constructor used by the capability collection path.
+    pub fn with_dispatcher(
+        command: String,
+        env: std::collections::BTreeMap<String, String>,
+        dispatcher: Arc<dyn BashHookDispatcher>,
+    ) -> Self {
+        Self {
+            command,
+            env,
+            dispatcher: Some(dispatcher),
+        }
+    }
+}
+
+/// Workspace-relative directory the hook script reads the payload file from.
+/// Concrete dispatchers may map this onto a different storage path (e.g.
+/// the bashkit `virtual_bash` adapter strips the `/workspace` prefix before
+/// hitting the session VFS).
+pub const HOOK_PAYLOAD_WORKSPACE_DIR: &str = "/workspace/.hooks";
+
+/// Storage-relative directory used by `SessionFileSystem` impls that strip
+/// the workspace prefix. The bashkit `VirtualBashHookDispatcher` writes to
+/// this path and exposes the workspace-prefixed equivalent to scripts.
+pub const HOOK_PAYLOAD_DIR: &str = "/.hooks";
+
+/// Build the standard env vars every bash hook receives — the canonical
+/// `EVERRUNS_HOOK_PAYLOAD_JSON` plus the convenience scalars documented in
+/// `specs/user-hooks.md`. Returns the env in declaration order so dispatcher
+/// logs render deterministically.
+pub fn standard_hook_env(
+    payload: &HookPayload,
+    payload_path: &str,
+) -> Result<Vec<(String, String)>, String> {
+    let payload_json = serde_json::to_string(payload)
+        .map_err(|e| format!("failed to serialize hook payload: {e}"))?;
+
+    let mut env: Vec<(String, String)> = vec![
+        ("EVERRUNS_HOOK_PAYLOAD_JSON".to_string(), payload_json),
+        (
+            "EVERRUNS_HOOK_PAYLOAD_PATH".to_string(),
+            payload_path.to_string(),
+        ),
+        (
+            "EVERRUNS_HOOK_EVENT".to_string(),
+            payload.event.as_str().to_string(),
+        ),
+        (
+            "EVERRUNS_HOOK_ID".to_string(),
+            payload.hook_id.as_str().to_string(),
+        ),
+        (
+            "EVERRUNS_HOOK_SESSION_ID".to_string(),
+            payload.session_id.to_string(),
+        ),
+    ];
+    if let Some(turn_id) = &payload.turn_id {
+        env.push(("EVERRUNS_HOOK_TURN_ID".to_string(), turn_id.clone()));
+    }
+    // Tool-event convenience scalars (extracted from data.tool_name /
+    // data.tool_call_id when present).
+    if let Some(tool_name) = payload.data.get("tool_name").and_then(|v| v.as_str()) {
+        env.push(("EVERRUNS_HOOK_TOOL_NAME".to_string(), tool_name.to_string()));
+    }
+    if let Some(call_id) = payload.data.get("tool_call_id").and_then(|v| v.as_str()) {
+        env.push((
+            "EVERRUNS_HOOK_TOOL_CALL_ID".to_string(),
+            call_id.to_string(),
+        ));
+    }
+    Ok(env)
+}
+
+/// Filename (without directory) for a payload file. Combines a sanitized
+/// hook id with a fresh UUIDv7 so concurrent invocations don't collide.
+pub fn payload_filename(payload: &HookPayload) -> String {
+    let safe: String = payload
+        .hook_id
+        .as_str()
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    format!("{safe}-{}.json", uuid::Uuid::now_v7())
+}
+
 /// Indirection used to route bash hook invocations through the session's
-/// existing `virtual_bash` sandbox without `everruns-core` having to depend
-/// on the bashkit binding directly. The server crate (or test harness)
-/// supplies an implementation when constructing the executor.
+/// existing `virtual_bash` sandbox without `everruns-core`'s executor module
+/// having to depend on bashkit directly. The concrete
+/// `VirtualBashHookDispatcher` (see `crate::hook_dispatch`) is the production
+/// implementation.
 #[async_trait]
 pub trait BashHookDispatcher: Send + Sync {
-    /// Run `command` with `stdin_json` on stdin and the given env layered on
-    /// top of the sandbox's default environment. Honor `opts.timeout_ms` and
-    /// `opts.max_output_bytes`.
+    /// Run `command` inside the session sandbox with `payload` exposed to
+    /// the script via env vars and a VFS payload file. `extra_env` is the
+    /// user-authored env layered on top of the dispatcher's defaults. Honor
+    /// `opts.timeout_ms` and `opts.max_output_bytes`.
     ///
     /// Returns (`exit_code`, `stdout`, `stderr`) — semantically identical to
     /// what a Unix `bash -c` invocation produces.
     async fn dispatch(
         &self,
-        session_id: SessionId,
+        payload: &HookPayload,
         command: &str,
-        env: &std::collections::BTreeMap<String, String>,
-        stdin_json: &str,
+        extra_env: &std::collections::BTreeMap<String, String>,
         opts: &ExecutorOpts,
     ) -> Result<BashExecOutput, String>;
 }
@@ -149,17 +246,8 @@ impl HookExecutor for BashHookExecutor {
                     .to_string(),
             };
         };
-        let session_id = payload.session_id;
-        let stdin_json = match serde_json::to_string(&payload) {
-            Ok(s) => s,
-            Err(e) => {
-                return HookOutcome::Error {
-                    message: format!("failed to serialize hook payload: {e}"),
-                };
-            }
-        };
         let output = match dispatcher
-            .dispatch(session_id, &self.command, &self.env, &stdin_json, opts)
+            .dispatch(&payload, &self.command, &self.env, opts)
             .await
         {
             Ok(out) => out,

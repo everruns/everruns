@@ -5,11 +5,11 @@
       "event": "post_tool_use",
       "executor": {
         "type": "bash",
-        "command": "jq -c '{ts:.ts,tool:.data.tool_name,id:.data.tool_call_id,success:.data.success}' >> /workspace/.audit.log; echo '{}'"
+        "command": "echo \"$EVERRUNS_HOOK_PAYLOAD_JSON\" | grep -o '\"tool_name\":\"[^\"]*\"' >> /workspace/.audit.log; echo '{}'"
       },
       "timeout_ms": 3000,
       "on_error": "warn",
-      "description": "Append a one-line JSON record per tool call to /workspace/.audit.log"
+      "description": "Append one tool-name line per call to /workspace/.audit.log via $EVERRUNS_HOOK_PAYLOAD_JSON"
     }
   ]
 }

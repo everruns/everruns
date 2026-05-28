@@ -259,7 +259,7 @@ pub use test_math::{AddTool, DivideTool, MultiplyTool, SubtractTool, TestMathCap
 pub use test_weather::{GetForecastTool, GetWeatherTool, TestWeatherCapability};
 pub use tool_output_persistence::{PersistOutputHook, ToolOutputPersistenceCapability};
 pub use user_hooks::UserHooksCapability;
-pub use virtual_bash::{BashTool, VirtualBashCapability};
+pub use virtual_bash::{BashTool, SessionFileSystemAdapter, VirtualBashCapability};
 pub use web_fetch::{
     BotAuthPublicKey, WebFetchCapability, WebFetchTool, derive_bot_auth_public_key,
 };
