@@ -1,0 +1,42 @@
+{
+  "definition": {
+    "name": "rust_quality_pack",
+    "display_name": "Rust Quality Pack",
+    "description": "Run cargo fmt and cargo clippy after Rust edits, surface clippy output to the agent.",
+    "risk_level": "high",
+    "user_hooks": [
+      {
+        "id": "fmt_after_edit",
+        "event": "post_tool_use",
+        "matcher": {
+          "tool_name": "edit_file",
+          "args_jsonpath": "$.path",
+          "match_regex": "\\.rs$"
+        },
+        "executor": {
+          "type": "bash",
+          "command": "cargo fmt"
+        },
+        "timeout_ms": 15000,
+        "on_error": "warn",
+        "description": "Run cargo fmt after a .rs edit"
+      },
+      {
+        "id": "clippy_after_edit",
+        "event": "post_tool_use",
+        "matcher": {
+          "tool_name": "edit_file",
+          "args_jsonpath": "$.path",
+          "match_regex": "\\.rs$"
+        },
+        "executor": {
+          "type": "bash",
+          "command": "cargo clippy --no-deps --quiet 2>&1 | tail -20 | jq -Rs '{decision:\"mutate\",patch:{additional_context:.}}'"
+        },
+        "timeout_ms": 30000,
+        "on_error": "warn",
+        "description": "Surface clippy output to the agent via additional_context"
+      }
+    ]
+  }
+}

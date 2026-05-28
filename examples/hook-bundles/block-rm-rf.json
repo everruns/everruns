@@ -1,0 +1,19 @@
+{
+  "hooks": [
+    {
+      "id": "guard_rm",
+      "event": "pre_tool_use",
+      "matcher": {
+        "tool_name": "bash",
+        "args_jsonpath": "$.command",
+        "deny_regex": "(?:^|;|&&|\\|)\\s*rm\\s+-rf\\b"
+      },
+      "executor": {
+        "type": "bash",
+        "command": "echo '{\"decision\":\"block\",\"reason\":\"rm -rf is blocked by policy\",\"user_message\":\"That command is blocked by policy.\"}'"
+      },
+      "on_error": "block",
+      "description": "Reject any bash invocation that pipes, chains, or starts with rm -rf"
+    }
+  ]
+}

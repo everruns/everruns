@@ -1,0 +1,55 @@
+{
+  "definition": {
+    "name": "security_pack",
+    "display_name": "Security Pack",
+    "description": "Block dangerous bash patterns and outbound curl/wget calls before they reach the sandbox.",
+    "risk_level": "high",
+    "user_hooks": [
+      {
+        "id": "deny_rm_rf",
+        "event": "pre_tool_use",
+        "matcher": {
+          "tool_name": "bash",
+          "args_jsonpath": "$.command",
+          "deny_regex": "(?:^|;|&&|\\|)\\s*rm\\s+-rf\\b"
+        },
+        "executor": {
+          "type": "bash",
+          "command": "echo '{\"decision\":\"block\",\"reason\":\"rm -rf is blocked\",\"user_message\":\"That command is blocked by policy.\"}'"
+        },
+        "on_error": "block",
+        "description": "Reject destructive rm invocations"
+      },
+      {
+        "id": "deny_outbound_curl",
+        "event": "pre_tool_use",
+        "matcher": {
+          "tool_name": "bash",
+          "args_jsonpath": "$.command",
+          "deny_regex": "(?:^|;|&&|\\|)\\s*(?:curl|wget)\\b"
+        },
+        "executor": {
+          "type": "bash",
+          "command": "echo '{\"decision\":\"block\",\"reason\":\"outbound curl/wget is blocked\",\"user_message\":\"Use the web_fetch tool instead of shelling out to curl/wget.\"}'"
+        },
+        "on_error": "block",
+        "description": "Redirect agent away from shell-based outbound HTTP"
+      },
+      {
+        "id": "deny_dotfile_writes",
+        "event": "pre_tool_use",
+        "matcher": {
+          "tool_name": "edit_file",
+          "args_jsonpath": "$.path",
+          "deny_regex": "(?:^|/)\\.(?:env|aws|ssh|git/config)\\b"
+        },
+        "executor": {
+          "type": "bash",
+          "command": "echo '{\"decision\":\"block\",\"reason\":\"editing secrets files is blocked\"}'"
+        },
+        "on_error": "block",
+        "description": "Refuse edits to common secret-bearing dotfiles"
+      }
+    ]
+  }
+}

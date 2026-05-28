@@ -1,0 +1,15 @@
+{
+  "hooks": [
+    {
+      "id": "audit_tool_calls",
+      "event": "post_tool_use",
+      "executor": {
+        "type": "bash",
+        "command": "jq -c '{ts:.ts,tool:.data.tool_name,id:.data.tool_call_id,success:.data.success}' >> /workspace/.audit.log; echo '{}'"
+      },
+      "timeout_ms": 3000,
+      "on_error": "warn",
+      "description": "Append a one-line JSON record per tool call to /workspace/.audit.log"
+    }
+  ]
+}
