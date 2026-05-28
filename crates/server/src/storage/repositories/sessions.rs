@@ -186,7 +186,9 @@ impl Database {
 
         // Get total count
         let count_sql = format!("SELECT COUNT(*) as count FROM sessions {where_clause}");
-        let count_query = bind_params!(sqlx::query_as::<_, (i64,)>(sqlx::AssertSqlSafe(count_sql.as_str())));
+        let count_query = bind_params!(sqlx::query_as::<_, (i64,)>(sqlx::AssertSqlSafe(
+            count_sql.as_str()
+        )));
         let total: (i64,) = count_query.fetch_one(&self.pool).await?;
 
         // Get paginated results
@@ -200,7 +202,9 @@ impl Database {
             ORDER BY created_at DESC
             LIMIT ${limit_idx} OFFSET ${offset_idx}"#,
         );
-        let data_query = bind_params!(sqlx::query_as::<_, SessionRow>(sqlx::AssertSqlSafe(select_sql.as_str())));
+        let data_query = bind_params!(sqlx::query_as::<_, SessionRow>(sqlx::AssertSqlSafe(
+            select_sql.as_str()
+        )));
         let rows: Vec<SessionRow> = data_query
             .bind(pagination.limit as i64)
             .bind(pagination.offset as i64)

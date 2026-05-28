@@ -156,10 +156,7 @@ impl ReportingQueryBackend for PostgresReportingQueryBackend {
     }
 }
 
-fn bind_scalar_as_text(
-    builder: &mut QueryBuilder<sqlx::Postgres>,
-    value: &Value,
-) -> Result<()> {
+fn bind_scalar_as_text(builder: &mut QueryBuilder<sqlx::Postgres>, value: &Value) -> Result<()> {
     let value = match value {
         Value::String(value) => value.clone(),
         Value::Number(value) => value.to_string(),
@@ -170,10 +167,7 @@ fn bind_scalar_as_text(
     Ok(())
 }
 
-fn bind_comparable(
-    builder: &mut QueryBuilder<sqlx::Postgres>,
-    value: &Value,
-) -> Result<()> {
+fn bind_comparable(builder: &mut QueryBuilder<sqlx::Postgres>, value: &Value) -> Result<()> {
     match value {
         Value::Number(number) => {
             builder.push_bind(number.as_f64().context("invalid numeric filter value")?);

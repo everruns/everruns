@@ -87,7 +87,8 @@ impl Database {
             "SELECT {KB_COLUMNS} FROM knowledge_bases \
              WHERE org_id = $1{status_sql}{search_sql} ORDER BY created_at DESC"
         );
-        let mut query = sqlx::query_as::<_, KnowledgeBaseRow>(sqlx::AssertSqlSafe(sql.as_str())).bind(org_id);
+        let mut query =
+            sqlx::query_as::<_, KnowledgeBaseRow>(sqlx::AssertSqlSafe(sql.as_str())).bind(org_id);
         for pattern in &patterns {
             query = query.bind(pattern);
         }
@@ -206,7 +207,8 @@ impl Database {
             "SELECT {ENTRY_COLUMNS} FROM knowledge_entries \
              WHERE kb_id = $1{kind_sql}{search_sql} ORDER BY created_at DESC"
         );
-        let mut query = sqlx::query_as::<_, KnowledgeEntryRow>(sqlx::AssertSqlSafe(sql.as_str())).bind(kb_id);
+        let mut query =
+            sqlx::query_as::<_, KnowledgeEntryRow>(sqlx::AssertSqlSafe(sql.as_str())).bind(kb_id);
         if let Some(k) = kind {
             query = query.bind(k);
         }

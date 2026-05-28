@@ -224,9 +224,9 @@ async fn process_table(
 
         let rows: Vec<(uuid::Uuid, Option<Vec<u8>>)> =
             sqlx::query_as(sqlx::AssertSqlSafe(query.as_str()))
-            .fetch_all(pool)
-            .await
-            .context("Failed to fetch records")?;
+                .fetch_all(pool)
+                .await
+                .context("Failed to fetch records")?;
 
         if rows.is_empty() {
             break;
