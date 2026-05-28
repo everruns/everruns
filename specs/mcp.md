@@ -414,27 +414,23 @@ not a replacement.
 
 ### `McpErrorCode` (closed vocabulary)
 
-| Code                     | Default category | Default retryable | Meaning                                                                  |
-| ------------------------ | ---------------- | ----------------- | ------------------------------------------------------------------------ |
-| `tool_not_found`         | `permanent`      | no                | Tool name doesn't match any registered tool for the negotiated protocol. |
-| `tool_timeout`           | `transient`      | yes               | Tool exceeded its server-imposed budget.                                 |
-| `tool_panicked`          | `permanent`      | no                | Tool hit an unrecoverable internal error.                                |
-| `invalid_arguments`      | `validation`     | no                | Required argument missing or argument failed schema validation.          |
-| `permission_denied`      | `auth`           | no                | Caller is authenticated but not authorized for the requested action.     |
-| `quota_exceeded`         | `transient`      | yes               | Org/user quota or rate limit hit.                                        |
-| `network_blocked`        | `permanent`      | no                | Outbound network call blocked by egress policy.                          |
-| `mcp_server_unreachable` | `transient`      | yes               | Upstream MCP server unreachable or returned an error we couldn't classify. |
-| `internal`               | `permanent`      | no                | Catch-all for unclassified internal failures.                            |
-| `unknown`                | `permanent`      | no                | Forward-compat sentinel — emitted by SDKs when they see a code they don't know yet. |
+The full enum, per-variant default `category`/`retryable`, and
+human-readable meanings live in
+[`crates/core/src/mcp_server.rs`](../crates/core/src/mcp_server.rs)
+(`pub enum McpErrorCode` near line 477). The defaults there are
+authoritative; this spec captures the contract around them.
 
-`category` and `retryable` are per-occurrence overridable; e.g. an
-`internal` with a known-transient root cause may still set
-`retryable: true`. Treat the table as defaults, not invariants.
+`category` and `retryable` are defaults, not invariants — every
+occurrence may override them when the server has stronger
+information. For example, an `internal` failure whose root cause is
+known to be transient still ships `retryable: true`.
 
 ### Closed vocabulary rules
 
-* Adding a new code is a spec change. Update this table and the
-  `McpErrorCode` enum in `crates/core/src/mcp_server.rs` together.
+* Adding a new code is a spec change. Add the variant to
+  `McpErrorCode` in `crates/core/src/mcp_server.rs` and update this
+  spec's narrative if the new code changes the contract (new
+  category, new retry semantics, new client guidance).
 * SDKs deserialise any unrecognised code into `unknown` (serde
   `#[serde(other)]`); they must not crash on a value they don't know.
 * The classifier `classify_mcp_execute_error` in the same module

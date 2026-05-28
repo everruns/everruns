@@ -53,62 +53,24 @@ Each `data:` line is a serialized `Event`, whose `type` field matches
 the SSE `event:` discriminator and whose `data` field carries the
 event-type-specific payload defined by the `EventData` enum.
 
-Closed `event:` vocabulary (all `text/event-stream` framing values
-the server may emit on this endpoint):
+Closed `event:` vocabulary on this endpoint:
 
-| `event:` value                  | `data:` shape                                                              |
-| ------------------------------- | -------------------------------------------------------------------------- |
-| `connected`                     | `{"status": "connected"}` (lifecycle; no `Event` wrapper)                  |
-| `disconnecting`                 | `{"reason": "connection_cycle", "retry_ms": 100}` (lifecycle)              |
-| `input.message`                 | `Event` (`data` = `InputMessageData`)                                      |
-| `output.message.started`        | `Event` (`data` = `OutputMessageStartedData`)                              |
-| `output.message.delta`          | `Event` (`data` = `OutputMessageDeltaData`)                                |
-| `output.message.completed`      | `Event` (`data` = `OutputMessageCompletedData`)                            |
-| `output.message.replaced`       | `Event` (`data` = `OutputMessageReplacedData`)                             |
-| `turn.started`                  | `Event` (`data` = `TurnStartedData`)                                       |
-| `turn.completed`                | `Event` (`data` = `TurnCompletedData`)                                     |
-| `turn.failed`                   | `Event` (`data` = `TurnFailedData`)                                        |
-| `turn.cancelled`                | `Event` (`data` = `TurnCancelledData`)                                     |
-| `reason.started`                | `Event` (`data` = `ReasonStartedData`)                                     |
-| `reason.completed`              | `Event` (`data` = `ReasonCompletedData`)                                   |
-| `reason.thinking.started`       | `Event` (`data` = `ReasonThinkingStartedData`)                             |
-| `reason.thinking.delta`         | `Event` (`data` = `ReasonThinkingDeltaData`)                               |
-| `reason.thinking.completed`     | `Event` (`data` = `ReasonThinkingCompletedData`)                           |
-| `reason.item`                   | `Event` (`data` = `ReasonItemData`)                                        |
-| `act.started`                   | `Event` (`data` = `ActStartedData`)                                        |
-| `act.completed`                 | `Event` (`data` = `ActCompletedData`)                                      |
-| `tool.started`                  | `Event` (`data` = `ToolStartedData`)                                       |
-| `tool.progress`                 | `Event` (`data` = `ToolProgressData`)                                      |
-| `tool.completed`                | `Event` (`data` = `ToolCompletedData`)                                     |
-| `tool.output.delta`             | `Event` (`data` = `ToolOutputDeltaData`)                                   |
-| `tool.call_requested`           | `Event` (`data` = `ToolCallRequestedData`)                                 |
-| `llm.generation`                | `Event` (`data` = `LlmGenerationData`)                                     |
-| `capability.usage`              | `Event` (`data` = `CapabilityUsageData`)                                   |
-| `session.started`               | `Event` (`data` = `SessionStartedData`)                                    |
-| `session.activated`             | `Event` (`data` = `SessionActivatedData`)                                  |
-| `session.idled`                 | `Event` (`data` = `SessionIdledData`)                                      |
-| `subagent.spawned`              | `Event` (`data` = `SubagentEventData`)                                     |
-| `subagent.completed`            | `Event` (`data` = `SubagentEventData`)                                     |
-| `subagent.failed`               | `Event` (`data` = `SubagentEventData`)                                     |
-| `subagent.cancelled`            | `Event` (`data` = `SubagentEventData`)                                     |
-| `context.compacting`            | `Event` (`data` = `ContextCompactingData`)                                 |
-| `context.compacted`             | `Event` (`data` = `ContextCompactedData`)                                  |
-| `file.written`                  | `Event` (`data` = `FileWrittenData`)                                       |
-| `budget.warning`                | `Event` (`data` = `BudgetEventData`)                                       |
-| `budget.paused`                 | `Event` (`data` = `BudgetEventData`)                                       |
-| `budget.exhausted`              | `Event` (`data` = `BudgetEventData`)                                       |
-| `budget.resumed`                | `Event` (`data` = `BudgetEventData`)                                       |
-| `voice.session.started`         | `Event` (`data` = `VoiceSessionStartedData`)                               |
-| `voice.input.transcript.delta`  | `Event` (`data` = `VoiceTranscriptData`)                                   |
-| `voice.input.transcript.completed`  | `Event` (`data` = `VoiceTranscriptData`)                               |
-| `voice.output.transcript.delta` | `Event` (`data` = `VoiceTranscriptData`)                                   |
-| `voice.output.transcript.completed` | `Event` (`data` = `VoiceTranscriptData`)                               |
-| `voice.session.ended`           | `Event` (`data` = `VoiceSessionEndedData`)                                 |
-| `voice.session.failed`          | `Event` (`data` = `VoiceSessionFailedData`)                                |
+* Two lifecycle frames — `connected` (`{"status": "connected"}`) and
+  `disconnecting` (`{"reason": "connection_cycle", "retry_ms": <ms>}`)
+  — bracket the stream. Neither wraps an `Event`.
+* Every other `event:` value is the discriminant of an `EventData`
+  variant; `data:` is the corresponding `Event<…Data>` envelope.
 
-The set is exhaustive — events whose type isn't in this list are
-filtered out before transmission. Clients should treat any future
-unknown `event:` value as informational only.
+The authoritative event-type → payload mapping is the `EventData`
+enum in [`crates/core/src/events.rs`](../crates/core/src/events.rs)
+(`pub enum EventData` near line 2190). The generated OpenAPI spec
+also surfaces this catalog per-event via the SSE schema components,
+so LLM toolcallers can dispatch from machine-readable form rather
+than this prose.
+
+The set is exhaustive: events whose type is not in `EventData` are
+filtered out before transmission. Clients must treat any unknown
+`event:` value as informational only.
 
 ### `GET /v1/durable/sse` and `GET /v1/durable/workflows/{id}/sse`
 
