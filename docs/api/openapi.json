@@ -8050,6 +8050,14 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/CreateSessionRequest"
+              },
+              "example": {
+                "harness_name": "generic",
+                "tags": [
+                  "debugging",
+                  "urgent"
+                ],
+                "title": "Debug login issue"
               }
             }
           },
@@ -8062,12 +8070,43 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/WithUrls_Session"
+                },
+                "example": {
+                  "created_at": "2026-05-27T15:24:00Z",
+                  "harness_id": "harness_01933b5a00007000800000000000001",
+                  "id": "session_01933b5a00007000800000000000001",
+                  "organization_id": "org_00000000000000000000000000000001",
+                  "owner_principal_id": "principal_01933b5a000070008000000000000001",
+                  "self_url": "https://app.everruns.com/api/v1/sessions/session_01933b5a00007000800000000000001",
+                  "status": "started",
+                  "tags": [
+                    "debugging",
+                    "urgent"
+                  ],
+                  "title": "Debug login issue",
+                  "ui_link": "https://app.everruns.com/sessions/session_01933b5a00007000800000000000001/chat",
+                  "updated_at": "2026-05-27T15:24:00Z",
+                  "view_url": "https://app.everruns.com/sessions/session_01933b5a00007000800000000000001/chat"
                 }
               }
             }
           },
           "404": {
-            "description": "Harness, Agent, or Model not found"
+            "description": "Harness, Agent, or Model not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "code": "harness_not_found",
+                  "detail": "Harness 'generic' not found in org org_00000000000000000000000000000001.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "https://docs.everruns.com/errors/harness_not_found"
+                }
+              }
+            }
           },
           "500": {
             "description": "Internal server error"
@@ -8325,6 +8364,11 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CancelTurnResponse"
+                },
+                "example": {
+                  "cancelled_turn_id": "turn_01933b5a00007000800000000000001",
+                  "session_id": "session_01933b5a00007000800000000000001",
+                  "status": "idle"
                 }
               }
             }
@@ -8333,7 +8377,21 @@
             "description": "Invalid session ID"
           },
           "404": {
-            "description": "Session not found"
+            "description": "Session not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                },
+                "example": {
+                  "code": "session_not_found",
+                  "detail": "Session session_01933b5a000070008000000000000001 not found in org org_00000000000000000000000000000001.",
+                  "status": 404,
+                  "title": "Not Found",
+                  "type": "https://docs.everruns.com/errors/session_not_found"
+                }
+              }
+            }
           },
           "500": {
             "description": "Internal server error"
