@@ -22,11 +22,14 @@ Specs capture the "why" and "what", not exhaustive source detail. Link to code f
 - `specs/apis.md` - HTTP API endpoints, error handling
 - `specs/api-conventions.md` - Cross-cutting HTTP API conventions
 - `specs/api-streaming.md` - SSE streaming conventions for API endpoints
+- `specs/api-examples.md` - Per-operation request/response examples on `#[utoipa::path]` handlers
+- `specs/api-llm-extensions.md` - LLM-specific OpenAPI extensions (`x-llm-*`)
 - `specs/public-endpoints.md` - Public endpoints, error sanitization contract, stable public code set
 - `specs/events.md` - Event types, SSE streaming, contract and compatibility guarantees
 - `specs/execution-phases.md` - Execution phases (Commentary/FinalAnswer) for multi-step tool flows
 - `specs/tool-execution.md` - Tool types and execution flow
 - `specs/capabilities.md` - Agent capabilities system
+- `specs/background-execution.md` - `background_execution` capability and cross-cutting / auto-activation contract
 - `specs/client-side-tools.md` - Client-side tools for API/SDK consumers
 - `specs/tool-search.md` - OpenAI tool_search deferred tool loading capability
 - `specs/fetchkit.md` - fetchkit library powering the `web_fetch` capability

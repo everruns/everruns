@@ -87,6 +87,7 @@ mod a2ui;
 mod agent_handoff;
 mod agent_instructions;
 pub mod attach_skill;
+mod background_execution;
 mod btw;
 mod budgeting;
 pub mod compaction;
@@ -152,6 +153,7 @@ pub use attach_skill::{
     SkillInstructions, SkillMeta, SkillSource, discover_skills_from_entries, is_skill_capability,
     parse_skill_capability_id, reconstruct_skill_md, skill_capability_id,
 };
+pub use background_execution::{BACKGROUND_EXECUTION_CAPABILITY_ID, BackgroundExecutionCapability};
 pub use btw::{BTW_CAPABILITY_ID, BtwCapability};
 pub use budgeting::BudgetingCapability;
 pub use compaction::{
@@ -846,6 +848,7 @@ impl CapabilityRegistry {
         registry.register(StatelessTodoListCapability);
         registry.register(WebFetchCapability::from_env());
         registry.register(VirtualBashCapability);
+        registry.register(BackgroundExecutionCapability);
         registry.register(SessionScheduleCapability);
         registry.register(BtwCapability);
         registry.register(InfinityContextCapability);
@@ -1790,6 +1793,39 @@ pub async fn collect_capabilities_with_configs(
         }
     }
 
+    // Auto-activate `background_execution` whenever any collected tool
+    // declares background support via `ToolHints::supports_background`.
+    //
+    // This is the generic cross-cutting capability contract — meta-tools that
+    // wrap other tools based on hints should hook in here, not attach to a
+    // single owner capability (e.g. `virtual_bash`).
+    //
+    // Lockstep: we extend both `tools` (execution registry) and
+    // `tool_definitions` (model-visible) so the model can see and the worker
+    // can dispatch `spawn_background` from the same activation event. See
+    // `specs/background-execution.md`.
+    if !applied_ids
+        .iter()
+        .any(|id| id == BACKGROUND_EXECUTION_CAPABILITY_ID)
+        && tool_definitions
+            .iter()
+            .any(|def| def.hints().supports_background == Some(true))
+        && let Some(bg_cap) = registry.get(BACKGROUND_EXECUTION_CAPABILITY_ID)
+        && bg_cap.status() == CapabilityStatus::Available
+    {
+        tools.extend(bg_cap.tools());
+        let cap_category = bg_cap.category();
+        for def in bg_cap.tool_definitions() {
+            let def = match (def.category(), cap_category) {
+                (None, Some(cat)) => def.with_category(cat),
+                _ => def,
+            }
+            .with_capability_attribution(BACKGROUND_EXECUTION_CAPABILITY_ID, Some(bg_cap.name()));
+            tool_definitions.push(def);
+        }
+        applied_ids.push(BACKGROUND_EXECUTION_CAPABILITY_ID.to_string());
+    }
+
     // Sort message filter providers by priority (lower = earlier)
     message_filter_providers.sort_by_key(|(p, _)| p.priority());
 
@@ -1944,6 +1980,7 @@ mod tests {
             "stateless_todo_list",
             "web_fetch",
             "virtual_bash",
+            "background_execution",
             "session_schedule",
             "btw",
             "infinity_context",
@@ -3366,6 +3403,133 @@ mod tests {
         assert!(
             !registry.has("bash"),
             "with_defaults() must not include 'bash' — it comes from virtual_bash capability"
+        );
+    }
+
+    // =========================================================================
+    // EVE-501: background_execution auto-activation
+    // =========================================================================
+
+    /// Auto-activation: any collected tool with `supports_background=true`
+    /// causes `spawn_background` to appear in both tool_definitions and tools.
+    #[tokio::test]
+    async fn test_background_execution_auto_activates_with_virtual_bash() {
+        let registry = CapabilityRegistry::with_builtins();
+        let collected =
+            collect_capabilities(&["virtual_bash".to_string()], &registry, &test_ctx()).await;
+
+        let tool_names: Vec<&str> = collected
+            .tool_definitions
+            .iter()
+            .map(|t| t.name())
+            .collect();
+        assert!(
+            tool_names.contains(&"spawn_background"),
+            "spawn_background must be auto-activated when virtual_bash (a \
+             background-capable tool) is in the agent's capability set; got: {:?}",
+            tool_names
+        );
+        assert!(
+            collected
+                .applied_ids
+                .iter()
+                .any(|id| id == BACKGROUND_EXECUTION_CAPABILITY_ID),
+            "background_execution must be in applied_ids when auto-activated; \
+             got: {:?}",
+            collected.applied_ids
+        );
+
+        // Lockstep: implementations match definitions (executable in the worker).
+        assert!(
+            collected
+                .tools
+                .iter()
+                .any(|t| t.name() == "spawn_background"),
+            "spawn_background tool implementation must be present alongside the \
+             definition (lockstep contract)"
+        );
+    }
+
+    /// Negative: when no collected tool declares background support, the
+    /// capability must NOT auto-activate.
+    #[tokio::test]
+    async fn test_background_execution_does_not_auto_activate_without_hint() {
+        let registry = CapabilityRegistry::with_builtins();
+        // current_time has no background-capable tool.
+        let collected =
+            collect_capabilities(&["current_time".to_string()], &registry, &test_ctx()).await;
+
+        let tool_names: Vec<&str> = collected
+            .tool_definitions
+            .iter()
+            .map(|t| t.name())
+            .collect();
+        assert!(
+            !tool_names.contains(&"spawn_background"),
+            "spawn_background must NOT be activated without a background-capable \
+             tool; got: {:?}",
+            tool_names
+        );
+        assert!(
+            !collected
+                .applied_ids
+                .iter()
+                .any(|id| id == BACKGROUND_EXECUTION_CAPABILITY_ID),
+            "background_execution must not appear in applied_ids when no \
+             background-capable tool is present; got: {:?}",
+            collected.applied_ids
+        );
+    }
+
+    /// Idempotence: explicitly selecting `background_execution` plus a
+    /// background-capable tool must not produce duplicate spawn_background
+    /// entries.
+    #[tokio::test]
+    async fn test_background_execution_explicit_selection_is_idempotent() {
+        let registry = CapabilityRegistry::with_builtins();
+        let collected = collect_capabilities(
+            &[
+                "virtual_bash".to_string(),
+                BACKGROUND_EXECUTION_CAPABILITY_ID.to_string(),
+            ],
+            &registry,
+            &test_ctx(),
+        )
+        .await;
+
+        let spawn_background_count = collected
+            .tool_definitions
+            .iter()
+            .filter(|t| t.name() == "spawn_background")
+            .count();
+        assert_eq!(
+            spawn_background_count, 1,
+            "spawn_background must appear exactly once even when \
+             background_execution is selected explicitly alongside a \
+             background-capable tool"
+        );
+        let applied_count = collected
+            .applied_ids
+            .iter()
+            .filter(|id| id.as_str() == BACKGROUND_EXECUTION_CAPABILITY_ID)
+            .count();
+        assert_eq!(
+            applied_count, 1,
+            "background_execution must appear exactly once in applied_ids"
+        );
+    }
+
+    /// Lockstep: with_defaults() must NOT include spawn_background — it only
+    /// reaches the worker registry through the auto-activated capability.
+    /// This proves the executor cannot dispatch spawn_background without the
+    /// model having seen it.
+    #[test]
+    fn test_defaults_do_not_include_spawn_background() {
+        let registry = crate::ToolRegistry::with_defaults();
+        assert!(
+            !registry.has("spawn_background"),
+            "with_defaults() must not include 'spawn_background' — it comes \
+             from the background_execution capability (EVE-501)"
         );
     }
 
