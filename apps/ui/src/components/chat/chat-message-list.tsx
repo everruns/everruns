@@ -475,7 +475,13 @@ export const ChatMessageList = memo(function ChatMessageList({
               </div>
             )}
 
-            {renderTurnDivider(event.id, turnDurationByEventId, t("worked_for"))}
+            {renderTurnDivider(
+              event.id,
+              turnDurationByEventId,
+              t("worked_for", {
+                duration: formatWorkedDuration(turnDurationByEventId.get(event.id) ?? 0),
+              }),
+            )}
           </div>
         );
       })}
