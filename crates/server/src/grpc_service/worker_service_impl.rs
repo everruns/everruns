@@ -297,6 +297,7 @@ impl WorkerService for WorkerServiceImpl {
                     &effective,
                     Some(session.id),
                     self.connection_resolver.as_ref(),
+                    self.mcp_server_service.egress_service().as_ref(),
                 )
                 .await
                 .map(|defs| {

@@ -20,6 +20,8 @@ Specs capture the "why" and "what", not exhaustive source detail. Link to code f
 ## APIs and execution
 
 - `specs/apis.md` - HTTP API endpoints, error handling
+- `specs/api-conventions.md` - Cross-cutting HTTP API conventions
+- `specs/api-streaming.md` - SSE streaming conventions for API endpoints
 - `specs/public-endpoints.md` - Public endpoints, error sanitization contract, stable public code set
 - `specs/events.md` - Event types, SSE streaming, contract and compatibility guarantees
 - `specs/execution-phases.md` - Execution phases (Commentary/FinalAnswer) for multi-step tool flows

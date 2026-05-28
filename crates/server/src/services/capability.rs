@@ -64,8 +64,27 @@ impl CapabilityService {
         }
     }
 
+    /// Replace the embedded `McpServerService` so outbound MCP traffic flows
+    /// through the platform's shared egress boundary (spec: `specs/egress.md`).
+    pub fn with_mcp_egress_service(
+        mut self,
+        egress_service: Arc<dyn everruns_core::EgressService>,
+    ) -> Self {
+        let db = self.db.clone();
+        let encryption = self.mcp_service.encryption();
+        self.mcp_service = McpServerService::with_egress_service(db, encryption, egress_service);
+        self
+    }
+
     pub fn registry(&self) -> &CapabilityRegistry {
         &self.registry
+    }
+
+    /// Egress service used by the embedded `McpServerService` for outbound
+    /// HTTP to remote MCP servers. Surfaced so command handlers that need to
+    /// discover scoped MCP tools can share the platform's egress boundary.
+    pub fn egress_service(&self) -> Arc<dyn everruns_core::EgressService> {
+        self.mcp_service.egress_service()
     }
 
     /// Invalidate the cached skill list for an org. Called by skill mutation
@@ -491,6 +510,7 @@ impl CapabilityService {
                 &collected.mcp_servers,
                 None,
                 None,
+                self.mcp_service.egress_service().as_ref(),
             )
             .await?,
         );

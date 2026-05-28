@@ -780,15 +780,21 @@ impl ServerAppBuilder {
             platform_definition.as_ref(),
             event_delivery.clone(),
         );
-        let capability_service = Arc::new(services::CapabilityService::with_registry(
-            db.clone(),
-            encryption.clone(),
-            platform_definition.capability_registry().clone(),
-        ));
-        let mcp_server_service = Arc::new(crate::domains::mcp_servers::McpServerService::new(
-            db.clone(),
-            encryption.clone(),
-        ));
+        let capability_service = Arc::new(
+            services::CapabilityService::with_registry(
+                db.clone(),
+                encryption.clone(),
+                platform_definition.capability_registry().clone(),
+            )
+            .with_mcp_egress_service(platform_definition.egress_service()),
+        );
+        let mcp_server_service = Arc::new(
+            crate::domains::mcp_servers::McpServerService::with_egress_service(
+                db.clone(),
+                encryption.clone(),
+                platform_definition.egress_service(),
+            ),
+        );
         let command_service = Arc::new(
             crate::domains::session_commands::SessionCommandService::new(
                 db.clone(),
@@ -1622,11 +1628,13 @@ impl ServerAppBuilder {
                 tracing::info!("DEV MODE: Starting task worker for in-process execution");
 
                 // Reuse the shared llm_resolver from Phase 5
-                let mcp_server_service =
-                    Arc::new(crate::domains::mcp_servers::McpServerService::new(
+                let mcp_server_service = Arc::new(
+                    crate::domains::mcp_servers::McpServerService::with_egress_service(
                         db.clone(),
                         encryption.clone(),
-                    ));
+                        platform_definition.egress_service(),
+                    ),
+                );
                 let session_storage_store: Arc<dyn everruns_core::traits::SessionStorageStore> =
                     match db.as_ref() {
                         crate::storage::StorageBackend::Postgres(database) => {

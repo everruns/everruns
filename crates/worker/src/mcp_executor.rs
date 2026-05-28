@@ -9,9 +9,10 @@ use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use everruns_core::traits::{ToolContext, ToolExecutor};
 use everruns_core::{
-    McpContent, McpServerAuthMode, McpToolCallRequest, McpToolCallResponse, ToolCall,
-    ToolDefinition, ToolResult, ToolResultImage, is_mcp_tool, mcp_oauth_session_secret_name,
-    parse_mcp_tool_name, validate_safe_url,
+    DirectEgressService, EgressRequest, EgressRequestKind, EgressService, McpContent,
+    McpServerAuthMode, McpToolCallRequest, McpToolCallResponse, ToolCall, ToolDefinition,
+    ToolResult, ToolResultImage, is_mcp_tool, mcp_oauth_session_secret_name, parse_mcp_tool_name,
+    validate_safe_url,
 };
 use serde_json::json;
 use std::collections::HashMap;
@@ -41,14 +42,29 @@ pub struct McpToolExecutor {
     org_id: i64,
     /// Cache of MCP server info by session scope + server name prefix.
     server_cache: tokio::sync::RwLock<HashMap<String, McpServerInfo>>,
+    /// Shared outbound HTTP boundary (spec: `specs/egress.md`).
+    egress_service: Arc<dyn EgressService>,
 }
 
 impl McpToolExecutor {
     pub fn new(grpc_client: GrpcClient, org_id: i64) -> Self {
+        Self::with_egress_service(
+            grpc_client,
+            org_id,
+            Arc::new(DirectEgressService::default()),
+        )
+    }
+
+    pub fn with_egress_service(
+        grpc_client: GrpcClient,
+        org_id: i64,
+        egress_service: Arc<dyn EgressService>,
+    ) -> Self {
         Self {
             grpc_client,
             org_id,
             server_cache: tokio::sync::RwLock::new(HashMap::new()),
+            egress_service,
         }
     }
 
@@ -84,6 +100,7 @@ impl McpToolExecutor {
         }
 
         let (result, images) = call_mcp_tool(
+            self.egress_service.as_ref(),
             &server_info,
             &original_tool_name,
             tool_call.arguments.clone(),
@@ -181,15 +198,20 @@ impl McpToolExecutor {
     }
 }
 
-/// Call an MCP server's tools/call endpoint.
+/// Call an MCP server's tools/call endpoint via the platform `EgressService`
+/// (spec: `specs/egress.md`).
+///
 /// Returns (json_result, images) where images are extracted from MCP image content.
 async fn call_mcp_tool(
+    egress_service: &dyn EgressService,
     server_info: &McpServerInfo,
     tool_name: &str,
     arguments: serde_json::Value,
     authorization_header: Option<&str>,
 ) -> Result<(serde_json::Value, Vec<ToolResultImage>)> {
-    // Re-validate URL at execution time to catch TOCTOU / post-registration changes
+    // Re-validate URL at execution time to catch TOCTOU / post-registration
+    // changes. Runs before the egress request is built so unsafe URLs never
+    // reach the boundary.
     validate_safe_url(&server_info.url).map_err(|e| {
         tracing::warn!(
             mcp_server = %server_info.name,
@@ -200,27 +222,24 @@ async fn call_mcp_tool(
         anyhow!("MCP server URL blocked: {}", e)
     })?;
 
-    let client = reqwest::Client::builder()
-        .timeout(MCP_TOOL_TIMEOUT)
-        .build()?;
-
-    // Create JSON-RPC request
     let request = McpToolCallRequest::new(
         1, // Request ID
         tool_name.to_string(),
         Some(arguments),
     );
+    let request_body = serde_json::to_vec(&request)?;
 
-    let mut req_builder = client.post(&server_info.url).json(&request);
+    let mut egress_request = EgressRequest::new("POST", &server_info.url, EgressRequestKind::Mcp)
+        .header("Content-Type", "application/json")
+        .header("Accept", "application/json, text/event-stream")
+        .timeout_ms(MCP_TOOL_TIMEOUT.as_millis() as u64)
+        .body(request_body);
 
-    // Add Authorization header (API key, OAuth token, etc.) if provided
     if let Some(auth_header) = authorization_header {
-        req_builder = req_builder.header("Authorization", auth_header);
+        egress_request = egress_request.header("Authorization", auth_header);
     }
-
-    // Add custom headers
     for (name, value) in &server_info.headers {
-        req_builder = req_builder.header(name, value);
+        egress_request = egress_request.header(name, value);
     }
 
     tracing::debug!(
@@ -229,7 +248,7 @@ async fn call_mcp_tool(
         "Calling MCP server"
     );
 
-    let response = req_builder.send().await.map_err(|e| {
+    let response = egress_service.send(egress_request).await.map_err(|e| {
         tracing::error!(
             mcp_server = %server_info.name,
             tool_name = %tool_name,
@@ -239,21 +258,23 @@ async fn call_mcp_tool(
         anyhow!("Failed to call MCP server: {}", e)
     })?;
 
-    if !response.status().is_success() {
-        let status = response.status();
-        let body = response.text().await.unwrap_or_default();
+    if !(200..300).contains(&response.status) {
+        let body = String::from_utf8_lossy(&response.body).into_owned();
         tracing::error!(
             mcp_server = %server_info.name,
             tool_name = %tool_name,
-            status = %status,
+            status = %response.status,
             body = %body,
             "MCP server returned error"
         );
-        return Err(anyhow!("MCP server returned error: {} - {}", status, body));
+        return Err(anyhow!(
+            "MCP server returned error: {} - {}",
+            response.status,
+            body
+        ));
     }
 
-    // Parse response - handle both plain JSON and SSE (Server-Sent Events) formats
-    let response_text = response.text().await.map_err(|e| {
+    let response_text = String::from_utf8(response.body).map_err(|e| {
         tracing::error!(
             mcp_server = %server_info.name,
             tool_name = %tool_name,
@@ -553,6 +574,10 @@ data: {"result":{"tools":[{"name":"search","description":"Search docs"}]},"id":1
 
     // --- SSRF validation at execution time ---
 
+    fn test_egress() -> DirectEgressService {
+        DirectEgressService::default()
+    }
+
     #[tokio::test]
     async fn ssrf_blocks_localhost_at_execution_time() {
         let server = McpServerInfo {
@@ -564,7 +589,9 @@ data: {"result":{"tools":[{"name":"search","description":"Search docs"}]},"id":1
             auth_mode: McpServerAuthMode::None,
             oauth_provider_id: None,
         };
-        let result = call_mcp_tool(&server, "test_tool", serde_json::json!({}), None).await;
+        let egress = test_egress();
+        let result =
+            call_mcp_tool(&egress, &server, "test_tool", serde_json::json!({}), None).await;
         assert!(result.is_err());
         let err_msg = result.unwrap_err().to_string();
         assert!(
@@ -584,7 +611,9 @@ data: {"result":{"tools":[{"name":"search","description":"Search docs"}]},"id":1
             auth_mode: McpServerAuthMode::None,
             oauth_provider_id: None,
         };
-        let result = call_mcp_tool(&server, "test_tool", serde_json::json!({}), None).await;
+        let egress = test_egress();
+        let result =
+            call_mcp_tool(&egress, &server, "test_tool", serde_json::json!({}), None).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("blocked"));
     }
@@ -600,7 +629,9 @@ data: {"result":{"tools":[{"name":"search","description":"Search docs"}]},"id":1
             auth_mode: McpServerAuthMode::None,
             oauth_provider_id: None,
         };
-        let result = call_mcp_tool(&server, "test_tool", serde_json::json!({}), None).await;
+        let egress = test_egress();
+        let result =
+            call_mcp_tool(&egress, &server, "test_tool", serde_json::json!({}), None).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("blocked"));
     }
@@ -616,7 +647,9 @@ data: {"result":{"tools":[{"name":"search","description":"Search docs"}]},"id":1
             auth_mode: McpServerAuthMode::None,
             oauth_provider_id: None,
         };
-        let result = call_mcp_tool(&server, "test_tool", serde_json::json!({}), None).await;
+        let egress = test_egress();
+        let result =
+            call_mcp_tool(&egress, &server, "test_tool", serde_json::json!({}), None).await;
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("blocked"));
     }

@@ -50,6 +50,7 @@ pub enum EgressRequestKind {
     Integration,
     SystemEmail,
     UtilityLlm,
+    Mcp,
     Other(String),
 }
 

@@ -46,7 +46,7 @@ Reasoning:
 - `EgressStreamResponse` is the streaming response body used by LLM SSE and
   other long-lived HTTP responses.
 - `EgressRequestKind` labels traffic as `llm_provider`, `capability`,
-  `integration`, `system_email`, `utility_llm`, or `other`.
+  `integration`, `system_email`, `utility_llm`, `mcp`, or `other`.
 - `EgressSigning` expresses whether signing is disabled, optional via platform
   default, or required.
 - `EgressError` separates invalid requests, network access denial, unavailable
@@ -71,6 +71,7 @@ This applies to:
   HTTP support.
 - integration crates for external provider APIs.
 - internal system services such as email and utility LLM.
+- remote MCP servers (tool discovery and tool execution).
 - background tasks that call external APIs.
 
 Exceptions:
