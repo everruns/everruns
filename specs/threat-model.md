@@ -874,7 +874,7 @@ Everruns uses [bashkit](https://github.com/everruns/bashkit) (v0.2.1) as a sandb
 | TM-BASH-014 | File permission bypass | Low | `chmod` is a no-op; session filesystem has no permission model | **BY DESIGN** |
 | TM-BASH-015 | Host information disclosure | Low | `hostname` → "everruns"; `whoami` → "everruns"; `uname` returns sandboxed values | MITIGATED |
 | TM-BASH-016 | Write amplification via bash | Medium | No per-session storage quota on files written by bash (see TM-FS-008) | **OPEN** (see TM-FS-008) |
-| TM-BASH-017 | Shell-state snapshot tampering / secret exposure | Medium | Stateful bash persists shell state (incl. `export`ed secrets) per session (see specs/stateful-bash.md). Snapshots use HMAC-SHA256 keyed bytes (tamper-checked on restore) and the encrypted storage path; foreground-only, session-scoped, never cross-tenant | PLANNED (see specs/stateful-bash.md) |
+| TM-BASH-017 | Shell-state snapshot tampering / secret exposure | Medium | Stateful bash persists shell state (incl. `export`ed secrets) per session (see specs/stateful-bash.md). The blob is stored via the encrypted secret path (`set_secret`/`get_secret`, encrypted at rest) and carries bashkit's built-in SHA-256 integrity digest (corruption rejected on restore). Bash code has no KV access, so a session cannot forge its own state. Foreground-only, session-scoped, never cross-tenant | MITIGATED (see specs/stateful-bash.md) |
 
 ### Mitigation Details
 

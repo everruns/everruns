@@ -43,10 +43,11 @@ use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::{SessionFileSystem, ToolContext};
 use crate::typed_id::SessionId;
 use async_trait::async_trait;
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
 use bashkit::{
     Bash, BashBuilder, BashTool as BashkitTool, DirEntry, ExecutionLimits, FileSystem,
     FileSystemExt, FileType, Metadata, OutputCallback, SearchCapabilities, SearchCapable,
-    SearchMatch as BashkitSearchMatch, SearchProvider, SearchQuery, SearchResults,
+    SearchMatch as BashkitSearchMatch, SearchProvider, SearchQuery, SearchResults, SnapshotOptions,
     Tool as BashkitToolTrait, TraceEventKind, TraceMode,
 };
 use serde_json::{Value, json};
@@ -68,6 +69,75 @@ fn execution_limits() -> ExecutionLimits {
         .max_input_bytes(1_000_000) // 1MB max script size
         .max_ast_depth(100)
         .parser_timeout(std::time::Duration::from_secs(5))
+}
+
+// ============================================================================
+// Stateful shell state (session REPL) — see specs/stateful-bash.md
+// ============================================================================
+
+/// Reserved storage key holding the per-session bash shell-state snapshot.
+/// Stored via the encrypted secret path because the blob can contain exported
+/// secrets; bashkit's snapshot carries a SHA-256 integrity digest (TM-BASH-017).
+const BASH_STATE_KEY: &str = "__bash_shell_state__";
+
+/// Cap on the persisted snapshot blob (base64). Beyond this we reset rather than
+/// let shell state grow unbounded (large functions / env). See specs/stateful-bash.md.
+const MAX_SHELL_STATE_BYTES: usize = 256 * 1024;
+
+/// Load the session's persisted shell-state snapshot, if any. Degrades to `None`
+/// (stateless) when no storage is wired or the blob is missing/undecodable.
+async fn load_shell_state(context: &ToolContext) -> Option<Vec<u8>> {
+    let store = context.storage_store.as_ref()?;
+    match store.get_secret(context.session_id, BASH_STATE_KEY).await {
+        Ok(Some(b64)) => BASE64.decode(b64.as_bytes()).ok(),
+        Ok(None) => None,
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to load bash shell state; starting fresh");
+            None
+        }
+    }
+}
+
+/// Capture and persist the current shell state (filesystem excluded — it is
+/// external and already durable). Best-effort: failures are logged, never fatal.
+async fn save_shell_state(context: &ToolContext, bash: &Bash) {
+    let Some(store) = context.storage_store.as_ref() else {
+        return;
+    };
+    let bytes = match bash.snapshot_with_options(SnapshotOptions {
+        exclude_filesystem: true,
+        exclude_functions: false,
+    }) {
+        Ok(b) => b,
+        Err(e) => {
+            tracing::warn!(error = %e, "failed to snapshot bash shell state");
+            return;
+        }
+    };
+    let b64 = BASE64.encode(&bytes);
+    if b64.len() > MAX_SHELL_STATE_BYTES {
+        // Reset rather than persist an oversized blob.
+        tracing::warn!(
+            bytes = b64.len(),
+            "bash shell state exceeds cap; resetting session shell state"
+        );
+        let _ = store.delete_value(context.session_id, BASH_STATE_KEY).await;
+        let _ = store
+            .delete_secret(context.session_id, BASH_STATE_KEY)
+            .await;
+        return;
+    }
+    if let Err(e) = store
+        .set_secret(context.session_id, BASH_STATE_KEY, &b64)
+        .await
+    {
+        tracing::warn!(error = %e, "failed to persist bash shell state");
+    }
+}
+
+/// Single-quote a path for safe interpolation into a `cd` command.
+fn shell_single_quote(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "'\\''"))
 }
 
 /// Configured bashkit tool instance with everruns settings.
@@ -230,10 +300,10 @@ impl Tool for BashTool {
             }
         };
 
-        let working_dir = arguments
-            .get("working_dir")
-            .and_then(|v| v.as_str())
-            .unwrap_or("/workspace");
+        // When the caller supplies `working_dir` it overrides any restored cwd
+        // (see below); otherwise a stateful session resumes at its persisted cwd.
+        let explicit_working_dir = arguments.get("working_dir").and_then(|v| v.as_str());
+        let working_dir = explicit_working_dir.unwrap_or("/workspace");
 
         let timeout_ms = arguments
             .get("timeout_ms")
@@ -283,6 +353,38 @@ impl Tool for BashTool {
             .max_memory(10 * 1024 * 1024) // 10 MB — prevent OOM from untrusted input
             .trace_mode(TraceMode::Redacted);
         let mut bash = install_observability_hooks(builder, context.session_id).build();
+
+        // Stateful REPL (specs/stateful-bash.md): restore persisted shell state
+        // (cwd, env, vars, functions, aliases, counters) onto the freshly-built
+        // instance. We restore *after* build so the custom fs adapter and hooks
+        // stay attached. The filesystem is excluded from snapshots — it is
+        // external and already durable. A version mismatch or corrupt blob is
+        // logged and ignored (start fresh), never fatal to the call.
+        let mut restored = false;
+        if let Some(state_bytes) = load_shell_state(context).await {
+            match bash.restore_snapshot(&state_bytes) {
+                Ok(()) => restored = true,
+                Err(e) => {
+                    tracing::warn!(error = %e, "failed to restore bash shell state; starting fresh")
+                }
+            }
+        }
+
+        // If the caller pinned `working_dir`, it wins over a restored cwd: prepend
+        // a `cd` so the explicit directory takes effect for this call (and is then
+        // captured into the next snapshot). Without state, the builder cwd already
+        // matches, so only prepend when we actually restored a (possibly different) cwd.
+        let command_owned;
+        let command: &str = if restored && explicit_working_dir.is_some() {
+            command_owned = format!(
+                "cd {} || exit 1\n{}",
+                shell_single_quote(working_dir),
+                command
+            );
+            &command_owned
+        } else {
+            command
+        };
 
         // Stream output via tool.output.delta events for live UI/CLI rendering.
         // bashkit's exec_streaming calls OutputCallback with (stdout_chunk, stderr_chunk)
@@ -334,7 +436,8 @@ impl Tool for BashTool {
         // Wait for all buffered chunks to be emitted (sender dropped when exec completes)
         let _ = emit_task.await;
 
-        match result {
+        let timed_out = result.is_err();
+        let tool_result = match result {
             Ok(Ok(output)) => {
                 // Extract metadata from trace events (EVE-240)
                 let commands_executed = output
@@ -428,7 +531,15 @@ impl Tool for BashTool {
                     ))
                 }
             }
+        };
+
+        // Persist shell state for the next call (specs/stateful-bash.md). Skip on
+        // timeout: the state after a cancelled exec is indeterminate.
+        if !timed_out {
+            save_shell_state(context, &bash).await;
         }
+
+        tool_result
     }
 
     fn requires_context(&self) -> bool {
@@ -1592,6 +1703,190 @@ mod tests {
         let mut context = ToolContext::new(session_id);
         context.file_store = Some(store);
         (context, session_id)
+    }
+
+    /// In-memory key/value + secret store for testing stateful bash.
+    #[derive(Default)]
+    struct MockStorageStore {
+        values: Mutex<HashMap<(SessionId, String), String>>,
+        secrets: Mutex<HashMap<(SessionId, String), String>>,
+    }
+
+    #[async_trait]
+    impl crate::traits::SessionStorageStore for MockStorageStore {
+        async fn set_value(&self, session_id: SessionId, key: &str, value: &str) -> Result<()> {
+            self.values
+                .lock()
+                .unwrap()
+                .insert((session_id, key.to_string()), value.to_string());
+            Ok(())
+        }
+        async fn get_value(&self, session_id: SessionId, key: &str) -> Result<Option<String>> {
+            Ok(self
+                .values
+                .lock()
+                .unwrap()
+                .get(&(session_id, key.to_string()))
+                .cloned())
+        }
+        async fn delete_value(&self, session_id: SessionId, key: &str) -> Result<bool> {
+            Ok(self
+                .values
+                .lock()
+                .unwrap()
+                .remove(&(session_id, key.to_string()))
+                .is_some())
+        }
+        async fn list_keys(&self, _session_id: SessionId) -> Result<Vec<crate::traits::KeyInfo>> {
+            Ok(vec![])
+        }
+        async fn set_secret(&self, session_id: SessionId, name: &str, value: &str) -> Result<()> {
+            self.secrets
+                .lock()
+                .unwrap()
+                .insert((session_id, name.to_string()), value.to_string());
+            Ok(())
+        }
+        async fn get_secret(&self, session_id: SessionId, name: &str) -> Result<Option<String>> {
+            Ok(self
+                .secrets
+                .lock()
+                .unwrap()
+                .get(&(session_id, name.to_string()))
+                .cloned())
+        }
+        async fn delete_secret(&self, session_id: SessionId, name: &str) -> Result<bool> {
+            Ok(self
+                .secrets
+                .lock()
+                .unwrap()
+                .remove(&(session_id, name.to_string()))
+                .is_some())
+        }
+        async fn list_secrets(
+            &self,
+            _session_id: SessionId,
+        ) -> Result<Vec<crate::traits::SecretInfo>> {
+            Ok(vec![])
+        }
+    }
+
+    /// Context sharing one file store and one storage store, so shell state
+    /// persists across calls just like a real session.
+    fn create_stateful_context() -> ToolContext {
+        let session_id = SessionId::new();
+        let mut context = ToolContext::new(session_id);
+        context.file_store = Some(Arc::new(MockFileStore::new()));
+        context.storage_store = Some(Arc::new(MockStorageStore::default()));
+        context
+    }
+
+    fn stdout_of(result: ToolExecutionResult) -> String {
+        match result {
+            ToolExecutionResult::Success(output) => {
+                output["stdout"].as_str().unwrap_or_default().to_string()
+            }
+            other => panic!("Expected success result, got: {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_stateful_env_var_persists_across_calls() {
+        let context = create_stateful_context();
+        let tool = BashTool;
+
+        let first = tool
+            .execute_with_context(json!({"commands": "export FOO=bar"}), &context)
+            .await;
+        assert!(matches!(first, ToolExecutionResult::Success(_)));
+
+        let second = tool
+            .execute_with_context(json!({"commands": "echo $FOO"}), &context)
+            .await;
+        assert_eq!(stdout_of(second), "bar\n");
+    }
+
+    #[tokio::test]
+    async fn test_stateful_cwd_persists_across_calls() {
+        let context = create_stateful_context();
+        let tool = BashTool;
+
+        // Create a dir and cd into it; cwd should carry to the next call.
+        let first = tool
+            .execute_with_context(
+                json!({"commands": "mkdir -p /workspace/sub && cd /workspace/sub"}),
+                &context,
+            )
+            .await;
+        assert!(matches!(first, ToolExecutionResult::Success(_)));
+
+        let second = tool
+            .execute_with_context(json!({"commands": "pwd"}), &context)
+            .await;
+        assert_eq!(stdout_of(second), "/workspace/sub\n");
+    }
+
+    #[tokio::test]
+    async fn test_stateful_shell_function_persists() {
+        let context = create_stateful_context();
+        let tool = BashTool;
+
+        let first = tool
+            .execute_with_context(json!({"commands": "greet() { echo \"hi $1\"; }"}), &context)
+            .await;
+        assert!(matches!(first, ToolExecutionResult::Success(_)));
+
+        let second = tool
+            .execute_with_context(json!({"commands": "greet world"}), &context)
+            .await;
+        assert_eq!(stdout_of(second), "hi world\n");
+    }
+
+    #[tokio::test]
+    async fn test_explicit_working_dir_overrides_restored_cwd() {
+        let context = create_stateful_context();
+        let tool = BashTool;
+
+        // Establish a persisted cwd of /workspace/sub.
+        let setup = tool
+            .execute_with_context(
+                json!({"commands": "mkdir -p /workspace/sub && cd /workspace/sub"}),
+                &context,
+            )
+            .await;
+        assert!(matches!(setup, ToolExecutionResult::Success(_)));
+
+        // Omitting working_dir resumes the persisted cwd.
+        let resumed = tool
+            .execute_with_context(json!({"commands": "pwd"}), &context)
+            .await;
+        assert_eq!(stdout_of(resumed), "/workspace/sub\n");
+
+        // An explicit working_dir wins over the restored cwd.
+        let pinned = tool
+            .execute_with_context(
+                json!({"commands": "pwd", "working_dir": "/workspace"}),
+                &context,
+            )
+            .await;
+        assert_eq!(stdout_of(pinned), "/workspace\n");
+    }
+
+    #[tokio::test]
+    async fn test_stateless_without_storage_store() {
+        // No storage store wired → falls back to stateless behavior.
+        let (context, _) = create_context_with_mock_store();
+        let tool = BashTool;
+
+        let first = tool
+            .execute_with_context(json!({"commands": "export FOO=bar"}), &context)
+            .await;
+        assert!(matches!(first, ToolExecutionResult::Success(_)));
+
+        let second = tool
+            .execute_with_context(json!({"commands": "echo done:$FOO"}), &context)
+            .await;
+        assert_eq!(stdout_of(second), "done:\n");
     }
 
     #[tokio::test]

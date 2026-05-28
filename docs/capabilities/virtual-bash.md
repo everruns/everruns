@@ -21,7 +21,7 @@ Execute a shell command.
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `command` | string | yes | Shell command to execute |
-| `working_dir` | string | no | Working directory (default: `/workspace`) |
+| `working_dir` | string | no | Working directory. When omitted, the session's last directory is resumed; when set, it overrides it for this call |
 | `timeout` | integer | no | Timeout in seconds |
 
 Returns stdout, stderr, and exit code.
@@ -29,6 +29,7 @@ Returns stdout, stderr, and exit code.
 ## Notes
 
 - **Sandboxed** — no network access, no host filesystem access
+- **Stateful** — shell state (working directory, exported/shell variables, functions, aliases) persists across calls within a session, so bash behaves like a REPL
 - Commands operate on the same `/workspace` as [File System](/capabilities/file-system/) tools
 - Files written by bash are immediately visible to file system tools and vice versa
 - Built-in shell commands: `cd`, `ls`, `cat`, `echo`, `grep`, `head`, `tail`, etc.

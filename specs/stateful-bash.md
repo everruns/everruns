@@ -1,7 +1,8 @@
 # Stateful Bash (Session Shell State)
 
-> **Status: PROPOSED** — design intent for making the `virtual_bash` capability
-> behave like a persistent REPL across tool calls within a session.
+> **Status: IMPLEMENTED** — foreground `bash` calls persist shell state across a
+> session via bashkit snapshots; see `crates/core/src/capabilities/virtual_bash.rs`
+> (`load_shell_state` / `save_shell_state`, restore in `execute_with_context`).
 
 ## Why
 
@@ -32,25 +33,29 @@ bashkit 0.7.2 provides the primitives (see the `Bash` struct, `Snapshot`,
   durable; including it would double-store and fight the live adapter.
 - `restore_snapshot(&mut self, bytes)` — overlay persisted shell state onto an
   existing, already-configured `Bash`.
-- The keyed variants (`snapshot_to_bytes_keyed` / `restore_snapshot_keyed`,
-  HMAC-SHA256) are used so the blob is tamper-checked across the storage boundary.
+- The blob carries bashkit's built-in SHA-256 integrity digest (corruption is
+  rejected on restore). It is persisted through the **encrypted secret path**
+  (`set_secret`/`get_secret`) because it can contain `export`ed secrets. HMAC-keyed
+  snapshot variants exist if the blob ever needs to cross to an untrusted boundary;
+  they are unnecessary here since bash code has no access to session KV/secret
+  storage and so cannot forge its own state.
 
 ### Per-call flow (foreground `execute_with_context`)
 
 1. Load the session's shell-state blob from `SessionStorageStore` (the `storage_store`
-   already on `ToolContext`) under a reserved key (e.g. `__bash_shell_state__`),
-   base64-decoded (KV values are `String`).
+   already on `ToolContext`) via `get_secret` under a reserved key
+   (`__bash_shell_state__`), base64-decoded (storage values are `String`).
 2. Build the `Bash` exactly as today (fs adapter, env, limits, observability hooks,
    locale). This must happen via the builder so the custom fs/hooks stay attached.
-3. `restore_snapshot_keyed(bytes, key)` to overlay the persisted shell state onto that
+3. `restore_snapshot(bytes)` to overlay the persisted shell state onto that
    configured instance. **Do not** use `from_snapshot` — it builds a bare `Bash` and
    would drop the fs adapter and hooks.
 4. Resolve cwd: if the `working_dir` argument is supplied, honor it (and it becomes the
    new persisted cwd); if omitted, use the restored cwd. This is a behavior change —
    `working_dir` no longer defaults to `/workspace` once a session has state.
 5. `exec_streaming` as today.
-6. `snapshot_with_options({ exclude_filesystem: true })`, HMAC-key, base64, and write
-   back to storage. Session counters carry forward via the snapshot fields so
+6. `snapshot_with_options({ exclude_filesystem: true })`, base64, and write back via
+   `set_secret`. Session counters carry forward via the snapshot fields so
    `SessionLimits` stay cumulative across calls.
 
 ### Background bash stays stateless
@@ -82,9 +87,9 @@ State **must** be externalized, which the snapshot-to-storage design does.
 - **Version mismatch / corruption:** `restore_snapshot*` returns `Result`. On the
   bashkit `Snapshot.version` bumping (library upgrade) or a decode/HMAC failure, log
   and start from fresh state — never hard-fail the call.
-- **Secrets in state:** `export SECRET=…` is captured into the blob. Use the keyed
-  (HMAC) snapshot and store via the encrypted secret path rather than plain KV; the
-  blob never leaves the trust boundary unsigned. See TM-BASH-017.
+- **Secrets in state:** `export SECRET=…` is captured into the blob. It is stored via
+  the encrypted secret path (encrypted at rest) and carries a SHA-256 integrity digest.
+  See TM-BASH-017.
 - **Size growth:** large function bodies / env can bloat the blob. Cap blob size; on
   overflow, reset shell state with a warning rather than refusing the call.
 - **Reset escape hatch:** a way to clear a session's shell state (delete the key),
