@@ -25,6 +25,7 @@ use crate::tool_types::ToolCall;
 use llmsim::generator::{LoremGenerator, ResponseGenerator};
 use llmsim::latency::LatencyProfile;
 use llmsim::openai::{ChatCompletionRequest, Message, Role, Usage};
+use llmsim::script::auto_tool_call_id;
 use llmsim::stream::TokenStreamBuilder;
 
 // ============================================================================
@@ -97,6 +98,25 @@ impl LlmSimConfig {
         }
     }
 
+    /// Create a new config that replays scripted turns in order.
+    pub fn scripted(turns: Vec<SimTurn>) -> Self {
+        Self {
+            response: ResponseConfig::Scripted {
+                turns,
+                on_exhausted: OnExhausted::default(),
+            },
+            ..Default::default()
+        }
+    }
+
+    /// Set the behavior when a scripted response config exhausts its turns.
+    pub fn with_on_exhausted(mut self, mode: OnExhausted) -> Self {
+        if let ResponseConfig::Scripted { on_exhausted, .. } = &mut self.response {
+            *on_exhausted = mode;
+        }
+        self
+    }
+
     /// Add tool calls to the response
     pub fn with_tool_calls(mut self, tool_calls: Vec<ToolCall>) -> Self {
         self.tool_calls = Some(ToolCallConfig::Fixed(tool_calls));
@@ -162,12 +182,81 @@ pub enum ResponseConfig {
     Lorem { target_tokens: usize },
     /// Return responses from a sequence (cycles when exhausted)
     Sequence(Vec<String>),
+    /// Replay scripted assistant turns for multi-turn agent scenario tests.
+    Scripted {
+        turns: Vec<SimTurn>,
+        on_exhausted: OnExhausted,
+    },
     /// Empty response (useful for tool-only responses)
     Empty,
     /// Simulate an error (useful for testing error handling)
     Error(String),
     /// Simulate a model-not-available error
     ModelNotAvailable,
+}
+
+/// A single scripted assistant turn.
+#[derive(Debug, Clone, PartialEq)]
+pub enum SimTurn {
+    /// Plain assistant text response.
+    Assistant(String),
+    /// One or more tool calls in a single assistant turn.
+    ToolCalls(Vec<SimToolCall>),
+    /// Mixed assistant text and tool calls in the same turn.
+    Mixed {
+        text: String,
+        tool_calls: Vec<SimToolCall>,
+    },
+    /// Simulate an API/transport error on this turn.
+    Error(SimError),
+}
+
+/// A single tool call inside a scripted turn.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SimToolCall {
+    pub name: String,
+    pub arguments: serde_json::Value,
+    pub id: Option<String>,
+}
+
+/// Error to inject for a scripted turn.
+#[derive(Debug, Clone, PartialEq)]
+pub enum SimError {
+    RateLimit,
+    Timeout,
+    InvalidResponse(String),
+    Other(String),
+}
+
+impl SimError {
+    fn status_code(&self) -> u16 {
+        match self {
+            SimError::RateLimit => 429,
+            SimError::Timeout => 504,
+            SimError::InvalidResponse(_) => 400,
+            SimError::Other(_) => 500,
+        }
+    }
+
+    fn message(&self) -> String {
+        match self {
+            SimError::RateLimit => "Rate limit exceeded. Please retry after some time.".to_string(),
+            SimError::Timeout => "Request timed out".to_string(),
+            SimError::InvalidResponse(message) | SimError::Other(message) => message.clone(),
+        }
+    }
+}
+
+/// Behavior when a scripted config has consumed all turns.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum OnExhausted {
+    /// Repeat the last turn forever.
+    #[default]
+    RepeatLast,
+    /// Return an error when the script is exhausted.
+    Error,
+    /// Cycle through the script from the start.
+    Loop,
 }
 
 /// Tool call configuration
@@ -200,6 +289,29 @@ impl ToolCallPattern {
             tool_calls,
         }
     }
+}
+
+fn materialize_scripted_tool_calls(
+    turn_index: usize,
+    calls: Vec<SimToolCall>,
+) -> Option<Vec<ToolCall>> {
+    if calls.is_empty() {
+        return None;
+    }
+
+    Some(
+        calls
+            .into_iter()
+            .enumerate()
+            .map(|(call_index, call)| ToolCall {
+                id: call
+                    .id
+                    .unwrap_or_else(|| auto_tool_call_id(turn_index, call_index)),
+                name: call.name,
+                arguments: call.arguments,
+            })
+            .collect(),
+    )
 }
 
 // ============================================================================
@@ -241,6 +353,11 @@ pub struct LlmSimDriver {
     response_counter: Arc<AtomicUsize>,
     /// Counter for sequence-based tool calls
     tool_call_counter: Arc<AtomicUsize>,
+}
+
+struct GeneratedTurn {
+    text: String,
+    tool_calls: Option<Vec<ToolCall>>,
 }
 
 impl LlmSimDriver {
@@ -291,8 +408,10 @@ impl LlmSimDriver {
             ResponseConfig::Empty => String::new(),
 
             // Error/ModelNotAvailable cases should never be reached; checked in chat_completion_stream
-            ResponseConfig::Error(_) | ResponseConfig::ModelNotAvailable => {
-                unreachable!("Error config handled in chat_completion_stream")
+            ResponseConfig::Error(_)
+            | ResponseConfig::ModelNotAvailable
+            | ResponseConfig::Scripted { .. } => {
+                unreachable!("Special configs handled in chat_completion_stream")
             }
         }
     }
@@ -344,6 +463,66 @@ impl LlmSimDriver {
                 }
                 None
             }
+        }
+    }
+
+    fn generate_turn(&self, messages: &[LlmMessage]) -> Result<GeneratedTurn> {
+        if let ResponseConfig::Scripted {
+            turns,
+            on_exhausted,
+        } = &self.config.response
+        {
+            return self.generate_scripted_turn(turns, *on_exhausted);
+        }
+
+        Ok(GeneratedTurn {
+            text: self.generate_response(messages),
+            tool_calls: self.get_tool_calls(messages),
+        })
+    }
+
+    fn generate_scripted_turn(
+        &self,
+        turns: &[SimTurn],
+        on_exhausted: OnExhausted,
+    ) -> Result<GeneratedTurn> {
+        if turns.is_empty() {
+            return Err(AgentLoopError::config(
+                "llmsim scripted config must contain at least one turn",
+            ));
+        }
+
+        let turn_index = self.response_counter.fetch_add(1, Ordering::SeqCst);
+        let turn = if turn_index < turns.len() {
+            turns[turn_index].clone()
+        } else {
+            match on_exhausted {
+                OnExhausted::RepeatLast => turns[turns.len() - 1].clone(),
+                OnExhausted::Loop => turns[turn_index % turns.len()].clone(),
+                OnExhausted::Error => {
+                    return Err(AgentLoopError::config("llmsim scripted config exhausted"));
+                }
+            }
+        };
+
+        match turn {
+            SimTurn::Assistant(text) => Ok(GeneratedTurn {
+                text,
+                tool_calls: None,
+            }),
+            SimTurn::ToolCalls(calls) => Ok(GeneratedTurn {
+                text: String::new(),
+                tool_calls: materialize_scripted_tool_calls(turn_index, calls),
+            }),
+            SimTurn::Mixed { text, tool_calls } => Ok(GeneratedTurn {
+                text,
+                tool_calls: materialize_scripted_tool_calls(turn_index, tool_calls),
+            }),
+            SimTurn::Error(error) => Err(AgentLoopError::llm(format!(
+                "LlmSim scripted error ({}): {}",
+                error.status_code(),
+                error.message()
+            ))),
         }
     }
 
@@ -435,8 +614,9 @@ impl LlmDriver for LlmSimDriver {
             tokio::time::sleep(delay).await;
         }
 
-        let response_text = self.generate_response(&messages);
-        let tool_calls = self.get_tool_calls(&messages);
+        let generated_turn = self.generate_turn(&messages)?;
+        let response_text = generated_turn.text;
+        let tool_calls = generated_turn.tool_calls;
         let model_name = config.model.clone();
         let response_id_for_done = self.config.response_id.clone();
         let latency_profile = self.resolve_latency_profile(&model_name);
@@ -768,6 +948,171 @@ mod tests {
             .await
             .unwrap();
         assert!(r3.tool_calls.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_scripted_multi_turn_tool_call_agent_sequence() {
+        let driver = LlmSimDriver::new(
+            LlmSimConfig::scripted(vec![
+                SimTurn::ToolCalls(vec![SimToolCall {
+                    name: "bash".to_string(),
+                    arguments: serde_json::json!({"command": "echo hello > /tmp/x.txt"}),
+                    id: None,
+                }]),
+                SimTurn::ToolCalls(vec![SimToolCall {
+                    name: "bash".to_string(),
+                    arguments: serde_json::json!({"command": "sed -i s/hello/world/ /tmp/x.txt"}),
+                    id: None,
+                }]),
+                SimTurn::Assistant("done".to_string()),
+            ])
+            .with_on_exhausted(OnExhausted::Error),
+        );
+
+        let messages = vec![user_message("create /tmp/x.txt then change hello to world")];
+
+        let first = driver
+            .chat_completion(messages.clone(), &make_config())
+            .await
+            .unwrap();
+        let first_calls = first.tool_calls.expect("first turn should call bash");
+        assert_eq!(first.text, "");
+        assert_eq!(first_calls[0].name, "bash");
+        assert_eq!(first_calls[0].id, "call_llmsim_0_0");
+
+        let second = driver
+            .chat_completion(messages.clone(), &make_config())
+            .await
+            .unwrap();
+        let second_calls = second.tool_calls.expect("second turn should call bash");
+        assert_eq!(second_calls[0].name, "bash");
+        assert_eq!(second_calls[0].id, "call_llmsim_1_0");
+
+        let final_response = driver
+            .chat_completion(messages.clone(), &make_config())
+            .await
+            .unwrap();
+        assert_eq!(final_response.text, "done");
+        assert!(final_response.tool_calls.is_none());
+
+        let exhausted = driver
+            .chat_completion(messages, &make_config())
+            .await
+            .unwrap_err();
+        assert!(matches!(exhausted, AgentLoopError::Configuration(_)));
+    }
+
+    #[tokio::test]
+    async fn test_scripted_mixed_turn_streams_text_and_tool_calls() {
+        let driver = LlmSimDriver::new(LlmSimConfig::scripted(vec![SimTurn::Mixed {
+            text: "Let me check".to_string(),
+            tool_calls: vec![SimToolCall {
+                name: "search".to_string(),
+                arguments: serde_json::json!({"q": "rust"}),
+                id: Some("call_search".to_string()),
+            }],
+        }]));
+
+        let mut stream = driver
+            .chat_completion_stream(vec![user_message("find rust")], &make_config())
+            .await
+            .unwrap();
+
+        let mut text_parts = Vec::new();
+        let mut tool_calls = None;
+        while let Some(event) = stream.next().await {
+            match event.unwrap() {
+                LlmStreamEvent::TextDelta(text) => text_parts.push(text),
+                LlmStreamEvent::ToolCalls(calls) => tool_calls = Some(calls),
+                LlmStreamEvent::Done(_) => {}
+                _ => {}
+            }
+        }
+
+        assert!(!text_parts.is_empty(), "scripted text should stream");
+        assert_eq!(text_parts.join(""), "Let me check");
+        let calls = tool_calls.expect("mixed turn should emit tool calls");
+        assert_eq!(calls[0].id, "call_search");
+        assert_eq!(calls[0].name, "search");
+    }
+
+    #[tokio::test]
+    async fn test_scripted_on_exhausted_modes() {
+        let repeat = LlmSimDriver::new(LlmSimConfig::scripted(vec![
+            SimTurn::Assistant("one".to_string()),
+            SimTurn::Assistant("two".to_string()),
+        ]));
+        let messages = vec![user_message("test")];
+        assert_eq!(
+            repeat
+                .chat_completion(messages.clone(), &make_config())
+                .await
+                .unwrap()
+                .text,
+            "one"
+        );
+        assert_eq!(
+            repeat
+                .chat_completion(messages.clone(), &make_config())
+                .await
+                .unwrap()
+                .text,
+            "two"
+        );
+        assert_eq!(
+            repeat
+                .chat_completion(messages.clone(), &make_config())
+                .await
+                .unwrap()
+                .text,
+            "two"
+        );
+
+        let looping = LlmSimDriver::new(
+            LlmSimConfig::scripted(vec![
+                SimTurn::Assistant("a".to_string()),
+                SimTurn::Assistant("b".to_string()),
+            ])
+            .with_on_exhausted(OnExhausted::Loop),
+        );
+        assert_eq!(
+            looping
+                .chat_completion(messages.clone(), &make_config())
+                .await
+                .unwrap()
+                .text,
+            "a"
+        );
+        assert_eq!(
+            looping
+                .chat_completion(messages.clone(), &make_config())
+                .await
+                .unwrap()
+                .text,
+            "b"
+        );
+        assert_eq!(
+            looping
+                .chat_completion(messages, &make_config())
+                .await
+                .unwrap()
+                .text,
+            "a"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_scripted_error_turn() {
+        let driver = LlmSimDriver::new(LlmSimConfig::scripted(vec![SimTurn::Error(
+            SimError::RateLimit,
+        )]));
+
+        let err = driver
+            .chat_completion(vec![user_message("test")], &make_config())
+            .await
+            .unwrap_err();
+
+        assert!(err.is_rate_limited());
     }
 
     #[tokio::test]
