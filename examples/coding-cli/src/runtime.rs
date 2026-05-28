@@ -197,6 +197,10 @@ impl CodingCliSessionFileStore {
         let outputs_root = self.session_dir.join("outputs");
         let mut current = absolute.parent();
         while let Some(dir) = current {
+            if !dir.starts_with(&outputs_root) {
+                break;
+            }
+
             std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700)).map_err(|e| {
                 AgentLoopError::config(format!(
                     "set private permissions on session output dir {}: {e}",
@@ -1207,6 +1211,40 @@ mod tests {
         assert_eq!(mode_of("outputs/run/log"), 0o700);
         assert_eq!(mode_of("outputs/run"), 0o700);
         assert_eq!(mode_of("outputs"), 0o700);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn coding_cli_file_store_output_root_does_not_chmod_session_ancestors() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let workspace = tempfile::tempdir().expect("workspace");
+        let session = tempfile::tempdir().expect("session");
+        let store = CodingCliSessionFileStore::new(workspace.path().into(), session.path().into())
+            .expect("store");
+        let session_id = SessionId::from_seed(5);
+
+        let session_mode_before = std::fs::metadata(session.path())
+            .expect("session metadata")
+            .permissions()
+            .mode()
+            & 0o777;
+
+        store
+            .write_file(session_id, "/outputs", "not a nested artifact", "text")
+            .await
+            .expect("write output root path");
+
+        let mode_of = |path: &std::path::Path| -> u32 {
+            std::fs::metadata(path)
+                .expect("metadata")
+                .permissions()
+                .mode()
+                & 0o777
+        };
+
+        assert_eq!(mode_of(session.path()), session_mode_before);
+        assert_eq!(mode_of(&session.path().join("outputs")), 0o600);
     }
     #[test]
     fn openai_input_message_carries_reasoning_effort() {
