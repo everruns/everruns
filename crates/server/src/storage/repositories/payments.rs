@@ -49,7 +49,7 @@ impl Database {
                AND ($3::text IS NULL OR owner_id = $3) \
              ORDER BY created_at DESC"
         );
-        Ok(sqlx::query_as::<_, PaymentAccountRow>(&sql)
+        Ok(sqlx::query_as::<_, PaymentAccountRow>(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(org_id)
             .bind(owner_type)
             .bind(owner_id)
@@ -64,7 +64,7 @@ impl Database {
     ) -> Result<Option<PaymentAccountRow>> {
         let sql =
             format!("SELECT {ACCOUNT_COLUMNS} FROM payment_accounts WHERE org_id = $1 AND id = $2");
-        Ok(sqlx::query_as::<_, PaymentAccountRow>(&sql)
+        Ok(sqlx::query_as::<_, PaymentAccountRow>(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(org_id)
             .bind(id)
             .fetch_optional(&self.pool)
@@ -157,7 +157,7 @@ impl Database {
                AND ($4::text IS NULL OR subject_id = $4) \
              ORDER BY created_at DESC"
         );
-        Ok(sqlx::query_as::<_, PaymentPolicyRow>(&sql)
+        Ok(sqlx::query_as::<_, PaymentPolicyRow>(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(org_id)
             .bind(payment_account_id)
             .bind(subject_type)
@@ -173,7 +173,7 @@ impl Database {
     ) -> Result<Option<PaymentPolicyRow>> {
         let sql =
             format!("SELECT {POLICY_COLUMNS} FROM payment_policies WHERE org_id = $1 AND id = $2");
-        Ok(sqlx::query_as::<_, PaymentPolicyRow>(&sql)
+        Ok(sqlx::query_as::<_, PaymentPolicyRow>(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(org_id)
             .bind(id)
             .fetch_optional(&self.pool)
@@ -239,7 +239,7 @@ impl Database {
              WHERE org_id = $1 AND ($2::uuid IS NULL OR session_id = $2) \
              ORDER BY created_at DESC LIMIT $3"
         );
-        Ok(sqlx::query_as::<_, PaymentAttemptRow>(&sql)
+        Ok(sqlx::query_as::<_, PaymentAttemptRow>(sqlx::AssertSqlSafe(sql.as_str()))
             .bind(org_id)
             .bind(session_id)
             .bind(limit)

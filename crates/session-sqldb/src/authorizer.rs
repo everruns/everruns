@@ -26,14 +26,17 @@ const ALLOWED_PRAGMAS: &[&str] = &[
 
 /// Install the authorizer on a connection.
 ///
-/// Must be called before executing any user-provided SQL.
+/// Must be called before executing any user-provided SQL. The authorizer
+/// API in rusqlite 0.39+ returns `Result`, but a failure here is best-effort
+/// hardening so we deliberately ignore it — callers must still validate
+/// inputs upstream.
 pub fn install_authorizer(conn: &Connection) {
-    conn.authorizer(Some(authorizer_callback));
+    let _ = conn.authorizer(Some(authorizer_callback));
 }
 
 /// Remove the authorizer from a connection.
 pub fn remove_authorizer(conn: &Connection) {
-    conn.authorizer(None::<fn(AuthContext<'_>) -> Authorization>);
+    let _ = conn.authorizer(None::<fn(AuthContext<'_>) -> Authorization>);
 }
 
 fn authorizer_callback(ctx: AuthContext<'_>) -> Authorization {

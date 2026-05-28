@@ -30,8 +30,12 @@ pub fn configure_connection(conn: &Connection) -> Result<(), SqlDbError> {
 }
 
 /// Install a progress handler that interrupts after timeout.
+///
+/// rusqlite 0.39+ returns `Result` from `progress_handler`; the only failure
+/// mode is the connection already being closed, in which case the timeout
+/// check is moot.
 fn install_progress_handler(conn: &Connection, interrupted: Arc<AtomicBool>) {
-    conn.progress_handler(
+    let _ = conn.progress_handler(
         PROGRESS_HANDLER_INTERVAL,
         Some(move || interrupted.load(Ordering::Relaxed)),
     );
@@ -39,7 +43,7 @@ fn install_progress_handler(conn: &Connection, interrupted: Arc<AtomicBool>) {
 
 /// Remove the progress handler.
 fn clear_progress_handler(conn: &Connection) {
-    conn.progress_handler(0, None::<fn() -> bool>);
+    let _ = conn.progress_handler(0, None::<fn() -> bool>);
 }
 
 /// Execute a read-only SQL query, returning columns and rows as JSON.

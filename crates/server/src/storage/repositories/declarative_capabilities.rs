@@ -104,7 +104,7 @@ impl Database {
             ORDER BY created_at DESC
             "#
         );
-        let mut query = sqlx::query_as::<_, DeclarativeCapabilityRow>(&sql).bind(org_id);
+        let mut query = sqlx::query_as::<_, DeclarativeCapabilityRow>(sqlx::AssertSqlSafe(sql.as_str())).bind(org_id);
         for pattern in &patterns {
             query = query.bind(pattern);
         }

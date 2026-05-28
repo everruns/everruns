@@ -2056,7 +2056,11 @@ impl WorkflowEventStore for PostgresWorkflowEventStore {
             opened_at_update, half_open_at_update, last_failure_update
         );
 
-        sqlx::query(&query)
+        // SAFETY: opened_at_update, half_open_at_update, last_failure_update are
+        // server-chosen literals from a closed set (`"NOW()"`, `"NULL"`,
+        // `"last_failure_at"`, `"opened_at"`); no caller input flows into the
+        // format string.
+        sqlx::query(sqlx::AssertSqlSafe(query))
             .bind(key)
             .bind(&state_str)
             .bind(failure_count as i32)
