@@ -156,6 +156,26 @@ describe("Sidebar", () => {
     expect(screen.getByText("Connect via MCP")).toBeInTheDocument();
   });
 
+  it("routes the Profile menu item to /settings/profile", () => {
+    mockUseAuth.mockReturnValue({
+      user: { name: "Test User", email: "test@example.com", avatar_url: null },
+      requiresAuth: true,
+      isAuthenticated: true,
+      config: { mode: "password" },
+      isLoading: false,
+      logout: jest.fn(),
+      logoutPending: false,
+      createOrganization: undefined,
+    });
+
+    render(<Sidebar />);
+
+    fireEvent.click(screen.getByRole("button", { name: /test user/i }));
+    fireEvent.click(screen.getByRole("menuitem", { name: /profile/i }));
+
+    expect(mockPush).toHaveBeenCalledWith("/settings/profile");
+  });
+
   it("renders all navigation items", () => {
     render(<Sidebar />);
 

@@ -97,7 +97,7 @@ export function SidebarUserMenu({
             <DropdownMenuGroup>
               <DropdownMenuLabel>My Account</DropdownMenuLabel>
               <NotificationMenuSub />
-              <DropdownMenuItem onClick={() => navigate("/settings")}>
+              <DropdownMenuItem onClick={() => navigate("/settings/profile")}>
                 <User className="icon-sharp mr-2 h-4 w-4" />
                 Profile
               </DropdownMenuItem>
