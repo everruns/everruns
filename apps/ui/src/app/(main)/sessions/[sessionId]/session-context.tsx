@@ -369,6 +369,8 @@ export function SessionProvider({ sessionId, children }: SessionProviderProps) {
             e.type === "input.message" ||
             e.type === "output.message.completed" ||
             e.type === "turn.failed" ||
+            e.type === "reason.completed" ||
+            e.type === "reason.item" ||
             e.type === "act.started" ||
             e.type === "act.completed" ||
             e.type === "tool.started" ||

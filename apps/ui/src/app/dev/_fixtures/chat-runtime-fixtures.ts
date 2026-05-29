@@ -68,6 +68,7 @@ function makeOutputEvent({
   text,
   toolCalls,
   metadata,
+  context = {},
 }: {
   id: string;
   sequence: number;
@@ -80,13 +81,14 @@ function makeOutputEvent({
     arguments: Record<string, unknown>;
   }>;
   metadata?: Record<string, unknown>;
+  context?: Event["context"];
 }): Event {
   return {
     id,
     type: "output.message.completed",
     ts,
     session_id: sessionId,
-    context: {},
+    context,
     data: {
       message: {
         id: `msg-${id}`,
@@ -492,6 +494,7 @@ export function getDevChatFixture(kind: "tool-activity" | "chat-components"): De
   }
 
   const sessionId = "session-dev-chat-components";
+  const foldedTurnId = "turn-components-folded";
   const events: Event[] = [
     makeInputEvent({
       id: "components-user-1",
@@ -558,7 +561,7 @@ export function getDevChatFixture(kind: "tool-activity" | "chat-components"): De
       type: "tool.call_requested",
       ts: "2026-03-07T21:45:13Z",
       session_id: sessionId,
-      context: {},
+      context: { turn_id: foldedTurnId },
       data: {
         headline: "Waiting on tools",
         tool_calls: [
@@ -583,7 +586,7 @@ export function getDevChatFixture(kind: "tool-activity" | "chat-components"): De
       type: "act.started",
       ts: "2026-03-07T21:45:18Z",
       session_id: sessionId,
-      context: { exec_id: "exec-components" },
+      context: { turn_id: foldedTurnId, exec_id: "exec-components" },
       data: {
         headline: "Refining transcript chrome",
         tool_calls: [
@@ -601,7 +604,7 @@ export function getDevChatFixture(kind: "tool-activity" | "chat-components"): De
       type: "tool.completed",
       ts: "2026-03-07T21:45:20Z",
       session_id: sessionId,
-      context: { exec_id: "exec-components" },
+      context: { turn_id: foldedTurnId, exec_id: "exec-components" },
       data: {
         tool_call_id: "cc-shell",
         tool_name: "bash",
@@ -627,7 +630,7 @@ export function getDevChatFixture(kind: "tool-activity" | "chat-components"): De
       type: "tool.completed",
       ts: "2026-03-07T21:45:22Z",
       session_id: sessionId,
-      context: { exec_id: "exec-components" },
+      context: { turn_id: foldedTurnId, exec_id: "exec-components" },
       data: {
         tool_call_id: "cc-edit",
         tool_name: "edit_file",
@@ -643,7 +646,7 @@ export function getDevChatFixture(kind: "tool-activity" | "chat-components"): De
       type: "act.completed",
       ts: "2026-03-07T21:45:22Z",
       session_id: sessionId,
-      context: { exec_id: "exec-components" },
+      context: { turn_id: foldedTurnId, exec_id: "exec-components" },
       data: {
         completed: true,
         success_count: 2,
@@ -659,7 +662,19 @@ export function getDevChatFixture(kind: "tool-activity" | "chat-components"): De
       ts: "2026-03-07T21:45:26Z",
       text: "The preview now uses the same transcript list and composer components as the live session view.",
       metadata: { model: "kimi-k2.5", reasoning_effort: "medium" },
+      context: { turn_id: foldedTurnId },
     }),
+    {
+      id: "components-turn-done",
+      type: "turn.completed",
+      ts: "2026-03-07T21:45:27Z",
+      session_id: sessionId,
+      context: { turn_id: foldedTurnId },
+      data: {
+        turn_id: foldedTurnId,
+        duration_ms: 9000,
+      },
+    },
   ];
 
   return {

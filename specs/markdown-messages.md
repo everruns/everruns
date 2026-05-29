@@ -85,6 +85,8 @@ components/
    - Message markdown, tool activity, and todo progress must read as one transcript system
    - Tool rows should stay inline with the surrounding message rhythm
    - Do not nest bordered tool/todo cards inside another transcript card unless the content requires a dedicated viewport
+   - Turn work logs should remain expanded while work is active and collapse to a compact "Worked for ..." affordance once the final answer is available
+   - Work logs may show safe narration from reason summaries and tool/act headlines, but must not expose raw hidden thinking content
 
 ## Usage
 

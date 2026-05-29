@@ -6,8 +6,9 @@
  */
 "use client";
 
-import { Bot, CalendarClock, Loader2 } from "lucide-react";
+import { Bot, CalendarClock, Loader2, Sparkles } from "lucide-react";
 import { memo, useMemo } from "react";
+import type { ReactNode } from "react";
 import type {
   ContentPart,
   Event,
@@ -33,7 +34,9 @@ import {
 import {
   formatWorkedDuration,
   getCompletedTurnDurationsByEvent,
+  getCompletedTurnDurationsByTurn,
 } from "@/components/chat/turn-delimiter";
+import { TurnWorkLog } from "@/components/chat/turn-work-log";
 import { chatSurfaceStyles } from "@/components/chat/chat-surface";
 import { CompactionDivider } from "@/components/chat/compaction-divider";
 import type { ToolCallContent } from "@/components/chat/tool-call-utils";
@@ -65,6 +68,30 @@ type ActGroup = {
   completedHeadline?: string;
   rows: TimelineToolRow[];
 };
+
+function getKnownTurnId(event: Event): string | undefined {
+  const reasonItemData = getEventData(event, "reason.item");
+  return reasonItemData?.turn_id ?? event.context?.turn_id;
+}
+
+function isWorkLogEvent(event: Event): boolean {
+  if (event.type === "act.started" || event.type === "tool.call_requested") return true;
+
+  const reasonItemData = getEventData(event, "reason.item");
+  if (reasonItemData?.summary?.some((item) => item.trim().length > 0)) return true;
+
+  const reasonCompletedData = getEventData(event, "reason.completed");
+  return !!reasonCompletedData?.text_preview;
+}
+
+function ReasoningLogRow({ text }: { text: string }) {
+  return (
+    <div className="flex items-start gap-2 py-1 text-[15px] leading-6 text-muted-foreground">
+      <Sparkles className="mt-1 h-3.5 w-3.5 flex-shrink-0 text-primary/70" />
+      <p className="whitespace-pre-wrap">{text}</p>
+    </div>
+  );
+}
 
 function getMessageImages(content: ContentPart[]): Array<{ image_id: string; filename?: string }> {
   return content.filter(isImageFilePart).map((part) => ({
@@ -204,6 +231,34 @@ export const ChatMessageList = memo(function ChatMessageList({
     () => getCompletedTurnDurationsByEvent(events ?? []),
     [events],
   );
+  const turnDurationByTurnId = useMemo(
+    () => getCompletedTurnDurationsByTurn(events ?? []),
+    [events],
+  );
+  const workLogTurnIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const event of chatEvents) {
+      if (!isWorkLogEvent(event)) continue;
+      const turnId = getKnownTurnId(event);
+      if (turnId) ids.add(turnId);
+    }
+    return ids;
+  }, [chatEvents]);
+  const workLogEventsByTurnId = useMemo(() => {
+    const groups = new Map<string, Event[]>();
+    for (const event of chatEvents) {
+      if (!isWorkLogEvent(event)) continue;
+      const turnId = getKnownTurnId(event);
+      if (!turnId) continue;
+      const group = groups.get(turnId);
+      if (group) {
+        group.push(event);
+      } else {
+        groups.set(turnId, [event]);
+      }
+    }
+    return groups;
+  }, [chatEvents]);
   const hasNarratedActEvents = useMemo(
     () => chatEvents.some((event) => event.type === "act.started"),
     [chatEvents],
@@ -212,6 +267,105 @@ export const ChatMessageList = memo(function ChatMessageList({
     () => buildActGroups(chatEvents, t("working")),
     [chatEvents, t],
   );
+  const renderWorkLog = (event: Event, children: ReactNode) => {
+    const turnId = getKnownTurnId(event);
+    const durationMs = turnId ? turnDurationByTurnId.get(turnId) : undefined;
+    const label =
+      durationMs == null
+        ? t("working")
+        : t("worked_for", { duration: formatWorkedDuration(durationMs) });
+
+    return (
+      <TurnWorkLog key={event.id} label={label} isActive={durationMs == null}>
+        {children}
+      </TurnWorkLog>
+    );
+  };
+  const renderWorkLogEventContent = (event: Event) => {
+    const reasonItemData = getEventData(event, "reason.item");
+    if (reasonItemData) {
+      const summary = (reasonItemData.summary ?? [])
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .join("\n");
+      return summary ? <ReasoningLogRow key={event.id} text={summary} /> : null;
+    }
+
+    const reasonCompletedData = getEventData(event, "reason.completed");
+    if (reasonCompletedData) {
+      return reasonCompletedData.text_preview ? (
+        <ReasoningLogRow key={event.id} text={reasonCompletedData.text_preview} />
+      ) : null;
+    }
+
+    if (event.type === "act.started") {
+      const group = actGroupsByStartEventId.get(event.id);
+      if (!group || group.rows.length === 0) return null;
+      return (
+        <div key={event.id} className="space-y-1">
+          <ToolActivityTimelineGroup
+            headline={group.headline}
+            completedHeadline={group.completedHeadline}
+            rows={group.rows}
+          />
+        </div>
+      );
+    }
+
+    if (event.type !== "tool.call_requested") return null;
+
+    const reqData = getEventData(event, "tool.call_requested");
+    if (!reqData?.tool_calls?.length) return null;
+
+    if (reqData.headline || reqData.tool_summaries?.length) {
+      const rows: TimelineToolRow[] = (reqData.tool_summaries ?? []).map((summary) => ({
+        id: summary.id,
+        label: summary.narration ?? summary.display_name ?? summary.name,
+        state: "waiting",
+      }));
+
+      if (rows.length > 0) {
+        return (
+          <div key={event.id} className="space-y-1">
+            <ToolActivityTimelineGroup
+              headline={reqData.headline ?? t("waiting_on_tools")}
+              rows={rows}
+            />
+          </div>
+        );
+      }
+    }
+
+    const connectionCalls = reqData.tool_calls.filter(
+      (toolCall) => toolCall.name === "setup_connection",
+    );
+    const otherCalls = reqData.tool_calls.filter(
+      (toolCall) => toolCall.name !== "setup_connection",
+    );
+
+    return (
+      <div key={event.id} className="space-y-1">
+        {connectionCalls.map((toolCall) => (
+          <SetupConnectionToolCall
+            key={toolCall.id}
+            sessionId={sessionId}
+            toolCallId={toolCall.id}
+            provider={(toolCall.arguments as { provider?: string })?.provider ?? "unknown"}
+            toolResultsMap={toolResultsMap}
+          />
+        ))}
+        {otherCalls.length > 0 && (
+          <ToolActivityGroup
+            toolCalls={otherCalls}
+            toolResultsMap={toolResultsMap}
+            toolProgressMap={toolProgressMap}
+            toolOutputMap={toolOutputMap}
+            mode="client"
+          />
+        )}
+      </div>
+    );
+  };
 
   if (eventsLoading) {
     return (
@@ -266,99 +420,20 @@ export const ChatMessageList = memo(function ChatMessageList({
           );
         }
 
-        if (event.type === "act.started") {
-          const group = actGroupsByStartEventId.get(event.id);
-          if (!group || group.rows.length === 0) return null;
-          return (
-            <div key={event.id} className="space-y-3">
-              <div className="ml-9 space-y-1">
-                <ToolActivityTimelineGroup
-                  headline={group.headline}
-                  completedHeadline={group.completedHeadline}
-                  rows={group.rows}
-                />
-              </div>
-              {renderTurnDivider(
-                event.id,
-                turnDurationByEventId,
-                t("worked_for", {
-                  duration: formatWorkedDuration(turnDurationByEventId.get(event.id) ?? 0),
-                }),
-              )}
-            </div>
-          );
-        }
-
-        if (event.type === "tool.call_requested") {
-          const reqData = getEventData(event, "tool.call_requested");
-          if (!reqData?.tool_calls?.length) return null;
-
-          if (reqData.headline || reqData.tool_summaries?.length) {
-            const rows: TimelineToolRow[] = (reqData.tool_summaries ?? []).map((summary) => ({
-              id: summary.id,
-              label: summary.narration ?? summary.display_name ?? summary.name,
-              state: "waiting",
-            }));
-
-            if (rows.length > 0) {
-              return (
-                <div key={event.id} className="space-y-3">
-                  <div className="ml-9 space-y-1">
-                    <ToolActivityTimelineGroup
-                      headline={reqData.headline ?? t("waiting_on_tools")}
-                      rows={rows}
-                    />
-                  </div>
-                  {renderTurnDivider(
-                    event.id,
-                    turnDurationByEventId,
-                    t("worked_for", {
-                      duration: formatWorkedDuration(turnDurationByEventId.get(event.id) ?? 0),
-                    }),
-                  )}
-                </div>
-              );
-            }
+        if (isWorkLogEvent(event)) {
+          const turnId = getKnownTurnId(event);
+          if (turnId) {
+            const group = workLogEventsByTurnId.get(turnId) ?? [];
+            if (group[0]?.id !== event.id) return null;
+            return renderWorkLog(
+              event,
+              <div className="space-y-3">
+                {group.map((groupEvent) => renderWorkLogEventContent(groupEvent))}
+              </div>,
+            );
           }
 
-          const connectionCalls = reqData.tool_calls.filter(
-            (toolCall) => toolCall.name === "setup_connection",
-          );
-          const otherCalls = reqData.tool_calls.filter(
-            (toolCall) => toolCall.name !== "setup_connection",
-          );
-
-          return (
-            <div key={event.id} className="space-y-3">
-              <div className="ml-9 space-y-1">
-                {connectionCalls.map((toolCall) => (
-                  <SetupConnectionToolCall
-                    key={toolCall.id}
-                    sessionId={sessionId}
-                    toolCallId={toolCall.id}
-                    provider={(toolCall.arguments as { provider?: string })?.provider ?? "unknown"}
-                    toolResultsMap={toolResultsMap}
-                  />
-                ))}
-                {otherCalls.length > 0 && (
-                  <ToolActivityGroup
-                    toolCalls={otherCalls}
-                    toolResultsMap={toolResultsMap}
-                    toolProgressMap={toolProgressMap}
-                    toolOutputMap={toolOutputMap}
-                    mode="client"
-                  />
-                )}
-              </div>
-              {renderTurnDivider(
-                event.id,
-                turnDurationByEventId,
-                t("worked_for", {
-                  duration: formatWorkedDuration(turnDurationByEventId.get(event.id) ?? 0),
-                }),
-              )}
-            </div>
-          );
+          return renderWorkLog(event, renderWorkLogEventContent(event));
         }
 
         const isUser = event.type === "input.message";
@@ -386,24 +461,16 @@ export const ChatMessageList = memo(function ChatMessageList({
 
         if (isToolOnlyMessage) {
           if (hasNarratedActEvents) return null;
-          return (
-            <div key={event.id} className="space-y-3">
-              <div className="ml-9 space-y-1">
-                <ToolActivityGroup
-                  toolCalls={toolCalls}
-                  toolResultsMap={toolResultsMap}
-                  toolProgressMap={toolProgressMap}
-                  toolOutputMap={toolOutputMap}
-                />
-              </div>
-              {renderTurnDivider(
-                event.id,
-                turnDurationByEventId,
-                t("worked_for", {
-                  duration: formatWorkedDuration(turnDurationByEventId.get(event.id) ?? 0),
-                }),
-              )}
-            </div>
+          return renderWorkLog(
+            event,
+            <div className="space-y-1">
+              <ToolActivityGroup
+                toolCalls={toolCalls}
+                toolResultsMap={toolResultsMap}
+                toolProgressMap={toolProgressMap}
+                toolOutputMap={toolOutputMap}
+              />
+            </div>,
           );
         }
 
@@ -475,13 +542,17 @@ export const ChatMessageList = memo(function ChatMessageList({
               </div>
             )}
 
-            {renderTurnDivider(
-              event.id,
-              turnDurationByEventId,
-              t("worked_for", {
-                duration: formatWorkedDuration(turnDurationByEventId.get(event.id) ?? 0),
-              }),
-            )}
+            {(() => {
+              const turnId = getKnownTurnId(event);
+              if (turnId && workLogTurnIds.has(turnId)) return null;
+              return renderTurnDivider(
+                event.id,
+                turnDurationByEventId,
+                t("worked_for", {
+                  duration: formatWorkedDuration(turnDurationByEventId.get(event.id) ?? 0),
+                }),
+              );
+            })()}
           </div>
         );
       })}

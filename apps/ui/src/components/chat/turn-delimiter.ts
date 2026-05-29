@@ -83,7 +83,7 @@ export function getCompletedTurnDurationsByEvent(events: Event[]): Map<string, n
   const clientRequestedToolCallIds = getClientRequestedToolCallIds(events);
   const inputMessageTurnIds = getInputMessageTurnIds(events);
   const lastVisibleEventIdByTurn = new Map<string, string>();
-  const durationMsByTurn = new Map<string, number>();
+  const durationMsByTurn = getCompletedTurnDurationsByTurn(events);
 
   for (const event of events) {
     if (isVisibleChatEvent(event, clientRequestedToolCallIds)) {
@@ -91,11 +91,6 @@ export function getCompletedTurnDurationsByEvent(events: Event[]): Map<string, n
       if (turnId) {
         lastVisibleEventIdByTurn.set(turnId, event.id);
       }
-    }
-
-    const tcData = getEventData(event, "turn.completed");
-    if (tcData && tcData.duration_ms != null) {
-      durationMsByTurn.set(tcData.turn_id, tcData.duration_ms);
     }
   }
 
@@ -109,6 +104,19 @@ export function getCompletedTurnDurationsByEvent(events: Event[]): Map<string, n
   }
 
   return durationsByEvent;
+}
+
+export function getCompletedTurnDurationsByTurn(events: Event[]): Map<string, number> {
+  const durationMsByTurn = new Map<string, number>();
+
+  for (const event of events) {
+    const tcData = getEventData(event, "turn.completed");
+    if (tcData && tcData.duration_ms != null) {
+      durationMsByTurn.set(tcData.turn_id, tcData.duration_ms);
+    }
+  }
+
+  return durationMsByTurn;
 }
 
 export function formatWorkedDuration(durationMs: number): string {
