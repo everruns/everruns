@@ -107,7 +107,7 @@ jobs:
           git -c advice.detachedHead=false checkout --detach "$TRUSTED_SHA"
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.96.0
 
       - name: Verify workspace version matches tag
         run: |
