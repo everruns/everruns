@@ -222,23 +222,27 @@ To mute a bundled hook, list its `HookId` under
 
 ## Hook bundles from other capabilities
 
-Any capability — built-in, MCP, declarative — can contribute hook
-specs to your agent. Bundled hooks ride the trust gate of enabling that
-capability, so admin assignment rules still apply. The user-facing
-config surface is identical to the one above; the difference is the
-source field, which the runtime stamps automatically.
+Any built-in capability can contribute hook specs to your agent by
+overriding `Capability::user_hooks_with_config` and returning a list of
+`UserHookSpec`s. The `cloud-cost-security-auditor` seed agent is a live
+example: its `user_hooks` capability config (in
+[`crates/server/src/seed.rs`](https://github.com/everruns/everruns/blob/main/crates/server/src/seed.rs))
+ships an audit-log `post_tool_use` hook that fires every time the agent
+runs an AWS tool, with no extra setup.
 
-Declarative capabilities are the easiest way to share a bundle across
-an organization:
+Capability-contributed hooks ride the trust gate of enabling the
+contributing capability, so admin assignment rules still apply.
+Operators can mute any individual contribution via
+`disabled_contributions` on a sibling `user_hooks` capability config.
 
-```bash
-curl -X POST http://localhost:9300/api/v1/capabilities \
-  -H "Content-Type: application/json" \
-  -d @scripts/rust-quality.json
-```
+> Declarative-capability hook bundles (one POST to register, many agents
+> to reuse) are on the roadmap and are not yet wired into the declarative
+> capability schema. See
+> [`specs/user-hooks.md`](https://github.com/everruns/everruns/blob/main/specs/user-hooks.md)
+> for the deferred contract.
 
 See [`examples/hook-bundles/`](https://github.com/everruns/everruns/tree/main/examples/hook-bundles)
-for ready-to-paste bundle JSON.
+for ready-to-paste user-config bundle JSON.
 
 ## Examples
 

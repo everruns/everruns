@@ -313,12 +313,15 @@ Capabilities return *specs*, not built adapters. The core
 constructs the per-event adapter. The result is grouped by event and merged
 into the existing `Vec<Arc<dyn …Hook>>` chains the runtime already iterates.
 
-Declarative capabilities gain an optional `user_hooks` field carrying the
-same `UserHookSpec` schema. A declarative capability with a non-empty
-`user_hooks` array is classified `High` risk, since enabling it grants the
-capability the ability to run arbitrary shell. The capability-write API
-elevates risk automatically; admin assignment gate kicks in as for any other
-`High` capability.
+**Deferred:** declarative-capability hook bundles. The plan is for
+`DeclarativeCapabilityDefinition` to gain an optional `user_hooks` field
+carrying the same `UserHookSpec` schema, with the capability-write API
+forcing `RiskLevel::High` whenever the array is non-empty so admin
+assignment remains the trust gate. The contract lives here so the
+auto-elevation rule lands with the feature; the field is *not* present
+on `DeclarativeCapabilityDefinition` today, and any `user_hooks` entries
+on a declarative POST body are silently ignored by serde. Tracking via
+the Follow-ups list in the original PR.
 
 ## `user_hooks` capability
 
@@ -357,16 +360,22 @@ Threat model entries added to `specs/threat-model.md` under `TM-HOOK`:
   Mitigation: hooks run in `virtual_bash`, same FS sandbox as `bash`; the
   hook script is loaded by path from session VFS; running scripts that
   live in agent-writable paths is admin's choice.
-- **TM-HOOK-002 — Hook-as-exfil-channel**: a hook command that calls
-  `web_fetch` exfiltrates session state. Mitigation: hooks inherit the
-  session's egress policy; default-deny outbound network mode applies.
+- **TM-HOOK-002 — Hook-as-exfil-channel**: a hook command makes outbound
+  network calls to leak session state. Mitigation: bashkit's
+  `http_client` feature is compiled out for this build (see TM-BASH-003),
+  so the interpreter has no built-in network surface.
 - **TM-HOOK-003 — Stdout poisoning**: a long-running hook fills stdout
   with bogus JSON to deny tool execution. Mitigation: 64 KiB output cap
   + 30 s hard timeout + `on_error` policy.
 - **TM-HOOK-004 — Privilege escalation via capability contribution**: a
-  declarative capability bundle ships hooks that exfiltrate. Mitigation:
-  declarative capabilities with `user_hooks` are forced to `High`, gated
-  on admin assignment.
+  built-in capability bundles hooks that exfiltrate or block. Mitigation:
+  the built-in `user_hooks` capability is permanently `High` and gated on
+  admin assignment via `check_high_risk_caps`. (Declarative
+  capability-contributed hook bundles are deferred — see the matching
+  TM-HOOK-006 entry.)
+- **TM-HOOK-006 — Future risk**: when declarative `user_hooks` lands, the
+  capability-write API must auto-elevate to `High` whenever the array is
+  non-empty. Tracked here so the contract lands with the feature.
 
 ## Extension points
 

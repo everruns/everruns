@@ -21,10 +21,11 @@ contributions that are safe to describe as data rather than custom code:
 - Skill packages mounted under `/.agents/skills/{name}` and discovered by the
   built-in `skills` capability
 - UI feature strings and dependency declarations
-- User-hook bundles (`user_hooks: [UserHookSpec]`) — see
-  [user-hooks.md](user-hooks.md). A non-empty `user_hooks` array
-  forces the persisted record's `risk_level` to `high` and rides the
-  admin-only assignment gate.
+- *(Planned)* User-hook bundles (`user_hooks: [UserHookSpec]`) — see
+  [user-hooks.md](user-hooks.md). The field is **not yet present** on
+  `DeclarativeCapabilityDefinition`; when it lands, a non-empty
+  `user_hooks` array must force the persisted record's `risk_level` to
+  `high` and ride the admin-only assignment gate.
 
 They do not define arbitrary server-side tools. Tool execution still comes from
 built-in capabilities, MCP servers, uploaded skills, or client-side tools.
