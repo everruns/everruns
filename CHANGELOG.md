@@ -9,6 +9,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+## [0.8.36] - 2026-05-29
+
+### Highlights
+
+- **Hypermedia entity actions across resources** - Foundation for entity-level HATEOAS actions ([#1986](https://github.com/everruns/everruns/pull/1986)), now rolled out to Agents, Harnesses, Apps, and Skills ([#1989](https://github.com/everruns/everruns/pull/1989)).
+- **MCP traffic governed by EgressService** - MCP client calls now route through the dedicated outbound egress service ([#1993](https://github.com/everruns/everruns/pull/1993)), and MCP execute returns a structured-error envelope ([#1987](https://github.com/everruns/everruns/pull/1987)).
+- **OpenAPI extensions and example coverage** - LLM-specific OpenAPI extension foundation (`x-llm-*`) ([#1991](https://github.com/everruns/everruns/pull/1991)), SSE event-type catalog for the session stream ([#1990](https://github.com/everruns/everruns/pull/1990)), per-operation request/response example pairs foundation ([#1992](https://github.com/everruns/everruns/pull/1992)), and field-example coverage 37% → 44% ([#1988](https://github.com/everruns/everruns/pull/1988)).
+- **background_execution capability surfaces spawn_background** - Capabilities can now expose `spawn_background` through `background_execution` ([#1996](https://github.com/everruns/everruns/pull/1996)).
+- **ERcode persists reasoning artifacts** - Reasoning artifacts are persisted and rendered on session restore ([#1985](https://github.com/everruns/everruns/pull/1985)).
+
+### What's Changed
+
+- fix(ui): route sidebar Profile menu to /settings/profile ([#2001](https://github.com/everruns/everruns/pull/2001)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump bashkit 0.7.2 -> 0.8.0 ([#2000](https://github.com/everruns/everruns/pull/2000)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump OTEL 0.32, async-nats 0.49, sqlx 0.9, rusqlite 0.39 ([#1998](https://github.com/everruns/everruns/pull/1998)) by [@chaliy](https://github.com/chaliy)
+- feat(core): add scripted llmsim responses by [@chaliy](https://github.com/chaliy)
+- fix(ui): interpolate duration in chat turn divider ([#1997](https://github.com/everruns/everruns/pull/1997)) by [@chaliy](https://github.com/chaliy)
+- feat(capabilities): expose spawn_background via background_execution ([#1996](https://github.com/everruns/everruns/pull/1996)) by [@chaliy](https://github.com/chaliy)
+- fix(coding-cli): confine output chmod walk to /outputs subtree ([#1994](https://github.com/everruns/everruns/pull/1994)) by [@chaliy](https://github.com/chaliy)
+- chore(deps): bump llmsim from 0.3.0 to 0.4.0 ([#1995](https://github.com/everruns/everruns/pull/1995)) by [@chaliy](https://github.com/chaliy)
+- docs(api): per-operation request/response example pairs (foundation) ([#1992](https://github.com/everruns/everruns/pull/1992)) by [@chaliy](https://github.com/chaliy)
+- feat(mcp): route MCP client traffic through EgressService ([#1993](https://github.com/everruns/everruns/pull/1993)) by [@chaliy](https://github.com/chaliy)
+- feat(api): LLM-specific OpenAPI extensions foundation (x-llm-*) ([#1991](https://github.com/everruns/everruns/pull/1991)) by [@chaliy](https://github.com/chaliy)
+- docs(api): SSE event-type catalog in OpenAPI (session stream) ([#1990](https://github.com/everruns/everruns/pull/1990)) by [@chaliy](https://github.com/chaliy)
+- feat(api): roll out hypermedia entity actions to Agents/Harnesses/Apps/Skills ([#1989](https://github.com/everruns/everruns/pull/1989)) by [@chaliy](https://github.com/chaliy)
+- feat(api): structured-error envelope for MCP execute (server-side) ([#1987](https://github.com/everruns/everruns/pull/1987)) by [@chaliy](https://github.com/chaliy)
+- docs(api): push field-example coverage 37% → 44% (operator + LLM model wave) ([#1988](https://github.com/everruns/everruns/pull/1988)) by [@chaliy](https://github.com/chaliy)
+- feat(api): hypermedia entity actions foundation, sessions pilot ([#1986](https://github.com/everruns/everruns/pull/1986)) by [@chaliy](https://github.com/chaliy)
+- feat(ercode): persist and render reasoning artifacts for session restore ([#1985](https://github.com/everruns/everruns/pull/1985)) by [@chaliy](https://github.com/chaliy)
+
 ## [0.8.35] - 2026-05-27
 
 ### Highlights
