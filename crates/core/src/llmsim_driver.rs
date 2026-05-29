@@ -821,6 +821,42 @@ pub fn auditor_demo_script() -> LlmSimConfig {
     LlmSimConfig::scripted(turns)
 }
 
+/// Scripted scenario that exercises the `pre_tool_use` block path. The
+/// scripted agent first issues a destructive `bash` call (`rm -rf /`)
+/// followed by a benign one (`ls -la`). When combined with a `pre_tool_use`
+/// hook bundle that denies `rm -rf` patterns, the first tool call gets
+/// blocked (the tool is not invoked) and the second succeeds — the agent
+/// observes the difference in tool results.
+///
+/// Used by `LLMSIM_DEMO=guarded` to demonstrate `pre_tool_use` without an
+/// LLM API key.
+pub fn guarded_bash_demo_script() -> LlmSimConfig {
+    let turns = vec![
+        SimTurn::Mixed {
+            text: "Step 1: attempting a destructive command.".to_string(),
+            tool_calls: vec![SimToolCall {
+                name: "bash".to_string(),
+                arguments: serde_json::json!({ "commands": "rm -rf /" }),
+                id: Some("call_demo_rm".to_string()),
+            }],
+        },
+        SimTurn::Mixed {
+            text: "Step 2: trying a safe command.".to_string(),
+            tool_calls: vec![SimToolCall {
+                name: "bash".to_string(),
+                arguments: serde_json::json!({ "commands": "ls -la /workspace" }),
+                id: Some("call_demo_ls".to_string()),
+            }],
+        },
+        SimTurn::Assistant(
+            "Guarded-bash demo complete. The first tool call should be \
+             blocked by the pre_tool_use hook; the second should succeed."
+                .to_string(),
+        ),
+    ];
+    LlmSimConfig::scripted(turns)
+}
+
 // ============================================================================
 // Tests
 // ============================================================================

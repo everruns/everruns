@@ -23,6 +23,68 @@ use super::AtomContext;
 use super::act::ActResult;
 
 // ============================================================================
+// PreToolUseHook trait (per-tool, async, can mutate or block)
+// ============================================================================
+
+/// Decision returned by a `PreToolUseHook::before_exec` call.
+#[derive(Debug, Clone)]
+pub enum PreToolUseDecision {
+    /// Continue with the (possibly mutated) tool call.
+    Continue(ToolCall),
+    /// Refuse to execute this tool call. The hook supplies the error
+    /// message the model and audit log will see; the tool is not invoked.
+    Block {
+        tool_call: ToolCall,
+        reason: String,
+        /// Optional user-facing message surfaced through the runtime
+        /// (when the runtime knows how to render it).
+        user_message: Option<String>,
+    },
+}
+
+/// Hook that runs before each individual tool execution.
+///
+/// Unlike `PostToolExecHook`, pre-hooks can both *mutate* the tool call
+/// (returning `Continue` with a modified `ToolCall`) and *block* it
+/// (returning `Block`, which aborts execution for that single tool call
+/// without affecting sibling calls in the batch).
+///
+/// Hooks chain sequentially in registration order; each hook sees the
+/// previous hook's mutated `ToolCall`. The first hook to return `Block`
+/// wins — subsequent hooks in the chain are not consulted for the same
+/// call.
+#[async_trait]
+pub trait PreToolUseHook: Send + Sync {
+    async fn before_exec(
+        &self,
+        tool_call: ToolCall,
+        tool_def: &ToolDefinition,
+        context: &ToolContext,
+    ) -> PreToolUseDecision;
+}
+
+/// Run every registered `PreToolUseHook` against `tool_call`. Hooks chain
+/// sequentially; the first `Block` aborts the chain and is returned. If
+/// every hook returns `Continue`, the final (potentially mutated)
+/// `ToolCall` is returned.
+pub(super) async fn run_pre_tool_use_hooks(
+    hooks: &[Arc<dyn PreToolUseHook>],
+    mut tool_call: ToolCall,
+    tool_def: &ToolDefinition,
+    context: &ToolContext,
+) -> PreToolUseDecision {
+    for hook in hooks {
+        match hook.before_exec(tool_call.clone(), tool_def, context).await {
+            PreToolUseDecision::Continue(updated) => {
+                tool_call = updated;
+            }
+            block @ PreToolUseDecision::Block { .. } => return block,
+        }
+    }
+    PreToolUseDecision::Continue(tool_call)
+}
+
+// ============================================================================
 // PostToolExecHook trait (per-tool, async)
 // ============================================================================
 

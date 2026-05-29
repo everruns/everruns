@@ -49,8 +49,8 @@ relevant execution atom in isolation.
 |---|---|---|---|---|---|
 | `session_start` | `SessionLifecycleHook::on_session_start` | session create | none | no | follow-up: server session create path |
 | `user_prompt_submit` | `TurnLifecycleHook::on_turn_start` | inbound user message accepted, before reason | user message text | yes | follow-up: turn entry |
-| `pre_tool_use` | `PreToolUseHook::before_exec` | each tool call, before execution | `ToolCall.arguments` (JSON patch) | yes | follow-up: `ActAtom::execute_single_tool` |
-| `post_tool_use` | `PostToolExecHook::after_exec` (existing trait) | each tool call, after execution | `ToolResult` fields | no | follow-up: bash adapter joins existing chain |
+| `pre_tool_use` | `PreToolUseHook::before_exec` | each tool call, before execution | `ToolCall.arguments` (JSON patch) | yes | **wired** in `ActAtom::execute_single_tool` |
+| `post_tool_use` | `PostToolExecHook::after_exec` (existing trait) | each tool call, after execution | `ToolResult` fields | no | **wired** via existing `PostToolExecHook` chain |
 | `turn_end` | `TurnLifecycleHook::on_turn_end` | turn finishes | none | no | follow-up: turn exit |
 | `session_end` | `SessionLifecycleHook::on_session_end` | session close/archive | none | no | follow-up: server session close path |
 

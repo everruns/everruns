@@ -707,6 +707,109 @@ mod tests {
         assert!(payload_files.is_empty(), "leftover: {payload_files:?}");
     }
 
+    // ------------------------------------------------------------------
+    // End-to-end: a real pre_tool_use hook spec runs through the whole
+    // chain (UserHookSpec -> PreToolUseHookAdapter -> BashHookExecutor ->
+    // VirtualBashHookDispatcher -> bashkit) and blocks execution by
+    // emitting a JSON `{"decision":"block",...}` decision when the agent
+    // tries to run `rm -rf /`. Mirrors examples/hook-bundles/block-rm-rf.json
+    // (with a simplified deny check the bashkit interpreter can parse).
+    // ------------------------------------------------------------------
+    #[tokio::test]
+    async fn end_to_end_pre_tool_use_blocks_destructive_bash() {
+        use crate::atoms::{PreToolUseDecision, PreToolUseHook};
+        use crate::hook_adapter::PreToolUseHookAdapter;
+        use crate::tool_types::{BuiltinTool, DeferrablePolicy, ToolHints, ToolPolicy};
+        use crate::user_hook_types::{
+            ExecutorSpec, HookEvent, HookMatcher, HookSource, OnError, UserHookSpec,
+        };
+
+        let mock = Arc::new(MockFileStore::default());
+        let store: Arc<dyn SessionFileSystem> = mock.clone();
+
+        // The hook script inspects the bash command via $EVERRUNS_HOOK_PAYLOAD_JSON
+        // (the structured path the audit examples use) and emits a Block
+        // decision when it spots `rm -rf`. Allow otherwise.
+        let spec = UserHookSpec {
+            id: Some("guard_rm".into()),
+            event: HookEvent::PreToolUse,
+            matcher: HookMatcher {
+                tool_name: Some("bash".into()),
+                args_jsonpath: Some("$.command".into()),
+                deny_regex: Some(r"(?:^|;|&&|\|)\s*rm\s+-rf\b".into()),
+                ..Default::default()
+            },
+            executor: ExecutorSpec::Bash {
+                command:
+                    "printf '%s' '{\"decision\":\"block\",\"reason\":\"rm -rf is blocked\",\"user_message\":\"Blocked by policy.\"}'"
+                        .into(),
+                env: Default::default(),
+            },
+            timeout_ms: 5000,
+            on_error: OnError::Block,
+            description: None,
+            source: HookSource::UserConfig,
+        };
+
+        let dispatcher: Arc<dyn BashHookDispatcher> =
+            Arc::new(VirtualBashHookDispatcher::new(store.clone()));
+        let executor: Arc<dyn HookExecutor> = Arc::new(BashHookExecutor::with_dispatcher(
+            match &spec.executor {
+                ExecutorSpec::Bash { command, .. } => command.clone(),
+            },
+            match &spec.executor {
+                ExecutorSpec::Bash { env, .. } => env.clone(),
+            },
+            dispatcher,
+        ));
+        let adapter = PreToolUseHookAdapter::new(spec, executor);
+
+        let tool_def = crate::tool_types::ToolDefinition::Builtin(BuiltinTool {
+            name: "bash".into(),
+            display_name: None,
+            description: "x".into(),
+            parameters: serde_json::json!({}),
+            policy: ToolPolicy::Auto,
+            category: None,
+            deferrable: DeferrablePolicy::Never,
+            hints: ToolHints::default(),
+        });
+        let ctx = crate::traits::ToolContext::new(SessionId::from(Uuid::nil()));
+
+        // 1. Destructive call → matcher fires → executor returns Block.
+        let bad = crate::tool_types::ToolCall {
+            id: "call_bad".into(),
+            name: "bash".into(),
+            arguments: serde_json::json!({"command": "rm -rf /"}),
+        };
+        match adapter.before_exec(bad, &tool_def, &ctx).await {
+            PreToolUseDecision::Block {
+                reason,
+                user_message,
+                ..
+            } => {
+                assert!(reason.contains("blocked"), "reason: {reason}");
+                assert_eq!(user_message.as_deref(), Some("Blocked by policy."));
+            }
+            other => panic!("expected Block, got {other:?}"),
+        }
+
+        // 2. Benign call → matcher does NOT fire (deny_regex doesn't match) →
+        // executor is skipped → Continue.
+        let good = crate::tool_types::ToolCall {
+            id: "call_good".into(),
+            name: "bash".into(),
+            arguments: serde_json::json!({"command": "ls -la"}),
+        };
+        match adapter.before_exec(good.clone(), &tool_def, &ctx).await {
+            PreToolUseDecision::Continue(tc) => {
+                assert_eq!(tc.id, "call_good");
+                assert_eq!(tc.arguments["command"], "ls -la");
+            }
+            other => panic!("expected Continue, got {other:?}"),
+        }
+    }
+
     #[tokio::test]
     async fn jq_can_read_payload_from_env_path() {
         // Smoke test for the documented `jq` workflow. We use a tiny

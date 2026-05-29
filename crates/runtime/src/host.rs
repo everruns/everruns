@@ -175,6 +175,7 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
 struct RuntimeExecutionCapabilities {
     tool_registry: ToolRegistry,
     post_tool_hooks: Vec<Arc<dyn everruns_core::PostToolExecHook>>,
+    pre_tool_hooks: Vec<Arc<dyn everruns_core::atoms::PreToolUseHook>>,
     tool_call_hooks: Vec<Arc<dyn everruns_core::ToolCallHook>>,
 }
 
@@ -201,6 +202,7 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
         return Ok(RuntimeExecutionCapabilities {
             tool_registry: registry,
             post_tool_hooks: Vec::new(),
+            pre_tool_hooks: Vec::new(),
             tool_call_hooks: Vec::new(),
         });
     }
@@ -282,11 +284,16 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
                 .unwrap_or_default()
         })
         .collect();
+    let mut pre_tool_hooks: Vec<Arc<dyn everruns_core::atoms::PreToolUseHook>> = Vec::new();
     if !user_hook_specs.is_empty() {
         let dispatcher: Arc<dyn everruns_core::hook_executor::BashHookDispatcher> = Arc::new(
             everruns_core::hook_dispatch::VirtualBashHookDispatcher::new(adapter.file_store()),
         );
         post_tool_hooks.extend(everruns_core::hook_adapter::build_post_tool_use_hooks(
+            &user_hook_specs,
+            dispatcher.clone(),
+        ));
+        pre_tool_hooks.extend(everruns_core::hook_adapter::build_pre_tool_use_hooks(
             &user_hook_specs,
             dispatcher,
         ));
@@ -306,6 +313,7 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
     Ok(RuntimeExecutionCapabilities {
         tool_registry: registry,
         post_tool_hooks,
+        pre_tool_hooks,
         tool_call_hooks,
     })
 }
@@ -694,6 +702,7 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
             )
             .with_capability_registry(adapter.capability_registry())
             .with_post_tool_hooks(execution_capabilities.post_tool_hooks)
+            .with_pre_tool_hooks(execution_capabilities.pre_tool_hooks)
             .with_tool_call_hooks(execution_capabilities.tool_call_hooks);
 
     if let Some(storage_store) = adapter.storage_store() {
