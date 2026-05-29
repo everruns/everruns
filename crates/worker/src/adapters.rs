@@ -20,7 +20,40 @@ pub fn create_driver_registry() -> DriverRegistry {
     everruns_openai::register_driver(&mut registry);
     everruns_anthropic::register_driver(&mut registry);
     everruns_gemini::register_driver(&mut registry);
-    everruns_core::llmsim_driver::register_driver(&mut registry);
+
+    // LlmSim. The `LLMSIM_DEMO` env var lets operators opt the in-process
+    // LlmSim driver into a pre-baked scripted scenario without changing
+    // the default ("Hello! I'm a simulated LLM response.") behavior.
+    //
+    // Recognized values:
+    //   - `auditor` — drives the Cloud Cost & Security Auditor agent
+    //     through a short EC2/S3 audit using fake_aws tools. Useful for
+    //     exercising the user_hooks audit-log bundle end-to-end without
+    //     an LLM API key.
+    //
+    // Unknown values fall back to the default driver with a warning.
+    match std::env::var("LLMSIM_DEMO").ok().as_deref() {
+        Some("auditor") => {
+            tracing::info!(
+                "LLMSIM_DEMO=auditor: registering scripted LlmSim driver for the Cloud Auditor demo"
+            );
+            everruns_core::llmsim_driver::register_driver_with_config(
+                &mut registry,
+                everruns_core::llmsim_driver::auditor_demo_script(),
+            );
+        }
+        Some(other) => {
+            tracing::warn!(
+                value = %other,
+                "LLMSIM_DEMO has an unrecognized value; falling back to default LlmSim driver"
+            );
+            everruns_core::llmsim_driver::register_driver(&mut registry);
+        }
+        None => {
+            everruns_core::llmsim_driver::register_driver(&mut registry);
+        }
+    }
+
     registry
 }
 

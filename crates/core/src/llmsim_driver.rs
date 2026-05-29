@@ -721,6 +721,21 @@ pub fn register_driver(registry: &mut DriverRegistry) {
     });
 }
 
+/// Register the LlmSim driver with a custom configuration. Useful for
+/// servers/workers that want to opt into a scripted scenario (e.g. the
+/// `user_hooks` audit-log demo) without changing the default behaviour for
+/// callers that don't.
+///
+/// The same `config` is cloned for every constructed driver in the
+/// registry, so its `Arc`-backed counters (sequence index, etc.) are
+/// shared across invocations.
+pub fn register_driver_with_config(registry: &mut DriverRegistry, config: LlmSimConfig) {
+    let driver = LlmSimDriver::new(config);
+    registry.register(ProviderType::LlmSim, move |_api_key, _base_url| {
+        Box::new(driver.clone()) as BoxedLlmDriver
+    });
+}
+
 /// Parse TTFT (time to first token) delay from model name if it contains "-ttft-{ms}" pattern.
 /// For example: "llmsim-ttft-2000" returns Some(Duration::from_millis(2000))
 ///
@@ -762,6 +777,51 @@ pub fn create_driver(config: LlmSimConfig) -> BoxedLlmDriver {
 }
 
 // ============================================================================
+// Pre-baked demo scripts
+// ============================================================================
+
+/// Scripted multi-turn config that drives the Cloud Cost & Security Auditor
+/// example agent through a small, deterministic AWS audit using only the
+/// `fake_aws` capability's tools. Useful for the `user_hooks` end-to-end
+/// demo (and any operator who wants to exercise the auditor without an LLM
+/// API key).
+///
+/// Sequence of assistant turns:
+///   1. Call `aws_list_ec2_instances`.
+///   2. Call `aws_list_s3_buckets`.
+///   3. Write a short audit summary as plain text.
+///
+/// After turn 3 the script repeats the final turn, matching the default
+/// `OnExhausted::RepeatLast` behavior.
+pub fn auditor_demo_script() -> LlmSimConfig {
+    let turns = vec![
+        SimTurn::Mixed {
+            text: "Starting the audit. Listing EC2 instances first.".to_string(),
+            tool_calls: vec![SimToolCall {
+                name: "aws_list_ec2_instances".to_string(),
+                arguments: serde_json::json!({}),
+                id: Some("call_demo_ec2".to_string()),
+            }],
+        },
+        SimTurn::Mixed {
+            text: "EC2 inventory captured. Listing S3 buckets next.".to_string(),
+            tool_calls: vec![SimToolCall {
+                name: "aws_list_s3_buckets".to_string(),
+                arguments: serde_json::json!({}),
+                id: Some("call_demo_s3".to_string()),
+            }],
+        },
+        SimTurn::Assistant(
+            "Audit complete: inventoried EC2 instances and S3 buckets. \
+             See /workspace/.audit.log for the per-tool-call audit trail \
+             written by the post_tool_use hook bundle."
+                .to_string(),
+        ),
+    ];
+    LlmSimConfig::scripted(turns)
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
 
@@ -769,6 +829,39 @@ pub fn create_driver(config: LlmSimConfig) -> BoxedLlmDriver {
 mod tests {
     use super::*;
     use futures::StreamExt;
+
+    #[test]
+    fn auditor_demo_script_calls_ec2_then_s3_then_summarises() {
+        let config = auditor_demo_script();
+        let turns = match &config.response {
+            ResponseConfig::Scripted { turns, .. } => turns,
+            other => panic!("expected Scripted, got {other:?}"),
+        };
+        assert_eq!(turns.len(), 3, "script has three turns");
+        match &turns[0] {
+            SimTurn::Mixed { tool_calls, .. } => {
+                assert_eq!(tool_calls.len(), 1);
+                assert_eq!(tool_calls[0].name, "aws_list_ec2_instances");
+            }
+            other => panic!("turn 0 should be Mixed, got {other:?}"),
+        }
+        match &turns[1] {
+            SimTurn::Mixed { tool_calls, .. } => {
+                assert_eq!(tool_calls.len(), 1);
+                assert_eq!(tool_calls[0].name, "aws_list_s3_buckets");
+            }
+            other => panic!("turn 1 should be Mixed, got {other:?}"),
+        }
+        match &turns[2] {
+            SimTurn::Assistant(text) => {
+                assert!(
+                    text.contains("/workspace/.audit.log"),
+                    "summary mentions the audit log: {text:?}"
+                );
+            }
+            other => panic!("turn 2 should be Assistant, got {other:?}"),
+        }
+    }
 
     fn make_config() -> LlmCallConfig {
         LlmCallConfig {
