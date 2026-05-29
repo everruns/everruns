@@ -39,7 +39,7 @@ exclude = [
 ]
 
 [workspace.package]
-version = "0.8.35"
+version = "0.8.36"
 edition = "2024"
 license = "MIT"
 authors = ["Everruns Contributors"]
@@ -132,7 +132,7 @@ futures-util = "0.3"
 
 # Everruns SDK
 everruns-sdk = "0.1.9"
-everruns-core = { path = "crates/core", version = "0.8.35" }
+everruns-core = { path = "crates/core", version = "0.8.36" }
 
 # A2A protocol
 a2a = { package = "a2a-lf", version = "0.3" }
