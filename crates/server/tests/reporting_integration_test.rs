@@ -3,7 +3,7 @@
 mod test_harness;
 
 use axum::http::StatusCode;
-use chrono::{Duration, Utc};
+use chrono::{Duration, SecondsFormat, Utc};
 use serde_json::{Value, json};
 use test_harness::TestServer;
 use uuid::Uuid;
@@ -167,13 +167,20 @@ async fn reporting_backfill_enqueues_missing_postgres_session_fact() {
     let server = TestServer::new().await;
     let title = format!("reporting-backfill-{}", Uuid::now_v7());
 
+    let owner_principal_id: Uuid =
+        sqlx::query_scalar("SELECT id FROM principals WHERE org_id = 1 LIMIT 1")
+            .fetch_one(&server.pool)
+            .await
+            .expect("seeded org principal");
+
     let (session_id, updated_at): (Uuid, chrono::DateTime<Utc>) = sqlx::query_as(
         r#"
-        INSERT INTO sessions (org_id, title, status)
-        VALUES (1, $1, 'started')
+        INSERT INTO sessions (org_id, owner_principal_id, title, status)
+        VALUES (1, $1, $2, 'started')
         RETURNING id, updated_at
         "#,
     )
+    .bind(owner_principal_id)
     .bind(&title)
     .fetch_one(&server.pool)
     .await
@@ -202,5 +209,93 @@ async fn reporting_backfill_enqueues_missing_postgres_session_fact() {
     .await
     .expect("backfill should enqueue session outbox row");
 
-    assert_eq!(row.0, updated_at.to_rfc3339());
+    // The backfill formats `source_version` from `updated_at` as UTC with a
+    // `Z` suffix and auto-scaled sub-second precision (see the projector SQL),
+    // which matches chrono's `AutoSi` + `use_z` rendering — not the default
+    // `+00:00` of `to_rfc3339()`.
+    assert_eq!(
+        row.0,
+        updated_at.to_rfc3339_opts(SecondsFormat::AutoSi, true)
+    );
+}
+
+#[tokio::test]
+async fn reporting_projects_llm_generation_into_queryable_fact() {
+    // End-to-end pipeline check: canonical llm_generations row -> backfill
+    // enqueue -> projector run -> fact_llm_generation -> semantic query.
+    let server = TestServer::new().await;
+    let model = format!("e2e-model-{}", Uuid::now_v7());
+
+    let owner_principal_id: Uuid =
+        sqlx::query_scalar("SELECT id FROM principals WHERE org_id = 1 LIMIT 1")
+            .fetch_one(&server.pool)
+            .await
+            .expect("seeded org principal");
+
+    let session_id: Uuid = sqlx::query_scalar(
+        r#"
+        INSERT INTO sessions (org_id, owner_principal_id, title, status)
+        VALUES (1, $1, $2, 'started')
+        RETURNING id
+        "#,
+    )
+    .bind(owner_principal_id)
+    .bind(format!("reporting-e2e-{}", Uuid::now_v7()))
+    .fetch_one(&server.pool)
+    .await
+    .expect("insert test session");
+
+    sqlx::query(
+        r#"
+        INSERT INTO llm_generations
+            (org_id, session_id, model, provider, input_tokens, output_tokens, duration_ms)
+        VALUES (1, $1, $2, 'test-provider', 100, 50, 1200)
+        "#,
+    )
+    .bind(session_id)
+    .bind(&model)
+    .execute(&server.pool)
+    .await
+    .expect("insert canonical llm generation");
+
+    let backfill: Value = server
+        .post("/v1/reports/admin/backfill", json!({ "limit": 100 }))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert!(backfill["llm_generations"].as_i64().unwrap() >= 1);
+
+    server
+        .post("/v1/reports/projector/run?limit=100", json!({}))
+        .await
+        .assert_status(StatusCode::OK);
+
+    let to = Utc::now() + Duration::hours(1);
+    let result: Value = server
+        .post(
+            "/v1/reports/query",
+            json!({
+                "dataset": "llm_generations",
+                "time_range": {
+                    "from": (to - Duration::days(2)).to_rfc3339(),
+                    "to": to.to_rfc3339()
+                },
+                "dimensions": ["model"],
+                "measures": ["total_tokens", "input_tokens", "output_tokens"],
+                "filters": [{ "field": "model", "op": "eq", "value": model }],
+                "limit": 100
+            }),
+        )
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+
+    let rows = result["rows"].as_array().expect("query rows");
+    let row = rows
+        .iter()
+        .find(|r| r["model"] == json!(model))
+        .expect("projected llm generation fact should be queryable");
+    assert_eq!(row["input_tokens"].as_i64(), Some(100));
+    assert_eq!(row["output_tokens"].as_i64(), Some(50));
+    assert_eq!(row["total_tokens"].as_i64(), Some(150));
 }

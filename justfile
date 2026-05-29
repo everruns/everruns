@@ -101,6 +101,7 @@ test-integration: start-infra
         --test org_creation_test \
         --test org_isolation_test \
         --test org_lifecycle_test \
+        --test reporting_integration_test \
         --test schedule_integration_test \
         --test session_git_integration_test \
         -- --test-threads=1
