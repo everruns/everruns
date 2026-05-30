@@ -118,7 +118,7 @@ disagree about what's offered.
 | `started`                    | no                |
 | `active`                     | **yes**           |
 | `idle`                       | no                |
-| `waiting_for_tool_results`   | **yes**           |
+| `waiting_for_tool_results`   | no                |
 | `paused`                     | no                |
 
 `self`, `events`, `update`, `delete`, and `pin`/`unpin` (chosen by
