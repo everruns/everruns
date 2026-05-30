@@ -21,6 +21,7 @@ pub mod capability;
 pub mod event;
 pub mod llm_resolver;
 pub mod model_sync;
+pub mod org_feature_flags;
 pub mod principal;
 pub mod usage_tracking;
 

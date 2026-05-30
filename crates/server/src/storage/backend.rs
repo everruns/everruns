@@ -1394,6 +1394,21 @@ impl StorageBackend {
         dispatch!(self, patch_organization_settings, org_id, input)
     }
 
+    pub async fn list_org_feature_flags(
+        &self,
+        org_id: i64,
+    ) -> Result<std::collections::HashMap<String, bool>> {
+        dispatch!(self, list_org_feature_flags, org_id)
+    }
+
+    pub async fn replace_org_feature_flags(
+        &self,
+        org_id: i64,
+        flags: &std::collections::HashMap<String, bool>,
+    ) -> Result<()> {
+        dispatch!(self, replace_org_feature_flags, org_id, flags)
+    }
+
     pub async fn create_llm_model(
         &self,
         org_id: i64,

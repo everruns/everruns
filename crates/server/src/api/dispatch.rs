@@ -133,7 +133,12 @@ macro_rules! impl_dispatchable {
                 org: &crate::auth::ResolvedOrg,
             ) -> crate::api::dispatch::Dispatcher {
                 crate::api::dispatch::Dispatcher {
-                    ctx: self.ctx(org),
+                    ctx: {
+                        let mut ctx = self.ctx(org);
+                        // Org-scoped requests use effective flags (system + org opt-in).
+                        ctx.feature_flags = org.feature_flags.clone();
+                        ctx
+                    },
                     url_builder: crate::api::common::UrlBuilder::from_auth_config(
                         &self.auth.config,
                     ),

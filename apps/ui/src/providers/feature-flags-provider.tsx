@@ -2,14 +2,15 @@
 
 // Feature flags provider
 //
-// Decision: Fetch flags once on mount via React Query (cached, no repeated queries).
+// Decision: When an org is selected, fetch org-effective flags (system + opt-in).
+// Decision: Fall back to deployment-level flags before org context is ready.
 // Decision: Default all flags to false while loading to avoid flash of gated content.
-// Decision: Provider sits above OrgProvider so flags are available everywhere.
 
 import { createContext, useContext, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { getFeatureFlags } from "@/lib/api/feature-flags";
+import { getFeatureFlags, getOrgFeatureFlags } from "@/lib/api/feature-flags";
 import type { FeatureFlags } from "@/lib/api/types";
+import { useOrg } from "@/providers/org-provider";
 
 const DEFAULT_FLAGS: FeatureFlags = {
   global_chat: false,
@@ -30,20 +31,37 @@ export interface FeatureFlagsContextValue {
 
 const FeatureFlagsContext = createContext<FeatureFlagsContextValue | undefined>(undefined);
 
-export function FeatureFlagsProvider({ children }: { children: ReactNode }) {
-  const { data, isLoading } = useQuery({
-    queryKey: ["feature-flags"],
+function FeatureFlagsLoader({ children }: { children: ReactNode }) {
+  const { currentOrg } = useOrg();
+  const orgId = currentOrg?.id;
+
+  const systemQuery = useQuery({
+    queryKey: ["feature-flags", "system"],
     queryFn: getFeatureFlags,
-    staleTime: 5 * 60 * 1000, // 5 min
+    staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
+    enabled: !orgId,
   });
 
+  const orgQuery = useQuery({
+    queryKey: ["feature-flags", "org", orgId],
+    queryFn: () => getOrgFeatureFlags(orgId!),
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    enabled: Boolean(orgId),
+  });
+
+  const activeQuery = orgId ? orgQuery : systemQuery;
   const value: FeatureFlagsContextValue = {
-    flags: data ?? DEFAULT_FLAGS,
-    isLoading,
+    flags: activeQuery.data ?? DEFAULT_FLAGS,
+    isLoading: activeQuery.isLoading,
   };
 
   return <FeatureFlagsContext.Provider value={value}>{children}</FeatureFlagsContext.Provider>;
+}
+
+export function FeatureFlagsProvider({ children }: { children: ReactNode }) {
+  return <FeatureFlagsLoader>{children}</FeatureFlagsLoader>;
 }
 
 export function useFeatureFlags(): FeatureFlags {

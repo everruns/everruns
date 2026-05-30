@@ -531,7 +531,7 @@ pub async fn update_organization(
 }
 
 /// Check membership by querying the DB (avoids stale auth context).
-async fn is_member_of_public_db(
+pub(crate) async fn is_member_of_public_db(
     db: &StorageBackend,
     user_id: uuid::Uuid,
     org_public_id: &str,

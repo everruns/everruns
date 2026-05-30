@@ -10,8 +10,8 @@ use axum::{
 use axum_extra::extract::CookieJar;
 use everruns_core::{
     ANONYMOUS_USER_EMAIL, ANONYMOUS_USER_ID, ANONYMOUS_USER_NAME, Caller, DEFAULT_ORG_ID,
-    DEFAULT_ORG_PUBLIC_ID, DefaultPermissionResolver, OrgMembership, OrgRole, PermissionResolver,
-    validate_org_public_id,
+    DEFAULT_ORG_PUBLIC_ID, DefaultPermissionResolver, FeatureFlags, OrgMembership, OrgRole,
+    PermissionResolver, validate_org_public_id,
 };
 use serde::Serialize;
 use std::sync::Arc;
@@ -163,6 +163,9 @@ pub struct AuthState {
     /// Used in AuthMethod::None (anonymous user only carries default org)
     /// and AuthMethod::Jwt (JWT may be stale after server-side org creation).
     pub db: Option<Arc<StorageBackend>>,
+    /// Deployment-level feature flags (env + grade). Combined with per-org opt-in
+    /// when building [`ResolvedOrg::feature_flags`].
+    pub system_feature_flags: FeatureFlags,
 }
 
 impl AuthState {
@@ -172,6 +175,7 @@ impl AuthState {
             backend,
             permission_resolver: Arc::new(DefaultPermissionResolver),
             db: None,
+            system_feature_flags: FeatureFlags::current(),
         }
     }
 
@@ -186,6 +190,7 @@ impl AuthState {
             backend,
             permission_resolver: resolver,
             db: None,
+            system_feature_flags: FeatureFlags::current(),
         }
     }
 
@@ -202,12 +207,18 @@ impl AuthState {
             backend,
             permission_resolver: Arc::new(DefaultPermissionResolver),
             db: Some(db),
+            system_feature_flags: FeatureFlags::current(),
         }
     }
 
     /// Set the storage backend (for org resolution in ResolvedOrg extraction).
     pub fn with_db(mut self, db: Arc<StorageBackend>) -> Self {
         self.db = Some(db);
+        self
+    }
+
+    pub fn with_system_feature_flags(mut self, flags: FeatureFlags) -> Self {
+        self.system_feature_flags = flags;
         self
     }
 }
@@ -500,6 +511,36 @@ pub struct ResolvedOrg {
     pub role: OrgRole,
     /// Whether the authenticated user may access global/platform surfaces.
     pub is_platform_user: bool,
+    /// Effective API-visible feature flags for this org (system gate + org opt-in).
+    pub feature_flags: FeatureFlags,
+}
+
+impl ResolvedOrg {
+    pub async fn with_effective_feature_flags(self, auth_state: &AuthState) -> Self {
+        let feature_flags = if let Some(db) = &auth_state.db {
+            crate::services::org_feature_flags::resolve_org_feature_flags(
+                db,
+                self.org_id,
+                &auth_state.system_feature_flags,
+            )
+            .await
+            .unwrap_or_else(|_| {
+                FeatureFlags::for_org(
+                    &auth_state.system_feature_flags,
+                    &std::collections::HashMap::new(),
+                )
+            })
+        } else {
+            FeatureFlags::for_org(
+                &auth_state.system_feature_flags,
+                &std::collections::HashMap::new(),
+            )
+        };
+        Self {
+            feature_flags,
+            ..self
+        }
+    }
 }
 
 impl From<&ResolvedOrg> for Caller {
@@ -525,6 +566,8 @@ where
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
         // First extract the authenticated user
         let user = AuthUser::from_request_parts(parts, state).await?;
+
+        let auth_state = AuthState::from_ref(state);
 
         match user.auth_method {
             AuthMethod::ApiKey => {
@@ -556,7 +599,10 @@ where
                         user_id: Some(user.id),
                         role: org.role,
                         is_platform_user: user.is_platform_user,
-                    });
+                        feature_flags: FeatureFlags::default(),
+                    }
+                    .with_effective_feature_flags(&auth_state)
+                    .await);
                 }
 
                 // No explicit org — convenience: if user has exactly one org, use it
@@ -569,7 +615,10 @@ where
                         user_id: Some(user.id),
                         role: org.role,
                         is_platform_user: user.is_platform_user,
-                    });
+                        feature_flags: FeatureFlags::default(),
+                    }
+                    .with_effective_feature_flags(&auth_state)
+                    .await);
                 }
 
                 // Multiple orgs, no explicit selection
@@ -585,7 +634,6 @@ where
                 // No-auth mode: anonymous user only carries the default org,
                 // but the user may have switched to a different org via cookie.
                 // Read the org cookie and resolve via DB if available.
-                let auth_state = AuthState::from_ref(state);
                 let jar = CookieJar::from_headers(&parts.headers);
                 let cookie_org_id = jar.get(ORG_COOKIE_NAME).map(|c| c.value().to_string());
 
@@ -600,7 +648,10 @@ where
                         user_id: None,
                         role: OrgRole::Owner, // Anonymous user is owner of all orgs
                         is_platform_user: user.is_platform_user,
-                    });
+                        feature_flags: FeatureFlags::default(),
+                    }
+                    .with_effective_feature_flags(&auth_state)
+                    .await);
                 }
 
                 // Fall back to default org
@@ -615,7 +666,10 @@ where
                     user_id: None,
                     role: org.role,
                     is_platform_user: user.is_platform_user,
-                })
+                    feature_flags: FeatureFlags::default(),
+                }
+                .with_effective_feature_flags(&auth_state)
+                .await)
             }
             AuthMethod::Jwt => {
                 // Session auth: get org from everruns_org cookie
@@ -638,7 +692,10 @@ where
                         user_id: Some(user.id),
                         role: org.role,
                         is_platform_user: user.is_platform_user,
-                    });
+                        feature_flags: FeatureFlags::default(),
+                    }
+                    .with_effective_feature_flags(&auth_state)
+                    .await);
                 }
 
                 let org_public_id = cookie_org.unwrap();
@@ -654,7 +711,6 @@ where
                 // the client JWT won't include it until PropelAuth refreshes the token).
                 // This mirrors the fix in the `switch_org` endpoint
                 // (`crates/server/src/api/users.rs`).
-                let auth_state = AuthState::from_ref(state);
                 if let Some(db) = &auth_state.db
                     && let Ok(user_orgs) = db.list_user_organizations(user.id).await
                 {
@@ -667,7 +723,10 @@ where
                             user_id: Some(user.id),
                             role,
                             is_platform_user: user.is_platform_user,
-                        });
+                            feature_flags: FeatureFlags::default(),
+                        }
+                        .with_effective_feature_flags(&auth_state)
+                        .await);
                     }
                     // DB available, user not a member → 404
                     return Err(AuthError {
@@ -692,7 +751,10 @@ where
                     user_id: Some(user.id),
                     role: org.role,
                     is_platform_user: user.is_platform_user,
-                })
+                    feature_flags: FeatureFlags::default(),
+                }
+                .with_effective_feature_flags(&auth_state)
+                .await)
             }
         }
     }
@@ -995,6 +1057,7 @@ mod tests {
             backend,
             permission_resolver: Arc::new(DefaultPermissionResolver),
             db: Some(db.clone()),
+            system_feature_flags: FeatureFlags::current(),
         };
         (state, db)
     }
@@ -1138,6 +1201,7 @@ mod tests {
             backend,
             permission_resolver: Arc::new(DefaultPermissionResolver),
             db: None, // No DB — forces JWT fallback
+            system_feature_flags: FeatureFlags::current(),
         };
 
         let (mut parts, _body) = Request::builder()
@@ -1207,6 +1271,7 @@ mod tests {
             backend,
             permission_resolver: Arc::new(DefaultPermissionResolver),
             db: None,
+            system_feature_flags: FeatureFlags::current(),
         }
     }
 

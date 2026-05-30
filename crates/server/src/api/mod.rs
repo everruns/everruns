@@ -38,6 +38,7 @@ pub mod mcp_servers;
 pub mod memory_stores;
 pub mod messages;
 pub mod notifications;
+pub mod org_feature_flags;
 pub mod organizations;
 pub mod payments;
 pub mod prometheus;

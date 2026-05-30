@@ -17,6 +17,7 @@ use crate::deployment::DeploymentGrade;
 /// Currently backed by environment variables and deployment grade.
 /// Future: per-org flags, per-user flags, external providers.
 #[derive(Debug, Default, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
 pub struct FeatureFlags {
     /// Global chat (per-user singleton chat session). Experimental.
     pub global_chat: bool,
@@ -43,7 +44,92 @@ pub struct FeatureFlags {
     pub agent_delegation: bool,
 }
 
+/// Metadata for an API-visible feature flag (org opt-in UI + catalog).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct FeatureFlagDefinition {
+    /// Stable flag key (matches `FeatureFlags` field / `is_enabled` name).
+    pub name: &'static str,
+    /// Human-readable title for settings UI.
+    pub label: &'static str,
+    /// Short description of what the flag gates.
+    pub description: &'static str,
+    /// When true, shown with experimental badges in the UI.
+    pub experimental: bool,
+}
+
+/// All API-visible flags that organizations may opt into when the deployment allows them.
+pub const API_FEATURE_FLAG_DEFINITIONS: &[FeatureFlagDefinition] = &[
+    FeatureFlagDefinition {
+        name: "global_chat",
+        label: "Global chat",
+        description: "Per-user singleton chat session in the sidebar.",
+        experimental: true,
+    },
+    FeatureFlagDefinition {
+        name: "notifications",
+        label: "Notifications",
+        description: "In-app notification bell, toasts, and notification SSE.",
+        experimental: true,
+    },
+    FeatureFlagDefinition {
+        name: "mcp_endpoint",
+        label: "MCP server endpoint",
+        description: "Expose Everruns as an MCP server (POST /mcp).",
+        experimental: true,
+    },
+    FeatureFlagDefinition {
+        name: "evals",
+        label: "Evals",
+        description: "Behavioral evals for agents.",
+        experimental: true,
+    },
+    FeatureFlagDefinition {
+        name: "app_budgets",
+        label: "App budgets",
+        description: "App and channel scoped budgets with periodic resets.",
+        experimental: true,
+    },
+    FeatureFlagDefinition {
+        name: "agent_versions",
+        label: "Agent versions",
+        description: "Immutable agent snapshots, forks, rollback, and app version binding.",
+        experimental: true,
+    },
+    FeatureFlagDefinition {
+        name: "voice",
+        label: "Voice",
+        description: "Realtime voice endpoints and microphone controls in chat.",
+        experimental: true,
+    },
+    FeatureFlagDefinition {
+        name: "apps.detailV2",
+        label: "Apps detail v2",
+        description: "Channels-first app detail page and full-page channel forms.",
+        experimental: true,
+    },
+];
+
 impl FeatureFlags {
+    /// Effective flags for an organization: deployment/system gates AND explicit org opt-in.
+    ///
+    /// Org overrides default to disabled; a flag is on only when the deployment allows it
+    /// and the org has opted in (`enabled: true` in storage).
+    pub fn for_org(system: &Self, org_enabled: &std::collections::HashMap<String, bool>) -> Self {
+        let opt_in = |name: &str, system_on: bool| -> bool {
+            system_on && org_enabled.get(name).copied().unwrap_or(false)
+        };
+        Self {
+            global_chat: opt_in("global_chat", system.global_chat),
+            notifications: opt_in("notifications", system.notifications),
+            mcp_endpoint: opt_in("mcp_endpoint", system.mcp_endpoint),
+            evals: opt_in("evals", system.evals),
+            app_budgets: opt_in("app_budgets", system.app_budgets),
+            agent_versions: opt_in("agent_versions", system.agent_versions),
+            voice: opt_in("voice", system.voice),
+            apps_detail_v2: opt_in("apps.detailV2", system.apps_detail_v2),
+        }
+    }
+
     /// Compute feature flags from environment variables and deployment grade.
     pub fn from_env(grade: &DeploymentGrade) -> Self {
         Self {
@@ -96,6 +182,10 @@ impl FeatureFlags {
             agent_delegation: true,
         }
     }
+}
+
+fn system_flag_enabled(system: &FeatureFlags, name: &str) -> bool {
+    system.is_enabled(name)
 }
 
 /// Backend-only feature flags. Not exposed via API or frontend.
@@ -320,6 +410,32 @@ mod tests {
         unsafe { std::env::remove_var("FEATURE_NOTIFICATIONS") };
         let flags = FeatureFlags::from_env(&DeploymentGrade::Prod);
         assert!(!flags.notifications);
+    }
+
+    #[test]
+    fn test_for_org_requires_system_and_opt_in() {
+        let system = FeatureFlags {
+            global_chat: true,
+            evals: true,
+            ..FeatureFlags::default()
+        };
+        let mut org = std::collections::HashMap::new();
+        org.insert("global_chat".to_string(), true);
+        let effective = FeatureFlags::for_org(&system, &org);
+        assert!(effective.global_chat);
+        assert!(!effective.evals);
+
+        let effective_none = FeatureFlags::for_org(&system, &std::collections::HashMap::new());
+        assert!(!effective_none.global_chat);
+    }
+
+    #[test]
+    fn test_for_org_cannot_enable_when_system_off() {
+        let system = FeatureFlags::default();
+        let mut org = std::collections::HashMap::new();
+        org.insert("global_chat".to_string(), true);
+        let effective = FeatureFlags::for_org(&system, &org);
+        assert!(!effective.global_chat);
     }
 
     #[test]

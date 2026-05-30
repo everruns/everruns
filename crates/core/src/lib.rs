@@ -458,7 +458,9 @@ pub use url_validation::{
 pub use deployment::DeploymentGrade;
 
 // Feature flags
-pub use feature_flags::{FeatureFlags, InternalFeatureFlags};
+pub use feature_flags::{
+    API_FEATURE_FLAG_DEFINITIONS, FeatureFlagDefinition, FeatureFlags, InternalFeatureFlags,
+};
 
 // Observation backends
 pub use observation::{BraintrustConfig, BraintrustListener, OtelEventListener};

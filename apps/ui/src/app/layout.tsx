@@ -38,11 +38,11 @@ export default async function RootLayout({
       <body className="font-sans antialiased bg-brand-dots">
         <LocaleProvider>
           <QueryProvider>
-            <FeatureFlagsProvider>
-              <AuthProvider>
-                <OrgProvider initialOrgId={initialOrgId}>{children}</OrgProvider>
-              </AuthProvider>
-            </FeatureFlagsProvider>
+            <AuthProvider>
+              <OrgProvider initialOrgId={initialOrgId}>
+                <FeatureFlagsProvider>{children}</FeatureFlagsProvider>
+              </OrgProvider>
+            </AuthProvider>
           </QueryProvider>
         </LocaleProvider>
       </body>

@@ -19,6 +19,20 @@ export interface FeatureFlags {
   agent_delegation: boolean;
 }
 
+export interface OrgFeatureFlagSetting {
+  name: string;
+  label: string;
+  description: string;
+  experimental: boolean;
+  system_enabled: boolean;
+  org_enabled: boolean;
+  effective: boolean;
+}
+
+export interface OrgFeatureFlagsSettingsResponse {
+  flags: OrgFeatureFlagSetting[];
+}
+
 export interface AuthConfigResponse {
   mode: AuthMode;
   password_auth_enabled: boolean;

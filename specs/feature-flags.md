@@ -11,13 +11,21 @@ System-level feature flags that control feature availability across the platform
 - **Explicit override wins**: `FEATURE_<NAME>=true/false` always takes priority over defaults
 - **Type-safe**: `FeatureFlags` struct with named boolean fields
 - **Fetch once**: UI fetches flags once on mount (React Query with 5min stale time)
-- **No DB needed (yet)**: Backed by env vars + deployment grade, no database table
+- **Org opt-in**: Organizations enable API-visible flags when the deployment allows them (stored in `org_feature_flags`)
 
 ### Flag Resolution Order
+
+**Deployment (system) flags:**
 
 1. Explicit env var `FEATURE_<NAME>=true|1` or `=false|0`
 2. For experimental flags: `DeploymentGrade::Dev` -> `true`
 3. Default: `false`
+
+**Effective flags for an organization:**
+
+1. System flag must be enabled on the deployment
+2. Organization must have opted in (`org_feature_flags.enabled = true`; default is off)
+3. `effective = system_enabled && org_enabled`
 
 ### Flag Types
 
@@ -52,16 +60,19 @@ Current API-visible experimental flags include:
 ### Backend
 
 - **Core**: `crates/core/src/feature_flags.rs` — `FeatureFlags` + `InternalFeatureFlags` structs, `from_env()`, resolution helpers
-- **API**: `GET /v1/feature-flags` — public endpoint, returns `FeatureFlags` as JSON
-- **Server**: `crates/server/src/api/feature_flags.rs` — route handler
+- **API**: `GET /v1/feature-flags` — public endpoint, returns deployment-level `FeatureFlags` as JSON
+- **Org API**: `GET/PATCH /v1/orgs/{org}/feature-flags`, `GET /v1/orgs/{org}/feature-flags/settings` — org opt-in (admin for PATCH)
+- **Server**: `crates/server/src/api/feature_flags.rs`, `crates/server/src/api/org_feature_flags.rs`
+- **Storage**: `org_feature_flags` table (migration `046_org_feature_flags.sql`)
 
-Flags are computed once at server startup and served from memory.
+Deployment flags are computed once at server startup. Org-effective flags are resolved per request from system flags + `org_feature_flags` rows (`ResolvedOrg::feature_flags`, `Ctx::feature_flags`).
 
 ### Frontend
 
 - **API client**: `apps/ui/src/lib/api/feature-flags.ts`
-- **Provider**: `apps/ui/src/providers/feature-flags-provider.tsx` — React context, fetches once
-- **Hooks**: `useFeatureFlags()` (all flags), `useFeatureFlag("flag_name")` (single flag)
+- **Provider**: `apps/ui/src/providers/feature-flags-provider.tsx` — fetches org-effective flags when an org is selected
+- **Settings**: `apps/ui/src/app/(main)/settings/features/page.tsx` — admin opt-in toggles
+- **Hooks**: `useFeatureFlags()` (effective flags), `useFeatureFlag("flag_name")` (single flag)
 - **Types**: `FeatureFlags` in `apps/ui/src/lib/api/types/auth-types.ts`
 
 ### Workers
@@ -99,8 +110,7 @@ Both are driven by `experimental: true` on the `NavItem` type in the sidebar, an
 
 ## Future Extensions
 
-- **Per-org flags**: Add `org_id` column to a `feature_flag_overrides` table
-- **Per-user flags**: Add `user_id` column
+- **Per-user flags**: Add `user_id` column for user-level overrides within an org
 - **External providers**: Implement a `FeatureFlagProvider` trait; plug in LaunchDarkly, Unleash, etc.
 - **Runtime toggle**: Admin API to update flag overrides without restart
 - **Worker propagation**: Include flags in gRPC `GetTurnContext` response
