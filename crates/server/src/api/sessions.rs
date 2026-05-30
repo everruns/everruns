@@ -726,12 +726,11 @@ pub async fn unpin_session(
     responses(
         (
             status = 200,
-            description = "Turn cancelled successfully (or no-op if idle)",
+            description = "Turn cancelled, or no-op (status: no_op) if no turn was running",
             body = CancelTurnResponse,
             example = json!({
-                "session_id": "session_01933b5a00007000800000000000001",
-                "status": "idle",
-                "cancelled_turn_id": "turn_01933b5a00007000800000000000001"
+                "status": "cancelled",
+                "message": "Turn cancelled successfully"
             })
         ),
         (
