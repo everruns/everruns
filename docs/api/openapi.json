@@ -9890,7 +9890,8 @@
           "500": {
             "description": "Internal server error"
           }
-        }
+        },
+        "x-cost-tier": "paid"
       }
     },
     "/v1/sessions/{session_id}/pin": {
@@ -10971,7 +10972,8 @@
           "500": {
             "description": "Internal server error"
           }
-        }
+        },
+        "x-side-effect": "irreversible"
       },
       "patch": {
         "tags": [

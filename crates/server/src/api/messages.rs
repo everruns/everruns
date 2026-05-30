@@ -231,6 +231,9 @@ pub fn routes(state: AppState) -> Router {
 #[utoipa::path(
     post,
     path = "/v1/sessions/{session_id}/messages",
+    extensions(
+        ("x-cost-tier" = json!("paid")),
+    ),
     params(
         ("session_id" = String, Path, description = "Session ID (prefixed, e.g., sess_...)")
     ),
