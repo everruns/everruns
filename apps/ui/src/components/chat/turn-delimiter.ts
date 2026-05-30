@@ -84,6 +84,7 @@ export function getCompletedTurnDurationsByEvent(events: Event[]): Map<string, n
   const inputMessageTurnIds = getInputMessageTurnIds(events);
   const lastVisibleEventIdByTurn = new Map<string, string>();
   const durationMsByTurn = getCompletedTurnDurationsByTurn(events);
+  const iterationsByTurn = getCompletedTurnIterationsByTurn(events);
 
   for (const event of events) {
     if (isVisibleChatEvent(event, clientRequestedToolCallIds)) {
@@ -97,6 +98,7 @@ export function getCompletedTurnDurationsByEvent(events: Event[]): Map<string, n
   const durationsByEvent = new Map<string, number>();
 
   for (const [turnId, durationMs] of durationMsByTurn) {
+    if ((iterationsByTurn.get(turnId) ?? 0) <= 1) continue;
     const eventId = lastVisibleEventIdByTurn.get(turnId);
     if (eventId) {
       durationsByEvent.set(eventId, durationMs);
@@ -117,6 +119,19 @@ export function getCompletedTurnDurationsByTurn(events: Event[]): Map<string, nu
   }
 
   return durationMsByTurn;
+}
+
+export function getCompletedTurnIterationsByTurn(events: Event[]): Map<string, number> {
+  const iterationsByTurn = new Map<string, number>();
+
+  for (const event of events) {
+    const tcData = getEventData(event, "turn.completed");
+    if (tcData) {
+      iterationsByTurn.set(tcData.turn_id, tcData.iterations);
+    }
+  }
+
+  return iterationsByTurn;
 }
 
 export function formatWorkedDuration(durationMs: number): string {
