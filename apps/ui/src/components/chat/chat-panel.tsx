@@ -14,6 +14,7 @@ import {
 } from "@/hooks";
 import { useChatModelSelection } from "@/hooks/use-chat-model-selection";
 import { executeSessionCommand } from "@/lib/api/commands";
+import { ApiError } from "@/lib/api/client";
 import { sendUserMessageWithImages } from "@/lib/api/messages";
 import { endSessionVoice, startSessionVoice } from "@/lib/api/voice";
 import { useMutation } from "@tanstack/react-query";
@@ -48,8 +49,30 @@ interface BtwOverlayState {
   pending: boolean;
 }
 
+interface VoiceErrorState {
+  message: string;
+  description: string;
+}
+
 function commandRequiresArguments(command: CommandDescriptor): boolean {
   return (command.args ?? []).some((arg) => arg.required);
+}
+
+function isMicrophonePermissionError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+
+  const name = "name" in error && typeof error.name === "string" ? error.name.toLowerCase() : "";
+  if (name === "notallowederror" || name === "securityerror" || name === "permissiondeniederror") {
+    return true;
+  }
+
+  const message =
+    "message" in error && typeof error.message === "string" ? error.message.toLowerCase() : "";
+  return (
+    typeof DOMException !== "undefined" &&
+    error instanceof DOMException &&
+    message.includes("permission")
+  );
 }
 
 function parseSystemCommandInvocation(
@@ -103,7 +126,7 @@ export function ChatPanel() {
   const { data: llmModels = [] } = useLlmModels();
   const [inputValue, setInputValue] = useState("");
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [voiceError, setVoiceError] = useState<VoiceErrorState | null>(null);
   const [voiceState, setVoiceState] = useState<"idle" | "connecting" | "connected">("idle");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const voiceConnectionIdRef = useRef<string | null>(null);
@@ -277,10 +300,24 @@ export function ChatPanel() {
     } catch (error) {
       cleanupVoiceClient();
       setVoiceState("idle");
-      const message = error instanceof Error ? error.message : "Failed to start voice session.";
-      setVoiceError(message);
+      if (isMicrophonePermissionError(error)) {
+        setVoiceError({
+          message: t("voice_microphone_permission_error"),
+          description: t("voice_microphone_permission_description"),
+        });
+      } else if (error instanceof ApiError && error.status >= 500) {
+        setVoiceError({
+          message: t("voice_service_unavailable_error"),
+          description: t("voice_service_unavailable_description"),
+        });
+      } else {
+        setVoiceError({
+          message: error instanceof Error ? error.message : "Failed to start voice session.",
+          description: t("voice_error_description"),
+        });
+      }
     }
-  }, [cleanupVoiceClient, reasoningEffort, sessionId, voiceAvailable, voiceState]);
+  }, [cleanupVoiceClient, reasoningEffort, sessionId, t, voiceAvailable, voiceState]);
 
   const toggleVoice = useCallback(() => {
     if (voiceState === "connected") {
@@ -475,7 +512,7 @@ export function ChatPanel() {
 
         {voiceError && (
           <div className="mt-4">
-            <ChatErrorAlert message={voiceError} />
+            <ChatErrorAlert message={voiceError.message} description={voiceError.description} />
           </div>
         )}
 

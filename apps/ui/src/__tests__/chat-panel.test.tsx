@@ -1,9 +1,13 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import React from "react";
 import { ChatPanel } from "@/components/chat/chat-panel";
+import { ApiError } from "@/lib/api/client";
 
 const mockUseSessionCommands = jest.fn();
 const mockExecuteSessionCommand = jest.fn();
+const mockUseFeatureFlag = jest.fn(() => false);
+const mockStartSessionVoice = jest.fn();
+const mockEndSessionVoice = jest.fn();
 const mockSelectTrigger = jest.fn(
   ({
     children,
@@ -98,7 +102,12 @@ jest.mock("@/lib/api/messages", () => ({
 }));
 
 jest.mock("@/providers/feature-flags-provider", () => ({
-  useFeatureFlag: () => false,
+  useFeatureFlag: (...args: unknown[]) => mockUseFeatureFlag(...args),
+}));
+
+jest.mock("@/lib/api/voice", () => ({
+  startSessionVoice: (...args: unknown[]) => mockStartSessionVoice(...args),
+  endSessionVoice: (...args: unknown[]) => mockEndSessionVoice(...args),
 }));
 
 jest.mock("@/components/ui/button", () => ({
@@ -194,6 +203,12 @@ beforeAll(() => {
     configurable: true,
     value: jest.fn(),
   });
+});
+
+beforeEach(() => {
+  mockUseFeatureFlag.mockReturnValue(false);
+  mockStartSessionVoice.mockReset();
+  mockEndSessionVoice.mockReset();
 });
 
 describe("ChatPanel compaction divider", () => {
@@ -469,5 +484,76 @@ describe("ChatPanel placeholder", () => {
 
     expect(await screen.findByText("Something went wrong")).toBeInTheDocument();
     expect(screen.getByText("backend temporarily unavailable")).toBeInTheDocument();
+  });
+
+  it("shows an actionable microphone permission error without starting voice", async () => {
+    const getUserMedia = jest
+      .fn()
+      .mockRejectedValue(new DOMException("Permission denied", "NotAllowedError"));
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: { getUserMedia },
+    });
+    Object.defineProperty(globalThis, "RTCPeerConnection", {
+      configurable: true,
+      value: class MockRTCPeerConnection {},
+    });
+    mockUseFeatureFlag.mockReturnValue(true);
+
+    render(<ChatPanel />);
+
+    fireEvent.click(screen.getByTitle("Start voice session"));
+
+    expect(await screen.findByText("Something went wrong")).toBeInTheDocument();
+    expect(
+      screen.getByText("Check your browser microphone permissions, then try starting voice again."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Microphone access is blocked. Allow microphone access in your browser settings and try again.",
+      ),
+    ).toBeInTheDocument();
+    expect(mockStartSessionVoice).not.toHaveBeenCalled();
+  });
+
+  it("shows a provider setup voice error for backend failures", async () => {
+    const getUserMedia = jest.fn().mockResolvedValue({
+      getTracks: () => [{ stop: jest.fn() }],
+    });
+    class MockRTCPeerConnection {
+      ontrack: ((event: { streams: MediaStream[] }) => void) | null = null;
+      addTrack = jest.fn();
+      close = jest.fn();
+      createOffer = jest.fn().mockResolvedValue({ type: "offer", sdp: "local-sdp" });
+      setLocalDescription = jest.fn();
+      setRemoteDescription = jest.fn();
+    }
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: { getUserMedia },
+    });
+    Object.defineProperty(globalThis, "RTCPeerConnection", {
+      configurable: true,
+      value: MockRTCPeerConnection,
+    });
+    mockUseFeatureFlag.mockReturnValue(true);
+    mockStartSessionVoice.mockRejectedValue(new ApiError(502, "Bad Gateway", "Bad gateway"));
+
+    render(<ChatPanel />);
+
+    fireEvent.click(screen.getByTitle("Start voice session"));
+
+    expect(await screen.findByText("Something went wrong")).toBeInTheDocument();
+    expect(screen.getByText("Voice service is unavailable.")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "The voice service could not start a realtime call. Check provider configuration, then try again.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText(
+        "Check your browser microphone permissions, then try starting voice again.",
+      ),
+    ).not.toBeInTheDocument();
   });
 });

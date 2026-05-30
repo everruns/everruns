@@ -81,6 +81,15 @@ fn apply_api_key_routes_wrap(wrap: Option<ApiKeyRoutesWrapFn>, router: Router) -
     }
 }
 
+fn permissions_policy_header_value(voice_enabled: bool) -> axum::http::HeaderValue {
+    let value = format!(
+        "camera=(), {}, geolocation=()",
+        api::voice::microphone_permissions_policy_directive(voice_enabled)
+    );
+    axum::http::HeaderValue::from_str(&value)
+        .expect("permissions policy value is assembled from static directives")
+}
+
 // =========================================================================
 // ServerContext
 // =========================================================================
@@ -773,12 +782,15 @@ impl ServerAppBuilder {
         );
         let voice_state = api::voice::AppState::new(
             db.clone(),
-            runner.clone(),
             auth_state.clone(),
-            llm_resolver.clone(),
             feature_flags.clone(),
+            api::voice::AppDependencies {
+                runner: runner.clone(),
+                message_service: messages_state.message_service.clone(),
+                llm_resolver: llm_resolver.clone(),
+                event_delivery: event_delivery.clone(),
+            },
             platform_definition.as_ref(),
-            event_delivery.clone(),
         );
         let capability_service = Arc::new(
             services::CapabilityService::with_registry(
@@ -1327,9 +1339,7 @@ impl ServerAppBuilder {
             ))
             .layer(SetResponseHeaderLayer::if_not_present(
                 axum::http::header::HeaderName::from_static("permissions-policy"),
-                axum::http::HeaderValue::from_static(
-                    "camera=(), microphone=(), geolocation=()",
-                ),
+                permissions_policy_header_value(feature_flags.voice),
             ))
             .layer(SetResponseHeaderLayer::if_not_present(
                 axum::http::header::HeaderName::from_static("content-security-policy"),
@@ -1948,6 +1958,22 @@ mod tests {
         assert_eq!(config.stream_window, 2 * 1024 * 1024); // falls back to default
         assert_eq!(config.connection_window, 16 * 1024 * 1024); // falls back to default
         assert_eq!(config.max_concurrent_streams, 256); // not set, default
+    }
+
+    #[test]
+    fn permissions_policy_denies_microphone_by_default() {
+        assert_eq!(
+            permissions_policy_header_value(false).to_str().unwrap(),
+            "camera=(), microphone=(), geolocation=()"
+        );
+    }
+
+    #[test]
+    fn permissions_policy_allows_microphone_when_voice_is_enabled() {
+        assert_eq!(
+            permissions_policy_header_value(true).to_str().unwrap(),
+            "camera=(), microphone=(self), geolocation=()"
+        );
     }
 
     // EVE-401: embedders can layer route-specific middleware on the auto-mounted

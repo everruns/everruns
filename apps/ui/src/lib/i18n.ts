@@ -69,6 +69,14 @@ const messages = {
     chat_error_description:
       "Try sending your message again. If it keeps happening, share feedback so we can investigate.",
     chat_error_fallback: "Message failed.",
+    voice_error_description: "Voice could not start. Try again, or check voice provider setup.",
+    voice_microphone_permission_description:
+      "Check your browser microphone permissions, then try starting voice again.",
+    voice_microphone_permission_error:
+      "Microphone access is blocked. Allow microphone access in your browser settings and try again.",
+    voice_service_unavailable_description:
+      "The voice service could not start a realtime call. Check provider configuration, then try again.",
+    voice_service_unavailable_error: "Voice service is unavailable.",
     error_prefix: "Error: {value}",
     runtime_error_budget_exhausted_reached:
       "Budget exhausted. {spent} {currency} spent reached the {limit} {currency} limit. Increase the budget to continue.",
@@ -202,6 +210,15 @@ const messages = {
     chat_error_description:
       "Спробуйте надіслати повідомлення ще раз. Якщо це повторюється, надішліть відгук, щоб ми могли дослідити проблему.",
     chat_error_fallback: "Повідомлення не вдалося надіслати.",
+    voice_error_description:
+      "Не вдалося запустити голос. Спробуйте ще раз або перевірте налаштування голосового провайдера.",
+    voice_microphone_permission_description:
+      "Перевірте дозволи мікрофона в браузері, а потім спробуйте запустити голос ще раз.",
+    voice_microphone_permission_error:
+      "Доступ до мікрофона заблоковано. Дозвольте доступ до мікрофона в налаштуваннях браузера й спробуйте ще раз.",
+    voice_service_unavailable_description:
+      "Голосовий сервіс не зміг запустити realtime-виклик. Перевірте налаштування провайдера й спробуйте ще раз.",
+    voice_service_unavailable_error: "Голосовий сервіс недоступний.",
     error_prefix: "Помилка: {value}",
     runtime_error_budget_exhausted_reached:
       "Бюджет вичерпано. Витрачено {spent} {currency}, що досягло ліміту {limit} {currency}. Збільште бюджет, щоб продовжити.",

@@ -506,9 +506,10 @@ phases.
 
 #### `voice.output_transcript.completed`
 
-Final transcript text for assistant speech. The server emits canonical
-`output.message.completed` only for provider output that belongs to the final
-answer phase.
+Final transcript text for assistant speech. In the durable voice bridge, the
+agent turn's `output.message.completed` remains canonical; provider speech
+transcripts stay as `voice.output_transcript.*` observability events to avoid
+duplicating the assistant message.
 
 #### `voice.session.ended`
 

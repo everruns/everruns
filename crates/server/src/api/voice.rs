@@ -5,8 +5,10 @@
 // lifecycle metadata plus text transcripts marked with metadata.source=voice.
 
 use crate::api::common::{ErrorResponse, impl_auth_state};
+use crate::api::messages::{InputMessage, MessageRole};
 use crate::auth::{AuthState, ResolvedOrg};
 use crate::domains::common::{Command, Ctx};
+use crate::domains::messages::{CreateMessage, MessageService};
 use crate::domains::sessions::{CreateSession, GetOrCreateChatSession, SessionService};
 use crate::event_delivery::EventDelivery;
 use crate::services::{
@@ -20,22 +22,28 @@ use axum::{
     routing::post,
 };
 use everruns_core::events::{
-    EventContext, EventData, EventRequest, InputMessageData, OutputMessageCompletedData,
-    VOICE_INPUT_TRANSCRIPT_COMPLETED, VOICE_INPUT_TRANSCRIPT_DELTA,
-    VOICE_OUTPUT_TRANSCRIPT_COMPLETED, VOICE_OUTPUT_TRANSCRIPT_DELTA, VoiceSessionEndedData,
-    VoiceSessionFailedData, VoiceSessionStartedData, VoiceTranscriptData,
+    EventContext, EventData, EventRequest, VOICE_INPUT_TRANSCRIPT_COMPLETED,
+    VOICE_INPUT_TRANSCRIPT_DELTA, VOICE_OUTPUT_TRANSCRIPT_COMPLETED, VOICE_OUTPUT_TRANSCRIPT_DELTA,
+    VoiceSessionEndedData, VoiceSessionFailedData, VoiceSessionStartedData, VoiceTranscriptData,
 };
+use everruns_core::message::ExecutionPhase;
 use everruns_core::traits::LeasedResourceStore;
-use everruns_core::typed_id::{AgentId, SessionId};
+use everruns_core::typed_id::{AgentId, MessageId, SessionId};
 use everruns_core::{
-    Caller, FeatureFlags, LeasedResource, Message, ToolCall, UpsertLeasedResource,
+    Caller, ContentPart, Event, FeatureFlags, InputContentPart, LeasedResource, ToolCall,
+    UpsertLeasedResource,
 };
 use futures_util::{SinkExt, StreamExt};
 use reqwest::multipart;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
-use std::{collections::HashMap, sync::Arc, time::Instant};
+use std::{
+    collections::HashMap,
+    sync::Arc,
+    time::{Duration, Instant},
+};
+use tokio::sync::mpsc;
 use tokio_tungstenite::{
     connect_async,
     tungstenite::{Message as WsMessage, client::IntoClientRequest, http::HeaderValue},
@@ -54,6 +62,7 @@ const LEASE_SECONDS: u32 = 15 * 60;
 pub struct AppState {
     pub db: Arc<StorageBackend>,
     pub session_service: Arc<SessionService>,
+    pub message_service: Arc<MessageService>,
     pub event_service: EventService,
     pub auth: AuthState,
     pub llm_resolver: Arc<LlmResolverService>,
@@ -65,15 +74,20 @@ pub struct AppState {
     pub chat_session_title: Option<String>,
 }
 
+pub struct AppDependencies {
+    pub runner: Arc<dyn everruns_worker::AgentRunner>,
+    pub message_service: Arc<MessageService>,
+    pub llm_resolver: Arc<LlmResolverService>,
+    pub event_delivery: EventDelivery,
+}
+
 impl AppState {
     pub fn new(
         db: Arc<StorageBackend>,
-        runner: Arc<dyn everruns_worker::AgentRunner>,
         auth: AuthState,
-        llm_resolver: Arc<LlmResolverService>,
         feature_flags: FeatureFlags,
+        dependencies: AppDependencies,
         platform_definition: &everruns_core::PlatformDefinition,
-        event_delivery: EventDelivery,
     ) -> Self {
         let registry = Arc::new(DbSessionResourceRegistry::new(db.clone()));
         let leased_resource_store =
@@ -84,13 +98,14 @@ impl AppState {
                 db.clone(),
                 platform_definition.capability_registry().clone(),
             )),
-            event_service: EventService::new(db.clone(), event_delivery),
+            message_service: dependencies.message_service,
+            event_service: EventService::new(db.clone(), dependencies.event_delivery),
             db,
             auth,
-            llm_resolver,
+            llm_resolver: dependencies.llm_resolver,
             leased_resource_store,
             feature_flags,
-            runner,
+            runner: dependencies.runner,
             fallback_default_harness_name: platform_definition
                 .harness_for_role(everruns_core::BuiltInHarnessRole::Default)
                 .map(|h| h.name.clone()),
@@ -113,6 +128,7 @@ impl AppState {
         .with_session_service(self.session_service.clone())
         .with_event_service(Arc::new(self.event_service.clone()))
         .with_runner(self.runner.clone())
+        .with_message_service(self.message_service.clone())
         .with_fallback_harness_name(self.fallback_default_harness_name.clone())
         .with_chat_harness_name(self.chat_harness_name.clone())
         .with_chat_session_title(self.chat_session_title.clone())
@@ -418,6 +434,7 @@ pub async fn attach_call(
     .await;
     spawn_sideband(
         state.clone(),
+        org.clone(),
         session_id,
         voice_connection_id.clone(),
         req.provider_call_id.clone(),
@@ -567,6 +584,16 @@ async fn bootstrap_call(
         .await
         .map_err(provider_error)?;
     if !response.status().is_success() {
+        let status = response.status();
+        let body = response
+            .text()
+            .await
+            .unwrap_or_else(|_| "<unreadable>".to_string());
+        tracing::error!(
+            provider_status = %status,
+            provider_body = %truncate_provider_error_body(&body),
+            "Realtime voice provider returned an error"
+        );
         emit_voice_failed(state, session_id, &voice_connection_id, "provider_error").await;
         return Err(ErrorResponse::bad_gateway());
     }
@@ -594,6 +621,7 @@ async fn bootstrap_call(
     if let Some(call_id) = provider_call_id.clone() {
         spawn_sideband(
             state.clone(),
+            org.clone(),
             session_id,
             voice_connection_id.clone(),
             call_id,
@@ -634,6 +662,14 @@ fn ensure_voice_enabled(state: &AppState) -> Result<(), (StatusCode, Json<ErrorR
     }
 }
 
+pub(crate) fn microphone_permissions_policy_directive(voice_enabled: bool) -> &'static str {
+    if voice_enabled {
+        "microphone=(self)"
+    } else {
+        "microphone=()"
+    }
+}
+
 fn normalize_options(
     options: VoiceSessionOptions,
 ) -> Result<NormalizedVoiceOptions, (StatusCode, Json<ErrorResponse>)> {
@@ -670,6 +706,16 @@ fn realtime_session_payload(options: &NormalizedVoiceOptions) -> Value {
         "type": "realtime",
         "model": options.model,
         "audio": {
+            "input": {
+                "transcription": {
+                    "model": "gpt-4o-transcribe"
+                },
+                "turn_detection": {
+                    "type": "server_vad",
+                    "interrupt_response": false,
+                    "create_response": false
+                }
+            },
             "output": {
                 "voice": options.voice
             }
@@ -728,6 +774,15 @@ fn provider_error(error: impl std::fmt::Display) -> (StatusCode, Json<ErrorRespo
     ErrorResponse::bad_gateway()
 }
 
+fn truncate_provider_error_body(body: &str) -> String {
+    const LIMIT: usize = 2048;
+    let trimmed = body.trim();
+    if trimmed.chars().count() <= LIMIT {
+        return trimmed.to_string();
+    }
+    format!("{}…", trimmed.chars().take(LIMIT).collect::<String>())
+}
+
 fn new_voice_connection_id() -> String {
     format!("voice_conn_{}", Uuid::now_v7().simple())
 }
@@ -742,7 +797,8 @@ fn safety_identifier(org_id: i64, user_id: Option<Uuid>, session_id: SessionId) 
     }
     hasher.update(b":");
     hasher.update(session_id.uuid().as_bytes());
-    format!("evr_{}", hex::encode(hasher.finalize()))
+    let digest = hex::encode(hasher.finalize());
+    format!("evr_{}", &digest[..60])
 }
 
 fn openai_base_url(base_url: &Option<String>) -> String {
@@ -904,6 +960,7 @@ async fn emit_voice_failed(
 
 fn spawn_sideband(
     state: AppState,
+    org: ResolvedOrg,
     session_id: SessionId,
     voice_connection_id: String,
     provider_call_id: String,
@@ -912,6 +969,7 @@ fn spawn_sideband(
     tokio::spawn(async move {
         if let Err(error) = run_sideband(
             state.clone(),
+            org,
             session_id,
             voice_connection_id.clone(),
             provider_call_id,
@@ -927,6 +985,7 @@ fn spawn_sideband(
 
 async fn run_sideband(
     state: AppState,
+    org: ResolvedOrg,
     session_id: SessionId,
     voice_connection_id: String,
     provider_call_id: String,
@@ -942,42 +1001,55 @@ async fn run_sideband(
     let started_at = Instant::now();
     let mut input_accumulator = TranscriptAccumulator::default();
     let mut output_accumulator = TranscriptAccumulator::default();
-    while let Some(message) = ws.next().await {
-        let message = message?;
-        let WsMessage::Text(text) = message else {
-            continue;
-        };
-        let value: Value = match serde_json::from_str(&text) {
-            Ok(value) => value,
-            Err(_) => continue,
-        };
-        if let Some(event) = map_sideband_event(
-            &voice_connection_id,
-            &value,
-            &mut input_accumulator,
-            &mut output_accumulator,
-        ) {
-            emit_voice_transcript(&state, session_id, event).await;
-        }
-        for call in extract_function_calls(&value) {
-            let output = execute_realtime_tool(session_id, call).await;
-            ws.send(WsMessage::Text(
-                json!({
-                    "type": "conversation.item.create",
-                    "item": {
-                        "type": "function_call_output",
-                        "call_id": output.call_id,
-                        "output": output.output
-                    }
-                })
-                .to_string()
-                .into(),
-            ))
-            .await?;
-            ws.send(WsMessage::Text(
-                json!({ "type": "response.create" }).to_string().into(),
-            ))
-            .await?;
+    let (outbound_tx, mut outbound_rx) = mpsc::unbounded_channel::<Value>();
+    loop {
+        tokio::select! {
+            message = ws.next() => {
+                let Some(message) = message else {
+                    break;
+                };
+                let message = message?;
+                let WsMessage::Text(text) = message else {
+                    continue;
+                };
+                let value: Value = match serde_json::from_str(&text) {
+                    Ok(value) => value,
+                    Err(_) => continue,
+                };
+                if let Some(event) = map_sideband_event(
+                    &voice_connection_id,
+                    &value,
+                    &mut input_accumulator,
+                    &mut output_accumulator,
+                ) {
+                    emit_voice_transcript(&state, &org, session_id, event, &outbound_tx).await;
+                }
+                for call in extract_function_calls(&value) {
+                    let output = execute_realtime_tool(session_id, call).await;
+                    ws.send(WsMessage::Text(
+                        json!({
+                            "type": "conversation.item.create",
+                            "item": {
+                                "type": "function_call_output",
+                                "call_id": output.call_id,
+                                "output": output.output
+                            }
+                        })
+                        .to_string()
+                        .into(),
+                    ))
+                    .await?;
+                    ws.send(WsMessage::Text(
+                        json!({ "type": "response.create" }).to_string().into(),
+                    ))
+                    .await?;
+                }
+            }
+            outbound = outbound_rx.recv() => {
+                if let Some(outbound) = outbound {
+                    ws.send(WsMessage::Text(outbound.to_string().into())).await?;
+                }
+            }
         }
     }
     release_voice_resource(&state, session_id, &voice_connection_id)
@@ -1064,7 +1136,9 @@ fn map_sideband_event(
                 },
             })
         }
-        "response.audio_transcript.delta" | "response.output_text.delta" => {
+        "response.audio_transcript.delta"
+        | "response.output_audio_transcript.delta"
+        | "response.output_text.delta" => {
             let response_id =
                 value_string(value, "response_id").unwrap_or_else(|| "response".to_string());
             let delta = value_string(value, "delta").unwrap_or_default();
@@ -1081,7 +1155,9 @@ fn map_sideband_event(
                 },
             })
         }
-        "response.audio_transcript.done" | "response.output_text.done" => {
+        "response.audio_transcript.done"
+        | "response.output_audio_transcript.done"
+        | "response.output_text.done" => {
             let response_id =
                 value_string(value, "response_id").unwrap_or_else(|| "response".to_string());
             let transcript =
@@ -1105,8 +1181,10 @@ fn map_sideband_event(
 
 async fn emit_voice_transcript(
     state: &AppState,
+    org: &ResolvedOrg,
     session_id: SessionId,
     event: MappedTranscriptEvent,
+    outbound_tx: &mpsc::UnboundedSender<Value>,
 ) {
     let data = event.data.clone();
     let _ = state
@@ -1122,30 +1200,169 @@ async fn emit_voice_transcript(
     }
     match event.event_type {
         VOICE_INPUT_TRANSCRIPT_COMPLETED => {
-            let mut message = Message::user(data.accumulated);
-            message.metadata = Some(HashMap::from([("source".to_string(), json!("voice"))]));
-            let _ = state
-                .event_service
-                .emit(EventRequest::new(
-                    session_id,
-                    EventContext::empty(),
-                    InputMessageData::new(message),
-                ))
-                .await;
+            let command = build_voice_message_command(session_id, &data);
+            match command.run(&state.ctx(org)).await {
+                Ok(message) => {
+                    let state = state.clone();
+                    let outbound_tx = outbound_tx.clone();
+                    tokio::spawn(async move {
+                        wait_for_voice_answer(
+                            state,
+                            session_id,
+                            message.id,
+                            message.sequence,
+                            outbound_tx,
+                        )
+                        .await;
+                    });
+                }
+                Err(error) => {
+                    tracing::error!(
+                        session_id = %session_id,
+                        voice_connection_id = %data.voice_connection_id,
+                        error = %error,
+                        "failed to create user message from voice transcript"
+                    );
+                }
+            }
         }
-        VOICE_OUTPUT_TRANSCRIPT_COMPLETED => {
-            let mut message = Message::assistant(data.accumulated);
-            message.metadata = Some(HashMap::from([("source".to_string(), json!("voice"))]));
-            let _ = state
-                .event_service
-                .emit(EventRequest::new(
-                    session_id,
-                    EventContext::empty(),
-                    OutputMessageCompletedData::new(message),
-                ))
-                .await;
-        }
+        VOICE_OUTPUT_TRANSCRIPT_COMPLETED => {}
         _ => {}
+    }
+}
+
+async fn wait_for_voice_answer(
+    state: AppState,
+    session_id: SessionId,
+    input_message_id: MessageId,
+    mut since_sequence: i32,
+    outbound_tx: mpsc::UnboundedSender<Value>,
+) {
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(60);
+    let filters = Vec::<String>::new();
+    loop {
+        if tokio::time::Instant::now() > deadline {
+            tracing::warn!(
+                session_id = %session_id,
+                input_message_id = %input_message_id,
+                "timed out waiting for voice answer"
+            );
+            return;
+        }
+        let events = match state
+            .event_service
+            .list(
+                session_id.uuid(),
+                Some(since_sequence),
+                None,
+                &filters,
+                &filters,
+                None,
+                Some(100),
+            )
+            .await
+        {
+            Ok(events) => events,
+            Err(error) => {
+                tracing::warn!(
+                    session_id = %session_id,
+                    input_message_id = %input_message_id,
+                    error = %error,
+                    "failed to list events while waiting for voice answer"
+                );
+                tokio::time::sleep(Duration::from_millis(250)).await;
+                continue;
+            }
+        };
+        for event in events {
+            if let Some(sequence) = event.sequence {
+                since_sequence = sequence;
+            }
+            if let Some(answer) = final_answer_for_voice_input(&event, input_message_id) {
+                if outbound_tx
+                    .send(realtime_spoken_answer_event(&answer))
+                    .is_err()
+                {
+                    tracing::debug!(
+                        session_id = %session_id,
+                        input_message_id = %input_message_id,
+                        "voice sideband closed before spoken answer could be sent"
+                    );
+                }
+                return;
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+}
+
+fn final_answer_for_voice_input(event: &Event, input_message_id: MessageId) -> Option<String> {
+    if event.context.input_message_id != Some(input_message_id) {
+        return None;
+    }
+    let EventData::OutputMessageCompleted(data) = &event.data else {
+        return None;
+    };
+    if matches!(data.message.phase, Some(ExecutionPhase::Commentary)) {
+        return None;
+    }
+    let text = content_parts_to_text(&data.message.content);
+    if text.trim().is_empty() {
+        None
+    } else {
+        Some(text)
+    }
+}
+
+fn content_parts_to_text(parts: &[ContentPart]) -> String {
+    parts
+        .iter()
+        .filter_map(|part| match part {
+            ContentPart::Text(text) => Some(text.text.as_str()),
+            _ => None,
+        })
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn realtime_spoken_answer_event(answer: &str) -> Value {
+    json!({
+        "type": "response.create",
+        "response": {
+            "conversation": "none",
+            "output_modalities": ["audio"],
+            "input": [],
+            "instructions": format!(
+                "Speak this Everruns answer to the user exactly. Do not add new facts or tool results.\n\nAnswer:\n\n{}",
+                answer.trim()
+            )
+        }
+    })
+}
+
+fn build_voice_message_command(session_id: SessionId, data: &VoiceTranscriptData) -> CreateMessage {
+    let mut metadata = HashMap::from([
+        ("source".to_string(), json!("voice")),
+        (
+            "voice_connection_id".to_string(),
+            json!(data.voice_connection_id.clone()),
+        ),
+    ]);
+    if let Some(item_id) = &data.item_id {
+        metadata.insert("voice_item_id".to_string(), json!(item_id));
+    }
+    CreateMessage {
+        session_id: session_id.to_string(),
+        message: InputMessage {
+            role: MessageRole::User,
+            content: vec![InputContentPart::text(data.accumulated.trim().to_string())],
+        },
+        controls: None,
+        metadata: Some(metadata),
+        tags: Some(vec!["voice".to_string()]),
+        external_actor: None,
+        request_id: None,
     }
 }
 
@@ -1218,7 +1435,7 @@ mod tests {
         let second = safety_identifier(7, Some(user_id), session_id);
         assert_eq!(first, second);
         assert!(first.starts_with("evr_"));
-        assert_eq!(first.len(), 68);
+        assert_eq!(first.len(), 64);
         assert!(!first.contains(&user_id.to_string()));
         assert!(!first.contains(&session_id.to_string()));
     }
@@ -1285,6 +1502,204 @@ mod tests {
         assert_eq!(payload["tools"], json!([]));
     }
 
+    #[test]
+    fn realtime_session_payload_uses_realtime_reasoning_model() {
+        let payload = realtime_session_payload(&NormalizedVoiceOptions {
+            model: DEFAULT_MODEL.to_string(),
+            voice: DEFAULT_VOICE.to_string(),
+            reasoning_effort: DEFAULT_REASONING_EFFORT.to_string(),
+            instructions: None,
+        });
+
+        assert_eq!(payload["model"], json!("gpt-realtime-2"));
+        assert_eq!(
+            payload["reasoning"]["effort"],
+            json!(DEFAULT_REASONING_EFFORT)
+        );
+    }
+
+    #[test]
+    fn realtime_session_payload_requests_input_transcription() {
+        let payload = realtime_session_payload(&NormalizedVoiceOptions {
+            model: DEFAULT_MODEL.to_string(),
+            voice: DEFAULT_VOICE.to_string(),
+            reasoning_effort: DEFAULT_REASONING_EFFORT.to_string(),
+            instructions: None,
+        });
+
+        assert_eq!(
+            payload["audio"]["input"]["transcription"]["model"],
+            json!("gpt-4o-transcribe")
+        );
+    }
+
+    #[test]
+    fn realtime_session_payload_disables_automatic_voice_responses() {
+        let payload = realtime_session_payload(&NormalizedVoiceOptions {
+            model: DEFAULT_MODEL.to_string(),
+            voice: DEFAULT_VOICE.to_string(),
+            reasoning_effort: DEFAULT_REASONING_EFFORT.to_string(),
+            instructions: None,
+        });
+
+        assert_eq!(
+            payload["audio"]["input"]["turn_detection"]["type"],
+            json!("server_vad")
+        );
+        assert_eq!(
+            payload["audio"]["input"]["turn_detection"]["interrupt_response"],
+            json!(false)
+        );
+        assert_eq!(
+            payload["audio"]["input"]["turn_detection"]["create_response"],
+            json!(false)
+        );
+    }
+
+    #[test]
+    fn microphone_permissions_policy_follows_voice_flag() {
+        assert_eq!(
+            microphone_permissions_policy_directive(false),
+            "microphone=()"
+        );
+        assert_eq!(
+            microphone_permissions_policy_directive(true),
+            "microphone=(self)"
+        );
+    }
+
+    #[test]
+    fn voice_input_transcript_builds_chat_message_command() {
+        let session_id = SessionId::new();
+        let command = build_voice_message_command(
+            session_id,
+            &VoiceTranscriptData {
+                voice_connection_id: "voice_conn_1".to_string(),
+                item_id: Some("item_1".to_string()),
+                response_id: None,
+                phase: None,
+                delta: String::new(),
+                accumulated: "  search the docs  ".to_string(),
+            },
+        );
+
+        assert_eq!(command.session_id, session_id.to_string());
+        assert_eq!(command.message.role, MessageRole::User);
+        assert_eq!(
+            command.message.content[0].as_text(),
+            Some("search the docs")
+        );
+        assert_eq!(command.tags, Some(vec!["voice".to_string()]));
+        let metadata = command.metadata.expect("voice metadata");
+        assert_eq!(metadata["source"], json!("voice"));
+        assert_eq!(metadata["voice_connection_id"], json!("voice_conn_1"));
+        assert_eq!(metadata["voice_item_id"], json!("item_1"));
+    }
+
+    #[test]
+    fn maps_ga_output_audio_transcript_events() {
+        let mut input = TranscriptAccumulator::default();
+        let mut output = TranscriptAccumulator::default();
+        let delta = map_sideband_event(
+            "voice_conn_1",
+            &json!({
+                "type": "response.output_audio_transcript.delta",
+                "response_id": "resp_1",
+                "delta": "hel"
+            }),
+            &mut input,
+            &mut output,
+        )
+        .expect("delta event");
+        assert_eq!(delta.event_type, VOICE_OUTPUT_TRANSCRIPT_DELTA);
+        assert_eq!(delta.data.accumulated, "hel");
+
+        let done = map_sideband_event(
+            "voice_conn_1",
+            &json!({
+                "type": "response.output_audio_transcript.done",
+                "response_id": "resp_1",
+                "transcript": "hello"
+            }),
+            &mut input,
+            &mut output,
+        )
+        .expect("done event");
+        assert_eq!(done.event_type, VOICE_OUTPUT_TRANSCRIPT_COMPLETED);
+        assert_eq!(done.data.accumulated, "hello");
+    }
+
+    #[test]
+    fn final_answer_for_voice_input_returns_matching_final_text() {
+        let input_message_id = MessageId::new();
+        let event = output_completed_event(
+            input_message_id,
+            everruns_core::Message::assistant("The tool result is 42.")
+                .with_phase(ExecutionPhase::FinalAnswer),
+        );
+
+        assert_eq!(
+            final_answer_for_voice_input(&event, input_message_id),
+            Some("The tool result is 42.".to_string())
+        );
+    }
+
+    #[test]
+    fn final_answer_for_voice_input_ignores_commentary_and_other_turns() {
+        let input_message_id = MessageId::new();
+        let commentary = output_completed_event(
+            input_message_id,
+            everruns_core::Message::assistant_with_tools(
+                "Checking.",
+                vec![ToolCall {
+                    id: "call_1".to_string(),
+                    name: "read_harnesses".to_string(),
+                    arguments: json!({}),
+                }],
+            )
+            .with_phase(ExecutionPhase::Commentary),
+        );
+        let other_turn = output_completed_event(
+            MessageId::new(),
+            everruns_core::Message::assistant("Other answer.")
+                .with_phase(ExecutionPhase::FinalAnswer),
+        );
+
+        assert_eq!(
+            final_answer_for_voice_input(&commentary, input_message_id),
+            None
+        );
+        assert_eq!(
+            final_answer_for_voice_input(&other_turn, input_message_id),
+            None
+        );
+    }
+
+    #[test]
+    fn realtime_spoken_answer_event_requests_audio_only() {
+        let event = realtime_spoken_answer_event(" Done. ");
+
+        assert_eq!(event["type"], json!("response.create"));
+        assert_eq!(event["response"]["output_modalities"], json!(["audio"]));
+        assert_eq!(event["response"]["conversation"], json!("none"));
+        assert_eq!(event["response"]["input"], json!([]));
+        assert!(
+            event["response"]["instructions"]
+                .as_str()
+                .expect("instructions")
+                .contains("Done.")
+        );
+    }
+
+    #[test]
+    fn truncates_provider_error_bodies_for_logs() {
+        let body = "x".repeat(3000);
+        let truncated = truncate_provider_error_body(&body);
+
+        assert_eq!(truncated.chars().count(), 2049);
+        assert!(truncated.ends_with('…'));
+    }
+
     #[tokio::test]
     async fn realtime_tool_execution_is_disabled() {
         let output = execute_realtime_tool(
@@ -1302,5 +1717,24 @@ mod tests {
             serde_json::from_str::<Value>(&output.output).expect("json output"),
             json!({ "error": "tool_execution_disabled" })
         );
+    }
+
+    fn output_completed_event(
+        input_message_id: MessageId,
+        message: everruns_core::Message,
+    ) -> Event {
+        Event {
+            id: everruns_core::typed_id::EventId::new(),
+            event_type: everruns_core::events::OUTPUT_MESSAGE_COMPLETED.to_string(),
+            ts: chrono::Utc::now(),
+            session_id: SessionId::new(),
+            context: EventContext::turn(everruns_core::typed_id::TurnId::new(), input_message_id),
+            data: EventData::OutputMessageCompleted(
+                everruns_core::events::OutputMessageCompletedData::new(message),
+            ),
+            metadata: None,
+            tags: None,
+            sequence: Some(1),
+        }
     }
 }
