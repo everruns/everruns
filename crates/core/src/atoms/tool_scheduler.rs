@@ -73,9 +73,11 @@ impl Default for ScheduleConfig {
 
 /// Execute `n` tool calls according to `config` and per-call conflict classes.
 ///
-/// - `classes[i]` is the conflict key for call `i`: `None` (or empty) means the
-///   call has no conflicts and may run concurrently with anything; calls
-///   sharing the same `Some(class)` run sequentially in arrival order.
+/// - `classes[i]` is the conflict key for call `i`: `None`, empty, or a missing
+///   entry (a `classes` slice shorter than `n`) means the call has no conflicts
+///   and may run concurrently with anything; calls sharing the same
+///   `Some(class)` run sequentially in arrival order. `classes` should normally
+///   have exactly `n` entries; extra entries are ignored.
 /// - `run(i)` produces the future that executes call `i`. It is invoked lazily,
 ///   only once the scheduler is ready to start that call (after acquiring a
 ///   concurrency permit and, for a serialized class, after the previous call in
@@ -93,8 +95,6 @@ where
     MkFut: Fn(usize) -> Fut,
     Fut: Future<Output = R>,
 {
-    debug_assert_eq!(classes.len(), n, "classes must have one entry per call");
-
     if n == 0 {
         return Vec::new();
     }
@@ -113,10 +113,19 @@ where
     // arrival order; class-less calls each form their own singleton group so
     // they run with full parallelism. `groups` preserves first-seen order for
     // deterministic, arrival-ordered scheduling.
+    //
+    // Iterate `0..n` (not `classes.iter()`) and treat any missing/empty entry
+    // as "no class": every call index is scheduled exactly once regardless of
+    // the `classes` slice length, so a short slice can never silently drop a
+    // call in release builds (where the `debug_assert_eq!` above is gone).
     let mut groups: Vec<Vec<usize>> = Vec::new();
     let mut class_index: HashMap<&str, usize> = HashMap::new();
-    for (i, class) in classes.iter().enumerate().take(n) {
-        match class.as_deref().filter(|c| !c.is_empty()) {
+    for i in 0..n {
+        match classes
+            .get(i)
+            .and_then(|class| class.as_deref())
+            .filter(|class| !class.is_empty())
+        {
             Some(key) => {
                 if let Some(&g) = class_index.get(key) {
                     groups[g].push(i);
@@ -284,6 +293,15 @@ mod tests {
         })
         .await;
         assert!(tracker.max_in_flight.load(Ordering::SeqCst) <= 2);
+    }
+
+    #[tokio::test]
+    async fn shorter_classes_slice_schedules_all_calls() {
+        // A `classes` slice shorter than `n` must not drop calls: missing
+        // entries are treated as "no class" and every index still runs.
+        let classes = vec![Some("ws".to_string())]; // len 1, but n = 3
+        let results = schedule(3, &classes, ScheduleConfig::default(), |i| async move { i }).await;
+        assert_eq!(results, vec![0, 1, 2]);
     }
 
     #[tokio::test]
