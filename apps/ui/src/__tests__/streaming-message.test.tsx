@@ -34,6 +34,15 @@ describe("StreamingMessage", () => {
     expect(screen.getByTestId("message-content")).toHaveTextContent("Hello");
   });
 
+  it("reveals grapheme clusters without splitting combined glyphs", () => {
+    render(<StreamingMessage text="👩‍💻a" />);
+
+    expect(screen.getByTestId("message-content")).toHaveTextContent("👩‍💻");
+
+    advanceFrame();
+    expect(screen.getByTestId("message-content")).toHaveTextContent("👩‍💻a");
+  });
+
   it("keeps typing from the visible prefix when a larger accumulated delta arrives", () => {
     const { rerender } = render(<StreamingMessage text="Hel" />);
 

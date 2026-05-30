@@ -14,7 +14,18 @@ import "./streaming-message.css";
 
 const FRAME_MS = 16;
 
+type GraphemeSegment = { segment: string };
+type SegmenterConstructor = new (
+  locales?: string | string[],
+  options?: { granularity: "grapheme" },
+) => { segment(input: string): Iterable<GraphemeSegment> };
+
 function splitCharacters(text: string): string[] {
+  const Segmenter = (Intl as typeof Intl & { Segmenter?: SegmenterConstructor }).Segmenter;
+  if (Segmenter) {
+    const segmenter = new Segmenter(undefined, { granularity: "grapheme" });
+    return Array.from(segmenter.segment(text), ({ segment }) => segment);
+  }
   return Array.from(text);
 }
 
@@ -56,9 +67,8 @@ function useSmoothedText(targetText: string): string {
     const timeout = window.setTimeout(() => {
       setVisibleCharacters((current) => {
         const sharedPrefix = countSharedPrefix(current, targetCharacters);
-        const baseLength = sharedPrefix === current.length ? current.length : sharedPrefix;
-        const remaining = targetCharacters.length - baseLength;
-        const nextLength = baseLength + charactersPerFrame(remaining);
+        const remaining = targetCharacters.length - sharedPrefix;
+        const nextLength = sharedPrefix + charactersPerFrame(remaining);
         return targetCharacters.slice(0, Math.min(nextLength, targetCharacters.length));
       });
     }, FRAME_MS);
