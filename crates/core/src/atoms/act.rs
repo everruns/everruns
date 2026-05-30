@@ -1397,10 +1397,10 @@ mod tests {
             {
                 let mut obs = self.obs.lock().unwrap();
                 obs.global_inflight -= 1;
-                if let Some(class) = &self.class {
-                    if let Some(n) = obs.class_inflight.get_mut(class) {
-                        *n -= 1;
-                    }
+                if let Some(class) = &self.class
+                    && let Some(n) = obs.class_inflight.get_mut(class)
+                {
+                    *n -= 1;
                 }
             }
             crate::ToolExecutionResult::success(json!({ "tool": self.name }))
