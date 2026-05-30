@@ -151,7 +151,9 @@ impl Tool for SqlExecuteTool {
     }
 
     fn hints(&self) -> ToolHints {
-        ToolHints::default()
+        // Mutates the shared session SQL database (DDL/DML): serialize
+        // concurrent sql_execute calls within a batch to avoid write races.
+        ToolHints::default().with_concurrency_class("session_sql")
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {

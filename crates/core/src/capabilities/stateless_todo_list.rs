@@ -153,7 +153,11 @@ impl Tool for WriteTodosTool {
     }
 
     fn hints(&self) -> ToolHints {
-        ToolHints::default().with_idempotent(true)
+        // Each call replaces the entire shared todo list; serialize concurrent
+        // writes within a batch so one does not clobber another.
+        ToolHints::default()
+            .with_idempotent(true)
+            .with_concurrency_class("session_todos")
     }
 
     async fn execute(&self, arguments: Value) -> ToolExecutionResult {

@@ -1,8 +1,12 @@
-//! ActAtom - Atom for parallel tool execution
+//! ActAtom - Atom for scheduled tool execution
 //!
 //! This atom handles:
 //! 1. Emitting act.started event
-//! 2. Executing multiple tool calls in parallel (with tool.started/completed events)
+//! 2. Executing the batch of tool calls via the [`tool_scheduler`] (with
+//!    tool.started/completed events). Calls run concurrently by default, but
+//!    calls that share a [`crate::tool_types::ToolHints::concurrency_class`] are
+//!    serialized to avoid mutation races, total concurrency is capped, and
+//!    `cpu_bound` tools are offloaded to their own task.
 //! 3. Handling errors, timeouts, and cancellations as "normal" results
 //! 4. Emitting act.completed event
 //! 5. Returning all tool results (success, error, timeout, or cancelled)
@@ -15,7 +19,8 @@
 //! creates the appropriate gen-ai spans from those events.
 //!
 //! NOTES from Python spec:
-//! - Tools call runs in parallel
+//! - Tool calls run concurrently by default; the scheduler serializes only
+//!   conflicting (same-concurrency-class) calls. See [`tool_scheduler`].
 //! - Error from tool call is not an error for the whole Act, error from tool is "normal" result
 //! - Tool invocations should be timeouted, timeout is also "normal" result from tool
 //! - Exit of act should have all tool calls finished (successfully or with error/timeout)
@@ -23,12 +28,12 @@
 //! - Act and each tool call should be cancellable, and this is also "normal" result
 
 use async_trait::async_trait;
-use futures::future::join_all;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
 use super::act_hooks::{self, PostActHook};
+use super::tool_scheduler;
 use super::{Atom, AtomContext};
 use crate::error::Result;
 use crate::events::{
@@ -81,6 +86,11 @@ pub struct ActInput {
     /// Merged network access list (harness ∩ agent ∩ session) for URL filtering.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub network_access: Option<crate::network_access::NetworkAccessList>,
+    /// Mirrors the request's `parallel_tool_calls`. `Some(false)` forces the
+    /// act scheduler to execute this batch strictly sequentially; `None` or
+    /// `Some(true)` uses the default class-aware concurrent schedule.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parallel_tool_calls: Option<bool>,
 }
 
 /// Result of a single tool call execution
@@ -137,11 +147,13 @@ fn is_false(value: &bool) -> bool {
 // ActAtom
 // ============================================================================
 
-/// Atom that executes tool calls in parallel
+/// Atom that executes a batch of tool calls via the [`tool_scheduler`]
 ///
 /// This atom:
 /// 1. Emits act.started event
-/// 2. Executes all tool calls in parallel (emitting tool.started/completed for each)
+/// 2. Schedules all tool calls (emitting tool.started/completed for each):
+///    concurrent by default, serialized within a concurrency class, capped, and
+///    with `cpu_bound` tools offloaded to their own task
 /// 3. Handles errors, timeouts, and cancellations gracefully
 /// 4. Emits act.completed event
 /// 5. Returns comprehensive results for all tools
@@ -153,7 +165,9 @@ where
     T: ToolExecutor,
     E: EventEmitter,
 {
-    tool_executor: T,
+    // Held as `Arc` so individual `cpu_bound` tool calls can be offloaded to
+    // their own task (`tokio::spawn`) without borrowing `self` for `'static`.
+    tool_executor: Arc<T>,
     event_emitter: Arc<E>,
     /// Optional file store for context-aware tools
     file_store: Option<Arc<dyn SessionFileSystem>>,
@@ -221,7 +235,7 @@ where
     /// Create a new ActAtom with default hooks (ConnectionSetup + ClientSideTool).
     pub fn new(tool_executor: T, event_emitter: E) -> Self {
         Self {
-            tool_executor,
+            tool_executor: Arc::new(tool_executor),
             event_emitter: Arc::new(event_emitter),
             file_store: None,
             sqldb_store: None,
@@ -259,7 +273,7 @@ where
         file_store: Arc<dyn SessionFileSystem>,
     ) -> Self {
         Self {
-            tool_executor,
+            tool_executor: Arc::new(tool_executor),
             event_emitter: Arc::new(event_emitter),
             file_store: Some(file_store),
             sqldb_store: None,
@@ -495,7 +509,7 @@ where
 #[async_trait]
 impl<T, E> Atom for ActAtom<T, E>
 where
-    T: ToolExecutor + Send + Sync,
+    T: ToolExecutor + Send + Sync + 'static,
     E: EventEmitter + Send + Sync + 'static,
 {
     type Input = ActInput;
@@ -512,6 +526,7 @@ where
             tool_definitions,
             locale,
             network_access,
+            parallel_tool_calls,
             .. // agent_id/org_id not needed here, just passed through workflow
         } = input;
 
@@ -666,10 +681,28 @@ where
             );
         }
 
-        // Execute all tool calls in parallel (each tool event references act span as parent)
-        let futures: Vec<_> = tool_calls
+        // Decide the execution schedule from per-tool metadata. Calls that
+        // share a concurrency class (mutations to the same shared resource) run
+        // sequentially in arrival order; everything else runs concurrently,
+        // bounded by a global cap. `parallel_tool_calls == Some(false)` forces a
+        // fully sequential schedule. Each tool event references the act span as
+        // its parent regardless of scheduling.
+        let classes: Vec<Option<String>> = tool_calls
             .iter()
             .map(|tool_call| {
+                tool_map
+                    .get(tool_call.name.as_str())
+                    .and_then(|def| def.concurrency_class())
+                    .map(|class| class.to_string())
+            })
+            .collect();
+        let schedule_config = tool_scheduler::ScheduleConfig {
+            serialize_all: parallel_tool_calls == Some(false),
+            ..tool_scheduler::ScheduleConfig::default()
+        };
+        let results =
+            tool_scheduler::schedule(tool_calls.len(), &classes, schedule_config, |index| {
+                let tool_call = &tool_calls[index];
                 let tool_def = tool_map.get(tool_call.name.as_str()).cloned();
                 self.execute_single_tool(
                     &context,
@@ -681,9 +714,7 @@ where
                     network_access.as_ref(),
                 )
             })
-            .collect();
-
-        let results = join_all(futures).await;
+            .await;
 
         // Count successes and errors
         let success_count = results.iter().filter(|r| r.success).count() as u32;
@@ -782,7 +813,7 @@ where
 
 impl<T, E> ActAtom<T, E>
 where
-    T: ToolExecutor + Send + Sync,
+    T: ToolExecutor + Send + Sync + 'static,
     E: EventEmitter + Send + Sync + 'static,
 {
     fn render_tool_narration(
@@ -1014,10 +1045,31 @@ where
         tool_context.tool_call_id = Some(tool_call.id.clone());
 
         let execution_tool_call = self.transform_tool_call_for_execution(tool_call.clone());
-        let result = self
-            .tool_executor
-            .execute_with_context(&execution_tool_call, tool_def, &tool_context)
-            .await;
+        let result = if tool_def.is_cpu_bound() {
+            // CPU-bound / non-yielding in-process tools (e.g. the bash
+            // interpreter) get their own task so a long synchronous burst
+            // cannot starve the cooperative polling of I/O-bound tools running
+            // alongside them in this act batch. On the multi-thread runtime the
+            // spawned task can also progress on another worker thread.
+            let executor = self.tool_executor.clone();
+            let call = execution_tool_call.clone();
+            let def = tool_def.clone();
+            let ctx = tool_context.clone();
+            match tokio::spawn(
+                async move { executor.execute_with_context(&call, &def, &ctx).await },
+            )
+            .await
+            {
+                Ok(result) => result,
+                Err(join_err) => Err(crate::error::AgentLoopError::tool(format!(
+                    "tool task failed to complete: {join_err}"
+                ))),
+            }
+        } else {
+            self.tool_executor
+                .execute_with_context(&execution_tool_call, tool_def, &tool_context)
+                .await
+        };
 
         match result {
             Ok(mut tool_result) => {
@@ -1288,6 +1340,94 @@ mod tests {
         }
     }
 
+    /// Shared scheduling observations recorded by `RecordingTool`.
+    #[derive(Default)]
+    struct SchedObservations {
+        /// Currently-executing count per concurrency class.
+        class_inflight: std::collections::HashMap<String, usize>,
+        /// Peak concurrent executions observed per class.
+        class_max: std::collections::HashMap<String, usize>,
+        /// Currently-executing count across all tools.
+        global_inflight: usize,
+        /// Peak concurrent executions across all tools.
+        global_max: usize,
+    }
+
+    /// Tool that records start/end so a test can observe how the act scheduler
+    /// ran a batch (intra-class serialization, cross-class parallelism).
+    struct RecordingTool {
+        name: String,
+        class: Option<String>,
+        obs: Arc<std::sync::Mutex<SchedObservations>>,
+    }
+
+    #[async_trait]
+    impl crate::tools::Tool for RecordingTool {
+        fn name(&self) -> &str {
+            &self.name
+        }
+        fn description(&self) -> &str {
+            "records scheduling order"
+        }
+        fn parameters_schema(&self) -> serde_json::Value {
+            json!({ "type": "object", "properties": {} })
+        }
+        async fn execute(&self, _arguments: serde_json::Value) -> crate::ToolExecutionResult {
+            // Enter: bump counters in a short critical section (no await held).
+            {
+                let mut obs = self.obs.lock().unwrap();
+                obs.global_inflight += 1;
+                let g = obs.global_inflight;
+                if g > obs.global_max {
+                    obs.global_max = g;
+                }
+                if let Some(class) = &self.class {
+                    let n = obs.class_inflight.entry(class.clone()).or_default();
+                    *n += 1;
+                    let cur = *n;
+                    let m = obs.class_max.entry(class.clone()).or_default();
+                    if cur > *m {
+                        *m = cur;
+                    }
+                }
+            }
+            // Hold the slot long enough that any concurrency is observable.
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            // Exit.
+            {
+                let mut obs = self.obs.lock().unwrap();
+                obs.global_inflight -= 1;
+                if let Some(class) = &self.class
+                    && let Some(n) = obs.class_inflight.get_mut(class)
+                {
+                    *n -= 1;
+                }
+            }
+            crate::ToolExecutionResult::success(json!({ "tool": self.name }))
+        }
+    }
+
+    /// Build a server-side tool definition carrying scheduling hints.
+    fn recording_tool_def(name: &str, class: Option<&str>, cpu_bound: bool) -> ToolDefinition {
+        let mut hints = crate::tool_types::ToolHints::default();
+        if let Some(class) = class {
+            hints = hints.with_concurrency_class(class);
+        }
+        if cpu_bound {
+            hints = hints.with_cpu_bound(true);
+        }
+        ToolDefinition::Builtin(crate::BuiltinTool {
+            name: name.to_string(),
+            display_name: None,
+            description: "records scheduling order".to_string(),
+            parameters: json!({ "type": "object", "properties": {} }),
+            policy: Default::default(),
+            category: None,
+            deferrable: Default::default(),
+            hints,
+        })
+    }
+
     #[tokio::test]
     async fn test_act_atom_empty_tool_calls() {
         let executor = ToolRegistry::with_defaults();
@@ -1305,6 +1445,7 @@ mod tests {
             locale: None,
             blueprint_id: None,
             network_access: None,
+            parallel_tool_calls: None,
         };
 
         let result = atom.execute(input).await.unwrap();
@@ -1350,6 +1491,7 @@ mod tests {
             locale: None,
             blueprint_id: None,
             network_access: None,
+            parallel_tool_calls: None,
         };
 
         let result = atom.execute(input).await.unwrap();
@@ -1358,6 +1500,155 @@ mod tests {
         let payload = result.results[0].result.result.as_ref().unwrap();
         assert_eq!(payload["utility_llm_service"], true);
         assert_eq!(payload["configured"], false);
+    }
+
+    /// End-to-end ActAtom scheduling: a single batch with two same-class tools
+    /// (one of them `cpu_bound`, exercising the spawn path) plus an independent
+    /// tool. Asserts the scheduler serializes within the class, parallelizes
+    /// across classes, runs every tool, and preserves call order in results.
+    #[tokio::test]
+    async fn test_act_atom_schedules_batch_by_concurrency_class() {
+        let obs = Arc::new(std::sync::Mutex::new(SchedObservations::default()));
+
+        let mut executor = ToolRegistry::new();
+        executor.register(RecordingTool {
+            name: "writer_a".to_string(),
+            class: Some("ws".to_string()),
+            obs: obs.clone(),
+        });
+        executor.register(RecordingTool {
+            name: "writer_b".to_string(),
+            class: Some("ws".to_string()),
+            obs: obs.clone(),
+        });
+        executor.register(RecordingTool {
+            name: "reader".to_string(),
+            class: None,
+            obs: obs.clone(),
+        });
+
+        let atom = ActAtom::new(executor, NoopEventEmitter);
+        let context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
+
+        // Call order: writer_a, reader, writer_b. writer_a and writer_b share
+        // class "ws" (writer_b is cpu_bound → executed on its own task).
+        let input = ActInput {
+            org_id: Some(1),
+            context,
+            harness_id: HarnessId::from_seed(1),
+            agent_id: Some(AgentId::new()),
+            tool_calls: vec![
+                ToolCall {
+                    id: "call_a".to_string(),
+                    name: "writer_a".to_string(),
+                    arguments: json!({}),
+                },
+                ToolCall {
+                    id: "call_r".to_string(),
+                    name: "reader".to_string(),
+                    arguments: json!({}),
+                },
+                ToolCall {
+                    id: "call_b".to_string(),
+                    name: "writer_b".to_string(),
+                    arguments: json!({}),
+                },
+            ],
+            tool_definitions: vec![
+                recording_tool_def("writer_a", Some("ws"), false),
+                recording_tool_def("reader", None, false),
+                recording_tool_def("writer_b", Some("ws"), true),
+            ],
+            locale: None,
+            blueprint_id: None,
+            network_access: None,
+            parallel_tool_calls: None,
+        };
+
+        let result = atom.execute(input).await.unwrap();
+
+        // Every tool ran and succeeded.
+        assert_eq!(result.success_count, 3, "all three tools should succeed");
+        // Results are returned in the model's original call order.
+        let names: Vec<&str> = result
+            .results
+            .iter()
+            .map(|r| r.tool_call.name.as_str())
+            .collect();
+        assert_eq!(names, vec!["writer_a", "reader", "writer_b"]);
+
+        let obs = obs.lock().unwrap();
+        // Same-class tools never overlapped (serialized) — even though one is
+        // cpu_bound and runs on its own task.
+        assert_eq!(
+            obs.class_max.get("ws").copied(),
+            Some(1),
+            "same-class tools must serialize"
+        );
+        // The independent tool overlapped with the class group: peak global
+        // concurrency exceeded 1, proving cross-class parallelism.
+        assert!(
+            obs.global_max >= 2,
+            "independent tool should run concurrently with the class group (global_max={})",
+            obs.global_max
+        );
+    }
+
+    /// With `parallel_tool_calls = Some(false)`, the whole batch runs strictly
+    /// sequentially regardless of class — peak concurrency must be 1.
+    #[tokio::test]
+    async fn test_act_atom_parallel_tool_calls_false_serializes_everything() {
+        let obs = Arc::new(std::sync::Mutex::new(SchedObservations::default()));
+        let mut executor = ToolRegistry::new();
+        for name in ["t0", "t1", "t2"] {
+            executor.register(RecordingTool {
+                name: name.to_string(),
+                class: None,
+                obs: obs.clone(),
+            });
+        }
+        let atom = ActAtom::new(executor, NoopEventEmitter);
+        let context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
+        let input = ActInput {
+            org_id: Some(1),
+            context,
+            harness_id: HarnessId::from_seed(1),
+            agent_id: Some(AgentId::new()),
+            tool_calls: vec![
+                ToolCall {
+                    id: "c0".to_string(),
+                    name: "t0".to_string(),
+                    arguments: json!({}),
+                },
+                ToolCall {
+                    id: "c1".to_string(),
+                    name: "t1".to_string(),
+                    arguments: json!({}),
+                },
+                ToolCall {
+                    id: "c2".to_string(),
+                    name: "t2".to_string(),
+                    arguments: json!({}),
+                },
+            ],
+            tool_definitions: vec![
+                recording_tool_def("t0", None, false),
+                recording_tool_def("t1", None, false),
+                recording_tool_def("t2", None, false),
+            ],
+            locale: None,
+            blueprint_id: None,
+            network_access: None,
+            parallel_tool_calls: Some(false),
+        };
+
+        let result = atom.execute(input).await.unwrap();
+        assert_eq!(result.success_count, 3);
+        assert_eq!(
+            obs.lock().unwrap().global_max,
+            1,
+            "parallel_tool_calls=false must serialize the whole batch"
+        );
     }
 
     #[tokio::test]
@@ -1381,6 +1672,7 @@ mod tests {
             locale: None,
             blueprint_id: None,
             network_access: None,
+            parallel_tool_calls: None,
         };
 
         let result = atom.execute(input).await.unwrap();
@@ -1428,6 +1720,7 @@ mod tests {
             locale: None,
             blueprint_id: None,
             network_access: None,
+            parallel_tool_calls: None,
         };
 
         let result = atom.execute(input).await.unwrap();
@@ -1521,6 +1814,7 @@ mod tests {
             locale: None,
             blueprint_id: None,
             network_access: None,
+            parallel_tool_calls: None,
         };
 
         let result = atom.execute(input).await.unwrap();
@@ -1601,6 +1895,7 @@ mod tests {
             locale: None,
             blueprint_id: None,
             network_access: None,
+            parallel_tool_calls: None,
         };
 
         let result = atom.execute(input).await.unwrap();
@@ -1646,6 +1941,7 @@ mod tests {
             locale: None,
             blueprint_id: None,
             network_access: None,
+            parallel_tool_calls: None,
         };
 
         let result = atom.execute(input).await.unwrap();

@@ -1634,6 +1634,7 @@ mod tests {
                 locale: None,
                 blueprint_id: None,
                 network_access: None,
+                parallel_tool_calls: None,
             },
         };
         let value = serde_json::to_value(&act_task_input).unwrap();
@@ -1694,6 +1695,7 @@ mod tests {
                 locale: None,
                 blueprint_id: None,
                 network_access: None,
+                parallel_tool_calls: None,
             },
         };
         let json = serde_json::to_value(&input).unwrap();
@@ -1732,6 +1734,7 @@ mod tests {
                 locale: None,
                 blueprint_id: None,
                 network_access: None,
+                parallel_tool_calls: None,
             },
         };
         let json = serde_json::to_value(&input).unwrap();
@@ -1775,6 +1778,7 @@ mod tests {
                 locale: None,
                 blueprint_id: None,
                 network_access: None,
+                parallel_tool_calls: None,
             },
         };
         let value = serde_json::to_value(&act_task_input).unwrap();

@@ -571,6 +571,7 @@ async fn act_activity_executes_capability_tools_from_harness_registry() {
             locale: None,
             blueprint_id: None,
             network_access: None,
+            parallel_tool_calls: None,
         },
     )
     .await
@@ -634,6 +635,7 @@ async fn act_activity_agent_session_executes_harness_overlay_tools_from_reason_p
             locale: None,
             blueprint_id: None,
             network_access: None,
+            parallel_tool_calls: None,
         },
     )
     .await
@@ -701,6 +703,7 @@ async fn act_activity_agent_session_resolves_transitive_overlay_capabilities() {
             locale: None,
             blueprint_id: None,
             network_access: None,
+            parallel_tool_calls: None,
         },
     )
     .await
@@ -767,6 +770,7 @@ async fn act_activity_agent_session_runs_post_tool_hooks_from_merged_overlay() {
             locale: None,
             blueprint_id: None,
             network_access: None,
+            parallel_tool_calls: None,
         },
     )
     .await
@@ -834,6 +838,7 @@ async fn act_activity_passes_public_org_id_to_memory_tools() {
             locale: None,
             blueprint_id: None,
             network_access: None,
+            parallel_tool_calls: None,
         },
     )
     .await

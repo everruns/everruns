@@ -323,7 +323,9 @@ impl Tool for RememberTool {
     }
 
     fn hints(&self) -> ToolHints {
-        ToolHints::default()
+        // Writes to the shared memory store; serialize memory mutations within
+        // a batch to avoid concurrent-write races.
+        ToolHints::default().with_concurrency_class("session_memory")
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -649,7 +651,11 @@ impl Tool for ForgetTool {
     }
 
     fn hints(&self) -> ToolHints {
+        // Deletes from the shared memory store; serialize memory mutations
+        // within a batch to avoid concurrent-write races.
         ToolHints::default()
+            .with_destructive(true)
+            .with_concurrency_class("session_memory")
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {

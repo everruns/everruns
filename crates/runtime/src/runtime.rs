@@ -559,6 +559,10 @@ impl InProcessRuntime {
                             locale: reason_result.locale,
                             blueprint_id: None,
                             network_access: reason_result.network_access,
+                            // Request-level `parallel_tool_calls` is not yet
+                            // plumbed into the reason path; the act scheduler
+                            // defaults to its class-aware concurrent schedule.
+                            parallel_tool_calls: None,
                         },
                     )
                     .await?;
