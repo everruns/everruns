@@ -120,10 +120,15 @@ function toolCallRequestedEvent(turnId: string, inputMessageId: string): Event {
   );
 }
 
-function turnCompletedEvent(turnId: string, inputMessageId: string, durationMs: number): Event {
+function turnCompletedEvent(
+  turnId: string,
+  inputMessageId: string,
+  durationMs: number,
+  iterations: number = 1,
+): Event {
   return makeEvent(
     "turn.completed",
-    { turn_id: turnId, iterations: 1, duration_ms: durationMs },
+    { turn_id: turnId, iterations, duration_ms: durationMs },
     turnContext(turnId, inputMessageId),
   );
 }
@@ -131,7 +136,7 @@ function turnCompletedEvent(turnId: string, inputMessageId: string, durationMs: 
 describe("turn-delimiter", () => {
   beforeEach(resetSeq);
 
-  it("attaches completed turn duration to the last visible assistant event", () => {
+  it("does not attach completed turn duration for one-iteration direct answers", () => {
     const events = [
       inputMessageEvent("msg-1", "Hello"),
       turnStartedEvent("turn-1", "msg-1"),
@@ -141,8 +146,7 @@ describe("turn-delimiter", () => {
 
     const durations = getCompletedTurnDurationsByEvent(events);
 
-    expect(durations.get("evt-3")).toBe(203000);
-    expect(durations.size).toBe(1);
+    expect(durations.size).toBe(0);
   });
 
   it("uses the client tool request row when embedded tool calls are hidden", () => {
@@ -151,7 +155,7 @@ describe("turn-delimiter", () => {
       turnStartedEvent("turn-1", "msg-1"),
       outputMessageWithClientToolCallEvent("turn-1", "msg-1"),
       toolCallRequestedEvent("turn-1", "msg-1"),
-      turnCompletedEvent("turn-1", "msg-1", 4500),
+      turnCompletedEvent("turn-1", "msg-1", 4500, 2),
     ];
 
     const durations = getCompletedTurnDurationsByEvent(events);

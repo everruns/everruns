@@ -7,7 +7,7 @@
 "use client";
 
 import { Bot, CalendarClock, Loader2, Sparkles } from "lucide-react";
-import { memo, useMemo } from "react";
+import { memo, useCallback, useMemo } from "react";
 import type { ReactNode } from "react";
 import type {
   ContentPart,
@@ -25,6 +25,12 @@ import { MessageInfoIcon } from "@/components/chat/message-info-icon";
 import { MessageImage } from "@/components/chat/image-attachments";
 import { MessageContent } from "@/components/chat/message-content";
 import { ChatErrorAlert } from "@/components/chat/chat-error-alert";
+import {
+  getReasoningMultiIterationTurnIds,
+  getKnownTurnId,
+  isStructuralWorkLogEvent,
+  shouldRenderWorkLogEvent,
+} from "@/components/chat/chat-work-log-events";
 import { ToolActivityGroup } from "@/components/chat/tool-activity-group";
 import { SetupConnectionToolCall } from "@/components/chat/setup-connection-tool-call";
 import {
@@ -33,6 +39,7 @@ import {
 } from "@/components/chat/tool-activity-timeline-group";
 import {
   formatWorkedDuration,
+  getCompletedTurnIterationsByTurn,
   getCompletedTurnDurationsByEvent,
   getCompletedTurnDurationsByTurn,
 } from "@/components/chat/turn-delimiter";
@@ -68,21 +75,6 @@ type ActGroup = {
   completedHeadline?: string;
   rows: TimelineToolRow[];
 };
-
-function getKnownTurnId(event: Event): string | undefined {
-  const reasonItemData = getEventData(event, "reason.item");
-  return reasonItemData?.turn_id ?? event.context?.turn_id;
-}
-
-function isWorkLogEvent(event: Event): boolean {
-  if (event.type === "act.started" || event.type === "tool.call_requested") return true;
-
-  const reasonItemData = getEventData(event, "reason.item");
-  if (reasonItemData?.summary?.some((item) => item.trim().length > 0)) return true;
-
-  const reasonCompletedData = getEventData(event, "reason.completed");
-  return !!reasonCompletedData?.text_preview;
-}
 
 function ReasoningLogRow({ text }: { text: string }) {
   return (
@@ -235,6 +227,34 @@ export const ChatMessageList = memo(function ChatMessageList({
     () => getCompletedTurnDurationsByTurn(events ?? []),
     [events],
   );
+  const turnIterationsByTurnId = useMemo(
+    () => getCompletedTurnIterationsByTurn(events ?? []),
+    [events],
+  );
+  const structuralWorkTurnIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const event of chatEvents) {
+      if (!isStructuralWorkLogEvent(event)) continue;
+      const turnId = getKnownTurnId(event);
+      if (turnId) ids.add(turnId);
+    }
+    return ids;
+  }, [chatEvents]);
+  const reasoningMultiIterationTurnIds = useMemo(
+    () => getReasoningMultiIterationTurnIds(chatEvents),
+    [chatEvents],
+  );
+  const isWorkLogEvent = useCallback(
+    (event: Event) => {
+      return shouldRenderWorkLogEvent(
+        event,
+        turnIterationsByTurnId,
+        structuralWorkTurnIds,
+        reasoningMultiIterationTurnIds,
+      );
+    },
+    [reasoningMultiIterationTurnIds, structuralWorkTurnIds, turnIterationsByTurnId],
+  );
   const workLogTurnIds = useMemo(() => {
     const ids = new Set<string>();
     for (const event of chatEvents) {
@@ -243,7 +263,7 @@ export const ChatMessageList = memo(function ChatMessageList({
       if (turnId) ids.add(turnId);
     }
     return ids;
-  }, [chatEvents]);
+  }, [chatEvents, isWorkLogEvent]);
   const workLogEventsByTurnId = useMemo(() => {
     const groups = new Map<string, Event[]>();
     for (const event of chatEvents) {
@@ -258,7 +278,7 @@ export const ChatMessageList = memo(function ChatMessageList({
       }
     }
     return groups;
-  }, [chatEvents]);
+  }, [chatEvents, isWorkLogEvent]);
   const hasNarratedActEvents = useMemo(
     () => chatEvents.some((event) => event.type === "act.started"),
     [chatEvents],
