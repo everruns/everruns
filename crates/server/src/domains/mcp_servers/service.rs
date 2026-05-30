@@ -655,7 +655,10 @@ pub(crate) async fn fetch_mcp_tools(
         ));
     }
 
-    let mcp_response: McpToolsListResponse = serde_json::from_slice(&response.body)?;
+    let response_text = String::from_utf8(response.body)?;
+    let json_str = extract_json_from_response(&response_text)
+        .ok_or_else(|| anyhow!("SSE response missing data line"))?;
+    let mcp_response: McpToolsListResponse = serde_json::from_str(json_str)?;
 
     if let Some(error) = mcp_response.error {
         return Err(anyhow!(
@@ -670,6 +673,17 @@ pub(crate) async fn fetch_mcp_tools(
         .ok_or_else(|| anyhow!("MCP server returned empty result"))?;
 
     Ok(result.tools)
+}
+
+fn extract_json_from_response(response_text: &str) -> Option<&str> {
+    if response_text.starts_with("event:") || response_text.contains("\ndata:") {
+        response_text
+            .lines()
+            .find(|line| line.starts_with("data:"))
+            .map(|line| line.trim_start_matches("data:").trim())
+    } else {
+        Some(response_text.trim())
+    }
 }
 
 #[cfg(test)]
@@ -694,6 +708,24 @@ mod tests {
             EncryptionService::new("kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=", &[])
                 .unwrap(),
         )
+    }
+
+    #[test]
+    fn extract_json_from_sse_response() {
+        let response =
+            "event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[]}}\n\n";
+        let extracted = super::extract_json_from_response(response).unwrap();
+        assert!(extracted.starts_with("{\"jsonrpc\""));
+    }
+
+    #[test]
+    fn extract_json_from_plain_json_response() {
+        let response = " {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[]}} ";
+        let extracted = super::extract_json_from_response(response).unwrap();
+        assert_eq!(
+            extracted,
+            "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[]}}"
+        );
     }
 
     #[tokio::test]
