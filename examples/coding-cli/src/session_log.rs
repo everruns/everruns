@@ -53,7 +53,7 @@ use chrono::Utc;
 use everruns_core::error::{AgentLoopError, Result};
 use everruns_core::events::{
     Event, EventData, EventRequest, INPUT_MESSAGE, OUTPUT_MESSAGE_COMPLETED,
-    OutputMessageCompletedData, REASON_COMPLETED, REASON_ITEM, TOOL_COMPLETED,
+    OutputMessageCompletedData, REASON_COMPLETED, REASON_ITEM, ReasonItemData, TOOL_COMPLETED,
 };
 use everruns_core::message::{ContentPart, Message};
 use everruns_core::tools::ToolResultImage;
@@ -387,8 +387,9 @@ impl EventBus for JsonlEventEmitter {
 // ---------- event → message mapping ----------
 //
 // `crates/runtime/src/runtime.rs` has the same logic in a private fn;
-// copied here for the replay path. The three event types matched are
-// exactly those `is_replay_relevant` lets through to disk.
+// copied here for the replay path. Not all `is_replay_relevant` events
+// map to a Message (e.g. `reason.completed` is retained for metadata
+// but is not a conversation turn).
 
 fn message_from_event(data: &EventData) -> Option<Message> {
     match data {
@@ -397,8 +398,19 @@ fn message_from_event(data: &EventData) -> Option<Message> {
             Some(message.clone())
         }
         EventData::ToolCompleted(d) => Some(tool_completed_to_message(d.clone())),
+        EventData::ReasonItem(d) => reason_item_to_message(d),
         _ => None,
     }
+}
+
+fn reason_item_to_message(data: &ReasonItemData) -> Option<Message> {
+    let encrypted = data.encrypted_content.clone()?;
+    if encrypted.trim().is_empty() {
+        return None;
+    }
+    let mut msg = Message::assistant(" ");
+    msg.thinking_signature = Some(encrypted);
+    Some(msg)
 }
 
 fn tool_completed_to_message(data: everruns_core::events::ToolCompletedData) -> Message {
@@ -762,7 +774,11 @@ mod tests {
             }
             other => panic!("expected ReasonItem, got {other:?}"),
         }
-        assert!(replayed.messages.is_empty());
+        assert_eq!(replayed.messages.len(), 1);
+        assert_eq!(
+            replayed.messages[0].thinking_signature.as_deref(),
+            Some("opaque-encrypted-blob")
+        );
     }
 
     #[test]
