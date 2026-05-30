@@ -192,6 +192,7 @@ impl DirectEgressService {
             client: reqwest::Client::builder()
                 .connect_timeout(DEFAULT_CONNECT_TIMEOUT)
                 .timeout(DEFAULT_REQUEST_TIMEOUT)
+                .redirect(reqwest::redirect::Policy::none())
                 .build()
                 .expect("build direct egress HTTP client"),
         }
@@ -389,6 +390,39 @@ mod tests {
             .unwrap_err();
 
         assert!(matches!(error, EgressError::SigningUnavailable));
+    }
+
+    #[tokio::test]
+    async fn direct_service_does_not_follow_redirects() {
+        let redirect_server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/secret"))
+            .respond_with(ResponseTemplate::new(200).set_body_string("secret"))
+            .expect(0)
+            .mount(&redirect_server)
+            .await;
+
+        let server = MockServer::start().await;
+        Mock::given(method("GET"))
+            .and(path("/start"))
+            .respond_with(
+                ResponseTemplate::new(302)
+                    .insert_header("Location", format!("{}/secret", redirect_server.uri())),
+            )
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        let response = DirectEgressService::new()
+            .send(EgressRequest::new(
+                "GET",
+                format!("{}/start", server.uri()),
+                EgressRequestKind::Capability,
+            ))
+            .await
+            .unwrap();
+
+        assert_eq!(response.status, 302);
     }
 
     #[tokio::test]
