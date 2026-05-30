@@ -1397,8 +1397,8 @@ impl ResourceUrlable for everruns_core::budget::Budget {
 /// `ResourceUrlable` impl below so unit tests can exercise the state →
 /// rel set mapping without constructing a full `Session`.
 ///
-/// Cancel is offered only while a turn is mid-flight (`Active` /
-/// `WaitingForToolResults`); pin/unpin flips on `is_pinned`; events
+/// Cancel is offered only while a turn is mid-flight (`Active`);
+/// pin/unpin flips on `is_pinned`; events
 /// streaming, metadata edits, and delete are unconditional because the
 /// API exposes them regardless of run state.
 pub fn session_allowed_actions(
@@ -1430,10 +1430,7 @@ pub fn session_allowed_actions(
             .with_href(format!("{api_base}/v1/sessions/{id}/sse"))
             .with_hint("Subscribe to session events live over Server-Sent Events."),
     );
-    if matches!(
-        status,
-        SessionStatus::Active | SessionStatus::WaitingForToolResults
-    ) {
+    if matches!(status, SessionStatus::Active) {
         actions.push(
             AllowedAction::new("cancel")
                 .with_method("POST")
@@ -2215,23 +2212,12 @@ mod tests {
     }
 
     #[test]
-    fn session_actions_include_cancel_when_waiting_for_tool_results() {
-        use everruns_core::session::SessionStatus;
-        let actions = session_allowed_actions(
-            "session_01",
-            &SessionStatus::WaitingForToolResults,
-            false,
-            "https://api.example",
-        );
-        assert!(actions.iter().any(|a| a.rel == "cancel"));
-    }
-
-    #[test]
     fn session_actions_omit_cancel_in_idle_or_paused_states() {
         use everruns_core::session::SessionStatus;
         for status in [
             SessionStatus::Started,
             SessionStatus::Idle,
+            SessionStatus::WaitingForToolResults,
             SessionStatus::Paused,
         ] {
             let actions =
