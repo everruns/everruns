@@ -1162,6 +1162,10 @@ impl<T: ResourceUrlable + Serialize> ResourceUrlable for ResourceWithCounts<T> {
     fn resource_id(&self) -> String {
         self.inner.resource_id()
     }
+
+    fn allowed_actions(&self, api_base: &str) -> Vec<AllowedAction> {
+        self.inner.allowed_actions(api_base)
+    }
 }
 
 impl<T: ResourceUrlable + Serialize> PaginatedResponse<T> {
@@ -1701,6 +1705,36 @@ mod tests {
     #[derive(Serialize)]
     struct TestResource {
         id: String,
+    }
+
+    #[derive(Debug, Clone, Serialize)]
+    struct TestResourceWithActions {
+        id: String,
+    }
+
+    impl ResourceUrlable for TestResourceWithActions {
+        fn api_path() -> &'static str {
+            "v1/test-resources"
+        }
+
+        fn ui_path() -> &'static str {
+            "test-resources"
+        }
+
+        fn resource_id(&self) -> String {
+            self.id.clone()
+        }
+
+        fn allowed_actions(&self, api_base: &str) -> Vec<AllowedAction> {
+            vec![AllowedAction {
+                rel: "update".to_string(),
+                href: Some(format!("{api_base}/{}/{}", Self::api_path(), self.id)),
+                method: Some("PATCH".to_string()),
+                operation_id: Some("update_test_resource".to_string()),
+                schema_ref: Some("#/components/schemas/UpdateTestResourceRequest".to_string()),
+                hint: None,
+            }]
+        }
     }
 
     impl ResourceUrlable for TestResource {
@@ -2304,6 +2338,20 @@ mod tests {
         let stream = actions.iter().find(|a| a.rel == "stream").unwrap();
         assert_eq!(stream.operation_id.as_deref(), Some("stream_sse"));
         assert!(stream.href.as_deref().unwrap().ends_with("/sse"));
+    }
+
+    #[test]
+    fn with_urls_preserves_allowed_actions_for_resource_with_counts() {
+        let builder = UrlBuilder::new("https://api.example", "https://app.example");
+        let wrapped = builder.wrap(ResourceWithCounts {
+            session_count: 1,
+            app_count: 2,
+            inner: TestResourceWithActions {
+                id: "resource_1".to_string(),
+            },
+        });
+        assert_eq!(wrapped.allowed_actions.len(), 1);
+        assert_eq!(wrapped.allowed_actions[0].rel, "update");
     }
 
     #[test]
