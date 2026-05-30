@@ -192,11 +192,20 @@ impl ToolExecutionResult {
                     .as_object_mut()
                     .and_then(|obj| obj.remove("_raw_output"))
                     .and_then(|v| v.as_str().map(|s| s.to_string()));
-                // Unwrap scalar carrier (set by success_with_raw_output for non-object inputs)
-                let result_value = value
-                    .as_object_mut()
-                    .and_then(|obj| obj.remove("_raw_output_scalar"))
-                    .unwrap_or(value);
+                // Unwrap scalar carrier only when it matches the exact wrapper shape
+                // set by success_with_raw_output for non-object inputs.
+                let result_value = if let Some(obj) = value.as_object_mut() {
+                    let is_scalar_carrier = raw_output.is_some()
+                        && obj.len() == 1
+                        && obj.contains_key("_raw_output_scalar");
+                    if is_scalar_carrier {
+                        obj.remove("_raw_output_scalar").unwrap_or(Value::Null)
+                    } else {
+                        value
+                    }
+                } else {
+                    value
+                };
                 ToolResult {
                     tool_call_id: tool_call_id.to_string(),
                     result: Some(result_value),
@@ -2397,6 +2406,32 @@ mod tests {
             Some(serde_json::Value::String("compact summary".into()))
         );
         assert_eq!(tr.raw_output.as_deref(), Some("full output bytes"));
+    }
+
+    #[test]
+    fn test_success_result_with_raw_output_scalar_key_is_not_unwrapped() {
+        let res = ToolExecutionResult::success(
+            serde_json::json!({"_raw_output_scalar": "user_value", "kept": true}),
+        );
+        let tr = res.into_tool_result("call_1", "demo");
+        assert_eq!(
+            tr.result,
+            Some(serde_json::json!({"_raw_output_scalar": "user_value", "kept": true}))
+        );
+        assert_eq!(tr.raw_output, None);
+    }
+
+    #[test]
+    fn test_success_result_with_only_raw_output_scalar_key_is_not_unwrapped() {
+        // Single-key object with _raw_output_scalar must not be mistaken for a
+        // success_with_raw_output carrier when raw_output is absent.
+        let res = ToolExecutionResult::success(serde_json::json!({"_raw_output_scalar": "v"}));
+        let tr = res.into_tool_result("call_1", "demo");
+        assert_eq!(
+            tr.result,
+            Some(serde_json::json!({"_raw_output_scalar": "v"}))
+        );
+        assert_eq!(tr.raw_output, None);
     }
 
     #[test]
