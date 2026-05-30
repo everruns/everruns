@@ -102,7 +102,7 @@ const COMMANDS: &[CommandSpec] = &[
     CommandSpec {
         name: "clear",
         usage: "/clear",
-        description: "clear transcript",
+        description: "clear in-memory transcript (not terminal scrollback)",
     },
     CommandSpec {
         name: "quit",
@@ -520,6 +520,10 @@ impl App {
                 self.lines.clear();
                 self.printed_lines = 0;
                 self.emit_system_banner();
+                self.push_system(
+                    "note: terminal scrollback is not purged; clear it with your terminal if needed"
+                        .into(),
+                );
             }
             "quit" | "exit" => self.should_quit = true,
             other => {
@@ -1760,6 +1764,15 @@ mod tests {
         }
     }
 
+
+    #[test]
+    fn clear_command_description_mentions_scrollback() {
+        let clear = COMMANDS
+            .iter()
+            .find(|cmd| cmd.name == "clear")
+            .expect("clear command present");
+        assert!(clear.description.contains("scrollback"));
+    }
     #[test]
     fn command_suggestions_list_commands_for_slash() {
         let caps = vec![model_capability_command()];
