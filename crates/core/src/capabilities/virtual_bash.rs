@@ -210,6 +210,12 @@ impl Tool for BashTool {
             .with_open_world(true)
             .with_persist_output(true)
             .with_supports_background(true)
+            // Mutates the shared session workspace: serialize concurrent bash
+            // calls in a batch so they don't race on the filesystem. Runs an
+            // in-process interpreter, so offload to its own task to avoid
+            // starving I/O-bound tools sharing the act batch.
+            .with_concurrency_class("session_workspace")
+            .with_cpu_bound(true)
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {

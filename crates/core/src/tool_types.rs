@@ -187,6 +187,19 @@ impl ToolDefinition {
         }
     }
 
+    /// Scheduling conflict key for this tool, if any (see
+    /// `ToolHints::concurrency_class`). `None` means the tool has no mutation
+    /// conflicts and may always run concurrently with others.
+    pub fn concurrency_class(&self) -> Option<&str> {
+        self.hints().concurrency_class.as_deref()
+    }
+
+    /// Whether this tool performs CPU-bound/non-yielding in-process work and
+    /// should be offloaded to its own task by the act scheduler.
+    pub fn is_cpu_bound(&self) -> bool {
+        self.hints().cpu_bound.unwrap_or(false)
+    }
+
     /// Get reporting attribution for the capability that contributed this tool.
     pub fn capability_attribution(&self) -> Option<(&str, Option<&str>)> {
         self.hints()
@@ -349,6 +362,27 @@ pub struct ToolHints {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub supports_background: Option<bool>,
 
+    /// Scheduling conflict key. Tool calls within the same act batch that share
+    /// a non-empty `concurrency_class` are executed sequentially in arrival
+    /// order; calls in different classes (or with no class) run concurrently.
+    ///
+    /// Set this on tools that mutate shared session state so that, e.g., two
+    /// file writes or two SQL mutations in one batch do not race. Read-only
+    /// tools should leave this `None` so they always parallelize. See
+    /// `crate::atoms::tool_scheduler` for how the act scheduler consumes it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub concurrency_class: Option<String>,
+
+    /// Tool performs significant CPU-bound or otherwise non-yielding work in
+    /// process (e.g. an in-process interpreter). When true, the act scheduler
+    /// runs the call on its own task (`tokio::spawn`) so a long CPU burst does
+    /// not starve the cooperative polling of I/O-bound tools in the same batch.
+    ///
+    /// Distinct from `long_running`, which describes wall-clock time for
+    /// I/O-bound work (those tools yield at await points and need no offload).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cpu_bound: Option<bool>,
+
     /// Tool output should be persisted to session VFS before truncation.
     /// When set, the `tool_output_persistence` capability (EVE-222, EVE-245) writes
     /// stdout to `/outputs/{tool_call_id}.stdout` and stderr to
@@ -435,6 +469,18 @@ impl ToolHints {
         self
     }
 
+    /// Builder: set the scheduling conflict key (see `concurrency_class`).
+    pub fn with_concurrency_class(mut self, class: impl Into<String>) -> Self {
+        self.concurrency_class = Some(class.into());
+        self
+    }
+
+    /// Builder: set the cpu_bound hint (see `cpu_bound`).
+    pub fn with_cpu_bound(mut self, value: bool) -> Self {
+        self.cpu_bound = Some(value);
+        self
+    }
+
     /// Builder: set persist_output hint.
     pub fn with_persist_output(mut self, value: bool) -> Self {
         self.persist_output = Some(value);
@@ -510,6 +556,49 @@ pub struct ToolResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_scheduling_hints_builders_and_accessors() {
+        // A read-only tool declares no class and is not cpu-bound: the scheduler
+        // treats it as freely parallelizable.
+        let reader = ToolDefinition::Builtin(BuiltinTool {
+            name: "read_file".to_string(),
+            display_name: None,
+            description: "read".to_string(),
+            parameters: serde_json::json!({}),
+            policy: ToolPolicy::Auto,
+            category: None,
+            deferrable: DeferrablePolicy::default(),
+            hints: ToolHints::default().with_readonly(true),
+        });
+        assert_eq!(reader.concurrency_class(), None);
+        assert!(!reader.is_cpu_bound());
+
+        // A mutating, CPU-bound tool surfaces both signals to the scheduler.
+        let bash = ToolDefinition::Builtin(BuiltinTool {
+            name: "bash".to_string(),
+            display_name: None,
+            description: "bash".to_string(),
+            parameters: serde_json::json!({}),
+            policy: ToolPolicy::Auto,
+            category: None,
+            deferrable: DeferrablePolicy::default(),
+            hints: ToolHints::default()
+                .with_concurrency_class("session_workspace")
+                .with_cpu_bound(true),
+        });
+        assert_eq!(bash.concurrency_class(), Some("session_workspace"));
+        assert!(bash.is_cpu_bound());
+
+        // The new hint fields round-trip through serde.
+        let json = serde_json::to_string(bash.hints()).unwrap();
+        let parsed: ToolHints = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            parsed.concurrency_class.as_deref(),
+            Some("session_workspace")
+        );
+        assert_eq!(parsed.cpu_bound, Some(true));
+    }
 
     #[test]
     fn test_builtin_tool_serialization() {

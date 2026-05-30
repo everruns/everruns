@@ -846,7 +846,11 @@ impl Tool for WriteFileTool {
     }
 
     fn hints(&self) -> ToolHints {
-        ToolHints::default().with_idempotent(true)
+        // Mutates the shared session workspace: serialize against other
+        // workspace writes (and bash) within a batch to avoid races.
+        ToolHints::default()
+            .with_idempotent(true)
+            .with_concurrency_class("session_workspace")
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -989,7 +993,9 @@ impl Tool for EditFileTool {
     }
 
     fn hints(&self) -> ToolHints {
-        ToolHints::default()
+        // Mutates the shared session workspace: serialize against other
+        // workspace writes (and bash) within a batch to avoid races.
+        ToolHints::default().with_concurrency_class("session_workspace")
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -1529,9 +1535,12 @@ impl Tool for DeleteFileTool {
     }
 
     fn hints(&self) -> ToolHints {
+        // Mutates the shared session workspace: serialize against other
+        // workspace writes (and bash) within a batch to avoid races.
         ToolHints::default()
             .with_destructive(true)
             .with_idempotent(true)
+            .with_concurrency_class("session_workspace")
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {

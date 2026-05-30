@@ -1,8 +1,12 @@
-//! ActAtom - Atom for parallel tool execution
+//! ActAtom - Atom for scheduled tool execution
 //!
 //! This atom handles:
 //! 1. Emitting act.started event
-//! 2. Executing multiple tool calls in parallel (with tool.started/completed events)
+//! 2. Executing the batch of tool calls via the [`tool_scheduler`] (with
+//!    tool.started/completed events). Calls run concurrently by default, but
+//!    calls that share a [`crate::tool_types::ToolHints::concurrency_class`] are
+//!    serialized to avoid mutation races, total concurrency is capped, and
+//!    `cpu_bound` tools are offloaded to their own task.
 //! 3. Handling errors, timeouts, and cancellations as "normal" results
 //! 4. Emitting act.completed event
 //! 5. Returning all tool results (success, error, timeout, or cancelled)
@@ -15,7 +19,8 @@
 //! creates the appropriate gen-ai spans from those events.
 //!
 //! NOTES from Python spec:
-//! - Tools call runs in parallel
+//! - Tool calls run concurrently by default; the scheduler serializes only
+//!   conflicting (same-concurrency-class) calls. See [`tool_scheduler`].
 //! - Error from tool call is not an error for the whole Act, error from tool is "normal" result
 //! - Tool invocations should be timeouted, timeout is also "normal" result from tool
 //! - Exit of act should have all tool calls finished (successfully or with error/timeout)
@@ -23,12 +28,12 @@
 //! - Act and each tool call should be cancellable, and this is also "normal" result
 
 use async_trait::async_trait;
-use futures::future::join_all;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Instant;
 
 use super::act_hooks::{self, PostActHook};
+use super::tool_scheduler;
 use super::{Atom, AtomContext};
 use crate::error::Result;
 use crate::events::{
@@ -81,6 +86,11 @@ pub struct ActInput {
     /// Merged network access list (harness ∩ agent ∩ session) for URL filtering.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub network_access: Option<crate::network_access::NetworkAccessList>,
+    /// Mirrors the request's `parallel_tool_calls`. `Some(false)` forces the
+    /// act scheduler to execute this batch strictly sequentially; `None` or
+    /// `Some(true)` uses the default class-aware concurrent schedule.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parallel_tool_calls: Option<bool>,
 }
 
 /// Result of a single tool call execution
@@ -137,11 +147,13 @@ fn is_false(value: &bool) -> bool {
 // ActAtom
 // ============================================================================
 
-/// Atom that executes tool calls in parallel
+/// Atom that executes a batch of tool calls via the [`tool_scheduler`]
 ///
 /// This atom:
 /// 1. Emits act.started event
-/// 2. Executes all tool calls in parallel (emitting tool.started/completed for each)
+/// 2. Schedules all tool calls (emitting tool.started/completed for each):
+///    concurrent by default, serialized within a concurrency class, capped, and
+///    with `cpu_bound` tools offloaded to their own task
 /// 3. Handles errors, timeouts, and cancellations gracefully
 /// 4. Emits act.completed event
 /// 5. Returns comprehensive results for all tools
@@ -153,7 +165,9 @@ where
     T: ToolExecutor,
     E: EventEmitter,
 {
-    tool_executor: T,
+    // Held as `Arc` so individual `cpu_bound` tool calls can be offloaded to
+    // their own task (`tokio::spawn`) without borrowing `self` for `'static`.
+    tool_executor: Arc<T>,
     event_emitter: Arc<E>,
     /// Optional file store for context-aware tools
     file_store: Option<Arc<dyn SessionFileSystem>>,
@@ -221,7 +235,7 @@ where
     /// Create a new ActAtom with default hooks (ConnectionSetup + ClientSideTool).
     pub fn new(tool_executor: T, event_emitter: E) -> Self {
         Self {
-            tool_executor,
+            tool_executor: Arc::new(tool_executor),
             event_emitter: Arc::new(event_emitter),
             file_store: None,
             sqldb_store: None,
@@ -259,7 +273,7 @@ where
         file_store: Arc<dyn SessionFileSystem>,
     ) -> Self {
         Self {
-            tool_executor,
+            tool_executor: Arc::new(tool_executor),
             event_emitter: Arc::new(event_emitter),
             file_store: Some(file_store),
             sqldb_store: None,
@@ -495,7 +509,7 @@ where
 #[async_trait]
 impl<T, E> Atom for ActAtom<T, E>
 where
-    T: ToolExecutor + Send + Sync,
+    T: ToolExecutor + Send + Sync + 'static,
     E: EventEmitter + Send + Sync + 'static,
 {
     type Input = ActInput;
@@ -512,6 +526,7 @@ where
             tool_definitions,
             locale,
             network_access,
+            parallel_tool_calls,
             .. // agent_id/org_id not needed here, just passed through workflow
         } = input;
 
@@ -666,10 +681,28 @@ where
             );
         }
 
-        // Execute all tool calls in parallel (each tool event references act span as parent)
-        let futures: Vec<_> = tool_calls
+        // Decide the execution schedule from per-tool metadata. Calls that
+        // share a concurrency class (mutations to the same shared resource) run
+        // sequentially in arrival order; everything else runs concurrently,
+        // bounded by a global cap. `parallel_tool_calls == Some(false)` forces a
+        // fully sequential schedule. Each tool event references the act span as
+        // its parent regardless of scheduling.
+        let classes: Vec<Option<String>> = tool_calls
             .iter()
             .map(|tool_call| {
+                tool_map
+                    .get(tool_call.name.as_str())
+                    .and_then(|def| def.concurrency_class())
+                    .map(|class| class.to_string())
+            })
+            .collect();
+        let schedule_config = tool_scheduler::ScheduleConfig {
+            serialize_all: parallel_tool_calls == Some(false),
+            ..tool_scheduler::ScheduleConfig::default()
+        };
+        let results =
+            tool_scheduler::schedule(tool_calls.len(), &classes, schedule_config, |index| {
+                let tool_call = &tool_calls[index];
                 let tool_def = tool_map.get(tool_call.name.as_str()).cloned();
                 self.execute_single_tool(
                     &context,
@@ -681,9 +714,7 @@ where
                     network_access.as_ref(),
                 )
             })
-            .collect();
-
-        let results = join_all(futures).await;
+            .await;
 
         // Count successes and errors
         let success_count = results.iter().filter(|r| r.success).count() as u32;
@@ -782,7 +813,7 @@ where
 
 impl<T, E> ActAtom<T, E>
 where
-    T: ToolExecutor + Send + Sync,
+    T: ToolExecutor + Send + Sync + 'static,
     E: EventEmitter + Send + Sync + 'static,
 {
     fn render_tool_narration(
@@ -1014,10 +1045,31 @@ where
         tool_context.tool_call_id = Some(tool_call.id.clone());
 
         let execution_tool_call = self.transform_tool_call_for_execution(tool_call.clone());
-        let result = self
-            .tool_executor
-            .execute_with_context(&execution_tool_call, tool_def, &tool_context)
-            .await;
+        let result = if tool_def.is_cpu_bound() {
+            // CPU-bound / non-yielding in-process tools (e.g. the bash
+            // interpreter) get their own task so a long synchronous burst
+            // cannot starve the cooperative polling of I/O-bound tools running
+            // alongside them in this act batch. On the multi-thread runtime the
+            // spawned task can also progress on another worker thread.
+            let executor = self.tool_executor.clone();
+            let call = execution_tool_call.clone();
+            let def = tool_def.clone();
+            let ctx = tool_context.clone();
+            match tokio::spawn(
+                async move { executor.execute_with_context(&call, &def, &ctx).await },
+            )
+            .await
+            {
+                Ok(result) => result,
+                Err(join_err) => Err(crate::error::AgentLoopError::tool(format!(
+                    "tool task failed to complete: {join_err}"
+                ))),
+            }
+        } else {
+            self.tool_executor
+                .execute_with_context(&execution_tool_call, tool_def, &tool_context)
+                .await
+        };
 
         match result {
             Ok(mut tool_result) => {
@@ -1305,6 +1357,7 @@ mod tests {
             locale: None,
             blueprint_id: None,
             network_access: None,
+            parallel_tool_calls: None,
         };
 
         let result = atom.execute(input).await.unwrap();
@@ -1350,6 +1403,7 @@ mod tests {
             locale: None,
             blueprint_id: None,
             network_access: None,
+            parallel_tool_calls: None,
         };
 
         let result = atom.execute(input).await.unwrap();
@@ -1381,6 +1435,7 @@ mod tests {
             locale: None,
             blueprint_id: None,
             network_access: None,
+            parallel_tool_calls: None,
         };
 
         let result = atom.execute(input).await.unwrap();
@@ -1428,6 +1483,7 @@ mod tests {
             locale: None,
             blueprint_id: None,
             network_access: None,
+            parallel_tool_calls: None,
         };
 
         let result = atom.execute(input).await.unwrap();
@@ -1521,6 +1577,7 @@ mod tests {
             locale: None,
             blueprint_id: None,
             network_access: None,
+            parallel_tool_calls: None,
         };
 
         let result = atom.execute(input).await.unwrap();
@@ -1601,6 +1658,7 @@ mod tests {
             locale: None,
             blueprint_id: None,
             network_access: None,
+            parallel_tool_calls: None,
         };
 
         let result = atom.execute(input).await.unwrap();
@@ -1646,6 +1704,7 @@ mod tests {
             locale: None,
             blueprint_id: None,
             network_access: None,
+            parallel_tool_calls: None,
         };
 
         let result = atom.execute(input).await.unwrap();

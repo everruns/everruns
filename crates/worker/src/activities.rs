@@ -249,6 +249,7 @@ mod tests {
             locale: None,
             blueprint_id: None,
             network_access: None,
+            parallel_tool_calls: None,
         };
 
         let json = serde_json::to_string(&input).unwrap();

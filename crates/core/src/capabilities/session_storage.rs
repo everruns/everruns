@@ -116,7 +116,11 @@ impl Tool for KvStoreTool {
     }
 
     fn hints(&self) -> ToolHints {
-        ToolHints::default().with_idempotent(true)
+        // Mutates shared session storage on set/delete; serialize storage
+        // mutations within a batch to avoid lost updates.
+        ToolHints::default()
+            .with_idempotent(true)
+            .with_concurrency_class("session_storage")
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {
@@ -297,9 +301,12 @@ impl Tool for SecretStoreTool {
     }
 
     fn hints(&self) -> ToolHints {
+        // Shares the session storage backend with kv_store; serialize storage
+        // mutations within a batch to avoid lost updates.
         ToolHints::default()
             .with_idempotent(true)
             .with_requires_secrets(true)
+            .with_concurrency_class("session_storage")
     }
 
     async fn execute(&self, _arguments: Value) -> ToolExecutionResult {

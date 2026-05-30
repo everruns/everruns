@@ -26,6 +26,7 @@ mod act;
 pub mod act_hooks;
 mod input;
 mod reason;
+pub mod tool_scheduler;
 
 // Re-export atoms and their types
 pub use act::{ActAtom, ActInput, ActResult, ToolCallResult};
