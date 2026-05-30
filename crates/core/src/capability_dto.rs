@@ -108,7 +108,7 @@ pub struct CapabilityInfo {
     pub config_ui_schema: Option<serde_json::Value>,
     /// TM-AGENT-005: Risk level. High-risk capabilities require admin approval.
     #[serde(skip_serializing_if = "is_low_risk", default = "default_risk_level")]
-    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "low"))]
+    #[cfg_attr(feature = "openapi", schema(example = "low"))]
     pub risk_level: RiskLevel,
     /// Number of active agents referencing this capability in the org.
     #[serde(default, skip_serializing_if = "is_zero_u64")]
