@@ -696,7 +696,7 @@ Applied via `SetResponseHeaderLayer` (`if_not_present`) in `app_builder.rs`:
 - `X-Frame-Options: DENY` — prevents clickjacking
 - `X-Content-Type-Options: nosniff` — prevents MIME sniffing
 - `Referrer-Policy: strict-origin-when-cross-origin` — limits referrer leakage
-- `Permissions-Policy: camera=(), microphone=(), geolocation=()` — disables unused APIs
+- `Permissions-Policy` disables unused browser device APIs. Default: `camera=(), microphone=(), geolocation=()`. When the `voice` feature flag is enabled, microphone is narrowed to same-origin use: `camera=(), microphone=(self), geolocation=()`.
 - `Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`
 
 ## 13. AI Agent Behavior (TM-AGENT)

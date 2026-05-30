@@ -57,8 +57,8 @@ Voice Connections should be registered as session resources and as leased resour
 Realtime audio is ephemeral. Everruns persists transcript text:
 
 - User speech commits become `input.message` with `metadata.source = "voice"`.
-- Assistant final speech becomes `output.message.completed` with `metadata.source = "voice"`.
-- Assistant commentary/preambles may be emitted as `voice.output_transcript.delta` and optionally stored as non-canonical transcript metadata, but they do not become final assistant messages unless the provider marks the phase as final.
+- Assistant answers produced by the durable Everruns turn become `output.message.completed`; when Realtime is used as speech transport for that turn, provider output transcripts remain `voice.output_transcript.*` observability events and do not create duplicate canonical assistant messages.
+- Assistant commentary/preambles may be emitted as `voice.output_transcript.delta` and optionally stored as non-canonical transcript metadata.
 - Tool calls and results use the existing `tool.*` events so observability, audit logging, and UI tool cards stay consistent.
 
 The persisted text transcript is the canonical replay input for future text or voice turns. Raw audio is not stored unless a future recording feature explicitly adds retention controls and consent.
@@ -173,6 +173,7 @@ The backend opens a sideband WebSocket for each active Voice Connection when it 
 
 - Mirrors provider events into Everruns `voice.*`, `tool.*`, `input.message`, and `output.message.*` events.
 - Handles provider tool calls by invoking the existing capability/tool execution path under the session owner's caller context.
+- For the Platform Chat voice path, disables automatic Realtime responses and sends the durable Everruns final answer back over the sideband as an audio-only Realtime `response.create`.
 - Applies the same permission, policy, audit, budget, and multitenancy checks as text turns.
 - Can send provider `session.update` events when session state, tools, or prompt context changes.
 - Closes when the client ends the call, the provider ends the call, auth expires, or the session is deleted/cancelled.

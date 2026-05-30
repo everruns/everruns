@@ -6,14 +6,16 @@ import { useLocale } from "@/providers/locale-provider";
 
 interface ChatErrorAlertProps {
   message: string;
+  description?: string;
   details?: string | null;
   className?: string;
 }
 
-export function ChatErrorAlert({ message, details, className }: ChatErrorAlertProps) {
+export function ChatErrorAlert({ message, description, details, className }: ChatErrorAlertProps) {
   const { t } = useLocale();
   const displayMessage = message.trim() || t("chat_error_fallback");
   const trimmedDetails = details?.trim();
+  const displayDescription = description?.trim() || t("chat_error_description");
 
   return (
     <div
@@ -27,7 +29,7 @@ export function ChatErrorAlert({ message, details, className }: ChatErrorAlertPr
         <X className="h-4 w-4 flex-shrink-0" />
         <div className="text-sm font-semibold">{t("chat_error_title")}</div>
       </div>
-      <p className="mt-2 text-sm leading-5 text-muted-foreground">{t("chat_error_description")}</p>
+      <p className="mt-2 text-sm leading-5 text-muted-foreground">{displayDescription}</p>
       <div className="mt-3 rounded-md bg-muted/70 px-3 py-2 font-mono text-sm leading-5 text-foreground">
         {displayMessage}
       </div>
