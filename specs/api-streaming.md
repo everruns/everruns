@@ -14,12 +14,12 @@ follows the standard SSE framing
 
 ```
 event: <type>
-id: <sequence>
+id: <event_id>
 retry: <ms>
 data: <json>
 
 event: <type>
-id: <sequence>
+id: <event_id>
 data: <json>
 
 ```
@@ -30,9 +30,9 @@ data: <json>
   Lifecycle framing events (`connected`, `disconnecting`) use the
   same field but carry a minimal framing payload rather than an
   `Event`.
-* `id:` — monotonic per-session sequence id. Reconnecting clients
-  pass it back as the `since_id` query parameter to resume without
-  missing events.
+* `id:` — event id cursor (`event_{32-hex}` format). Reconnecting
+  clients pass it back as the `since_id` query parameter to resume
+  without missing events.
 * `retry:` — server-suggested reconnect delay in milliseconds; see
   the per-endpoint description for the cycling policy.
 * `data:` — the per-event JSON body. The shape depends on the
@@ -55,11 +55,55 @@ event-type-specific payload defined by the `EventData` enum.
 
 Closed `event:` vocabulary on this endpoint:
 
-* Two lifecycle frames — `connected` (`{"status": "connected"}`) and
-  `disconnecting` (`{"reason": "connection_cycle", "retry_ms": <ms>}`)
-  — bracket the stream. Neither wraps an `Event`.
-* Every other `event:` value is the discriminant of an `EventData`
-  variant; `data:` is the corresponding `Event<…Data>` envelope.
+| `event:` value                  | `data:` shape                                                              |
+| ------------------------------- | -------------------------------------------------------------------------- |
+| `connected`                     | `{"status": "connected"}` (lifecycle; no `Event` wrapper)                  |
+| `disconnecting`                 | `{"reason": "connection_cycle", "retry_ms": 100}` (lifecycle)              |
+| `input.message`                 | `Event` (`data` = `InputMessageData`)                                      |
+| `output.message.started`        | `Event` (`data` = `OutputMessageStartedData`)                              |
+| `output.message.delta`          | `Event` (`data` = `OutputMessageDeltaData`)                                |
+| `output.message.completed`      | `Event` (`data` = `OutputMessageCompletedData`)                            |
+| `output.message.replaced`       | `Event` (`data` = `OutputMessageReplacedData`)                             |
+| `turn.started`                  | `Event` (`data` = `TurnStartedData`)                                       |
+| `turn.completed`                | `Event` (`data` = `TurnCompletedData`)                                     |
+| `turn.failed`                   | `Event` (`data` = `TurnFailedData`)                                        |
+| `turn.cancelled`                | `Event` (`data` = `TurnCancelledData`)                                     |
+| `reason.started`                | `Event` (`data` = `ReasonStartedData`)                                     |
+| `reason.completed`              | `Event` (`data` = `ReasonCompletedData`)                                   |
+| `reason.thinking.started`       | `Event` (`data` = `ReasonThinkingStartedData`)                             |
+| `reason.thinking.delta`         | `Event` (`data` = `ReasonThinkingDeltaData`)                               |
+| `reason.thinking.completed`     | `Event` (`data` = `ReasonThinkingCompletedData`)                           |
+| `reason.item`                   | `Event` (`data` = `ReasonItemData`)                                        |
+| `act.started`                   | `Event` (`data` = `ActStartedData`)                                        |
+| `act.completed`                 | `Event` (`data` = `ActCompletedData`)                                      |
+| `tool.started`                  | `Event` (`data` = `ToolStartedData`)                                       |
+| `tool.progress`                 | `Event` (`data` = `ToolProgressData`)                                      |
+| `tool.completed`                | `Event` (`data` = `ToolCompletedData`)                                     |
+| `tool.output.delta`             | `Event` (`data` = `ToolOutputDeltaData`)                                   |
+| `tool.call_requested`           | `Event` (`data` = `ToolCallRequestedData`)                                 |
+| `llm.generation`                | `Event` (`data` = `LlmGenerationData`)                                     |
+| `capability.usage`              | `Event` (`data` = `CapabilityUsageData`)                                   |
+| `session.started`               | `Event` (`data` = `SessionStartedData`)                                    |
+| `session.activated`             | `Event` (`data` = `SessionActivatedData`)                                  |
+| `session.idled`                 | `Event` (`data` = `SessionIdledData`)                                      |
+| `subagent.spawned`              | `Event` (`data` = `SubagentEventData`)                                     |
+| `subagent.completed`            | `Event` (`data` = `SubagentEventData`)                                     |
+| `subagent.failed`               | `Event` (`data` = `SubagentEventData`)                                     |
+| `subagent.cancelled`            | `Event` (`data` = `SubagentEventData`)                                     |
+| `context.compacting`            | `Event` (`data` = `ContextCompactingData`)                                 |
+| `context.compacted`             | `Event` (`data` = `ContextCompactedData`)                                  |
+| `file.written`                  | `Event` (`data` = `FileWrittenData`)                                       |
+| `budget.warning`                | `Event` (`data` = `BudgetEventData`)                                       |
+| `budget.paused`                 | `Event` (`data` = `BudgetEventData`)                                       |
+| `budget.exhausted`              | `Event` (`data` = `BudgetEventData`)                                       |
+| `budget.resumed`                | `Event` (`data` = `BudgetEventData`)                                       |
+| `voice.session.started`         | `Event` (`data` = `VoiceSessionStartedData`)                               |
+| `voice.input_transcript.delta`  | `Event` (`data` = `VoiceTranscriptData`)                                   |
+| `voice.input_transcript.completed`  | `Event` (`data` = `VoiceTranscriptData`)                               |
+| `voice.output_transcript.delta` | `Event` (`data` = `VoiceTranscriptData`)                                   |
+| `voice.output_transcript.completed` | `Event` (`data` = `VoiceTranscriptData`)                               |
+| `voice.session.ended`           | `Event` (`data` = `VoiceSessionEndedData`)                                 |
+| `voice.session.failed`          | `Event` (`data` = `VoiceSessionFailedData`)                                |
 
 The authoritative event-type → payload mapping is the `EventData`
 enum in [`crates/core/src/events.rs`](../crates/core/src/events.rs)
