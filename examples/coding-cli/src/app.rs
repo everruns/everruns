@@ -1764,7 +1764,6 @@ mod tests {
         }
     }
 
-
     #[test]
     fn clear_command_description_mentions_scrollback() {
         let clear = COMMANDS
