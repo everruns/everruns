@@ -59,6 +59,8 @@ Follows the [MCP tool annotations](https://spec.modelcontextprotocol.io) convent
 | `long_running` | May take significant time (> ~5s typical) | Assume fast |
 | `persist_output` | Tool requests full output be persisted to VFS before truncation when supported | Assume no persistence |
 | `supports_background` | Tool can be executed through `spawn_background` and stream status/output/progress updates | Assume foreground-only |
+| `concurrency_class` | Scheduling conflict key; calls sharing a non-empty class serialize within an act batch (see [Tool Scheduling](#tool-scheduling)) | No class → no conflicts, always parallelizable |
+| `cpu_bound` | Tool does significant non-yielding in-process work; the scheduler offloads it to its own task | Assume I/O-bound (cooperative) |
 | `narration_noun` | Entity noun for operation-based narration (e.g. `"agent"`, `"harness"`) | Generic "Ran {display_name}" fallback |
 
 ### Narration Formatting
@@ -307,6 +309,18 @@ See `crates/core/src/capabilities/loop_detection.rs`.
 3. Add tool results to message history
 4. Call LLM again with results
 5. Repeat until LLM returns final response (max 10 iterations)
+
+### Tool Scheduling
+
+`ActAtom` receives the whole batch of tool calls the model emitted in one turn and decides *how* to run them. The policy lives in `crates/core/src/atoms/tool_scheduler.rs`; it is driven entirely by per-tool `ToolHints`, not hardcoded per tool name.
+
+- **Concurrent by default.** Calls with no `concurrency_class` run concurrently. Read-only tools and unannotated/MCP/dynamic tools therefore parallelize freely (permissive default).
+- **Class serialization.** Calls that share a non-empty `concurrency_class` run sequentially in arrival order, so mutations to the same shared resource cannot interleave. Annotated classes today: `session_workspace` (bash, `write_file`/`edit_file`/`delete_file`), `session_sql` (`sql_execute`), `session_todos` (`write_todos`), `session_storage` (`kv_store`/`secret_store`), `session_memory` (`remember`/`forget`). Different classes run in parallel with each other.
+- **Concurrency cap.** Total simultaneously-executing calls are bounded by a semaphore. Default 32, override per-process with `EVERRUNS_ACT_MAX_TOOL_CONCURRENCY`.
+- **CPU offload.** `cpu_bound` tools (e.g. the in-process `bash` interpreter) are executed on their own task (`tokio::spawn`) so a synchronous burst cannot starve the cooperative polling of I/O-bound tools sharing the batch. I/O-bound tools stay cooperative; no extra task is spawned for them.
+- **Override.** `ActInput.parallel_tool_calls == Some(false)` forces a strictly sequential schedule (mirrors the request's `parallel_tool_calls`). Results are always returned in the model's original call order regardless of completion order.
+
+This logic is shared by all execution paths — the in-process runtime/host loop and the durable worker both run the same `ActAtom`. The `parallel_tool_calls` field is additive and `skip_serializing_if = "Option::is_none"`, so serialized `ActInput`s from older durable runs deserialize unchanged.
 
 ### Step-Based Execution (Durable Mode)
 

@@ -1340,6 +1340,94 @@ mod tests {
         }
     }
 
+    /// Shared scheduling observations recorded by `RecordingTool`.
+    #[derive(Default)]
+    struct SchedObservations {
+        /// Currently-executing count per concurrency class.
+        class_inflight: std::collections::HashMap<String, usize>,
+        /// Peak concurrent executions observed per class.
+        class_max: std::collections::HashMap<String, usize>,
+        /// Currently-executing count across all tools.
+        global_inflight: usize,
+        /// Peak concurrent executions across all tools.
+        global_max: usize,
+    }
+
+    /// Tool that records start/end so a test can observe how the act scheduler
+    /// ran a batch (intra-class serialization, cross-class parallelism).
+    struct RecordingTool {
+        name: String,
+        class: Option<String>,
+        obs: Arc<std::sync::Mutex<SchedObservations>>,
+    }
+
+    #[async_trait]
+    impl crate::tools::Tool for RecordingTool {
+        fn name(&self) -> &str {
+            &self.name
+        }
+        fn description(&self) -> &str {
+            "records scheduling order"
+        }
+        fn parameters_schema(&self) -> serde_json::Value {
+            json!({ "type": "object", "properties": {} })
+        }
+        async fn execute(&self, _arguments: serde_json::Value) -> crate::ToolExecutionResult {
+            // Enter: bump counters in a short critical section (no await held).
+            {
+                let mut obs = self.obs.lock().unwrap();
+                obs.global_inflight += 1;
+                let g = obs.global_inflight;
+                if g > obs.global_max {
+                    obs.global_max = g;
+                }
+                if let Some(class) = &self.class {
+                    let n = obs.class_inflight.entry(class.clone()).or_default();
+                    *n += 1;
+                    let cur = *n;
+                    let m = obs.class_max.entry(class.clone()).or_default();
+                    if cur > *m {
+                        *m = cur;
+                    }
+                }
+            }
+            // Hold the slot long enough that any concurrency is observable.
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            // Exit.
+            {
+                let mut obs = self.obs.lock().unwrap();
+                obs.global_inflight -= 1;
+                if let Some(class) = &self.class {
+                    if let Some(n) = obs.class_inflight.get_mut(class) {
+                        *n -= 1;
+                    }
+                }
+            }
+            crate::ToolExecutionResult::success(json!({ "tool": self.name }))
+        }
+    }
+
+    /// Build a server-side tool definition carrying scheduling hints.
+    fn recording_tool_def(name: &str, class: Option<&str>, cpu_bound: bool) -> ToolDefinition {
+        let mut hints = crate::tool_types::ToolHints::default();
+        if let Some(class) = class {
+            hints = hints.with_concurrency_class(class);
+        }
+        if cpu_bound {
+            hints = hints.with_cpu_bound(true);
+        }
+        ToolDefinition::Builtin(crate::BuiltinTool {
+            name: name.to_string(),
+            display_name: None,
+            description: "records scheduling order".to_string(),
+            parameters: json!({ "type": "object", "properties": {} }),
+            policy: Default::default(),
+            category: None,
+            deferrable: Default::default(),
+            hints,
+        })
+    }
+
     #[tokio::test]
     async fn test_act_atom_empty_tool_calls() {
         let executor = ToolRegistry::with_defaults();
@@ -1412,6 +1500,155 @@ mod tests {
         let payload = result.results[0].result.result.as_ref().unwrap();
         assert_eq!(payload["utility_llm_service"], true);
         assert_eq!(payload["configured"], false);
+    }
+
+    /// End-to-end ActAtom scheduling: a single batch with two same-class tools
+    /// (one of them `cpu_bound`, exercising the spawn path) plus an independent
+    /// tool. Asserts the scheduler serializes within the class, parallelizes
+    /// across classes, runs every tool, and preserves call order in results.
+    #[tokio::test]
+    async fn test_act_atom_schedules_batch_by_concurrency_class() {
+        let obs = Arc::new(std::sync::Mutex::new(SchedObservations::default()));
+
+        let mut executor = ToolRegistry::new();
+        executor.register(RecordingTool {
+            name: "writer_a".to_string(),
+            class: Some("ws".to_string()),
+            obs: obs.clone(),
+        });
+        executor.register(RecordingTool {
+            name: "writer_b".to_string(),
+            class: Some("ws".to_string()),
+            obs: obs.clone(),
+        });
+        executor.register(RecordingTool {
+            name: "reader".to_string(),
+            class: None,
+            obs: obs.clone(),
+        });
+
+        let atom = ActAtom::new(executor, NoopEventEmitter);
+        let context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
+
+        // Call order: writer_a, reader, writer_b. writer_a and writer_b share
+        // class "ws" (writer_b is cpu_bound → executed on its own task).
+        let input = ActInput {
+            org_id: Some(1),
+            context,
+            harness_id: HarnessId::from_seed(1),
+            agent_id: Some(AgentId::new()),
+            tool_calls: vec![
+                ToolCall {
+                    id: "call_a".to_string(),
+                    name: "writer_a".to_string(),
+                    arguments: json!({}),
+                },
+                ToolCall {
+                    id: "call_r".to_string(),
+                    name: "reader".to_string(),
+                    arguments: json!({}),
+                },
+                ToolCall {
+                    id: "call_b".to_string(),
+                    name: "writer_b".to_string(),
+                    arguments: json!({}),
+                },
+            ],
+            tool_definitions: vec![
+                recording_tool_def("writer_a", Some("ws"), false),
+                recording_tool_def("reader", None, false),
+                recording_tool_def("writer_b", Some("ws"), true),
+            ],
+            locale: None,
+            blueprint_id: None,
+            network_access: None,
+            parallel_tool_calls: None,
+        };
+
+        let result = atom.execute(input).await.unwrap();
+
+        // Every tool ran and succeeded.
+        assert_eq!(result.success_count, 3, "all three tools should succeed");
+        // Results are returned in the model's original call order.
+        let names: Vec<&str> = result
+            .results
+            .iter()
+            .map(|r| r.tool_call.name.as_str())
+            .collect();
+        assert_eq!(names, vec!["writer_a", "reader", "writer_b"]);
+
+        let obs = obs.lock().unwrap();
+        // Same-class tools never overlapped (serialized) — even though one is
+        // cpu_bound and runs on its own task.
+        assert_eq!(
+            obs.class_max.get("ws").copied(),
+            Some(1),
+            "same-class tools must serialize"
+        );
+        // The independent tool overlapped with the class group: peak global
+        // concurrency exceeded 1, proving cross-class parallelism.
+        assert!(
+            obs.global_max >= 2,
+            "independent tool should run concurrently with the class group (global_max={})",
+            obs.global_max
+        );
+    }
+
+    /// With `parallel_tool_calls = Some(false)`, the whole batch runs strictly
+    /// sequentially regardless of class — peak concurrency must be 1.
+    #[tokio::test]
+    async fn test_act_atom_parallel_tool_calls_false_serializes_everything() {
+        let obs = Arc::new(std::sync::Mutex::new(SchedObservations::default()));
+        let mut executor = ToolRegistry::new();
+        for name in ["t0", "t1", "t2"] {
+            executor.register(RecordingTool {
+                name: name.to_string(),
+                class: None,
+                obs: obs.clone(),
+            });
+        }
+        let atom = ActAtom::new(executor, NoopEventEmitter);
+        let context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
+        let input = ActInput {
+            org_id: Some(1),
+            context,
+            harness_id: HarnessId::from_seed(1),
+            agent_id: Some(AgentId::new()),
+            tool_calls: vec![
+                ToolCall {
+                    id: "c0".to_string(),
+                    name: "t0".to_string(),
+                    arguments: json!({}),
+                },
+                ToolCall {
+                    id: "c1".to_string(),
+                    name: "t1".to_string(),
+                    arguments: json!({}),
+                },
+                ToolCall {
+                    id: "c2".to_string(),
+                    name: "t2".to_string(),
+                    arguments: json!({}),
+                },
+            ],
+            tool_definitions: vec![
+                recording_tool_def("t0", None, false),
+                recording_tool_def("t1", None, false),
+                recording_tool_def("t2", None, false),
+            ],
+            locale: None,
+            blueprint_id: None,
+            network_access: None,
+            parallel_tool_calls: Some(false),
+        };
+
+        let result = atom.execute(input).await.unwrap();
+        assert_eq!(result.success_count, 3);
+        assert_eq!(
+            obs.lock().unwrap().global_max,
+            1,
+            "parallel_tool_calls=false must serialize the whole batch"
+        );
     }
 
     #[tokio::test]

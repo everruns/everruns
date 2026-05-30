@@ -409,7 +409,7 @@ The core crate provides DB-agnostic agent abstractions with pluggable backends:
 2. **Atoms** (Stateless Atomic Operations):
    - `InputAtom` - Retrieve user message from store
    - `ReasonAtom` - Call LLM with context preparation, store response
-   - `ActAtom` - Execute tools in parallel, store results
+   - `ActAtom` - Schedule and execute the tool batch (concurrent by default, serialized within a concurrency class), store results
    - Each atom implements `Atom` trait with `execute(input) -> Result<output>`
 
 3. **AtomContext** (Execution Tracking):
