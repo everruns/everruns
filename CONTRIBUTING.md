@@ -5,7 +5,8 @@
 ### Prerequisites
 
 - Docker & Docker Compose (for PostgreSQL)
-- Rust stable toolchain
+- Rust 1.96.0 toolchain for repo development
+- Rust 1.94.0 minimum supported Rust version for published crates
 - Node.js 18+ (for UI)
 - [just](https://github.com/casey/just) command runner
 - OpenAI or Anthropic API key (for LLM calls)

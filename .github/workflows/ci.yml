@@ -225,7 +225,7 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.96.0
         with:
           components: rustfmt
 
@@ -241,13 +241,38 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.96.0
 
       - name: Check Cargo.lock is up to date
         run: cargo fetch --locked
 
       - name: Check publish-pin versions match workspace
         run: python3 scripts/sync-publish-pin-versions.py --check
+
+  msrv:
+    name: Published Crate MSRV
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.run_ci == 'true' && needs.changes.outputs.rust == 'true'
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install Rust MSRV toolchain
+        uses: dtolnay/rust-toolchain@1.94.0
+
+      - name: Check published crates against MSRV
+        run: |
+          cargo check --locked --all-features \
+            -p everruns-config \
+            -p everruns-openui \
+            -p everruns-a2ui \
+            -p everruns-core \
+            -p everruns-openai \
+            -p everruns-anthropic \
+            -p everruns-integrations-duckduckgo \
+            -p everruns-integrations-github \
+            -p everruns-runtime
 
   migration-immutability:
     name: Migration Immutability
@@ -273,7 +298,7 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.96.0
         with:
           components: clippy
 
@@ -297,7 +322,7 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.96.0
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
@@ -334,7 +359,7 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.96.0
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
@@ -396,7 +421,7 @@ jobs:
         uses: dopplerhq/cli-action@v3
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.96.0
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
@@ -423,7 +448,7 @@ jobs:
         uses: dopplerhq/cli-action@v3
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.96.0
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
@@ -450,7 +475,7 @@ jobs:
         uses: dopplerhq/cli-action@v3
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.96.0
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
@@ -478,7 +503,7 @@ jobs:
         uses: dopplerhq/cli-action@v3
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.96.0
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
@@ -524,7 +549,7 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.96.0
 
 
       - name: Cache Rust
@@ -632,7 +657,7 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.96.0
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2
@@ -711,7 +736,7 @@ jobs:
       - uses: actions/checkout@v5
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.96.0
 
 
       - name: Cache Rust
@@ -927,7 +952,7 @@ jobs:
 
       - name: Install Rust toolchain
         if: matrix.language == 'rust'
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.96.0
 
       - name: Download server binary
         uses: actions/download-artifact@v4
@@ -1136,7 +1161,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.96.0
 
       - name: Cache Rust
         uses: Swatinem/rust-cache@v2

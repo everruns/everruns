@@ -41,6 +41,8 @@ exclude = [
 [workspace.package]
 version = "0.8.36"
 edition = "2024"
+# Published crate MSRV: Rust 2024 plus current published dependency floors.
+rust-version = "1.94.0"
 license = "MIT"
 authors = ["Everruns Contributors"]
 homepage = "https://everruns.com"
