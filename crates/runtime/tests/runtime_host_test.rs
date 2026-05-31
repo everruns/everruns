@@ -1273,3 +1273,228 @@ async fn plan_next_host_turn_waits_for_tool_results_when_session_hint_requests_i
         other => panic!("expected WaitForToolResults, got {other:?}"),
     }
 }
+
+// ============================================================================
+// Lifecycle hook wire-in tests (user_prompt_submit, turn_end)
+// ============================================================================
+
+/// Test capability that contributes one lifecycle hook via `user_hooks()`.
+/// The bash command is run for real through the in-process `virtual_bash`
+/// dispatcher, so these tests exercise the full collect -> build -> dispatch
+/// -> decision path, not a mock.
+struct LifecycleHookCapability {
+    event: everruns_core::user_hook_types::HookEvent,
+    command: String,
+}
+
+impl Capability for LifecycleHookCapability {
+    fn id(&self) -> &str {
+        "lifecycle_hook_test"
+    }
+    fn name(&self) -> &str {
+        "Lifecycle Hook Test"
+    }
+    fn description(&self) -> &str {
+        "Test capability contributing a single lifecycle hook."
+    }
+    fn status(&self) -> CapabilityStatus {
+        CapabilityStatus::Available
+    }
+    fn user_hooks(&self) -> Vec<everruns_core::user_hook_types::UserHookSpec> {
+        use everruns_core::user_hook_types::{
+            ExecutorSpec, HookMatcher, HookSource, OnError, UserHookSpec,
+        };
+        vec![UserHookSpec {
+            id: Some("lc".into()),
+            event: self.event,
+            matcher: HookMatcher::default(),
+            executor: ExecutorSpec::Bash {
+                command: self.command.clone(),
+                env: Default::default(),
+            },
+            timeout_ms: 5000,
+            on_error: OnError::Warn,
+            description: None,
+            source: HookSource::UserConfig,
+        }]
+    }
+}
+
+/// A `user_prompt_submit` hook that emits a `block` decision must abort the
+/// turn *before* the reason atom runs — verified by `execute_reason_activity`
+/// returning a non-success result with the `blocked_by_user_prompt_hook`
+/// error, without ever consulting an LLM (the mock host has no usable driver
+/// for a real reason step, so reaching it would surface a different error).
+#[tokio::test]
+async fn user_prompt_submit_hook_blocks_turn_before_reason() {
+    use everruns_core::atoms::ReasonInput;
+    use everruns_core::user_hook_types::HookEvent;
+    use everruns_runtime::execute_reason_activity;
+
+    let mut adapter = mock_host();
+    adapter.capability_registry.register(LifecycleHookCapability {
+        event: HookEvent::UserPromptSubmit,
+        command: r#"echo '{"decision":"block","reason":"policy","user_message":"Your message was blocked."}'"#
+            .into(),
+    });
+
+    let harness_id = HarnessId::from_uuid(Uuid::now_v7());
+    let session_id = SessionId::from_uuid(Uuid::now_v7());
+    adapter
+        .harness_store
+        .add_harness(Harness {
+            capabilities: vec![AgentCapabilityConfig::new("lifecycle_hook_test")],
+            ..harness(harness_id)
+        })
+        .await;
+    adapter
+        .session_store
+        .insert(session(session_id, harness_id))
+        .await;
+    let user_message = adapter
+        .message_store
+        .add(session_id, InputMessage::user("delete everything"))
+        .await
+        .unwrap();
+
+    let turn_id = TurnId::from_uuid(Uuid::now_v7());
+    let result = execute_reason_activity(
+        &adapter,
+        1,
+        ReasonInput {
+            context: AtomContext::new(session_id, turn_id, user_message.id),
+            harness_id,
+            agent_id: None,
+            org_id: 1,
+            mcp_tool_definitions: vec![],
+            previous_response_id: None,
+            iteration: 1,
+        },
+    )
+    .await
+    .unwrap();
+
+    assert!(!result.success, "blocked turn must not succeed");
+    assert_eq!(result.error.as_deref(), Some("blocked_by_user_prompt_hook"));
+    assert_eq!(result.text, "Your message was blocked.");
+    assert!(result.tool_calls.is_empty());
+
+    // The block is observable as a turn.failed event carrying the hook code.
+    let events = adapter.event_emitter.events().await;
+    assert!(
+        events.iter().any(|e| e.event_type == "turn.failed"),
+        "expected a turn.failed event, got: {:?}",
+        events.iter().map(|e| &e.event_type).collect::<Vec<_>>()
+    );
+}
+
+/// A `user_prompt_submit` hook that emits `allow` (empty stdout, exit 0) must
+/// not block — `execute_reason_activity` proceeds past the hook to the reason
+/// step. We only assert the hook did not short-circuit with the block error.
+#[tokio::test]
+async fn user_prompt_submit_hook_allow_does_not_block() {
+    use everruns_core::atoms::ReasonInput;
+    use everruns_core::user_hook_types::HookEvent;
+    use everruns_runtime::execute_reason_activity;
+
+    let mut adapter = mock_host();
+    set_default_model(&adapter).await;
+    adapter
+        .capability_registry
+        .register(LifecycleHookCapability {
+            event: HookEvent::UserPromptSubmit,
+            command: "true".into(), // empty stdout + exit 0 = allow
+        });
+
+    let harness_id = HarnessId::from_uuid(Uuid::now_v7());
+    let session_id = SessionId::from_uuid(Uuid::now_v7());
+    adapter
+        .harness_store
+        .add_harness(Harness {
+            capabilities: vec![AgentCapabilityConfig::new("lifecycle_hook_test")],
+            ..harness(harness_id)
+        })
+        .await;
+    adapter
+        .session_store
+        .insert(session(session_id, harness_id))
+        .await;
+    let user_message = adapter
+        .message_store
+        .add(session_id, InputMessage::user("hello"))
+        .await
+        .unwrap();
+
+    let turn_id = TurnId::from_uuid(Uuid::now_v7());
+    let result = execute_reason_activity(
+        &adapter,
+        1,
+        ReasonInput {
+            context: AtomContext::new(session_id, turn_id, user_message.id),
+            harness_id,
+            agent_id: None,
+            org_id: 1,
+            mcp_tool_definitions: vec![],
+            previous_response_id: None,
+            iteration: 1,
+        },
+    )
+    .await
+    .unwrap();
+
+    // Whatever the reason step does with the mock model, it must not be the
+    // user-prompt-hook block path.
+    assert_ne!(
+        result.error.as_deref(),
+        Some("blocked_by_user_prompt_hook"),
+        "allow hook must not block the turn"
+    );
+}
+
+/// A `turn_end` hook fires (advisory) when a turn completes. We drive a full
+/// in-process turn and assert the hook's side effect: a sentinel file written
+/// to the session VFS by the hook command.
+#[tokio::test]
+async fn turn_end_hook_fires_on_turn_completion() {
+    use everruns_core::user_hook_types::HookEvent;
+
+    let mut adapter = mock_host();
+    set_default_model(&adapter).await;
+    adapter
+        .capability_registry
+        .register(LifecycleHookCapability {
+            event: HookEvent::TurnEnd,
+            command: "echo turn-ended > /workspace/.turn_end_sentinel".into(),
+        });
+
+    let harness_id = HarnessId::from_uuid(Uuid::now_v7());
+    let session_id = SessionId::from_uuid(Uuid::now_v7());
+    adapter
+        .harness_store
+        .add_harness(Harness {
+            capabilities: vec![AgentCapabilityConfig::new("lifecycle_hook_test")],
+            ..harness(harness_id)
+        })
+        .await;
+    adapter
+        .session_store
+        .insert(session(session_id, harness_id))
+        .await;
+
+    // Fire the turn_end hooks directly through the lifecycle helper — this is
+    // the exact call the in-process loop and durable strategy make at turn
+    // completion, so it verifies the wired path without needing a full LLM turn.
+    let lifecycle = RuntimeSessionLifecycle::new(adapter.clone(), 1, session_id);
+    lifecycle
+        .fire_turn_end_hooks(harness_id, None, TurnId::from_uuid(Uuid::now_v7()), true)
+        .await;
+
+    let sentinel = adapter
+        .file_store
+        .read_file(session_id, "/.turn_end_sentinel")
+        .await;
+    assert!(
+        sentinel.is_ok() && sentinel.as_ref().unwrap().is_some(),
+        "turn_end hook should have written the sentinel file, got: {sentinel:?}"
+    );
+}

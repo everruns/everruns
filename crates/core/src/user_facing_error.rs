@@ -19,6 +19,8 @@ pub mod codes {
     pub const DEPENDENCY_UNAVAILABLE: &str = "dependency_unavailable";
     pub const MAX_ITERATIONS: &str = "max_iterations";
     pub const SOFT_LIMIT_REACHED: &str = "soft_limit_reached";
+    /// A `user_prompt_submit` hook rejected the inbound user message.
+    pub const BLOCKED_BY_HOOK: &str = "blocked_by_hook";
 }
 
 pub type UserFacingErrorFields = BTreeMap<String, Value>;

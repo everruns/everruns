@@ -40,6 +40,7 @@ pub mod tool_types;
 pub mod hook_adapter;
 pub mod hook_dispatch;
 pub mod hook_executor;
+pub mod lifecycle_hooks;
 pub mod user_hook_types;
 
 // Deployment configuration

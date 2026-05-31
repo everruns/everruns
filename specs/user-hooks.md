@@ -49,14 +49,22 @@ relevant execution atom in isolation.
 
 | Event | Trait | Fires at | Mutation surface | Can block? | Wire-in status |
 |---|---|---|---|---|---|
-| `session_start` | `SessionLifecycleHook::on_session_start` | session create | none | no | follow-up: server session create path |
-| `user_prompt_submit` | `TurnLifecycleHook::on_turn_start` | inbound user message accepted, before reason | user message text | yes | follow-up: turn entry |
+| `session_start` | `SessionLifecycleHook` | session create | none | no | **wired** in `SessionService::create_inner` (server) |
+| `user_prompt_submit` | `TurnLifecycleHook` | first reason iteration, before the LLM | user message text | yes | **wired** in `execute_reason_activity` (runtime) |
 | `pre_tool_use` | `PreToolUseHook::before_exec` | each tool call, before execution | `ToolCall.arguments` (JSON patch) | yes | **wired** in `ActAtom::execute_single_tool` |
 | `post_tool_use` | `PostToolExecHook::after_exec` (existing trait) | each tool call, after execution | `ToolResult` fields | no | **wired** via existing `PostToolExecHook` chain |
-| `turn_end` | `TurnLifecycleHook::on_turn_end` | turn finishes | none | no | follow-up: turn exit |
-| `session_end` | `SessionLifecycleHook::on_session_end` | session close/archive | none | no | follow-up: server session close path |
+| `turn_end` | `TurnLifecycleHook` | turn finishes | none | no | **wired** in `RuntimeSessionLifecycle::fire_turn_end_hooks` |
+| `session_end` | `SessionLifecycleHook` | session delete | none | no | **wired** in `SessionService::delete` (server) |
 
-This phasing trades a slightly longer rollout for cleaner reviewability:
+All six events now fire. `user_prompt_submit` fires on the first reason
+iteration (the shared choke point for both the in-process loop and the
+durable worker, immediately before the LLM is consulted) rather than at raw
+HTTP submission: the server returns the stored message to the caller and runs
+the turn asynchronously, so a `Block` aborts the turn (emitting a user-facing
+message + `turn.failed` and idling the session) rather than rejecting the
+original HTTP response.
+
+This phasing traded a slightly longer rollout for cleaner reviewability:
 each wire-in is a 50-100 LOC change against a single execution atom with
 focused tests, instead of one mega-PR touching every atom.
 
