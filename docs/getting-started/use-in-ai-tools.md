@@ -71,7 +71,7 @@ Everruns(Dev) tools and guidance.
 
 2. Restart Codex if **Everruns(Dev)** does not appear in the plugin directory.
 
-3. Open the Codex plugin directory, choose the **Everruns** marketplace
+3. Open the Codex plugin directory, choose the **Everruns(Dev)** marketplace
    source, and install **Everruns(Dev)**.
 
    ![Everruns Dev plugin page in Codex showing the Add to Codex button](./codex-everruns-dev-plugin.png)
