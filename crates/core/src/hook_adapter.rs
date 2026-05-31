@@ -51,29 +51,44 @@ pub struct PostToolUseHookAdapter {
     spec: UserHookSpec,
     executor: Arc<dyn HookExecutor>,
     opts: ExecutorOpts,
+    /// Resolved once at construction so every payload/log line carries a
+    /// stable, unique id even for specs that omit an explicit `id` (the
+    /// chain position disambiguates them). See `finalize_hook_specs`.
+    hook_id: crate::user_hook_types::HookId,
 }
 
 impl PostToolUseHookAdapter {
     pub fn new(spec: UserHookSpec, executor: Arc<dyn HookExecutor>) -> Self {
+        Self::with_index(spec, executor, 0)
+    }
+
+    pub fn with_index(spec: UserHookSpec, executor: Arc<dyn HookExecutor>, index: usize) -> Self {
         let opts = ExecutorOpts {
             timeout_ms: spec.timeout_ms,
             max_output_bytes: 64 * 1024,
         };
+        let hook_id = spec.resolve_id(index);
         Self {
             spec,
             executor,
             opts,
+            hook_id,
         }
     }
 
-    fn build_payload(&self, tool_call: &ToolCall, result: &ToolResult) -> HookPayload {
+    fn build_payload(
+        &self,
+        tool_call: &ToolCall,
+        result: &ToolResult,
+        context: &ToolContext,
+    ) -> HookPayload {
         let success = result.error.is_none();
         HookPayload {
             event: HookEvent::PostToolUse,
-            hook_id: self.spec.resolve_id(0),
-            session_id: crate::typed_id::SessionId::from_uuid(uuid::Uuid::nil()),
+            hook_id: self.hook_id.clone(),
+            session_id: context.session_id,
             turn_id: None,
-            org_id: None,
+            org_id: context.org_id,
             agent_id: None,
             ts: chrono::Utc::now().to_rfc3339(),
             data: json!({
@@ -105,13 +120,9 @@ impl PostToolExecHook for PostToolUseHookAdapter {
             return;
         }
 
-        let mut payload = self.build_payload(tool_call, result);
-        // Fill in session/turn/org context the adapter knows about now that
-        // it has a live ToolContext.
-        payload.session_id = context.session_id;
-
+        let payload = self.build_payload(tool_call, result, context);
         let outcome = self.executor.run(payload, &self.opts).await;
-        let hook_id = self.spec.resolve_id(0);
+        let hook_id = &self.hook_id;
 
         match outcome {
             HookOutcome::Allow => {}
@@ -195,12 +206,12 @@ pub fn build_post_tool_use_hooks(
     dispatcher: Arc<dyn BashHookDispatcher>,
 ) -> Vec<Arc<dyn PostToolExecHook>> {
     let mut out: Vec<Arc<dyn PostToolExecHook>> = Vec::new();
-    for spec in specs {
+    for (index, spec) in specs.iter().enumerate() {
         if spec.event != HookEvent::PostToolUse {
             continue;
         }
         if let Err(e) = spec.validate() {
-            let hook_id_for_log = spec.resolve_id(0);
+            let hook_id_for_log = spec.resolve_id(index);
             tracing::warn!(
                 hook_id = %hook_id_for_log.as_str(),
                 error = %e,
@@ -215,10 +226,62 @@ pub fn build_post_tool_use_hooks(
                 dispatcher.clone(),
             )),
         };
-        out.push(Arc::new(PostToolUseHookAdapter::new(
+        out.push(Arc::new(PostToolUseHookAdapter::with_index(
             spec.clone(),
             executor,
+            index,
         )));
+    }
+    out
+}
+
+/// Finalize contributed hook specs before they become adapters.
+///
+/// Each entry in `contributions` is `(capability_id, specs)` as returned by a
+/// single capability's `user_hooks_with_config`. This function:
+///
+/// 1. **Stamps the source namespace.** Specs from any capability other than
+///    the user-facing `user_hooks` capability are stamped
+///    `HookSource::Capability { capability_id }` so their resolved `HookId`
+///    lands in the `{capability_id}:` namespace. (The `user_hooks` capability
+///    already stamps its own entries `UserConfig`.) This guarantees correct
+///    namespacing regardless of whether the capability author set `source` —
+///    per the `HookSource` doc contract, the runtime owns this stamp.
+/// 2. **Assigns a stable default id** (`{event}_{idx}`, indexed within the
+///    contributing capability) to any spec that omits an explicit `id`, so
+///    every hook is individually addressable and mutable.
+/// 3. **Applies `disabled_contributions`.** Any spec whose resolved `HookId`
+///    appears in `disabled` is dropped, so operators can mute
+///    capability-contributed hooks (TM-HOOK-004).
+pub fn finalize_hook_specs(
+    contributions: Vec<(String, Vec<UserHookSpec>)>,
+    disabled: &[String],
+) -> Vec<UserHookSpec> {
+    let disabled: std::collections::HashSet<&str> = disabled.iter().map(String::as_str).collect();
+    let mut out: Vec<UserHookSpec> = Vec::new();
+    for (capability_id, specs) in contributions {
+        for (idx, mut spec) in specs.into_iter().enumerate() {
+            // The `user_hooks` capability stamps its own entries `UserConfig`
+            // (and assigns ids) in `parse_config`. Every other capability is a
+            // capability contribution; stamp it here so authors can't forget.
+            if capability_id != "user_hooks" {
+                spec.source = HookSource::Capability {
+                    capability_id: capability_id.clone(),
+                };
+                if spec.id.is_none() {
+                    spec.id = Some(format!("{}_{}", spec.event.as_str(), idx));
+                }
+            }
+            let resolved = spec.resolve_id(idx);
+            if disabled.contains(resolved.as_str()) {
+                tracing::info!(
+                    hook_id = %resolved.as_str(),
+                    "muting hook via disabled_contributions"
+                );
+                continue;
+            }
+            out.push(spec);
+        }
     }
     out
 }
@@ -257,28 +320,36 @@ pub struct PreToolUseHookAdapter {
     spec: UserHookSpec,
     executor: Arc<dyn HookExecutor>,
     opts: ExecutorOpts,
+    /// Resolved once at construction; see `PostToolUseHookAdapter::hook_id`.
+    hook_id: crate::user_hook_types::HookId,
 }
 
 impl PreToolUseHookAdapter {
     pub fn new(spec: UserHookSpec, executor: Arc<dyn HookExecutor>) -> Self {
+        Self::with_index(spec, executor, 0)
+    }
+
+    pub fn with_index(spec: UserHookSpec, executor: Arc<dyn HookExecutor>, index: usize) -> Self {
         let opts = ExecutorOpts {
             timeout_ms: spec.timeout_ms,
             max_output_bytes: 64 * 1024,
         };
+        let hook_id = spec.resolve_id(index);
         Self {
             spec,
             executor,
             opts,
+            hook_id,
         }
     }
 
-    fn build_payload(&self, tool_call: &ToolCall) -> HookPayload {
+    fn build_payload(&self, tool_call: &ToolCall, context: &ToolContext) -> HookPayload {
         HookPayload {
             event: HookEvent::PreToolUse,
-            hook_id: self.spec.resolve_id(0),
-            session_id: crate::typed_id::SessionId::from_uuid(uuid::Uuid::nil()),
+            hook_id: self.hook_id.clone(),
+            session_id: context.session_id,
             turn_id: None,
-            org_id: None,
+            org_id: context.org_id,
             agent_id: None,
             ts: chrono::Utc::now().to_rfc3339(),
             data: json!({
@@ -306,11 +377,9 @@ impl PreToolUseHook for PreToolUseHookAdapter {
             return PreToolUseDecision::Continue(tool_call);
         }
 
-        let mut payload = self.build_payload(&tool_call);
-        payload.session_id = context.session_id;
-
+        let payload = self.build_payload(&tool_call, context);
         let outcome = self.executor.run(payload, &self.opts).await;
-        let hook_id = self.spec.resolve_id(0);
+        let hook_id = &self.hook_id;
 
         match outcome {
             HookOutcome::Allow => PreToolUseDecision::Continue(tool_call),
@@ -377,12 +446,12 @@ pub fn build_pre_tool_use_hooks(
     dispatcher: Arc<dyn BashHookDispatcher>,
 ) -> Vec<Arc<dyn PreToolUseHook>> {
     let mut out: Vec<Arc<dyn PreToolUseHook>> = Vec::new();
-    for spec in specs {
+    for (index, spec) in specs.iter().enumerate() {
         if spec.event != HookEvent::PreToolUse {
             continue;
         }
         if let Err(e) = spec.validate() {
-            let hook_id_for_log = spec.resolve_id(0);
+            let hook_id_for_log = spec.resolve_id(index);
             tracing::warn!(
                 hook_id = %hook_id_for_log.as_str(),
                 error = %e,
@@ -397,7 +466,11 @@ pub fn build_pre_tool_use_hooks(
                 dispatcher.clone(),
             )),
         };
-        out.push(Arc::new(PreToolUseHookAdapter::new(spec.clone(), executor)));
+        out.push(Arc::new(PreToolUseHookAdapter::with_index(
+            spec.clone(),
+            executor,
+            index,
+        )));
     }
     out
 }

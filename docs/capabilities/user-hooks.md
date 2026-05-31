@@ -16,9 +16,12 @@ sidebar:
 
 User Hooks let you inject shell commands at six well-defined points in the
 agent execution lifecycle. The runtime hands each hook a structured JSON
-payload on stdin and reads a structured decision back from stdout. Hooks
-can run silently (logging only), mutate the inputs they observe, or block
-the action outright.
+payload through environment variables (`$EVERRUNS_HOOK_PAYLOAD_JSON` plus a
+copy at `$EVERRUNS_HOOK_PAYLOAD_PATH` on the session VFS) and reads a
+structured decision back from stdout. (Delivery is via env vars rather than
+process stdin because the `virtual_bash` interpreter runs the script
+in-process and exposes no process stdin.) Hooks can run silently (logging
+only), mutate the inputs they observe, or block the action outright.
 
 This is the same pattern you'll recognize from Claude Code hooks, Git
 hooks, and pre/post-tool middleware in agent SDKs — applied as a
@@ -48,7 +51,10 @@ action.
 
 ## Events
 
-Six events. Three can block; three are advisory-only.
+Six events. Two (`pre_tool_use`, `user_prompt_submit`) can block; the rest
+are advisory-only. **`pre_tool_use` and `post_tool_use` fire today**; the
+other four events ship their schema/validation here but their runtime
+wire-in lands in follow-up changes (see "What's not yet wired" below).
 
 | Event | Fires at | Can block? | Mutation surface |
 |---|---|---|---|
@@ -263,7 +269,7 @@ for ready-to-paste user-config bundle JSON.
             "event": "pre_tool_use",
             "matcher": {
               "tool_name": "bash",
-              "args_jsonpath": "$.command",
+              "args_jsonpath": "$.commands",
               "deny_regex": "(?:^|;|&&|\\|)\\s*rm\\s+-rf\\b"
             },
             "executor": {
@@ -342,24 +348,28 @@ for ready-to-paste user-config bundle JSON.
 
 ## Observability
 
-Every hook execution emits four audit events:
+Today, hook decisions and errors are recorded in the server logs via
+`tracing`: blocks, ignored post-hook blocks, mutations, `on_error`
+outcomes, and `disabled_contributions` mutings are logged with the
+resolved `hook_id` and the `tool_call_id`.
 
-- `hook.invoked` — fired when matcher passes.
-- `hook.completed` — `{ hook_id, decision, duration_ms, stdout_bytes, exit_code }`.
-- `hook.blocked` — only when `decision == block`.
-- `hook.warning` — only when `on_error == warn` fires.
-
-These flow through the same observability pipeline as tool events
-(Braintrust, OTel).
+**Planned (deferred):** structured `hook.invoked` / `hook.completed` /
+`hook.blocked` / `hook.warning` events emitted through the same
+observability pipeline as tool events (Braintrust, OTel). These are not
+emitted yet — see the spec's observability section.
 
 ## What's not yet wired
 
-This capability ships the *contract, types, executor, validation, and
-audit surface* end-to-end. The runtime firing points for each event land
-in follow-up changes so reviewers can audit each one against the
-relevant execution atom in isolation. The capability is safe to enable
-today — it accepts and validates config — but hooks will not actually
-fire until each event's wire-in PR ships. Track progress against
+`pre_tool_use` and `post_tool_use` **fire today**: a pre-hook can block or
+mutate a tool call before it runs, and a post-hook can mutate the tool
+result after it runs.
+
+The remaining events (`session_start`, `user_prompt_submit`, `turn_end`,
+`session_end`) ship their *contract, types, executor, and validation* here
+but their runtime firing points land in follow-up changes so reviewers can
+audit each one against the relevant execution atom in isolation. Configuring
+those events is a validated no-op until their wire-in ships. Track progress
+against
 [`specs/user-hooks.md`](https://github.com/everruns/everruns/blob/main/specs/user-hooks.md).
 
 ## See also

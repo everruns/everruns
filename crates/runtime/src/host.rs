@@ -274,16 +274,33 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
     // capability that bundles hooks via `Capability::user_hooks_with_config()`.
     // Construct a single bash dispatcher backed by the session's file store
     // and translate each PostToolUse spec into a `PostToolExecHook` adapter.
-    let user_hook_specs: Vec<everruns_core::user_hook_types::UserHookSpec> = resolved
-        .resolved_capability_configs
-        .iter()
-        .flat_map(|config| {
-            capability_registry
-                .get(config.capability_id())
-                .map(|capability| capability.user_hooks_with_config(&config.config))
-                .unwrap_or_default()
-        })
-        .collect();
+    // Gather each capability's contributed specs as (capability_id, specs)
+    // pairs and the union of `disabled_contributions` declared on any
+    // `user_hooks` capability instance. `finalize_hook_specs` then stamps the
+    // source namespace, assigns stable ids, and drops muted entries — so the
+    // documented `disabled_contributions` muting (TM-HOOK-004) and the
+    // `{capability_id}:` HookId namespace actually take effect at runtime.
+    let mut hook_contributions: Vec<(String, Vec<everruns_core::user_hook_types::UserHookSpec>)> =
+        Vec::new();
+    let mut disabled_contributions: Vec<String> = Vec::new();
+    for config in &resolved.resolved_capability_configs {
+        let Some(capability) = capability_registry.get(config.capability_id()) else {
+            continue;
+        };
+        let specs = capability.user_hooks_with_config(&config.config);
+        if !specs.is_empty() {
+            hook_contributions.push((config.capability_id().to_string(), specs));
+        }
+        if config.capability_id() == "user_hooks" {
+            disabled_contributions.extend(
+                everruns_core::capabilities::user_hooks::disabled_contributions(&config.config),
+            );
+        }
+    }
+    let user_hook_specs = everruns_core::hook_adapter::finalize_hook_specs(
+        hook_contributions,
+        &disabled_contributions,
+    );
     let mut pre_tool_hooks: Vec<Arc<dyn everruns_core::atoms::PreToolUseHook>> = Vec::new();
     if !user_hook_specs.is_empty() {
         let dispatcher: Arc<dyn everruns_core::hook_executor::BashHookDispatcher> = Arc::new(

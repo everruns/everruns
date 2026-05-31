@@ -1241,8 +1241,14 @@ action on the agent.
 in-tree contributor surface is the built-in `user_hooks` capability,
 which carries `RiskLevel::High` and is gated on admin assignment via
 `check_high_risk_caps`. Capability authors that override
-`Capability::user_hooks_with_config` to ship hook bundles also ride
-the trust gate of having their capability assigned to an agent.
+`Capability::user_hooks` / `user_hooks_with_config` to ship hook bundles
+also ride the trust gate of having their capability assigned to an agent.
+The runtime collection path (`finalize_hook_specs`) stamps every
+non-`user_hooks` contribution into the `{capability_id}:` `HookId`
+namespace — capability authors cannot forge the `user:` namespace — and
+drops any contribution whose id appears in a sibling `user_hooks`
+capability's `disabled_contributions` list, so an operator can always
+mute a bundled hook without removing the contributing capability.
 
 **TM-HOOK-006 — Deferred contract:** When declarative
 `user_hooks` lands, the capability-write API must compute effective

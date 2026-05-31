@@ -8,7 +8,7 @@ capability.
 |---|---|---|
 | [`block-rm-rf.json`](./block-rm-rf.json) | `user_hooks` config | Block `rm -rf /...` calls on the `bash` tool. |
 | [`format-on-edit.json`](./format-on-edit.json) | `user_hooks` config | Run `cargo fmt` and `prettier` after each `edit_file`. |
-| [`session-bootstrap.json`](./session-bootstrap.json) | `user_hooks` config | Drop a sentinel file at session start. |
+| [`session-bootstrap.json`](./session-bootstrap.json) | `user_hooks` config | Drop a sentinel file at session start. **Deferred:** `session_start` is not wired to fire yet — this bundle validates but is a no-op until the session-start wire-in lands. |
 | [`audit-every-tool.json`](./audit-every-tool.json) | `user_hooks` config | Append every tool call to `/workspace/.audit.log`. |
 
 ## Using a hook config

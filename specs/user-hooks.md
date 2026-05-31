@@ -4,9 +4,11 @@
 
 User hooks let operators inject shell commands at well-defined points in the
 agent execution lifecycle. The user authors a small JSON config; the runtime
-runs the configured commands at the right moment with a structured JSON payload
-on stdin and reads a structured decision from stdout. Hooks can mutate the
-inputs they observe or block execution outright.
+runs the configured commands at the right moment, delivers a structured JSON
+payload via environment variables plus a session-VFS payload file (the bash
+executor has no process stdin — see "Wire contract" below), and reads a
+structured decision from stdout. Hooks can mutate the inputs they observe or
+block execution outright.
 
 User hooks are exposed through the `user_hooks` capability and are also
 contributable by any other capability (built-in, MCP, or declarative). Multiple
@@ -341,15 +343,24 @@ exists only to apply `disabled_contributions` to other capabilities' hooks.
 
 ## Audit + observability
 
-Every hook execution emits a structured event the audit log persists:
+**Delivered (v1):** hook decisions and errors are recorded via `tracing`.
+Blocks, ignored post-hook blocks, mutations, and each `on_error`
+outcome are logged with the resolved `hook_id` and the `tool_call_id`. Muted
+contributions (via `disabled_contributions`) are logged at the
+`HookAdapterBuilder` (`finalize_hook_specs`) boundary.
+
+**Planned (deferred):** structured events the audit log persists and that
+plug into the existing observation pipeline (Braintrust, OTel) the same way
+tool events do:
 
 - `hook.invoked { hook_id, event, session_id, tool_call_id?, matched: true|false }`
 - `hook.completed { hook_id, decision, duration_ms, stdout_bytes, exit_code }`
 - `hook.blocked { hook_id, reason, user_message? }` when `decision == block`.
 - `hook.warning { hook_id, message }` when `on_error == warn` fires.
 
-These plug into the existing observation pipeline (Braintrust, OTel) the
-same way tool events do.
+These structured events are **not emitted yet** — wiring them through the
+`EventEmitter` lands alongside the audit-log integration noted in the open
+questions below.
 
 ## Security
 
@@ -401,7 +412,7 @@ No breaking changes to existing user configs.
 | `HookEvent`, `HookMatcher`, `HookOutcome`, `UserHookSpec`, `ExecutorSpec`, `OnError`, `HookId`, `HookSource` | `crates/core/src/user_hook_types.rs` |
 | `HookExecutor` trait + `BashHookExecutor` | `crates/core/src/hook_executor.rs` |
 | `PreToolUseHook` trait | `crates/core/src/atoms/act_hooks.rs` (alongside existing hooks) |
-| `SessionLifecycleHook`, `TurnLifecycleHook` traits | `crates/core/src/lifecycle_hooks.rs` |
+| `SessionLifecycleHook`, `TurnLifecycleHook` traits | _(planned)_ `crates/core/src/lifecycle_hooks.rs` — not present yet; lands with the lifecycle-event wire-ins |
 | `HookAdapterBuilder` (spec → adapter) | `crates/core/src/hook_adapter.rs` |
 | `Capability::user_hooks()` default + collection extension | `crates/core/src/capabilities/mod.rs` |
 | `user_hooks` capability | `crates/core/src/capabilities/user_hooks.rs` |
