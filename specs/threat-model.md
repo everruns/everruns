@@ -192,7 +192,7 @@ Payment accounts store wallet signing material in `credential_encrypted`, protec
 | TM-TENANT-005 | Internal org_id exposure | Medium | `org_id` (BIGINT) never in APIs, URLs, logs, or error messages; only `public_id` exposed | MITIGATED |
 | TM-TENANT-006 | Session inherits wrong org | Medium | Sessions scoped via agent FK; agent scoped to org; query joins enforce chain | MITIGATED |
 | TM-TENANT-007 | Durable tasks cross-org | Medium | gRPC `GetTurnContext` validates org_id in request matches record in DB | MITIGATED |
-| TM-TENANT-008 | User listing cross-org | High | `GET /v1/users` returns all system users without org filtering; uses `AuthUser` not `ResolvedOrg` | **OPEN** |
+| TM-TENANT-008 | User listing cross-org | High | `GET /v1/users` uses `ResolvedOrg` and calls `list_users_by_org(org.org_id)`, scoping results to the caller's org membership | MITIGATED |
 | TM-TENANT-009 | AG-UI thread ID collision crosses app session boundaries | High | AG-UI session routing tags include both `ag_ui:app:{app_id}` and `ag_ui:thread:{thread_id}` so a shared thread UUID cannot attach to another app's session | MITIGATED |
 | TM-TENANT-010 | Cross-org resource→org oracle via `/v1/resolve-org` | Medium | Endpoint requires `AuthUser` and answers only when the owning org is a membership of the caller (`is_organization_member` check before returning any identity). Unknown ids, unknown prefixes, and non-member owners all produce 404 — identical to what the entity APIs would return. Attacker learns nothing they couldn't already learn by manually switching between their own orgs. See specs/multitenancy.md (Cross-Org Resource Resolution). | MITIGATED |
 
@@ -1301,7 +1301,7 @@ Even with per-secret scoping, an attacker who controls a previously-approved for
 | TM-AUTH-015 | JWT secret insecure default | High | Fail startup if AUTH_JWT_SECRET unset in production |
 | ~~TM-DURABLE-002~~ | ~~gRPC auth optional, no org scoping~~ | ~~High~~ | Mitigated: Bearer token required in production + optional mTLS; workers cross-org by design |
 | ~~TM-DURABLE-010~~ | ~~Durable API endpoints unauthenticated~~ | ~~High~~ | Mitigated: All endpoints require AuthUser extractor |
-| TM-TENANT-008 | User listing cross-org | High | Add org filtering to GET /v1/users |
+| ~~TM-TENANT-008~~ | ~~User listing cross-org~~ | ~~High~~ | Mitigated: `GET /v1/users` uses `ResolvedOrg` and `list_users_by_org` |
 | TM-DOS-008 | ReDoS via file grep endpoint | Medium | Add regex complexity limits and timeout |
 | TM-AGENT-007 | No per-iteration tool call limit | Medium | Cap tool calls per LLM response |
 | ~~TM-AGENT-012~~ | ~~Tool result size amplification~~ | ~~Medium~~ | Mitigated: 64 KiB hard limit via `OutputHardLimitHook` (EVE-225) |
