@@ -368,6 +368,42 @@ The `LlmDriver` trait includes `supports_compact()` and `compact()` methods. See
 | Gemini | No |
 | LlmSim | No |
 
+## Key Resolution Contract (Fail-Closed)
+
+### Server-Side Tenant Path
+
+All API key resolution for tenant/org-scoped execution flows through
+`crates/server/src/services/llm_resolver.rs`. The contract is **fail-closed**:
+
+1. If the provider has an encrypted key in the database, decrypt and use it.
+2. If no database key is found (absent, decryption failed, or encryption service
+   unavailable), resolve to `None`.
+3. Callers receiving `None` MUST surface a "no provider configured" error to the
+   tenant — they must not fall through to environment variable reads.
+
+**Why**: With a platform-level `DEFAULT_*_API_KEY` present on the server host, an
+implicit env fallback silently funds tenant execution from platform credentials.
+Fail-closed prevents accidental cost-runaway under open signup.
+
+### Dev / CLI / Standalone Path
+
+Environment variable reads (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`,
+`DEFAULT_*_API_KEY`) remain valid only for explicit standalone/dev entrypoints:
+
+- `InMemoryLlmProviderStore::from_env()` — in-memory dev store used by `just start-dev`
+- `AnthropicLlmDriver::from_env()`, `OpenAIProtocolLlmDriver::from_env()`, etc. — CLI tools
+
+These constructors must **never** be called from org-scoped agent execution paths.
+
+### Invariant
+
+> A tenant turn or tenant-triggered embedding that resolves without a database key
+> must fail with a clear error, regardless of which environment variables are set
+> on the host process.
+
+This invariant is verified by the unit test `resolve_provider_api_key_env_key_set_does_not_leak`
+in `crates/server/src/services/llm_resolver.rs`.
+
 ## Testing
 
 1. **Unit Tests**: Each driver MUST have tests for error detection functions
