@@ -26,6 +26,27 @@
         "harness",
         "llm"
       ]
+    },
+    {
+      "name": "everruns",
+      "source": "./plugins/everruns",
+      "description": "Interact with the Everruns managed harnesses platform. Manage harnesses, agents, and capabilities. Run agentic sessions. Create and deploy agentic applications.",
+      "version": "0.1.5",
+      "author": {
+        "name": "Everruns",
+        "url": "https://everruns.com"
+      },
+      "homepage": "https://everruns.com",
+      "repository": "https://github.com/everruns/everruns",
+      "license": "MIT",
+      "category": "Agents",
+      "keywords": [
+        "agents",
+        "everruns",
+        "mcp",
+        "harness",
+        "llm"
+      ]
     }
   ]
 }

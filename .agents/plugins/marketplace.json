@@ -15,6 +15,18 @@
         "authentication": "ON_INSTALL"
       },
       "category": "Agents"
+    },
+    {
+      "name": "everruns",
+      "source": {
+        "source": "local",
+        "path": "./plugins/everruns"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Agents"
     }
   ]
 }
