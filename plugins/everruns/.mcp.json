@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "everruns": {
+      "type": "http",
+      "url": "https://app.everruns.com/mcp",
+      "oauth_resource": "https://app.everruns.com/mcp",
+      "note": "Everruns MCP endpoint. Your MCP host will handle OAuth on first use."
+    }
+  }
+}

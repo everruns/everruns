@@ -1,10 +1,12 @@
-# Everruns(Dev) Plugin
+# Everruns Plugins
 
 ## Abstract
 
-Single-source plugin under `plugins/everruns-dev/` packages the Everruns(Dev)
-MCP server, the `everruns-dev` skill, and shared slash commands for Claude
-Code, Codex, and Cursor. The three host manifests
+Single-source plugins under `plugins/everruns-dev/` and `plugins/everruns/`
+package the Everruns MCP server, matching skills, and shared slash commands for
+Claude Code, Codex, and Cursor. `everruns-dev` targets
+`https://dev.everruns.com`; `everruns` targets `https://app.everruns.com`.
+The three host manifests
 (`.claude-plugin/plugin.json`, `.codex-plugin/plugin.json`,
 `.cursor-plugin/plugin.json`) MUST stay in sync on shared metadata and on the
 shared payload they expose. Drift between any two hosts is a release-blocking
@@ -28,6 +30,8 @@ plugins/everruns-dev/
 └── skills/everruns-dev/SKILL.md  # Shared skill
 ```
 
+`plugins/everruns/` has the same structure, with `skills/everruns/SKILL.md`.
+
 Marketplace registrations live outside the plugin directory:
 
 - `.claude-plugin/marketplace.json` — Claude Code marketplace
@@ -44,7 +48,7 @@ canonical source for shared metadata; Codex and Cursor mirror it.
 
 | Field        | Source of truth                                                  |
 | ------------ | ---------------------------------------------------------------- |
-| `name`       | Always `everruns-dev`                                            |
+| `name`       | `everruns-dev` for dev, `everruns` for production                |
 | `version`    | Bumped together across all manifests + Claude/Cursor marketplaces |
 | `homepage`   | `https://everruns.com`                                           |
 | `repository` | `https://github.com/everruns/everruns`                           |
@@ -80,6 +84,9 @@ host. Aside from at-most-one such marker insertion, the wording MUST match.
   `Interact with the Everruns(Dev) managed harnesses platform from Cursor.
   Manage harnesses, agents, and capabilities. Run agentic sessions. Create and
   deploy agentic applications.`
+
+The production plugin uses the same wording with `Everruns` in place of
+`Everruns(Dev)`.
 
 ### Component Pointers
 
@@ -129,30 +136,32 @@ Code and Codex, which ignore the extra `name` field.
   required for the plugin browser to render. The plugin entry's `version` MUST
   match `plugin.json`.
 - Codex: `.agents/plugins/marketplace.json` — uses `source: { source: local,
-  path: ./plugins/everruns-dev }` and a `policy` block
+  path: ./plugins/<plugin-name> }` and a `policy` block
   (`installation: AVAILABLE`, `authentication: ON_INSTALL`).
 - Cursor: `.cursor-plugin/marketplace.json` at the repo root — uses
-  `source: "./plugins/everruns-dev"`. Both `metadata.version` and the per-plugin
+  `source: "./plugins/<plugin-name>"`. Both `metadata.version` and the per-plugin
   `version` MUST match `plugin.json`. The marketplace entry's `logo` is
-  resolved from the repo root (`plugins/everruns-dev/assets/everruns.png`),
+  resolved from the repo root (`plugins/<plugin-name>/assets/everruns.png`),
   while the plugin manifest's `logo` is resolved relative to the plugin
   directory (`assets/everruns.png`).
 
-All marketplaces MUST point at `./plugins/everruns-dev`.
+All marketplaces MUST point at the matching plugin directory:
+`./plugins/everruns-dev` for dev and `./plugins/everruns` for production.
 
 ### MCP Server Endpoint
 
-`.mcp.json` MUST declare a single server named `everruns-dev` pointing at
-`https://dev.everruns.com/mcp`, with `oauth_resource` set to the same URL
-(RFC 8707) and no `scopes` (PropelAuth rejects scopes on this resource). See
-`specs/mcp.md` for the MCP server's auth contract.
+`.mcp.json` MUST declare a single server whose name matches the plugin name.
+`everruns-dev` points at `https://dev.everruns.com/mcp`; `everruns` points at
+`https://app.everruns.com/mcp`. `oauth_resource` must be set to the same URL
+(RFC 8707), and `scopes` must be omitted (PropelAuth rejects scopes on this
+resource). See `specs/mcp.md` for the MCP server's auth contract.
 
 ### Skill Content
 
-`skills/everruns-dev/SKILL.md` is the shared skill body. It MUST NOT mention
-`switch_organization` (removed) and MUST contain the multi-org guidance
-phrases enforced by the validator. MCP is stateless: callers route to a
-specific organization by passing `organization_id` per call, not by switching
+`skills/<plugin-name>/SKILL.md` is the shared skill body for each plugin. It
+MUST NOT mention `switch_organization` (removed) and MUST contain the multi-org
+guidance phrases enforced by the validator. MCP is stateless: callers route to
+a specific organization by passing `organization_id` per call, not by switching
 context. See `specs/mcp.md`.
 
 ## Sync Workflow
@@ -171,6 +180,8 @@ When changing the plugin:
 5. Smoke test:
    - Claude Code: `/plugin install everruns-dev@everruns-dev`, then
      `/everruns-dev:whoami`.
+   - Claude Code production plugin: `/plugin install everruns@everruns-dev`,
+     then `/everruns:whoami`.
    - Codex: workspace marketplace install, then the same skill command.
    - Cursor: load the local marketplace via the plugins UI (or push and
      submit at <https://cursor.com/marketplace/publish>), install the plugin,
@@ -206,14 +217,16 @@ three hosts behave the same.
 `scripts/test-everruns-dev-plugin.sh` enforces:
 
 - `.mcp.json` `url` and `oauth_resource` equal `https://dev.everruns.com/mcp`,
-  no `scopes`.
-- All three manifests declare `name: everruns-dev`.
+  or `https://app.everruns.com/mcp` for the production plugin, with no
+  `scopes`.
+- All three manifests declare the expected plugin name: `everruns-dev` or
+  `everruns`.
 - `version` is identical across all three manifests, the Claude marketplace
   entry, and both `metadata.version` and the per-plugin `version` of the
   Cursor marketplace.
-- Claude marketplace `source` is `./plugins/everruns-dev`; Codex marketplace
-  `source` is local at the same path; Cursor marketplace `source` is
-  `./plugins/everruns-dev`.
+- Claude marketplace `source` points at the matching plugin directory; Codex
+  marketplace `source` is local at the same path; Cursor marketplace `source`
+  matches that path.
 - Claude `plugin.json` does NOT contain `category` or `interface`.
 - All three manifests declare `skills: "./skills/"` and
   `mcpServers: "./.mcp.json"`.

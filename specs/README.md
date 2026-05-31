@@ -43,6 +43,7 @@ Specs capture the "why" and "what", not exhaustive source detail. Link to code f
 - `specs/agent-blueprints.md` - Pre-built agent definitions
 - `specs/agent-versions.md` - Immutable Agent configuration snapshots
 - `specs/agent-handoff.md` - Agent handoff behavior
+- `specs/user-hooks.md` - User-authored lifecycle hooks for agent execution
 - `specs/agent-reliability-tests.md` - Agent execution reliability tests
 - `specs/subagents.md` - Subagent orchestration
 - `specs/session-resources.md` - Session resource registry
