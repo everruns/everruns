@@ -32,7 +32,7 @@ pub mod tool_scheduler;
 pub use act::{ActAtom, ActInput, ActResult, ToolCallResult};
 pub use act_hooks::{
     ClientSideToolHook, ConnectionSetupHook, OutputHardLimitHook, PostActAction, PostActHook,
-    PostToolExecHook,
+    PostToolExecHook, PreToolUseDecision, PreToolUseHook,
 };
 pub use input::{InputAtom, InputAtomInput, InputAtomResult};
 pub use reason::{ReasonAtom, ReasonInput, ReasonResult};

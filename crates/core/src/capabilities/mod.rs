@@ -128,6 +128,7 @@ mod system_commands;
 mod test_math;
 mod test_weather;
 mod tool_output_persistence;
+pub mod user_hooks;
 mod virtual_bash;
 mod web_fetch;
 mod workspace_volumes;
@@ -257,7 +258,8 @@ pub use system_commands::{SYSTEM_COMMANDS_CAPABILITY_ID, SystemCommandsCapabilit
 pub use test_math::{AddTool, DivideTool, MultiplyTool, SubtractTool, TestMathCapability};
 pub use test_weather::{GetForecastTool, GetWeatherTool, TestWeatherCapability};
 pub use tool_output_persistence::{PersistOutputHook, ToolOutputPersistenceCapability};
-pub use virtual_bash::{BashTool, VirtualBashCapability};
+pub use user_hooks::UserHooksCapability;
+pub use virtual_bash::{BashTool, SessionFileSystemAdapter, VirtualBashCapability};
 pub use web_fetch::{
     BotAuthPublicKey, WebFetchCapability, WebFetchTool, derive_bot_auth_public_key,
 };
@@ -595,6 +597,37 @@ pub trait Capability: Send + Sync {
         vec![]
     }
 
+    /// Returns user-defined hook specifications contributed by this capability.
+    ///
+    /// User hooks are JSON-serializable specs (see
+    /// `crate::user_hook_types::UserHookSpec` and `specs/user-hooks.md`) that
+    /// the `HookAdapterBuilder` validates and turns into per-event
+    /// `Arc<dyn …Hook>` adapters during capability collection. Capabilities
+    /// that ship reusable hook bundles (formatters, security guards, audit
+    /// commands) override this; the user-facing `user_hooks` capability also
+    /// uses this hook to surface user-config-authored entries.
+    ///
+    /// Contributors return *data only* — the executor is constructed
+    /// centrally by the core so global timeout/output/sandbox limits cannot
+    /// be bypassed.
+    ///
+    /// By default, returns an empty vector (no contributed hooks).
+    fn user_hooks(&self) -> Vec<crate::user_hook_types::UserHookSpec> {
+        vec![]
+    }
+
+    /// Returns user-defined hook specifications adapted to per-capability
+    /// config.
+    ///
+    /// Default delegates to `user_hooks()`. The `user_hooks` capability
+    /// overrides this to parse hook entries out of its config.
+    fn user_hooks_with_config(
+        &self,
+        _config: &serde_json::Value,
+    ) -> Vec<crate::user_hook_types::UserHookSpec> {
+        self.user_hooks()
+    }
+
     /// Returns the risk level of this capability.
     ///
     /// TM-AGENT-005: High-risk capabilities (code execution, network access)
@@ -875,6 +908,10 @@ impl CapabilityRegistry {
 
         // Tool output persistence (EVE-222: persist exec output to VFS)
         registry.register(tool_output_persistence::ToolOutputPersistenceCapability);
+
+        // User hooks (see specs/user-hooks.md): user-authored shell commands
+        // at lifecycle/tool events. Risk: High.
+        registry.register(user_hooks::UserHooksCapability);
 
         // Loop detection (EVE-227: detect repeated identical tool calls)
         registry.register(LoopDetectionCapability);
@@ -2003,6 +2040,7 @@ mod tests {
             "fake_financial",
             "loop_detection",
             "prompt_canary_guardrail",
+            "user_hooks",
         ]
         .into_iter()
         .collect::<BTreeSet<_>>();

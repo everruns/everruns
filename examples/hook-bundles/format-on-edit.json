@@ -1,0 +1,39 @@
+{
+  "hooks": [
+    {
+      "id": "fmt_rs",
+      "event": "post_tool_use",
+      "matcher": {
+        "tool_name": "edit_file",
+        "args_jsonpath": "$.path",
+        "match_regex": "\\.rs$"
+      },
+      "executor": {
+        "type": "bash",
+        "command": "cargo fmt -- --check >/dev/null 2>&1 || cargo fmt"
+      },
+      "timeout_ms": 15000,
+      "on_error": "warn",
+      "description": "Run cargo fmt after editing a .rs file"
+    },
+    {
+      "id": "fmt_ts_js",
+      "event": "post_tool_use",
+      "matcher": {
+        "tool_name": "edit_file",
+        "args_jsonpath": "$.path",
+        "match_regex": "\\.(?:ts|tsx|js|jsx|json|md|yml|yaml)$"
+      },
+      "executor": {
+        "type": "bash",
+        "command": "prettier --write --log-level=error \"$EDITED_PATH\" 2>/dev/null || true",
+        "env": {
+          "EDITED_PATH": "/workspace"
+        }
+      },
+      "timeout_ms": 10000,
+      "on_error": "warn",
+      "description": "Run prettier after editing JS/TS/MD/YAML files"
+    }
+  ]
+}

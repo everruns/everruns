@@ -1,0 +1,15 @@
+{
+  "hooks": [
+    {
+      "id": "bootstrap",
+      "event": "session_start",
+      "executor": {
+        "type": "bash",
+        "command": "mkdir -p /workspace && cat > /workspace/.bootstrap.md <<'EOF'\n# Session bootstrap\n\nThis workspace was initialized at session start.\n\nRecommended first steps:\n1. Review `/workspace/.bootstrap.md`\n2. Use `list_directory` to inspect the workspace\nEOF\n"
+      },
+      "timeout_ms": 5000,
+      "on_error": "warn",
+      "description": "Seed the workspace with a bootstrap note the agent can read"
+    }
+  ]
+}

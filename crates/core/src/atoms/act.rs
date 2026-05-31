@@ -219,6 +219,12 @@ where
     /// Post-tool-exec hooks (capability-contributed): run after each individual
     /// tool execution. Capabilities register these via `post_tool_exec_hooks()`.
     post_tool_hooks: Vec<Arc<dyn act_hooks::PostToolExecHook>>,
+    /// Pre-tool-use hooks (capability-contributed): run before each individual
+    /// tool execution. Capabilities wire these in via the user-hooks
+    /// adapter chain (see `crate::hook_adapter`). Hooks can mutate the
+    /// `ToolCall` (returning `Continue`) or refuse execution
+    /// (returning `Block`).
+    pre_tool_hooks: Vec<Arc<dyn act_hooks::PreToolUseHook>>,
     /// Tool-call hooks (capability-contributed): inspect model-authored tool
     /// calls for UI narration and transform calls before actual execution.
     tool_call_hooks: Vec<Arc<dyn crate::capabilities::ToolCallHook>>,
@@ -261,6 +267,7 @@ where
             payment_authority: None,
             hooks: Self::default_hooks(),
             post_tool_hooks: Vec::new(),
+            pre_tool_hooks: Vec::new(),
             tool_call_hooks: Vec::new(),
             final_post_tool_hooks: Self::default_final_hooks(),
         }
@@ -299,6 +306,7 @@ where
             payment_authority: None,
             hooks: Self::default_hooks(),
             post_tool_hooks: Vec::new(),
+            pre_tool_hooks: Vec::new(),
             tool_call_hooks: Vec::new(),
             final_post_tool_hooks: Self::default_final_hooks(),
         }
@@ -455,6 +463,14 @@ where
         hooks: Vec<Arc<dyn act_hooks::PostToolExecHook>>,
     ) -> Self {
         self.post_tool_hooks.extend(hooks);
+        self
+    }
+
+    /// Add capability-contributed pre-tool-use hooks. Pre-hooks fire before
+    /// each tool call and can mutate or block it; see
+    /// `act_hooks::PreToolUseHook` and `specs/user-hooks.md`.
+    pub fn with_pre_tool_hooks(mut self, hooks: Vec<Arc<dyn act_hooks::PreToolUseHook>>) -> Self {
+        self.pre_tool_hooks.extend(hooks);
         self
     }
 
@@ -1045,7 +1061,47 @@ where
         tool_context.tool_call_id = Some(tool_call.id.clone());
 
         let execution_tool_call = self.transform_tool_call_for_execution(tool_call.clone());
-        let result = if tool_def.is_cpu_bound() {
+        // Run pre-tool-use hooks (capability-contributed). They can mutate
+        // the tool call or block execution entirely. First Block wins; the
+        // tool is not invoked, and the synthetic error result flows through
+        // the same completion/event path as a tool failure.
+        let (execution_tool_call, pre_block_reason) = if self.pre_tool_hooks.is_empty() {
+            (execution_tool_call, None)
+        } else {
+            match act_hooks::run_pre_tool_use_hooks(
+                &self.pre_tool_hooks,
+                execution_tool_call.clone(),
+                tool_def,
+                &tool_context,
+            )
+            .await
+            {
+                act_hooks::PreToolUseDecision::Continue(updated) => (updated, None),
+                act_hooks::PreToolUseDecision::Block {
+                    tool_call: blocked,
+                    reason,
+                    ..
+                } => (blocked, Some(reason)),
+            }
+        };
+
+        let result = if let Some(reason) = pre_block_reason {
+            tracing::warn!(
+                session_id = %context.session_id,
+                tool_call_id = %execution_tool_call.id,
+                tool_name = %execution_tool_call.name,
+                reason = %reason,
+                "ActAtom: pre_tool_use hook blocked execution"
+            );
+            Ok(crate::tool_types::ToolResult {
+                tool_call_id: execution_tool_call.id.clone(),
+                result: None,
+                images: None,
+                error: Some(format!("blocked by pre_tool_use hook: {reason}")),
+                connection_required: None,
+                raw_output: None,
+            })
+        } else if tool_def.is_cpu_bound() {
             // CPU-bound / non-yielding in-process tools (e.g. the bash
             // interpreter) get their own task so a long synchronous burst
             // cannot starve the cooperative polling of I/O-bound tools running

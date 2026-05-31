@@ -1202,7 +1202,62 @@ And on update, the preserved-secrets merger reinjects the existing encrypted tok
 **TM-FCP-008 — Session ownership invariant:**
 `SessionService::create_from_app` sets `session.owner_principal_id = app.owner_principal_id` and tags every session with `fcp:app:<app_public_id>`. The reuse path (`find_app_session_by_tags`) requires the `org_id`, `app.internal_id`, AND the routing tag to all match — so even an attacker who guesses a victim app's id and forges a cookie cannot adopt a session owned by a different org or app.
 
-## 24. CI / Build Pipeline (TM-CI)
+## 24. User Hooks (TM-HOOK)
+
+User-authored shell commands run at lifecycle and tool events via the
+`user_hooks` capability and any capability that returns `UserHookSpec`
+entries from `user_hooks()`. See `specs/user-hooks.md`.
+
+| ID | Threat | Severity | Mitigation | Status |
+|----|--------|----------|------------|--------|
+| TM-HOOK-001 | Hook-as-injection-amplifier: model-controlled file at the hook command path lets prompt-injected agent influence hook behavior | High | Hooks execute through `virtual_bash` against the session VFS, identical FS isolation as the `bash` tool. Operators who reference scripts from agent-writable paths (`/workspace`) opt in to that risk; the recommended pattern is to inline the command or read scripts from read-only capability mounts | MITIGATED |
+| TM-HOOK-002 | Hook-as-exfil-channel: a hook command makes outbound network calls to leak session state | High | This build of bashkit is compiled **without** the `http_client` feature (see `virtual_bash.rs::642` and TM-BASH-003), so `curl`/`after_http`/etc. builtins do not exist in the hook's vocabulary at all. The interpreter has no built-in path to open a socket. If a future build flips `http_client` on, this entry must be re-evaluated and an outbound allowlist enforced at the hook layer. | MITIGATED |
+| TM-HOOK-003 | Stdout poisoning: a long-running or malicious hook fills stdout with bogus JSON or floods to deny tool execution | Medium | Per-hook timeout (default 5 s, max 30 s) + 64 KiB combined stdout/stderr cap (reuses `OutputHardLimitHook` ceiling) + `on_error` policy (`block`/`allow`/`warn`). Overrun is treated as an executor error, not a decision | MITIGATED |
+| TM-HOOK-004 | Privilege escalation via capability contribution: a built-in capability ships hooks that exfiltrate or block | High | The built-in `user_hooks` capability is permanently `High` and admin-gated on assignment via `check_high_risk_caps`. Capability-contributed hooks are surfaced in audit logs with their `{capability_id}:{name}` `HookId` so operators can locate and mute them via the `disabled_contributions` list on a sibling `user_hooks` config. Declarative-capability-contributed hook bundles (with the matching auto-elevation rule) are **not yet implemented** — see `specs/user-hooks.md` for the deferred path | MITIGATED |
+| TM-HOOK-005 | Hook chain DoS via fan-out across many configured hooks | Medium | Per-hook timeout caps wall-clock; hook execution is serial within a single event firing; combined chain wall-clock for `pre_tool_use` is bounded by `Σ timeout_ms` which is itself bounded by `(MAX_HOOK_TIMEOUT_MS × N hooks)`. Operators set the contributing capability list, capping `N` in practice | MITIGATED |
+| TM-HOOK-006 | Future risk: declarative-capability hook bundles bypass the admin gate | High | Declarative `user_hooks` are deferred (no field on `DeclarativeCapabilityDefinition` today). The path is reserved: when added, the declarative-capability write API must compute effective risk including `user_hooks` and force `RiskLevel::High` when the array is non-empty. Threat tracked here so the contract lands with the feature | **OPEN** (deferred) |
+
+### Mitigation Details
+
+**TM-HOOK-001 — Path trust model:** Hook commands are interpreted as
+bash command lines. When the command references a script from the
+session VFS (e.g. `bash /workspace/scripts/fmt.sh`), the operator is
+trusting the contents of that path. Recommended patterns:
+
+1. Inline the command directly in `executor.command`.
+2. Mount scripts read-only via a capability `mounts()` declaration so
+   the agent cannot rewrite them mid-session.
+3. Reference scripts from a known-safe path that the agent has no
+   tools to write to (e.g. `/.agents/hooks/...` under a capability
+   read-only mount).
+
+**TM-HOOK-002 — Egress inheritance:** `BashHookExecutor` does not
+construct a separate `NetworkAccessList`; the session sandbox supplies
+the same policy `virtual_bash` honors. There is no way to "opt out" a
+hook command from session egress controls without explicit operator
+action on the agent.
+
+**TM-HOOK-004 — Capability-contributed hooks:** Today the only
+in-tree contributor surface is the built-in `user_hooks` capability,
+which carries `RiskLevel::High` and is gated on admin assignment via
+`check_high_risk_caps`. Capability authors that override
+`Capability::user_hooks` / `user_hooks_with_config` to ship hook bundles
+also ride the trust gate of having their capability assigned to an agent.
+The runtime collection path (`finalize_hook_specs`) stamps every
+non-`user_hooks` contribution into the `{capability_id}:` `HookId`
+namespace — capability authors cannot forge the `user:` namespace — and
+drops any contribution whose id appears in a sibling `user_hooks`
+capability's `disabled_contributions` list, so an operator can always
+mute a bundled hook without removing the contributing capability.
+
+**TM-HOOK-006 — Deferred contract:** When declarative
+`user_hooks` lands, the capability-write API must compute effective
+risk *including* `user_hooks` and force `RiskLevel::High` when the
+array is non-empty. The elevation must be unconditional and not
+downgradeable by the author. The Linear ticket linked from the
+`specs/user-hooks.md` follow-up list tracks this work.
+
+## 25. CI / Build Pipeline (TM-CI)
 
 GitHub Actions workflows in `.github/workflows/` are part of the trust boundary because they execute on push to `main` and on fork pull requests once the first-time-contributor approval is granted. After that one-time approval, every subsequent PR from the same fork runs CI automatically; the only barrier between attacker-controlled code and the repo's secrets is the per-workflow secret scoping.
 

@@ -1,0 +1,15 @@
+{
+  "hooks": [
+    {
+      "id": "audit_tool_calls",
+      "event": "post_tool_use",
+      "executor": {
+        "type": "bash",
+        "command": "echo \"$EVERRUNS_HOOK_PAYLOAD_JSON\" | grep -o '\"tool_name\":\"[^\"]*\"' >> /workspace/.audit.log; echo '{}'"
+      },
+      "timeout_ms": 3000,
+      "on_error": "warn",
+      "description": "Append one tool-name line per call to /workspace/.audit.log via $EVERRUNS_HOOK_PAYLOAD_JSON"
+    }
+  ]
+}

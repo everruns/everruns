@@ -92,6 +92,15 @@ Streaming-output guardrails and runtime safety nets.
 |---|---|---|
 | [Prompt Canary Guardrail](/capabilities/prompt-canary-guardrail/) | `prompt_canary_guardrail` | 0 |
 
+### Automation
+
+Run shell commands at lifecycle and tool events. Block, mutate, or audit
+agent actions from outside the model.
+
+| Capability | ID | Tools |
+|---|---|---|
+| [User Hooks](/capabilities/user-hooks/) | `user_hooks` | 0 |
+
 ### Demo
 
 Pre-built domain simulations for testing and demonstrations.

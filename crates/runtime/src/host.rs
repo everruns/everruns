@@ -175,6 +175,7 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
 struct RuntimeExecutionCapabilities {
     tool_registry: ToolRegistry,
     post_tool_hooks: Vec<Arc<dyn everruns_core::PostToolExecHook>>,
+    pre_tool_hooks: Vec<Arc<dyn everruns_core::atoms::PreToolUseHook>>,
     tool_call_hooks: Vec<Arc<dyn everruns_core::ToolCallHook>>,
 }
 
@@ -201,6 +202,7 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
         return Ok(RuntimeExecutionCapabilities {
             tool_registry: registry,
             post_tool_hooks: Vec::new(),
+            pre_tool_hooks: Vec::new(),
             tool_call_hooks: Vec::new(),
         });
     }
@@ -255,7 +257,7 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
         registry.register_boxed(tool);
     }
 
-    let post_tool_hooks = resolved
+    let mut post_tool_hooks: Vec<Arc<dyn everruns_core::PostToolExecHook>> = resolved
         .resolved_capability_configs
         .iter()
         .flat_map(|config| {
@@ -265,6 +267,55 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
                 .unwrap_or_default()
         })
         .collect();
+
+    // User-hook contributions (see `specs/user-hooks.md`).
+    // Collect specs across every resolved capability — both the
+    // user-facing `user_hooks` capability (user-config-authored) and any
+    // capability that bundles hooks via `Capability::user_hooks_with_config()`.
+    // Construct a single bash dispatcher backed by the session's file store
+    // and translate each PostToolUse spec into a `PostToolExecHook` adapter.
+    // Gather each capability's contributed specs as (capability_id, specs)
+    // pairs and the union of `disabled_contributions` declared on any
+    // `user_hooks` capability instance. `finalize_hook_specs` then stamps the
+    // source namespace, assigns stable ids, and drops muted entries — so the
+    // documented `disabled_contributions` muting (TM-HOOK-004) and the
+    // `{capability_id}:` HookId namespace actually take effect at runtime.
+    let mut hook_contributions: Vec<(String, Vec<everruns_core::user_hook_types::UserHookSpec>)> =
+        Vec::new();
+    let mut disabled_contributions: Vec<String> = Vec::new();
+    for config in &resolved.resolved_capability_configs {
+        let Some(capability) = capability_registry.get(config.capability_id()) else {
+            continue;
+        };
+        let specs = capability.user_hooks_with_config(&config.config);
+        if !specs.is_empty() {
+            hook_contributions.push((config.capability_id().to_string(), specs));
+        }
+        if config.capability_id() == "user_hooks" {
+            disabled_contributions.extend(
+                everruns_core::capabilities::user_hooks::disabled_contributions(&config.config),
+            );
+        }
+    }
+    let user_hook_specs = everruns_core::hook_adapter::finalize_hook_specs(
+        hook_contributions,
+        &disabled_contributions,
+    );
+    let mut pre_tool_hooks: Vec<Arc<dyn everruns_core::atoms::PreToolUseHook>> = Vec::new();
+    if !user_hook_specs.is_empty() {
+        let dispatcher: Arc<dyn everruns_core::hook_executor::BashHookDispatcher> = Arc::new(
+            everruns_core::hook_dispatch::VirtualBashHookDispatcher::new(adapter.file_store()),
+        );
+        post_tool_hooks.extend(everruns_core::hook_adapter::build_post_tool_use_hooks(
+            &user_hook_specs,
+            dispatcher.clone(),
+        ));
+        pre_tool_hooks.extend(everruns_core::hook_adapter::build_pre_tool_use_hooks(
+            &user_hook_specs,
+            dispatcher,
+        ));
+    }
+
     let tool_call_hooks = resolved
         .resolved_capability_configs
         .iter()
@@ -279,6 +330,7 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
     Ok(RuntimeExecutionCapabilities {
         tool_registry: registry,
         post_tool_hooks,
+        pre_tool_hooks,
         tool_call_hooks,
     })
 }
@@ -667,6 +719,7 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
             )
             .with_capability_registry(adapter.capability_registry())
             .with_post_tool_hooks(execution_capabilities.post_tool_hooks)
+            .with_pre_tool_hooks(execution_capabilities.pre_tool_hooks)
             .with_tool_call_hooks(execution_capabilities.tool_call_hooks);
 
     if let Some(storage_store) = adapter.storage_store() {

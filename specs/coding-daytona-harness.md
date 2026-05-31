@@ -75,7 +75,8 @@ Added by this harness:
 - **LSP integration** — Not yet available. Explore subagent-based code exploration first.
 - **IDE integration** — Separate product surface.
 - **Permission filtering** — Operating in YOLO mode. Future work.
-- **Pre/post tool hooks** — User-defined hooks are a separate feature (see Linear backlog).
+- **Pre/post tool hooks** — User-defined hooks ship as a separate
+  capability (`user_hooks`); see [user-hooks.md](user-hooks.md).
 - **Per-model edit format optimization** — Future enhancement.
 
 ## Implementation

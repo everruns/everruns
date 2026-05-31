@@ -67,6 +67,7 @@ mod seed_ids {
         Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000113);
     pub const IMAGE_STUDIO_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000114);
     pub const CURSOR_AGENT_MANAGER: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000115);
+    pub const GUARDED_BASH_AGENT: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000116);
 
     // MCP Servers (0x500-0x5FF)
     pub const MS_LEARN_MCP: Uuid = Uuid::from_u128(0x01933b5a_0000_7000_8000_000000000501);
@@ -960,6 +961,68 @@ Verify each action by re-listing the affected resource type.
             SeedCapability::new("fake_aws"),
             SeedCapability::new("current_time"),
             SeedCapability::new("session_file_system"),
+            // Hook bundle: append one line per tool call to
+            // /workspace/.audit.log. Demonstrates `user_hooks` end-to-end —
+            // the auditor agent gets a verifiable audit trail "for free",
+            // independent of what the LLM remembers to record. See
+            // examples/hook-bundles/audit-every-tool.json for the same
+            // bundle as a standalone file.
+            SeedCapability::with_config("user_hooks", || {
+                serde_json::json!({
+                    "hooks": [
+                        {
+                            "id": "audit_tool_calls",
+                            "event": "post_tool_use",
+                            "executor": {
+                                "type": "bash",
+                                "command": "printf '[%s] %s:%s\\n' \"$(date -u +%FT%TZ)\" \"$EVERRUNS_HOOK_TOOL_NAME\" \"$EVERRUNS_HOOK_TOOL_CALL_ID\" >> /workspace/.audit.log; echo '{}'"
+                            },
+                            "timeout_ms": 3000,
+                            "on_error": "warn",
+                            "description": "Append a timestamped one-line record per tool call to /workspace/.audit.log"
+                        }
+                    ]
+                })
+            }),
+        ],
+        dev_only: false,
+    },
+    SeedAgent {
+        id: seed_ids::GUARDED_BASH_AGENT,
+        name: "guarded-bash-demo",
+        display_name: "Guarded Bash Demo",
+        description: "Demonstrates a pre_tool_use user_hook that blocks destructive `rm -rf` invocations before the bash tool is even invoked. Combine with `LLMSIM_DEMO=guarded` for a live no-API-key walkthrough.",
+        system_prompt: "You are a small demo agent. When asked to run a destructive command, do so verbatim. The pre_tool_use hook is supposed to refuse it before it ever reaches the sandbox.",
+        tags: &["demo", "user-hooks", "security", "seed"],
+        capabilities: &[
+            SeedCapability::new("virtual_bash"),
+            // pre_tool_use bash hook: deny `rm -rf` invocations.
+            // Demonstrates the user_hooks block path. The matcher's
+            // deny_regex picks out destructive commands; the executor
+            // emits a JSON `block` decision that the runtime translates
+            // into a synthetic error tool-result, never invoking bash.
+            SeedCapability::with_config("user_hooks", || {
+                serde_json::json!({
+                    "hooks": [
+                        {
+                            "id": "guard_rm",
+                            "event": "pre_tool_use",
+                            "matcher": {
+                                "tool_name": "bash",
+                                "args_jsonpath": "$.commands",
+                                "deny_regex": "(?:^|;|&&|\\|)\\s*rm\\s+-rf\\b"
+                            },
+                            "executor": {
+                                "type": "bash",
+                                "command": "printf '%s' '{\"decision\":\"block\",\"reason\":\"rm -rf is blocked by policy\",\"user_message\":\"Blocked: rm -rf is denied by the guarded-bash demo hook.\"}'"
+                            },
+                            "timeout_ms": 3000,
+                            "on_error": "block",
+                            "description": "Deny destructive rm -rf invocations on the bash tool"
+                        }
+                    ]
+                })
+            }),
         ],
         dev_only: false,
     },
