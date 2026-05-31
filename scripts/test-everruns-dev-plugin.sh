@@ -36,7 +36,14 @@ if codex_marketplace.get("name") != "everruns":
         "the plugin directory."
     )
 
-if codex_marketplace.get("interface", {}).get("displayName") != "Everruns":
+codex_marketplace_interface = codex_marketplace.get("interface")
+if not isinstance(codex_marketplace_interface, dict):
+    raise SystemExit(
+        "Codex marketplace must declare an 'interface' object with displayName "
+        "'Everruns'."
+    )
+
+if codex_marketplace_interface.get("displayName") != "Everruns":
     raise SystemExit(
         "Codex marketplace interface.displayName must be 'Everruns' because the "
         "marketplace contains both dev and production plugin entries."
