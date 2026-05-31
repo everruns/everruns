@@ -483,12 +483,11 @@ impl OrgRateLimiter {
                     OrgOp::SessionCreate => {
                         (format!("rl:org:session_create:{id}"), *session_create_limit)
                     }
-                    OrgOp::ScheduleCreate => {
-                        (format!("rl:user:schedule_create:{id}"), *schedule_create_limit)
-                    }
-                    OrgOp::OrgCreate => {
-                        (format!("rl:user:org_create:{id}"), *org_create_limit)
-                    }
+                    OrgOp::ScheduleCreate => (
+                        format!("rl:user:schedule_create:{id}"),
+                        *schedule_create_limit,
+                    ),
+                    OrgOp::OrgCreate => (format!("rl:user:org_create:{id}"), *org_create_limit),
                 };
                 match client.check_rate_limit(&key, limit, window_secs).await {
                     Ok(_) => Ok(()),
