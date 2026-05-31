@@ -381,9 +381,9 @@ impl Default for OrgRateLimiter {
 /// Using an enum eliminates the `_ => Ok(())` silent bypass of unknown op strings.
 #[derive(Debug, Clone, Copy)]
 enum OrgOp {
-    SessionCreate,
-    ScheduleCreate,
-    OrgCreate,
+    Session,
+    Schedule,
+    Org,
 }
 
 impl OrgRateLimiter {
@@ -432,19 +432,19 @@ impl OrgRateLimiter {
 
     /// Check per-org session creation rate. Returns Err if exceeded.
     pub async fn check_session_create(&self, org_id: i64) -> Result<(), RateLimitError> {
-        self.check_keyed(OrgOp::SessionCreate, org_id.to_string(), ORG_WINDOW_SECS)
+        self.check_keyed(OrgOp::Session, org_id.to_string(), ORG_WINDOW_SECS)
             .await
     }
 
     /// Check per-user schedule creation rate (keyed by user UUID). Returns Err if exceeded.
     pub async fn check_schedule_create(&self, user_id: Uuid) -> Result<(), RateLimitError> {
-        self.check_keyed(OrgOp::ScheduleCreate, user_id.to_string(), ORG_WINDOW_SECS)
+        self.check_keyed(OrgOp::Schedule, user_id.to_string(), ORG_WINDOW_SECS)
             .await
     }
 
     /// Check per-user org creation rate (keyed by user UUID). Returns Err if exceeded.
     pub async fn check_org_create(&self, user_id: Uuid) -> Result<(), RateLimitError> {
-        self.check_keyed(OrgOp::OrgCreate, user_id.to_string(), ORG_HOUR_SECS)
+        self.check_keyed(OrgOp::Org, user_id.to_string(), ORG_HOUR_SECS)
             .await
     }
 
@@ -461,9 +461,9 @@ impl OrgRateLimiter {
                 org_create,
             } => {
                 let limiter = match op {
-                    OrgOp::SessionCreate => session_create,
-                    OrgOp::ScheduleCreate => schedule_create,
-                    OrgOp::OrgCreate => org_create,
+                    OrgOp::Session => session_create,
+                    OrgOp::Schedule => schedule_create,
+                    OrgOp::Org => org_create,
                 };
                 match limiter.check_key(&id) {
                     Ok(_) => Ok(()),
@@ -480,14 +480,14 @@ impl OrgRateLimiter {
                 org_create_limit,
             } => {
                 let (key, limit) = match op {
-                    OrgOp::SessionCreate => {
+                    OrgOp::Session => {
                         (format!("rl:org:session_create:{id}"), *session_create_limit)
                     }
-                    OrgOp::ScheduleCreate => (
+                    OrgOp::Schedule => (
                         format!("rl:user:schedule_create:{id}"),
                         *schedule_create_limit,
                     ),
-                    OrgOp::OrgCreate => (format!("rl:user:org_create:{id}"), *org_create_limit),
+                    OrgOp::Org => (format!("rl:user:org_create:{id}"), *org_create_limit),
                 };
                 match client.check_rate_limit(&key, limit, window_secs).await {
                     Ok(_) => Ok(()),
