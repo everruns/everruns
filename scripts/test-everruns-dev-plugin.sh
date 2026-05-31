@@ -29,6 +29,19 @@ claude_marketplace = json.loads((root / ".claude-plugin" / "marketplace.json").r
 codex_marketplace = json.loads((root / ".agents" / "plugins" / "marketplace.json").read_text())
 cursor_marketplace = json.loads((root / ".cursor-plugin" / "marketplace.json").read_text())
 
+if codex_marketplace.get("name") != "everruns":
+    raise SystemExit(
+        "Codex marketplace top-level name must be 'everruns'. It contains both "
+        "the dev and production plugins, and Codex renders this source name in "
+        "the plugin directory."
+    )
+
+if codex_marketplace.get("interface", {}).get("displayName") != "Everruns":
+    raise SystemExit(
+        "Codex marketplace interface.displayName must be 'Everruns' because the "
+        "marketplace contains both dev and production plugin entries."
+    )
+
 
 def marketplace_plugin(label, marketplace, name):
     for plugin in marketplace["plugins"]:

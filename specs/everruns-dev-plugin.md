@@ -135,9 +135,11 @@ Code and Codex, which ignore the extra `name` field.
 - Claude Code: `.claude-plugin/marketplace.json` — top-level `description` is
   required for the plugin browser to render. The plugin entry's `version` MUST
   match `plugin.json`.
-- Codex: `.agents/plugins/marketplace.json` — uses `source: { source: local,
-  path: ./plugins/<plugin-name> }` and a `policy` block
-  (`installation: AVAILABLE`, `authentication: ON_INSTALL`).
+- Codex: `.agents/plugins/marketplace.json` — the top-level marketplace name is
+  the neutral `everruns` source because it contains both dev and production
+  plugins. Plugin entries use `source: { source: local, path:
+  ./plugins/<plugin-name> }` and a `policy` block (`installation: AVAILABLE`,
+  `authentication: ON_INSTALL`).
 - Cursor: `.cursor-plugin/marketplace.json` at the repo root — uses
   `source: "./plugins/<plugin-name>"`. Both `metadata.version` and the per-plugin
   `version` MUST match `plugin.json`. The marketplace entry's `logo` is
@@ -227,6 +229,9 @@ three hosts behave the same.
 - Claude marketplace `source` points at the matching plugin directory; Codex
   marketplace `source` is local at the same path; Cursor marketplace `source`
   matches that path.
+- Codex marketplace top-level `name` is `everruns` and `interface.displayName`
+  is `Everruns`, so the shared source label does not misidentify the production
+  plugin as `everruns-dev`.
 - Claude `plugin.json` does NOT contain `category` or `interface`.
 - All three manifests declare `skills: "./skills/"` and
   `mcpServers: "./.mcp.json"`.
