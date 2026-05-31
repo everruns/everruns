@@ -561,6 +561,7 @@ The shared validator blocks loopback, RFC1918, link-local, and cloud metadata ta
 | TM-LLM-008 | Cost runaway via agent loop | Medium | Max 10 iterations per agent turn; configurable | MITIGATED |
 | TM-LLM-020 | Client-supplied privileged message roles in AG-UI input | Medium | Anonymous AG-UI/CopilotKit clients could send `role: "system"` / `developer` / `tool` messages that flow into the LLM context alongside the agent's real system prompt. Mitigated in `crates/server/src/api/ag_ui.rs::validate_input_messages` by rejecting any non-{user,assistant} role at the runtime trust boundary with a generic 400 `invalid_request`, and by rejecting duplicate message ids. | MITIGATED |
 | TM-LLM-021 | Utility LLM key exposed through agent model configuration | High | The utility LLM uses deployment env secret `UTILITY_OPENAI_API_KEY`, is carried as a host service on `PlatformDefinition`, and is threaded only into capability `ToolContext`. It is not stored in provider records, exposed through model selection, or accepted from session/agent config. | MITIGATED |
+| TM-LLM-022 | Tenant execution silently spending platform env keys | High | `LlmResolverService::resolve_provider_api_key` and `resolve_provider_credentials` are fail-closed: they return `None` when no database key is found rather than falling back to `DEFAULT_*_API_KEY` env vars. Callers surface a "no provider configured" error. Env var helpers remain available only for explicit dev/CLI entrypoints. See `specs/llm-drivers.md` (Key Resolution Contract). | MITIGATED |
 
 ### Mitigation Details
 

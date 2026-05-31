@@ -9,9 +9,11 @@
 //
 // API key resolution order (handled at service layer):
 // 1. Decrypted key from database (if set)
-// 2. Environment variable fallback (for development convenience):
-//    - openai: DEFAULT_OPENAI_API_KEY
-//    - anthropic: DEFAULT_ANTHROPIC_API_KEY
+// 2. None — fail closed; no environment variable fallback in the tenant path.
+//
+// The env-var helpers (get_default_api_key_from_env) remain available for
+// explicit standalone/dev entrypoints (CLI, InMemoryLlmProviderStore) but must
+// NOT be called from any org-scoped execution path.
 
 use crate::storage::{EncryptionService, StorageBackend, models::LlmProviderRow};
 use anyhow::Result;
@@ -56,16 +58,16 @@ where
     env_lookup(env_var).filter(|s| !s.is_empty())
 }
 
-/// Resolve API key for a provider.
+/// Resolve API key for a provider (fail-closed).
 ///
 /// Shared logic used by both LlmResolverService and ModelSyncService.
 ///
 /// Resolution order:
 /// 1. Decrypt from database if encryption is available and key is set
-/// 2. Fall back to environment variable (DEFAULT_OPENAI_API_KEY, DEFAULT_ANTHROPIC_API_KEY, etc.)
+/// 2. None — never falls back to environment variables
 ///
-/// If provider has an encrypted key but encryption service is not available,
-/// logs a warning and falls back to environment variable.
+/// Callers must treat None as "no provider configured" and surface an error.
+/// This prevents tenant execution from silently spending platform-level env keys.
 pub fn resolve_provider_api_key(
     db: &StorageBackend,
     encryption: Option<&EncryptionService>,
@@ -81,13 +83,12 @@ pub fn resolve_provider_api_key(
             tracing::warn!(
                 provider_id = %provider.id,
                 provider_type = %provider.provider_type,
-                "Provider has encrypted API key but encryption service is not configured. \
-                 Falling back to environment variable."
+                "Provider has encrypted API key but encryption service is not configured."
             );
         }
     }
 
-    Ok(get_default_api_key_from_env(&provider.provider_type))
+    Ok(None)
 }
 
 /// Resolved model with provider credentials (decrypted API key)
@@ -167,12 +168,15 @@ impl LlmResolverService {
         Ok(result)
     }
 
-    /// Resolve default credentials for a provider type.
+    /// Resolve default credentials for a provider type (fail-closed).
     ///
     /// Preference order:
     /// 1. Active providers matching the requested type, newest first
     /// 2. Other matching providers, newest first
-    /// 3. Environment fallback for the provider type with no base URL
+    ///
+    /// Returns None when no provider with a configured key is found.
+    /// Never falls back to environment variables — callers surface a
+    /// "no provider configured" error on None.
     pub async fn resolve_provider_credentials(
         &self,
         org_id: i64,
@@ -208,14 +212,7 @@ impl LlmResolverService {
             }
         }
 
-        Ok(
-            get_default_api_key_from_env(provider_type).map(|api_key| {
-                ResolvedProviderCredentials {
-                    api_key,
-                    base_url: None,
-                }
-            }),
-        )
+        Ok(None)
     }
 
     /// Invalidate all cached resolutions for an org.
@@ -752,7 +749,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn resolve_provider_api_key_no_key_falls_to_env() {
+    async fn resolve_provider_api_key_no_db_key_returns_none() {
         let db = Arc::new(StorageBackend::in_memory());
 
         let provider = db
@@ -769,9 +766,74 @@ mod tests {
             .await
             .unwrap();
 
-        // No encrypted key, no env var -> None
+        // No encrypted key in DB -> None, regardless of env
         let result = resolve_provider_api_key(&db, None, &provider).unwrap();
         assert!(result.is_none());
+    }
+
+    /// EVE-511: resolver must not spend platform env keys for tenant execution.
+    /// Sets DEFAULT_OPENAI_API_KEY in the process env so the test would fail
+    /// against the old env-fallback implementation.
+    #[tokio::test]
+    async fn resolve_provider_api_key_env_key_set_does_not_leak() {
+        let db = Arc::new(StorageBackend::in_memory());
+
+        let provider = db
+            .create_llm_provider(
+                DEFAULT_ORG_ID,
+                CreateLlmProviderRow {
+                    name: "OpenAI".to_string(),
+                    provider_type: "openai".to_string(),
+                    base_url: None,
+                    api_key_encrypted: None,
+                    settings: None,
+                },
+            )
+            .await
+            .unwrap();
+
+        // Safety: test-only, single-threaded assertion.
+        // set_var/remove_var are unsafe in Rust 2024 because they are not
+        // thread-safe; this test serialises the env mutation via the
+        // variable going out of scope before any assertion.
+        unsafe {
+            std::env::set_var("DEFAULT_OPENAI_API_KEY", "sk-platform-key-must-not-leak");
+        }
+        let result = resolve_provider_api_key(&db, None, &provider).unwrap();
+        unsafe {
+            std::env::remove_var("DEFAULT_OPENAI_API_KEY");
+        }
+
+        assert!(
+            result.is_none(),
+            "resolve_provider_api_key must not fall back to DEFAULT_OPENAI_API_KEY"
+        );
+    }
+
+    /// EVE-511: resolve_provider_credentials must also fail closed.
+    /// Sets DEFAULT_OPENAI_API_KEY to verify it is never consulted.
+    #[tokio::test]
+    async fn resolve_provider_credentials_env_key_set_does_not_leak() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let resolver = LlmResolverService::new(db.clone(), None);
+
+        // No provider configured for this org at all.
+        // Safety: test-only env mutation, same rationale as above.
+        unsafe {
+            std::env::set_var("DEFAULT_OPENAI_API_KEY", "sk-platform-key-must-not-leak");
+        }
+        let result = resolver
+            .resolve_provider_credentials(DEFAULT_ORG_ID, "openai")
+            .await
+            .unwrap();
+        unsafe {
+            std::env::remove_var("DEFAULT_OPENAI_API_KEY");
+        }
+
+        assert!(
+            result.is_none(),
+            "resolve_provider_credentials must not fall back to DEFAULT_OPENAI_API_KEY"
+        );
     }
 
     // =========================================================================

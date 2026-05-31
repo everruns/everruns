@@ -85,7 +85,7 @@ impl ModelSyncService {
             return Ok(SyncResult::NotSupported);
         }
 
-        // Get API key (decrypt from DB first, then env fallback)
+        // Get API key from DB (fail closed — no env fallback in tenant path).
         let api_key = self.resolve_api_key(&provider_row)?;
         let Some(api_key) = api_key else {
             return Ok(SyncResult::Failed {
@@ -393,12 +393,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_resolve_api_key_falls_back_to_env_without_encryption() {
+    async fn test_resolve_api_key_no_encryption_service_returns_none() {
         use everruns_core::DEFAULT_ORG_ID;
 
         let db = Arc::new(StorageBackend::in_memory());
         let registry = Arc::new(DriverRegistry::new());
-        // No encryption service
         let service = ModelSyncService::new(db.clone(), registry, None);
 
         let provider = db
@@ -415,13 +414,13 @@ mod tests {
             .await
             .unwrap();
 
-        // Should fall back to env (which won't be set in test) -> None
+        // Encrypted key but no decryption service -> None (fail closed)
         let resolved = service.resolve_api_key(&provider).unwrap();
         assert!(resolved.is_none());
     }
 
     #[tokio::test]
-    async fn test_resolve_api_key_no_encrypted_key_falls_to_env() {
+    async fn test_resolve_api_key_no_db_key_returns_none() {
         use everruns_core::DEFAULT_ORG_ID;
 
         let db = Arc::new(StorageBackend::in_memory());
@@ -442,7 +441,7 @@ mod tests {
             .await
             .unwrap();
 
-        // No encrypted key, no env var -> None
+        // No DB key -> None (fail closed, no env fallback)
         let resolved = service.resolve_api_key(&provider).unwrap();
         assert!(resolved.is_none());
     }
