@@ -5,6 +5,7 @@
 
 use crate::auth::audit;
 use crate::auth::middleware::{AuthState, AuthUser, OrgAdmin, OrgContext};
+use crate::auth::rate_limit::OrgRateLimiter;
 use crate::storage::{StorageBackend, models::UpdateOrganizationSettings};
 use axum::{
     Json, Router,
@@ -32,6 +33,7 @@ pub struct AppState {
     pub auth: AuthState,
     pub built_in_harnesses: Vec<BuiltInHarnessDefinition>,
     pub resource_limits: crate::server::ResourceLimitsConfig,
+    pub org_rate_limiter: OrgRateLimiter,
 }
 
 impl AppState {
@@ -41,6 +43,7 @@ impl AppState {
             auth,
             built_in_harnesses: crate::platform::oss_built_in_harnesses(),
             resource_limits: crate::server::ResourceLimitsConfig::from_env(),
+            org_rate_limiter: OrgRateLimiter::default(),
         }
     }
 
@@ -54,6 +57,7 @@ impl AppState {
             auth,
             built_in_harnesses,
             resource_limits: crate::server::ResourceLimitsConfig::from_env(),
+            org_rate_limiter: OrgRateLimiter::default(),
         }
     }
 }
@@ -201,6 +205,21 @@ pub async fn create_organization(
     Json(req): Json<CreateOrganizationRequest>,
 ) -> Result<(StatusCode, Json<OrganizationResponse>), (StatusCode, Json<ErrorResponse>)> {
     use crate::storage::models::CreateOrganizationRow;
+
+    // Check per-user org creation rate limit before any DB work
+    if state
+        .org_rate_limiter
+        .check_org_create(user.id)
+        .await
+        .is_err()
+    {
+        return Err(
+            ErrorResponse::new("Too many requests. Please try again later.")
+                .with_code("rate_limited")
+                .with_retry_after(3600)
+                .into_response(StatusCode::TOO_MANY_REQUESTS),
+        );
+    }
 
     // Validate input
     if req.name.is_empty() {

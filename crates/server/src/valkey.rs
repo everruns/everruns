@@ -42,6 +42,19 @@ else
 end
 "#;
 
+/// Error returned by `ValkeyClient::check_rate_limit`.
+///
+/// Callers use this to choose fail-open vs fail-closed on backend errors:
+/// - Auth endpoints: deny on both `Exceeded` and `BackendError` (fail-closed).
+/// - General API / expensive ops: deny on `Exceeded`, allow on `BackendError` (fail-open).
+#[derive(Debug)]
+pub enum RateLimitCheckError {
+    /// The sliding-window limit was reached.
+    Exceeded,
+    /// The Valkey command itself failed (network error, timeout, etc.).
+    BackendError,
+}
+
 /// Valkey client wrapper. Owns the connection and exposes rate-limiting primitives.
 #[derive(Clone)]
 pub struct ValkeyClient {
@@ -78,18 +91,16 @@ impl ValkeyClient {
 
     /// Check rate limit using sliding window counter.
     ///
-    /// Returns `Ok(remaining)` if allowed, `Err(())` if limit exceeded.
-    ///
-    /// Fail-closed behavior: Valkey command errors are logged and treated as denied.
-    /// `key`: rate limit key (e.g., `rl:login:192.168.1.1`)
-    /// `limit`: max requests in the window
-    /// `window_secs`: window duration in seconds
+    /// Returns `Ok(remaining)` if the request is allowed.
+    /// Returns `Err(RateLimitCheckError::Exceeded)` if the limit is hit.
+    /// Returns `Err(RateLimitCheckError::BackendError)` if the Valkey command fails
+    /// (logged at error level; caller decides fail-open vs fail-closed).
     pub async fn check_rate_limit(
         &self,
         key: &str,
         limit: u32,
         window_secs: u64,
-    ) -> Result<u32, ()> {
+    ) -> Result<u32, RateLimitCheckError> {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -111,16 +122,16 @@ impl ValkeyClient {
                 tracing::error!(
                     error = %e,
                     key = %key,
-                    "Valkey rate limit check failed, denying request"
+                    "Valkey rate limit check failed"
                 );
-                return Err(());
+                return Err(RateLimitCheckError::BackendError);
             }
         };
 
         if result >= 0 {
             Ok(result as u32)
         } else {
-            Err(())
+            Err(RateLimitCheckError::Exceeded)
         }
     }
 

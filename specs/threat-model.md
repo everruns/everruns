@@ -949,6 +949,7 @@ When a bash script calls `bash` or `sh` or uses `eval`, bashkit re-invokes its o
 | TM-DOS-013 | Hidden Agent snapshot storage growth | Medium | Automatic Agent draft snapshots are active only when `FEATURE_AGENT_VERSIONS` is enabled, skipped when the latest stored config hash already matches the draft, and pruned to a bounded per-Agent unpublished auto-snapshot window after each write. | MITIGATED |
 | TM-DOS-014 | Tool output context growth | Medium | Read-like tools use windowed responses and truncation envelopes (`read_file`, `list_directory`, `grep_files`, browser DOM content); platform message reads cap message count and per-message content; non-image binary reads return metadata instead of base64 or lossy UTF-8; opted-in exec tools persist full output under `/outputs/` so the inline prompt payload can stay bounded and recoverable. | MITIGATED |
 | TM-DOS-015 | Unbounded tool fan-out within an act batch | Medium | A single model turn can request an arbitrary number of tool calls; `ActAtom` previously executed them all concurrently with no bound. The `tool_scheduler` (`crates/core/src/atoms/tool_scheduler.rs`) now caps simultaneously-executing calls with a semaphore (default 32, `EVERRUNS_ACT_MAX_TOOL_CONCURRENCY`), serializes same-`concurrency_class` mutations, and offloads `cpu_bound` tools to their own task so an in-process interpreter burst cannot starve the runtime worker. Does not bound calls across time/agents (see TM-TOOL-009). | MITIGATED |
+| TM-DOS-016 | Mass resource creation via IP rotation | High | Per-org/per-user rate limits on expensive mutations (session create: 60/min per org; schedule create: 20/min per user; org create: 10/hr per user) via `OrgRateLimiter` (`crates/server/src/auth/rate_limit.rs`). Distributed when `VALKEY_URL` is set, in-memory otherwise. Fail-open on Valkey errors; DB-level resource caps (`max_orgs_per_user`, etc.) bound total consumption. Global per-IP `ApiRateLimiter` also uses Valkey when set. | MITIGATED |
 
 ### Mitigation Details
 
@@ -958,7 +959,10 @@ Valkey (Redis-compatible) is used for distributed rate limiting. In local/dev co
 - **Blast radius if compromised:** Attacker can flush rate limit counters (bypassing rate limits) or inject fake counters (DoS via false rate-limit-exceeded). No sensitive data stored in Valkey.
 
 **TM-DOS-010 — Fail-Open Rate Limiting (ACCEPTED):**
-By design, Valkey errors cause rate limiting to fail open (allow requests). This prioritizes availability over strictness. The blast radius is limited to auth endpoints (login/register/refresh) and only matters if Valkey is persistently down.
+By design, Valkey errors cause rate limiting to fail open (allow requests) for `ApiRateLimiter` and `OrgRateLimiter`. This prioritizes availability over strictness for general API traffic. Auth endpoints (`AuthRateLimiter`) remain fail-closed. See `crates/server/src/auth/rate_limit.rs`.
+
+**TM-DOS-016 — Per-identity rate limiting (MITIGATED):**
+`OrgRateLimiter` (`crates/server/src/auth/rate_limit.rs`) adds per-identity velocity caps on expensive operations. Configurable via `RATE_LIMIT_ORG_SESSION_CREATE_PER_MINUTE` (default 60), `RATE_LIMIT_ORG_SCHEDULE_CREATE_PER_MINUTE` (default 20), and `RATE_LIMIT_USER_ORG_CREATE_PER_HOUR` (default 10). Uses Valkey when `VALKEY_URL` is set. Residual risk: without Valkey, limits are per-instance.
 
 ## 17. Daytona Cloud Sandbox (TM-DAYTONA)
 
