@@ -277,11 +277,11 @@ pub fn routes(state: AppState) -> Router {
         (
             status = 200,
             description = "Server-Sent Events stream. Each SSE message has the wire \
-                shape `event: <type>\\nid: <sequence>\\ndata: <json>\\n\\n`, where \
+                shape `event: <type>\\nid: <event_id>\\ndata: <json>\\n\\n`, where \
                 `<type>` is one of the event types in the `EventData` catalog \
                 (`turn.started`, `tool.completed`, `reason.thinking.delta`, …), \
-                `<sequence>` is a monotonically increasing per-session sequence id \
-                (usable as `since_id` on reconnect), and `<json>` is the body \
+                `<event_id>` is the event cursor (`event_{32-hex}` format, \
+                usable as `since_id` on reconnect), and `<json>` is the body \
                 schema below — a serialized `Event` whose `data` field carries \
                 the event-type-specific payload defined in `EventData`. Lifecycle \
                 framing events (`connected`, `disconnecting`) use the same SSE \
