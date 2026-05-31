@@ -43,8 +43,8 @@ AUTH_ADMIN_PASSWORD=<template input>
 ```
 
 Provider API keys are intentionally not template inputs. Configure provider
-keys in the Everruns UI after deployment, or add `DEFAULT_*` variables to the
-server service manually when a deployment should start with seeded defaults.
+keys in the Everruns UI after deployment (Settings → LLM Providers). Do not
+add raw provider keys as server environment variables.
 
 ## Caddy Service
 
@@ -99,16 +99,6 @@ WORKER_GRPC_AUTH_TOKEN=${{ secret(32) }}
 SECRETS_ENCRYPTION_KEY=kek-v1:${{ secret(43, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789+/") }}=
 
 PUBLIC_APP_URL=https://${{ caddy.RAILWAY_PUBLIC_DOMAIN }}
-```
-
-Optional LLM defaults. Do not include these in the public template form; add
-them manually to the server service only when a deployment should start with
-seeded provider defaults:
-
-```env
-DEFAULT_OPENAI_API_KEY=<manual server variable>
-DEFAULT_ANTHROPIC_API_KEY=<manual server variable>
-DEFAULT_GEMINI_API_KEY=<manual server variable>
 ```
 
 ## Worker Variables

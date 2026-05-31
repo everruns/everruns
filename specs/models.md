@@ -228,9 +228,8 @@ Key design points:
 - Supported types: `openai`, `azure_openai`, `openai_completions`, `anthropic`, `gemini`, `llmsim`
 - API keys encrypted with AES-256-GCM envelope encryption (see `specs/encryption.md`)
 
-**API Key Resolution Order:**
-1. **Database** (priority): Encrypted in `llm_providers.api_key_encrypted`
-2. **Environment Variable** (fallback): provider-specific `DEFAULT_*_API_KEY` (for example `DEFAULT_OPENAI_API_KEY`, `DEFAULT_AZURE_OPENAI_API_KEY`, `DEFAULT_ANTHROPIC_API_KEY`)
+**API Key Resolution:**
+Keys are resolved exclusively from the database (`llm_providers.api_key_encrypted`). The resolver is fail-closed: if no encrypted key is present, the call returns no credentials rather than falling back to environment variables. See `specs/saas-architecture.md` for the BYOK posture and why env fallbacks are not used.
 
 Default providers and models seeded on startup. See `crates/server/src/seed.rs` for default model configurations (idempotent, well-known UUIDs).
 
@@ -284,4 +283,4 @@ See `crates/server/src/storage/models.rs` for the `UserConnectionRow` type.
 | Where are capabilities defined? | In-memory registry in API layer |
 | How are capabilities applied? | Resolved at API/service layer, merged into RuntimeAgent |
 | Where are API keys stored? | Encrypted in database, decrypted at runtime |
-| Environment variables for API keys? | `DEFAULT_OPENAI_API_KEY` and `DEFAULT_ANTHROPIC_API_KEY` as fallbacks |
+| Environment variables for API keys? | Not used for execution. Keys are DB-only (fail-closed). |
