@@ -451,6 +451,11 @@ impl ServerAppBuilder {
         // instances. Each kind gets its own `ChannelRateLimiter` keyed on a
         // distinct namespace.
         let valkey_for_channel_rate_limits = valkey_client.clone();
+        // Cloned separately so API and org rate limiters can be initialized
+        // before valkey_client is moved into the auth backend below.
+        let valkey_for_api_rate_limits = valkey_client.clone();
+        let org_rate_limiter =
+            crate::auth::rate_limit::OrgRateLimiter::from_env_with_valkey(valkey_client.clone());
 
         let auth_backend = match self.auth_factory {
             Some(factory) => factory(db.clone(), platform_definition.clone()),
@@ -705,6 +710,7 @@ impl ServerAppBuilder {
             session_service = session_service.with_session_sandbox_service(service.clone());
         }
         sessions_state.session_service = Arc::new(session_service);
+        sessions_state.org_rate_limiter = org_rate_limiter.clone();
         let session_sandbox_state = session_sandbox_service.as_ref().map(|sandbox_service| {
             api::session_sandbox::AppState::new(
                 db.clone(),
@@ -1006,19 +1012,23 @@ impl ServerAppBuilder {
             messages_state.session_service.clone(),
             messages_state.message_service.clone(),
         );
-        let schedules_state = api::schedules::routes(api::schedules::ScheduleAppState::new(
-            db.clone(),
-            durable_store.clone(),
-            auth_state.clone(),
-        ));
+        let schedules_state = api::schedules::routes(
+            api::schedules::ScheduleAppState::new(
+                db.clone(),
+                durable_store.clone(),
+                auth_state.clone(),
+            )
+            .with_org_rate_limiter(org_rate_limiter.clone()),
+        );
         let skills_state =
             api::skills::AppState::new(db.clone(), capability_service.clone(), auth_state.clone());
         let images_state = api::images::AppState::new(db.clone(), auth_state.clone());
-        let organizations_state = api::organizations::AppState::with_harnesses(
+        let mut organizations_state = api::organizations::AppState::with_harnesses(
             db.clone(),
             auth_state.clone(),
             platform_definition.built_in_harnesses().to_vec(),
         );
+        organizations_state.org_rate_limiter = org_rate_limiter.clone();
         let volumes_state = api::volumes::AppState::new(db.clone(), auth_state.clone());
         let memory_stores_state = api::memory_stores::AppState::new(db.clone(), auth_state.clone());
         let knowledge_bases_state =
@@ -1232,13 +1242,16 @@ impl ServerAppBuilder {
             api::common::problem_json_content_type,
         ));
 
+        let api_rate_limiter = crate::auth::rate_limit::ApiRateLimiter::from_env_with_valkey(
+            valkey_for_api_rate_limits,
+        );
         let api_routes = if crate::auth::rate_limit::ApiRateLimiter::is_disabled() {
             tracing::info!("API rate limiting disabled via RATE_LIMIT_API_REQUESTS_PER_MINUTE=0");
             api_routes
         } else {
-            let api_rate_limiter = crate::auth::rate_limit::ApiRateLimiter::from_env();
+            let limiter = api_rate_limiter.clone();
             api_routes.layer(axum::middleware::from_fn(move |req, next| {
-                let limiter = api_rate_limiter.clone();
+                let limiter = limiter.clone();
                 crate::auth::rate_limit::api_rate_limit_middleware(limiter, req, next)
             }))
         };
@@ -1260,9 +1273,9 @@ impl ServerAppBuilder {
         let root_routes = if crate::auth::rate_limit::ApiRateLimiter::is_disabled() {
             root_routes
         } else {
-            let root_rate_limiter = crate::auth::rate_limit::ApiRateLimiter::from_env();
+            let limiter = api_rate_limiter;
             root_routes.layer(axum::middleware::from_fn(move |req, next| {
-                let limiter = root_rate_limiter.clone();
+                let limiter = limiter.clone();
                 crate::auth::rate_limit::api_rate_limit_middleware(limiter, req, next)
             }))
         };

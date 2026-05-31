@@ -26,7 +26,7 @@ use utoipa::ToSchema;
 use uuid::Uuid;
 
 use super::common::{ApiResult, ErrorResponse, impl_auth_state};
-use crate::auth::{AuthState, PlatformUser};
+use crate::auth::{AuthState, PlatformUser, rate_limit::OrgRateLimiter};
 use crate::domains::common::{Command, Ctx};
 use crate::domains::schedules::{
     CreateSchedule, DeleteSchedule, GetExecution, GetSchedule, GetScheduleStats,
@@ -43,6 +43,7 @@ pub struct ScheduleAppState {
     db: Arc<StorageBackend>,
     store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
     auth: AuthState,
+    org_rate_limiter: OrgRateLimiter,
 }
 
 impl_auth_state!(ScheduleAppState);
@@ -54,7 +55,17 @@ impl ScheduleAppState {
         store: Option<Arc<dyn WorkflowEventStore + Send + Sync>>,
         auth: AuthState,
     ) -> Self {
-        Self { db, store, auth }
+        Self {
+            db,
+            store,
+            auth,
+            org_rate_limiter: OrgRateLimiter::default(),
+        }
+    }
+
+    pub fn with_org_rate_limiter(mut self, limiter: OrgRateLimiter) -> Self {
+        self.org_rate_limiter = limiter;
+        self
     }
 
     /// Get the store, returning an error response if not available
@@ -537,6 +548,19 @@ pub async fn create_schedule(
     State(state): State<ScheduleAppState>,
     Json(req): Json<CreateScheduleRequest>,
 ) -> Result<(StatusCode, Json<ScheduleResponse>), (StatusCode, Json<ErrorResponse>)> {
+    if state
+        .org_rate_limiter
+        .check_schedule_create(auth.0.id)
+        .await
+        .is_err()
+    {
+        return Err(
+            ErrorResponse::new("Too many requests. Please try again later.")
+                .with_code("rate_limited")
+                .with_retry_after(60)
+                .into_response(StatusCode::TOO_MANY_REQUESTS),
+        );
+    }
     let schedule = CreateSchedule(req).run(&state.ctx(&auth)?).await?;
     Ok((StatusCode::CREATED, Json(schedule)))
 }

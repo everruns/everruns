@@ -2,7 +2,7 @@
 // Routes use ResolvedOrg: org derived from auth context (API key or cookie)
 // Policy enforcement happens at the service layer via #[policy] macro.
 
-use crate::auth::{AuthState, ResolvedOrg};
+use crate::auth::{AuthState, ResolvedOrg, rate_limit::OrgRateLimiter};
 use crate::domains::common::{Command, Ctx};
 use crate::domains::sessions::{
     CancelSession, CreateSession, DeleteSession, GetOrCreateChatSession, GetSession,
@@ -275,6 +275,7 @@ pub struct AppState {
     pub fallback_default_harness_name: Option<String>,
     pub chat_harness_name: Option<String>,
     pub chat_session_title: Option<String>,
+    pub org_rate_limiter: OrgRateLimiter,
 }
 
 impl AppState {
@@ -313,6 +314,7 @@ impl AppState {
             chat_session_title: platform_definition
                 .harness_for_role(BuiltInHarnessRole::Chat)
                 .map(|h| h.display_name.clone()),
+            org_rate_limiter: OrgRateLimiter::default(),
         }
     }
 
@@ -450,6 +452,19 @@ pub async fn create_session(
     State(state): State<AppState>,
     Json(req): Json<CreateSessionRequest>,
 ) -> Result<(StatusCode, Json<WithUrls<Session>>), (StatusCode, Json<ErrorResponse>)> {
+    if state
+        .org_rate_limiter
+        .check_session_create(org.org_id)
+        .await
+        .is_err()
+    {
+        return Err(
+            ErrorResponse::new("Too many requests. Please try again later.")
+                .with_code("rate_limited")
+                .with_retry_after(60)
+                .into_response(StatusCode::TOO_MANY_REQUESTS),
+        );
+    }
     let urls = UrlBuilder::from_auth_config(&state.auth.config);
     let session = CreateSession(req).run(&state.ctx(&org)).await?;
 
