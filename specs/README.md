@@ -87,6 +87,7 @@ Specs capture the "why" and "what", not exhaustive source detail. Link to code f
 ## Infrastructure and operations
 
 - `specs/production-deployment.md` - Production deployment aggregation and reverse proxy contract
+- `specs/saas-architecture.md` - SaaS-specific deployment posture: BYOK, fail-closed key resolution, pre-signup checklist
 - `specs/migrations.md` - Database migration naming, squashing, ordering, conflict resolution
 - `specs/durable-execution-engine.md` - PostgreSQL-backed durable workflow engine
 - `specs/scheduled-tasks.md` - Cron-based scheduled tasks

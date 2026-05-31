@@ -17,9 +17,9 @@
 #   2. Create .env file with:
 #      SECRETS_ENCRYPTION_KEY=kek-v1:<your-generated-key>
 #      WORKER_GRPC_AUTH_TOKEN=<your-token>  # Required: worker gRPC auth token
-#      DEFAULT_OPENAI_API_KEY=sk-...        # Optional: OpenAI API key
-#      DEFAULT_ANTHROPIC_API_KEY=sk-ant-... # Optional: Anthropic API key
-#      DEFAULT_GEMINI_API_KEY=...           # Optional: Google Gemini API key
+#
+#      LLM provider API keys: configure after deployment via the Everruns UI
+#      (Settings → LLM Providers). Do not pass raw provider keys as env vars.
 #
 #   3. Start everything:
 #      docker compose -f docker-compose-full.yaml up -d
@@ -95,9 +95,6 @@ services:
       VALKEY_URL: redis://valkey:6379
       NATS_URL: nats://nats:4222
       SECRETS_ENCRYPTION_KEY: ${SECRETS_ENCRYPTION_KEY}
-      DEFAULT_OPENAI_API_KEY: ${DEFAULT_OPENAI_API_KEY:-}
-      DEFAULT_ANTHROPIC_API_KEY: ${DEFAULT_ANTHROPIC_API_KEY:-}
-      DEFAULT_GEMINI_API_KEY: ${DEFAULT_GEMINI_API_KEY:-}
       WORKER_GRPC_AUTH_TOKEN: ${WORKER_GRPC_AUTH_TOKEN:-}
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
     depends_on:
