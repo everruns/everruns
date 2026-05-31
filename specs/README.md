@@ -99,6 +99,7 @@ Specs capture the "why" and "what", not exhaustive source detail. Link to code f
 - `specs/notifications.md` - Generic user notifications
 - `specs/email.md` - Internal email delivery abstraction
 - `specs/egress.md` - Host-owned outbound network boundary and future gateway
+- `specs/user-hooks.md` - Operator-injected shell commands at lifecycle points
 - `specs/utility-llm.md` - Internal utility LLM service for capability internals
 - `specs/voice.md` - Voice Sessions
 - `specs/volumes.md` - Workspace Volumes
