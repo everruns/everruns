@@ -17,7 +17,7 @@ use governor::{Quota, RateLimiter, clock::DefaultClock, state::keyed::DashMapSta
 use std::net::SocketAddr;
 use std::{net::IpAddr, num::NonZeroU32, sync::Arc};
 
-use crate::valkey::ValkeyClient;
+use crate::valkey::{RateLimitCheckError, ValkeyClient};
 use uuid::Uuid;
 
 type KeyedLimiter = RateLimiter<IpAddr, DashMapStateStore<IpAddr>, DefaultClock>;
@@ -123,8 +123,13 @@ impl AuthRateLimiter {
                 let key = format!("rl:auth:{endpoint}:{ip}");
                 match client.check_rate_limit(&key, limit, WINDOW_SECS).await {
                     Ok(_remaining) => Ok(()),
-                    Err(()) => {
-                        tracing::warn!(ip = %ip, endpoint, "Rate limit exceeded (valkey)");
+                    // Auth: fail-closed on both exceeded and backend error.
+                    Err(RateLimitCheckError::Exceeded) => {
+                        tracing::warn!(ip = %ip, endpoint, "Auth rate limit exceeded (valkey)");
+                        Err(RateLimitError)
+                    }
+                    Err(RateLimitCheckError::BackendError) => {
+                        tracing::warn!(ip = %ip, endpoint, "Auth rate limit Valkey error — denying (fail-closed)");
                         Err(RateLimitError)
                     }
                 }
@@ -292,11 +297,12 @@ impl ApiRateLimiter {
                 let key = format!("rl:api:global:{ip}");
                 match client.check_rate_limit(&key, *limit, WINDOW_SECS).await {
                     Ok(_) => Ok(()),
-                    Err(()) => {
-                        // Fail-open: Valkey error → allow the request, log at debug.
-                        tracing::debug!(ip = %ip, "API rate limit Valkey error — failing open");
-                        Ok(())
+                    Err(RateLimitCheckError::Exceeded) => {
+                        tracing::debug!(ip = %ip, "API rate limit exceeded (valkey)");
+                        Err(RateLimitError)
                     }
+                    // Fail-open: Valkey backend error → allow the request.
+                    Err(RateLimitCheckError::BackendError) => Ok(()),
                 }
             }
         }
@@ -322,7 +328,7 @@ pub async fn api_rate_limit_middleware(
 // ============================================================================
 
 // TM-DOS: Per-identity rate limiting for expensive mutations.
-// Decision: Keyed by org_id for session creation, by user_id (i64 internal ID)
+// Decision: Keyed by org_id for session creation, by user UUID
 //   for schedule creation and org creation.
 // Decision: Fail-open on Valkey errors — same rationale as ApiRateLimiter.
 //   The DB-level resource caps (max_orgs_per_user, max_sessions_per_org) still
@@ -371,6 +377,15 @@ impl Default for OrgRateLimiter {
     }
 }
 
+/// Operation discriminant for `OrgRateLimiter::check_keyed`.
+/// Using an enum eliminates the `_ => Ok(())` silent bypass of unknown op strings.
+#[derive(Debug, Clone, Copy)]
+enum OrgOp {
+    SessionCreate,
+    ScheduleCreate,
+    OrgCreate,
+}
+
 impl OrgRateLimiter {
     pub fn from_env() -> Self {
         Self::from_env_with_valkey(None)
@@ -417,25 +432,25 @@ impl OrgRateLimiter {
 
     /// Check per-org session creation rate. Returns Err if exceeded.
     pub async fn check_session_create(&self, org_id: i64) -> Result<(), RateLimitError> {
-        self.check_keyed("org:session_create", org_id.to_string(), ORG_WINDOW_SECS)
+        self.check_keyed(OrgOp::SessionCreate, org_id.to_string(), ORG_WINDOW_SECS)
             .await
     }
 
     /// Check per-user schedule creation rate (keyed by user UUID). Returns Err if exceeded.
     pub async fn check_schedule_create(&self, user_id: Uuid) -> Result<(), RateLimitError> {
-        self.check_keyed("user:schedule_create", user_id.to_string(), ORG_WINDOW_SECS)
+        self.check_keyed(OrgOp::ScheduleCreate, user_id.to_string(), ORG_WINDOW_SECS)
             .await
     }
 
     /// Check per-user org creation rate (keyed by user UUID). Returns Err if exceeded.
     pub async fn check_org_create(&self, user_id: Uuid) -> Result<(), RateLimitError> {
-        self.check_keyed("user:org_create", user_id.to_string(), ORG_HOUR_SECS)
+        self.check_keyed(OrgOp::OrgCreate, user_id.to_string(), ORG_HOUR_SECS)
             .await
     }
 
     async fn check_keyed(
         &self,
-        op: &str,
+        op: OrgOp,
         id: String,
         window_secs: u64,
     ) -> Result<(), RateLimitError> {
@@ -446,15 +461,14 @@ impl OrgRateLimiter {
                 org_create,
             } => {
                 let limiter = match op {
-                    "org:session_create" => session_create,
-                    "user:schedule_create" => schedule_create,
-                    "user:org_create" => org_create,
-                    _ => return Ok(()),
+                    OrgOp::SessionCreate => session_create,
+                    OrgOp::ScheduleCreate => schedule_create,
+                    OrgOp::OrgCreate => org_create,
                 };
                 match limiter.check_key(&id) {
                     Ok(_) => Ok(()),
                     Err(_) => {
-                        tracing::warn!(op, %id, "Org/user rate limit exceeded (in-memory)");
+                        tracing::warn!(op = ?op, %id, "Org/user rate limit exceeded (in-memory)");
                         Err(RateLimitError)
                     }
                 }
@@ -466,21 +480,25 @@ impl OrgRateLimiter {
                 org_create_limit,
             } => {
                 let (key, limit) = match op {
-                    "org:session_create" => (format!("rl:{op}:{id}"), *session_create_limit),
-                    "user:schedule_create" => (format!("rl:{op}:{id}"), *schedule_create_limit),
-                    "user:org_create" => (format!("rl:{op}:{id}"), *org_create_limit),
-                    _ => return Ok(()),
+                    OrgOp::SessionCreate => {
+                        (format!("rl:org:session_create:{id}"), *session_create_limit)
+                    }
+                    OrgOp::ScheduleCreate => {
+                        (format!("rl:user:schedule_create:{id}"), *schedule_create_limit)
+                    }
+                    OrgOp::OrgCreate => {
+                        (format!("rl:user:org_create:{id}"), *org_create_limit)
+                    }
                 };
                 match client.check_rate_limit(&key, limit, window_secs).await {
                     Ok(_) => Ok(()),
-                    Err(()) => {
-                        // Exceeded is signaled as Err(()) regardless of the cause (limit hit or
-                        // Valkey error). We can't distinguish here, so treat both as exceeded.
-                        // For expensive-op limiters this is acceptable: a brief Valkey blip
-                        // may return false positives, but the DB resource caps still apply.
-                        tracing::warn!(op, %id, "Org/user rate limit exceeded (valkey)");
+                    Err(RateLimitCheckError::Exceeded) => {
+                        tracing::warn!(op = ?op, %id, "Org/user rate limit exceeded (valkey)");
                         Err(RateLimitError)
                     }
+                    // Fail-open: Valkey backend error → allow the request.
+                    // DB-level resource caps still apply; rate limiter only adds velocity control.
+                    Err(RateLimitCheckError::BackendError) => Ok(()),
                 }
             }
         }
@@ -636,7 +654,19 @@ mod tests {
 
     #[tokio::test]
     async fn org_rate_limiter_session_create_allows_initial() {
-        let limiter = OrgRateLimiter::from_env();
+        let limiter = OrgRateLimiter {
+            backend: OrgBackend::InMemory {
+                session_create: Arc::new(RateLimiter::keyed(Quota::per_minute(
+                    NonZeroU32::new(60).unwrap(),
+                ))),
+                schedule_create: Arc::new(RateLimiter::keyed(Quota::per_minute(
+                    NonZeroU32::new(20).unwrap(),
+                ))),
+                org_create: Arc::new(RateLimiter::keyed(Quota::per_hour(
+                    NonZeroU32::new(10).unwrap(),
+                ))),
+            },
+        };
         assert!(limiter.check_session_create(1).await.is_ok());
     }
 

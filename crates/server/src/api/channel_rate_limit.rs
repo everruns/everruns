@@ -27,7 +27,7 @@ use std::sync::Arc;
 use governor::{Quota, RateLimiter, clock::DefaultClock, state::keyed::DashMapStateStore};
 use parking_lot::RwLock;
 
-use crate::valkey::ValkeyClient;
+use crate::valkey::{RateLimitCheckError, ValkeyClient};
 
 type KeyedLimiter = RateLimiter<IpAddr, DashMapStateStore<IpAddr>, DefaultClock>;
 
@@ -131,7 +131,7 @@ impl ChannelRateLimiter {
                 let key = format!("rl:{}:{scope}:{ip}", self.namespace);
                 match client.check_rate_limit(&key, limit, WINDOW_SECS).await {
                     Ok(_remaining) => Ok(()),
-                    Err(()) => {
+                    Err(RateLimitCheckError::Exceeded) => {
                         tracing::warn!(
                             namespace = %self.namespace,
                             scope = %scope,
@@ -141,6 +141,8 @@ impl ChannelRateLimiter {
                         );
                         Err(RateLimitError)
                     }
+                    // Fail-open: Valkey backend error → allow the request.
+                    Err(RateLimitCheckError::BackendError) => Ok(()),
                 }
             }
         }
