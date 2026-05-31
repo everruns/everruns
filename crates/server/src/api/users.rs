@@ -390,6 +390,9 @@ pub async fn switch_org(
 #[utoipa::path(
     delete,
     path = "/v1/users/me",
+    extensions(
+        ("x-side-effect" = json!("irreversible")),
+    ),
     responses(
         (status = 200, description = "Account deleted", body = DeleteAccountResponse),
         (status = 401, description = "Unauthorized"),

@@ -13,8 +13,8 @@ consumers ignore them unchanged.
 
 | Field             | Type             | Closed values                            | Default if unset       | Purpose                                                                            |
 | ----------------- | ---------------- | ---------------------------------------- | ---------------------- | ---------------------------------------------------------------------------------- |
-| `x-side-effect`   | enum             | `none` / `reversible` / `irreversible`   | `reversible`           | Worst-case mutation surface of the operation.                                       |
-| `x-cost-tier`     | enum             | `free` / `paid`                          | `free`                 | Whether invoking the operation can incur LLM token spend or other billed services. |
+| `x-side-effect`   | enum             | `none` / `reversible` / `irreversible`   | `irreversible`         | Worst-case mutation surface of the operation.                                       |
+| `x-cost-tier`     | enum             | `free` / `paid`                          | `paid`                 | Whether invoking the operation can incur LLM token spend or other billed services. |
 | `x-llm-prefer`    | enum             | `prefer` / `neutral` / `avoid`           | `neutral`              | Routing hint when multiple operations achieve a similar outcome.                    |
 | `x-llm-rationale` | string           | free-form, one sentence                  | (omitted)              | Surfaces alongside `x-llm-prefer != neutral` to explain the recommendation.        |
 | `x-error-codes`   | array of strings | `ErrorResponse.code` values              | (omitted)              | Closed set of `code` values this operation can emit.                                |
@@ -29,10 +29,10 @@ fields that are present.
   `PUT`, `PATCH`, `DELETE`). Use `irreversible` on hard-delete /
   rotate-credentials / destructive bash; `reversible` on soft-delete,
   archive, pause, unarchive, undo-eligible writes.
-* **`x-cost-tier`** — set `paid` on any operation that drives LLM
-  inference (`agent_run`, `session_send_message`, voice sessions,
-  `discover`/`execute` when they invoke an agent). Default `free` is
-  fine for everything else.
+* **`x-cost-tier`** — default is `paid` (fail-closed). Tag `free`
+  explicitly on read-only or definitively non-billed operations.
+  Operations that drive LLM inference (`agent_run`, `session_send_message`,
+  voice sessions, `discover`/`execute`) can omit the tag.
 * **`x-llm-prefer`** — set `avoid` on hard-delete or other
   semantically-destructive operations that have a safer alternative
   (e.g. `delete_agent` → recommend `archive` instead). Set `prefer`
@@ -50,10 +50,10 @@ fields that are present.
 
 ## Where defaults stop and tags start
 
-Tagging is not exhaustive — only operations that **differ from the
-default** need a tag. An LLM client treats absent tags as the
-default value, so leaving "reversible / free / neutral" implicit is
-the convention.
+Tagging is not exhaustive for preference/error/supersession hints, but
+side-effect and cost defaults are intentionally fail-closed. An LLM
+client treats absent tags as "irreversible / paid / neutral" by
+default, then uses explicit tags to relax that classification when safe.
 
 ## utoipa wiring
 
