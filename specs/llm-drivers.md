@@ -375,10 +375,13 @@ The `LlmDriver` trait includes `supports_compact()` and `compact()` methods. See
 All API key resolution for tenant/org-scoped execution flows through
 `crates/server/src/services/llm_resolver.rs`. The contract is **fail-closed**:
 
-1. If the provider has an encrypted key in the database, decrypt and use it.
-2. If no database key is found (absent, decryption failed, or encryption service
-   unavailable), resolve to `None`.
-3. Callers receiving `None` MUST surface a "no provider configured" error to the
+1. If the provider has an encrypted key in the database and the encryption service
+   is available, decrypt and return it. If decryption fails the call returns `Err`
+   (not `None`).
+2. If the provider has an encrypted key but the encryption service is unavailable,
+   log a warning and return `None` (not `Err`).
+3. If no database key is stored at all, return `None`.
+4. Callers receiving `None` MUST surface a "no provider configured" error to the
    tenant — they must not fall through to environment variable reads.
 
 **Why**: With a platform-level `DEFAULT_*_API_KEY` present on the server host, an

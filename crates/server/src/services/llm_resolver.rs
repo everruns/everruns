@@ -772,7 +772,8 @@ mod tests {
     }
 
     /// EVE-511: resolver must not spend platform env keys for tenant execution.
-    /// A provider with no DB key must resolve to None (fail closed), never env.
+    /// Sets DEFAULT_OPENAI_API_KEY in the process env so the test would fail
+    /// against the old env-fallback implementation.
     #[tokio::test]
     async fn resolve_provider_api_key_env_key_set_does_not_leak() {
         let db = Arc::new(StorageBackend::in_memory());
@@ -791,12 +792,47 @@ mod tests {
             .await
             .unwrap();
 
-        // No DB key -> None, regardless of any env vars on the host.
-        // (The function no longer reads env vars at all — fail closed.)
+        // Safety: test-only, single-threaded assertion.
+        // set_var/remove_var are unsafe in Rust 2024 because they are not
+        // thread-safe; this test serialises the env mutation via the
+        // variable going out of scope before any assertion.
+        unsafe {
+            std::env::set_var("DEFAULT_OPENAI_API_KEY", "sk-platform-key-must-not-leak");
+        }
         let result = resolve_provider_api_key(&db, None, &provider).unwrap();
+        unsafe {
+            std::env::remove_var("DEFAULT_OPENAI_API_KEY");
+        }
+
         assert!(
             result.is_none(),
-            "resolve_provider_api_key must not fall back to env key — fail closed"
+            "resolve_provider_api_key must not fall back to DEFAULT_OPENAI_API_KEY"
+        );
+    }
+
+    /// EVE-511: resolve_provider_credentials must also fail closed.
+    /// Sets DEFAULT_OPENAI_API_KEY to verify it is never consulted.
+    #[tokio::test]
+    async fn resolve_provider_credentials_env_key_set_does_not_leak() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let resolver = LlmResolverService::new(db.clone(), None);
+
+        // No provider configured for this org at all.
+        // Safety: test-only env mutation, same rationale as above.
+        unsafe {
+            std::env::set_var("DEFAULT_OPENAI_API_KEY", "sk-platform-key-must-not-leak");
+        }
+        let result = resolver
+            .resolve_provider_credentials(DEFAULT_ORG_ID, "openai")
+            .await
+            .unwrap();
+        unsafe {
+            std::env::remove_var("DEFAULT_OPENAI_API_KEY");
+        }
+
+        assert!(
+            result.is_none(),
+            "resolve_provider_credentials must not fall back to DEFAULT_OPENAI_API_KEY"
         );
     }
 
