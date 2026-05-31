@@ -741,6 +741,7 @@ pub trait ToolCallHook: Send + Sync {
     Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
 )]
 #[cfg_attr(feature = "openapi", derive(utoipa::ToSchema))]
+#[cfg_attr(feature = "openapi", schema(example = "low"))]
 #[serde(rename_all = "lowercase")]
 pub enum RiskLevel {
     /// No special approval needed

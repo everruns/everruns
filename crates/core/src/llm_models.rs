@@ -14,6 +14,7 @@ use utoipa::ToSchema;
 /// LLM provider type
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[cfg_attr(feature = "openapi", schema(example = "anthropic"))]
 #[serde(rename_all = "snake_case")]
 pub enum LlmProviderType {
     /// OpenAI using Open Responses API (<https://www.openresponses.org/>)
@@ -79,6 +80,7 @@ pub enum LlmProviderStatus {
 /// How the model was added to the system
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
+#[cfg_attr(feature = "openapi", schema(example = "predefined"))]
 #[serde(rename_all = "snake_case")]
 pub enum LlmModelSource {
     /// User-created via API or UI
@@ -195,7 +197,7 @@ pub struct LlmModelWithProvider {
     #[cfg_attr(feature = "openapi", schema(example = true))]
     pub enabled: bool,
     /// How this model entry was added (manually, discovered, or seeded as predefined).
-    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "predefined"))]
+    #[cfg_attr(feature = "openapi", schema(example = "predefined"))]
     pub source: LlmModelSource,
     /// Timestamp when this model was created (RFC 3339).
     #[cfg_attr(feature = "openapi", schema(example = "2026-01-04T11:23:00Z"))]
@@ -207,7 +209,7 @@ pub struct LlmModelWithProvider {
     #[cfg_attr(feature = "openapi", schema(example = "Anthropic"))]
     pub provider_name: String,
     /// Joined provider implementation type.
-    #[cfg_attr(feature = "openapi", schema(value_type = String, example = "anthropic"))]
+    #[cfg_attr(feature = "openapi", schema(example = "anthropic"))]
     pub provider_type: LlmProviderType,
     /// Derived: model is configured and ready for use. Currently means the
     /// joined provider is active and has an API key set; over time this may

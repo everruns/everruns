@@ -12810,9 +12810,8 @@
             "example": "Session File System"
           },
           "risk_level": {
-            "type": "string",
-            "description": "TM-AGENT-005: Risk level. High-risk capabilities require admin approval.",
-            "example": "low"
+            "$ref": "#/components/schemas/RiskLevel",
+            "description": "TM-AGENT-005: Risk level. High-risk capabilities require admin approval."
           },
           "status": {
             "type": "string",
@@ -18010,9 +18009,8 @@
                   "example": "Session File System"
                 },
                 "risk_level": {
-                  "type": "string",
-                  "description": "TM-AGENT-005: Risk level. High-risk capabilities require admin approval.",
-                  "example": "low"
+                  "$ref": "#/components/schemas/RiskLevel",
+                  "description": "TM-AGENT-005: Risk level. High-risk capabilities require admin approval."
                 },
                 "status": {
                   "type": "string",
@@ -19864,14 +19862,12 @@
                       "example": "Anthropic"
                     },
                     "provider_type": {
-                      "type": "string",
-                      "description": "Joined provider implementation type.",
-                      "example": "anthropic"
+                      "$ref": "#/components/schemas/LlmProviderType",
+                      "description": "Joined provider implementation type."
                     },
                     "source": {
-                      "type": "string",
-                      "description": "How this model entry was added (manually, discovered, or seeded as predefined).",
-                      "example": "predefined"
+                      "$ref": "#/components/schemas/LlmModelSource",
+                      "description": "How this model entry was added (manually, discovered, or seeded as predefined)."
                     },
                     "updated_at": {
                       "type": "string",
@@ -21118,7 +21114,8 @@
           "manual",
           "discovered",
           "predefined"
-        ]
+        ],
+        "example": "predefined"
       },
       "LlmModelWithProvider": {
         "type": "object",
@@ -21210,14 +21207,12 @@
             "example": "Anthropic"
           },
           "provider_type": {
-            "type": "string",
-            "description": "Joined provider implementation type.",
-            "example": "anthropic"
+            "$ref": "#/components/schemas/LlmProviderType",
+            "description": "Joined provider implementation type."
           },
           "source": {
-            "type": "string",
-            "description": "How this model entry was added (manually, discovered, or seeded as predefined).",
-            "example": "predefined"
+            "$ref": "#/components/schemas/LlmModelSource",
+            "description": "How this model entry was added (manually, discovered, or seeded as predefined)."
           },
           "updated_at": {
             "type": "string",
@@ -21331,7 +21326,8 @@
           "anthropic",
           "gemini",
           "llmsim"
-        ]
+        ],
+        "example": "anthropic"
       },
       "LlmRequestOptions": {
         "type": "object",
@@ -22851,9 +22847,8 @@
                       "example": "Session File System"
                     },
                     "risk_level": {
-                      "type": "string",
-                      "description": "TM-AGENT-005: Risk level. High-risk capabilities require admin approval.",
-                      "example": "low"
+                      "$ref": "#/components/schemas/RiskLevel",
+                      "description": "TM-AGENT-005: Risk level. High-risk capabilities require admin approval."
                     },
                     "status": {
                       "type": "string",
@@ -25053,6 +25048,16 @@
             "minimum": 0
           }
         }
+      },
+      "RiskLevel": {
+        "type": "string",
+        "description": "Risk classification for capabilities (TM-AGENT-005).\n\nUsed to enforce approval requirements when assigning capabilities.",
+        "enum": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "example": "low"
       },
       "RollbackAgentVersionRequest": {
         "type": "object",
@@ -29909,9 +29914,8 @@
                 "example": "Session File System"
               },
               "risk_level": {
-                "type": "string",
-                "description": "TM-AGENT-005: Risk level. High-risk capabilities require admin approval.",
-                "example": "low"
+                "$ref": "#/components/schemas/RiskLevel",
+                "description": "TM-AGENT-005: Risk level. High-risk capabilities require admin approval."
               },
               "status": {
                 "type": "string",
@@ -30455,14 +30459,12 @@
                 "example": "Anthropic"
               },
               "provider_type": {
-                "type": "string",
-                "description": "Joined provider implementation type.",
-                "example": "anthropic"
+                "$ref": "#/components/schemas/LlmProviderType",
+                "description": "Joined provider implementation type."
               },
               "source": {
-                "type": "string",
-                "description": "How this model entry was added (manually, discovered, or seeded as predefined).",
-                "example": "predefined"
+                "$ref": "#/components/schemas/LlmModelSource",
+                "description": "How this model entry was added (manually, discovered, or seeded as predefined)."
               },
               "updated_at": {
                 "type": "string",
