@@ -44,7 +44,7 @@ Auto-registered via `inventory` plugin system. Each crate has a `SPEC.md`.
 | DuckDuckGo | [`integrations/duckduckgo/SPEC.md`](../integrations/duckduckgo/SPEC.md) | Instant answers via DuckDuckGo API. Experimental (Dev only). |
 | GitHub | [`integrations/github/SPEC.md`](../integrations/github/SPEC.md) | GitHub Scout blueprint capability for read-only repository exploration. |
 | Browserless | [`integrations/browserless/SPEC.md`](../integrations/browserless/SPEC.md) | Cloud browser automation — screenshots, DOM, scraping, multi-step interactions. REST and CDP modes. |
-| E2B | [`integrations/e2b/SPEC.md`](../integrations/e2b/SPEC.md) | Cloud sandbox environments via E2B management API + envd runtime endpoints. Platform-owned token, multiple sandboxes per session. |
+| E2B | [`integrations/e2b/SPEC.md`](../integrations/e2b/SPEC.md) | Cloud sandbox environments via E2B management API + envd runtime endpoints. BYO API key via connection provider, multiple sandboxes per session. |
 | Daytona | [`integrations/daytona/SPEC.md`](../integrations/daytona/SPEC.md) | Cloud sandbox environments via Daytona REST API. Multiple sandboxes per session. |
 | Deno | [`integrations/deno/SPEC.md`](../integrations/deno/SPEC.md) | Cloud sandbox environments via Deno websocket sandbox API. Multiple sandboxes per session. |
 | Sprites | [`integrations/sprites/SPEC.md`](../integrations/sprites/SPEC.md) | Persistent Firecracker microVMs via Sprites (Fly.io). Persistent filesystem, checkpoints, HTTP services. |

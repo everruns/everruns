@@ -1,23 +1,25 @@
 //! E2B Integration
 //!
-//! Cloud sandboxes backed by E2B. This integration intentionally uses a
-//! platform-owned API key (`E2B_API_KEY`) from the server/worker environment
-//! instead of user connections because E2B sandboxes are provisioned as shared
-//! platform infrastructure, not per-user third-party accounts.
+//! Cloud sandboxes backed by E2B. Users bring their own E2B API key via the
+//! connection provider; no platform-owned or environment-variable fallback.
 //! Decision: external integration crate, auto-registered via inventory.
-//! Decision: global env-backed API key with optional per-session secret override.
+//! Decision: BYO API-key connection model — credentials resolve from user
+//!   connection only; fail with ConnectionRequired if not configured.
 //! Decision: session-scoped sandbox state + leased-resource cleanup, similar to Daytona.
 
 pub mod client;
+pub mod connection;
 pub mod state;
 mod tools;
 
 use everruns_core::LEASED_RESOURCES_FEATURE;
 use everruns_core::capabilities::{Capability, CapabilityStatus, IntegrationPlugin, RiskLevel};
+use everruns_core::connection_provider::ConnectionProviderPlugin;
 use everruns_core::tools::Tool;
 
 use std::sync::LazyLock;
 
+use connection::E2BConnectionProvider;
 use tools::{
     E2BCreateSandboxTool, E2BExecTool, E2BListSandboxesTool, E2BManageSandboxTool, E2BReadFileTool,
     E2BWriteFileTool,
@@ -31,8 +33,14 @@ inventory::submit! {
     }
 }
 
+inventory::submit! {
+    ConnectionProviderPlugin {
+        experimental_only: false,
+        factory: || Box::new(E2BConnectionProvider),
+    }
+}
+
 pub const E2B_API_BASE: &str = "https://api.e2b.app";
-pub const E2B_API_KEY_SECRET: &str = "E2B_API_KEY";
 pub const E2B_SANDBOX_SECRET_PREFIX: &str = "e2b_sandbox:";
 pub const E2B_DEFAULT_TEMPLATE: &str = "base";
 pub const E2B_DEFAULT_TIMEOUT_SECS: u64 = 60 * 60;

@@ -2,7 +2,7 @@
 
 ## Abstract
 
-The E2B capability integrates [E2B](https://e2b.dev/docs) cloud sandboxes as an agent execution environment. Agents can create, pause, resume, delete, and interact with isolated Linux environments per session. The implementation intentionally uses a **platform-owned** `E2B_API_KEY` from the server/worker environment instead of per-user connections.
+The E2B capability integrates [E2B](https://e2b.dev/docs) cloud sandboxes as an agent execution environment. Agents can create, pause, resume, delete, and interact with isolated Linux environments per session. Users bring their own E2B API key via the connection provider; no platform-owned or environment-variable fallback is accepted.
 
 **Status**: Available (All environments)
 
@@ -19,15 +19,15 @@ The Everruns integration mirrors Daytona's session-scoped state model, but uses 
 
 ## Authentication Model
 
-### Why global env-backed auth
+### BYO API Key
 
-E2B sandboxes are treated as **platform infrastructure** rather than user-owned external accounts:
+Users connect their own E2B account via the connection provider (API key form). Credential resolution:
 
-1. The control plane and workers read `E2B_API_KEY` from environment (Doppler in cloud agents).
-2. A per-session secret named `E2B_API_KEY` may override the env var for testing or custom deployments.
-3. Agents never ask end users to paste E2B credentials in chat.
+1. The E2B tool calls resolve the API key from the session's `e2b` user connection.
+2. If no connection is configured, the tool returns `ConnectionRequired`, triggering the inline connection dialog.
+3. There is no env-var or platform-wide fallback. Every E2B operation requires a user-provided key.
 
-This keeps credentials out of message history and avoids adding user-connections UI for a platform-managed service.
+This keeps credentials out of message history and scopes sandbox costs and quotas to each user's E2B account.
 
 ## State Management
 
@@ -115,7 +115,7 @@ This supports dashboard traceability, orphan cleanup, and audit review.
 
 ## Security
 
-- **Global API key** stays in environment/session secrets and never appears in tool output.
+- **API key** resolves from the user connection; never stored in env vars or emitted in tool output.
 - **envd access tokens** are session-scoped and stored only in encrypted session secrets.
 - **Sandbox isolation** depends on E2B runtime boundaries plus Everruns session-scoped secret lookups.
 - **Resource leak mitigation** uses E2B timeout + auto-pause plus Everruns leased-resource cleanup.
@@ -125,7 +125,7 @@ This supports dashboard traceability, orphan cleanup, and audit review.
 | Scenario | Result Type | Message |
 |---|---|---|
 | Missing required param | `ToolError` | `Missing required parameter: {name}` |
-| Missing API key | `ToolError` | `E2B API key not configured...` |
+| No E2B connection | `ConnectionRequired` | triggers inline connection dialog |
 | Missing sandbox state | `ToolError` | `Sandbox '{id}' not found...` |
 | E2B lifecycle/file/process error | `ToolError` | `E2B API error (...)` or sandbox-specific error |
 | Missing storage context | `ToolError` | `Storage not available in this context` |
@@ -146,6 +146,6 @@ Covers capability metadata, plugin registration, state serialization, and HTTP r
 E2B_API_KEY=<key> cargo test -p everruns-integrations-e2b --features e2b-live-tests --test live_api_test
 ```
 
-Exercises sandbox create → file write/read → command exec → cleanup against the real E2B service. Missing-credential behavior is **fail-closed**: with the feature flag on but `E2B_API_KEY` unset, the test panics (see `specs/integrations.md`).
+Exercises sandbox create → file write/read → command exec → cleanup against the real E2B service. The live test reads `E2B_API_KEY` directly from the environment (bypassing the connection provider), so you set the env var when running tests locally. Missing-credential behavior is **fail-closed**: with the feature flag on but `E2B_API_KEY` unset, the test panics (see `specs/integrations.md`).
 
 CI keeps E2B live coverage off `pull_request`: `.github/workflows/ci.yml` runs the live test only on pushes to `main` when `integrations/e2b/**` changes. `.github/workflows/integration-live-sweep.yml` reruns the same live path weekly and on demand to catch shared regressions that path filters miss.

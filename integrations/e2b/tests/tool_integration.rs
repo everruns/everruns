@@ -14,6 +14,7 @@ use everruns_core::leased_resource::{LeasedResource, LeasedResourceStatus, Upser
 use everruns_core::tools::{Tool, ToolExecutionResult};
 use everruns_core::traits::{
     KeyInfo, LeasedResourceStore, SecretInfo, SessionStorageStore, ToolContext,
+    UserConnectionResolver,
 };
 use everruns_core::typed_id::{LeasedResourceId, SessionId};
 use serde_json::json;
@@ -26,10 +27,10 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 // Force linker to include the integration crate.
 use everruns_integrations_e2b as _;
 
+use everruns_integrations_e2b::E2B_SANDBOX_SECRET_PREFIX;
 use everruns_integrations_e2b::E2BCapability;
 use everruns_integrations_e2b::client::E2BClient;
 use everruns_integrations_e2b::state::SandboxState;
-use everruns_integrations_e2b::{E2B_API_KEY_SECRET, E2B_SANDBOX_SECRET_PREFIX};
 
 // ============================================================================
 // Mock SessionStorageStore
@@ -200,6 +201,31 @@ impl LeasedResourceStore for MockLeasedResourceStore {
 }
 
 // ============================================================================
+// Mock ConnectionResolver
+// ============================================================================
+
+struct MockConnectionResolver {
+    token: Option<String>,
+}
+
+#[async_trait]
+impl UserConnectionResolver for MockConnectionResolver {
+    async fn get_connection_token(
+        &self,
+        _session_id: SessionId,
+        _provider: &str,
+    ) -> Result<Option<String>> {
+        Ok(self.token.clone())
+    }
+}
+
+fn e2b_resolver() -> Arc<dyn UserConnectionResolver> {
+    Arc::new(MockConnectionResolver {
+        token: Some("test_api_key".to_string()),
+    })
+}
+
+// ============================================================================
 // Helpers
 // ============================================================================
 
@@ -211,7 +237,7 @@ fn get_tool(name: &str) -> Box<dyn Tool> {
         .unwrap_or_else(|| panic!("Tool {name} not found"))
 }
 
-/// Seed sandbox state into the store. API key comes via session secret.
+/// Seed sandbox state into the store.
 async fn setup_context_with_sandbox(
     session_id: SessionId,
     store: &Arc<MockStorageStore>,
@@ -232,12 +258,6 @@ async fn setup_context_with_sandbox(
             &format!("{E2B_SANDBOX_SECRET_PREFIX}{sandbox_id}"),
             &serde_json::to_string(&state).unwrap(),
         )
-        .await;
-}
-
-async fn setup_api_key(session_id: SessionId, store: &Arc<MockStorageStore>) {
-    store
-        .seed_secret(session_id, E2B_API_KEY_SECRET, "test_api_key")
         .await;
 }
 
@@ -445,10 +465,10 @@ async fn test_exec_tool_missing_api_key() {
         .await;
 
     match result {
-        ToolExecutionResult::ToolError(msg) => {
-            assert!(msg.contains("API key not configured"), "Got: {msg}");
+        ToolExecutionResult::ConnectionRequired { provider } => {
+            assert_eq!(provider, "e2b");
         }
-        other => panic!("Expected ToolError, got: {other:?}"),
+        other => panic!("Expected ConnectionRequired, got: {other:?}"),
     }
 }
 
@@ -457,8 +477,8 @@ async fn test_exec_tool_missing_sandbox_state() {
     let tool = get_tool("e2b_exec");
     let session_id = SessionId::new();
     let store = Arc::new(MockStorageStore::new());
-    setup_api_key(session_id, &store).await;
-    let context = ToolContext::with_storage_store(session_id, store);
+    let context =
+        ToolContext::with_storage_store(session_id, store).with_connection_resolver(e2b_resolver());
 
     let result = tool
         .execute_with_context(
@@ -482,12 +502,12 @@ async fn test_exec_tool_rejects_cross_session_sandbox_id() {
     let attacker_session = SessionId::new();
     let store = Arc::new(MockStorageStore::new());
     let leased_resources = Arc::new(MockLeasedResourceStore::new());
-    setup_api_key(attacker_session, &store).await;
     leased_resources
         .seed_active(owner_session, "e2b", "sandbox", "sb_foreign")
         .await;
 
     let context = ToolContext::with_storage_store(attacker_session, store)
+        .with_connection_resolver(e2b_resolver())
         .with_leased_resource_store(leased_resources);
 
     let result = tool
@@ -513,8 +533,8 @@ async fn test_exec_tool_missing_command_param() {
     let tool = get_tool("e2b_exec");
     let session_id = SessionId::new();
     let store = Arc::new(MockStorageStore::new());
-    setup_api_key(session_id, &store).await;
-    let context = ToolContext::with_storage_store(session_id, store);
+    let context =
+        ToolContext::with_storage_store(session_id, store).with_connection_resolver(e2b_resolver());
 
     let result = tool
         .execute_with_context(json!({"sandbox_id": "sb_test"}), &context)
@@ -533,8 +553,8 @@ async fn test_exec_tool_missing_sandbox_id() {
     let tool = get_tool("e2b_exec");
     let session_id = SessionId::new();
     let store = Arc::new(MockStorageStore::new());
-    setup_api_key(session_id, &store).await;
-    let context = ToolContext::with_storage_store(session_id, store);
+    let context =
+        ToolContext::with_storage_store(session_id, store).with_connection_resolver(e2b_resolver());
 
     let result = tool
         .execute_with_context(json!({"command": "ls"}), &context)
@@ -553,8 +573,8 @@ async fn test_read_file_tool_missing_path() {
     let tool = get_tool("e2b_read_file");
     let session_id = SessionId::new();
     let store = Arc::new(MockStorageStore::new());
-    setup_api_key(session_id, &store).await;
-    let context = ToolContext::with_storage_store(session_id, store);
+    let context =
+        ToolContext::with_storage_store(session_id, store).with_connection_resolver(e2b_resolver());
 
     let result = tool
         .execute_with_context(json!({"sandbox_id": "sb_test"}), &context)
@@ -573,8 +593,8 @@ async fn test_write_file_tool_missing_content() {
     let tool = get_tool("e2b_write_file");
     let session_id = SessionId::new();
     let store = Arc::new(MockStorageStore::new());
-    setup_api_key(session_id, &store).await;
-    let context = ToolContext::with_storage_store(session_id, store);
+    let context =
+        ToolContext::with_storage_store(session_id, store).with_connection_resolver(e2b_resolver());
 
     let result = tool
         .execute_with_context(
@@ -596,9 +616,9 @@ async fn test_manage_sandbox_invalid_action() {
     let tool = get_tool("e2b_manage_sandbox");
     let session_id = SessionId::new();
     let store = Arc::new(MockStorageStore::new());
-    setup_api_key(session_id, &store).await;
     setup_context_with_sandbox(session_id, &store, "sb_test").await;
-    let context = ToolContext::with_storage_store(session_id, store);
+    let context =
+        ToolContext::with_storage_store(session_id, store).with_connection_resolver(e2b_resolver());
 
     let result = tool
         .execute_with_context(
@@ -689,7 +709,8 @@ async fn test_sandbox_state_persistence_roundtrip() {
 }
 
 #[tokio::test]
-async fn test_create_sandbox_tool_no_storage_context() {
+async fn test_create_sandbox_tool_no_connection() {
+    // Without a connection resolver, the tool returns ConnectionRequired.
     let tool = get_tool("e2b_create_sandbox");
     let session_id = SessionId::new();
     let context = ToolContext::new(session_id);
@@ -697,24 +718,24 @@ async fn test_create_sandbox_tool_no_storage_context() {
     let result = tool.execute_with_context(json!({}), &context).await;
 
     match result {
-        ToolExecutionResult::ToolError(msg) => {
-            assert!(msg.contains("API key not configured"), "Got: {msg}");
+        ToolExecutionResult::ConnectionRequired { provider } => {
+            assert_eq!(provider, "e2b");
         }
-        other => panic!("Expected ToolError, got: {other:?}"),
+        other => panic!("Expected ConnectionRequired, got: {other:?}"),
     }
 }
 
 #[tokio::test]
-async fn test_api_key_resolved_from_session_secret() {
-    // Verify that session-secret API key resolution works by contrasting
-    // behavior with and without a seeded E2B_API_KEY secret.
-    // Uses read_file which requires API key + sandbox state — the error
-    // changes from "API key not configured" to "not found" when the key
-    // is present, proving the resolution path works without any network call.
+async fn test_api_key_resolved_from_connection_resolver() {
+    // Verify that connection-resolver API key resolution works by contrasting
+    // behavior with and without a resolver. Uses read_file which requires
+    // API key + sandbox state — the error changes from ConnectionRequired to
+    // "not found" when the resolver is present, proving the resolution path
+    // works without any network call.
     let tool = get_tool("e2b_read_file");
     let session_id = SessionId::new();
 
-    // Without API key — should fail on key resolution
+    // Without connection resolver — should return ConnectionRequired
     let store_no_key = Arc::new(MockStorageStore::new());
     let ctx_no_key = ToolContext::with_storage_store(session_id, store_no_key);
     let result = tool
@@ -724,17 +745,17 @@ async fn test_api_key_resolved_from_session_secret() {
         )
         .await;
     match &result {
-        ToolExecutionResult::ToolError(msg) => {
-            assert!(msg.contains("API key not configured"), "Got: {msg}");
+        ToolExecutionResult::ConnectionRequired { provider } => {
+            assert_eq!(provider, "e2b");
         }
-        other => panic!("Expected ToolError about API key, got: {other:?}"),
+        other => panic!("Expected ConnectionRequired, got: {other:?}"),
     }
 
-    // With API key seeded as session secret — should get past key check
-    // and fail on missing sandbox state instead
+    // With connection resolver — should get past key check and fail on
+    // missing sandbox state instead
     let store_with_key = Arc::new(MockStorageStore::new());
-    setup_api_key(session_id, &store_with_key).await;
-    let ctx_with_key = ToolContext::with_storage_store(session_id, store_with_key);
+    let ctx_with_key = ToolContext::with_storage_store(session_id, store_with_key)
+        .with_connection_resolver(e2b_resolver());
     let result = tool
         .execute_with_context(
             json!({"sandbox_id": "sb_secret", "path": "/tmp/x"}),

@@ -194,7 +194,7 @@ async fn cleanup_resource(
     resolver: &dyn UserConnectionResolver,
     storage_store: &dyn SessionStorageStore,
 ) -> Result<String> {
-    let token = resolve_provider_token(resource, resolver, storage_store).await?;
+    let token = resolve_provider_token(resource, resolver).await?;
 
     match (resource.provider.as_str(), resource.resource_type.as_str()) {
         ("daytona", "sandbox") => cleanup_daytona(resource, storage_store, &token).await,
@@ -215,11 +215,7 @@ async fn cleanup_resource(
 async fn resolve_provider_token(
     resource: &LeasedResource,
     resolver: &dyn UserConnectionResolver,
-    storage_store: &dyn SessionStorageStore,
 ) -> Result<String> {
-    if resource.provider == "e2b" {
-        return resolve_e2b_api_key(resource, storage_store).await;
-    }
     if let Some(owner_user_id) = resource.owner_user_id
         && let Some(token) = resolver
             .get_connection_token_for_user(owner_user_id, &resource.provider)
@@ -236,42 +232,12 @@ async fn resolve_provider_token(
         return Ok(token);
     }
 
-    if resource.provider == "deno"
-        && let Ok(token) = std::env::var("DENO_DEPLOY_TOKEN")
-        && !token.is_empty()
-    {
-        return Ok(token);
-    }
-
     Err(anyhow!(
         "No provider token available for leased resource {} ({}/{})",
         resource.id,
         resource.provider,
         resource.resource_type
     ))
-}
-
-async fn resolve_e2b_api_key(
-    resource: &LeasedResource,
-    storage_store: &dyn SessionStorageStore,
-) -> Result<String> {
-    if let Some(session_id) = resource.session_id
-        && let Some(token) = storage_store.get_secret(session_id, "E2B_API_KEY").await?
-        && !token.trim().is_empty()
-    {
-        return Ok(token);
-    }
-
-    let env_token = std::env::var("E2B_API_KEY")
-        .map_err(|_| anyhow!("E2B_API_KEY not configured for leased resource cleanup"))?;
-
-    if env_token.trim().is_empty() {
-        return Err(anyhow!(
-            "E2B_API_KEY is set but empty/whitespace for leased resource cleanup"
-        ));
-    }
-
-    Ok(env_token)
 }
 
 async fn cleanup_daytona(
@@ -492,11 +458,6 @@ fn deno_cleanup_org(resource: &LeasedResource) -> Option<String> {
         .and_then(serde_json::Value::as_str)
         .filter(|org| !org.is_empty())
         .map(str::to_string)
-        .or_else(|| {
-            std::env::var("DENO_DEPLOY_ORG")
-                .ok()
-                .filter(|org| !org.is_empty())
-        })
 }
 
 fn is_deno_not_found(error: &str) -> bool {
@@ -514,113 +475,6 @@ fn is_browserless_already_gone(error: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::HashMap;
-    use std::sync::{Mutex, OnceLock};
-
-    use async_trait::async_trait;
-    use everruns_core::{KeyInfo, LeasedResourceStatus, SecretInfo};
-    use uuid::Uuid;
-
-    // Tests that mutate process-wide env vars (e.g. E2B_API_KEY) must not run
-    // in parallel; `cargo test` schedules them on separate threads by default.
-    // The async-aware tokio Mutex is required because the guard is held
-    // across `.await` points while env-var state has to remain stable.
-    fn env_mutex() -> &'static tokio::sync::Mutex<()> {
-        static LOCK: OnceLock<tokio::sync::Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(|| tokio::sync::Mutex::new(()))
-    }
-
-    struct TestSessionStorageStore {
-        secrets: Mutex<HashMap<(String, String), String>>,
-    }
-
-    impl TestSessionStorageStore {
-        fn with_secret(session_id: SessionId, name: &str, value: &str) -> Self {
-            let mut secrets = HashMap::new();
-            secrets.insert(
-                (session_id.to_string(), name.to_string()),
-                value.to_string(),
-            );
-            Self {
-                secrets: Mutex::new(secrets),
-            }
-        }
-
-        fn empty() -> Self {
-            Self {
-                secrets: Mutex::new(HashMap::new()),
-            }
-        }
-    }
-
-    #[async_trait]
-    impl SessionStorageStore for TestSessionStorageStore {
-        async fn set_value(
-            &self,
-            _session_id: SessionId,
-            _key: &str,
-            _value: &str,
-        ) -> everruns_core::Result<()> {
-            unimplemented!()
-        }
-
-        async fn get_value(
-            &self,
-            _session_id: SessionId,
-            _key: &str,
-        ) -> everruns_core::Result<Option<String>> {
-            unimplemented!()
-        }
-
-        async fn delete_value(
-            &self,
-            _session_id: SessionId,
-            _key: &str,
-        ) -> everruns_core::Result<bool> {
-            unimplemented!()
-        }
-
-        async fn list_keys(&self, _session_id: SessionId) -> everruns_core::Result<Vec<KeyInfo>> {
-            unimplemented!()
-        }
-
-        async fn set_secret(
-            &self,
-            _session_id: SessionId,
-            _name: &str,
-            _value: &str,
-        ) -> everruns_core::Result<()> {
-            unimplemented!()
-        }
-
-        async fn get_secret(
-            &self,
-            session_id: SessionId,
-            name: &str,
-        ) -> everruns_core::Result<Option<String>> {
-            Ok(self
-                .secrets
-                .lock()
-                .expect("test secrets lock poisoned")
-                .get(&(session_id.to_string(), name.to_string()))
-                .cloned())
-        }
-
-        async fn delete_secret(
-            &self,
-            _session_id: SessionId,
-            _name: &str,
-        ) -> everruns_core::Result<bool> {
-            unimplemented!()
-        }
-
-        async fn list_secrets(
-            &self,
-            _session_id: SessionId,
-        ) -> everruns_core::Result<Vec<SecretInfo>> {
-            unimplemented!()
-        }
-    }
 
     #[test]
     fn browserless_external_id_drops_query_string() {
@@ -651,124 +505,6 @@ mod tests {
         assert!(!is_browserless_already_gone(
             "CDP WebSocket connection failed: dns error"
         ));
-    }
-
-    #[tokio::test]
-    async fn e2b_cleanup_prefers_session_secret_override() {
-        let _guard = env_mutex().lock().await;
-        let session_id = SessionId::from_uuid(Uuid::nil());
-        let storage =
-            TestSessionStorageStore::with_secret(session_id, "E2B_API_KEY", "session-key");
-        let resource = LeasedResource {
-            id: Uuid::new_v4().into(),
-            session_id: Some(session_id),
-            provider: "e2b".to_string(),
-            resource_type: "sandbox".to_string(),
-            external_id: "sb_test".to_string(),
-            display_name: None,
-            status: LeasedResourceStatus::Active,
-            owner_user_id: None,
-            lease_duration_seconds: 60,
-            last_touched_at: chrono::Utc::now(),
-            metadata: serde_json::json!({}),
-            lease_expires_at: chrono::Utc::now(),
-            cleanup_started_at: None,
-            cleanup_completed_at: None,
-            cleanup_attempts: 0,
-            last_cleanup_error: None,
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-        };
-
-        unsafe {
-            std::env::set_var("E2B_API_KEY", "env-key");
-        }
-        let token = resolve_e2b_api_key(&resource, &storage)
-            .await
-            .expect("session override should resolve");
-        unsafe {
-            std::env::remove_var("E2B_API_KEY");
-        }
-
-        assert_eq!(token, "session-key");
-    }
-
-    #[tokio::test]
-    async fn e2b_cleanup_falls_back_to_env_key() {
-        let _guard = env_mutex().lock().await;
-        let session_id = SessionId::from_uuid(Uuid::nil());
-        let storage = TestSessionStorageStore::empty();
-        let resource = LeasedResource {
-            id: Uuid::new_v4().into(),
-            session_id: Some(session_id),
-            provider: "e2b".to_string(),
-            resource_type: "sandbox".to_string(),
-            external_id: "sb_test".to_string(),
-            display_name: None,
-            status: LeasedResourceStatus::Active,
-            owner_user_id: None,
-            lease_duration_seconds: 60,
-            last_touched_at: chrono::Utc::now(),
-            metadata: serde_json::json!({}),
-            lease_expires_at: chrono::Utc::now(),
-            cleanup_started_at: None,
-            cleanup_completed_at: None,
-            cleanup_attempts: 0,
-            last_cleanup_error: None,
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-        };
-
-        unsafe {
-            std::env::set_var("E2B_API_KEY", "env-key");
-        }
-        let token = resolve_e2b_api_key(&resource, &storage)
-            .await
-            .expect("env fallback should resolve");
-        unsafe {
-            std::env::remove_var("E2B_API_KEY");
-        }
-
-        assert_eq!(token, "env-key");
-    }
-
-    #[tokio::test]
-    async fn e2b_cleanup_rejects_blank_env_key() {
-        let _guard = env_mutex().lock().await;
-        let session_id = SessionId::from_uuid(Uuid::nil());
-        let storage = TestSessionStorageStore::empty();
-        let resource = LeasedResource {
-            id: Uuid::new_v4().into(),
-            session_id: Some(session_id),
-            provider: "e2b".to_string(),
-            resource_type: "sandbox".to_string(),
-            external_id: "sb_test".to_string(),
-            display_name: None,
-            status: LeasedResourceStatus::Active,
-            owner_user_id: None,
-            lease_duration_seconds: 60,
-            last_touched_at: chrono::Utc::now(),
-            metadata: serde_json::json!({}),
-            lease_expires_at: chrono::Utc::now(),
-            cleanup_started_at: None,
-            cleanup_completed_at: None,
-            cleanup_attempts: 0,
-            last_cleanup_error: None,
-            created_at: chrono::Utc::now(),
-            updated_at: chrono::Utc::now(),
-        };
-
-        unsafe {
-            std::env::set_var("E2B_API_KEY", "   ");
-        }
-        let error = resolve_e2b_api_key(&resource, &storage)
-            .await
-            .expect_err("blank env token should fail");
-        unsafe {
-            std::env::remove_var("E2B_API_KEY");
-        }
-
-        assert!(error.to_string().contains("empty/whitespace"));
     }
 
     #[test]
