@@ -170,6 +170,15 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
     ) -> Option<Arc<dyn PaymentAuthority>> {
         None
     }
+
+    /// Per-org outbound tool-call rate limiter (TM-TOOL-009).
+    /// Default: `None` (no rate limiting — suitable for in-process / test environments).
+    fn outbound_tool_rate_limiter(
+        &self,
+        _org_id: i64,
+    ) -> Option<Arc<dyn everruns_core::OutboundToolRateLimiter>> {
+        None
+    }
 }
 
 struct RuntimeExecutionCapabilities {
@@ -763,6 +772,9 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
     }
     if let Some(payment_authority) = adapter.payment_authority(org_id, input.agent_id) {
         atom = atom.with_payment_authority(payment_authority);
+    }
+    if let Some(limiter) = adapter.outbound_tool_rate_limiter(org_id) {
+        atom = atom.with_outbound_tool_rate_limiter(limiter);
     }
 
     atom.execute(input).await

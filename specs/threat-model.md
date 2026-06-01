@@ -430,7 +430,7 @@ fn authorizer(action: AuthAction) -> Authorization {
 | TM-TOOL-006 | Disabled MCP server still callable | Medium | Server `status` flag checked before execution; disabled servers rejected | MITIGATED |
 | TM-TOOL-007 | MCP API key exposure | High | API keys encrypted at rest via envelope encryption; decrypted only at runtime | MITIGATED |
 | TM-TOOL-008 | Tool policy bypass | Low | `requires_approval` policy planned but not yet enforced (all tools auto-execute) | **OPEN** |
-| TM-TOOL-009 | No per-agent tool rate limiting | Medium | All tools execute without rate limits | **OPEN** |
+| TM-TOOL-009 | No per-org tool rate limiting | Medium | `OutboundToolRateLimiter` trait wired into `ActAtom.execute_single_tool`; `OrgRateLimiter::check_outbound_tool_call` enforces 1000 RPM per org (in-memory governor or Valkey sliding window); limit tunable via `RATE_LIMIT_ORG_TOOL_CALLS_PER_MINUTE`; fail-open on Valkey errors to preserve availability | MITIGATED |
 | TM-TOOL-010 | Skill SKILL.md prompt injection | Medium | Skill instructions returned as `tool_result` role (not system prompt); `<skill>` XML wrapper provides clear boundary | MITIGATED |
 | TM-TOOL-011 | Skill archive path traversal | High | ZIP extraction validates all paths; rejects `../`, absolute paths, symlinks; max 100 files, 1 MB each, 10 MB total | MITIGATED |
 | TM-TOOL-012 | Skill archive zip bomb | High | Decompressed size capped at 10 MB; file count capped at 100; individual file size capped at 1 MB | MITIGATED |
@@ -1312,7 +1312,7 @@ Even with per-secret scoping, an attacker who controls a previously-approved for
 | ~~TM-AGENT-012~~ | ~~Tool result size amplification~~ | ~~Medium~~ | Mitigated: 64 KiB hard limit via `OutputHardLimitHook` (EVE-225) |
 | TM-FS-008 | No session storage quota | Medium | Enforce per-session file size limits |
 | TM-TOOL-008 | Tool approval not enforced | Low | Implement HITL approval for requires_approval policy |
-| TM-TOOL-009 | No tool rate limiting | Medium | Per-agent tool execution rate limits |
+| ~~TM-TOOL-009~~ | ~~No tool rate limiting~~ | ~~Medium~~ | Mitigated: per-org 1000 RPM via `OutboundToolRateLimiter` in `ActAtom` (EVE-514) |
 | TM-DOS-003 | SSE connection exhaustion | Medium | Global (10k), per-org (1k), per-session (5) limits enforced |
 | TM-AGENT-016 | Plaintext secrets in chat history | Medium | Prefer Settings UI; phase out in-chat secret collection |
 | TM-AGENT-017 | Agent-initiated entity management | High | Add RBAC for platform management; audit logging; recursion depth limits |

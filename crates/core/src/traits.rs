@@ -830,6 +830,21 @@ pub trait PaymentAuthority: Send + Sync {
     ) -> Result<crate::payment::MachinePaymentResponse>;
 }
 
+// OutboundToolRateLimiter - Per-org outbound tool-call rate limiting (TM-TOOL-009)
+// ============================================================================
+
+/// Per-org gate on outbound tool execution.
+///
+/// Returns `true` if the call is within the per-org budget, `false` if the
+/// org has exceeded its outbound tool rate limit for this window.
+/// Implementations must be fail-open: Valkey/backend errors should return `true`
+/// rather than blocking legitimate tool calls.
+#[async_trait]
+pub trait OutboundToolRateLimiter: Send + Sync {
+    /// Key by the public org UUID (keyed string representation).
+    async fn check_org(&self, org_id: &crate::typed_id::OrgId) -> bool;
+}
+
 /// Runtime context provided to tools during execution.
 ///
 /// This context contains:

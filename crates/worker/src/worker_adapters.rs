@@ -299,6 +299,16 @@ pub trait WorkerAdapters: Send + Sync + Clone + 'static {
         None
     }
 
+    /// Per-org outbound tool-call rate limiter (TM-TOOL-009).
+    /// Default: `None` (no rate limiting — suitable for dev/worker environments
+    /// that do not need the production limit).
+    fn outbound_tool_rate_limiter(
+        &self,
+        _org_id: i64,
+    ) -> Option<Arc<dyn everruns_core::OutboundToolRateLimiter>> {
+        None
+    }
+
     /// Invoke an app schedule channel when a durable schedule fires.
     async fn invoke_scheduled_app_channel(
         &self,

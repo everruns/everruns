@@ -1694,7 +1694,8 @@ impl ServerAppBuilder {
                 .with_egress_service(platform_definition.egress_service())
                 .with_virtual_registry(virtual_registry.clone())
                 .with_storage_store(session_storage_store)
-                .with_runner(runner.clone());
+                .with_runner(runner.clone())
+                .with_org_rate_limiter(Arc::new(org_rate_limiter.clone()));
 
                 // Wire lazy connection resolver (requires encryption for token decryption).
                 // Without encryption (e.g. DEV_MODE without SECRETS_ENCRYPTION_KEY) we cannot
