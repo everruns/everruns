@@ -37,6 +37,10 @@ pub struct FeatureFlags {
     /// Channels-first app detail page and full-page channel forms. Experimental.
     #[serde(rename = "apps.detailV2")]
     pub apps_detail_v2: bool,
+    /// Outbound agent delegation capabilities (`a2a_agent_delegation`, `agent_handoff`).
+    /// Experimental: auto-enabled in dev, off in prod by default.
+    /// When off, these capabilities are not registered and cannot be assigned to agents.
+    pub agent_delegation: bool,
 }
 
 impl FeatureFlags {
@@ -51,6 +55,7 @@ impl FeatureFlags {
             agent_versions: experimental_flag("FEATURE_AGENT_VERSIONS", grade),
             voice: experimental_flag("FEATURE_VOICE", grade),
             apps_detail_v2: experimental_flag("FEATURE_APPS_DETAIL_V2", grade),
+            agent_delegation: experimental_flag("FEATURE_AGENT_DELEGATION", grade),
         }
     }
 
@@ -71,6 +76,7 @@ impl FeatureFlags {
             "agent_versions" => self.agent_versions,
             "voice" => self.voice,
             "apps.detailV2" => self.apps_detail_v2,
+            "agent_delegation" => self.agent_delegation,
             _ => false,
         }
     }
@@ -87,6 +93,7 @@ impl FeatureFlags {
             agent_versions: true,
             voice: true,
             apps_detail_v2: true,
+            agent_delegation: true,
         }
     }
 }
@@ -222,6 +229,7 @@ mod tests {
             agent_versions: true,
             voice: true,
             apps_detail_v2: true,
+            agent_delegation: true,
         };
         assert!(flags.is_enabled("global_chat"));
         assert!(flags.is_enabled("notifications"));
@@ -231,6 +239,7 @@ mod tests {
         assert!(flags.is_enabled("agent_versions"));
         assert!(flags.is_enabled("voice"));
         assert!(flags.is_enabled("apps.detailV2"));
+        assert!(flags.is_enabled("agent_delegation"));
         assert!(!flags.is_enabled("nonexistent"));
     }
 
@@ -245,6 +254,7 @@ mod tests {
             agent_versions: true,
             voice: true,
             apps_detail_v2: true,
+            agent_delegation: true,
         };
         let json = serde_json::to_string(&flags).unwrap();
         assert!(json.contains("\"global_chat\":true"));
@@ -253,9 +263,35 @@ mod tests {
         assert!(json.contains("\"agent_versions\":true"));
         assert!(json.contains("\"voice\":true"));
         assert!(json.contains("\"apps.detailV2\":true"));
+        assert!(json.contains("\"agent_delegation\":true"));
 
         let parsed: FeatureFlags = serde_json::from_str(&json).unwrap();
         assert_eq!(flags, parsed);
+    }
+
+    #[test]
+    fn test_agent_delegation_enabled_in_dev() {
+        let _lock = lock_env();
+        unsafe { std::env::remove_var("FEATURE_AGENT_DELEGATION") };
+        let flags = FeatureFlags::from_env(&DeploymentGrade::Dev);
+        assert!(flags.agent_delegation);
+    }
+
+    #[test]
+    fn test_agent_delegation_disabled_in_prod() {
+        let _lock = lock_env();
+        unsafe { std::env::remove_var("FEATURE_AGENT_DELEGATION") };
+        let flags = FeatureFlags::from_env(&DeploymentGrade::Prod);
+        assert!(!flags.agent_delegation);
+    }
+
+    #[test]
+    fn test_agent_delegation_env_override_in_prod() {
+        let _lock = lock_env();
+        unsafe { std::env::set_var("FEATURE_AGENT_DELEGATION", "true") };
+        let flags = FeatureFlags::from_env(&DeploymentGrade::Prod);
+        assert!(flags.agent_delegation);
+        unsafe { std::env::remove_var("FEATURE_AGENT_DELEGATION") };
     }
 
     #[test]

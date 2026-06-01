@@ -15,6 +15,8 @@ export interface FeatureFlags {
   agent_versions: boolean;
   voice: boolean;
   "apps.detailV2": boolean;
+  /** Outbound agent delegation (`a2a_agent_delegation`, `agent_handoff`). Experimental. */
+  agent_delegation: boolean;
 }
 
 export interface AuthConfigResponse {
