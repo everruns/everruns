@@ -940,7 +940,7 @@ When a bash script calls `bash` or `sh` or uses `eval`, bashkit re-invokes its o
 | TM-DOS-005 | Session file storage abuse | Medium | No per-session storage quota; large files stored as PostgreSQL BYTEA | **OPEN** (see TM-FS-008) |
 | TM-DOS-006 | Durable task queue flooding | Medium | Per-workflow pending task limit (see TM-DURABLE-004) | MITIGATED |
 | TM-DOS-007 | Nested JSON depth in API input | Medium | Input validation rejects deeply nested structures | MITIGATED |
-| TM-DOS-008 | ReDoS via file grep endpoint | Medium | `POST /v1/sessions/:id/fs/_/grep` accepts user regex with no complexity limits | **OPEN** |
+| TM-DOS-008 | ReDoS via file grep endpoint | Medium | `POST /v1/sessions/:id/fs/_/grep` accepts user regex with no complexity limits | **MITIGATED** |
 | TM-DOS-009 | Valkey unauthenticated access | Medium | Valkey listens on localhost:6379 by default; no AUTH configured in local/example compose | **CALLER RISK** |
 | TM-DOS-010 | AG-UI SSE connection exhaustion | Medium | AG-UI app streams reuse the shared `SseConnectionTracker`, enforcing the same global/per-org/per-session limits as other SSE endpoints. App owners can also configure a per-app, per-IP request cap via `AgUiChannelConfig.rate_limit_per_minute`: in-memory backend is a per-minute governor quota; when `VALKEY_URL` is set it becomes a Valkey sliding-window counter shared across instances and fail-closed on Valkey errors | MITIGATED |
 | TM-DOS-010 | Rate limit bypass via Valkey failure | Low | Fail-open design: if Valkey is down, requests are allowed without rate limiting | **ACCEPTED** |
@@ -1307,7 +1307,7 @@ Even with per-secret scoping, an attacker who controls a previously-approved for
 | ~~TM-DURABLE-002~~ | ~~gRPC auth optional, no org scoping~~ | ~~High~~ | Mitigated: Bearer token required in production + optional mTLS; workers cross-org by design |
 | ~~TM-DURABLE-010~~ | ~~Durable API endpoints unauthenticated~~ | ~~High~~ | Mitigated: All endpoints require AuthUser extractor |
 | ~~TM-TENANT-008~~ | ~~User listing cross-org~~ | ~~High~~ | Mitigated: `GET /v1/users` uses `ResolvedOrg` and `list_users_by_org` |
-| TM-DOS-008 | ReDoS via file grep endpoint | Medium | Add regex complexity limits and timeout |
+| ~~TM-DOS-008~~ | ~~ReDoS via file grep endpoint~~ | ~~Medium~~ | Mitigated: pattern length capped at 1 000 chars; NFA compiled size capped at 512 KB via `RegexBuilder::size_limit`; per-file scan skipped above 512 KB; total scan aborted above 5 MB per request (`grep_session_files`, `service.rs`) |
 | TM-AGENT-007 | No per-iteration tool call limit | Medium | Cap tool calls per LLM response |
 | ~~TM-AGENT-012~~ | ~~Tool result size amplification~~ | ~~Medium~~ | Mitigated: 64 KiB hard limit via `OutputHardLimitHook` (EVE-225) |
 | TM-FS-008 | No session storage quota | Medium | Enforce per-session file size limits |

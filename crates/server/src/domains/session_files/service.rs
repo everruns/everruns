@@ -16,7 +16,7 @@ use everruns_core::{
     MountSource, SessionFile, SessionFileSystem, SessionFileSystemFactory,
     SessionFileSystemFactoryContext, SessionId,
 };
-use regex::Regex;
+use regex::{Regex, RegexBuilder};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -706,8 +706,12 @@ impl SessionFileService {
 
         // Also search virtual mounts
         if let Some(registry) = &self.virtual_registry {
-            let regex = Regex::new(&req.pattern)?;
-            let path_regex = req.path_pattern.as_deref().map(Regex::new).transpose()?;
+            let regex = build_grep_regex(&req.pattern)?;
+            let path_regex = req
+                .path_pattern
+                .as_deref()
+                .map(build_grep_regex)
+                .transpose()?;
             // Pass None for path filter — we apply regex filtering below to match DB semantics
             let virtual_matches = registry.grep(&session_id, &regex, None);
             for vm in virtual_matches
@@ -1257,30 +1261,46 @@ impl SessionFileSystem for SessionFileService {
     }
 }
 
-/// Max regex pattern length to prevent resource-intensive compilation (TM-DOS-008).
+/// Max regex pattern length (TM-DOS-008): bounds compilation cost even before NFA construction.
 const MAX_GREP_PATTERN_LEN: usize = 1000;
+/// Max NFA/DFA compiled size in bytes (TM-DOS-008): prevents short patterns that expand to
+/// enormous automata (e.g. deeply nested alternation).
+const MAX_GREP_REGEX_SIZE: usize = 512 * 1024;
+/// Max file size to search (TM-DOS-008): skip files larger than this to bound per-file scan time.
+const MAX_GREP_FILE_BYTES: i64 = 512 * 1024;
+/// Max total bytes scanned across all files in a single grep call (TM-DOS-008).
+const MAX_GREP_TOTAL_SCAN_BYTES: usize = 5 * 1024 * 1024;
+
+/// Build a regex with compile-time size limits applied (TM-DOS-008).
+///
+/// The `regex` crate uses a Thompson NFA and cannot catastrophically backtrack,
+/// but a short pattern can still compile to a very large automaton. `size_limit`
+/// caps that at `MAX_GREP_REGEX_SIZE` bytes.
+fn build_grep_regex(pattern: &str) -> Result<Regex> {
+    RegexBuilder::new(pattern)
+        .size_limit(MAX_GREP_REGEX_SIZE)
+        .build()
+        .map_err(|e| anyhow!("Invalid or too-complex regex pattern: {e}"))
+}
 
 /// Search session files using grep-like regex pattern matching.
 ///
 /// Shared logic used by both `SessionFileService::grep` and
-/// `DirectWorkerAdapters::grep_files`. Enforces TM-DOS-008 pattern length
-/// limit to prevent expensive regex compilation.
+/// `DirectWorkerAdapters::grep_files`. Enforces TM-DOS-008 bounds.
 pub async fn grep_session_files(
     db: &StorageBackend,
     session_id: Uuid,
     pattern: &str,
     path_pattern: Option<&str>,
 ) -> Result<Vec<GrepResult>> {
-    // TM-DOS-008: Limit pattern length to prevent expensive regex compilation.
-    // Note: Rust's `regex` crate already prevents catastrophic backtracking
-    // (uses Thompson NFA), but compilation cost is O(n) in pattern length.
+    // TM-DOS-008: cap pattern length and compiled NFA size.
     anyhow::ensure!(
         pattern.len() <= MAX_GREP_PATTERN_LEN,
         "Regex pattern too long (max {} characters)",
         MAX_GREP_PATTERN_LEN
     );
 
-    let regex = Regex::new(pattern)?;
+    let regex = build_grep_regex(pattern)?;
 
     // Get matching files from database
     let files = db
@@ -1288,9 +1308,24 @@ pub async fn grep_session_files(
         .await?;
 
     let mut results = Vec::new();
+    let mut total_scanned: usize = 0;
 
     // For each matching file, find the actual line matches
     for file_info in files {
+        // TM-DOS-008: skip files that exceed the per-file size limit.
+        if file_info.size_bytes > MAX_GREP_FILE_BYTES {
+            continue;
+        }
+
+        // TM-DOS-008: abort if total bytes scanned across all files exceeds the cap.
+        let file_size = file_info.size_bytes.max(0) as usize;
+        anyhow::ensure!(
+            total_scanned.saturating_add(file_size) <= MAX_GREP_TOTAL_SCAN_BYTES,
+            "Grep request exceeds maximum scan size ({} bytes); narrow the path filter or pattern",
+            MAX_GREP_TOTAL_SCAN_BYTES
+        );
+        total_scanned += file_size;
+
         // Read full file content
         let file = db.get_session_file(session_id, &file_info.path).await?;
         if let Some(f) = file
@@ -1466,6 +1501,65 @@ mod tests {
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(err.contains("too long"), "Expected 'too long' in: {err}");
+    }
+
+    #[tokio::test]
+    async fn grep_session_files_catastrophic_pattern_completes_quickly() {
+        // The regex crate uses a Thompson NFA and cannot backtrack catastrophically.
+        // This pattern would hang a PCRE/backtracking engine on "aaa...a!" but must
+        // complete in bounded time here.
+        let db = StorageBackend::in_memory();
+        let sid = Uuid::new_v4();
+        let content = "a".repeat(30);
+        seed_file(&db, sid, "/bomb.txt", &content).await;
+
+        let pattern = "(a+)+b";
+        let result = grep_session_files(&db, sid, pattern, None).await.unwrap();
+        // No match (no 'b'), result is empty — but importantly it finishes quickly.
+        assert!(result.is_empty());
+    }
+
+    #[tokio::test]
+    async fn grep_session_files_skips_oversized_file() {
+        let db = StorageBackend::in_memory();
+        let sid = Uuid::new_v4();
+        // Write a small file and one large file (simulated as exceeding the limit in the row).
+        // The in-memory store stores actual bytes so we use the size threshold from the constant.
+        let small = "match me";
+        seed_file(&db, sid, "/small.txt", small).await;
+        let big_content = "match me ".repeat((MAX_GREP_FILE_BYTES as usize / 9) + 2);
+        seed_file(&db, sid, "/big.txt", &big_content).await;
+
+        let results = grep_session_files(&db, sid, "match me", None)
+            .await
+            .unwrap();
+        // Only the small file should appear; big.txt is skipped.
+        assert_eq!(results.len(), 1, "big.txt should have been skipped");
+        assert_eq!(results[0].path, "/small.txt");
+    }
+
+    #[tokio::test]
+    async fn grep_session_files_enforces_total_scan_limit() {
+        let db = StorageBackend::in_memory();
+        let sid = Uuid::new_v4();
+        // Write enough files to exceed the total scan cap without any single file
+        // exceeding the per-file cap.
+        let chunk = "x".repeat(MAX_GREP_FILE_BYTES as usize);
+        let files_needed = (MAX_GREP_TOTAL_SCAN_BYTES / MAX_GREP_FILE_BYTES as usize) + 2;
+        for i in 0..files_needed {
+            seed_file(&db, sid, &format!("/f{i}.txt"), &chunk).await;
+        }
+
+        let result = grep_session_files(&db, sid, "x", None).await;
+        assert!(
+            result.is_err(),
+            "Should fail when total scan cap is exceeded"
+        );
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("maximum scan size"),
+            "Expected 'maximum scan size' in: {msg}"
+        );
     }
 
     #[tokio::test]
