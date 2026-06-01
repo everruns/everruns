@@ -905,10 +905,7 @@ impl CapabilityRegistry {
         // Outbound agent delegation — experimental (dev-only by default).
         // Risk: exfil, SSRF-adjacent reach, cost/recursion fan-out.
         // Gated by FEATURE_AGENT_DELEGATION; auto-enabled in dev, off in prod.
-        let agent_delegation_enabled = std::env::var("FEATURE_AGENT_DELEGATION")
-            .map(|v| v == "true" || v == "1")
-            .unwrap_or_else(|_| grade.experimental_features_enabled());
-        if agent_delegation_enabled {
+        if crate::FeatureFlags::from_env(&grade).agent_delegation {
             registry.register(AgentHandoffCapability);
             registry.register(A2aAgentDelegationCapability);
         }
@@ -2001,6 +1998,13 @@ mod tests {
     use std::collections::BTreeSet;
     use uuid::Uuid;
 
+    // Env-var-mutating tests must not run in parallel.
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn lock_env() -> std::sync::MutexGuard<'static, ()> {
+        ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     /// Test helper: dummy context with no file store
     fn test_ctx() -> SystemPromptContext {
         SystemPromptContext::without_file_store(SessionId::new())
@@ -2084,6 +2088,7 @@ mod tests {
     #[test]
     fn test_capability_registry_with_builtins_dev() {
         // Dev mode includes all built-in capabilities including experimental delegation
+        let _lock = lock_env();
         unsafe { std::env::remove_var("FEATURE_AGENT_DELEGATION") };
         let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Dev);
         assert_eq!(registry_ids(&registry), expected_dev_builtin_ids());
@@ -2094,6 +2099,7 @@ mod tests {
     #[test]
     fn test_capability_registry_with_builtins_prod() {
         // Prod mode excludes experimental capabilities including delegation
+        let _lock = lock_env();
         unsafe { std::env::remove_var("FEATURE_AGENT_DELEGATION") };
         let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Prod);
         assert_eq!(registry_ids(&registry), expected_core_builtin_ids());
@@ -2106,6 +2112,7 @@ mod tests {
     #[test]
     fn test_agent_delegation_enabled_by_env_in_prod() {
         // FEATURE_AGENT_DELEGATION=true enables delegation caps even in prod
+        let _lock = lock_env();
         unsafe { std::env::set_var("FEATURE_AGENT_DELEGATION", "true") };
         let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Prod);
         assert!(registry.has("agent_handoff"));
@@ -2116,6 +2123,7 @@ mod tests {
     #[test]
     fn test_agent_delegation_disabled_by_env_in_dev() {
         // FEATURE_AGENT_DELEGATION=false disables delegation caps even in dev
+        let _lock = lock_env();
         unsafe { std::env::set_var("FEATURE_AGENT_DELEGATION", "false") };
         let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Dev);
         assert!(!registry.has("agent_handoff"));
