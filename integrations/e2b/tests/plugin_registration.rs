@@ -1,6 +1,7 @@
 //! Integration tests for E2B plugin registration and capability.
 
 use everruns_core::capabilities::{CapabilityRegistry, IntegrationPlugin};
+use everruns_core::connection_provider::ConnectionProviderPlugin;
 use everruns_core::deployment::DeploymentGrade;
 
 // Force linker to include the integration crate's inventory submissions.
@@ -58,4 +59,17 @@ fn test_e2b_capability_metadata() {
     assert_eq!(cap.category(), Some("Execution"));
     assert_eq!(cap.dependencies(), vec!["session_storage"]);
     assert_eq!(cap.tools().len(), 6);
+}
+
+#[test]
+fn test_e2b_connection_provider_is_submitted() {
+    let plugins: Vec<&ConnectionProviderPlugin> =
+        inventory::iter::<ConnectionProviderPlugin>().collect();
+    assert!(
+        plugins.iter().any(|plugin| {
+            let provider = (plugin.factory)();
+            provider.provider_id() == "e2b"
+        }),
+        "E2B ConnectionProviderPlugin should be submitted via inventory"
+    );
 }

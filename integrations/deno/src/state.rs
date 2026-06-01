@@ -65,20 +65,6 @@ pub async fn get_credentials(
         }
     }
 
-    if let Ok(token) = std::env::var("DENO_DEPLOY_TOKEN")
-        && !token.is_empty()
-    {
-        let org = std::env::var("DENO_DEPLOY_ORG")
-            .ok()
-            .filter(|s| !s.is_empty());
-        if token.starts_with("ddp_") && org.is_none() {
-            return Err(ToolExecutionResult::tool_error(
-                "DENO_DEPLOY_TOKEN is a personal token (ddp_...) but DENO_DEPLOY_ORG is not set. Set DENO_DEPLOY_ORG or use an organization token (ddo_...).",
-            ));
-        }
-        return Ok(DenoCredentials { token, org });
-    }
-
     // THREAT[TM-AGENT-016]: Asking for sandbox credentials in chat would store
     // them plaintext in events. Return ConnectionRequired so the UI can render
     // the inline connection flow instead of asking the user to paste secrets.

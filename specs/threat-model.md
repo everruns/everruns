@@ -1010,7 +1010,7 @@ Deno sandboxes are remote Linux microVMs managed over a websocket + REST control
 
 | ID | Threat | Severity | Mitigation | Status |
 |----|--------|----------|------------|--------|
-| TM-DENO-001 | Service-wide token misuse via env fallback | High | Prefer user connections; env fallback is operator-controlled and intended for managed deployments/tests | **CALLER RISK** |
+| TM-DENO-001 | Service-wide token misuse via env fallback | High | Env fallback removed; credential resolves exclusively from user connection (`connection_resolver`); tools return `ConnectionRequired` when no connection is configured | MITIGATED |
 | TM-DENO-002 | Cross-session sandbox access | Critical | Deno tools require session-owned sandbox IDs via leased-resource/session-resource ownership checks; persisted sandbox state remains session-scoped in `deno_sandbox:{id}` | MITIGATED |
 | TM-DENO-003 | Sandbox leak from default `session` timeout | Medium | `deno_create_sandbox` forbids `timeout="session"`; Everruns always uses explicit TTLs plus leased-resource cleanup | MITIGATED |
 | TM-API-015 | Lease metadata exposure | Medium | Deno lease metadata stores only non-secret routing/debug fields (`region`, optional `org`, workspace path, timestamps); tokens still resolve from connections/env at cleanup time | MITIGATED |
@@ -1043,11 +1043,11 @@ GitHub Scout is a blueprint-only integration. It gives the child agent private r
 
 ## 18. E2B Cloud Sandbox (TM-E2B)
 
-E2B sandboxes are remote Linux environments managed through the E2B Management API plus per-sandbox envd runtime endpoints. Everruns uses a platform-owned `E2B_API_KEY` from environment or session secret override, and stores per-sandbox envd access tokens in session-scoped secrets.
+E2B sandboxes are remote Linux environments managed through the E2B Management API plus per-sandbox envd runtime endpoints. Users bring their own E2B API key via the connection provider; no platform-owned or environment-variable fallback exists. Per-sandbox envd access tokens are stored in session-scoped secrets.
 
 | ID | Threat | Severity | Mitigation | Status |
 |----|--------|----------|------------|--------|
-| TM-E2B-001 | Platform-owned E2B API key compromise | High | `E2B_API_KEY` stays in server/worker environment or encrypted session secret override; never emitted in tool output | MITIGATED |
+| TM-E2B-001 | E2B API key captured in chat history | High | Tools return `ConnectionRequired` when no connection is configured, triggering the inline connection dialog; user connection credentials are encrypted at rest; key never emitted in tool output | MITIGATED |
 | TM-E2B-002 | envd access token disclosure | Medium | envd access token stored only in encrypted session secrets and sent only to E2B runtime headers | MITIGATED |
 | TM-E2B-003 | Cross-session sandbox access | Critical | E2B tools require session-owned sandbox IDs via leased-resource/session-resource ownership checks; envd state remains session-scoped under `e2b_sandbox:{id}` | MITIGATED |
 | TM-E2B-004 | Sandbox not deleted or paused — resource leak | Low | E2B timeout + auto-pause on create/resume, plus Everruns leased-resource cleanup | MITIGATED |

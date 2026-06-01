@@ -1,7 +1,5 @@
 //! E2B API types and session state helpers.
 
-use std::env;
-
 use everruns_core::UpsertLeasedResource;
 use everruns_core::resource_ownership::verify_owned_external_resource_if_available;
 use everruns_core::tools::ToolExecutionResult;
@@ -10,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tracing::{error, warn};
 
-use crate::{E2B_API_KEY_SECRET, E2B_DEFAULT_WORKSPACE_PATH, E2B_SANDBOX_SECRET_PREFIX};
+use crate::{E2B_DEFAULT_WORKSPACE_PATH, E2B_SANDBOX_SECRET_PREFIX};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -74,25 +72,23 @@ pub struct SandboxState {
 pub const E2B_SANDBOX_LEASE_DURATION_SECONDS: u32 = 20 * 60;
 
 pub async fn get_api_key(context: &ToolContext) -> Result<String, ToolExecutionResult> {
-    if let Some(storage) = context.storage_store.as_ref() {
-        match storage
-            .get_secret(context.session_id, E2B_API_KEY_SECRET)
+    if let Some(resolver) = context.connection_resolver.as_ref() {
+        match resolver
+            .get_connection_token(context.session_id, "e2b")
             .await
         {
             Ok(Some(key)) if !key.trim().is_empty() => return Ok(key),
             Ok(_) => {}
             Err(e) => {
-                error!("Failed to resolve E2B session secret: {e}");
+                error!("Failed to resolve E2B user connection: {e}");
             }
         }
     }
 
-    match env::var(E2B_API_KEY_SECRET) {
-        Ok(key) if !key.trim().is_empty() => Ok(key),
-        _ => Err(ToolExecutionResult::tool_error(
-            "E2B API key not configured. Set E2B_API_KEY in the server/worker environment or as a session secret.",
-        )),
-    }
+    // THREAT[TM-AGENT-016]: asking for sandbox credentials in chat would store
+    // them plaintext in events. Return ConnectionRequired so the UI renders the
+    // inline connection flow instead of asking the user to paste secrets.
+    Err(ToolExecutionResult::connection_required("e2b"))
 }
 
 pub async fn get_sandbox_state(

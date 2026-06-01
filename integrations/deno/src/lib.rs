@@ -5,8 +5,8 @@
 //!
 //! Decision: model the public tool surface after Daytona so agents can switch
 //! between cloud sandboxes with minimal prompt changes.
-//! Decision: prefer user connections, but allow `DENO_DEPLOY_TOKEN` /
-//! `DENO_DEPLOY_ORG` env fallbacks for operator-managed deployments and live tests.
+//! Decision: BYO connection model — credentials resolve from user connection only;
+//!   no env-var fallback. Fail with ConnectionRequired if not configured.
 //! Decision: create sandboxes with a fixed timeout instead of Deno's default
 //! `session` lifetime because Everruns closes the creator websocket after each tool.
 
