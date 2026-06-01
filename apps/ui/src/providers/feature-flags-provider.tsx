@@ -20,6 +20,7 @@ const DEFAULT_FLAGS: FeatureFlags = {
   agent_versions: false,
   voice: false,
   "apps.detailV2": false,
+  agent_delegation: false,
 };
 
 export interface FeatureFlagsContextValue {

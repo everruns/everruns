@@ -901,8 +901,17 @@ impl CapabilityRegistry {
 
         // Subagents (spawn child agent sessions, all environments)
         registry.register(SubagentCapability);
-        registry.register(AgentHandoffCapability);
-        registry.register(A2aAgentDelegationCapability);
+
+        // Outbound agent delegation — experimental (dev-only by default).
+        // Risk: exfil, SSRF-adjacent reach, cost/recursion fan-out.
+        // Gated by FEATURE_AGENT_DELEGATION; auto-enabled in dev, off in prod.
+        let agent_delegation_enabled = std::env::var("FEATURE_AGENT_DELEGATION")
+            .map(|v| v == "true" || v == "1")
+            .unwrap_or_else(|_| grade.experimental_features_enabled());
+        if agent_delegation_enabled {
+            registry.register(AgentHandoffCapability);
+            registry.register(A2aAgentDelegationCapability);
+        }
 
         // System commands (/clear, /status, /compact, /model)
         registry.register(SystemCommandsCapability);
@@ -1997,6 +2006,7 @@ mod tests {
         SystemPromptContext::without_file_store(SessionId::new())
     }
 
+    /// Base set of built-in capabilities present in all environments (no experimental delegation).
     fn expected_core_builtin_ids() -> BTreeSet<&'static str> {
         let mut ids = [
             "agent_instructions",
@@ -2028,8 +2038,6 @@ mod tests {
             "prompt_caching",
             "skills",
             "subagents",
-            "agent_handoff",
-            "a2a_agent_delegation",
             "system_commands",
             "sample_data",
             "data_knowledge",
@@ -2052,6 +2060,14 @@ mod tests {
         ids
     }
 
+    /// Full set for dev: base + experimental delegation capabilities.
+    fn expected_dev_builtin_ids() -> BTreeSet<&'static str> {
+        let mut ids = expected_core_builtin_ids();
+        ids.insert("agent_handoff");
+        ids.insert("a2a_agent_delegation");
+        ids
+    }
+
     fn registry_ids(registry: &CapabilityRegistry) -> BTreeSet<&str> {
         registry.capabilities.keys().map(String::as_str).collect()
     }
@@ -2067,19 +2083,44 @@ mod tests {
 
     #[test]
     fn test_capability_registry_with_builtins_dev() {
-        // Dev mode includes all built-in capabilities
+        // Dev mode includes all built-in capabilities including experimental delegation
+        unsafe { std::env::remove_var("FEATURE_AGENT_DELEGATION") };
         let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Dev);
-
-        assert_eq!(registry_ids(&registry), expected_core_builtin_ids());
+        assert_eq!(registry_ids(&registry), expected_dev_builtin_ids());
+        assert!(registry.has("agent_handoff"));
+        assert!(registry.has("a2a_agent_delegation"));
     }
 
     #[test]
     fn test_capability_registry_with_builtins_prod() {
-        // Prod mode excludes experimental capabilities
+        // Prod mode excludes experimental capabilities including delegation
+        unsafe { std::env::remove_var("FEATURE_AGENT_DELEGATION") };
         let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Prod);
         assert_eq!(registry_ids(&registry), expected_core_builtin_ids());
         // Experimental capabilities NOT included in prod
         assert!(!registry.has("docker_container"));
+        assert!(!registry.has("agent_handoff"));
+        assert!(!registry.has("a2a_agent_delegation"));
+    }
+
+    #[test]
+    fn test_agent_delegation_enabled_by_env_in_prod() {
+        // FEATURE_AGENT_DELEGATION=true enables delegation caps even in prod
+        unsafe { std::env::set_var("FEATURE_AGENT_DELEGATION", "true") };
+        let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Prod);
+        assert!(registry.has("agent_handoff"));
+        assert!(registry.has("a2a_agent_delegation"));
+        unsafe { std::env::remove_var("FEATURE_AGENT_DELEGATION") };
+    }
+
+    #[test]
+    fn test_agent_delegation_disabled_by_env_in_dev() {
+        // FEATURE_AGENT_DELEGATION=false disables delegation caps even in dev
+        unsafe { std::env::set_var("FEATURE_AGENT_DELEGATION", "false") };
+        let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Dev);
+        assert!(!registry.has("agent_handoff"));
+        assert!(!registry.has("a2a_agent_delegation"));
+        unsafe { std::env::remove_var("FEATURE_AGENT_DELEGATION") };
     }
 
     #[test]
