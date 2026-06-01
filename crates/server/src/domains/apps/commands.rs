@@ -184,19 +184,23 @@ fn durable_store(ctx: &Ctx) -> Result<&Arc<dyn WorkflowEventStore + Send + Sync>
 /// Minimum seconds between consecutive schedule-channel triggers.
 /// Configurable via `SCHEDULE_CHANNEL_MIN_INTERVAL_SECONDS`; default 300 (5 min).
 fn schedule_channel_min_interval_seconds() -> i64 {
+    const DEFAULT: i64 = 300;
     std::env::var("SCHEDULE_CHANNEL_MIN_INTERVAL_SECONDS")
         .ok()
         .and_then(|v| v.parse::<i64>().ok())
-        .unwrap_or(300)
+        .filter(|&v| v > 0)
+        .unwrap_or(DEFAULT)
 }
 
 /// Maximum number of enabled schedule channels per org.
 /// Configurable via `SCHEDULE_CHANNEL_MAX_PER_ORG`; default 10.
 fn schedule_channel_max_per_org() -> i64 {
+    const DEFAULT: i64 = 10;
     std::env::var("SCHEDULE_CHANNEL_MAX_PER_ORG")
         .ok()
         .and_then(|v| v.parse::<i64>().ok())
-        .unwrap_or(10)
+        .filter(|&v| v > 0)
+        .unwrap_or(DEFAULT)
 }
 
 fn normalize_cron_expression(cron_expression: &str) -> Result<String, CommandError> {
@@ -1636,6 +1640,20 @@ impl Command for CreateApp {
         if let Some(channel_type) = channel_type.clone() {
             if channel_type == ChannelType::Schedule {
                 let _ = durable_store(ctx)?;
+                // Soft cap: count then create (TOCTOU window is intentional — this is a
+                // noisy-neighbor limit, not a hard security boundary; strict serialization
+                // is not worth the complexity).
+                let count = ctx
+                    .db
+                    .count_enabled_schedule_channels_for_org(ctx.org_id())
+                    .await
+                    .map_err(classify_anyhow)?;
+                let max = schedule_channel_max_per_org();
+                if count >= max {
+                    return Err(CommandError::bad_request(format!(
+                        "Organization may have at most {max} enabled schedule channel(s); currently has {count}"
+                    )));
+                }
             }
             channel_config = normalize_and_validate_channel_config(channel_type, channel_config)?;
         }
@@ -2682,6 +2700,7 @@ impl Command for AddChannel {
             let _ = durable_store(ctx)?;
             let enabled = self.req.enabled.unwrap_or(true);
             if enabled {
+                // Soft cap — TOCTOU window acceptable for a noisy-neighbor limit.
                 let count = ctx
                     .db
                     .count_enabled_schedule_channels_for_org(ctx.org_id())
@@ -3216,7 +3235,7 @@ impl Command for UpdateChannelCmd {
             .req
             .channel_type
             .clone()
-            .unwrap_or(current_channel_type);
+            .unwrap_or(current_channel_type.clone());
         let existing_decrypted = q::decrypt_channel_config(
             encryption,
             channel_row.channel_config_encrypted.as_deref(),
@@ -3236,8 +3255,14 @@ impl Command for UpdateChannelCmd {
         );
         if final_channel_type == ChannelType::Schedule {
             let _ = durable_store(ctx)?;
-            // Enforce max enabled schedule channels per org when enabling a previously-disabled channel.
-            if self.req.enabled == Some(true) && !channel_row.enabled {
+            // Check cap whenever this PATCH would result in a new enabled schedule channel
+            // that wasn't already one — covers both disabled→enabled and
+            // non-schedule-type→schedule-type while remaining enabled.
+            // Soft cap — TOCTOU window acceptable for a noisy-neighbor limit.
+            let final_enabled = self.req.enabled.unwrap_or(channel_row.enabled);
+            let was_enabled_schedule =
+                current_channel_type == ChannelType::Schedule && channel_row.enabled;
+            if final_enabled && !was_enabled_schedule {
                 let count = ctx
                     .db
                     .count_enabled_schedule_channels_for_org(ctx.org_id())
@@ -3372,6 +3397,12 @@ mod tests {
     use super::*;
     use everruns_core::typed_id::{AppChannelId, HarnessId, PrincipalId};
 
+    // Serialize env-mutating tests to prevent concurrent remove_var / read_var races.
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    fn lock_env() -> std::sync::MutexGuard<'static, ()> {
+        ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     fn test_app_and_channel() -> (App, AppChannel) {
         let now = Utc::now();
         let channel = AppChannel {
@@ -3448,7 +3479,8 @@ mod tests {
 
     #[test]
     fn schedule_min_interval_default_is_300() {
-        // Safety: single-threaded test; no concurrent env mutation.
+        let _lock = lock_env();
+        // Safety: ENV_LOCK serializes all env-mutating tests in this module.
         unsafe { std::env::remove_var("SCHEDULE_CHANNEL_MIN_INTERVAL_SECONDS") };
         assert_eq!(schedule_channel_min_interval_seconds(), 300);
     }
@@ -3483,8 +3515,9 @@ mod tests {
 
     #[test]
     fn schedule_channel_accepts_5_min_cron() {
+        let _lock = lock_env();
         // "*/5 * * * *" = every 5 minutes (300 s) — at the default limit.
-        // Safety: single-threaded test; no concurrent env mutation.
+        // Safety: ENV_LOCK serializes all env-mutating tests in this module.
         unsafe { std::env::remove_var("SCHEDULE_CHANNEL_MIN_INTERVAL_SECONDS") };
         let config = json!({
             "cron_expression": "*/5 * * * *",
@@ -3503,5 +3536,31 @@ mod tests {
         let err = normalize_and_validate_channel_config(ChannelType::Schedule, config)
             .expect_err("empty message should fail");
         assert!(matches!(err.kind, CommandErrorKind::BadRequest(_)));
+    }
+
+    #[test]
+    fn schedule_min_interval_rejects_zero_env() {
+        let _lock = lock_env();
+        // Safety: ENV_LOCK serializes all env-mutating tests in this module.
+        unsafe { std::env::set_var("SCHEDULE_CHANNEL_MIN_INTERVAL_SECONDS", "0") };
+        assert_eq!(
+            schedule_channel_min_interval_seconds(),
+            300,
+            "zero should fall back to default"
+        );
+        unsafe { std::env::remove_var("SCHEDULE_CHANNEL_MIN_INTERVAL_SECONDS") };
+    }
+
+    #[test]
+    fn schedule_max_per_org_rejects_zero_env() {
+        let _lock = lock_env();
+        // Safety: ENV_LOCK serializes all env-mutating tests in this module.
+        unsafe { std::env::set_var("SCHEDULE_CHANNEL_MAX_PER_ORG", "0") };
+        assert_eq!(
+            schedule_channel_max_per_org(),
+            10,
+            "zero should fall back to default"
+        );
+        unsafe { std::env::remove_var("SCHEDULE_CHANNEL_MAX_PER_ORG") };
     }
 }
