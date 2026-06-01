@@ -422,51 +422,45 @@ impl SessionService {
         )
         .await?;
 
+        // Effective capability list (harness + agent + session), resolved once
+        // and shared by sandbox auto-start and the session_start hook so the
+        // merge rule lives in exactly one place per call. Agent-cap lookup
+        // failures propagate here (sandbox auto-start treats them as fatal),
+        // unlike the best-effort `resolve_session_capability_configs` used by
+        // the advisory delete path.
+        let agent_capabilities = if let Some(agent_id) = agent_id {
+            self.db
+                .get_agent_capabilities(agent_id.uuid())
+                .await?
+                .into_iter()
+                .map(|row| AgentCapabilityConfig::with_config(row.capability_id, row.config))
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
+        let effective_capabilities = merge_capabilities(
+            &merge_capabilities(&effective_harness.capabilities, &agent_capabilities),
+            &session_capabilities,
+        );
+
         if let Some(service) = &self.session_sandbox_service {
-            let agent_capabilities = if let Some(agent_id) = agent_id {
-                self.db
-                    .get_agent_capabilities(agent_id.uuid())
-                    .await?
-                    .into_iter()
-                    .map(|row| AgentCapabilityConfig::with_config(row.capability_id, row.config))
-                    .collect::<Vec<_>>()
-            } else {
-                Vec::new()
-            };
-            let merged = merge_capabilities(&effective_harness.capabilities, &agent_capabilities);
-            let merged = merge_capabilities(&merged, &session_capabilities);
             service
-                .auto_start_for_capabilities(session.id, &merged)
+                .auto_start_for_capabilities(session.id, &effective_capabilities)
                 .await;
         }
 
         // session_start lifecycle hooks (advisory). Fire after the session row,
         // mounts, and initial files are in place so a hook can observe/seed the
-        // session VFS. Resolve the same effective capability list used above.
-        {
-            let agent_caps = if let Some(agent_id) = agent_id {
-                self.db
-                    .get_agent_capabilities(agent_id.uuid())
-                    .await
-                    .unwrap_or_default()
-                    .into_iter()
-                    .map(|row| AgentCapabilityConfig::with_config(row.capability_id, row.config))
-                    .collect::<Vec<_>>()
-            } else {
-                Vec::new()
-            };
-            let merged = merge_capabilities(&effective_harness.capabilities, &agent_caps);
-            let merged = merge_capabilities(&merged, &session_capabilities);
-            self.fire_session_lifecycle_hooks(
-                org_id,
-                session.id,
-                agent_id.map(|a| a.to_string()),
-                &merged,
-                everruns_core::user_hook_types::HookEvent::SessionStart,
-                serde_json::json!({ "agent_id": agent_id.map(|a| a.to_string()) }),
-            )
-            .await;
-        }
+        // session VFS.
+        self.fire_session_lifecycle_hooks(
+            org_id,
+            session.id,
+            agent_id.map(|a| a.to_string()),
+            &effective_capabilities,
+            everruns_core::user_hook_types::HookEvent::SessionStart,
+            serde_json::json!({ "agent_id": agent_id.map(|a| a.to_string()) }),
+        )
+        .await;
 
         Ok(session)
     }
