@@ -919,6 +919,35 @@ where
                 .map(|(id, name)| (id.to_string(), name.map(str::to_string)))
         });
 
+        // Per-org outbound tool-call rate limiting (TM-TOOL-009).
+        // Checked before tool.started so a denied call emits no events and leaves
+        // no unmatched started/completed pair in UI or telemetry.
+        if let (Some(limiter), Some(ref org_id)) = (&self.outbound_tool_rate_limiter, self.org_id)
+            && !limiter.check_org(org_id).await
+        {
+            tracing::warn!(
+                session_id = %context.session_id,
+                tool_name = %tool_call.name,
+                "ActAtom: outbound tool rate limit exceeded for org"
+            );
+            return ToolCallResult {
+                tool_call: tool_call.clone(),
+                result: ToolResult {
+                    tool_call_id: tool_call.id.clone(),
+                    result: None,
+                    images: None,
+                    error: Some(
+                        "Outbound tool rate limit exceeded for this organization; back off and retry later.".to_string(),
+                    ),
+                    connection_required: None,
+                    raw_output: None,
+                },
+                success: false,
+                status: "error".to_string(),
+                connection_required: None,
+            };
+        }
+
         // Emit tool.started event (child of act.started)
         if let Err(e) = self
             .event_emitter
@@ -1076,35 +1105,6 @@ where
         tool_context.tool_call_id = Some(tool_call.id.clone());
 
         let execution_tool_call = self.transform_tool_call_for_execution(tool_call.clone());
-
-        // Per-org outbound tool-call rate limiting (TM-TOOL-009).
-        // Checked before hooks so rate-limited calls never reach executors.
-        // Returns a tool error (not a hard turn failure) so the LLM can back off.
-        if let (Some(limiter), Some(ref org_id)) = (&self.outbound_tool_rate_limiter, self.org_id)
-            && !limiter.check_org(org_id).await
-        {
-            tracing::warn!(
-                session_id = %context.session_id,
-                tool_name = %execution_tool_call.name,
-                "ActAtom: outbound tool rate limit exceeded for org"
-            );
-            return ToolCallResult {
-                tool_call: tool_call.clone(),
-                result: ToolResult {
-                    tool_call_id: execution_tool_call.id.clone(),
-                    result: None,
-                    images: None,
-                    error: Some(
-                        "Outbound tool rate limit exceeded for this organization; back off and retry later.".to_string(),
-                    ),
-                    connection_required: None,
-                    raw_output: None,
-                },
-                success: false,
-                status: "error".to_string(),
-                connection_required: None,
-            };
-        }
 
         // Run pre-tool-use hooks (capability-contributed). They can mutate
         // the tool call or block execution entirely. First Block wins; the

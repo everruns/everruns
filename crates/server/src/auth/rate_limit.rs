@@ -463,7 +463,7 @@ impl OrgRateLimiter {
             .await
     }
 
-    /// Check per-org outbound tool call rate (keyed by org public UUID string).
+    /// Check per-org outbound tool call rate (keyed by the org's typed-ID string, e.g. `org_<uuid>`).
     /// Returns Err if the org has exceeded RATE_LIMIT_ORG_TOOL_CALLS_PER_MINUTE.
     pub async fn check_outbound_tool_call(&self, org_key: &str) -> Result<(), RateLimitError> {
         self.check_keyed(OrgOp::ToolCall, org_key.to_string(), ORG_WINDOW_SECS)
@@ -533,8 +533,9 @@ impl OrgRateLimiter {
 /// `everruns-core` trait implementation: lets `OrgRateLimiter` be injected into
 /// `ActAtom` as the per-org outbound tool-call gate (TM-TOOL-009).
 ///
-/// Keyed by the org's public UUID string so the limiter works with the
-/// public OrgId that ActAtom holds (internal i64 is not available there).
+/// Keyed by `OrgId::to_string()` (typed-ID form, e.g. `org_<uuid>`) — the
+/// same format used by `check_outbound_tool_call`. The internal i64 is not
+/// available in `ActAtom`, so `OrgId` is the natural key.
 #[async_trait::async_trait]
 impl everruns_core::OutboundToolRateLimiter for OrgRateLimiter {
     async fn check_org(&self, org_id: &everruns_core::typed_id::OrgId) -> bool {
