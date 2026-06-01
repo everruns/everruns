@@ -90,4 +90,21 @@ impl InMemoryDatabase {
         let mut channels = self.app_channels.write();
         Ok(channels.remove(&id).is_some())
     }
+
+    pub async fn count_enabled_schedule_channels_for_org(&self, org_id: i64) -> Result<i64> {
+        let apps = self.apps.read();
+        let channels = self.app_channels.read();
+        let org_app_ids: std::collections::HashSet<Uuid> = apps
+            .values()
+            .filter(|a| a.org_id == org_id)
+            .map(|a| a.id)
+            .collect();
+        let count = channels
+            .values()
+            .filter(|ch| {
+                org_app_ids.contains(&ch.app_id) && ch.channel_type == "schedule" && ch.enabled
+            })
+            .count();
+        Ok(count as i64)
+    }
 }

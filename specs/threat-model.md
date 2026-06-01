@@ -639,7 +639,7 @@ All `/v1/durable/*` HTTP endpoints require explicit platform-user auth. The auth
 
 | ID | Threat | Severity | Mitigation | Status |
 |----|--------|----------|------------|--------|
-| TM-SCHED-001 | Malicious schedule creation | Medium | Only platform users can create or manage durable schedules | MITIGATED |
+| TM-SCHED-001 | Malicious schedule creation / resource abuse | Medium | Only platform users can create or manage durable schedules; schedule channels enforce a minimum cron interval (`SCHEDULE_CHANNEL_MIN_INTERVAL_SECONDS`, default 300 s) and an org-level cap on enabled schedule channels (`SCHEDULE_CHANNEL_MAX_PER_ORG`, default 10) | MITIGATED |
 | TM-SCHED-002 | Catch-up explosion on restart | High | `max_catch_up` limits catch-up runs (default: 1); prevents hundreds of executions on restart | MITIGATED |
 | TM-SCHED-003 | Concurrent execution overload | Medium | `max_concurrent` field enforced; trigger skipped if limit reached | MITIGATED |
 | TM-SCHED-004 | Invalid cron expression DoS | Low | Cron parser validates expression at creation time; invalid expressions rejected | MITIGATED |

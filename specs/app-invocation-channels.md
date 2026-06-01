@@ -144,6 +144,16 @@ Behavior:
 
 The durable scheduler only knows how to fire `invoke_scheduled_app_channel`. All app-specific resolution happens in the app domain at execution time.
 
+Limits:
+
+- Minimum cron interval: 300 seconds (5 minutes) by default; configurable via
+  `SCHEDULE_CHANNEL_MIN_INTERVAL_SECONDS`. Create/update rejects expressions
+  that would fire more frequently.
+- Maximum enabled schedule channels per org: 10 by default; configurable via
+  `SCHEDULE_CHANNEL_MAX_PER_ORG`. Enabling a channel (create with
+  `enabled=true`, or update from disabled to enabled) is rejected when the
+  org is already at the cap.
+
 ## Webhook Channel
 
 Config fields:

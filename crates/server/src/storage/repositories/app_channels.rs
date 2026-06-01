@@ -126,4 +126,20 @@ impl Database {
 
         Ok(result.rows_affected() > 0)
     }
+
+    pub async fn count_enabled_schedule_channels_for_org(&self, org_id: i64) -> Result<i64> {
+        let count = sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT COUNT(*)
+            FROM app_channels ac
+            JOIN apps a ON ac.app_id = a.id
+            WHERE a.org_id = $1 AND ac.channel_type = 'schedule' AND ac.enabled = true
+            "#,
+        )
+        .bind(org_id)
+        .fetch_one(&self.pool)
+        .await?;
+
+        Ok(count)
+    }
 }
