@@ -2720,6 +2720,10 @@ impl StorageBackend {
         dispatch!(self, delete_app_channel, id)
     }
 
+    pub async fn count_enabled_schedule_channels_for_org(&self, org_id: i64) -> Result<i64> {
+        dispatch!(self, count_enabled_schedule_channels_for_org, org_id)
+    }
+
     // ============================================
     // Eval CRUD
     // ============================================
