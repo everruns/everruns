@@ -280,6 +280,7 @@ pub struct DirectWorkerAdapters {
     permission_resolver: Arc<dyn PermissionResolver>,
     virtual_registry:
         Option<Arc<crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry>>,
+    org_rate_limiter: Option<Arc<crate::auth::rate_limit::OrgRateLimiter>>,
 }
 
 impl DirectWorkerAdapters {
@@ -311,6 +312,7 @@ impl DirectWorkerAdapters {
             workflow_store: None,
             permission_resolver: Arc::new(everruns_core::DefaultPermissionResolver),
             virtual_registry: None,
+            org_rate_limiter: None,
         }
     }
 
@@ -323,6 +325,15 @@ impl DirectWorkerAdapters {
     /// Set the budget service for in-process budget tool parity.
     pub fn with_budget_service(mut self, service: Arc<BudgetService>) -> Self {
         self.budget_service = Some(service);
+        self
+    }
+
+    /// Set the per-org outbound tool-call rate limiter (TM-TOOL-009).
+    pub fn with_org_rate_limiter(
+        mut self,
+        limiter: Arc<crate::auth::rate_limit::OrgRateLimiter>,
+    ) -> Self {
+        self.org_rate_limiter = Some(limiter);
         self
     }
 
@@ -1486,6 +1497,15 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 agent_id,
             ),
         ))
+    }
+
+    fn outbound_tool_rate_limiter(
+        &self,
+        _org_id: i64,
+    ) -> Option<Arc<dyn everruns_core::OutboundToolRateLimiter>> {
+        self.org_rate_limiter
+            .as_ref()
+            .map(|l| l.clone() as Arc<dyn everruns_core::OutboundToolRateLimiter>)
     }
 
     async fn invoke_scheduled_app_channel(

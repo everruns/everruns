@@ -207,4 +207,11 @@ impl<A: WorkerAdapters> RuntimeHostAdapter for WorkerRuntimeHost<A> {
     ) -> Option<Arc<dyn PaymentAuthority>> {
         self.adapters.payment_authority(org_id, agent_id)
     }
+
+    fn outbound_tool_rate_limiter(
+        &self,
+        org_id: i64,
+    ) -> Option<Arc<dyn everruns_core::OutboundToolRateLimiter>> {
+        self.adapters.outbound_tool_rate_limiter(org_id)
+    }
 }

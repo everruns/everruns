@@ -213,6 +213,10 @@ where
     budget_checker: Option<Arc<dyn crate::traits::BudgetChecker>>,
     /// Optional internal payment authority for paid capability tools.
     payment_authority: Option<Arc<dyn crate::traits::PaymentAuthority>>,
+    /// Optional per-org outbound tool-call rate limiter (TM-TOOL-009).
+    /// When present, each tool call increments the org counter; calls that
+    /// exceed the per-org window return a tool error rather than a hard failure.
+    outbound_tool_rate_limiter: Option<Arc<dyn crate::traits::OutboundToolRateLimiter>>,
     /// Post-act hooks that run after tool execution completes.
     /// Hooks inspect the result and may emit events (e.g. tool.call_requested).
     hooks: Vec<Box<dyn PostActHook>>,
@@ -265,6 +269,7 @@ where
             network_access: None,
             budget_checker: None,
             payment_authority: None,
+            outbound_tool_rate_limiter: None,
             hooks: Self::default_hooks(),
             post_tool_hooks: Vec::new(),
             pre_tool_hooks: Vec::new(),
@@ -304,6 +309,7 @@ where
             network_access: None,
             budget_checker: None,
             payment_authority: None,
+            outbound_tool_rate_limiter: None,
             hooks: Self::default_hooks(),
             post_tool_hooks: Vec::new(),
             pre_tool_hooks: Vec::new(),
@@ -518,6 +524,15 @@ where
         authority: Arc<dyn crate::traits::PaymentAuthority>,
     ) -> Self {
         self.payment_authority = Some(authority);
+        self
+    }
+
+    /// Set the per-org outbound tool-call rate limiter (TM-TOOL-009).
+    pub fn with_outbound_tool_rate_limiter(
+        mut self,
+        limiter: Arc<dyn crate::traits::OutboundToolRateLimiter>,
+    ) -> Self {
+        self.outbound_tool_rate_limiter = Some(limiter);
         self
     }
 }
@@ -1061,6 +1076,36 @@ where
         tool_context.tool_call_id = Some(tool_call.id.clone());
 
         let execution_tool_call = self.transform_tool_call_for_execution(tool_call.clone());
+
+        // Per-org outbound tool-call rate limiting (TM-TOOL-009).
+        // Checked before hooks so rate-limited calls never reach executors.
+        // Returns a tool error (not a hard turn failure) so the LLM can back off.
+        if let (Some(limiter), Some(ref org_id)) = (&self.outbound_tool_rate_limiter, self.org_id)
+            && !limiter.check_org(org_id).await
+        {
+            tracing::warn!(
+                session_id = %context.session_id,
+                tool_name = %execution_tool_call.name,
+                "ActAtom: outbound tool rate limit exceeded for org"
+            );
+            return ToolCallResult {
+                tool_call: tool_call.clone(),
+                result: ToolResult {
+                    tool_call_id: execution_tool_call.id.clone(),
+                    result: None,
+                    images: None,
+                    error: Some(
+                        "Outbound tool rate limit exceeded for this organization; back off and retry later.".to_string(),
+                    ),
+                    connection_required: None,
+                    raw_output: None,
+                },
+                success: false,
+                status: "error".to_string(),
+                connection_required: None,
+            };
+        }
+
         // Run pre-tool-use hooks (capability-contributed). They can mutate
         // the tool call or block execution entirely. First Block wins; the
         // tool is not invoked, and the synthetic error result flows through
@@ -2066,5 +2111,122 @@ mod tests {
 
         assert!(!parsed.waiting_for_tool_results);
         assert!(parsed.client_tool_calls.is_empty());
+    }
+
+    /// Verify that a denying `OutboundToolRateLimiter` short-circuits tool execution
+    /// and returns a rate-limit error result rather than calling the actual tool.
+    #[tokio::test]
+    async fn test_outbound_tool_rate_limiter_blocks_execution() {
+        use crate::typed_id::OrgId;
+
+        struct DenyAll;
+        #[async_trait]
+        impl crate::traits::OutboundToolRateLimiter for DenyAll {
+            async fn check_org(&self, _org_id: &OrgId) -> bool {
+                false
+            }
+        }
+
+        let mut executor = ToolRegistry::with_defaults();
+        executor.register(ArgumentEchoTool);
+        let atom = ActAtom::new(executor, NoopEventEmitter)
+            .with_org_id(OrgId::from_seed(1))
+            .with_outbound_tool_rate_limiter(Arc::new(DenyAll));
+
+        let context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
+        let input = ActInput {
+            org_id: Some(1),
+            context,
+            harness_id: HarnessId::from_seed(1),
+            agent_id: Some(AgentId::new()),
+            tool_calls: vec![ToolCall {
+                id: "call_1".to_string(),
+                name: "argument_echo".to_string(),
+                arguments: json!({"value": "should_not_reach"}),
+            }],
+            tool_definitions: vec![ToolDefinition::Builtin(crate::BuiltinTool {
+                name: "argument_echo".to_string(),
+                display_name: None,
+                description: "echo".to_string(),
+                parameters: json!({"type": "object"}),
+                policy: Default::default(),
+                category: None,
+                deferrable: Default::default(),
+                hints: crate::tool_types::ToolHints::default(),
+            })],
+            locale: None,
+            blueprint_id: None,
+            network_access: None,
+            parallel_tool_calls: None,
+        };
+
+        let result = atom.execute(input).await.unwrap();
+
+        assert_eq!(result.success_count, 0);
+        assert_eq!(result.error_count, 1);
+        let tool_result = &result.results[0];
+        assert!(!tool_result.success);
+        assert_eq!(tool_result.status, "error");
+        assert!(
+            tool_result
+                .result
+                .error
+                .as_deref()
+                .unwrap_or("")
+                .contains("rate limit exceeded")
+        );
+        assert!(tool_result.result.result.is_none());
+    }
+
+    /// Verify that an allowing `OutboundToolRateLimiter` does not block execution.
+    #[tokio::test]
+    async fn test_outbound_tool_rate_limiter_allows_execution() {
+        use crate::typed_id::OrgId;
+
+        struct AllowAll;
+        #[async_trait]
+        impl crate::traits::OutboundToolRateLimiter for AllowAll {
+            async fn check_org(&self, _org_id: &OrgId) -> bool {
+                true
+            }
+        }
+
+        let mut executor = ToolRegistry::with_defaults();
+        executor.register(ArgumentEchoTool);
+        let atom = ActAtom::new(executor, NoopEventEmitter)
+            .with_org_id(OrgId::from_seed(1))
+            .with_outbound_tool_rate_limiter(Arc::new(AllowAll));
+
+        let context = AtomContext::new(SessionId::new(), TurnId::new(), MessageId::new());
+        let input = ActInput {
+            org_id: Some(1),
+            context,
+            harness_id: HarnessId::from_seed(1),
+            agent_id: Some(AgentId::new()),
+            tool_calls: vec![ToolCall {
+                id: "call_1".to_string(),
+                name: "argument_echo".to_string(),
+                arguments: json!({"value": "hello"}),
+            }],
+            tool_definitions: vec![ToolDefinition::Builtin(crate::BuiltinTool {
+                name: "argument_echo".to_string(),
+                display_name: None,
+                description: "echo".to_string(),
+                parameters: json!({"type": "object"}),
+                policy: Default::default(),
+                category: None,
+                deferrable: Default::default(),
+                hints: crate::tool_types::ToolHints::default(),
+            })],
+            locale: None,
+            blueprint_id: None,
+            network_access: None,
+            parallel_tool_calls: None,
+        };
+
+        let result = atom.execute(input).await.unwrap();
+
+        assert_eq!(result.success_count, 1);
+        assert_eq!(result.error_count, 0);
     }
 }

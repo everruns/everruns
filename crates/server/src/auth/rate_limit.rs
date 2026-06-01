@@ -344,6 +344,9 @@ const ORG_HOUR_SECS: u64 = 3600;
 const DEFAULT_SESSION_CREATE_RPM: u32 = 60;
 const DEFAULT_SCHEDULE_CREATE_RPM: u32 = 20;
 const DEFAULT_ORG_CREATE_RPH: u32 = 10;
+/// Default per-org outbound tool calls per minute (TM-TOOL-009).
+/// Generous enough not to affect normal agentic workloads; stops flood abuse.
+const DEFAULT_ORG_TOOL_CALLS_RPM: u32 = 1000;
 
 /// Per-org and per-user rate limiter for expensive operations.
 ///
@@ -351,6 +354,7 @@ const DEFAULT_ORG_CREATE_RPH: u32 = 10;
 /// - `session_create`: keyed by org_id, 60/min default
 /// - `schedule_create`: keyed by user_id, 20/min default
 /// - `org_create`: keyed by user_id, 10/hr default
+/// - `tool_calls`: keyed by org public UUID, 1000/min default (TM-TOOL-009)
 #[derive(Clone)]
 pub struct OrgRateLimiter {
     backend: OrgBackend,
@@ -362,12 +366,14 @@ enum OrgBackend {
         session_create: Arc<StringKeyedLimiter>,
         schedule_create: Arc<StringKeyedLimiter>,
         org_create: Arc<StringKeyedLimiter>,
+        tool_calls: Arc<StringKeyedLimiter>,
     },
     Valkey {
         client: ValkeyClient,
         session_create_limit: u32,
         schedule_create_limit: u32,
         org_create_limit: u32,
+        tool_calls_limit: u32,
     },
 }
 
@@ -384,6 +390,7 @@ enum OrgOp {
     Session,
     Schedule,
     Org,
+    ToolCall,
 }
 
 impl OrgRateLimiter {
@@ -404,6 +411,10 @@ impl OrgRateLimiter {
             "RATE_LIMIT_USER_ORG_CREATE_PER_HOUR",
             DEFAULT_ORG_CREATE_RPH,
         );
+        let tool_rpm: u32 = everruns_config::env_or(
+            "RATE_LIMIT_ORG_TOOL_CALLS_PER_MINUTE",
+            DEFAULT_ORG_TOOL_CALLS_RPM,
+        );
 
         match client {
             Some(c) => Self {
@@ -412,6 +423,7 @@ impl OrgRateLimiter {
                     session_create_limit: session_rpm.max(1),
                     schedule_create_limit: schedule_rpm.max(1),
                     org_create_limit: org_rph.max(1),
+                    tool_calls_limit: tool_rpm.max(1),
                 },
             },
             None => Self {
@@ -424,6 +436,9 @@ impl OrgRateLimiter {
                     ))),
                     org_create: Arc::new(RateLimiter::keyed(Quota::per_hour(
                         NonZeroU32::new(org_rph.max(1)).unwrap(),
+                    ))),
+                    tool_calls: Arc::new(RateLimiter::keyed(Quota::per_minute(
+                        NonZeroU32::new(tool_rpm.max(1)).unwrap(),
                     ))),
                 },
             },
@@ -448,6 +463,13 @@ impl OrgRateLimiter {
             .await
     }
 
+    /// Check per-org outbound tool call rate (keyed by org public UUID string).
+    /// Returns Err if the org has exceeded RATE_LIMIT_ORG_TOOL_CALLS_PER_MINUTE.
+    pub async fn check_outbound_tool_call(&self, org_key: &str) -> Result<(), RateLimitError> {
+        self.check_keyed(OrgOp::ToolCall, org_key.to_string(), ORG_WINDOW_SECS)
+            .await
+    }
+
     async fn check_keyed(
         &self,
         op: OrgOp,
@@ -459,11 +481,13 @@ impl OrgRateLimiter {
                 session_create,
                 schedule_create,
                 org_create,
+                tool_calls,
             } => {
                 let limiter = match op {
                     OrgOp::Session => session_create,
                     OrgOp::Schedule => schedule_create,
                     OrgOp::Org => org_create,
+                    OrgOp::ToolCall => tool_calls,
                 };
                 match limiter.check_key(&id) {
                     Ok(_) => Ok(()),
@@ -478,6 +502,7 @@ impl OrgRateLimiter {
                 session_create_limit,
                 schedule_create_limit,
                 org_create_limit,
+                tool_calls_limit,
             } => {
                 let (key, limit) = match op {
                     OrgOp::Session => {
@@ -488,6 +513,7 @@ impl OrgRateLimiter {
                         *schedule_create_limit,
                     ),
                     OrgOp::Org => (format!("rl:user:org_create:{id}"), *org_create_limit),
+                    OrgOp::ToolCall => (format!("rl:org:tool_calls:{id}"), *tool_calls_limit),
                 };
                 match client.check_rate_limit(&key, limit, window_secs).await {
                     Ok(_) => Ok(()),
@@ -501,6 +527,22 @@ impl OrgRateLimiter {
                 }
             }
         }
+    }
+}
+
+/// `everruns-core` trait implementation: lets `OrgRateLimiter` be injected into
+/// `ActAtom` as the per-org outbound tool-call gate (TM-TOOL-009).
+///
+/// Keyed by the org's public UUID string so the limiter works with the
+/// public OrgId that ActAtom holds (internal i64 is not available there).
+#[async_trait::async_trait]
+impl everruns_core::OutboundToolRateLimiter for OrgRateLimiter {
+    async fn check_org(&self, org_id: &everruns_core::typed_id::OrgId) -> bool {
+        // Fail-open: rate limit exceeded → false; backend error → true (already
+        // handled inside check_keyed via Valkey BackendError path).
+        self.check_outbound_tool_call(&org_id.to_string())
+            .await
+            .is_ok()
     }
 }
 
@@ -651,39 +693,34 @@ mod tests {
     // OrgRateLimiter tests
     // ============================================
 
-    #[tokio::test]
-    async fn org_rate_limiter_session_create_allows_initial() {
-        let limiter = OrgRateLimiter {
+    fn make_test_limiter_rpm(session_rpm: u32, schedule_rpm: u32, org_rph: u32) -> OrgRateLimiter {
+        OrgRateLimiter {
             backend: OrgBackend::InMemory {
                 session_create: Arc::new(RateLimiter::keyed(Quota::per_minute(
-                    NonZeroU32::new(60).unwrap(),
+                    NonZeroU32::new(session_rpm).unwrap(),
                 ))),
                 schedule_create: Arc::new(RateLimiter::keyed(Quota::per_minute(
-                    NonZeroU32::new(20).unwrap(),
+                    NonZeroU32::new(schedule_rpm).unwrap(),
                 ))),
                 org_create: Arc::new(RateLimiter::keyed(Quota::per_hour(
-                    NonZeroU32::new(10).unwrap(),
+                    NonZeroU32::new(org_rph).unwrap(),
+                ))),
+                tool_calls: Arc::new(RateLimiter::keyed(Quota::per_minute(
+                    NonZeroU32::new(1000).unwrap(),
                 ))),
             },
-        };
+        }
+    }
+
+    #[tokio::test]
+    async fn org_rate_limiter_session_create_allows_initial() {
+        let limiter = make_test_limiter_rpm(60, 20, 10);
         assert!(limiter.check_session_create(1).await.is_ok());
     }
 
     #[tokio::test]
     async fn org_rate_limiter_session_create_blocks_after_burst() {
-        let limiter = OrgRateLimiter {
-            backend: OrgBackend::InMemory {
-                session_create: Arc::new(RateLimiter::keyed(Quota::per_minute(
-                    NonZeroU32::new(3).unwrap(),
-                ))),
-                schedule_create: Arc::new(RateLimiter::keyed(Quota::per_minute(
-                    NonZeroU32::new(3).unwrap(),
-                ))),
-                org_create: Arc::new(RateLimiter::keyed(Quota::per_hour(
-                    NonZeroU32::new(3).unwrap(),
-                ))),
-            },
-        };
+        let limiter = make_test_limiter_rpm(3, 3, 3);
         for _ in 0..3 {
             let _ = limiter.check_session_create(42).await;
         }
@@ -696,24 +733,63 @@ mod tests {
     async fn org_rate_limiter_org_create_blocks_after_burst() {
         let user1 = Uuid::new_v4();
         let user2 = Uuid::new_v4();
-        let limiter = OrgRateLimiter {
-            backend: OrgBackend::InMemory {
-                session_create: Arc::new(RateLimiter::keyed(Quota::per_minute(
-                    NonZeroU32::new(3).unwrap(),
-                ))),
-                schedule_create: Arc::new(RateLimiter::keyed(Quota::per_minute(
-                    NonZeroU32::new(3).unwrap(),
-                ))),
-                org_create: Arc::new(RateLimiter::keyed(Quota::per_hour(
-                    NonZeroU32::new(2).unwrap(),
-                ))),
-            },
-        };
+        let limiter = make_test_limiter_rpm(3, 3, 2);
         for _ in 0..2 {
             let _ = limiter.check_org_create(user1).await;
         }
         assert!(limiter.check_org_create(user1).await.is_err());
         // Different user_id is unaffected
         assert!(limiter.check_org_create(user2).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn org_rate_limiter_tool_calls_allows_initial() {
+        use everruns_core::typed_id::OrgId;
+        let limiter = make_test_limiter_rpm(60, 20, 10);
+        let org_id = OrgId::new();
+        assert!(
+            limiter
+                .check_outbound_tool_call(&org_id.to_string())
+                .await
+                .is_ok()
+        );
+    }
+
+    #[tokio::test]
+    async fn org_rate_limiter_tool_calls_blocks_after_burst() {
+        use everruns_core::typed_id::OrgId;
+        let limiter = OrgRateLimiter {
+            backend: OrgBackend::InMemory {
+                session_create: Arc::new(RateLimiter::keyed(Quota::per_minute(
+                    NonZeroU32::new(100).unwrap(),
+                ))),
+                schedule_create: Arc::new(RateLimiter::keyed(Quota::per_minute(
+                    NonZeroU32::new(100).unwrap(),
+                ))),
+                org_create: Arc::new(RateLimiter::keyed(Quota::per_hour(
+                    NonZeroU32::new(100).unwrap(),
+                ))),
+                tool_calls: Arc::new(RateLimiter::keyed(Quota::per_minute(
+                    NonZeroU32::new(2).unwrap(),
+                ))),
+            },
+        };
+        let org1 = OrgId::new();
+        let org2 = OrgId::new();
+        for _ in 0..2 {
+            let _ = limiter.check_outbound_tool_call(&org1.to_string()).await;
+        }
+        assert!(
+            limiter
+                .check_outbound_tool_call(&org1.to_string())
+                .await
+                .is_err()
+        );
+        assert!(
+            limiter
+                .check_outbound_tool_call(&org2.to_string())
+                .await
+                .is_ok()
+        );
     }
 }
