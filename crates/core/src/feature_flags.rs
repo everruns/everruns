@@ -127,6 +127,7 @@ impl FeatureFlags {
             agent_versions: opt_in("agent_versions", system.agent_versions),
             voice: opt_in("voice", system.voice),
             apps_detail_v2: opt_in("apps.detailV2", system.apps_detail_v2),
+            agent_delegation: opt_in("agent_delegation", system.agent_delegation),
         }
     }
 

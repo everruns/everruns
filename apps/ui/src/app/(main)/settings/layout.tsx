@@ -3,7 +3,16 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { Server, Key, Users, Building2, Cable, User, WalletCards, FlaskConical } from "lucide-react";
+import {
+  Server,
+  Key,
+  Users,
+  Building2,
+  Cable,
+  User,
+  WalletCards,
+  FlaskConical,
+} from "lucide-react";
 
 interface NavItem {
   name: string;

@@ -5,10 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
-import {
-  useOrgFeatureFlagSettings,
-  useUpdateOrgFeatureFlags,
-} from "@/hooks/use-org-feature-flags";
+import { useOrgFeatureFlagSettings, useUpdateOrgFeatureFlags } from "@/hooks/use-org-feature-flags";
 import { usePageTitle } from "@/hooks";
 import { useOrg } from "@/providers/org-provider";
 import type { OrgFeatureFlagSetting } from "@/lib/api/types";
@@ -34,7 +31,9 @@ export default function FeaturesSettingsPage() {
         <h2 className="text-lg font-semibold">Features</h2>
         <p className="mt-1 text-sm text-muted-foreground">
           Choose which experimental and optional capabilities are enabled for{" "}
-          <span className="font-medium text-foreground">{currentOrg?.name ?? "this organization"}</span>
+          <span className="font-medium text-foreground">
+            {currentOrg?.name ?? "this organization"}
+          </span>
           . Flags must be available on this deployment before your organization can opt in.
         </p>
       </div>
@@ -86,9 +85,11 @@ export default function FeaturesSettingsPage() {
               <p className="text-sm text-muted-foreground">{flag.description}</p>
             </div>
             <div className="flex shrink-0 items-center gap-2 pt-1">
-              {updateFlags.isPending && updateFlags.variables && flag.name in updateFlags.variables && (
-                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-              )}
+              {updateFlags.isPending &&
+                updateFlags.variables &&
+                flag.name in updateFlags.variables && (
+                  <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                )}
               <Switch
                 id={`flag-${flag.name}`}
                 checked={flag.org_enabled}
