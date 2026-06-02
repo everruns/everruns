@@ -281,6 +281,7 @@ pub struct DirectWorkerAdapters {
     virtual_registry:
         Option<Arc<crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry>>,
     org_rate_limiter: Option<Arc<crate::auth::rate_limit::OrgRateLimiter>>,
+    quota: crate::domains::session_files::limits::QuotaLimits,
 }
 
 impl DirectWorkerAdapters {
@@ -313,6 +314,7 @@ impl DirectWorkerAdapters {
             permission_resolver: Arc::new(everruns_core::DefaultPermissionResolver),
             virtual_registry: None,
             org_rate_limiter: None,
+            quota: crate::domains::session_files::limits::QuotaLimits::from_env(),
         }
     }
 
@@ -850,33 +852,12 @@ impl WorkerAdapters for DirectWorkerAdapters {
 
         // Quota check (TM-FS-008 / TM-DOS-005)
         {
-            use crate::domains::session_files::limits::{
-                max_session_file_bytes, max_single_file_bytes,
-            };
+            use crate::domains::session_files::limits::check_write_quota;
             let incoming = content_bytes.len() as i64;
-            let per_file_limit = max_single_file_bytes();
-            if incoming > per_file_limit {
-                return Err(store_error(format!(
-                    "File too large: {incoming} bytes exceeds the per-file limit of {per_file_limit} bytes"
-                )));
-            }
             let existing_size = existing.as_ref().map(|f| f.size_bytes).unwrap_or(0);
-            let current_total =
-                self.db
-                    .total_session_file_bytes(session_id)
-                    .await
-                    .map_err(|e| {
-                        tracing::error!("Failed to query session file total: {}", e);
-                        store_error("Failed to write file")
-                    })?;
-            let delta = incoming - existing_size;
-            let new_total = current_total.saturating_add(delta.max(0));
-            let session_limit = max_session_file_bytes();
-            if new_total > session_limit {
-                return Err(store_error(format!(
-                    "Session storage quota exceeded: writing {incoming} bytes would bring total to {new_total} bytes (limit {session_limit} bytes)"
-                )));
-            }
+            check_write_quota(&self.db, session_id, incoming, existing_size, &self.quota)
+                .await
+                .map_err(|e| store_error(e.to_string()))?;
         }
 
         let row = if existing.is_some() {

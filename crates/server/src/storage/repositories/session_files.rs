@@ -416,7 +416,7 @@ impl Database {
     /// Sum of size_bytes across all non-directory files in a session.
     pub async fn total_session_file_bytes(&self, session_id: Uuid) -> Result<i64> {
         let row: (i64,) = sqlx::query_as(
-            "SELECT COALESCE(SUM(size_bytes), 0) FROM session_files WHERE session_id = $1 AND is_directory = false",
+            "SELECT COALESCE(SUM(size_bytes), 0)::bigint FROM session_files WHERE session_id = $1 AND is_directory = false",
         )
         .bind(session_id)
         .fetch_one(&self.pool)

@@ -38,7 +38,7 @@ This document defines the session-level virtual filesystem for Everruns. Each se
 **Chosen:** No special handling for large files (>10MB)
 **Rationale:** MVP focuses on code and config files. Large file streaming can be added later with object storage backend.
 
-### Decision 7: Per-Session Storage Quotas
+### Decision 6: Per-Session Storage Quotas
 **Chosen:** Enforce byte-level quotas at the application layer in both the HTTP API path and the agent tool path.
 
 **Limits (env-configurable):**
@@ -47,7 +47,7 @@ This document defines the session-level virtual filesystem for Everruns. Each se
 
 **Rationale:** Prevents unbounded PostgreSQL BYTEA growth from agentic file writes (TM-FS-008 / TM-DOS-005). Quota checks run before any DB insert, so they fail closed. Defaults are generous to avoid throttling long-horizon agentic runs.
 
-### Decision 6: Workspace Mount Point
+### Decision 7: Workspace Mount Point
 **Chosen:** Session files exposed to agents at `/workspace`
 **Alternatives considered:**
 - Mount at root `/`: Conflicts with system directories
