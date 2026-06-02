@@ -7,6 +7,7 @@ use crate::api::evals::{
     BulkUpdateEvalRunScoresRequest, CreateEvalCaseRequest, CreateEvalRequest, CreateEvalRunRequest,
     ExternalScoreStatus, UpdateEvalCaseRequest, UpdateEvalRequest, UpdateEvalResultScoresRequest,
 };
+use crate::domains::evals::limits::EvalLimits;
 use crate::domains::evals::runner::{EvalRunContext, spawn_eval_run};
 use crate::errors::{BadRequestError, ResourceNotFoundError};
 use crate::storage::StorageBackend;
@@ -49,6 +50,7 @@ pub const EVAL_RUN: Policy = Policy {
 pub struct EvalService {
     db: Arc<StorageBackend>,
     run_context: Option<Arc<EvalRunContext>>,
+    limits: EvalLimits,
 }
 
 /// Validates an EvalTarget if present. Returns error on invalid combinations.
@@ -71,7 +73,13 @@ impl EvalService {
         Self {
             db,
             run_context: None,
+            limits: EvalLimits::from_env(),
         }
+    }
+
+    pub fn with_limits(mut self, limits: EvalLimits) -> Self {
+        self.limits = limits;
+        self
     }
 
     pub fn with_run_context(mut self, ctx: Arc<EvalRunContext>) -> Self {
@@ -364,10 +372,33 @@ impl EvalService {
             .and_then(|v| serde_json::from_value(v.clone()).ok());
         let run_target: Option<EvalTarget> = req.target.clone();
 
+        // Concurrency cap: reject if org already has too many active eval runs (EVE-509).
+        let running = self
+            .db
+            .count_running_eval_runs_for_org(caller.org_id)
+            .await?;
+        if running as usize >= self.limits.max_concurrent_runs_per_org {
+            return Err(BadRequestError::new(format!(
+                "Too many concurrent eval runs: org has {} active runs (limit {})",
+                running, self.limits.max_concurrent_runs_per_org
+            ))
+            .into());
+        }
+
         // Create pending case results for each case, resolving target per case.
         // target_snapshot must always store a concrete resolved target so results
         // remain reproducible and do not depend on future default changes.
         let cases = self.db.list_eval_cases(eval.id).await?;
+
+        // Volume cap: reject if the run would execute more cases than the per-run limit.
+        if cases.len() > self.limits.max_cases_per_run {
+            return Err(BadRequestError::new(format!(
+                "Eval run too large: {} cases exceeds the per-run limit of {}",
+                cases.len(),
+                self.limits.max_cases_per_run
+            ))
+            .into());
+        }
         let mut resolved_targets = Vec::with_capacity(cases.len());
         for case in &cases {
             // Resolve target: run → case → eval. Fail if nothing resolved.
@@ -1017,5 +1048,138 @@ fn scorer_weight(scorer: &Scorer) -> f64 {
         Scorer::TurnsWithin { weight, .. } => *weight,
         Scorer::FileContains { weight, .. } => *weight,
         Scorer::JsonSchema { weight, .. } => *weight,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domains::evals::limits::EvalLimits;
+    use crate::storage::StorageBackend;
+    use crate::storage::models::{CreateEvalCaseRow, CreateEvalRow};
+    use everruns_core::Caller;
+
+    fn test_target() -> EvalTarget {
+        EvalTarget::Session {
+            harness_id: None,
+            harness_name: None,
+            agent_id: None,
+            model_id: None,
+            system_prompt: None,
+            max_iterations: None,
+        }
+    }
+
+    async fn seed_eval(db: &StorageBackend, org_id: i64, n_cases: usize) -> String {
+        let eval_uuid = Uuid::now_v7();
+        let eval_public_id = format!("eval_{:032x}", eval_uuid.as_u128());
+        db.create_eval(
+            org_id,
+            CreateEvalRow {
+                public_id: eval_public_id.clone(),
+                name: "test eval".to_string(),
+                description: None,
+                target: Some(serde_json::to_value(test_target()).unwrap()),
+                model_override: None,
+                tags: vec![],
+            },
+        )
+        .await
+        .unwrap();
+
+        let eval = db
+            .get_eval_by_public_id(org_id, &eval_public_id)
+            .await
+            .unwrap()
+            .unwrap();
+
+        for i in 0..n_cases {
+            let case_uuid = Uuid::now_v7();
+            db.create_eval_case(
+                eval.id,
+                CreateEvalCaseRow {
+                    public_id: format!("evalcase_{:032x}", case_uuid.as_u128()),
+                    name: format!("case {i}"),
+                    description: None,
+                    target: None,
+                    tags: vec![],
+                    conversation: serde_json::json!([{"role":"user","content":"hi"}]),
+                    post: None,
+                    artifacts: None,
+                    scorers: serde_json::json!([]),
+                    max_turns: None,
+                    timeout_seconds: None,
+                    position: i as i32,
+                },
+            )
+            .await
+            .unwrap();
+        }
+
+        eval_public_id
+    }
+
+    #[tokio::test]
+    async fn concurrent_run_limit_enforced() {
+        let db = StorageBackend::in_memory();
+        let org_id = 1i64;
+        let caller = Caller::internal(org_id);
+        let svc = EvalService::new(Arc::new(db)).with_limits(EvalLimits {
+            max_concurrent_runs_per_org: 2,
+            max_cases_per_run: 500,
+        });
+
+        let eval_id = seed_eval(svc.db.as_ref(), org_id, 1).await;
+        let run_req = CreateEvalRunRequest {
+            target: None,
+            model_override: None,
+        };
+
+        // First two runs succeed (stay pending — no run_context to execute them).
+        svc.create_run(&caller, &eval_id, run_req.clone())
+            .await
+            .unwrap();
+        svc.create_run(&caller, &eval_id, run_req.clone())
+            .await
+            .unwrap();
+
+        // Third run is rejected.
+        let err = svc
+            .create_run(&caller, &eval_id, run_req)
+            .await
+            .unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("Too many concurrent eval runs"),
+            "Expected concurrency limit error, got: {msg}"
+        );
+    }
+
+    #[tokio::test]
+    async fn case_volume_limit_enforced() {
+        let db = StorageBackend::in_memory();
+        let org_id = 2i64;
+        let caller = Caller::internal(org_id);
+        let svc = EvalService::new(Arc::new(db)).with_limits(EvalLimits {
+            max_concurrent_runs_per_org: 100,
+            max_cases_per_run: 2,
+        });
+
+        // Eval has 3 cases — exceeds the 2-case limit.
+        let eval_id = seed_eval(svc.db.as_ref(), org_id, 3).await;
+        let run_req = CreateEvalRunRequest {
+            target: None,
+            model_override: None,
+        };
+
+        let err = svc
+            .create_run(&caller, &eval_id, run_req)
+            .await
+            .unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("per-run limit"),
+            "Expected per-run limit error, got: {msg}"
+        );
     }
 }

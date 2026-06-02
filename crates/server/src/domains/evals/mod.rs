@@ -1,6 +1,7 @@
 // Evals domain — commands, queries, service, and background runner.
 
 pub mod commands;
+pub mod limits;
 pub mod queries;
 pub mod runner;
 pub mod service;

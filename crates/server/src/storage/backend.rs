@@ -2814,6 +2814,10 @@ impl StorageBackend {
         dispatch!(self, count_eval_cases, eval_id)
     }
 
+    pub async fn count_running_eval_runs_for_org(&self, org_id: i64) -> Result<i64> {
+        dispatch!(self, count_running_eval_runs_for_org, org_id)
+    }
+
     // ============================================
     // Eval Run CRUD
     // ============================================
