@@ -13,7 +13,7 @@ use axum::{
 };
 use everruns_core::{FeatureFlags, validate_org_public_id};
 
-use crate::auth::middleware::{AuthState, OrgAdmin, ResolvedOrg};
+use crate::auth::middleware::{AuthState, OrgAdmin};
 use crate::services::org_feature_flags::{
     OrgFeatureFlagsSettingsResponse, build_org_feature_flag_settings,
     validate_org_feature_flag_updates,
@@ -71,10 +71,10 @@ async fn resolve_path_org(
     org_public_id: &str,
 ) -> Result<i64, (axum::http::StatusCode, Json<ErrorResponse>)> {
     if !validate_org_public_id(org_public_id) {
-        return Err(ErrorResponse::not_found("Organization").into());
+        return Err(ErrorResponse::not_found("Organization"));
     }
     if !is_member_of_public_db(&state.db, user_id, org_public_id).await? {
-        return Err(ErrorResponse::not_found("Organization").into());
+        return Err(ErrorResponse::not_found("Organization"));
     }
     let row = state
         .db
@@ -163,7 +163,7 @@ pub async fn update_org_feature_flags(
     Json(req): Json<UpdateOrgFeatureFlagsRequest>,
 ) -> ApiResult<FeatureFlags> {
     if org.public_id != org_public_id {
-        return Err(ErrorResponse::not_found("Organization").into());
+        return Err(ErrorResponse::not_found("Organization"));
     }
     if let Err(msg) = validate_org_feature_flag_updates(&state.system_feature_flags, &req.flags) {
         return Err(ErrorResponse::new(msg).into_response(axum::http::StatusCode::BAD_REQUEST));
