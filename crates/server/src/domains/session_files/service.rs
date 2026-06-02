@@ -5,6 +5,7 @@
 // rather than waiting until execution time. The apply_capability_mounts()
 // method recursively creates files and directories from mount point definitions.
 
+use crate::domains::session_files::limits::{max_session_file_bytes, max_single_file_bytes};
 use crate::storage::{
     StorageBackend,
     models::{CreateSessionFileRow, SessionFileInfoRow, SessionFileRow, UpdateSessionFile},
@@ -157,6 +158,36 @@ impl SessionFileService {
         Ok(())
     }
 
+    /// Reject the write if `incoming_bytes` would exceed per-session or per-file quotas.
+    async fn check_write_quota(
+        &self,
+        session_id: Uuid,
+        incoming_bytes: i64,
+        existing_bytes: i64,
+    ) -> Result<()> {
+        let per_file_limit = max_single_file_bytes();
+        if incoming_bytes > per_file_limit {
+            return Err(anyhow!(
+                "File too large: {} bytes exceeds the per-file limit of {} bytes",
+                incoming_bytes,
+                per_file_limit
+            ));
+        }
+        let current_total = self.db.total_session_file_bytes(session_id).await?;
+        let delta = incoming_bytes - existing_bytes;
+        let new_total = current_total.saturating_add(delta.max(0));
+        let session_limit = max_session_file_bytes();
+        if new_total > session_limit {
+            return Err(anyhow!(
+                "Session storage quota exceeded: writing {} bytes would bring total to {} bytes (limit {} bytes)",
+                incoming_bytes,
+                new_total,
+                session_limit
+            ));
+        }
+        Ok(())
+    }
+
     /// Create a new file
     pub async fn create_file(&self, session_id: Uuid, req: CreateFileInput) -> Result<SessionFile> {
         let path = Self::normalize_path(&req.path);
@@ -171,6 +202,11 @@ impl SessionFileService {
         } else {
             None
         };
+
+        // Quota check before any DB writes (TM-FS-008 / TM-DOS-005)
+        let incoming_bytes = content.as_ref().map(|c| c.len() as i64).unwrap_or(0);
+        self.check_write_quota(session_id, incoming_bytes, 0)
+            .await?;
 
         // Ensure parent directory exists (create recursively if needed)
         if let Some(parent) = FileInfo::parent_path(&path) {
@@ -495,14 +531,18 @@ impl SessionFileService {
         }
 
         // Check if file exists and is not readonly
-        if let Some(existing) = self.db.get_session_file(session_id, &path).await? {
-            if existing.is_directory {
-                return Err(anyhow!("Cannot update directory: {}", path));
-            }
-            if existing.is_readonly && req.content.is_some() {
-                return Err(anyhow!("Cannot modify readonly file: {}", path));
-            }
-        }
+        let existing_size =
+            if let Some(existing) = self.db.get_session_file(session_id, &path).await? {
+                if existing.is_directory {
+                    return Err(anyhow!("Cannot update directory: {}", path));
+                }
+                if existing.is_readonly && req.content.is_some() {
+                    return Err(anyhow!("Cannot modify readonly file: {}", path));
+                }
+                existing.size_bytes
+            } else {
+                0
+            };
 
         // Decode content if provided
         let content = if let Some(ref content_str) = req.content {
@@ -511,6 +551,12 @@ impl SessionFileService {
         } else {
             None
         };
+
+        // Quota check (TM-FS-008 / TM-DOS-005)
+        if let Some(ref bytes) = content {
+            self.check_write_quota(session_id, bytes.len() as i64, existing_size)
+                .await?;
+        }
 
         let input = UpdateSessionFile {
             content,
@@ -1408,6 +1454,11 @@ mod tests {
     use crate::storage::StorageBackend;
     use crate::storage::models::CreateSessionFileRow;
     use std::sync::Arc;
+    use tokio::sync::Mutex;
+
+    // Serialize tests that mutate env vars to avoid races between parallel test threads.
+    static QUOTA_ENV_LOCK: std::sync::LazyLock<Mutex<()>> =
+        std::sync::LazyLock::new(|| Mutex::new(()));
 
     /// Seed a text file into the in-memory store.
     async fn seed_file(db: &StorageBackend, session_id: Uuid, path: &str, content: &str) {
@@ -1915,5 +1966,130 @@ mod tests {
             .await
             .unwrap_err();
         assert!(err.to_string().contains("readonly"));
+    }
+
+    // ===== Quota tests (TM-FS-008 / TM-DOS-005) =====
+
+    #[tokio::test]
+    async fn create_file_enforces_per_file_limit() {
+        let _guard = QUOTA_ENV_LOCK.lock().await;
+        // Override per-file limit to 10 bytes for this test.
+        unsafe {
+            std::env::set_var("SESSION_FILE_SINGLE_MAX_BYTES", "10");
+        }
+        let db = StorageBackend::in_memory();
+        let sid = Uuid::new_v4();
+        let svc = SessionFileService::new(Arc::new(db));
+
+        let err = svc
+            .create_file(
+                sid,
+                CreateFileInput {
+                    path: "/big.txt".to_string(),
+                    content: Some("x".repeat(11)),
+                    encoding: None,
+                    is_readonly: None,
+                },
+            )
+            .await
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("per-file limit"),
+            "Expected per-file limit error, got: {err}"
+        );
+        unsafe {
+            std::env::remove_var("SESSION_FILE_SINGLE_MAX_BYTES");
+        }
+    }
+
+    #[tokio::test]
+    async fn create_file_enforces_session_total_limit() {
+        let _guard = QUOTA_ENV_LOCK.lock().await;
+        // Set session limit to 20 bytes; write two 15-byte files.
+        unsafe {
+            std::env::set_var("SESSION_FILE_MAX_BYTES", "20");
+            std::env::set_var("SESSION_FILE_SINGLE_MAX_BYTES", "15");
+        }
+        let db = StorageBackend::in_memory();
+        let sid = Uuid::new_v4();
+        let svc = SessionFileService::new(Arc::new(db));
+
+        // First write succeeds.
+        svc.create_file(
+            sid,
+            CreateFileInput {
+                path: "/a.txt".to_string(),
+                content: Some("x".repeat(15)),
+                encoding: None,
+                is_readonly: None,
+            },
+        )
+        .await
+        .unwrap();
+
+        // Second write exceeds session total.
+        let err = svc
+            .create_file(
+                sid,
+                CreateFileInput {
+                    path: "/b.txt".to_string(),
+                    content: Some("x".repeat(15)),
+                    encoding: None,
+                    is_readonly: None,
+                },
+            )
+            .await
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("quota exceeded"),
+            "Expected quota exceeded error, got: {err}"
+        );
+        unsafe {
+            std::env::remove_var("SESSION_FILE_MAX_BYTES");
+            std::env::remove_var("SESSION_FILE_SINGLE_MAX_BYTES");
+        }
+    }
+
+    #[tokio::test]
+    async fn update_file_enforces_per_file_limit() {
+        let _guard = QUOTA_ENV_LOCK.lock().await;
+        unsafe {
+            std::env::set_var("SESSION_FILE_SINGLE_MAX_BYTES", "10");
+        }
+        let db = StorageBackend::in_memory();
+        let sid = Uuid::new_v4();
+        let svc = SessionFileService::new(Arc::new(db));
+
+        svc.create_file(
+            sid,
+            CreateFileInput {
+                path: "/f.txt".to_string(),
+                content: Some("hello".to_string()),
+                encoding: None,
+                is_readonly: None,
+            },
+        )
+        .await
+        .unwrap();
+
+        let err = svc
+            .update_file(
+                sid,
+                "/f.txt",
+                UpdateFileInput {
+                    content: Some("x".repeat(11)),
+                    encoding: None,
+                    is_readonly: None,
+                },
+            )
+            .await
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("per-file limit"),
+            "Expected per-file limit error, got: {err}"
+        );
+        unsafe {
+            std::env::remove_var("SESSION_FILE_SINGLE_MAX_BYTES");
+        }
     }
 }

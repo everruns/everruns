@@ -413,6 +413,17 @@ impl Database {
         Ok(result.is_some())
     }
 
+    /// Sum of size_bytes across all non-directory files in a session.
+    pub async fn total_session_file_bytes(&self, session_id: Uuid) -> Result<i64> {
+        let row: (i64,) = sqlx::query_as(
+            "SELECT COALESCE(SUM(size_bytes), 0) FROM session_files WHERE session_id = $1 AND is_directory = false",
+        )
+        .bind(session_id)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(row.0)
+    }
+
     /// Load all non-directory files with content for a session (single query).
     pub async fn load_all_session_files_with_content(
         &self,

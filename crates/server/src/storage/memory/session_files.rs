@@ -357,6 +357,17 @@ impl InMemoryDatabase {
         }))
     }
 
+    pub async fn total_session_file_bytes(&self, session_id: Uuid) -> Result<i64> {
+        let session_id = SessionId::from_uuid(session_id);
+        Ok(self
+            .session_files
+            .read()
+            .values()
+            .filter(|f| f.session_id == session_id && !f.is_directory)
+            .map(|f| f.size_bytes)
+            .sum())
+    }
+
     /// Load all non-directory files with content for a session (single pass).
     pub async fn load_all_session_files_with_content(
         &self,
