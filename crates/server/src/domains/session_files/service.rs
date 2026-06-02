@@ -704,7 +704,7 @@ impl SessionFileService {
         )
         .await?;
 
-        // Also search virtual mounts
+        // Also search virtual mounts (same per-file and NFA caps, TM-DOS-008)
         if let Some(registry) = &self.virtual_registry {
             let regex = build_grep_regex(&req.pattern)?;
             let path_regex = req
@@ -713,7 +713,8 @@ impl SessionFileService {
                 .map(build_grep_regex)
                 .transpose()?;
             // Pass None for path filter — we apply regex filtering below to match DB semantics
-            let virtual_matches = registry.grep(&session_id, &regex, None);
+            let virtual_matches =
+                registry.grep(&session_id, &regex, None, MAX_GREP_FILE_BYTES as usize);
             for vm in virtual_matches
                 .into_iter()
                 .filter(|vm| path_regex.as_ref().is_none_or(|re| re.is_match(&vm.path)))
@@ -1293,18 +1294,26 @@ pub async fn grep_session_files(
     pattern: &str,
     path_pattern: Option<&str>,
 ) -> Result<Vec<GrepResult>> {
-    // TM-DOS-008: cap pattern length and compiled NFA size.
+    // TM-DOS-008: cap pattern and path_pattern length, then cap compiled NFA size.
     anyhow::ensure!(
         pattern.len() <= MAX_GREP_PATTERN_LEN,
         "Regex pattern too long (max {} characters)",
         MAX_GREP_PATTERN_LEN
     );
+    if let Some(pp) = path_pattern {
+        anyhow::ensure!(
+            pp.len() <= MAX_GREP_PATTERN_LEN,
+            "Path pattern too long (max {} characters)",
+            MAX_GREP_PATTERN_LEN
+        );
+    }
 
     let regex = build_grep_regex(pattern)?;
 
-    // Get matching files from database
+    // Get matching files from database. MAX_GREP_FILE_BYTES is passed so the
+    // storage backend never loads content from files that exceed the per-file cap.
     let files = db
-        .grep_session_files(session_id, pattern, path_pattern)
+        .grep_session_files(session_id, pattern, path_pattern, MAX_GREP_FILE_BYTES)
         .await?;
 
     let mut results = Vec::new();
@@ -1312,7 +1321,7 @@ pub async fn grep_session_files(
 
     // For each matching file, find the actual line matches
     for file_info in files {
-        // TM-DOS-008: skip files that exceed the per-file size limit.
+        // Defense-in-depth: skip oversized files even if the storage filter missed them.
         if file_info.size_bytes > MAX_GREP_FILE_BYTES {
             continue;
         }
@@ -1498,6 +1507,18 @@ mod tests {
 
         let long_pattern = "a".repeat(MAX_GREP_PATTERN_LEN + 1);
         let result = grep_session_files(&db, sid, &long_pattern, None).await;
+        assert!(result.is_err());
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("too long"), "Expected 'too long' in: {err}");
+    }
+
+    #[tokio::test]
+    async fn grep_session_files_rejects_overlong_path_pattern() {
+        let db = StorageBackend::in_memory();
+        let sid = Uuid::new_v4();
+
+        let long_path = "a".repeat(MAX_GREP_PATTERN_LEN + 1);
+        let result = grep_session_files(&db, sid, "hello", Some(&long_path)).await;
         assert!(result.is_err());
         let err = result.unwrap_err().to_string();
         assert!(err.contains("too long"), "Expected 'too long' in: {err}");
