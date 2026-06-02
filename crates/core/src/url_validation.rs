@@ -560,7 +560,7 @@ mod tests {
         _host: String,
         _port: u16,
     ) -> Result<Vec<SocketAddr>, std::io::Error> {
-        Ok(vec!["203.0.113.1:443".parse().unwrap()])
+        Ok(vec!["1.1.1.1:443".parse().unwrap()])
     }
 
     // Simulates a DNS failure / timeout.
