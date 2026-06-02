@@ -10,6 +10,7 @@ use crate::api::common::Pagination;
 use crate::domains::harnesses::queries::resolve_effective as resolve_effective_harness;
 use crate::domains::session_files::{CreateFileInput, SessionFileService};
 use crate::domains::session_sandbox::SessionSandboxService;
+use crate::domains::sessions::limits::OrgCaps;
 use crate::errors::{BadRequestError, ResourceNotFoundError};
 use crate::max_iterations;
 use crate::org_init;
@@ -69,6 +70,7 @@ pub struct SessionService {
     capability_registry: CapabilityRegistry,
     session_file_service: SessionFileService,
     session_sandbox_service: Option<Arc<SessionSandboxService>>,
+    caps: OrgCaps,
 }
 
 impl SessionService {
@@ -79,6 +81,7 @@ impl SessionService {
             session_file_service: SessionFileService::new(db.clone()),
             db,
             session_sandbox_service: None,
+            caps: OrgCaps::from_env(),
         }
     }
 
@@ -90,7 +93,13 @@ impl SessionService {
             session_file_service: SessionFileService::new(db.clone()),
             db,
             session_sandbox_service: None,
+            caps: OrgCaps::from_env(),
         }
+    }
+
+    pub fn with_caps(mut self, caps: OrgCaps) -> Self {
+        self.caps = caps;
+        self
     }
 
     /// Attach a virtual mount registry to the internal session file service.
@@ -181,6 +190,16 @@ impl SessionService {
         let org_public_id = &caller.org_public_id;
         let harness_id = HarnessId::from_uuid(harness_id);
         let agent_id = agent_internal_id.map(AgentId::from_uuid);
+
+        // EVE-508: check per-org concurrent session cap before creating.
+        let active_sessions = self.db.count_active_sessions_for_org(org_id).await?;
+        if active_sessions >= self.caps.max_concurrent_sessions as i64 {
+            return Err(BadRequestError::new(format!(
+                "Too many concurrent sessions: org has {} active sessions (limit {}); retry later",
+                active_sessions, self.caps.max_concurrent_sessions
+            ))
+            .into());
+        }
 
         let harness = self
             .db
@@ -3080,6 +3099,85 @@ mod tests {
                 "got: {err} for tag: {forbidden}"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn concurrent_session_cap_enforced() {
+        use crate::domains::sessions::limits::OrgCaps;
+        use crate::errors::BadRequestError;
+        use crate::storage::models::UpdateSession;
+
+        let db = Arc::new(StorageBackend::in_memory());
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+        let ctx = test_ctx(caller.clone(), db.clone());
+
+        let harness = crate::domains::harnesses::CreateHarness(CreateHarnessRequest {
+            name: "cap-test-harness".to_string(),
+            display_name: Some("Cap Test Harness".to_string()),
+            description: None,
+            system_prompt: "test".to_string(),
+            parent_harness_id: None,
+            default_model_id: None,
+            tags: vec![],
+            capabilities: vec![],
+            initial_files: vec![],
+            mcp_servers: Default::default(),
+            network_access: None,
+        })
+        .execute(&ctx)
+        .await
+        .unwrap();
+
+        let svc = SessionService::new(db.clone()).with_caps(OrgCaps {
+            max_concurrent_sessions: 1,
+            max_active_turns: 1_000,
+        });
+
+        // First session succeeds.
+        let session = svc
+            .create(
+                &caller,
+                harness.id.uuid(),
+                None,
+                None,
+                build_create_request(harness.id, None, None),
+            )
+            .await
+            .unwrap();
+
+        // Ensure the session is in an active status (created as 'started' in in-memory backend).
+        let _ = db
+            .update_session(
+                DEFAULT_ORG_ID,
+                session.id,
+                UpdateSession {
+                    status: Some("started".to_string()),
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+
+        // Second session is rejected because cap = 1 is already reached.
+        let err = svc
+            .create(
+                &caller,
+                harness.id.uuid(),
+                None,
+                None,
+                build_create_request(harness.id, None, None),
+            )
+            .await
+            .unwrap_err();
+
+        assert!(
+            err.downcast_ref::<BadRequestError>().is_some(),
+            "expected BadRequestError, got: {err}"
+        );
+        assert!(
+            err.to_string().contains("Too many concurrent sessions"),
+            "got: {err}"
+        );
     }
 
     // Build a harness carrying a `user_hooks` capability with a single hook of

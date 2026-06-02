@@ -39,7 +39,7 @@ impl InMemoryDatabase {
             hints: input.hints,
             network_access: input.network_access,
             max_iterations: input.max_iterations,
-            status: "pending".to_string(), // Default status for new sessions
+            status: "started".to_string(),
             created_at: now,
             updated_at: now,
             started_at: None,
@@ -187,6 +187,32 @@ impl InMemoryDatabase {
             }
         }
         Ok(counts.into_iter().collect())
+    }
+
+    /// Count non-finished sessions for an org (EVE-508 concurrent session cap).
+    pub async fn count_active_sessions_for_org(&self, org_id: i64) -> Result<i64> {
+        let sessions = self.sessions.read();
+        let count = sessions
+            .values()
+            .filter(|s| {
+                s.org_id == org_id
+                    && matches!(
+                        s.status.as_str(),
+                        "active" | "idle" | "started" | "waiting_for_tool_results"
+                    )
+            })
+            .count();
+        Ok(count as i64)
+    }
+
+    /// Count sessions currently executing a turn for an org (EVE-508 active turn cap).
+    pub async fn count_active_turns_for_org(&self, org_id: i64) -> Result<i64> {
+        let sessions = self.sessions.read();
+        let count = sessions
+            .values()
+            .filter(|s| s.org_id == org_id && s.status == "active")
+            .count();
+        Ok(count as i64)
     }
 
     /// Aggregate session and turn execution stats for an optional agent or harness scope.

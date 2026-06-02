@@ -675,6 +675,14 @@ impl StorageBackend {
         dispatch!(self, count_sessions_by_status, org_id)
     }
 
+    pub async fn count_active_sessions_for_org(&self, org_id: i64) -> Result<i64> {
+        dispatch!(self, count_active_sessions_for_org, org_id)
+    }
+
+    pub async fn count_active_turns_for_org(&self, org_id: i64) -> Result<i64> {
+        dispatch!(self, count_active_turns_for_org, org_id)
+    }
+
     /// Aggregate session and execution stats for an optional agent or harness scope.
     pub async fn session_aggregate_stats(
         &self,
