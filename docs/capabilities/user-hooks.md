@@ -346,6 +346,90 @@ for ready-to-paste user-config bundle JSON.
 }
 ```
 
+### Block a user prompt that pastes a secret
+
+`user_prompt_submit` is the only lifecycle event that can **block**: a
+`block` decision aborts the turn before the LLM runs. The original prompt
+text arrives in `data.message`. Here the hook reads it, and if it looks like
+a pasted private key, rejects the turn with a message shown to the user.
+`on_error: "block"` makes the hook fail closed.
+
+```json
+{
+  "capabilities": [
+    { "ref": "virtual_bash" },
+    {
+      "ref": "user_hooks",
+      "config": {
+        "hooks": [
+          {
+            "id": "block_secrets_in_prompt",
+            "event": "user_prompt_submit",
+            "executor": {
+              "type": "bash",
+              "command": "msg=$(echo \"$EVERRUNS_HOOK_PAYLOAD_JSON\" | jq -r '.data.message'); if printf '%s' \"$msg\" | grep -qiE 'BEGIN (RSA|OPENSSH|EC|DSA) PRIVATE KEY'; then echo '{\"decision\":\"block\",\"reason\":\"prompt contains a private key\",\"user_message\":\"Your message looks like it contains a private key and was blocked. Remove the secret and resend.\"}'; else echo '{}'; fi"
+            },
+            "timeout_ms": 5000,
+            "on_error": "block",
+            "description": "Reject prompts that paste a private key"
+          }
+        ]
+      }
+    }
+  ]
+}
+```
+
+`user_prompt_submit` can also **mutate** the prompt instead of blocking —
+emit `{"decision":"mutate","patch":{"message":"<rewritten text>"}}` and the
+turn proceeds with the rewritten text. For example, to prepend a house style
+reminder:
+
+```jsonc
+{
+  "id": "prepend_style_note",
+  "event": "user_prompt_submit",
+  "executor": {
+    "type": "bash",
+    "command": "echo \"$EVERRUNS_HOOK_PAYLOAD_JSON\" | jq -c '{decision:\"mutate\",patch:{message:(\"[reminder: follow the house style guide]\\n\" + .data.message)}}'"
+  },
+  "on_error": "warn"
+}
+```
+
+### Log every completed turn
+
+`turn_end` is advisory — its decision is ignored, so use it for side effects
+like metrics or audit trails. The payload's `data.success` reports whether the
+turn finished cleanly.
+
+```json
+{
+  "capabilities": [
+    { "ref": "session_file_system" },
+    { "ref": "virtual_bash" },
+    {
+      "ref": "user_hooks",
+      "config": {
+        "hooks": [
+          {
+            "id": "log_turn_end",
+            "event": "turn_end",
+            "executor": {
+              "type": "bash",
+              "command": "echo \"$EVERRUNS_HOOK_PAYLOAD_JSON\" | jq -r '.ts + \" turn \" + .turn_id + \" success=\" + (.data.success | tostring)' >> /workspace/.turn-log; echo '{}'"
+            },
+            "timeout_ms": 3000,
+            "on_error": "warn",
+            "description": "Append one line per completed turn to /workspace/.turn-log"
+          }
+        ]
+      }
+    }
+  ]
+}
+```
+
 ## Observability
 
 Today, hook decisions and errors are recorded in the server logs via

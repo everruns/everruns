@@ -1,0 +1,15 @@
+{
+  "hooks": [
+    {
+      "id": "log_turn_end",
+      "event": "turn_end",
+      "executor": {
+        "type": "bash",
+        "command": "echo \"$EVERRUNS_HOOK_PAYLOAD_JSON\" | jq -r '.ts + \" turn \" + .turn_id + \" success=\" + (.data.success | tostring)' >> /workspace/.turn-log; echo '{}'"
+      },
+      "timeout_ms": 3000,
+      "on_error": "warn",
+      "description": "Append one line per completed turn to /workspace/.turn-log (turn_end; advisory, never blocks)"
+    }
+  ]
+}

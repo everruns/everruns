@@ -10,6 +10,8 @@ capability.
 | [`format-on-edit.json`](./format-on-edit.json) | `user_hooks` config | Run `cargo fmt` and `prettier` after each `edit_file`. |
 | [`session-bootstrap.json`](./session-bootstrap.json) | `user_hooks` config | Drop a sentinel file at session start. |
 | [`audit-every-tool.json`](./audit-every-tool.json) | `user_hooks` config | Append every tool call to `/workspace/.audit.log`. |
+| [`block-secret-prompt.json`](./block-secret-prompt.json) | `user_hooks` config | Block a user prompt that pastes a private key (`user_prompt_submit`). |
+| [`turn-end-log.json`](./turn-end-log.json) | `user_hooks` config | Append one line per completed turn to `/workspace/.turn-log` (`turn_end`). |
 
 ## Using a hook config
 

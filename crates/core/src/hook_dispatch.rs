@@ -810,6 +810,151 @@ mod tests {
         }
     }
 
+    // Pull the first hook's bash command out of an `examples/hook-bundles/*.json`
+    // config so the example-bundle tests exercise the exact shipped command.
+    fn bundle_command(file_name: &str) -> String {
+        let path = format!(
+            "{}/../../examples/hook-bundles/{}",
+            env!("CARGO_MANIFEST_DIR"),
+            file_name
+        );
+        let raw = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {path}: {e}"));
+        let value: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        value["hooks"][0]["executor"]["command"]
+            .as_str()
+            .unwrap_or_else(|| panic!("{file_name}: hooks[0].executor.command missing"))
+            .to_string()
+    }
+
+    #[tokio::test]
+    async fn example_block_secret_prompt_blocks_private_key() {
+        let cmd = bundle_command("block-secret-prompt.json");
+        let store: Arc<dyn SessionFileSystem> = Arc::new(MockFileStore::default());
+
+        // A prompt that pastes a private key is blocked, with the user_message
+        // surfaced to the caller.
+        let blocked = run(
+            store.clone(),
+            &cmd,
+            Default::default(),
+            payload(
+                HookEvent::UserPromptSubmit,
+                json!({ "message": "please use this key:\n-----BEGIN RSA PRIVATE KEY-----\nMII...\n-----END RSA PRIVATE KEY-----" }),
+            ),
+        )
+        .await;
+        match blocked {
+            HookOutcome::Block {
+                reason,
+                user_message,
+            } => {
+                assert!(reason.contains("private key"), "reason: {reason}");
+                assert!(
+                    user_message
+                        .as_deref()
+                        .unwrap_or_default()
+                        .contains("blocked"),
+                    "user_message: {user_message:?}"
+                );
+            }
+            other => panic!("expected Block, got {other:?}"),
+        }
+
+        // A benign prompt is allowed through unchanged.
+        let allowed = run(
+            store,
+            &cmd,
+            Default::default(),
+            payload(
+                HookEvent::UserPromptSubmit,
+                json!({ "message": "summarize the README" }),
+            ),
+        )
+        .await;
+        assert!(matches!(allowed, HookOutcome::Allow), "got {allowed:?}");
+    }
+
+    #[tokio::test]
+    async fn example_turn_end_log_appends_line() {
+        let cmd = bundle_command("turn-end-log.json");
+        let mock = Arc::new(MockFileStore::default());
+        let store: Arc<dyn SessionFileSystem> = mock.clone();
+
+        let outcome = run(
+            store,
+            &cmd,
+            Default::default(),
+            payload(HookEvent::TurnEnd, json!({ "success": true })),
+        )
+        .await;
+        // turn_end is advisory; the command emits `{}` (allow).
+        assert!(matches!(outcome, HookOutcome::Allow), "got {outcome:?}");
+
+        // The hook wrote a summary line built from the payload (ts / turn_id /
+        // success) — proving jq field access and the `>>` append both work.
+        let line = mock
+            .read("/.turn-log")
+            .or_else(|| mock.read("/workspace/.turn-log"))
+            .map(|s| s.trim().to_string())
+            .expect("turn-end hook should have written /.turn-log");
+        assert_eq!(line, "2026-05-28T00:00:00Z turn trn_test success=true");
+    }
+
+    #[tokio::test]
+    async fn doc_mutate_prompt_rewrites_message() {
+        // Mirrors the `prepend_style_note` mutate snippet in
+        // docs/capabilities/user-hooks.md: build the rewritten message in jq so
+        // the `\n` is a real newline (a shell-quoted "\n" would be literal).
+        let cmd = r#"echo "$EVERRUNS_HOOK_PAYLOAD_JSON" | jq -c '{decision:"mutate",patch:{message:("[reminder: follow the house style guide]\n" + .data.message)}}'"#;
+        let store: Arc<dyn SessionFileSystem> = Arc::new(MockFileStore::default());
+
+        let outcome = run(
+            store,
+            cmd,
+            Default::default(),
+            payload(
+                HookEvent::UserPromptSubmit,
+                json!({ "message": "fix the bug" }),
+            ),
+        )
+        .await;
+        match outcome {
+            HookOutcome::Mutate { patch, .. } => {
+                assert_eq!(
+                    patch.get("message").and_then(|v| v.as_str()),
+                    Some("[reminder: follow the house style guide]\nfix the bug")
+                );
+            }
+            other => panic!("expected Mutate, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn all_example_bundles_validate_against_user_hooks_schema() {
+        use crate::capabilities::{Capability, UserHooksCapability};
+
+        let dir = format!("{}/../../examples/hook-bundles", env!("CARGO_MANIFEST_DIR"));
+        let cap = UserHooksCapability;
+        let mut checked = 0;
+        for entry in std::fs::read_dir(&dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.extension().and_then(|e| e.to_str()) != Some("json") {
+                continue;
+            }
+            let raw = std::fs::read_to_string(&path).unwrap();
+            let config: serde_json::Value = serde_json::from_str(&raw)
+                .unwrap_or_else(|e| panic!("{}: invalid JSON: {e}", path.display()));
+            cap.validate_config(&config).unwrap_or_else(|e| {
+                panic!("{}: failed user_hooks validation: {e}", path.display())
+            });
+            checked += 1;
+        }
+        assert!(
+            checked >= 6,
+            "expected to validate the shipped bundles, saw {checked}"
+        );
+    }
+
     #[tokio::test]
     async fn jq_can_read_payload_from_env_path() {
         // Smoke test for the documented `jq` workflow. We use a tiny
