@@ -377,10 +377,20 @@ impl EvalService {
             .db
             .count_running_eval_runs_for_org(caller.org_id)
             .await?;
-        if running as usize >= self.limits.max_concurrent_runs_per_org {
+        if running >= self.limits.max_concurrent_runs_per_org as i64 {
             return Err(BadRequestError::new(format!(
                 "Too many concurrent eval runs: org has {} active runs (limit {})",
                 running, self.limits.max_concurrent_runs_per_org
+            ))
+            .into());
+        }
+
+        // Volume cap: count cases before loading to avoid unnecessary DB I/O for oversized runs.
+        let case_count = self.db.count_eval_cases(eval.id).await?;
+        if case_count > self.limits.max_cases_per_run as i64 {
+            return Err(BadRequestError::new(format!(
+                "Eval run too large: {} cases exceeds the per-run limit of {}",
+                case_count, self.limits.max_cases_per_run
             ))
             .into());
         }
@@ -389,16 +399,6 @@ impl EvalService {
         // target_snapshot must always store a concrete resolved target so results
         // remain reproducible and do not depend on future default changes.
         let cases = self.db.list_eval_cases(eval.id).await?;
-
-        // Volume cap: reject if the run would execute more cases than the per-run limit.
-        if cases.len() > self.limits.max_cases_per_run {
-            return Err(BadRequestError::new(format!(
-                "Eval run too large: {} cases exceeds the per-run limit of {}",
-                cases.len(),
-                self.limits.max_cases_per_run
-            ))
-            .into());
-        }
         let mut resolved_targets = Vec::with_capacity(cases.len());
         for case in &cases {
             // Resolve target: run → case → eval. Fail if nothing resolved.

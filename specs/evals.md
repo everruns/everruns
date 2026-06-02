@@ -257,7 +257,7 @@ All endpoints under `/v1/evals`. See `crates/server/src/api/evals.rs`.
 `POST /runs` enforces two limits at trigger time, returning HTTP 400 on violation:
 
 - **Concurrent runs per org**: at most `EVAL_MAX_CONCURRENT_RUNS_PER_ORG` runs may be in `pending` or `running` state simultaneously (default: 5).
-- **Cases per run**: a run may not execute more than `EVAL_MAX_CASES_PER_RUN` cases (default: 500). Applies after tag filtering.
+- **Cases per run**: a run may not execute more than `EVAL_MAX_CASES_PER_RUN` cases (default: 500). Checked at trigger time against total cases in the eval (tag-filtered runs are Phase 2).
 
 Both limits are read from environment variables at service startup and are injectable via `EvalService::with_limits` for test isolation.
 
