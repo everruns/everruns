@@ -10,8 +10,13 @@
 // - Blocks RFC1918 (10.x, 172.16-31.x, 192.168.x)
 // - Blocks IPv6 loopback (::1) and link-local (fe80::)
 
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::time::Duration;
 use url::Url;
+
+/// DNS resolution is capped at this duration to prevent a stuck resolver from
+/// stalling MCP tool execution/discovery past the outbound HTTP timeout.
+const DNS_LOOKUP_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Errors from URL safety validation.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -66,6 +71,89 @@ pub fn validate_safe_url(raw_url: &str) -> Result<Url, UrlValidationError> {
     }
 
     Ok(url)
+}
+
+/// Validate a URL is safe for server-side requests, including DNS resolution
+/// to catch DNS-rebinding attacks (TM-TOOL-018).
+///
+/// Performs static checks first (`validate_safe_url`), then resolves the
+/// hostname (with a 5-second timeout) and verifies that every returned IP is
+/// in an allowed range.  Returns the parsed `Url` and the **resolved socket
+/// addresses** so callers can pin the subsequent connection to those exact IPs
+/// via `reqwest::ClientBuilder::resolve_to_addrs`, closing the TOCTOU window.
+///
+/// For IP-literal URLs the returned `Vec<SocketAddr>` is empty — the static
+/// check already validated the IP.  For write-time registration checks,
+/// `validate_safe_url` is sufficient; use this function at execution time
+/// (i.e. just before each outbound HTTP call).
+pub async fn validate_url_dns_pinned(
+    raw_url: &str,
+) -> Result<(Url, Vec<SocketAddr>), UrlValidationError> {
+    validate_url_with_resolver(raw_url, default_dns_resolve).await
+}
+
+/// Inner implementation with an injectable resolver for unit testing.
+async fn validate_url_with_resolver<R, F>(
+    raw_url: &str,
+    resolve: R,
+) -> Result<(Url, Vec<SocketAddr>), UrlValidationError>
+where
+    R: Fn(String, u16) -> F,
+    F: std::future::Future<Output = Result<Vec<SocketAddr>, std::io::Error>>,
+{
+    // Static checks first — fast path for obviously bad URLs / IP literals.
+    let url = validate_safe_url(raw_url)?;
+    let host = url
+        .host_str()
+        .ok_or(UrlValidationError::MissingHostname)?
+        .to_string();
+
+    // IP literals were already validated by the static check; no DNS needed.
+    let bare = host
+        .strip_prefix('[')
+        .and_then(|s| s.strip_suffix(']'))
+        .unwrap_or(&host);
+    if bare.parse::<IpAddr>().is_ok() {
+        return Ok((url, Vec::new()));
+    }
+
+    // Resolve the hostname and reject if any address falls in a blocked range.
+    let port = url.port_or_known_default().unwrap_or(443);
+    let addrs = resolve(host.clone(), port)
+        .await
+        .map_err(|_| UrlValidationError::BlockedHost(host.clone()))?;
+
+    if addrs.is_empty() {
+        return Err(UrlValidationError::BlockedHost(host.clone()));
+    }
+
+    for addr in &addrs {
+        if is_blocked_ip(addr.ip()) {
+            tracing::warn!(
+                host = %host,
+                resolved_ip = %addr.ip(),
+                "DNS rebinding check blocked: hostname resolves to private address"
+            );
+            return Err(UrlValidationError::BlockedHost(format!(
+                "{host} resolves to blocked address {}",
+                addr.ip()
+            )));
+        }
+    }
+
+    Ok((url, addrs))
+}
+
+/// Default resolver used in production: `tokio::net::lookup_host` with a
+/// 5-second timeout so a stuck DNS server cannot stall MCP execution.
+async fn default_dns_resolve(host: String, port: u16) -> Result<Vec<SocketAddr>, std::io::Error> {
+    tokio::time::timeout(
+        DNS_LOOKUP_TIMEOUT,
+        tokio::net::lookup_host(format!("{host}:{port}")),
+    )
+    .await
+    .map_err(|_| std::io::Error::new(std::io::ErrorKind::TimedOut, "DNS lookup timed out"))?
+    .map(|iter| iter.collect())
 }
 
 /// Check if a hostname string is blocked (localhost, private IPs, metadata endpoints).
@@ -419,5 +507,118 @@ mod tests {
                 .to_string()
                 .contains("http or https")
         );
+    }
+
+    // --- validate_url_dns_pinned: static pre-check path (IP literals) ---
+
+    #[tokio::test]
+    async fn dns_pinned_rejects_private_ip_literal() {
+        let result = validate_url_dns_pinned("http://10.0.0.1/mcp").await;
+        assert!(matches!(result, Err(UrlValidationError::BlockedHost(_))));
+    }
+
+    #[tokio::test]
+    async fn dns_pinned_rejects_loopback_ip_literal() {
+        let result = validate_url_dns_pinned("http://127.0.0.1/mcp").await;
+        assert!(matches!(result, Err(UrlValidationError::BlockedHost(_))));
+    }
+
+    #[tokio::test]
+    async fn dns_pinned_rejects_metadata_ip_literal() {
+        let result = validate_url_dns_pinned("http://169.254.169.254/latest/meta-data/").await;
+        assert!(matches!(result, Err(UrlValidationError::BlockedHost(_))));
+    }
+
+    #[tokio::test]
+    async fn dns_pinned_rejects_localhost_hostname() {
+        // "localhost" is caught by the static pre-check; resolver is never called.
+        let result = validate_url_dns_pinned("http://localhost:8080/mcp").await;
+        assert!(matches!(result, Err(UrlValidationError::BlockedHost(_))));
+    }
+
+    #[tokio::test]
+    async fn dns_pinned_rejects_bad_scheme() {
+        let result = validate_url_dns_pinned("ftp://example.com/mcp").await;
+        assert!(matches!(
+            result,
+            Err(UrlValidationError::DisallowedScheme(_))
+        ));
+    }
+
+    // --- validate_url_with_resolver: DNS resolution path (injectable resolver) ---
+
+    // Simulates DNS rebinding: public URL resolves to a private IP.
+    async fn private_ip_resolver(
+        _host: String,
+        _port: u16,
+    ) -> Result<Vec<SocketAddr>, std::io::Error> {
+        Ok(vec!["10.0.0.1:80".parse().unwrap()])
+    }
+
+    // Simulates a well-behaved response: public URL resolves to a public IP.
+    async fn public_ip_resolver(
+        _host: String,
+        _port: u16,
+    ) -> Result<Vec<SocketAddr>, std::io::Error> {
+        Ok(vec!["1.1.1.1:443".parse().unwrap()])
+    }
+
+    // Simulates a DNS failure / timeout.
+    async fn failing_resolver(
+        _host: String,
+        _port: u16,
+    ) -> Result<Vec<SocketAddr>, std::io::Error> {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::TimedOut,
+            "DNS lookup timed out",
+        ))
+    }
+
+    // Simulates empty DNS response (NXDOMAIN / no records).
+    async fn empty_resolver(_host: String, _port: u16) -> Result<Vec<SocketAddr>, std::io::Error> {
+        Ok(vec![])
+    }
+
+    #[tokio::test]
+    async fn dns_resolver_blocks_hostname_resolving_to_private_ip() {
+        // Simulates the DNS rebinding attack: public URL resolves to private IP.
+        let result =
+            validate_url_with_resolver("http://evil.example.com/mcp", private_ip_resolver).await;
+        assert!(
+            matches!(result, Err(UrlValidationError::BlockedHost(_))),
+            "expected BlockedHost, got {result:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn dns_resolver_allows_hostname_resolving_to_public_ip() {
+        let (url, addrs) =
+            validate_url_with_resolver("https://mcp.example.com/v1/mcp", public_ip_resolver)
+                .await
+                .expect("should succeed");
+        assert_eq!(url.host_str(), Some("mcp.example.com"));
+        // Caller pins the connection to these addrs via resolve_to_addrs.
+        assert_eq!(addrs.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn dns_resolver_blocks_on_lookup_failure() {
+        let result = validate_url_with_resolver("http://example.com/mcp", failing_resolver).await;
+        assert!(matches!(result, Err(UrlValidationError::BlockedHost(_))));
+    }
+
+    #[tokio::test]
+    async fn dns_resolver_blocks_empty_response() {
+        let result = validate_url_with_resolver("http://example.com/mcp", empty_resolver).await;
+        assert!(matches!(result, Err(UrlValidationError::BlockedHost(_))));
+    }
+
+    #[tokio::test]
+    async fn dns_resolver_returns_addrs_for_connection_pinning() {
+        let (_url, addrs) =
+            validate_url_with_resolver("https://mcp.example.com/v1/mcp", public_ip_resolver)
+                .await
+                .unwrap();
+        assert!(!addrs.is_empty());
     }
 }

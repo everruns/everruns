@@ -149,7 +149,7 @@ Delete an MCP server.
 1. **API Key Encryption**: API keys are encrypted at rest using envelope encryption (see `specs/encryption.md`)
 2. **API Key Not Exposed**: The `api_key_encrypted` field is never returned in API responses
 3. **Unique Names**: Server names must be unique to prevent configuration conflicts
-4. **SSRF Protection**: MCP server URLs are validated on create/update and re-validated at execution time. Private IPs, loopback, link-local, and cloud metadata endpoints are blocked by shared URL validation.
+4. **SSRF Protection**: MCP server URLs are validated on create/update (static check) and re-validated with DNS resolution before each tool call and `tools/list` fetch (`validate_url_dns_pinned`). Private IPs, loopback, link-local, and cloud metadata endpoints are blocked; the DNS-pinned check also prevents DNS-rebinding attacks by verifying every resolved IP on each outbound request (TM-TOOL-018).
 
 ## MCP as Virtual Capabilities
 

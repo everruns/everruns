@@ -12,7 +12,7 @@ use everruns_core::{
     DirectEgressService, EgressRequest, EgressRequestKind, EgressService, McpContent,
     McpServerAuthMode, McpToolCallRequest, McpToolCallResponse, ToolCall, ToolDefinition,
     ToolResult, ToolResultImage, is_mcp_tool, mcp_oauth_session_secret_name, parse_mcp_tool_name,
-    validate_safe_url,
+    validate_url_dns_pinned,
 };
 use serde_json::json;
 use std::collections::HashMap;
@@ -209,18 +209,22 @@ async fn call_mcp_tool(
     arguments: serde_json::Value,
     authorization_header: Option<&str>,
 ) -> Result<(serde_json::Value, Vec<ToolResultImage>)> {
-    // Re-validate URL at execution time to catch TOCTOU / post-registration
-    // changes. Runs before the egress request is built so unsafe URLs never
-    // reach the boundary.
-    validate_safe_url(&server_info.url).map_err(|e| {
-        tracing::warn!(
-            mcp_server = %server_info.name,
-            url = %server_info.url,
-            error = %e,
-            "Blocked MCP tool execution: URL failed SSRF validation"
-        );
-        anyhow!("MCP server URL blocked: {}", e)
-    })?;
+    // Re-validate URL at execution time with DNS resolution (TM-TOOL-018).
+    // Returns resolved addrs so the egress client can pin the connection to
+    // those exact IPs, closing the TOCTOU window between check and connect.
+    let (validated_url, resolved_addrs) =
+        validate_url_dns_pinned(&server_info.url)
+            .await
+            .map_err(|e| {
+                tracing::warn!(
+                    mcp_server = %server_info.name,
+                    url = %server_info.url,
+                    error = %e,
+                    "Blocked MCP tool execution: URL failed SSRF validation"
+                );
+                anyhow!("MCP server URL blocked: {}", e)
+            })?;
+    let pin_host = validated_url.host_str().unwrap_or("").to_string();
 
     let request = McpToolCallRequest::new(
         1, // Request ID
@@ -230,6 +234,7 @@ async fn call_mcp_tool(
     let request_body = serde_json::to_vec(&request)?;
 
     let mut egress_request = EgressRequest::new("POST", &server_info.url, EgressRequestKind::Mcp)
+        .pinned_addrs(pin_host, resolved_addrs)
         .header("Content-Type", "application/json")
         .header("Accept", "application/json, text/event-stream")
         .timeout_ms(MCP_TOOL_TIMEOUT.as_millis() as u64)

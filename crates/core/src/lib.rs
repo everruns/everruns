@@ -449,7 +449,9 @@ pub use permissions::{
 pub use dependency_blocker::{DependencyBlocker, detect_dependency_blocker};
 
 // URL validation re-exports
-pub use url_validation::{UrlValidationError, is_blocked_ip, validate_safe_url};
+pub use url_validation::{
+    UrlValidationError, is_blocked_ip, validate_safe_url, validate_url_dns_pinned,
+};
 
 // Deployment configuration
 pub use deployment::DeploymentGrade;
