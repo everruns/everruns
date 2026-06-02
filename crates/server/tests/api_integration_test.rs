@@ -99,7 +99,7 @@ async fn test_org_feature_flags_opt_in() {
         .await
         .assert_status(StatusCode::BAD_REQUEST)
         .json();
-    assert!(patched.get("error").is_some());
+    assert!(patched.get("detail").is_some());
 
     let effective: serde_json::Value = server
         .get(&format!("/v1/orgs/{org_id}/feature-flags"))
