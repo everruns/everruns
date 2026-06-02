@@ -286,6 +286,17 @@ pub async fn plan_next_host_turn<A: RuntimeHostAdapter>(
                     .await;
             }
 
+            // turn_end lifecycle hooks (advisory). Fired once the turn reaches a
+            // terminal reason outcome on the durable/strategy path.
+            lifecycle
+                .fire_turn_end_hooks(
+                    state.harness_id,
+                    state.agent_id,
+                    turn_id,
+                    reason_result.success,
+                )
+                .await;
+
             Ok(RuntimeTurnPlan::Complete {
                 error: reason_result.error,
             })

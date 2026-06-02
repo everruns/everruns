@@ -188,6 +188,86 @@ struct RuntimeExecutionCapabilities {
     tool_call_hooks: Vec<Arc<dyn everruns_core::ToolCallHook>>,
 }
 
+/// Collect and finalize user-hook specs for a session from its resolved
+/// capability configs, plus the shared bash dispatcher used to run them.
+///
+/// This is the single place hook specs are gathered so every firing point —
+/// the act path (`load_execution_capabilities`) and the lifecycle firing
+/// points (`execute_reason_activity` for `user_prompt_submit`, turn completion
+/// for `turn_end`, and the server session paths) — applies identical
+/// `finalize_hook_specs` semantics: `{capability_id}:` namespace stamping,
+/// stable default ids, and `disabled_contributions` muting (TM-HOOK-004).
+fn finalize_specs_from_configs(
+    resolved_capability_configs: &[everruns_core::capability_types::AgentCapabilityConfig],
+    capability_registry: &CapabilityRegistry,
+) -> Vec<everruns_core::user_hook_types::UserHookSpec> {
+    let mut hook_contributions: Vec<(String, Vec<everruns_core::user_hook_types::UserHookSpec>)> =
+        Vec::new();
+    let mut disabled_contributions: Vec<String> = Vec::new();
+    for config in resolved_capability_configs {
+        let Some(capability) = capability_registry.get(config.capability_id()) else {
+            continue;
+        };
+        let specs = capability.user_hooks_with_config(&config.config);
+        if !specs.is_empty() {
+            hook_contributions.push((config.capability_id().to_string(), specs));
+        }
+        if config.capability_id() == "user_hooks" {
+            disabled_contributions.extend(
+                everruns_core::capabilities::user_hooks::disabled_contributions(&config.config),
+            );
+        }
+    }
+    everruns_core::hook_adapter::finalize_hook_specs(hook_contributions, &disabled_contributions)
+}
+
+/// Resolve a session's capability configs and collect finalized hook specs.
+/// Used by the lifecycle firing points, which need specs outside the act path.
+/// Returns `(specs, dispatcher)`; `specs` is empty when the session has no
+/// hook-contributing capabilities.
+async fn collect_lifecycle_hook_specs<A: RuntimeHostAdapter>(
+    adapter: &A,
+    org_id: i64,
+    session_id: SessionId,
+    harness_id: HarnessId,
+    agent_id: Option<AgentId>,
+) -> everruns_core::error::Result<(
+    Vec<everruns_core::user_hook_types::UserHookSpec>,
+    Arc<dyn everruns_core::hook_executor::BashHookDispatcher>,
+)> {
+    let capability_registry = adapter.capability_registry();
+    let harness_chain = adapter
+        .harness_store(org_id)
+        .get_harness_chain(harness_id)
+        .await?;
+    if harness_chain.is_empty() {
+        return Err(everruns_core::error::AgentLoopError::harness_not_found(
+            harness_id,
+        ));
+    }
+    let session = adapter
+        .session_store(org_id)
+        .get_session(session_id)
+        .await?
+        .ok_or_else(|| everruns_core::error::AgentLoopError::session_not_found(session_id))?;
+    let agent = match agent_id {
+        Some(agent_id) => adapter.agent_store(org_id).get_agent(agent_id).await?,
+        None => None,
+    };
+    let resolved = resolve_runtime_capabilities(
+        &harness_chain,
+        agent.as_ref(),
+        &session,
+        &capability_registry,
+    );
+    let specs =
+        finalize_specs_from_configs(&resolved.resolved_capability_configs, &capability_registry);
+    let dispatcher: Arc<dyn everruns_core::hook_executor::BashHookDispatcher> = Arc::new(
+        everruns_core::hook_dispatch::VirtualBashHookDispatcher::new(adapter.file_store()),
+    );
+    Ok((specs, dispatcher))
+}
+
 async fn load_execution_capabilities<A: RuntimeHostAdapter>(
     adapter: &A,
     org_id: i64,
@@ -277,39 +357,14 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
         })
         .collect();
 
-    // User-hook contributions (see `specs/user-hooks.md`).
-    // Collect specs across every resolved capability — both the
-    // user-facing `user_hooks` capability (user-config-authored) and any
-    // capability that bundles hooks via `Capability::user_hooks_with_config()`.
-    // Construct a single bash dispatcher backed by the session's file store
-    // and translate each PostToolUse spec into a `PostToolExecHook` adapter.
-    // Gather each capability's contributed specs as (capability_id, specs)
-    // pairs and the union of `disabled_contributions` declared on any
-    // `user_hooks` capability instance. `finalize_hook_specs` then stamps the
-    // source namespace, assigns stable ids, and drops muted entries — so the
-    // documented `disabled_contributions` muting (TM-HOOK-004) and the
-    // `{capability_id}:` HookId namespace actually take effect at runtime.
-    let mut hook_contributions: Vec<(String, Vec<everruns_core::user_hook_types::UserHookSpec>)> =
-        Vec::new();
-    let mut disabled_contributions: Vec<String> = Vec::new();
-    for config in &resolved.resolved_capability_configs {
-        let Some(capability) = capability_registry.get(config.capability_id()) else {
-            continue;
-        };
-        let specs = capability.user_hooks_with_config(&config.config);
-        if !specs.is_empty() {
-            hook_contributions.push((config.capability_id().to_string(), specs));
-        }
-        if config.capability_id() == "user_hooks" {
-            disabled_contributions.extend(
-                everruns_core::capabilities::user_hooks::disabled_contributions(&config.config),
-            );
-        }
-    }
-    let user_hook_specs = everruns_core::hook_adapter::finalize_hook_specs(
-        hook_contributions,
-        &disabled_contributions,
-    );
+    // User-hook contributions (see `specs/user-hooks.md`). `finalize_specs_from_configs`
+    // gathers specs across every resolved capability — both the user-facing
+    // `user_hooks` capability and any capability that bundles hooks — and applies
+    // `finalize_hook_specs` (namespace stamping, stable ids, `disabled_contributions`
+    // muting; TM-HOOK-004). The same helper backs the lifecycle firing points so
+    // every event finalizes specs identically.
+    let user_hook_specs =
+        finalize_specs_from_configs(&resolved.resolved_capability_configs, &capability_registry);
     let mut pre_tool_hooks: Vec<Arc<dyn everruns_core::atoms::PreToolUseHook>> = Vec::new();
     if !user_hook_specs.is_empty() {
         let dispatcher: Arc<dyn everruns_core::hook_executor::BashHookDispatcher> = Arc::new(
@@ -485,6 +540,87 @@ impl<A: RuntimeHostAdapter> RuntimeSessionLifecycle<A> {
             .await;
     }
 
+    /// Fire `turn_end` lifecycle hooks (advisory). Collects the session's hook
+    /// specs and runs every `turn_end` hook; failures are logged, never fatal.
+    /// `harness_id`/`agent_id` are required to resolve the capability chain.
+    pub async fn fire_turn_end_hooks(
+        &self,
+        harness_id: HarnessId,
+        agent_id: Option<AgentId>,
+        turn_id: TurnId,
+        success: bool,
+    ) {
+        let (specs, dispatcher) = match collect_lifecycle_hook_specs(
+            &self.adapter,
+            self.org_id,
+            self.session_id,
+            harness_id,
+            agent_id,
+        )
+        .await
+        {
+            Ok(pair) => pair,
+            Err(error) => {
+                warn!(
+                    session_id = %self.session_id,
+                    %error,
+                    "failed to collect turn_end hook specs; skipping"
+                );
+                return;
+            }
+        };
+        let hooks = everruns_core::lifecycle_hooks::build_turn_lifecycle_hooks(
+            &specs,
+            everruns_core::user_hook_types::HookEvent::TurnEnd,
+            dispatcher,
+        );
+        if hooks.is_empty() {
+            return;
+        }
+        let ctx = everruns_core::lifecycle_hooks::TurnHookContext {
+            session_id: self.session_id,
+            turn_id: Some(turn_id),
+            org_id: org_public_id_from_internal(self.org_id).parse().ok(),
+            agent_id: agent_id.map(|a| a.to_string()),
+        };
+        everruns_core::lifecycle_hooks::run_turn_end_hooks(
+            &hooks,
+            &ctx,
+            serde_json::json!({ "success": success }),
+        )
+        .await;
+    }
+
+    /// Abort a turn because a `user_prompt_submit` hook returned `Block`.
+    /// Reuses the dependency-blocked failure shape: emit a user-facing message
+    /// carrying the hook's `user_message` (or `reason`), then mark the turn
+    /// failed and idle the session.
+    pub async fn user_prompt_blocked(
+        &self,
+        turn_id: TurnId,
+        input_message_id: MessageId,
+        reason: &str,
+        user_message: Option<&str>,
+    ) {
+        let user_error =
+            UserFacingError::new(everruns_core::user_facing_error_codes::BLOCKED_BY_HOOK);
+        let shown = user_message.unwrap_or(reason);
+        let mut error_message = Message::assistant(shown);
+        let mut metadata = std::collections::HashMap::new();
+        user_error.apply_to_message_metadata(&mut metadata);
+        error_message.metadata = Some(metadata);
+
+        self.emit_event(EventRequest::new(
+            self.session_id,
+            EventContext::turn(turn_id, input_message_id),
+            OutputMessageCompletedData::new(error_message).with_user_facing_error(&user_error),
+        ))
+        .await;
+
+        self.turn_failed(turn_id, input_message_id, reason, Some(&user_error))
+            .await;
+    }
+
     pub async fn turn_failed(
         &self,
         turn_id: TurnId,
@@ -612,6 +748,66 @@ pub async fn execute_input_activity<A: RuntimeHostAdapter>(
     atom.execute(input).await
 }
 
+/// Collect `user_prompt_submit` hooks for this turn and run them against the
+/// inbound user message text. Returns `None` when the session has no such
+/// hooks (the common case — no overhead beyond the spec collection, which is
+/// skipped early). Errors loading specs are logged and treated as "no hooks"
+/// so a hook-collection failure never blocks a turn that wasn't asking to be
+/// hooked.
+async fn run_user_prompt_submit_for_turn<A: RuntimeHostAdapter>(
+    adapter: &A,
+    org_id: i64,
+    input: &ReasonInput,
+) -> everruns_core::error::Result<Option<everruns_core::lifecycle_hooks::UserPromptDecision>> {
+    let (specs, dispatcher) = match collect_lifecycle_hook_specs(
+        adapter,
+        org_id,
+        input.context.session_id,
+        input.harness_id,
+        input.agent_id,
+    )
+    .await
+    {
+        Ok(pair) => pair,
+        Err(error) => {
+            warn!(
+                session_id = %input.context.session_id,
+                %error,
+                "failed to collect user_prompt_submit hook specs; continuing without them"
+            );
+            return Ok(None);
+        }
+    };
+    let hooks = everruns_core::lifecycle_hooks::build_turn_lifecycle_hooks(
+        &specs,
+        everruns_core::user_hook_types::HookEvent::UserPromptSubmit,
+        dispatcher,
+    );
+    if hooks.is_empty() {
+        return Ok(None);
+    }
+
+    let message_text = adapter
+        .message_store()
+        .get(input.context.session_id, input.context.input_message_id)
+        .await
+        .ok()
+        .flatten()
+        .map(|m| m.content_to_llm_string())
+        .unwrap_or_default();
+
+    let ctx = everruns_core::lifecycle_hooks::TurnHookContext {
+        session_id: input.context.session_id,
+        turn_id: Some(input.context.turn_id),
+        org_id: org_public_id_from_internal(org_id).parse().ok(),
+        agent_id: input.agent_id.map(|a| a.to_string()),
+    };
+    Ok(Some(
+        everruns_core::lifecycle_hooks::run_user_prompt_submit_hooks(&hooks, &ctx, message_text)
+            .await,
+    ))
+}
+
 pub async fn execute_reason_activity<A: RuntimeHostAdapter>(
     adapter: &A,
     org_id: i64,
@@ -635,6 +831,44 @@ pub async fn execute_reason_activity<A: RuntimeHostAdapter>(
             tool_definitions: vec![],
             max_iterations: everruns_core::runtime_agent::default_max_iterations(),
             error: Some("dependency_unavailable".to_string()),
+            usage: None,
+            output_message_id: None,
+            time_to_first_token_ms: None,
+            response_id: None,
+            locale: None,
+            network_access: None,
+        });
+    }
+
+    // user_prompt_submit hook (see `specs/user-hooks.md`). Fires once per turn,
+    // on the first reason iteration, before the LLM is consulted — the closest
+    // choke point to "inbound user message accepted, before reason" that both
+    // the in-process loop and the durable worker share. A `Block` aborts the
+    // turn by reusing the same failure path as `dependency_blocked`: emit a
+    // user-facing message + turn.failed, idle the session, and return a
+    // non-success `ReasonResult` so no LLM/act work runs.
+    if input.iteration <= 1
+        && let Some(everruns_core::lifecycle_hooks::UserPromptDecision::Block {
+            reason,
+            user_message,
+        }) = run_user_prompt_submit_for_turn(adapter, org_id, &input).await?
+    {
+        RuntimeSessionLifecycle::new(adapter.clone(), org_id, input.context.session_id)
+            .user_prompt_blocked(
+                input.context.turn_id,
+                input.context.input_message_id,
+                &reason,
+                user_message.as_deref(),
+            )
+            .await;
+        return Ok(ReasonResult {
+            success: false,
+            text: user_message.unwrap_or_else(|| reason.clone()),
+            tool_calls: vec![],
+            has_tool_calls: false,
+            tool_definitions: vec![],
+            max_iterations: everruns_core::runtime_agent::default_max_iterations(),
+            error: Some("blocked_by_user_prompt_hook".to_string()),
             usage: None,
             output_message_id: None,
             time_to_first_token_ms: None,

@@ -358,19 +358,24 @@ resolved `hook_id` and the `tool_call_id`.
 observability pipeline as tool events (Braintrust, OTel). These are not
 emitted yet — see the spec's observability section.
 
-## What's not yet wired
+## Event firing
 
-`pre_tool_use` and `post_tool_use` **fire today**: a pre-hook can block or
-mutate a tool call before it runs, and a post-hook can mutate the tool
-result after it runs.
+All six events fire:
 
-The remaining events (`session_start`, `user_prompt_submit`, `turn_end`,
-`session_end`) ship their *contract, types, executor, and validation* here
-but their runtime firing points land in follow-up changes so reviewers can
-audit each one against the relevant execution atom in isolation. Configuring
-those events is a validated no-op until their wire-in ships. Track progress
-against
-[`specs/user-hooks.md`](https://github.com/everruns/everruns/blob/main/specs/user-hooks.md).
+- **`pre_tool_use`** — before each tool call; can block or mutate the call.
+- **`post_tool_use`** — after each tool call; can mutate the result.
+- **`session_start`** — after a session is created (mounts + initial files in
+  place); advisory.
+- **`session_end`** — when a session is deleted, before VFS eviction; advisory.
+- **`user_prompt_submit`** — on the first reason iteration, before the LLM is
+  consulted; can block (aborts the turn with a user-facing message) or mutate
+  the user message text.
+- **`turn_end`** — when a turn reaches a terminal outcome; advisory.
+
+Note on `user_prompt_submit` blocking: the API persists the user message and
+runs the turn asynchronously, so a block does not reject the HTTP request —
+it aborts the turn. The session shows a `turn.failed` outcome carrying the
+hook's `user_message`.
 
 ## See also
 

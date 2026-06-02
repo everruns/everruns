@@ -422,23 +422,45 @@ impl SessionService {
         )
         .await?;
 
+        // Effective capability list (harness + agent + session), resolved once
+        // and shared by sandbox auto-start and the session_start hook so the
+        // merge rule lives in exactly one place per call. Agent-cap lookup
+        // failures propagate here (sandbox auto-start treats them as fatal),
+        // unlike the best-effort `resolve_session_capability_configs` used by
+        // the advisory delete path.
+        let agent_capabilities = if let Some(agent_id) = agent_id {
+            self.db
+                .get_agent_capabilities(agent_id.uuid())
+                .await?
+                .into_iter()
+                .map(|row| AgentCapabilityConfig::with_config(row.capability_id, row.config))
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
+        let effective_capabilities = merge_capabilities(
+            &merge_capabilities(&effective_harness.capabilities, &agent_capabilities),
+            &session_capabilities,
+        );
+
         if let Some(service) = &self.session_sandbox_service {
-            let agent_capabilities = if let Some(agent_id) = agent_id {
-                self.db
-                    .get_agent_capabilities(agent_id.uuid())
-                    .await?
-                    .into_iter()
-                    .map(|row| AgentCapabilityConfig::with_config(row.capability_id, row.config))
-                    .collect::<Vec<_>>()
-            } else {
-                Vec::new()
-            };
-            let merged = merge_capabilities(&effective_harness.capabilities, &agent_capabilities);
-            let merged = merge_capabilities(&merged, &session_capabilities);
             service
-                .auto_start_for_capabilities(session.id, &merged)
+                .auto_start_for_capabilities(session.id, &effective_capabilities)
                 .await;
         }
+
+        // session_start lifecycle hooks (advisory). Fire after the session row,
+        // mounts, and initial files are in place so a hook can observe/seed the
+        // session VFS.
+        self.fire_session_lifecycle_hooks(
+            org_id,
+            session.id,
+            agent_id.map(|a| a.to_string()),
+            &effective_capabilities,
+            everruns_core::user_hook_types::HookEvent::SessionStart,
+            serde_json::json!({ "agent_id": agent_id.map(|a| a.to_string()) }),
+        )
+        .await;
 
         Ok(session)
     }
@@ -1134,16 +1156,144 @@ impl SessionService {
     }
 
     pub async fn delete(&self, caller: &Caller, id: Uuid) -> Result<bool> {
-        let deleted = self
-            .db
-            .delete_session(caller.org_id, SessionId::from_uuid(id))
-            .await?;
+        // session_end lifecycle hooks fire before eviction so the hook command
+        // can still read the session VFS. Advisory: failures never block the
+        // delete. Resolve the session's capability list first (best-effort).
+        let session_id = SessionId::from_uuid(id);
+        if let Ok(Some(row)) = self.db.get_session(caller.org_id, session_id).await {
+            let session_caps: Vec<AgentCapabilityConfig> =
+                serde_json::from_value(row.capabilities.clone()).unwrap_or_default();
+            let capabilities = self
+                .resolve_session_capability_configs(
+                    caller.org_id,
+                    row.harness_id,
+                    row.agent_id,
+                    &session_caps,
+                )
+                .await;
+            self.fire_session_lifecycle_hooks(
+                caller.org_id,
+                session_id,
+                row.agent_id.map(|a| a.to_string()),
+                &capabilities,
+                everruns_core::user_hook_types::HookEvent::SessionEnd,
+                serde_json::json!({ "reason": "deleted" }),
+            )
+            .await;
+        }
+
+        let deleted = self.db.delete_session(caller.org_id, session_id).await?;
 
         if deleted {
             self.session_file_service.evict_virtual_mounts(id);
         }
 
         Ok(deleted)
+    }
+
+    /// Resolve the effective capability configs for a session (harness chain +
+    /// agent + session), used by the lifecycle-hook firing helpers. Best-effort:
+    /// returns an empty list if the harness/agent can't be loaded, so a
+    /// resolution failure degrades to "no hooks" rather than erroring a
+    /// create/delete.
+    async fn resolve_session_capability_configs(
+        &self,
+        org_id: i64,
+        harness_id: Option<HarnessId>,
+        agent_id: Option<AgentId>,
+        session_caps: &[AgentCapabilityConfig],
+    ) -> Vec<AgentCapabilityConfig> {
+        let harness_caps = match harness_id {
+            Some(harness_id) => match crate::domains::harnesses::queries::resolve_effective(
+                self.db.as_ref(),
+                org_id,
+                harness_id,
+            )
+            .await
+            {
+                Ok(Some(h)) => h.capabilities,
+                _ => Vec::new(),
+            },
+            None => Vec::new(),
+        };
+        let agent_caps = if let Some(agent_id) = agent_id {
+            self.db
+                .get_agent_capabilities(agent_id.uuid())
+                .await
+                .unwrap_or_default()
+                .into_iter()
+                .map(|row| AgentCapabilityConfig::with_config(row.capability_id, row.config))
+                .collect::<Vec<_>>()
+        } else {
+            Vec::new()
+        };
+        let merged = merge_capabilities(&harness_caps, &agent_caps);
+        merge_capabilities(&merged, session_caps)
+    }
+
+    /// Fire session-lifecycle hooks (`session_start` / `session_end`) for a
+    /// session. Advisory only — collects + finalizes hook specs from the given
+    /// capability list, builds the bash-backed adapters against the session's
+    /// VFS, and runs them. Any failure is logged, never propagated.
+    async fn fire_session_lifecycle_hooks(
+        &self,
+        org_id: i64,
+        session_id: SessionId,
+        agent_id: Option<String>,
+        capabilities: &[AgentCapabilityConfig],
+        event: everruns_core::user_hook_types::HookEvent,
+        data: serde_json::Value,
+    ) {
+        let resolved = match resolve_capability_configs(capabilities, &self.capability_registry) {
+            Ok(r) => r,
+            Err(error) => {
+                tracing::warn!(
+                    session_id = %session_id,
+                    ?error,
+                    "failed to resolve capabilities for session lifecycle hooks; skipping"
+                );
+                return;
+            }
+        };
+        // Gather + finalize specs (namespace stamping, muting) identically to
+        // the runtime act/turn paths.
+        let mut contributions: Vec<(String, Vec<everruns_core::user_hook_types::UserHookSpec>)> =
+            Vec::new();
+        let mut disabled: Vec<String> = Vec::new();
+        for config in &resolved {
+            let Some(capability) = self.capability_registry.get(config.capability_id()) else {
+                continue;
+            };
+            let specs = capability.user_hooks_with_config(&config.config);
+            if !specs.is_empty() {
+                contributions.push((config.capability_id().to_string(), specs));
+            }
+            if config.capability_id() == "user_hooks" {
+                disabled.extend(
+                    everruns_core::capabilities::user_hooks::disabled_contributions(&config.config),
+                );
+            }
+        }
+        let specs = everruns_core::hook_adapter::finalize_hook_specs(contributions, &disabled);
+        let file_store: Arc<dyn everruns_core::traits::SessionFileSystem> = Arc::new(
+            crate::domains::session_files::SessionFileService::new(self.db.clone()),
+        );
+        let dispatcher: Arc<dyn everruns_core::hook_executor::BashHookDispatcher> =
+            Arc::new(everruns_core::hook_dispatch::VirtualBashHookDispatcher::new(file_store));
+        let hooks = everruns_core::lifecycle_hooks::build_session_lifecycle_hooks(
+            &specs, event, dispatcher,
+        );
+        if hooks.is_empty() {
+            return;
+        }
+        let ctx = everruns_core::lifecycle_hooks::SessionHookContext {
+            session_id,
+            org_id: everruns_core::org_public_id_from_internal(org_id)
+                .parse()
+                .ok(),
+            agent_id,
+        };
+        everruns_core::lifecycle_hooks::run_session_lifecycle_hooks(&hooks, &ctx, data).await;
     }
 
     /// Pin a session for a user
@@ -2930,5 +3080,132 @@ mod tests {
                 "got: {err} for tag: {forbidden}"
             );
         }
+    }
+
+    // Build a harness carrying a `user_hooks` capability with a single hook of
+    // the given event that writes a sentinel into the session VFS. Exercises the
+    // real server resolve -> finalize -> virtual_bash dispatch path end-to-end.
+    async fn harness_with_user_hook(
+        db: &Arc<StorageBackend>,
+        org_id: i64,
+        name: &str,
+        event: &str,
+        command: &str,
+    ) -> HarnessId {
+        let harness = db
+            .create_harness(
+                org_id,
+                CreateHarnessRow {
+                    name: name.to_string(),
+                    display_name: Some(name.to_string()),
+                    description: None,
+                    system_prompt: "hooked".to_string(),
+                    parent_harness_id: None,
+                    default_model_id: None,
+                    tags: vec![],
+                    initial_files: serde_json::json!([]),
+                    mcp_servers: serde_json::json!({}),
+                    network_access: None,
+                    is_built_in: false,
+                },
+            )
+            .await
+            .unwrap();
+        db.set_harness_capabilities(
+            harness.id.uuid(),
+            vec![(
+                "user_hooks".to_string(),
+                0,
+                serde_json::json!({
+                    "hooks": [{
+                        "event": event,
+                        "executor": { "type": "bash", "command": command },
+                    }]
+                }),
+            )],
+        )
+        .await
+        .unwrap();
+        harness.id
+    }
+
+    #[tokio::test]
+    async fn session_start_hook_fires_on_create() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let mut registry = CapabilityRegistry::new();
+        registry.register(everruns_core::capabilities::UserHooksCapability);
+        let session_service = SessionService::with_registry(db.clone(), registry);
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+
+        let harness_id = harness_with_user_hook(
+            &db,
+            caller.org_id,
+            "session-start-harness",
+            "session_start",
+            "echo started > /workspace/.session_start_ok",
+        )
+        .await;
+
+        let session = session_service
+            .create(
+                &caller,
+                harness_id.uuid(),
+                None,
+                None,
+                build_create_request(harness_id, None, None),
+            )
+            .await
+            .unwrap();
+
+        // The session_start hook ran during create and wrote into the VFS.
+        let file = SessionFileService::new(db)
+            .read_file(session.id.uuid(), "/.session_start_ok")
+            .await
+            .unwrap();
+        assert!(
+            file.as_ref()
+                .is_some_and(|f| f.content.as_deref().is_some_and(|c| c.contains("started"))),
+            "session_start hook should have written the sentinel, got: {file:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn session_end_hook_fires_on_delete_without_blocking() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let mut registry = CapabilityRegistry::new();
+        registry.register(everruns_core::capabilities::UserHooksCapability);
+        let session_service = SessionService::with_registry(db.clone(), registry);
+        let caller = Caller::internal(DEFAULT_ORG_ID);
+
+        let harness_id = harness_with_user_hook(
+            &db,
+            caller.org_id,
+            "session-end-harness",
+            "session_end",
+            "echo ending > /workspace/.session_end_ok",
+        )
+        .await;
+
+        let session = session_service
+            .create(
+                &caller,
+                harness_id.uuid(),
+                None,
+                None,
+                build_create_request(harness_id, None, None),
+            )
+            .await
+            .unwrap();
+
+        // session_end is advisory: the hook fires (resolve -> dispatch) but never
+        // blocks the delete, which must still succeed.
+        let deleted = session_service
+            .delete(&caller, session.id.uuid())
+            .await
+            .unwrap();
+        assert!(
+            deleted,
+            "delete should succeed with a session_end hook present"
+        );
     }
 }

@@ -572,6 +572,10 @@ impl InProcessRuntime {
                     let ctx = state_machine.context();
                     let lifecycle =
                         RuntimeSessionLifecycle::new(self.clone(), org_id, ctx.session_id);
+                    let turn_succeeded = matches!(
+                        &outcome,
+                        TurnOutcome::Success { .. } | TurnOutcome::MaxIterationsReached { .. }
+                    );
                     match &outcome {
                         TurnOutcome::Success { iterations, .. }
                         | TurnOutcome::MaxIterationsReached { iterations, .. } => {
@@ -591,6 +595,16 @@ impl InProcessRuntime {
                                 .await;
                         }
                     }
+                    // turn_end lifecycle hooks (advisory). Fired after the
+                    // terminal turn event for both success and failure.
+                    lifecycle
+                        .fire_turn_end_hooks(
+                            session.harness_id,
+                            session.agent_id,
+                            ctx.turn_id,
+                            turn_succeeded,
+                        )
+                        .await;
                     return Ok(TurnResult::from_outcome(outcome, ctx.turn_id));
                 }
             }
