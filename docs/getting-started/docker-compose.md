@@ -36,11 +36,6 @@ Create a `.env` file with your encryption key and optional LLM API keys:
 ```bash
 # .env
 SECRETS_ENCRYPTION_KEY=kek-v1:<your-generated-key>
-
-# Optional: Add API keys here to skip UI configuration
-DEFAULT_OPENAI_API_KEY=sk-...
-DEFAULT_ANTHROPIC_API_KEY=sk-ant-...
-DEFAULT_GEMINI_API_KEY=AIza...
 ```
 
 ### 4. Start Services
@@ -88,7 +83,7 @@ docker compose up -d
 
 ### Configure LLM Provider
 
-If you didn't set LLM API keys (`DEFAULT_OPENAI_API_KEY`, `DEFAULT_ANTHROPIC_API_KEY`, or `DEFAULT_GEMINI_API_KEY`) in your `.env` file, configure via UI:
+Configure LLM provider keys via UI:
 
 1. Open http://localhost:9300
 2. Navigate to **Settings** > **Providers**

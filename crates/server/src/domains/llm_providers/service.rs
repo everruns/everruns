@@ -260,9 +260,40 @@ fn validate_azure_openai_base_url(url: &Url) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::validate_provider_base_url;
+    use super::{validate_provider_base_url, LlmProviderService};
+    use crate::storage::models::LlmProviderRow;
     use everruns_core::LlmProviderType;
+    use everruns_core::typed_id::ProviderId;
     use everruns_core::url_validation::validate_safe_url;
+
+    // Regression test for EVE-512: api_key_set must reflect only the DB value,
+    // never env vars, to prevent misleading "configured" display in the provider list.
+    #[test]
+    fn api_key_set_is_db_only_ignores_env() {
+        // Simulate DEFAULT_OPENAI_API_KEY present in env (as if someone set it).
+        // row_to_provider must still return api_key_set=false when the DB has no key.
+        unsafe { std::env::set_var("DEFAULT_OPENAI_API_KEY", "sk-test-key") };
+        let row = LlmProviderRow {
+            id: ProviderId::from_uuid(uuid::Uuid::now_v7()),
+            org_id: 1,
+            name: "openai".to_string(),
+            provider_type: "openai".to_string(),
+            base_url: None,
+            api_key_encrypted: None,
+            api_key_set: false,
+            status: "active".to_string(),
+            settings: serde_json::json!({}),
+            last_synced_at: None,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+        let provider = LlmProviderService::row_to_provider(&row);
+        unsafe { std::env::remove_var("DEFAULT_OPENAI_API_KEY") };
+        assert!(
+            !provider.api_key_set,
+            "api_key_set must be false when DB has no key, regardless of env vars"
+        );
+    }
 
     // ---- SSRF prevention tests (EVE-69) ----
 

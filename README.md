@@ -65,9 +65,6 @@ python3 -c "import os, base64; print('kek-v1:' + base64.b64encode(os.urandom(32)
 cat > .env <<'EOF'
 SECRETS_ENCRYPTION_KEY=kek-v1:<your-generated-key>
 WORKER_GRPC_AUTH_TOKEN=<a-random-token>
-DEFAULT_OPENAI_API_KEY=sk-...            # optional
-DEFAULT_ANTHROPIC_API_KEY=sk-ant-...     # optional
-DEFAULT_GEMINI_API_KEY=...               # optional
 EOF
 
 docker compose up -d

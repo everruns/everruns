@@ -12,7 +12,7 @@ Everruns is **Bring-Your-Own-Key (BYOK)** for LLM provider credentials. Every te
 
 1. **No raw provider keys in the server/worker process environment.** Do not set `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENROUTER_API_KEY`, or any similar raw provider key as an environment variable on the request-serving server or worker processes in a multi-tenant deployment.
 
-2. **No `DEFAULT_*` env vars in production SaaS.** The `DEFAULT_OPENAI_API_KEY`, `DEFAULT_ANTHROPIC_API_KEY`, `DEFAULT_GEMINI_API_KEY`, and `DEFAULT_AZURE_OPENAI_API_KEY` env vars are removed from the execution path. Setting them on a multi-tenant server process creates a latent cost-runaway path where agent failures caused by missing tenant keys silently fall back to spending platform credentials.
+2. **No `DEFAULT_*` env vars in production SaaS.** The `DEFAULT_OPENAI_API_KEY`, `DEFAULT_ANTHROPIC_API_KEY`, `DEFAULT_GEMINI_API_KEY`, and `DEFAULT_AZURE_OPENAI_API_KEY` env vars are not consulted by the current key resolver (removed in EVE-511/512). They must not be reintroduced: setting them on a multi-tenant server process would create a cost-runaway path where agents for orgs without configured keys spend platform credentials instead of failing with a clear auth error.
 
 3. **Key resolution is fail-closed.** `LlmResolverService::resolve_provider_api_key` and `resolve_provider_credentials` return `None` when no encrypted key exists in the database. They never fall back to environment variables. See `crates/server/src/services/llm_resolver.rs` (TM-LLM-022).
 

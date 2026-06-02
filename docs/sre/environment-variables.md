@@ -264,32 +264,11 @@ python3 -c "import os, base64; print('kek-v1:' + base64.b64encode(os.urandom(32)
 SECRETS_ENCRYPTION_KEY=kek-v1:your-generated-key-here
 ```
 
-### Default API Keys (Development Convenience)
+### LLM Provider Keys
 
-For development, you can set default API keys via environment variables on the **control-plane only**. These are used as fallbacks when providers don't have keys configured in the database.
+LLM provider API keys are stored encrypted in the database and configured through the UI (Settings → LLM Providers) or API. There is no environment-variable fallback for provider key resolution — this is intentional (BYOK-only posture, see `specs/saas-architecture.md`).
 
-| Variable | Description |
-|----------|-------------|
-| `DEFAULT_OPENAI_API_KEY` | Fallback API key for OpenAI providers |
-| `DEFAULT_ANTHROPIC_API_KEY` | Fallback API key for Anthropic providers |
-| `DEFAULT_GEMINI_API_KEY` | Fallback API key for Google Gemini providers |
-
-**Example:**
-
-```bash
-# Set in .env or environment (control-plane only)
-DEFAULT_OPENAI_API_KEY=sk-...
-DEFAULT_ANTHROPIC_API_KEY=sk-ant-...
-DEFAULT_GEMINI_API_KEY=AIza...
-```
-
-**Notes:**
-- These variables are only used by the control-plane, not workers
-- Workers receive API keys via gRPC from the control-plane
-- Database-stored keys always take priority over environment variables
-- These are intended for development convenience, not production use
-- The `just start-all` command automatically sets these from `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, and `GEMINI_API_KEY` if present
-- If no API key is configured for a provider, LLM calls will fail and users will see an error message in the chat: "I encountered an error while processing your request. Please try again later."
+If no API key is configured for a provider, LLM calls fail with a clear auth error.
 
 ## System Email Delivery
 
