@@ -8,7 +8,7 @@ import { useOrg } from "@/providers/org-provider";
 
 export function useOrgFeatureFlags() {
   const { currentOrg } = useOrg();
-  const orgId = currentOrg?.id;
+  const orgId = currentOrg?.public_id;
 
   return useQuery({
     queryKey: ["org-feature-flags", orgId],
@@ -21,7 +21,7 @@ export function useOrgFeatureFlags() {
 
 export function useOrgFeatureFlagSettings() {
   const { currentOrg } = useOrg();
-  const orgId = currentOrg?.id;
+  const orgId = currentOrg?.public_id;
 
   return useQuery({
     queryKey: ["org-feature-flags-settings", orgId],
@@ -33,7 +33,7 @@ export function useOrgFeatureFlagSettings() {
 
 export function useUpdateOrgFeatureFlags() {
   const { currentOrg } = useOrg();
-  const orgId = currentOrg?.id;
+  const orgId = currentOrg?.public_id;
   const queryClient = useQueryClient();
 
   return useMutation({

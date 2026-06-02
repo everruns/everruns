@@ -45,7 +45,7 @@ pub struct FeatureFlags {
 }
 
 /// Metadata for an API-visible feature flag (org opt-in UI + catalog).
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct FeatureFlagDefinition {
     /// Stable flag key (matches `FeatureFlags` field / `is_enabled` name).
     pub name: &'static str,
@@ -182,10 +182,6 @@ impl FeatureFlags {
             agent_delegation: true,
         }
     }
-}
-
-fn system_flag_enabled(system: &FeatureFlags, name: &str) -> bool {
-    system.is_enabled(name)
 }
 
 /// Backend-only feature flags. Not exposed via API or frontend.

@@ -33,7 +33,7 @@ const FeatureFlagsContext = createContext<FeatureFlagsContextValue | undefined>(
 
 function FeatureFlagsLoader({ children }: { children: ReactNode }) {
   const { currentOrg } = useOrg();
-  const orgId = currentOrg?.id;
+  const orgId = currentOrg?.public_id;
 
   const systemQuery = useQuery({
     queryKey: ["feature-flags", "system"],

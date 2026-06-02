@@ -406,6 +406,11 @@ impl TestServer {
         let feature_flags_state = api::feature_flags::AppState {
             flags: feature_flags.clone(),
         };
+        let org_feature_flags_state = api::org_feature_flags::AppState::new(
+            db.clone(),
+            auth_state.clone(),
+            feature_flags.clone(),
+        );
         let user_connections_state = api::user_connections::AppState::new(
             db.clone(),
             encryption.clone(),
@@ -525,6 +530,7 @@ impl TestServer {
             .merge(api::organizations::routes(organizations_state))
             .merge(api::session_schedules::routes(session_schedules_state))
             .merge(api::feature_flags::routes(feature_flags_state))
+            .merge(api::org_feature_flags::routes(org_feature_flags_state))
             .merge(api::user_connections::routes(user_connections_state))
             .merge(api::reporting::routes(reporting_state))
             .merge(api::ag_ui::routes(ag_ui_state))
