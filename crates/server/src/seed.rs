@@ -1487,8 +1487,10 @@ where
 /// the normal fail-closed DB path.
 ///
 /// Only fills providers that have no key configured — an explicitly-set key
-/// (via UI/API) is never overwritten. Idempotent: a provider whose key is
-/// already set is left untouched and counted as unchanged.
+/// (via UI/API) is never overwritten. Idempotent: a provider that has a
+/// matching `DEFAULT_*_API_KEY` but already has a key set is left untouched and
+/// counted as unchanged. Providers without a matching env var are skipped and
+/// not counted at all.
 ///
 /// Callers MUST gate this behind [`materialize_env_provider_keys_enabled`]; it
 /// must not run for multitenant deployments.
