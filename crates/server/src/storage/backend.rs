@@ -1634,8 +1634,16 @@ impl StorageBackend {
         session_id: Uuid,
         pattern: &str,
         path_prefix: Option<&str>,
+        max_file_bytes: i64,
     ) -> Result<Vec<SessionFileInfoRow>> {
-        dispatch!(self, grep_session_files, session_id, pattern, path_prefix)
+        dispatch!(
+            self,
+            grep_session_files,
+            session_id,
+            pattern,
+            path_prefix,
+            max_file_bytes
+        )
     }
 
     pub async fn session_file_exists(&self, session_id: Uuid, path: &str) -> Result<bool> {

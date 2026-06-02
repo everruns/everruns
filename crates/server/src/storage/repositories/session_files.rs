@@ -315,8 +315,9 @@ impl Database {
         session_id: Uuid,
         pattern: &str,
         path_pattern: Option<&str>,
+        max_file_bytes: i64,
     ) -> Result<Vec<SessionFileInfoRow>> {
-        // Search text files for content matching the pattern
+        // TM-DOS-008: size_bytes filter keeps Postgres from scanning large files.
         let rows = if let Some(path_pat) = path_pattern {
             sqlx::query_as::<_, SessionFileInfoRow>(
                 r#"
@@ -324,12 +325,14 @@ impl Database {
                 FROM session_files
                 WHERE session_id = $1
                     AND is_directory = FALSE
-                    AND path ~ $2
-                    AND convert_from(content, 'UTF8') ~ $3
+                    AND size_bytes <= $2
+                    AND path ~ $3
+                    AND convert_from(content, 'UTF8') ~ $4
                 ORDER BY path ASC
                 "#,
             )
             .bind(session_id)
+            .bind(max_file_bytes)
             .bind(path_pat)
             .bind(pattern)
             .fetch_all(&self.pool)
@@ -341,11 +344,13 @@ impl Database {
                 FROM session_files
                 WHERE session_id = $1
                     AND is_directory = FALSE
-                    AND convert_from(content, 'UTF8') ~ $2
+                    AND size_bytes <= $2
+                    AND convert_from(content, 'UTF8') ~ $3
                 ORDER BY path ASC
                 "#,
             )
             .bind(session_id)
+            .bind(max_file_bytes)
             .bind(pattern)
             .fetch_all(&self.pool)
             .await?

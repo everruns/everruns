@@ -1135,7 +1135,7 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 .map(regex::Regex::new)
                 .transpose()
                 .unwrap_or(None);
-            let virtual_matches = registry.grep(&session_id, &regex, None);
+            let virtual_matches = registry.grep(&session_id, &regex, None, 512 * 1024);
             matches.extend(
                 virtual_matches
                     .into_iter()

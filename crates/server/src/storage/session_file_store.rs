@@ -13,6 +13,9 @@ use regex::Regex;
 use super::models::{CreateSessionFileRow, UpdateSessionFile};
 use super::repositories::Database;
 
+/// TM-DOS-008: per-file scan cap; must match MAX_GREP_FILE_BYTES in session_files::service.
+const GREP_MAX_FILE_BYTES: i64 = 512 * 1024;
+
 // ============================================================================
 // DbSessionFileStore - Stores session files in database
 // ============================================================================
@@ -521,10 +524,15 @@ impl SessionFileSystem for DbSessionFileStore {
         let regex = Regex::new(pattern)
             .map_err(|e| AgentLoopError::store(format!("Invalid regex pattern: {}", e)))?;
 
-        // Get matching files from database
+        // Get matching files from database (size-capped at storage level, TM-DOS-008)
         let files = self
             .db
-            .grep_session_files(session_id.uuid(), pattern, path_pattern)
+            .grep_session_files(
+                session_id.uuid(),
+                pattern,
+                path_pattern,
+                GREP_MAX_FILE_BYTES,
+            )
             .await
             .store_err()?;
 

@@ -282,6 +282,7 @@ impl InMemoryDatabase {
         session_id: Uuid,
         pattern: &str,
         path_prefix: Option<&str>,
+        max_file_bytes: i64,
     ) -> Result<Vec<SessionFileInfoRow>> {
         let session_id = SessionId::from_uuid(session_id);
         let regex = regex::Regex::new(pattern)?;
@@ -291,6 +292,10 @@ impl InMemoryDatabase {
             .values()
             .filter(|f| {
                 if f.session_id != session_id || f.is_directory {
+                    return false;
+                }
+                // TM-DOS-008: skip files exceeding size cap before scanning content.
+                if f.size_bytes > max_file_bytes {
                     return false;
                 }
                 if let Some(prefix) = path_prefix
