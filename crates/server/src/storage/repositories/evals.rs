@@ -287,6 +287,17 @@ impl Database {
         Ok(row.0)
     }
 
+    /// Count eval runs in 'pending' or 'running' state for an org.
+    pub async fn count_running_eval_runs_for_org(&self, org_id: i64) -> Result<i64> {
+        let row: (i64,) = sqlx::query_as(
+            "SELECT COUNT(*)::bigint FROM eval_runs WHERE org_id = $1 AND status IN ('pending', 'running')",
+        )
+        .bind(org_id)
+        .fetch_one(&self.pool)
+        .await?;
+        Ok(row.0)
+    }
+
     // ============================================
     // Eval Run CRUD
     // ============================================

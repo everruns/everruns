@@ -252,6 +252,15 @@ impl InMemoryDatabase {
         Ok(count as i64)
     }
 
+    pub async fn count_running_eval_runs_for_org(&self, org_id: i64) -> Result<i64> {
+        let runs = self.eval_runs.read();
+        let count = runs
+            .values()
+            .filter(|r| r.org_id == org_id && matches!(r.status.as_str(), "pending" | "running"))
+            .count();
+        Ok(count as i64)
+    }
+
     // ============================================
     // Eval Run CRUD
     // ============================================
