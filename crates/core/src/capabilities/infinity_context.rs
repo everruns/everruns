@@ -125,8 +125,14 @@ impl MessageFilterProvider for InfinityContextFilterProvider {
         let config: InfinityContextConfig =
             serde_json::from_value(config.clone()).unwrap_or_default();
         let existing_notice_count = take_existing_excluded_notice(messages);
-        let excluded_count = trim_messages_to_token_budget(messages, &config);
-        let total_excluded_count = existing_notice_count.saturating_add(excluded_count);
+        let trimmed_count = trim_messages_to_token_budget(messages, &config);
+        // EVE-519: drop tool-result messages whose matching tool-call was trimmed away.
+        // OpenAI Responses API rejects payloads with a function_call_output whose
+        // function_call is absent from both the request and the server-side chain.
+        let orphaned_count = drop_orphaned_tool_results(messages);
+        let total_excluded_count = existing_notice_count
+            .saturating_add(trimmed_count)
+            .saturating_add(orphaned_count);
         if total_excluded_count > 0 {
             messages.insert(
                 0,
@@ -232,6 +238,36 @@ fn parse_excluded_notice_count(message: &Message) -> Option<usize> {
         return None;
     }
     count.parse().ok()
+}
+
+/// Drop ToolResult messages whose tool_call_id has no matching ToolCall in the visible window.
+///
+/// History trimming can leave a tool-result message in the context window after its
+/// corresponding assistant tool-call message has been trimmed away. Sending such an
+/// orphaned tool result to OpenAI Responses API causes a 400 "No tool call found" error.
+fn drop_orphaned_tool_results(messages: &mut Vec<Message>) -> usize {
+    use std::collections::HashSet;
+
+    if !messages.iter().any(|m| m.role == MessageRole::ToolResult) {
+        return 0;
+    }
+
+    let visible_call_ids: HashSet<String> = messages
+        .iter()
+        .flat_map(|m| m.tool_calls())
+        .map(|tc| tc.id.clone())
+        .collect();
+
+    let before = messages.len();
+    messages.retain(|m| {
+        if m.role == MessageRole::ToolResult {
+            return m
+                .tool_call_id()
+                .is_none_or(|id| visible_call_ids.contains(id));
+        }
+        true
+    });
+    before - messages.len()
 }
 
 fn trim_messages_to_token_budget(
@@ -939,5 +975,70 @@ mod tests {
     fn test_truncate_content_is_utf8_safe() {
         let truncated = truncate_content("hello🙂world", 6);
         assert_eq!(truncated, "hello🙂...");
+    }
+
+    #[test]
+    fn trim_must_not_keep_orphaned_tool_result() {
+        use crate::tool_types::ToolCall;
+
+        let provider = InfinityContextFilterProvider;
+        // min_recent_messages=3 keeps the last 3 messages. With a 1-token budget the
+        // two older messages are dropped, but one of the kept messages is a tool result
+        // whose matching tool call was dropped — an orphan that causes OpenAI 400s.
+        let mut messages = vec![
+            Message::user("old question"),
+            Message::assistant_with_tools(
+                "calling tool",
+                vec![ToolCall {
+                    id: "call_old".to_string(),
+                    name: "edit_file".to_string(),
+                    arguments: serde_json::json!({}),
+                }],
+            ),
+            // This tool result is in the min-recent window but its call is trimmed away.
+            Message::tool_result("call_old", Some(serde_json::json!("done")), None),
+            Message::user("new question"),
+            Message::assistant("answer"),
+        ];
+
+        provider.post_load(
+            &mut messages,
+            &serde_json::json!({"context_budget_tokens": 1, "min_recent_messages": 3}),
+        );
+
+        assert!(
+            !messages.iter().any(|m| m.role == MessageRole::ToolResult),
+            "orphaned tool result must be dropped when its tool call is not in the visible window"
+        );
+    }
+
+    #[test]
+    fn trim_keeps_tool_result_when_tool_call_is_visible() {
+        use crate::tool_types::ToolCall;
+
+        let provider = InfinityContextFilterProvider;
+        // All 3 messages fit in the window: no orphan expected.
+        let mut messages = vec![
+            Message::assistant_with_tools(
+                "calling tool",
+                vec![ToolCall {
+                    id: "call_1".to_string(),
+                    name: "read_file".to_string(),
+                    arguments: serde_json::json!({}),
+                }],
+            ),
+            Message::tool_result("call_1", Some(serde_json::json!("content")), None),
+            Message::user("thanks"),
+        ];
+
+        provider.post_load(
+            &mut messages,
+            &serde_json::json!({"context_budget_tokens": 100_000, "min_recent_messages": 10}),
+        );
+
+        assert!(
+            messages.iter().any(|m| m.role == MessageRole::ToolResult),
+            "tool result must be kept when its tool call is visible"
+        );
     }
 }
