@@ -17,18 +17,25 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Notice, NoticeDescription, NoticeTitle } from "@/components/ui/notice";
-import { useApiKeys, useCreateApiKey, useDeleteApiKey } from "@/hooks/use-auth";
+import {
+  usePersonalAccessTokens,
+  useCreatePersonalAccessToken,
+  useDeletePersonalAccessToken,
+} from "@/hooks/use-auth";
 import { usePageTitle } from "@/hooks";
 import { useAuth } from "@/providers/auth-provider";
 import { Plus, Key, Trash2, Copy, Check, Clock, ShieldAlert } from "lucide-react";
-import type { ApiKeyListItem, CreateApiKeyRequest } from "@/lib/api/types";
+import type {
+  PersonalAccessTokenListItem,
+  CreatePersonalAccessTokenRequest,
+} from "@/lib/api/types";
 
-const API_KEY_EXPIRY_OPTIONS = [
+const TOKEN_EXPIRY_OPTIONS = [
   {
     value: "1",
     label: "1 day",
     expiresInDays: 1,
-    description: "Short-lived key for temporary use.",
+    description: "Short-lived token for temporary use.",
   },
   {
     value: "30",
@@ -46,23 +53,23 @@ const API_KEY_EXPIRY_OPTIONS = [
     value: "unrestricted",
     label: "Unrestricted (not recommended)",
     expiresInDays: undefined,
-    description: "This key never expires. Use only when you own the rotation process.",
+    description: "This token never expires. Use only when you own the rotation process.",
   },
 ] as const;
 
-type ApiKeyExpiryOption = (typeof API_KEY_EXPIRY_OPTIONS)[number];
-type ApiKeyExpiryValue = ApiKeyExpiryOption["value"];
+type TokenExpiryOption = (typeof TOKEN_EXPIRY_OPTIONS)[number];
+type TokenExpiryValue = TokenExpiryOption["value"];
 
-const DEFAULT_API_KEY_EXPIRY: ApiKeyExpiryValue = "90";
-const DEFAULT_API_KEY_EXPIRY_OPTION =
-  API_KEY_EXPIRY_OPTIONS.find((option) => option.value === DEFAULT_API_KEY_EXPIRY) ??
-  API_KEY_EXPIRY_OPTIONS[0];
+const DEFAULT_TOKEN_EXPIRY: TokenExpiryValue = "90";
+const DEFAULT_TOKEN_EXPIRY_OPTION =
+  TOKEN_EXPIRY_OPTIONS.find((option) => option.value === DEFAULT_TOKEN_EXPIRY) ??
+  TOKEN_EXPIRY_OPTIONS[0];
 
-function ApiKeyRow({
-  apiKey,
+function PersonalAccessTokenRow({
+  token,
   onDelete,
 }: {
-  apiKey: ApiKeyListItem;
+  token: PersonalAccessTokenListItem;
   onDelete: (id: string) => void;
 }) {
   const formatDate = (dateStr: string | undefined) => {
@@ -75,25 +82,25 @@ function ApiKeyRow({
       <div className="flex items-center gap-3">
         <Key className="h-5 w-5 text-muted-foreground" />
         <div>
-          <div className="font-medium">{apiKey.name}</div>
-          <div className="text-sm text-muted-foreground font-mono">{apiKey.key_prefix}...</div>
+          <div className="font-medium">{token.name}</div>
+          <div className="text-sm text-muted-foreground font-mono">{token.token_prefix}</div>
         </div>
       </div>
       <div className="flex items-center gap-4">
         <div className="text-sm text-muted-foreground">
           <Clock className="h-3 w-3 inline mr-1" />
-          Last used: {formatDate(apiKey.last_used_at)}
+          Last used: {formatDate(token.last_used_at)}
         </div>
-        {apiKey.expires_at && (
+        {token.expires_at && (
           <Badge variant="outline" className="text-xs">
-            Expires: {formatDate(apiKey.expires_at)}
+            Expires: {formatDate(token.expires_at)}
           </Badge>
         )}
         <Button
           variant="ghost"
           size="sm"
           className="text-destructive"
-          onClick={() => onDelete(apiKey.id)}
+          onClick={() => onDelete(token.id)}
         >
           <Trash2 className="h-4 w-4" />
         </Button>
@@ -102,26 +109,26 @@ function ApiKeyRow({
   );
 }
 
-function CreateApiKeyDialog({
+function CreatePersonalAccessTokenDialog({
   open,
   onOpenChange,
-  onKeyCreated,
+  onTokenCreated,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onKeyCreated: (key: string) => void;
+  onTokenCreated: (token: string) => void;
 }) {
   const [name, setName] = useState("");
-  const [expiryPreset, setExpiryPreset] = useState<ApiKeyExpiryValue>(DEFAULT_API_KEY_EXPIRY);
+  const [expiryPreset, setExpiryPreset] = useState<TokenExpiryValue>(DEFAULT_TOKEN_EXPIRY);
 
-  const createApiKey = useCreateApiKey();
+  const createToken = useCreatePersonalAccessToken();
   const selectedExpiryOption =
-    API_KEY_EXPIRY_OPTIONS.find((option) => option.value === expiryPreset) ??
-    DEFAULT_API_KEY_EXPIRY_OPTION;
+    TOKEN_EXPIRY_OPTIONS.find((option) => option.value === expiryPreset) ??
+    DEFAULT_TOKEN_EXPIRY_OPTION;
 
   const resetForm = () => {
     setName("");
-    setExpiryPreset(DEFAULT_API_KEY_EXPIRY);
+    setExpiryPreset(DEFAULT_TOKEN_EXPIRY);
   };
 
   const handleOpenChange = (nextOpen: boolean) => {
@@ -133,12 +140,12 @@ function CreateApiKeyDialog({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const data: CreateApiKeyRequest = {
+    const data: CreatePersonalAccessTokenRequest = {
       name,
       expires_in_days: selectedExpiryOption.expiresInDays,
     };
-    const result = await createApiKey.mutateAsync(data);
-    onKeyCreated(result.key);
+    const result = await createToken.mutateAsync(data);
+    onTokenCreated(result.token);
     resetForm();
   };
 
@@ -146,27 +153,27 @@ function CreateApiKeyDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Create API Key</DialogTitle>
+          <DialogTitle>Create personal access token</DialogTitle>
           <DialogDescription>
-            Create a personal API key for programmatic access. This key will have access to all
-            organizations and resources available to your account.
+            Personal access tokens are tied to your user account, not to an organization. The token
+            inherits access to every organization and resource available to your account.
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="key-name">Name</Label>
+            <Label htmlFor="token-name">Name</Label>
             <Input
-              id="key-name"
+              id="token-name"
               value={name}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) => setName(e.target.value)}
-              placeholder="My API Key"
+              placeholder="My personal access token"
               required
             />
           </div>
           <div className="space-y-2">
             <Label>Expiration</Label>
             <div className="grid grid-cols-2 gap-2" role="group" aria-label="Expiration">
-              {API_KEY_EXPIRY_OPTIONS.map((option) => {
+              {TOKEN_EXPIRY_OPTIONS.map((option) => {
                 const selected = option.value === expiryPreset;
                 return (
                   <Button
@@ -188,8 +195,8 @@ function CreateApiKeyDialog({
             <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={createApiKey.isPending || !name}>
-              {createApiKey.isPending ? "Creating..." : "Create API Key"}
+            <Button type="submit" disabled={createToken.isPending || !name}>
+              {createToken.isPending ? "Creating..." : "Create token"}
             </Button>
           </DialogFooter>
         </form>
@@ -198,20 +205,20 @@ function CreateApiKeyDialog({
   );
 }
 
-function ShowApiKeyDialog({
-  apiKey,
+function ShowPersonalAccessTokenDialog({
+  token,
   open,
   onOpenChange,
 }: {
-  apiKey: string | null;
+  token: string | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
-    if (apiKey) {
-      await navigator.clipboard.writeText(apiKey);
+    if (token) {
+      await navigator.clipboard.writeText(token);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }
@@ -221,22 +228,22 @@ function ShowApiKeyDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>API Key Created</DialogTitle>
+          <DialogTitle>Personal access token created</DialogTitle>
           <DialogDescription>
-            Copy your API key now. You won&apos;t be able to see it again!
+            Copy your token now. You won&apos;t be able to see it again!
           </DialogDescription>
         </DialogHeader>
         <div className="flex items-center gap-2">
           <div className="bg-muted p-3 font-mono text-sm flex-1 min-w-0 max-w-full whitespace-nowrap overflow-x-auto">
-            {apiKey}
+            {token}
           </div>
           <Button
             onClick={handleCopy}
             variant="outline"
             size="icon"
             className="shrink-0"
-            aria-label={copied ? "API key copied" : "Copy API key"}
-            title={copied ? "API key copied" : "Copy API key"}
+            aria-label={copied ? "Token copied" : "Copy token"}
+            title={copied ? "Token copied" : "Copy token"}
           >
             {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
           </Button>
@@ -249,24 +256,32 @@ function ShowApiKeyDialog({
   );
 }
 
-export default function ApiKeysPage() {
-  usePageTitle("API Keys", "Settings");
+export default function PersonalAccessTokensPage() {
+  usePageTitle("Personal access tokens", "Settings");
   const { requiresAuth } = useAuth();
-  const { data: userApiKeys, isLoading: apiKeysLoading, error: apiKeysError } = useApiKeys();
-  const deleteApiKey = useDeleteApiKey();
+  const {
+    data: userTokens,
+    isLoading: tokensLoading,
+    error: tokensError,
+  } = usePersonalAccessTokens();
+  const deleteToken = useDeletePersonalAccessToken();
 
-  const [createApiKeyOpen, setCreateApiKeyOpen] = useState(false);
-  const [newApiKey, setNewApiKey] = useState<string | null>(null);
+  const [createTokenOpen, setCreateTokenOpen] = useState(false);
+  const [newToken, setNewToken] = useState<string | null>(null);
 
-  const handleDeleteApiKey = async (id: string) => {
-    if (confirm("Are you sure you want to delete this API key? This action cannot be undone.")) {
-      await deleteApiKey.mutateAsync(id);
+  const handleDeleteToken = async (id: string) => {
+    if (
+      confirm(
+        "Are you sure you want to delete this personal access token? This action cannot be undone.",
+      )
+    ) {
+      await deleteToken.mutateAsync(id);
     }
   };
 
-  const handleApiKeyCreated = (key: string) => {
-    setCreateApiKeyOpen(false);
-    setNewApiKey(key);
+  const handleTokenCreated = (token: string) => {
+    setCreateTokenOpen(false);
+    setNewToken(token);
   };
 
   // If auth is not required, show a message
@@ -275,17 +290,17 @@ export default function ApiKeysPage() {
       <div className="space-y-8">
         <section>
           <div className="mb-4">
-            <h2 className="text-xl font-semibold">API Keys</h2>
+            <h2 className="text-xl font-semibold">Personal access tokens</h2>
             <p className="text-sm text-muted-foreground">
-              Manage your API keys for programmatic access.
+              Manage your personal access tokens for programmatic access.
             </p>
           </div>
           <Card className="p-8 text-center">
             <ShieldAlert className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
             <h3 className="text-lg font-medium mb-2">Authentication Disabled</h3>
             <p className="text-muted-foreground">
-              API keys are only available when authentication is enabled. Contact your administrator
-              to enable authentication.
+              Personal access tokens are only available when authentication is enabled. Contact your
+              administrator to enable authentication.
             </p>
           </Card>
         </section>
@@ -298,14 +313,15 @@ export default function ApiKeysPage() {
       <section>
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h2 className="text-xl font-semibold">API Keys</h2>
+            <h2 className="text-xl font-semibold">Personal access tokens</h2>
             <p className="text-sm text-muted-foreground">
-              Manage your personal API keys for programmatic access.
+              Manage your personal access tokens for programmatic access. Tokens are tied to your
+              user account, not to an organization.
             </p>
           </div>
-          <Button onClick={() => setCreateApiKeyOpen(true)}>
+          <Button onClick={() => setCreateTokenOpen(true)}>
             <Plus className="h-4 w-4 mr-2" />
-            Create API Key
+            Create token
           </Button>
         </div>
 
@@ -316,16 +332,17 @@ export default function ApiKeysPage() {
         >
           <NoticeTitle>Full account access</NoticeTitle>
           <NoticeDescription>
-            API keys grant access to all organizations and resources available to your account.
-            Treat them like passwords &mdash; do not share or commit them to source control.
+            Personal access tokens are tied to your user account (not an organization) and grant
+            access to every organization and resource available to your account. Treat them like
+            passwords &mdash; do not share or commit them to source control.
           </NoticeDescription>
         </Notice>
 
         <QueryStateWrapper
-          isLoading={apiKeysLoading}
-          error={apiKeysError}
-          data={userApiKeys}
-          errorMessagePrefix="Failed to load API keys"
+          isLoading={tokensLoading}
+          error={tokensError}
+          data={userTokens}
+          errorMessagePrefix="Failed to load personal access tokens"
           loadingSkeleton={
             <div className="space-y-2">
               {[...Array(2)].map((_, i) => (
@@ -336,21 +353,21 @@ export default function ApiKeysPage() {
           emptyState={
             <Card className="p-8 text-center">
               <Key className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <h3 className="text-lg font-medium mb-2">No API keys</h3>
+              <h3 className="text-lg font-medium mb-2">No personal access tokens</h3>
               <p className="text-muted-foreground mb-4">
-                Create an API key to access the Everruns API programmatically.
+                Create a personal access token to access the Everruns API programmatically.
               </p>
-              <Button onClick={() => setCreateApiKeyOpen(true)}>
+              <Button onClick={() => setCreateTokenOpen(true)}>
                 <Plus className="h-4 w-4 mr-2" />
-                Create API Key
+                Create token
               </Button>
             </Card>
           }
         >
           {(items) => (
             <div className="space-y-2">
-              {items.map((apiKey) => (
-                <ApiKeyRow key={apiKey.id} apiKey={apiKey} onDelete={handleDeleteApiKey} />
+              {items.map((token) => (
+                <PersonalAccessTokenRow key={token.id} token={token} onDelete={handleDeleteToken} />
               ))}
             </div>
           )}
@@ -358,15 +375,15 @@ export default function ApiKeysPage() {
       </section>
 
       {/* Dialogs */}
-      <CreateApiKeyDialog
-        open={createApiKeyOpen}
-        onOpenChange={setCreateApiKeyOpen}
-        onKeyCreated={handleApiKeyCreated}
+      <CreatePersonalAccessTokenDialog
+        open={createTokenOpen}
+        onOpenChange={setCreateTokenOpen}
+        onTokenCreated={handleTokenCreated}
       />
-      <ShowApiKeyDialog
-        apiKey={newApiKey}
-        open={newApiKey !== null}
-        onOpenChange={(open) => !open && setNewApiKey(null)}
+      <ShowPersonalAccessTokenDialog
+        token={newToken}
+        open={newToken !== null}
+        onOpenChange={(open) => !open && setNewToken(null)}
       />
     </div>
   );

@@ -6,9 +6,9 @@ import {
   useRegister,
   useLogout,
   useCurrentUser,
-  useApiKeys,
-  useCreateApiKey,
-  useDeleteApiKey,
+  usePersonalAccessTokens,
+  useCreatePersonalAccessToken,
+  useDeletePersonalAccessToken,
   authKeys,
 } from "@/hooks/use-auth";
 import type { OrganizationMembership } from "@/lib/api/types";
@@ -20,9 +20,9 @@ jest.mock("@/lib/api/auth", () => ({
   logout: jest.fn(),
   getCurrentUser: jest.fn(),
   getAuthConfig: jest.fn(),
-  listApiKeys: jest.fn(),
-  createApiKey: jest.fn(),
-  deleteApiKey: jest.fn(),
+  listPersonalAccessTokens: jest.fn(),
+  createPersonalAccessToken: jest.fn(),
+  deletePersonalAccessToken: jest.fn(),
 }));
 
 import * as authApi from "@/lib/api/auth";
@@ -30,9 +30,15 @@ import * as authApi from "@/lib/api/auth";
 const mockLogin = authApi.login as jest.MockedFunction<typeof authApi.login>;
 const mockRegister = authApi.register as jest.MockedFunction<typeof authApi.register>;
 const mockLogout = authApi.logout as jest.MockedFunction<typeof authApi.logout>;
-const mockListApiKeys = authApi.listApiKeys as jest.MockedFunction<typeof authApi.listApiKeys>;
-const mockCreateApiKey = authApi.createApiKey as jest.MockedFunction<typeof authApi.createApiKey>;
-const mockDeleteApiKey = authApi.deleteApiKey as jest.MockedFunction<typeof authApi.deleteApiKey>;
+const mockListPersonalAccessTokens = authApi.listPersonalAccessTokens as jest.MockedFunction<
+  typeof authApi.listPersonalAccessTokens
+>;
+const mockCreatePersonalAccessToken = authApi.createPersonalAccessToken as jest.MockedFunction<
+  typeof authApi.createPersonalAccessToken
+>;
+const mockDeletePersonalAccessToken = authApi.deletePersonalAccessToken as jest.MockedFunction<
+  typeof authApi.deletePersonalAccessToken
+>;
 const mockGetCurrentUser = authApi.getCurrentUser as jest.MockedFunction<
   typeof authApi.getCurrentUser
 >;
@@ -354,7 +360,7 @@ describe("Auth Hooks", () => {
         roles: ["user"],
       };
       queryClient.setQueryData(authKeys.user(), mockUser);
-      queryClient.setQueryData(authKeys.apiKeys(DEFAULT_ORG.public_id), [
+      queryClient.setQueryData(authKeys.personalAccessTokens(DEFAULT_ORG.public_id), [
         { id: "key-1", name: "Test Key" },
       ]);
       // Simulate org-sensitive cached data (e.g., durable workflows)
@@ -376,8 +382,10 @@ describe("Auth Hooks", () => {
       const cachedUser = queryClient.getQueryData(authKeys.user());
       expect(cachedUser).toBeUndefined();
 
-      const cachedApiKeys = queryClient.getQueryData(authKeys.apiKeys(DEFAULT_ORG.public_id));
-      expect(cachedApiKeys).toBeUndefined();
+      const cachedTokens = queryClient.getQueryData(
+        authKeys.personalAccessTokens(DEFAULT_ORG.public_id),
+      );
+      expect(cachedTokens).toBeUndefined();
 
       // Verify org-sensitive data is also cleared
       const cachedWorkflows = queryClient.getQueryData(["durable", "workflows"]);
@@ -414,11 +422,11 @@ describe("Auth Hooks", () => {
 
   describe("org-scoped API key cache", () => {
     it("stores API key queries under the active org key and refetches after an org switch", async () => {
-      mockListApiKeys.mockResolvedValueOnce([
+      mockListPersonalAccessTokens.mockResolvedValueOnce([
         {
           id: "key-default",
           name: "Default Key",
-          key_prefix: "evr_default",
+          token_prefix: "evr_default",
           scopes: ["*"],
           expires_at: null,
           last_used_at: null,
@@ -426,26 +434,26 @@ describe("Auth Hooks", () => {
         },
       ]);
 
-      const { result, rerender } = renderHook(() => useApiKeys(), { wrapper });
+      const { result, rerender } = renderHook(() => usePersonalAccessTokens(), { wrapper });
 
       await waitFor(() => {
         expect(result.current.data).toEqual([
           expect.objectContaining({ id: "key-default", name: "Default Key" }),
         ]);
       });
-      expect(queryClient.getQueryData(authKeys.apiKeys(DEFAULT_ORG.public_id))).toEqual([
-        expect.objectContaining({ id: "key-default", name: "Default Key" }),
-      ]);
+      expect(
+        queryClient.getQueryData(authKeys.personalAccessTokens(DEFAULT_ORG.public_id)),
+      ).toEqual([expect.objectContaining({ id: "key-default", name: "Default Key" })]);
 
       mockUseOrg.mockReturnValue({
         currentOrg: SECOND_ORG,
         isLoading: false,
       });
-      mockListApiKeys.mockResolvedValueOnce([
+      mockListPersonalAccessTokens.mockResolvedValueOnce([
         {
           id: "key-second",
           name: "Second Key",
-          key_prefix: "evr_second",
+          token_prefix: "evr_second",
           scopes: ["*"],
           expires_at: null,
           last_used_at: null,
@@ -461,49 +469,49 @@ describe("Auth Hooks", () => {
         ]);
       });
 
-      expect(queryClient.getQueryData(authKeys.apiKeys(DEFAULT_ORG.public_id))).toEqual([
-        expect.objectContaining({ id: "key-default", name: "Default Key" }),
-      ]);
-      expect(queryClient.getQueryData(authKeys.apiKeys(SECOND_ORG.public_id))).toEqual([
-        expect.objectContaining({ id: "key-second", name: "Second Key" }),
-      ]);
+      expect(
+        queryClient.getQueryData(authKeys.personalAccessTokens(DEFAULT_ORG.public_id)),
+      ).toEqual([expect.objectContaining({ id: "key-default", name: "Default Key" })]);
+      expect(queryClient.getQueryData(authKeys.personalAccessTokens(SECOND_ORG.public_id))).toEqual(
+        [expect.objectContaining({ id: "key-second", name: "Second Key" })],
+      );
     });
 
     it("invalidates only the active org API key query after create", async () => {
       const invalidateSpy = jest.spyOn(queryClient, "invalidateQueries");
-      mockCreateApiKey.mockResolvedValueOnce({
-        id: "key-created",
-        name: "Created Key",
-        key: "evr_secret",
-        key_prefix: "evr_created",
+      mockCreatePersonalAccessToken.mockResolvedValueOnce({
+        id: "token-created",
+        name: "Created Token",
+        token: "evr_pat_secret",
+        token_prefix: "evr_pat_created",
         scopes: ["*"],
         expires_at: null,
         created_at: "2024-01-01T00:00:00Z",
       });
 
-      const { result } = renderHook(() => useCreateApiKey(), { wrapper });
+      const { result } = renderHook(() => useCreatePersonalAccessToken(), { wrapper });
 
       await act(async () => {
         await result.current.mutateAsync({ name: "Created Key" });
       });
 
       expect(invalidateSpy).toHaveBeenCalledWith({
-        queryKey: authKeys.apiKeys(DEFAULT_ORG.public_id),
+        queryKey: authKeys.personalAccessTokens(DEFAULT_ORG.public_id),
       });
     });
 
     it("invalidates only the active org API key query after delete", async () => {
       const invalidateSpy = jest.spyOn(queryClient, "invalidateQueries");
-      mockDeleteApiKey.mockResolvedValueOnce(undefined);
+      mockDeletePersonalAccessToken.mockResolvedValueOnce(undefined);
 
-      const { result } = renderHook(() => useDeleteApiKey(), { wrapper });
+      const { result } = renderHook(() => useDeletePersonalAccessToken(), { wrapper });
 
       await act(async () => {
         await result.current.mutateAsync("key-delete");
       });
 
       expect(invalidateSpy).toHaveBeenCalledWith({
-        queryKey: authKeys.apiKeys(DEFAULT_ORG.public_id),
+        queryKey: authKeys.personalAccessTokens(DEFAULT_ORG.public_id),
       });
     });
   });

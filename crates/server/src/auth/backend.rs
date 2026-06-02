@@ -11,26 +11,26 @@ use super::routes::AuthConfigResponse;
 /// Authentication backend trait.
 ///
 /// Implementations validate credentials and return an `AuthUser`.
-/// The OSS default is `BuiltinAuthBackend` (JWT + password + API key).
+/// The OSS default is `BuiltinAuthBackend` (JWT + password + personal access token).
 /// SaaS wrappers provide their own implementation (e.g., PropelAuth).
 #[async_trait]
 pub trait AuthBackend: Send + Sync + 'static {
     /// Validate a Bearer token (JWT or opaque) and return the authenticated user.
     async fn validate_token(&self, token: &str) -> Result<AuthUser, AuthError>;
 
-    /// Validate an API key and return the authenticated user.
-    async fn validate_api_key(&self, key: &str) -> Result<AuthUser, AuthError>;
+    /// Validate a personal access token and return the authenticated user.
+    async fn validate_personal_access_token(&self, token: &str) -> Result<AuthUser, AuthError>;
 
     /// Return auth-specific HTTP routes (login, register, OAuth callbacks).
     /// Returns `None` if auth is handled externally (e.g., PropelAuth hosted UI).
     ///
-    /// API key CRUD routes are mounted separately by `ServerAppBuilder` via
-    /// `api_key_routes()` — they are auth-provider-agnostic.
+    /// Personal access token CRUD routes are mounted separately by `ServerAppBuilder`
+    /// via `personal_access_token_routes()` — they are auth-provider-agnostic.
     fn auth_routes(&self) -> Option<Router>;
 
-    /// Called when an API key is deleted, so backends can invalidate caches.
+    /// Called when a personal access token is deleted, so backends can invalidate caches.
     /// Default: no-op (backends without caching don't need to override).
-    fn on_api_key_deleted(&self) {}
+    fn on_personal_access_token_deleted(&self) {}
 
     /// Return root-level public routes that must not be nested under the API prefix.
     ///

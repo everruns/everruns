@@ -11,10 +11,10 @@ This document defines the multitenancy model for Everruns, enabling organization
 | Membership model | Members only (no roles) | Simplicity; roles can be added later |
 | Multi-org support | Yes | Users switch between orgs in UI |
 | Personal namespace | No | Org-only model; SaaS auto-creates org on signup |
-| API org identifier | Auth-derived (cookie or API key) | Cleaner URLs, org derived from auth context |
+| API org identifier | Auth-derived (cookie or personal access token) | Cleaner URLs, org derived from auth context |
 | Org ID format | BIGINT internal + TEXT public_id | Performance + security |
 | Resource sharing | No cross-org sharing | Isolation by default |
-| API keys | User-scoped | Org resolved per-request via header/cookie |
+| Personal access tokens | User-scoped | Org resolved per-request via header/cookie |
 | Session org selection | Cookie-based | Consistent for all requests including SSE |
 | InMemory storage | Supports multitenancy | Consistency across modes |
 | Default org | Seeded on startup | No "first boot" concept |
@@ -25,7 +25,7 @@ This document defines the multitenancy model for Everruns, enabling organization
 **Previous approach:** `/v1/orgs/{org}/agents` - org was explicit in every API path.
 
 **Current approach:** `/v1/agents` - org is derived from authentication context:
-- **API key auth:** Org from `X-Org-Id` header, `everruns_org` cookie, or single-org auto-resolve
+- **Personal access token auth:** Org from `X-Org-Id` header, `everruns_org` cookie, or single-org auto-resolve
 - **Session auth (UI):** Org stored in `everruns_org` cookie
 
 **Rationale:**
@@ -67,9 +67,9 @@ Set-Cookie: everruns_org=org_xxx; Path=/; HttpOnly; SameSite=Lax
 - HttpOnly prevents XSS attacks from reading org context
 
 **Server resolution order:**
-1. API key auth → read `X-Org-Id` header or `everruns_org` cookie; single-org users auto-resolve
+1. Personal access token auth → read `X-Org-Id` header or `everruns_org` cookie; single-org users auto-resolve
 2. Session auth → read `everruns_org` cookie
-3. No org found → return 400 (for multi-org API key) or 401 (missing auth)
+3. No org found → return 400 (for multi-org personal access token) or 401 (missing auth)
 
 ## Requirements
 
@@ -117,7 +117,7 @@ Set-Cookie: everruns_org=org_xxx; Path=/; HttpOnly; SameSite=Lax
 | Messages/Events | Inherits from Session | No direct FK; scoped via session→agent join |
 | LLM Provider | Per-org | `org_id` FK on `llm_providers` table |
 | LLM Model | Per-org | `org_id` FK on `llm_models` table |
-| API Key | Per-user | `user_id` FK on `api_keys` table (org resolved per-request) |
+| Personal Access Token | Per-user | `user_id` FK on `personal_access_tokens` table (org resolved per-request) |
 | Capabilities | Global | No `org_id`; system-defined |
 | MCP Servers | Per-org | `org_id` FK (future) |
 | Usage Tracking | Per-org | Aggregated by `org_id` |
@@ -183,7 +183,7 @@ CREATE INDEX idx_api_keys_user_id ON api_keys(user_id);
 ```
 
 **Org Resolution:**
-- **API key auth:** Org from `X-Org-Id` header, `everruns_org` cookie, or single-org auto-resolve
+- **Personal access token auth:** Org from `X-Org-Id` header, `everruns_org` cookie, or single-org auto-resolve
 - **Session auth:** Org read from `everruns_org` cookie
 
 **Global Endpoints (no org scope):**
@@ -239,7 +239,7 @@ pub struct OrgMembership {
 **ResolvedOrg Extractor:**
 ```rust
 /// Extracts organization from authentication context.
-/// - API key auth: X-Org-Id header, everruns_org cookie, or single-org auto-resolve
+/// - Personal access token auth: X-Org-Id header, everruns_org cookie, or single-org auto-resolve
 /// - Session auth: reads everruns_org cookie
 /// Returns 401/404 if org not found or user is not a member.
 pub struct ResolvedOrg {
@@ -250,17 +250,17 @@ pub struct ResolvedOrg {
 
 impl<S> FromRequestParts<S> for ResolvedOrg {
     // 1. Extract AuthUser from request
-    // 2. For API key auth: X-Org-Id header, cookie, or single-org fallback
+    // 2. For personal access token auth: X-Org-Id header, cookie, or single-org fallback
     // 3. For session auth: read org from everruns_org cookie
     // 4. Validate user is member of requested org
     // 5. Return ResolvedOrg or error
 }
 ```
 
-**API Key Context:**
+**Personal Access Token Context:**
 ```rust
-// API keys are user-scoped; org resolved per-request via header/cookie
-pub struct ApiKeyContext {
+// Personal access tokens are user-scoped; org resolved per-request via header/cookie
+pub struct PersonalAccessTokenContext {
     pub user_id: Uuid,
     pub scopes: Vec<String>,
 }
@@ -291,9 +291,9 @@ fn get_provider(&self, org_id: i64, provider_id: Uuid) -> Result<Option<LlmProvi
 fn list_models(&self, org_id: i64) -> Result<Vec<LlmModelRow>>;
 fn get_model(&self, org_id: i64, model_id: Uuid) -> Result<Option<LlmModelRow>>;
 
-// ApiKeyRepository
-fn list_api_keys(&self, org_id: i64, user_id: Uuid) -> Result<Vec<ApiKeyRow>>;
-fn create_api_key(&self, org_id: i64, user_id: Uuid, input: CreateApiKey) -> Result<...>;
+// PersonalAccessTokenRepository (user-scoped; no org_id)
+fn list_personal_access_tokens_for_user(&self, user_id: Uuid) -> Result<Vec<PersonalAccessTokenRow>>;
+fn create_personal_access_token(&self, input: CreatePersonalAccessTokenRow) -> Result<PersonalAccessTokenRow>;
 ```
 
 **Query Examples:**
@@ -584,7 +584,7 @@ The settings sidebar (`/settings/*`) is organized into two labeled sections:
 
 **Personal** (user-scoped settings):
 - **Connections** (`/settings/connections`) — External account links (GitHub, etc.)
-- **API Keys** (`/settings/api-keys`) — Personal API keys
+- **Personal access tokens** (`/settings/personal-access-tokens`) — User-scoped tokens for programmatic access
 
 Section labels are rendered as uppercase headers (`text-xs font-semibold uppercase tracking-wider`). Active nav item highlighted with accent left border.
 

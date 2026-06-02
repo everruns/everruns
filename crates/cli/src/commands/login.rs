@@ -39,7 +39,7 @@ struct CliExchangeRequest {
 /// POST /v1/auth/cli/exchange response
 #[derive(Deserialize)]
 struct CliExchangeResponse {
-    api_key: String,
+    personal_access_token: String,
     user: CliUserInfo,
     orgs: Vec<OrgInfo>,
 }
@@ -229,7 +229,7 @@ async fn run_oauth_login(api_url: &str, profile: &str) -> Result<()> {
         profile,
         Profile {
             api_url: api_url.to_string(),
-            api_key: exchange.api_key,
+            api_key: exchange.personal_access_token,
             org_id: Some(org_id),
             user_email: Some(exchange.user.email.clone()),
             user_name: Some(exchange.user.name.clone()),
@@ -253,21 +253,24 @@ async fn run_oauth_login(api_url: &str, profile: &str) -> Result<()> {
 
 /// Token-paste login for headless environments
 async fn run_token_login(api_url: &str, profile: &str) -> Result<()> {
-    eprintln!("Paste your API key (starts with evr_):");
+    eprintln!("Paste your personal access token (starts with evr_pat_):");
 
     let api_key: String = dialoguer::Input::new()
-        .with_prompt("API key")
+        .with_prompt("Personal access token")
         .validate_with(|input: &String| -> std::result::Result<(), String> {
-            if input.starts_with("evr_") && input.len() > 10 {
+            if input.starts_with("evr_pat_") && input.len() > 10 {
                 Ok(())
             } else {
-                Err("API key must start with 'evr_' and be at least 10 characters".to_string())
+                Err(
+                    "Personal access token must start with 'evr_pat_' and be at least 10 characters"
+                        .to_string(),
+                )
             }
         })
         .interact_text()
-        .context("Failed to read API key")?;
+        .context("Failed to read personal access token")?;
 
-    // Validate the key by calling /v1/auth/me
+    // Validate the token by calling /v1/auth/me
     let client = reqwest::Client::new();
     let me_resp = client
         .get(format!("{}/v1/auth/me", api_url))
@@ -278,7 +281,7 @@ async fn run_token_login(api_url: &str, profile: &str) -> Result<()> {
 
     if !me_resp.status().is_success() {
         return Err(anyhow!(
-            "Invalid API key (server returned {})",
+            "Invalid personal access token (server returned {})",
             me_resp.status()
         ));
     }

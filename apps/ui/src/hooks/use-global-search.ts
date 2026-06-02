@@ -174,10 +174,10 @@ const NAVIGATION_PAGES: NavigationPage[] = [
     keywords: ["account", "profile"],
   },
   {
-    title: "Settings > API Keys",
-    href: "/settings/api-keys",
+    title: "Settings > Personal access tokens",
+    href: "/settings/personal-access-tokens",
     icon: Settings,
-    keywords: ["token", "key"],
+    keywords: ["token", "key", "api key", "pat", "personal access token"],
   },
   {
     title: "Settings > Connections",

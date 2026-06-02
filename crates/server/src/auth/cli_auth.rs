@@ -6,13 +6,13 @@
 // Decision: Exchange code is one-time use — consumed on exchange.
 
 use super::{
-    api_key::generate_api_key,
     audit,
     middleware::{AuthError, AuthState, AuthUser},
+    personal_access_token::generate_personal_access_token,
     routes::OrgMembershipResponse,
 };
 use crate::storage::StorageBackend;
-use crate::storage::models::{CreateApiKeyRow, CreateCliAuthSessionRow};
+use crate::storage::models::{CreateCliAuthSessionRow, CreatePersonalAccessTokenRow};
 use axum::{
     Json, Router,
     extract::{FromRef, Query, State},
@@ -96,10 +96,10 @@ pub struct CliCallbackQuery {
 pub struct CliExchangeRequest {
     /// One-time exchange code from the callback
     pub code: String,
-    /// Client hostname for API key metadata
+    /// Client hostname for personal access token metadata
     #[serde(default)]
     pub hostname: Option<String>,
-    /// Client OS for API key metadata
+    /// Client OS for personal access token metadata
     #[serde(default)]
     pub os: Option<String>,
 }
@@ -107,8 +107,8 @@ pub struct CliExchangeRequest {
 /// POST /v1/auth/cli/exchange response
 #[derive(Debug, Serialize, ToSchema)]
 pub struct CliExchangeResponse {
-    /// Full API key (shown only once)
-    pub api_key: String,
+    /// Full personal access token (shown only once)
+    pub personal_access_token: String,
     /// User info
     pub user: CliUserInfo,
     /// User's organizations
@@ -355,8 +355,8 @@ async fn cli_auth_exchange(
         ));
     }
 
-    // Generate API key with CLI metadata (user-scoped, no org)
-    let generated = generate_api_key();
+    // Generate personal access token with CLI metadata (user-scoped, no org)
+    let generated = generate_personal_access_token();
     let hostname = req.hostname.unwrap_or_else(|| "unknown".to_string());
     let os = req.os.unwrap_or_else(|| "unknown".to_string());
 
@@ -370,19 +370,19 @@ async fn cli_auth_exchange(
 
     state
         .db
-        .create_api_key(CreateApiKeyRow {
+        .create_personal_access_token(CreatePersonalAccessTokenRow {
             user_id,
             name: format!("CLI login ({})", hostname),
-            key_hash: generated.key_hash.clone(),
-            key_prefix: generated.key_prefix.clone(),
+            token_hash: generated.token_hash.clone(),
+            token_prefix: generated.token_prefix.clone(),
             scopes: vec!["*".to_string()],
             expires_at: None,
             metadata: metadata.clone(),
         })
         .await
         .map_err(|e| {
-            tracing::error!("Failed to create API key: {}", e);
-            AuthError::unauthorized("Failed to create API key")
+            tracing::error!("Failed to create personal access token: {}", e);
+            AuthError::unauthorized("Failed to create personal access token")
         })?;
 
     // Delete the used session to enforce one-time exchange code use.
@@ -415,7 +415,7 @@ async fn cli_auth_exchange(
     Ok((
         StatusCode::OK,
         Json(CliExchangeResponse {
-            api_key: generated.key,
+            personal_access_token: generated.token,
             user: CliUserInfo {
                 id: user_id.to_string(),
                 email: user.email,

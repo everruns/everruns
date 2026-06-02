@@ -1,4 +1,4 @@
-// PostgreSQL repository: API Keys, Refresh Tokens, CLI Auth Sessions
+// PostgreSQL repository: Personal Access Tokens, Refresh Tokens, CLI Auth Sessions
 
 use super::super::models::*;
 use super::Database;
@@ -7,23 +7,26 @@ use uuid::Uuid;
 
 impl Database {
     // ============================================
-    // API Keys
+    // Personal Access Tokens
     // ============================================
 
-    pub async fn create_api_key(&self, input: CreateApiKeyRow) -> Result<ApiKeyRow> {
+    pub async fn create_personal_access_token(
+        &self,
+        input: CreatePersonalAccessTokenRow,
+    ) -> Result<PersonalAccessTokenRow> {
         let scopes_json = serde_json::to_value(&input.scopes)?;
 
-        let row = sqlx::query_as::<_, ApiKeyRow>(
+        let row = sqlx::query_as::<_, PersonalAccessTokenRow>(
             r#"
-            INSERT INTO api_keys (user_id, name, key_hash, key_prefix, scopes, expires_at, metadata)
+            INSERT INTO personal_access_tokens (user_id, name, token_hash, token_prefix, scopes, expires_at, metadata)
             VALUES ($1, $2, $3, $4, $5, $6, $7)
-            RETURNING id, user_id, name, key_hash, key_prefix, scopes, expires_at, last_used_at, created_at, metadata
+            RETURNING id, user_id, name, token_hash, token_prefix, scopes, expires_at, last_used_at, created_at, metadata
             "#,
         )
         .bind(input.user_id)
         .bind(&input.name)
-        .bind(&input.key_hash)
-        .bind(&input.key_prefix)
+        .bind(&input.token_hash)
+        .bind(&input.token_prefix)
         .bind(&scopes_json)
         .bind(input.expires_at)
         .bind(&input.metadata)
@@ -33,26 +36,32 @@ impl Database {
         Ok(row)
     }
 
-    pub async fn get_api_key_by_hash(&self, key_hash: &str) -> Result<Option<ApiKeyRow>> {
-        let row = sqlx::query_as::<_, ApiKeyRow>(
+    pub async fn get_personal_access_token_by_hash(
+        &self,
+        token_hash: &str,
+    ) -> Result<Option<PersonalAccessTokenRow>> {
+        let row = sqlx::query_as::<_, PersonalAccessTokenRow>(
             r#"
-            SELECT id, user_id, name, key_hash, key_prefix, scopes, expires_at, last_used_at, created_at, metadata
-            FROM api_keys
-            WHERE key_hash = $1
+            SELECT id, user_id, name, token_hash, token_prefix, scopes, expires_at, last_used_at, created_at, metadata
+            FROM personal_access_tokens
+            WHERE token_hash = $1
             "#,
         )
-        .bind(key_hash)
+        .bind(token_hash)
         .fetch_optional(&self.pool)
         .await?;
 
         Ok(row)
     }
 
-    pub async fn list_api_keys_for_user(&self, user_id: Uuid) -> Result<Vec<ApiKeyRow>> {
-        let rows = sqlx::query_as::<_, ApiKeyRow>(
+    pub async fn list_personal_access_tokens_for_user(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Vec<PersonalAccessTokenRow>> {
+        let rows = sqlx::query_as::<_, PersonalAccessTokenRow>(
             r#"
-            SELECT id, user_id, name, key_hash, key_prefix, scopes, expires_at, last_used_at, created_at, metadata
-            FROM api_keys
+            SELECT id, user_id, name, token_hash, token_prefix, scopes, expires_at, last_used_at, created_at, metadata
+            FROM personal_access_tokens
             WHERE user_id = $1
             ORDER BY created_at DESC
             "#,
@@ -64,8 +73,8 @@ impl Database {
         Ok(rows)
     }
 
-    pub async fn update_api_key_last_used(&self, id: Uuid) -> Result<()> {
-        sqlx::query("UPDATE api_keys SET last_used_at = NOW() WHERE id = $1")
+    pub async fn update_personal_access_token_last_used(&self, id: Uuid) -> Result<()> {
+        sqlx::query("UPDATE personal_access_tokens SET last_used_at = NOW() WHERE id = $1")
             .bind(id)
             .execute(&self.pool)
             .await?;
@@ -73,12 +82,13 @@ impl Database {
         Ok(())
     }
 
-    pub async fn delete_api_key(&self, id: Uuid, user_id: Uuid) -> Result<bool> {
-        let result = sqlx::query("DELETE FROM api_keys WHERE id = $1 AND user_id = $2")
-            .bind(id)
-            .bind(user_id)
-            .execute(&self.pool)
-            .await?;
+    pub async fn delete_personal_access_token(&self, id: Uuid, user_id: Uuid) -> Result<bool> {
+        let result =
+            sqlx::query("DELETE FROM personal_access_tokens WHERE id = $1 AND user_id = $2")
+                .bind(id)
+                .bind(user_id)
+                .execute(&self.pool)
+                .await?;
 
         Ok(result.rows_affected() > 0)
     }

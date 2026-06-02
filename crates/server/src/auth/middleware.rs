@@ -18,9 +18,9 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use super::{
-    api_key::API_KEY_PREFIX,
     backend::AuthBackend,
     config::{AuthConfig, AuthMode},
+    personal_access_token::PAT_PREFIX,
 };
 use crate::storage::StorageBackend;
 
@@ -56,6 +56,25 @@ impl AuthError {
             error: message.to_string(),
             status: StatusCode::UNPROCESSABLE_ENTITY,
             code: Some("unprocessable"),
+        }
+    }
+
+    pub fn not_found(message: &str) -> Self {
+        Self {
+            error: message.to_string(),
+            status: StatusCode::NOT_FOUND,
+            code: Some("not_found"),
+        }
+    }
+
+    /// Internal server error. Use for storage/DB or other server-side failures
+    /// so clients can distinguish a real auth failure (401) from a transient
+    /// server error. The message must stay generic — never leak internals.
+    pub fn internal(message: &str) -> Self {
+        Self {
+            error: message.to_string(),
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            code: Some("internal_error"),
         }
     }
 }
@@ -146,8 +165,8 @@ pub enum AuthMethod {
     None,
     /// JWT access token
     Jwt,
-    /// API key
-    ApiKey,
+    /// Personal access token
+    PersonalAccessToken,
 }
 
 /// Auth state shared across routes
@@ -263,28 +282,37 @@ async fn extract_auth_user(
             }
         };
 
-        // Bearer token: either API key (evr_ prefix) or JWT
+        // Bearer token: either personal access token (evr_pat_ prefix) or JWT
         if let Some(token) = token_after_bearer {
-            if token.starts_with(API_KEY_PREFIX) {
-                return auth_state.backend.validate_api_key(token).await;
+            if token.starts_with(PAT_PREFIX) {
+                return auth_state
+                    .backend
+                    .validate_personal_access_token(token)
+                    .await;
             }
             return auth_state.backend.validate_token(token).await;
         }
 
-        // Legacy: bare API key or "ApiKey" prefix (kept for backward compat)
-        let api_key_after_scheme = {
+        // Legacy: bare token or "ApiKey" scheme prefix (kept for non-Bearer clients)
+        let token_after_scheme = {
             let mut parts = auth_str.splitn(2, ' ');
             match (parts.next(), parts.next()) {
-                (Some(scheme), Some(key)) if scheme.eq_ignore_ascii_case("apikey") => Some(key),
+                (Some(scheme), Some(token)) if scheme.eq_ignore_ascii_case("apikey") => Some(token),
                 _ => None,
             }
         };
 
-        if let Some(api_key) = api_key_after_scheme {
-            return auth_state.backend.validate_api_key(api_key).await;
+        if let Some(token) = token_after_scheme {
+            return auth_state
+                .backend
+                .validate_personal_access_token(token)
+                .await;
         }
-        if auth_str.starts_with(API_KEY_PREFIX) {
-            return auth_state.backend.validate_api_key(auth_str).await;
+        if auth_str.starts_with(PAT_PREFIX) {
+            return auth_state
+                .backend
+                .validate_personal_access_token(auth_str)
+                .await;
         }
     }
 
@@ -570,9 +598,9 @@ where
         let auth_state = AuthState::from_ref(state);
 
         match user.auth_method {
-            AuthMethod::ApiKey => {
-                // API key auth: org resolved from X-Org-Id header, everruns_org cookie,
-                // or single-org convenience fallback.
+            AuthMethod::PersonalAccessToken => {
+                // Personal access token auth: org resolved from X-Org-Id header,
+                // everruns_org cookie, or single-org convenience fallback.
                 let jar = CookieJar::from_headers(&parts.headers);
                 let header_org = parts
                     .headers
@@ -891,14 +919,14 @@ mod tests {
     /// Mock backend that records which validation method was called.
     struct MockBackend {
         token_calls: AtomicU32,
-        api_key_calls: AtomicU32,
+        pat_calls: AtomicU32,
     }
 
     impl MockBackend {
         fn new() -> Self {
             Self {
                 token_calls: AtomicU32::new(0),
-                api_key_calls: AtomicU32::new(0),
+                pat_calls: AtomicU32::new(0),
             }
         }
     }
@@ -910,8 +938,8 @@ mod tests {
             Ok(AuthUser::anonymous())
         }
 
-        async fn validate_api_key(&self, _key: &str) -> Result<AuthUser, AuthError> {
-            self.api_key_calls.fetch_add(1, Ordering::SeqCst);
+        async fn validate_personal_access_token(&self, _key: &str) -> Result<AuthUser, AuthError> {
+            self.pat_calls.fetch_add(1, Ordering::SeqCst);
             Ok(AuthUser::anonymous())
         }
 
@@ -953,55 +981,67 @@ mod tests {
 
         (
             backend.token_calls.load(Ordering::SeqCst),
-            backend.api_key_calls.load(Ordering::SeqCst),
+            backend.pat_calls.load(Ordering::SeqCst),
         )
     }
 
     #[tokio::test]
-    async fn test_bearer_api_key_routes_to_validate_api_key() {
-        let (token, api_key) = call_extract("Bearer evr_testkey123").await;
+    async fn test_bearer_pat_routes_to_validate_personal_access_token() {
+        let (token, pat) = call_extract("Bearer evr_pat_testkey123").await;
         assert_eq!(token, 0, "should not call validate_token");
-        assert_eq!(api_key, 1, "should call validate_api_key");
+        assert_eq!(pat, 1, "should call validate_personal_access_token");
     }
 
     #[tokio::test]
     async fn test_bearer_jwt_routes_to_validate_token() {
-        let (token, api_key) = call_extract("Bearer eyJhbGciOiJIUzI1NiJ9.x.y").await;
+        let (token, pat) = call_extract("Bearer eyJhbGciOiJIUzI1NiJ9.x.y").await;
         assert_eq!(token, 1, "should call validate_token");
-        assert_eq!(api_key, 0, "should not call validate_api_key");
+        assert_eq!(pat, 0, "should not call validate_personal_access_token");
     }
 
     #[tokio::test]
     async fn test_bearer_case_insensitive() {
-        let (token, api_key) = call_extract("bearer evr_testkey123").await;
-        assert_eq!(api_key, 1, "lowercase bearer should route to api_key");
+        let (token, pat) = call_extract("bearer evr_pat_testkey123").await;
+        assert_eq!(
+            pat, 1,
+            "lowercase bearer should route to personal access token validation"
+        );
         assert_eq!(token, 0);
 
-        let (token, api_key) = call_extract("BEARER evr_testkey123").await;
-        assert_eq!(api_key, 1, "uppercase BEARER should route to api_key");
+        let (token, pat) = call_extract("BEARER evr_pat_testkey123").await;
+        assert_eq!(
+            pat, 1,
+            "uppercase BEARER should route to personal access token validation"
+        );
         assert_eq!(token, 0);
     }
 
     #[tokio::test]
-    async fn test_legacy_bare_api_key() {
-        let (token, api_key) = call_extract("evr_testkey123").await;
-        assert_eq!(api_key, 1, "bare evr_ should route to validate_api_key");
+    async fn test_legacy_bare_pat() {
+        let (token, pat) = call_extract("evr_pat_testkey123").await;
+        assert_eq!(
+            pat, 1,
+            "bare evr_ should route to validate_personal_access_token"
+        );
         assert_eq!(token, 0);
     }
 
     #[tokio::test]
     async fn test_legacy_apikey_prefix() {
-        let (token, api_key) = call_extract("ApiKey evr_testkey123").await;
-        assert_eq!(api_key, 1, "ApiKey prefix should route to validate_api_key");
+        let (token, pat) = call_extract("ApiKey evr_pat_testkey123").await;
+        assert_eq!(
+            pat, 1,
+            "ApiKey prefix should route to validate_personal_access_token"
+        );
         assert_eq!(token, 0);
     }
 
     #[tokio::test]
     async fn test_legacy_apikey_prefix_case_insensitive() {
-        let (token, api_key) = call_extract("apikey evr_testkey123").await;
+        let (token, pat) = call_extract("apikey evr_pat_testkey123").await;
         assert_eq!(
-            api_key, 1,
-            "lowercase apikey should route to validate_api_key"
+            pat, 1,
+            "lowercase apikey should route to validate_personal_access_token"
         );
         assert_eq!(token, 0);
     }
@@ -1027,7 +1067,7 @@ mod tests {
             Ok(self.user.clone())
         }
 
-        async fn validate_api_key(&self, _key: &str) -> Result<AuthUser, AuthError> {
+        async fn validate_personal_access_token(&self, _key: &str) -> Result<AuthUser, AuthError> {
             Err(AuthError::unauthorized("not supported"))
         }
 
@@ -1227,23 +1267,23 @@ mod tests {
     // --- ResolvedOrg API key auth tests ---
 
     /// Mock backend that returns an API-key-authenticated user.
-    struct ApiKeyMockBackend {
+    struct PersonalAccessTokenMockBackend {
         user: AuthUser,
     }
 
-    impl ApiKeyMockBackend {
+    impl PersonalAccessTokenMockBackend {
         fn with_user(user: AuthUser) -> Self {
             Self { user }
         }
     }
 
     #[async_trait]
-    impl AuthBackend for ApiKeyMockBackend {
+    impl AuthBackend for PersonalAccessTokenMockBackend {
         async fn validate_token(&self, _token: &str) -> Result<AuthUser, AuthError> {
             Err(AuthError::unauthorized("not supported"))
         }
 
-        async fn validate_api_key(&self, _key: &str) -> Result<AuthUser, AuthError> {
+        async fn validate_personal_access_token(&self, _key: &str) -> Result<AuthUser, AuthError> {
             Ok(self.user.clone())
         }
 
@@ -1261,8 +1301,9 @@ mod tests {
         }
     }
 
-    fn api_key_auth_state(user: AuthUser) -> AuthState {
-        let backend: Arc<dyn AuthBackend> = Arc::new(ApiKeyMockBackend::with_user(user));
+    fn pat_auth_state(user: AuthUser) -> AuthState {
+        let backend: Arc<dyn AuthBackend> =
+            Arc::new(PersonalAccessTokenMockBackend::with_user(user));
         AuthState {
             config: AuthConfig {
                 mode: AuthMode::Full,
@@ -1275,7 +1316,7 @@ mod tests {
         }
     }
 
-    fn multi_org_api_key_user() -> (Uuid, AuthUser) {
+    fn multi_org_pat_user() -> (Uuid, AuthUser) {
         let user_id = Uuid::new_v4();
         let user = AuthUser {
             id: user_id,
@@ -1283,7 +1324,7 @@ mod tests {
             name: "API User".to_string(),
             roles: vec!["user".to_string()],
             is_platform_user: false,
-            auth_method: AuthMethod::ApiKey,
+            auth_method: AuthMethod::PersonalAccessToken,
             organizations: vec![
                 OrgMembership {
                     org_id: 1,
@@ -1303,7 +1344,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_resolved_org_api_key_single_org_auto_resolves() {
+    async fn test_resolved_org_pat_single_org_auto_resolves() {
         let user_id = Uuid::new_v4();
         let user = AuthUser {
             id: user_id,
@@ -1311,7 +1352,7 @@ mod tests {
             name: "API User".to_string(),
             roles: vec!["user".to_string()],
             is_platform_user: false,
-            auth_method: AuthMethod::ApiKey,
+            auth_method: AuthMethod::PersonalAccessToken,
             organizations: vec![OrgMembership {
                 org_id: 1,
                 public_id: "org_00000000000000000000000000000001".to_string(),
@@ -1320,10 +1361,10 @@ mod tests {
             }],
         };
 
-        let state = api_key_auth_state(user);
+        let state = pat_auth_state(user);
 
         let (mut parts, _body) = Request::builder()
-            .header(header::AUTHORIZATION, "Bearer evr_testkey123")
+            .header(header::AUTHORIZATION, "Bearer evr_pat_testkey123")
             .body(())
             .unwrap()
             .into_parts();
@@ -1338,13 +1379,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_resolved_org_api_key_multi_org_no_selection_returns_400() {
-        let (_user_id, user) = multi_org_api_key_user();
-        let state = api_key_auth_state(user);
+    async fn test_resolved_org_pat_multi_org_no_selection_returns_400() {
+        let (_user_id, user) = multi_org_pat_user();
+        let state = pat_auth_state(user);
 
         // No X-Org-Id header, no cookie
         let (mut parts, _body) = Request::builder()
-            .header(header::AUTHORIZATION, "Bearer evr_testkey123")
+            .header(header::AUTHORIZATION, "Bearer evr_pat_testkey123")
             .body(())
             .unwrap()
             .into_parts();
@@ -1358,12 +1399,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_resolved_org_api_key_x_org_id_header_selects_org() {
-        let (user_id, user) = multi_org_api_key_user();
-        let state = api_key_auth_state(user);
+    async fn test_resolved_org_pat_x_org_id_header_selects_org() {
+        let (user_id, user) = multi_org_pat_user();
+        let state = pat_auth_state(user);
 
         let (mut parts, _body) = Request::builder()
-            .header(header::AUTHORIZATION, "Bearer evr_testkey123")
+            .header(header::AUTHORIZATION, "Bearer evr_pat_testkey123")
             .header("x-org-id", "org_00000000000000000000000000000002")
             .body(())
             .unwrap()
@@ -1380,13 +1421,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_resolved_org_api_key_non_member_org_returns_404() {
-        let (_user_id, user) = multi_org_api_key_user();
-        let state = api_key_auth_state(user);
+    async fn test_resolved_org_pat_non_member_org_returns_404() {
+        let (_user_id, user) = multi_org_pat_user();
+        let state = pat_auth_state(user);
 
         // Request org the user is NOT a member of
         let (mut parts, _body) = Request::builder()
-            .header(header::AUTHORIZATION, "Bearer evr_testkey123")
+            .header(header::AUTHORIZATION, "Bearer evr_pat_testkey123")
             .header("x-org-id", "org_00000000000000000000000000000099")
             .body(())
             .unwrap()
@@ -1400,13 +1441,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_resolved_org_api_key_invalid_format_returns_401() {
-        let (_user_id, user) = multi_org_api_key_user();
-        let state = api_key_auth_state(user);
+    async fn test_resolved_org_pat_invalid_format_returns_401() {
+        let (_user_id, user) = multi_org_pat_user();
+        let state = pat_auth_state(user);
 
         // Invalid org ID format
         let (mut parts, _body) = Request::builder()
-            .header(header::AUTHORIZATION, "Bearer evr_testkey123")
+            .header(header::AUTHORIZATION, "Bearer evr_pat_testkey123")
             .header("x-org-id", "not-a-valid-org-id")
             .body(())
             .unwrap()

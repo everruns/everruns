@@ -1,4 +1,4 @@
-// In-memory storage: API Keys, CLI Auth Sessions, Refresh Tokens
+// In-memory storage: Personal Access Tokens, CLI Auth Sessions, Refresh Tokens
 
 use super::super::models::*;
 use super::InMemoryDatabase;
@@ -7,61 +7,70 @@ use uuid::Uuid;
 
 impl InMemoryDatabase {
     // ============================================
-    // API Keys
+    // Personal Access Tokens
     // ============================================
 
-    pub async fn create_api_key(&self, input: CreateApiKeyRow) -> Result<ApiKeyRow> {
+    pub async fn create_personal_access_token(
+        &self,
+        input: CreatePersonalAccessTokenRow,
+    ) -> Result<PersonalAccessTokenRow> {
         let now = Self::now();
         let id = Uuid::now_v7();
-        let row = ApiKeyRow {
+        let row = PersonalAccessTokenRow {
             id,
             user_id: input.user_id,
             name: input.name,
-            key_hash: input.key_hash,
-            key_prefix: input.key_prefix,
+            token_hash: input.token_hash,
+            token_prefix: input.token_prefix,
             scopes: serde_json::to_value(&input.scopes)?,
             expires_at: input.expires_at,
             last_used_at: None,
             created_at: now,
             metadata: input.metadata,
         };
-        self.api_keys.write().insert(id, row.clone());
+        self.personal_access_tokens.write().insert(id, row.clone());
         Ok(row)
     }
 
-    pub async fn get_api_key_by_hash(&self, key_hash: &str) -> Result<Option<ApiKeyRow>> {
+    pub async fn get_personal_access_token_by_hash(
+        &self,
+        token_hash: &str,
+    ) -> Result<Option<PersonalAccessTokenRow>> {
         Ok(self
-            .api_keys
+            .personal_access_tokens
             .read()
             .values()
-            .find(|k| k.key_hash == key_hash)
+            .find(|t| t.token_hash == token_hash)
             .cloned())
     }
 
-    pub async fn list_api_keys_for_user(&self, user_id: Uuid) -> Result<Vec<ApiKeyRow>> {
-        let keys = self.api_keys.read();
-        let mut result: Vec<_> = keys
+    pub async fn list_personal_access_tokens_for_user(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Vec<PersonalAccessTokenRow>> {
+        let tokens = self.personal_access_tokens.read();
+        let mut result: Vec<_> = tokens
             .values()
-            .filter(|k| k.user_id == user_id)
+            .filter(|t| t.user_id == user_id)
             .cloned()
             .collect();
-        result.sort_by_key(|provider| std::cmp::Reverse(provider.created_at));
+        result.sort_by_key(|token| std::cmp::Reverse(token.created_at));
         Ok(result)
     }
 
-    pub async fn update_api_key_last_used(&self, id: Uuid) -> Result<()> {
-        if let Some(key) = self.api_keys.write().get_mut(&id) {
-            key.last_used_at = Some(Self::now());
+    pub async fn update_personal_access_token_last_used(&self, id: Uuid) -> Result<()> {
+        if let Some(token) = self.personal_access_tokens.write().get_mut(&id) {
+            token.last_used_at = Some(Self::now());
         }
         Ok(())
     }
 
-    pub async fn delete_api_key(&self, id: Uuid, user_id: Uuid) -> Result<bool> {
-        let mut keys = self.api_keys.write();
-        if let Some(key) = keys.get(&id)
-            && key.user_id == user_id
+    pub async fn delete_personal_access_token(&self, id: Uuid, user_id: Uuid) -> Result<bool> {
+        let mut tokens = self.personal_access_tokens.write();
+        if let Some(token) = tokens.get(&id)
+            && token.user_id == user_id
         {
-            keys.remove(&id);
+            tokens.remove(&id);
             return Ok(true);
         }
         Ok(false)

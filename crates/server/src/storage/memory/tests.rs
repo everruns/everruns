@@ -3044,12 +3044,12 @@ async fn test_delete_user_account() {
         .await
         .unwrap();
 
-    // Create API key for user
-    db.create_api_key(CreateApiKeyRow {
+    // Create personal access token for user
+    db.create_personal_access_token(CreatePersonalAccessTokenRow {
         user_id: user.id,
-        name: "test-key".to_string(),
-        key_hash: "hash123".to_string(),
-        key_prefix: "evr_".to_string(),
+        name: "test-token".to_string(),
+        token_hash: "hash123".to_string(),
+        token_prefix: "evr_pat_".to_string(),
         scopes: vec![],
         expires_at: None,
         metadata: serde_json::json!({}),
@@ -3073,7 +3073,13 @@ async fn test_delete_user_account() {
 
     // Verify user exists with related data
     assert!(db.get_user(user.id).await.unwrap().is_some());
-    assert_eq!(db.list_api_keys_for_user(user.id).await.unwrap().len(), 1);
+    assert_eq!(
+        db.list_personal_access_tokens_for_user(user.id)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
     assert!(
         db.is_organization_member(DEFAULT_ORG_ID, user.id)
             .await
@@ -3086,7 +3092,13 @@ async fn test_delete_user_account() {
 
     // Verify cascading delete of all user data
     assert!(db.get_user(user.id).await.unwrap().is_none());
-    assert_eq!(db.list_api_keys_for_user(user.id).await.unwrap().len(), 0);
+    assert_eq!(
+        db.list_personal_access_tokens_for_user(user.id)
+            .await
+            .unwrap()
+            .len(),
+        0
+    );
     assert!(
         !db.is_organization_member(DEFAULT_ORG_ID, user.id)
             .await
@@ -3117,12 +3129,12 @@ async fn test_export_user_data() {
         .await
         .unwrap();
 
-    // Create API key
-    db.create_api_key(CreateApiKeyRow {
+    // Create personal access token
+    db.create_personal_access_token(CreatePersonalAccessTokenRow {
         user_id: user.id,
-        name: "my-key".to_string(),
-        key_hash: "hash456".to_string(),
-        key_prefix: "evr_".to_string(),
+        name: "my-token".to_string(),
+        token_hash: "hash456".to_string(),
+        token_prefix: "evr_pat_".to_string(),
         scopes: vec!["read".to_string()],
         expires_at: None,
         metadata: serde_json::json!({}),
@@ -3135,10 +3147,17 @@ async fn test_export_user_data() {
 
     assert_eq!(export["user"]["email"], "export@example.com");
     assert_eq!(export["user"]["name"], "Export User");
-    assert_eq!(export["api_keys"].as_array().unwrap().len(), 1);
-    assert_eq!(export["api_keys"][0]["name"], "my-key");
+    assert_eq!(
+        export["personal_access_tokens"].as_array().unwrap().len(),
+        1
+    );
+    assert_eq!(export["personal_access_tokens"][0]["name"], "my-token");
     // Verify no sensitive data is exported
-    assert!(export["api_keys"][0].get("key_hash").is_none());
+    assert!(
+        export["personal_access_tokens"][0]
+            .get("token_hash")
+            .is_none()
+    );
     assert!(export.get("exported_at").is_some());
 
     // Non-existent user returns None

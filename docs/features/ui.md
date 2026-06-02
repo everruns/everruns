@@ -14,7 +14,7 @@ The management UI is a Next.js application that provides:
 - Agent management (create, edit, delete)
 - Session monitoring and chat interface
 - Capabilities browser
-- Settings management (LLM providers, API keys, team members)
+- Settings management (LLM providers, personal access tokens, team members)
 - Dashboard with system statistics
 
 Access the UI at `http://localhost:9300` when running locally.
@@ -28,7 +28,7 @@ The sidebar provides access to main sections:
 | Dashboard | Overview statistics and quick actions |
 | Agents | List, create, and manage agents |
 | Capabilities | Browse available capabilities |
-| Settings | Configure providers, API keys, and team members |
+| Settings | Configure providers, personal access tokens, and team members |
 
 ## Dashboard
 
@@ -146,13 +146,15 @@ Configure language model providers:
 - Enable/disable specific models
 - Set default models for agents
 
-### API Keys
+### Personal access tokens
 
-Manage API keys for programmatic access:
+Manage personal access tokens for programmatic access. Tokens are tied to your
+user account (not an organization) and inherit access to every organization
+available to your account:
 
-- Create new API keys
-- View existing keys (values hidden)
-- Revoke keys
+- Create new personal access tokens
+- View existing tokens (values hidden)
+- Revoke tokens
 
 ### Members
 

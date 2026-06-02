@@ -1099,7 +1099,10 @@ mod tests {
             })
         }
 
-        async fn validate_api_key(&self, _key: &str) -> Result<AuthUser, AuthError> {
+        async fn validate_personal_access_token(
+            &self,
+            _token: &str,
+        ) -> Result<AuthUser, AuthError> {
             Err(AuthError::unauthorized("not supported"))
         }
 

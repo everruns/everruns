@@ -4463,7 +4463,7 @@ async fn test_export_user_data() {
     assert!(resp["user"]["name"].is_string());
     assert!(resp["user"]["created_at"].is_string());
     assert!(resp["organizations"].is_array());
-    assert!(resp["api_keys"].is_array());
+    assert!(resp["personal_access_tokens"].is_array());
     assert!(resp["exported_at"].is_string());
     // Verify no sensitive fields
     assert!(resp["user"].get("password_hash").is_none());

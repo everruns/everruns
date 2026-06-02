@@ -1,6 +1,6 @@
 ---
 title: Authentication Configuration Runbook
-description: Configure Everruns authentication modes, API keys, OAuth providers, JWT secrets, token lifetimes, sign-up controls, and production access settings for operators.
+description: Configure Everruns authentication modes, personal access tokens, OAuth providers, JWT secrets, token lifetimes, sign-up controls, and production access settings for operators.
 sidebar:
   label: Authentication
 ---
@@ -126,7 +126,7 @@ curl -X POST http://localhost:9300/api/v1/auth/login \
   -d '{"email":"admin@example.com","password":"your-password"}'
 ```
 
-### Create API Key
+### Create Personal Access Token
 
 ```bash
 # Login first to get access token
@@ -134,19 +134,19 @@ TOKEN=$(curl -s -X POST http://localhost:9300/api/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"user@example.com","password":"password"}' | jq -r '.access_token')
 
-# Create API key
-curl -X POST http://localhost:9300/api/v1/auth/api-keys \
+# Create personal access token
+curl -X POST http://localhost:9300/api/v1/auth/personal-access-tokens \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"name":"my-api-key"}'
+  -d '{"name":"my-token"}'
 
-# Response includes full key - save it, it's shown only once
+# Response includes the full token - save it, it's shown only once
 ```
 
-### Revoke API Key
+### Revoke Personal Access Token
 
 ```bash
-curl -X DELETE http://localhost:9300/api/v1/auth/api-keys/{key_id} \
+curl -X DELETE http://localhost:9300/api/v1/auth/personal-access-tokens/{token_id} \
   -H "Authorization: Bearer $TOKEN"
 ```
 
@@ -210,5 +210,5 @@ curl http://localhost:9300/health
 2. **Rotate JWT secret**: Change `AUTH_JWT_SECRET` periodically (invalidates all tokens)
 3. **Use HTTPS**: Always use HTTPS in production for OAuth callbacks
 4. **Limit OAuth domains**: Use `AUTH_GOOGLE_ALLOWED_DOMAINS` to restrict access
-5. **Monitor API key usage**: Track `last_used_at` for suspicious activity
+5. **Monitor personal access token usage**: Track `last_used_at` for suspicious activity
 6. **Set token expiration**: Use shorter `AUTH_JWT_ACCESS_TOKEN_LIFETIME` for higher security

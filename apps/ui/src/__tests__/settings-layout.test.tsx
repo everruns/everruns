@@ -36,7 +36,7 @@ describe("SettingsLayout", () => {
     expect(screen.getByText("Payments")).toBeInTheDocument();
     expect(screen.getByText("Profile")).toBeInTheDocument();
     expect(screen.getByText("Connections")).toBeInTheDocument();
-    expect(screen.getByText("API Keys")).toBeInTheDocument();
+    expect(screen.getByText("Personal access tokens")).toBeInTheDocument();
   });
 
   it("renders section labels for Organization and Personal", () => {
@@ -65,7 +65,7 @@ describe("SettingsLayout", () => {
     const paymentsLink = screen.getByRole("link", { name: /Payments/i });
     const profileLink = screen.getByRole("link", { name: /Profile/i });
     const connectionsLink = screen.getByRole("link", { name: /Connections/i });
-    const apiKeysLink = screen.getByRole("link", { name: /API Keys/i });
+    const apiKeysLink = screen.getByRole("link", { name: /Personal access tokens/i });
 
     expect(organizationLink).toHaveAttribute("href", "/settings/organization");
     expect(providersLink).toHaveAttribute("href", "/settings/providers");
@@ -73,7 +73,7 @@ describe("SettingsLayout", () => {
     expect(paymentsLink).toHaveAttribute("href", "/settings/payments");
     expect(profileLink).toHaveAttribute("href", "/settings/profile");
     expect(connectionsLink).toHaveAttribute("href", "/settings/connections");
-    expect(apiKeysLink).toHaveAttribute("href", "/settings/api-keys");
+    expect(apiKeysLink).toHaveAttribute("href", "/settings/personal-access-tokens");
   });
 
   it("highlights the active navigation item for providers", () => {
@@ -88,15 +88,15 @@ describe("SettingsLayout", () => {
     expect(providersLink).toHaveClass("border-accent");
   });
 
-  it("highlights the active navigation item for api-keys", () => {
-    mockPathname.mockReturnValue("/settings/api-keys");
+  it("highlights the active navigation item for personal-access-tokens", () => {
+    mockPathname.mockReturnValue("/settings/personal-access-tokens");
     render(
       <SettingsLayout>
         <div>Test Content</div>
       </SettingsLayout>,
     );
 
-    const apiKeysLink = screen.getByRole("link", { name: /API Keys/i });
+    const apiKeysLink = screen.getByRole("link", { name: /Personal access tokens/i });
     expect(apiKeysLink).toHaveClass("border-accent");
   });
 
@@ -155,13 +155,13 @@ describe("SettingsLayout", () => {
     expect(orgSection).toHaveTextContent("Features");
     expect(orgSection).toHaveTextContent("Payments");
     expect(orgSection).not.toHaveTextContent("Connections");
-    expect(orgSection).not.toHaveTextContent("API Keys");
+    expect(orgSection).not.toHaveTextContent("Personal access tokens");
 
     // Personal section contains its items
     const personalSection = personalLabel.closest("div[class]")!.parentElement!;
     expect(personalSection).toHaveTextContent("Profile");
     expect(personalSection).toHaveTextContent("Connections");
-    expect(personalSection).toHaveTextContent("API Keys");
+    expect(personalSection).toHaveTextContent("Personal access tokens");
     expect(personalSection).not.toHaveTextContent("Organization");
     expect(personalSection).not.toHaveTextContent("Members");
   });
@@ -197,7 +197,7 @@ describe("SettingsLayout", () => {
 
     const organizationLink = screen.getByRole("link", { name: /Organization/i });
     const membersLink = screen.getByRole("link", { name: /Members/i });
-    const apiKeysLink = screen.getByRole("link", { name: /API Keys/i });
+    const apiKeysLink = screen.getByRole("link", { name: /Personal access tokens/i });
 
     expect(organizationLink).toHaveClass("border-transparent");
     expect(membersLink).toHaveClass("border-transparent");

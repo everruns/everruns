@@ -10,13 +10,13 @@ This document defines the authentication system for Everruns, supporting flexibl
 
 Everruns supports four authentication modes:
 
-1. **None** (`AUTH_MODE=none`): No authentication required. All requests use a well-known anonymous user (`ANONYMOUS_USER_ID = 00000000-0000-0000-0000-000000000001`). This is a real database user seeded at startup, so all code paths (org membership, API keys, etc.) work uniformly without special-casing. The anonymous user has admin role and belongs to the default organization. Suitable for local development.
+1. **None** (`AUTH_MODE=none`): No authentication required. All requests use a well-known anonymous user (`ANONYMOUS_USER_ID = 00000000-0000-0000-0000-000000000001`). This is a real database user seeded at startup, so all code paths (org membership, personal access tokens, etc.) work uniformly without special-casing. The anonymous user has admin role and belongs to the default organization. Suitable for local development.
 
 2. **Admin** (`AUTH_MODE=admin`): Single admin user via environment variables. Suitable for local development with basic access control.
 
-3. **Full** (`AUTH_MODE=full`): Complete authentication with user registration, OAuth, and API keys. Suitable for production deployments.
+3. **Full** (`AUTH_MODE=full`): Complete authentication with user registration, OAuth, and personal access tokens. Suitable for production deployments.
 
-4. **External** (`AUTH_MODE=external`): Authentication managed by a third-party provider (e.g., PropelAuth, Auth0, Clerk). The external provider handles login, registration, and user management. Built-in password auth, OAuth, and signup are disabled. API key authentication is supported. Suitable for SaaS deployments with external identity providers.
+4. **External** (`AUTH_MODE=external`): Authentication managed by a third-party provider (e.g., PropelAuth, Auth0, Clerk). The external provider handles login, registration, and user management. Built-in password auth, OAuth, and signup are disabled. Personal access token authentication is supported. Suitable for SaaS deployments with external identity providers.
 
 ### Authentication Methods
 
@@ -32,21 +32,51 @@ Authorization: Bearer <access_token>
 - Refresh tokens stored in database for revocation
 - Tokens include user ID, email, name, and roles
 
-#### 2. API Key
+#### 2. Personal Access Token
 
 ```
-Authorization: Bearer <api_key>
+Authorization: Bearer <personal_access_token>
 ```
 
-- API keys are **user-scoped** (not org-scoped). A key inherits access to all organizations the user belongs to.
+- Personal access tokens are **user-scoped** (tied to a person, never org-scoped). A token inherits access to all organizations the user belongs to. The name (GitHub/GitLab convention) and the `evr_pat_` prefix both make the user-scoped meaning explicit, and disambiguate these from the unrelated LLM-provider / integration / MCP "API key" concepts elsewhere in the product.
 - Organization context is resolved per-request via `X-Org-Id` header, `everruns_org` cookie, or single-org convenience fallback — same mechanism as session (JWT) auth.
-- API keys prefixed with `evr_` for identification — the `evr_` prefix distinguishes API keys from JWTs within the `Bearer` scheme
+- Personal access tokens are prefixed with `evr_pat_` for identification — the prefix distinguishes them from JWTs within the `Bearer` scheme
 - Auth scheme matching is case-insensitive per RFC 7235 (`bearer`, `BEARER`, `Bearer` all accepted)
-- Full key shown only at creation, stored hashed (SHA-256)
+- Full token shown only at creation, stored hashed (SHA-256)
 - Supports scopes and expiration
 - Used for programmatic access
-- Legacy formats (`Authorization: evr_...`, `Authorization: ApiKey evr_...`) are still accepted for backward compatibility
+- Non-`Bearer` formats (`Authorization: evr_pat_...`, `Authorization: ApiKey evr_pat_...`) are also accepted for non-Bearer clients
 - `metadata` JSONB column stores creation context: `source` (cli_login, web_ui, api), `hostname`, `os`, `ip`
+- Stored in the `personal_access_tokens` table (`token_hash`, `token_prefix` columns)
+
+##### Token scope: user, not organization
+
+There is exactly **one** programmatic credential type, and it represents a
+**user**. Everruns has no org-owned token, service-account token, or
+machine credential.
+
+- A personal access token is owned by a single user via
+  `personal_access_tokens.user_id`. There is no `org_id` on the token —
+  the column was deliberately dropped (see migration history) so the token
+  cannot be bound to one organization.
+- Authorization is the union of the owning user's memberships: the token can
+  act in **every** organization that user belongs to, and only those. It
+  gains and loses org access exactly as the user does. Revoking the token, or
+  removing the user from an org, immediately changes what the token can reach
+  (validation re-reads membership from the DB on every request).
+- The target org for a given request is selected per-request (`X-Org-Id`
+  header / `everruns_org` cookie / single-org fallback), never baked into the
+  token. The same token is used across orgs by changing that selector.
+- Implication: treat a personal access token as equivalent to the user's own
+  full access (hence the "Full account access" warning in the UI). It is not a
+  way to grant narrow, org-scoped, or non-human access. If org-scoped or
+  service credentials are ever needed, they would be a new, separate concept —
+  not a variant of this one.
+
+The naming reinforces this: "personal access token" (and the `evr_pat_`
+prefix) signals user ownership, and disambiguates it from the unrelated
+LLM-provider / integration / MCP "API key" credentials elsewhere in the
+product, which are org-scoped configuration, not auth principals.
 
 #### 3. CLI Login (localhost OAuth callback)
 
@@ -59,7 +89,7 @@ Interactive CLI authentication via `everruns login`. Flow:
 5. User logs in; the login page navigates to the `return_to` path, which hits `/v1/auth/cli/callback` on the server (through the frontend's standard API proxy). The server looks up the session by `state`, associates the authenticated user, and redirects to `localhost:{port}/callback?code=...`
 6. CLI receives code, redirects browser to `/cli/login-success` (branded success page)
 7. CLI calls `POST /v1/auth/cli/exchange` with code + hostname + os
-8. Server creates API key with metadata, returns key + user + orgs
+8. Server creates a personal access token with metadata, returns token + user + orgs
 9. CLI prompts for org selection (if multiple), stores credentials in the platform config file (`~/.config/everruns/credentials.json` on Linux, `~/Library/Application Support/everruns/credentials.json` on macOS)
 
 Endpoints: `POST /v1/auth/cli/start`, `GET /v1/auth/cli/callback`, `POST /v1/auth/cli/exchange`, `GET /cli/login-success`
@@ -156,7 +186,7 @@ Account linking by email is supported (same email = same account).
 
 ### Database Schema
 
-See `crates/server/migrations/001_base_schema.sql` for `users`, `api_keys`, and `refresh_tokens` table DDL.
+See `crates/server/migrations/001_base_schema.sql` for `users`, `personal_access_tokens` (originally `api_keys`; renamed in `047_personal_access_tokens.sql`), and `refresh_tokens` table DDL.
 
 #### Anonymous User (seeded at startup)
 
@@ -178,7 +208,7 @@ The admin-bootstrap path (first-admin login in `login`) uses the same safety net
 
 1. **JWT Secret**: Must be a secure random string (minimum 32 bytes recommended)
 2. **Cookie Security**: Refresh tokens use HTTP-only, Secure (in production), SameSite=Strict cookies with `Path=/` so the cookie is sent through the UI's `/api` proxy
-3. **API Key Storage**: Only hash is stored, full key shown once at creation
+3. **Personal Access Token Storage**: Only hash is stored, full token shown once at creation
 4. **Password Storage**: Argon2id with secure defaults
 5. **Token Revocation**: Refresh tokens can be revoked by deleting from database
 6. **Token Auto-Refresh**: The UI API client intercepts 401 responses and attempts a silent token refresh before failing (skips `/v1/auth/` endpoints to avoid loops; concurrent 401s are deduplicated into a single refresh request)
@@ -215,8 +245,8 @@ Based on `mode`:
 |-----------|------|-------------|
 | Login Page | `/login` | Email/password form + OAuth buttons |
 | Register Page | `/register` | User registration (if `signup_enabled`) |
-| User Menu | Sidebar | Profile, API keys link, logout |
-| API Keys | `/settings#api-keys` | Create, list, delete API keys |
+| User Menu | Sidebar | Profile, personal access tokens link, logout |
+| Personal Access Tokens | `/settings/personal-access-tokens` | Create, list, delete personal access tokens |
 
 ### Authentication Flow
 
@@ -277,15 +307,15 @@ The auth system uses a trait-based pluggable backend so external auth providers 
 
 ### AuthBackend Trait
 
-See `crates/server/src/auth/backend.rs` for the `AuthBackend` trait. Key methods: `validate_token()`, `validate_api_key()`, `auth_routes()`, `auth_config_response()`.
+See `crates/server/src/auth/backend.rs` for the `AuthBackend` trait. Key methods: `validate_token()`, `validate_personal_access_token()`, `auth_routes()`, `auth_config_response()`.
 
 ### BuiltinAuthBackend (OSS Default)
 
-See `crates/server/src/auth/builtin.rs`. Wraps JWT + password + API key logic. Auth route handlers use `BuiltinAuthBackend` as axum state directly with `FromRef<BuiltinAuthBackend> for AuthState`.
+See `crates/server/src/auth/builtin.rs`. Wraps JWT + password + personal access token logic. Auth route handlers use `BuiltinAuthBackend` as axum state directly with `FromRef<BuiltinAuthBackend> for AuthState`.
 
 ### AuthState
 
-`AuthState` holds `Arc<dyn AuthBackend>`. The `extract_auth_user()` middleware delegates to `backend.validate_token()` and `backend.validate_api_key()`. OSS convenience: `AuthState::builtin(config, db)`.
+`AuthState` holds `Arc<dyn AuthBackend>`. The `extract_auth_user()` middleware delegates to `backend.validate_token()` and `backend.validate_personal_access_token()`. OSS convenience: `AuthState::builtin(config, db)`.
 
 ### External Identity Support
 

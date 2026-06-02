@@ -138,8 +138,10 @@ impl InMemoryDatabase {
     pub async fn delete_user_account(&self, user_id: Uuid) -> Result<bool> {
         let removed = self.users.write().remove(&user_id).is_some();
         if removed {
-            // Cascade: remove API keys
-            self.api_keys.write().retain(|_, k| k.user_id != user_id);
+            // Cascade: remove personal access tokens
+            self.personal_access_tokens
+                .write()
+                .retain(|_, t| t.user_id != user_id);
             // Cascade: remove refresh tokens
             self.refresh_tokens
                 .write()
@@ -187,7 +189,7 @@ impl InMemoryDatabase {
             return Ok(None);
         };
 
-        let api_keys = self.list_api_keys_for_user(user_id).await?;
+        let personal_access_tokens = self.list_personal_access_tokens_for_user(user_id).await?;
         let orgs = self.list_user_organizations(user_id).await?;
 
         let export = serde_json::json!({
@@ -207,14 +209,14 @@ impl InMemoryDatabase {
                 "name": o.name,
                 "role": o.role,
             })).collect::<Vec<_>>(),
-            "api_keys": api_keys.iter().map(|k| serde_json::json!({
-                "id": k.id.to_string(),
-                "name": k.name,
-                "key_prefix": k.key_prefix,
-                "scopes": k.scopes,
-                "expires_at": k.expires_at,
-                "last_used_at": k.last_used_at,
-                "created_at": k.created_at,
+            "personal_access_tokens": personal_access_tokens.iter().map(|t| serde_json::json!({
+                "id": t.id.to_string(),
+                "name": t.name,
+                "token_prefix": t.token_prefix,
+                "scopes": t.scopes,
+                "expires_at": t.expires_at,
+                "last_used_at": t.last_used_at,
+                "created_at": t.created_at,
             })).collect::<Vec<_>>(),
             "exported_at": chrono::Utc::now(),
         });
