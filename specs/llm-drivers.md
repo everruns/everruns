@@ -398,6 +398,30 @@ Environment variable reads (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_K
 
 These constructors must **never** be called from org-scoped agent execution paths.
 
+### Single-Tenant / Dev: Startup Materialization
+
+The resolver itself stays fail-closed everywhere; it never gains an env fallback.
+To keep `DEFAULT_*_API_KEY` working for single-tenant self-hosted deploys and
+`just start-dev` **without** re-opening the hot path, the server *materializes*
+those env vars into the **default org's** seed provider rows at startup
+(`seed::seed_default_provider_keys_from_env`). The key is encrypted and written
+to the DB, so org-scoped execution resolves it through the same fail-closed DB
+path as any user-configured key.
+
+Rules:
+
+- Only the **default org's** seed providers are filled, and only slots that have
+  **no** key — a key configured via UI/API is never overwritten.
+- Requires the encryption service (`SECRETS_ENCRYPTION_KEY`); if absent, the step
+  is skipped with a warning.
+- Gated by `materialize_env_provider_keys_enabled`:
+  - `SEED_DEFAULT_PROVIDER_KEYS_FROM_ENV` unset → defaults to `DeploymentGrade::is_dev()`
+  - `true`/`1`/`yes` → enabled (set this for a single-tenant **prod** deploy, e.g. the example)
+  - anything else → disabled
+- Multitenant deployments leave this disabled, so platform-level keys are never
+  spent on tenant execution. New orgs created at runtime (`seed_all` via the org
+  CRUD path) do **not** materialize env keys.
+
 ### Invariant
 
 > A tenant turn or tenant-triggered embedding that resolves without a database key
