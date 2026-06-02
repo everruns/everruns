@@ -260,7 +260,7 @@ fn validate_azure_openai_base_url(url: &Url) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{validate_provider_base_url, LlmProviderService};
+    use super::{LlmProviderService, validate_provider_base_url};
     use crate::storage::models::LlmProviderRow;
     use everruns_core::LlmProviderType;
     use everruns_core::typed_id::ProviderId;
