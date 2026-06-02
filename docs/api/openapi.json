@@ -15692,17 +15692,10 @@
         "required": [
           "user",
           "organizations",
-          "api_keys",
+          "personal_access_tokens",
           "exported_at"
         ],
         "properties": {
-          "api_keys": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ExportedApiKey"
-            },
-            "description": "API keys owned by the user (no sensitive secrets — just metadata)."
-          },
           "exported_at": {
             "type": "string",
             "format": "date-time",
@@ -15716,72 +15709,16 @@
             },
             "description": "All organizations the user is a member of, plus their role in each."
           },
+          "personal_access_tokens": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExportedPersonalAccessToken"
+            },
+            "description": "Personal access tokens owned by the user (no sensitive secrets — just metadata)."
+          },
           "user": {
             "$ref": "#/components/schemas/ExportedUserProfile",
             "description": "Profile data for the exporting user."
-          }
-        }
-      },
-      "ExportedApiKey": {
-        "type": "object",
-        "description": "Exported API key metadata (no sensitive data)",
-        "required": [
-          "id",
-          "name",
-          "key_prefix",
-          "scopes",
-          "created_at"
-        ],
-        "properties": {
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "description": "Timestamp when this resource was created (RFC 3339).",
-            "example": "2026-01-15T10:30:00Z"
-          },
-          "expires_at": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time",
-            "description": "Expiry timestamp (RFC 3339). `None` for non-expiring keys.",
-            "example": "2027-01-01T00:00:00Z"
-          },
-          "id": {
-            "type": "string",
-            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
-            "example": "apikey_01933b5a000070008000000000000001"
-          },
-          "key_prefix": {
-            "type": "string",
-            "description": "First few characters of the key, safe to display for identification.",
-            "example": "ev_live_x4z2"
-          },
-          "last_used_at": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time",
-            "description": "Timestamp of the key's most recent successful use (RFC 3339). `None` if never used.",
-            "example": "2026-05-25T09:14:00Z"
-          },
-          "name": {
-            "type": "string",
-            "description": "Human-readable name. Safe to render in user-facing messages.",
-            "example": "CI/CD deploy key"
-          },
-          "scopes": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "Granted scopes as a JSON array of strings.",
-            "example": [
-              "sessions:read",
-              "sessions:write"
-            ]
           }
         }
       },
@@ -15815,6 +15752,69 @@
             "type": "string",
             "description": "User's role within this organization (`owner`, `admin`, `member`).",
             "example": "owner"
+          }
+        }
+      },
+      "ExportedPersonalAccessToken": {
+        "type": "object",
+        "description": "Exported personal access token metadata (no sensitive data)",
+        "required": [
+          "id",
+          "name",
+          "token_prefix",
+          "scopes",
+          "created_at"
+        ],
+        "properties": {
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Timestamp when this resource was created (RFC 3339).",
+            "example": "2026-01-15T10:30:00Z"
+          },
+          "expires_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Expiry timestamp (RFC 3339). `None` for non-expiring tokens.",
+            "example": "2027-01-01T00:00:00Z"
+          },
+          "id": {
+            "type": "string",
+            "description": "Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).",
+            "example": "019e8957539a7aa0bb92e0d2b49427b1"
+          },
+          "last_used_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "Timestamp of the token's most recent successful use (RFC 3339). `None` if never used.",
+            "example": "2026-05-25T09:14:00Z"
+          },
+          "name": {
+            "type": "string",
+            "description": "Human-readable name. Safe to render in user-facing messages.",
+            "example": "CI/CD deploy token"
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Granted scopes as a JSON array of strings.",
+            "example": [
+              "sessions:read",
+              "sessions:write"
+            ]
+          },
+          "token_prefix": {
+            "type": "string",
+            "description": "First few characters of the token, safe to display for identification.",
+            "example": "evr_pat_x4z2..."
           }
         }
       },

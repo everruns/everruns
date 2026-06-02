@@ -428,7 +428,10 @@ async fn test_api_keys_remain_visible_across_active_org_switches() {
     let server = TestServer::in_memory().await;
 
     let default_key: Value = server
-        .post("/v1/auth/api-keys", json!({"name": "default-org-key"}))
+        .post(
+            "/v1/auth/personal-access-tokens",
+            json!({"name": "default-org-key"}),
+        )
         .await
         .assert_status(StatusCode::CREATED)
         .json();
@@ -450,7 +453,7 @@ async fn test_api_keys_remain_visible_across_active_org_switches() {
     let switched_list: Value = server
         .request_raw(
             Method::GET,
-            "/v1/auth/api-keys",
+            "/v1/auth/personal-access-tokens",
             vec![("cookie", org_cookie.as_str())],
             vec![],
         )
@@ -469,7 +472,7 @@ async fn test_api_keys_remain_visible_across_active_org_switches() {
     let switched_key: Value = server
         .request_raw(
             Method::POST,
-            "/v1/auth/api-keys",
+            "/v1/auth/personal-access-tokens",
             vec![
                 ("content-type", "application/json"),
                 ("cookie", org_cookie.as_str()),
@@ -483,7 +486,7 @@ async fn test_api_keys_remain_visible_across_active_org_switches() {
     let switched_key_id = switched_key["id"].as_str().expect("api key id");
 
     let default_list: Value = server
-        .get("/v1/auth/api-keys")
+        .get("/v1/auth/personal-access-tokens")
         .await
         .assert_status(StatusCode::OK)
         .json();
@@ -510,7 +513,7 @@ async fn test_api_key_creation_enforces_per_user_limit() {
     for idx in 0..25 {
         server
             .post(
-                "/v1/auth/api-keys",
+                "/v1/auth/personal-access-tokens",
                 json!({ "name": format!("quota-key-{idx}") }),
             )
             .await
@@ -518,7 +521,10 @@ async fn test_api_key_creation_enforces_per_user_limit() {
     }
 
     let over_limit: Value = server
-        .post("/v1/auth/api-keys", json!({"name": "quota-key-over-limit"}))
+        .post(
+            "/v1/auth/personal-access-tokens",
+            json!({"name": "quota-key-over-limit"}),
+        )
         .await
         .assert_status(StatusCode::CONFLICT)
         .json();
@@ -526,7 +532,7 @@ async fn test_api_key_creation_enforces_per_user_limit() {
         over_limit["detail"]
             .as_str()
             .expect("error message")
-            .contains("API key limit reached"),
-        "expected API key limit error, got: {over_limit:?}"
+            .contains("Personal access token limit reached"),
+        "expected personal access token limit error, got: {over_limit:?}"
     );
 }

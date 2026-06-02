@@ -130,14 +130,14 @@ pub struct AuthSessionRow {
     pub created_at: DateTime<Utc>,
 }
 
-/// API key row from database
+/// Personal access token row from database
 #[derive(Debug, Clone, FromRow)]
-pub struct ApiKeyRow {
+pub struct PersonalAccessTokenRow {
     pub id: Uuid,
     pub user_id: Uuid,
     pub name: String,
-    pub key_hash: String,
-    pub key_prefix: String,
+    pub token_hash: String,
+    pub token_prefix: String,
     pub scopes: sqlx::types::JsonValue,
     pub expires_at: Option<DateTime<Utc>>,
     pub last_used_at: Option<DateTime<Utc>>,
@@ -188,13 +188,13 @@ pub struct CreateAuthSessionRow {
     pub expires_at: DateTime<Utc>,
 }
 
-/// Input for creating an API key
+/// Input for creating a personal access token
 #[derive(Debug, Clone)]
-pub struct CreateApiKeyRow {
+pub struct CreatePersonalAccessTokenRow {
     pub user_id: Uuid,
     pub name: String,
-    pub key_hash: String,
-    pub key_prefix: String,
+    pub token_hash: String,
+    pub token_prefix: String,
     pub scopes: Vec<String>,
     pub expires_at: Option<DateTime<Utc>>,
     pub metadata: serde_json::Value,

@@ -6,9 +6,9 @@ import {
   register,
   getCurrentUser,
   logout,
-  listApiKeys,
-  createApiKey,
-  deleteApiKey,
+  listPersonalAccessTokens,
+  createPersonalAccessToken,
+  deletePersonalAccessToken,
 } from "@/lib/api/auth";
 import { updateProfile } from "@/lib/api/users";
 import { useOrg } from "@/providers/org-provider";
@@ -17,7 +17,7 @@ import { authQueryKeys } from "@/lib/auth-query-keys";
 import type {
   LoginRequest,
   RegisterRequest,
-  CreateApiKeyRequest,
+  CreatePersonalAccessTokenRequest,
   UpdateProfileRequest,
 } from "@/lib/api/types";
 
@@ -101,15 +101,15 @@ export function useLogout() {
 }
 
 /**
- * Hook to list API keys (scoped per org to avoid stale cache after org switch)
+ * Hook to list personal access tokens (scoped per org to avoid stale cache after org switch)
  */
-export function useApiKeys() {
+export function usePersonalAccessTokens() {
   const { currentOrg, isLoading: orgLoading } = useOrg();
   const org = currentOrg?.public_id;
 
   const query = useQuery({
-    queryKey: authKeys.apiKeys(org),
-    queryFn: listApiKeys,
+    queryKey: authKeys.personalAccessTokens(org),
+    queryFn: listPersonalAccessTokens,
     enabled: !!org,
     retry: false,
   });
@@ -121,33 +121,37 @@ export function useApiKeys() {
 }
 
 /**
- * Hook to create an API key
+ * Hook to create a personal access token
  */
-export function useCreateApiKey() {
+export function useCreatePersonalAccessToken() {
   const queryClient = useQueryClient();
   const { currentOrg } = useOrg();
   const org = currentOrg?.public_id;
 
   return useMutation({
-    mutationFn: (request: CreateApiKeyRequest) => createApiKey(request),
+    mutationFn: (request: CreatePersonalAccessTokenRequest) => createPersonalAccessToken(request),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: authKeys.apiKeys(org) });
+      queryClient.invalidateQueries({
+        queryKey: authKeys.personalAccessTokens(org),
+      });
     },
   });
 }
 
 /**
- * Hook to delete an API key
+ * Hook to delete a personal access token
  */
-export function useDeleteApiKey() {
+export function useDeletePersonalAccessToken() {
   const queryClient = useQueryClient();
   const { currentOrg } = useOrg();
   const org = currentOrg?.public_id;
 
   return useMutation({
-    mutationFn: (keyId: string) => deleteApiKey(keyId),
+    mutationFn: (tokenId: string) => deletePersonalAccessToken(tokenId),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: authKeys.apiKeys(org) });
+      queryClient.invalidateQueries({
+        queryKey: authKeys.personalAccessTokens(org),
+      });
     },
   });
 }

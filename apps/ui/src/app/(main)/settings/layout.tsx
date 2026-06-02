@@ -78,10 +78,10 @@ const settingsSections: NavSection[] = [
         description: "Connect external accounts",
       },
       {
-        name: "API Keys",
-        href: "/settings/api-keys",
+        name: "Personal access tokens",
+        href: "/settings/personal-access-tokens",
         icon: Key,
-        description: "Manage API keys for programmatic access",
+        description: "Manage personal access tokens for programmatic access",
       },
     ],
   },

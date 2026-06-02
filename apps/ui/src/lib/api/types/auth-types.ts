@@ -107,27 +107,27 @@ export interface UserInfoResponse {
   organizations?: OrganizationMembership[];
 }
 
-export interface ApiKeyResponse {
+export interface PersonalAccessTokenResponse {
   id: string;
   name: string;
-  key: string;
-  key_prefix: string;
+  token: string;
+  token_prefix: string;
   scopes: string[];
   expires_at?: string;
   created_at: string;
 }
 
-export interface ApiKeyListItem {
+export interface PersonalAccessTokenListItem {
   id: string;
   name: string;
-  key_prefix: string;
+  token_prefix: string;
   scopes: string[];
   expires_at?: string;
   last_used_at?: string;
   created_at: string;
 }
 
-export interface CreateApiKeyRequest {
+export interface CreatePersonalAccessTokenRequest {
   name: string;
   scopes?: string[];
   expires_in_days?: number;

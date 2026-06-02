@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+### Changed
+
+- **API keys renamed to personal access tokens** - User-scoped auth credentials are now consistently called "personal access tokens" across the table (`personal_access_tokens`), API (`/v1/auth/personal-access-tokens`), UI (Settings > Personal access tokens), CLI, specs, and docs, making it explicit they are tied to a user (not an organization). Tokens are now prefixed `evr_pat_` instead of `evr_`; existing tokens are invalidated and must be re-created (re-run `everruns login`).
+
 ## [0.8.36] - 2026-05-29
 
 ### Highlights

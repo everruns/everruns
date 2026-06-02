@@ -1,7 +1,7 @@
-// Built-in authentication backend (JWT + password + OAuth + API keys)
+// Built-in authentication backend (JWT + password + OAuth + personal access tokens)
 // Decision: Default for OSS. All existing behavior preserved.
-// Decision: API key auth cache is write-only for now. Read-through caching of
-// AuthUser introduced a TOCTOU authorization window for key expiry and
+// Decision: personal access token auth cache is write-only for now. Read-through
+// caching of AuthUser introduced a TOCTOU authorization window for token expiry and
 // membership/role changes. We keep inserts + invalidation hooks so follow-up
 // work can safely reintroduce cache reads with fresh-state guarantees.
 
@@ -15,23 +15,25 @@ use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
-use super::api_key::{ValidatedApiKey, hash_api_key, is_valid_api_key_format};
 use super::backend::AuthBackend;
 use super::config::AuthConfig;
 use super::jwt::JwtService;
 use super::middleware::{AuthError, AuthMethod, AuthUser};
+use super::personal_access_token::{
+    ValidatedPersonalAccessToken, hash_personal_access_token, is_valid_personal_access_token_format,
+};
 use super::rate_limit::AuthRateLimiter;
 use super::routes::{self, AuthConfigResponse};
 use crate::storage::StorageBackend;
 use crate::valkey::ValkeyClient;
 
-/// TTL for cached API key auth results.
-const API_KEY_CACHE_TTL: Duration = Duration::from_secs(300); // 5 minutes
+/// TTL for cached personal access token auth results.
+const PAT_CACHE_TTL: Duration = Duration::from_secs(300); // 5 minutes
 
-/// Max entries in the API key auth cache.
-const API_KEY_CACHE_MAX_CAPACITY: u64 = 10_000;
+/// Max entries in the personal access token auth cache.
+const PAT_CACHE_MAX_CAPACITY: u64 = 10_000;
 
-/// Built-in authentication backend (JWT + password + OAuth + API keys).
+/// Built-in authentication backend (JWT + password + OAuth + personal access tokens).
 /// This is the default for OSS deployments.
 ///
 /// HARNESS-SEED SAFETY NET (see also `specs/authentication.md`):
@@ -59,14 +61,14 @@ pub struct BuiltinAuthBackend {
     /// `register` / `oauth_callback` so a pre-seed signup still lands in an
     /// org with the correct (operator-chosen) harnesses.
     pub platform_definition: Arc<PlatformDefinition>,
-    /// In-process cache: key_hash -> AuthUser. Avoids 4 sequential DB queries per API-key request.
-    api_key_cache: Cache<String, AuthUser>,
+    /// In-process cache: token_hash -> AuthUser. Avoids 4 sequential DB queries per token request.
+    personal_access_token_cache: Cache<String, AuthUser>,
 }
 
-fn build_api_key_cache() -> Cache<String, AuthUser> {
+fn build_personal_access_token_cache() -> Cache<String, AuthUser> {
     Cache::builder()
-        .max_capacity(API_KEY_CACHE_MAX_CAPACITY)
-        .time_to_live(API_KEY_CACHE_TTL)
+        .max_capacity(PAT_CACHE_MAX_CAPACITY)
+        .time_to_live(PAT_CACHE_TTL)
         .build()
 }
 
@@ -103,7 +105,7 @@ impl BuiltinAuthBackend {
             db,
             rate_limiter: AuthRateLimiter::new(),
             platform_definition,
-            api_key_cache: build_api_key_cache(),
+            personal_access_token_cache: build_personal_access_token_cache(),
         }
     }
 
@@ -121,68 +123,73 @@ impl BuiltinAuthBackend {
             db,
             rate_limiter: AuthRateLimiter::with_valkey(valkey),
             platform_definition,
-            api_key_cache: build_api_key_cache(),
+            personal_access_token_cache: build_personal_access_token_cache(),
         }
     }
 
-    /// Invalidate a cached API key entry by its hash.
-    pub async fn invalidate_api_key_cache(&self, key_hash: &str) {
-        self.api_key_cache.invalidate(key_hash).await;
+    /// Invalidate a cached personal access token entry by its hash.
+    pub async fn invalidate_personal_access_token_cache(&self, token_hash: &str) {
+        self.personal_access_token_cache
+            .invalidate(token_hash)
+            .await;
     }
 
-    /// Invalidate all cached API key entries (e.g. after user/org updates).
-    pub fn invalidate_all_api_key_cache(&self) {
-        self.api_key_cache.invalidate_all();
+    /// Invalidate all cached personal access token entries (e.g. after user/org updates).
+    pub fn invalidate_all_personal_access_token_cache(&self) {
+        self.personal_access_token_cache.invalidate_all();
     }
 
     /// Entry count in the cache (for testing/metrics).
     #[cfg(test)]
-    pub fn api_key_cache_entry_count(&self) -> u64 {
-        self.api_key_cache.entry_count()
+    pub fn personal_access_token_cache_entry_count(&self) -> u64 {
+        self.personal_access_token_cache.entry_count()
     }
 
-    /// Validate API key against DB (4 sequential queries).
-    async fn validate_api_key_from_db(&self, key_hash: &str) -> Result<AuthUser, AuthError> {
-        let api_key_row = self
+    /// Validate personal access token against DB (4 sequential queries).
+    async fn validate_personal_access_token_from_db(
+        &self,
+        token_hash: &str,
+    ) -> Result<AuthUser, AuthError> {
+        let token_row = self
             .db
-            .get_api_key_by_hash(key_hash)
+            .get_personal_access_token_by_hash(token_hash)
             .await
             .map_err(|e| {
-                tracing::error!("Failed to fetch API key: {}", e);
-                AuthError::unauthorized("Failed to validate API key")
+                tracing::error!("Failed to fetch personal access token: {}", e);
+                AuthError::unauthorized("Failed to validate personal access token")
             })?
-            .ok_or_else(|| AuthError::unauthorized("Invalid API key"))?;
+            .ok_or_else(|| AuthError::unauthorized("Invalid personal access token"))?;
 
         // Check if expired
-        let validated_key = ValidatedApiKey {
-            key_id: api_key_row.id,
-            user_id: api_key_row.user_id,
-            name: api_key_row.name.clone(),
-            scopes: serde_json::from_value(api_key_row.scopes.clone()).unwrap_or_default(),
-            expires_at: api_key_row.expires_at,
+        let validated_token = ValidatedPersonalAccessToken {
+            token_id: token_row.id,
+            user_id: token_row.user_id,
+            name: token_row.name.clone(),
+            scopes: serde_json::from_value(token_row.scopes.clone()).unwrap_or_default(),
+            expires_at: token_row.expires_at,
         };
 
-        if validated_key.is_expired() {
-            return Err(AuthError::unauthorized("API key expired"));
+        if validated_token.is_expired() {
+            return Err(AuthError::unauthorized("Personal access token expired"));
         }
 
         // Update last used timestamp (fire and forget)
         let db = self.db.clone();
-        let key_id = api_key_row.id;
+        let token_id = token_row.id;
         tokio::spawn(async move {
-            let _ = db.update_api_key_last_used(key_id).await;
+            let _ = db.update_personal_access_token_last_used(token_id).await;
         });
 
         // Fetch user info
         let user = self
             .db
-            .get_user(api_key_row.user_id)
+            .get_user(token_row.user_id)
             .await
             .map_err(|e| {
-                tracing::error!("Failed to fetch user for API key: {}", e);
-                AuthError::unauthorized("Failed to validate API key")
+                tracing::error!("Failed to fetch user for personal access token: {}", e);
+                AuthError::unauthorized("Failed to validate personal access token")
             })?
-            .ok_or_else(|| AuthError::unauthorized("User not found for API key"))?;
+            .ok_or_else(|| AuthError::unauthorized("User not found for personal access token"))?;
 
         let roles: Vec<String> = serde_json::from_value(user.roles.clone()).unwrap_or_default();
 
@@ -192,8 +199,8 @@ impl BuiltinAuthBackend {
             .list_user_organizations(user.id)
             .await
             .map_err(|e| {
-                tracing::error!("Failed to fetch orgs for API key user: {}", e);
-                AuthError::unauthorized("Failed to validate API key")
+                tracing::error!("Failed to fetch orgs for personal access token user: {}", e);
+                AuthError::unauthorized("Failed to validate personal access token")
             })?;
 
         let organizations: Vec<OrgMembership> = user_orgs
@@ -212,7 +219,7 @@ impl BuiltinAuthBackend {
             name: user.name,
             is_platform_user: platform_user_from_roles(&roles),
             roles,
-            auth_method: AuthMethod::ApiKey,
+            auth_method: AuthMethod::PersonalAccessToken,
             organizations,
         })
     }
@@ -265,19 +272,25 @@ impl AuthBackend for BuiltinAuthBackend {
         })
     }
 
-    async fn validate_api_key(&self, key: &str) -> Result<AuthUser, AuthError> {
-        if !is_valid_api_key_format(key) {
-            return Err(AuthError::unauthorized("Invalid API key format"));
+    async fn validate_personal_access_token(&self, token: &str) -> Result<AuthUser, AuthError> {
+        if !is_valid_personal_access_token_format(token) {
+            return Err(AuthError::unauthorized(
+                "Invalid personal access token format",
+            ));
         }
 
-        let key_hash = hash_api_key(key);
+        let token_hash = hash_personal_access_token(token);
 
-        // Security: always validate against DB to enforce real-time key expiry
+        // Security: always validate against DB to enforce real-time token expiry
         // and org membership/role changes.
-        let auth_user = self.validate_api_key_from_db(&key_hash).await?;
+        let auth_user = self
+            .validate_personal_access_token_from_db(&token_hash)
+            .await?;
 
         // Populate cache
-        self.api_key_cache.insert(key_hash, auth_user.clone()).await;
+        self.personal_access_token_cache
+            .insert(token_hash, auth_user.clone())
+            .await;
 
         Ok(auth_user)
     }
@@ -297,8 +310,8 @@ impl AuthBackend for BuiltinAuthBackend {
         Some(auth_routes.merge(cli_routes))
     }
 
-    fn on_api_key_deleted(&self) {
-        self.invalidate_all_api_key_cache();
+    fn on_personal_access_token_deleted(&self) {
+        self.invalidate_all_personal_access_token_cache();
     }
 
     fn public_routes(&self) -> Option<Router> {
@@ -394,7 +407,7 @@ mod tests {
             name: "Test User".to_string(),
             roles: vec!["user".to_string()],
             is_platform_user: false,
-            auth_method: AuthMethod::ApiKey,
+            auth_method: AuthMethod::PersonalAccessToken,
             organizations: vec![OrgMembership {
                 org_id: 1,
                 public_id: "org_test".to_string(),
@@ -406,7 +419,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_cache_hit_returns_cached_user() {
-        let cache = build_api_key_cache();
+        let cache = build_personal_access_token_cache();
         let user = test_auth_user();
         let key_hash = "abc123hash".to_string();
 
@@ -425,14 +438,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_cache_miss_returns_none() {
-        let cache = build_api_key_cache();
+        let cache = build_personal_access_token_cache();
         let result = cache.get(&"nonexistent".to_string()).await;
         assert!(result.is_none());
     }
 
     #[tokio::test]
     async fn test_cache_invalidate_single_key() {
-        let cache = build_api_key_cache();
+        let cache = build_personal_access_token_cache();
         let user = test_auth_user();
         let key_hash = "abc123hash".to_string();
 
@@ -446,7 +459,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_cache_invalidate_all() {
-        let cache = build_api_key_cache();
+        let cache = build_personal_access_token_cache();
         let user = test_auth_user();
 
         cache.insert("key1".to_string(), user.clone()).await;
@@ -479,7 +492,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_cache_different_keys_independent() {
-        let cache = build_api_key_cache();
+        let cache = build_personal_access_token_cache();
         let user1 = test_auth_user();
         let mut user2 = test_auth_user();
         user2.email = "other@example.com".to_string();
@@ -498,8 +511,8 @@ mod tests {
 
     #[test]
     fn test_cache_constants() {
-        assert_eq!(API_KEY_CACHE_TTL, Duration::from_secs(300));
-        assert_eq!(API_KEY_CACHE_MAX_CAPACITY, 10_000);
+        assert_eq!(PAT_CACHE_TTL, Duration::from_secs(300));
+        assert_eq!(PAT_CACHE_MAX_CAPACITY, 10_000);
     }
 
     // Regression tests for the fix that dropped read-through API-key caching.
@@ -510,7 +523,7 @@ mod tests {
         use super::super::super::backend::AuthBackend;
         use super::super::*;
         use crate::storage::StorageBackend;
-        use crate::storage::models::{CreateApiKeyRow, CreateUserRow, UpdateUser};
+        use crate::storage::models::{CreatePersonalAccessTokenRow, CreateUserRow, UpdateUser};
 
         async fn seed_user_with_key(
             db: &Arc<StorageBackend>,
@@ -532,21 +545,21 @@ mod tests {
                 .await
                 .expect("create user");
 
-            let generated = crate::auth::api_key::generate_api_key();
-            let key_row = db
-                .create_api_key(CreateApiKeyRow {
+            let generated = crate::auth::personal_access_token::generate_personal_access_token();
+            let token_row = db
+                .create_personal_access_token(CreatePersonalAccessTokenRow {
                     user_id: user.id,
-                    name: "test-key".to_string(),
-                    key_hash: generated.key_hash.clone(),
-                    key_prefix: generated.key_prefix.clone(),
+                    name: "test-token".to_string(),
+                    token_hash: generated.token_hash.clone(),
+                    token_prefix: generated.token_prefix.clone(),
                     scopes: vec!["*".to_string()],
                     expires_at: None,
                     metadata: serde_json::json!({}),
                 })
                 .await
-                .expect("create api key");
+                .expect("create personal access token");
 
-            (user.id, key_row.id, generated.key)
+            (user.id, token_row.id, generated.token)
         }
 
         #[tokio::test]
@@ -561,16 +574,19 @@ mod tests {
                 seed_user_with_key(&db, "revoked@example.com", "Revoked User").await;
 
             // First call succeeds and populates the cache.
-            let first = backend.validate_api_key(&plaintext_key).await;
+            let first = backend.validate_personal_access_token(&plaintext_key).await;
             assert!(first.is_ok(), "initial validation should succeed");
 
             // Delete the key from the DB but do NOT invalidate the cache. Prior to
             // the fix this would silently keep authenticating from the cache.
-            let removed = db.delete_api_key(key_id, user_id).await.expect("delete");
+            let removed = db
+                .delete_personal_access_token(key_id, user_id)
+                .await
+                .expect("delete");
             assert!(removed);
 
             // Re-validate: must reject because revalidation always hits the DB.
-            let second = backend.validate_api_key(&plaintext_key).await;
+            let second = backend.validate_personal_access_token(&plaintext_key).await;
             assert!(
                 second.is_err(),
                 "revoked key must not authenticate even when cached"
@@ -589,7 +605,7 @@ mod tests {
                 seed_user_with_key(&db, "user@example.com", "Original Name").await;
 
             let first = backend
-                .validate_api_key(&plaintext_key)
+                .validate_personal_access_token(&plaintext_key)
                 .await
                 .expect("first validation");
             assert_eq!(first.name, "Original Name");
@@ -607,7 +623,7 @@ mod tests {
             .expect("rename user");
 
             let second = backend
-                .validate_api_key(&plaintext_key)
+                .validate_personal_access_token(&plaintext_key)
                 .await
                 .expect("second validation");
             assert_eq!(
@@ -625,7 +641,9 @@ mod tests {
                 Arc::new(crate::platform::oss_platform_definition()),
             );
 
-            let result = backend.validate_api_key("not-an-api-key").await;
+            let result = backend
+                .validate_personal_access_token("not-an-api-key")
+                .await;
             assert!(result.is_err(), "malformed key must be rejected");
         }
     }

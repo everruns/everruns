@@ -6,9 +6,9 @@ import type {
   RegisterRequest,
   TokenResponse,
   UserInfoResponse,
-  ApiKeyListItem,
-  ApiKeyResponse,
-  CreateApiKeyRequest,
+  PersonalAccessTokenListItem,
+  PersonalAccessTokenResponse,
+  CreatePersonalAccessTokenRequest,
   ListResponse,
 } from "./types";
 
@@ -70,24 +70,31 @@ export function getOAuthUrl(provider: string): string {
 }
 
 /**
- * List API keys for current user
+ * List personal access tokens for current user
  */
-export async function listApiKeys(): Promise<ApiKeyListItem[]> {
-  const { data } = await api.get<ListResponse<ApiKeyListItem>>("/v1/auth/api-keys");
+export async function listPersonalAccessTokens(): Promise<PersonalAccessTokenListItem[]> {
+  const { data } = await api.get<ListResponse<PersonalAccessTokenListItem>>(
+    "/v1/auth/personal-access-tokens",
+  );
   return data.data;
 }
 
 /**
- * Create a new API key
+ * Create a new personal access token
  */
-export async function createApiKey(request: CreateApiKeyRequest): Promise<ApiKeyResponse> {
-  const { data } = await api.post<ApiKeyResponse>("/v1/auth/api-keys", request);
+export async function createPersonalAccessToken(
+  request: CreatePersonalAccessTokenRequest,
+): Promise<PersonalAccessTokenResponse> {
+  const { data } = await api.post<PersonalAccessTokenResponse>(
+    "/v1/auth/personal-access-tokens",
+    request,
+  );
   return data;
 }
 
 /**
- * Delete an API key
+ * Delete a personal access token
  */
-export async function deleteApiKey(keyId: string): Promise<void> {
-  await api.delete<void>(`/v1/auth/api-keys/${keyId}`);
+export async function deletePersonalAccessToken(tokenId: string): Promise<void> {
+  await api.delete<void>(`/v1/auth/personal-access-tokens/${tokenId}`);
 }

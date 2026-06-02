@@ -150,26 +150,26 @@ pub struct ExportedOrganization {
     pub role: String,
 }
 
-/// Exported API key metadata (no sensitive data)
+/// Exported personal access token metadata (no sensitive data)
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct ExportedApiKey {
+pub struct ExportedPersonalAccessToken {
     /// Prefixed public identifier. See [ID Schema](https://docs.everruns.com/advanced/id-schema/).
-    #[schema(example = "apikey_01933b5a000070008000000000000001")]
+    #[schema(example = "019e8957539a7aa0bb92e0d2b49427b1")]
     pub id: String,
     /// Human-readable name. Safe to render in user-facing messages.
-    #[schema(example = "CI/CD deploy key")]
+    #[schema(example = "CI/CD deploy token")]
     pub name: String,
-    /// First few characters of the key, safe to display for identification.
-    #[schema(example = "ev_live_x4z2")]
-    pub key_prefix: String,
+    /// First few characters of the token, safe to display for identification.
+    #[schema(example = "evr_pat_x4z2...")]
+    pub token_prefix: String,
     /// Granted scopes as a JSON array of strings.
     #[schema(value_type = Vec<String>, example = json!(["sessions:read", "sessions:write"]))]
     pub scopes: serde_json::Value,
-    /// Expiry timestamp (RFC 3339). `None` for non-expiring keys.
+    /// Expiry timestamp (RFC 3339). `None` for non-expiring tokens.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "2027-01-01T00:00:00Z")]
     pub expires_at: Option<DateTime<Utc>>,
-    /// Timestamp of the key's most recent successful use (RFC 3339). `None` if never used.
+    /// Timestamp of the token's most recent successful use (RFC 3339). `None` if never used.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[schema(example = "2026-05-25T09:14:00Z")]
     pub last_used_at: Option<DateTime<Utc>>,
@@ -185,8 +185,8 @@ pub struct ExportUserDataResponse {
     pub user: ExportedUserProfile,
     /// All organizations the user is a member of, plus their role in each.
     pub organizations: Vec<ExportedOrganization>,
-    /// API keys owned by the user (no sensitive secrets — just metadata).
-    pub api_keys: Vec<ExportedApiKey>,
+    /// Personal access tokens owned by the user (no sensitive secrets — just metadata).
+    pub personal_access_tokens: Vec<ExportedPersonalAccessToken>,
     /// Timestamp the export was generated (RFC 3339).
     #[schema(example = "2026-05-25T12:00:00Z")]
     pub exported_at: DateTime<Utc>,

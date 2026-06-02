@@ -555,11 +555,13 @@ impl TestServer {
             api_routes = api_routes.merge(api::evals::routes(evals_state));
         }
 
-        api_routes = api_routes.merge(auth::api_key_routes(auth::ApiKeyState {
-            db: db.clone(),
-            auth: auth_state.clone(),
-            resource_limits: everruns_server::server::ResourceLimitsConfig::default(),
-        }));
+        api_routes = api_routes.merge(auth::personal_access_token_routes(
+            auth::PersonalAccessTokenState {
+                db: db.clone(),
+                auth: auth_state.clone(),
+                resource_limits: everruns_server::server::ResourceLimitsConfig::default(),
+            },
+        ));
 
         let root_routes = Router::new()
             .merge(api::mcp_endpoint::routes(mcp_endpoint_state))

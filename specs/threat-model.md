@@ -96,15 +96,15 @@ Format: `TM-<CATEGORY>-<NNN>`
 | TM-AUTH-002 | JWT secret compromise | Critical | Stored in env var `AUTH_JWT_SECRET`; min 32 bytes recommended; never logged | MITIGATED |
 | TM-AUTH-003 | Token replay after logout | Medium | Refresh tokens stored in DB, revocable via DELETE; access tokens short-lived (15 min) | MITIGATED |
 | TM-AUTH-004 | Weak password | Medium | Minimum 8 characters enforced **server-side** in `register` (`crates/server/src/auth/routes.rs`, before account lookup or creation), independent of the UI's `minLength={8}`. Argon2id hashing on storage. Covered by `test_register_rejects_short_password_via_api`. | MITIGATED |
-| TM-AUTH-005 | API key exposure in transit | High | HTTPS required in production; keys prefixed `evr_` for scanning | MITIGATED |
-| TM-AUTH-006 | API key brute force | Medium | Keys stored as SHA-256 hashes; 128-bit entropy makes brute force infeasible | MITIGATED |
+| TM-AUTH-005 | Personal access token exposure in transit | High | HTTPS required in production; tokens prefixed `evr_pat_` for scanning | MITIGATED |
+| TM-AUTH-006 | Personal access token brute force | Medium | Tokens stored as SHA-256 hashes; 128-bit entropy makes brute force infeasible | MITIGATED |
 | TM-AUTH-007 | OAuth state fixation | High | State generated in `oauth_redirect`, stored in HttpOnly/Secure/SameSite=Lax cookie (`oauth_state`), validated and consumed (single-use) in `oauth_callback`; mismatch or missing cookie returns 401 | MITIGATED |
 | TM-AUTH-008 | Session fixation via cookie | Medium | New tokens issued on login; HTTP-only, SameSite=Lax cookies | MITIGATED |
 | TM-AUTH-009 | Refresh token theft | High | Stored hashed in DB; HTTP-only cookie; revocable | MITIGATED |
 | TM-AUTH-010 | Admin password in env var | Low | Limited to admin mode; documented risk; shell history exposure possible | **ACCEPTED** |
 | TM-AUTH-011 | Auth bypass in `none` mode | Info | By design for local development; anonymous user gets admin role | **BY DESIGN** |
 | TM-AUTH-012 | OAuth account linking collision | Medium | Accounts linked by email; if attacker controls email at provider, they gain access | **CALLER RISK** |
-| TM-AUTH-013 | Expired API key still in use | Medium | Expiration checked on every request via DB lookup; `last_used_at` tracked | MITIGATED |
+| TM-AUTH-013 | Expired personal access token still in use | Medium | Expiration checked on every request via DB lookup; `last_used_at` tracked | MITIGATED |
 | TM-AUTH-014 | Account enumeration via registration | Medium | Returns generic "Registration failed" for existing emails; password hash computed first for timing consistency | MITIGATED |
 | TM-AUTH-015 | JWT secret insecure default | High | Falls back to hardcoded `insecure-dev-secret-change-me` if `AUTH_JWT_SECRET` unset; no startup check in production | **OPEN** |
 | TM-AUTH-016 | OSS harness reseeding via public signup | High | The signup safety net in `register` / `oauth_callback` uses `state.platform_definition.built_in_harnesses()` via `initialize_org_harnesses_with_definitions`, **not** `oss_built_in_harnesses()`. An operator's custom `PlatformDefinition` is the source of truth — public signup cannot reintroduce OSS harnesses that were removed. Original concern tracked by PR #1462; the safety-net semantics re-added in EVE-390 preserve pre-seed correctness without re-opening the override path. | MITIGATED |
@@ -133,11 +133,11 @@ AUTH_JWT_REFRESH_TOKEN_LIFETIME=2592000 # 30 days
 ```
 JWT signed with HMAC-SHA256 via `jsonwebtoken` crate. Secret must never appear in logs, error messages, or source control.
 
-**TM-AUTH-006 — API Key Storage:**
+**TM-AUTH-006 — Personal Access Token Storage:**
 ```
-User sees: evr_<full-random-key>    (shown once at creation)
-DB stores: SHA-256(evr_<full-key>)  (irreversible)
-Display:   evr_<first-8-chars>...   (prefix for identification)
+User sees: evr_pat_<full-random-token>    (shown once at creation)
+DB stores: SHA-256(evr_pat_<full-token>)  (irreversible)
+Display:   evr_pat_<first-8-chars>...      (prefix for identification)
 ```
 
 ## 2. Cryptography (TM-CRYPTO)
@@ -188,7 +188,7 @@ Payment accounts store wallet signing material in `credential_encrypted`, protec
 | TM-TENANT-001 | Cross-org resource access | Critical | All DB queries include `WHERE org_id = $org_id`; enforced at repository layer | MITIGATED |
 | TM-TENANT-002 | Org enumeration via error codes | Medium | 404 returned for cross-org access (not 403); prevents existence discovery | MITIGATED |
 | TM-TENANT-003 | Org cookie manipulation | High | Cookie value is `public_id`; server validates user membership against DB | MITIGATED |
-| TM-TENANT-004 | API key cross-org access | High | API keys are user-scoped; org resolved per-request via `X-Org-Id` header or cookie, validated against user's org memberships loaded from DB | MITIGATED |
+| TM-TENANT-004 | Personal access token cross-org access | High | Personal access tokens are user-scoped; org resolved per-request via `X-Org-Id` header or cookie, validated against user's org memberships loaded from DB | MITIGATED |
 | TM-TENANT-005 | Internal org_id exposure | Medium | `org_id` (BIGINT) never in APIs, URLs, logs, or error messages; only `public_id` exposed | MITIGATED |
 | TM-TENANT-006 | Session inherits wrong org | Medium | Sessions scoped via agent FK; agent scoped to org; query joins enforce chain | MITIGATED |
 | TM-TENANT-007 | Durable tasks cross-org | Medium | gRPC `GetTurnContext` validates org_id in request matches record in DB | MITIGATED |
@@ -670,7 +670,7 @@ Full conversation data (user messages, LLM responses, tool results) is transmitt
 
 **TM-OBS-007 — Security Audit Logging (MITIGATED):**
 - `audit_logs` PostgreSQL table (migration 005) stores structured events with: org_id, actor_id, event_type, ip_address, metadata, created_at.
-- Event types follow `domain.action.outcome` convention: `auth.login.success`, `auth.login.failure`, `auth.register.success`, `auth.token_refresh.success`, `auth.api_key.created`, `auth.api_key.deleted`, `auth.oauth.success`, `auth.oauth.failure`.
+- Event types follow `domain.action.outcome` convention: `auth.login.success`, `auth.login.failure`, `auth.register.success`, `auth.token_refresh.success`, `auth.personal_access_token.created`, `auth.personal_access_token.deleted`, `auth.oauth.success`, `auth.oauth.failure`.
 - Fire-and-forget writes via `auth::audit::emit()` — audit failures never block auth operations.
 - Admin-only query API: `GET /v1/organizations/:org_id/audit-logs` with filters for event_type, actor_id, cursor pagination.
 - Retention: `delete_audit_logs_before()` method available for scheduled cleanup.
@@ -944,7 +944,7 @@ When a bash script calls `bash` or `sh` or uses `eval`, bashkit re-invokes its o
 | TM-DOS-009 | Valkey unauthenticated access | Medium | Valkey listens on localhost:6379 by default; no AUTH configured in local/example compose | **CALLER RISK** |
 | TM-DOS-010 | AG-UI SSE connection exhaustion | Medium | AG-UI app streams reuse the shared `SseConnectionTracker`, enforcing the same global/per-org/per-session limits as other SSE endpoints. App owners can also configure a per-app, per-IP request cap via `AgUiChannelConfig.rate_limit_per_minute`: in-memory backend is a per-minute governor quota; when `VALKEY_URL` is set it becomes a Valkey sliding-window counter shared across instances and fail-closed on Valkey errors | MITIGATED |
 | TM-DOS-010 | Rate limit bypass via Valkey failure | Low | Fail-open design: if Valkey is down, requests are allowed without rate limiting | **ACCEPTED** |
-| TM-DOS-011 | Authenticated API key sprawl | Low | No server-side per-user API key quota; API key creation requires an authenticated user session and keys remain user-owned/revocable. Operators must monitor and clean up excessive key creation if they need stricter controls. | **ACCEPTED** |
+| TM-DOS-011 | Authenticated personal access token sprawl | Low | Per-user cap enforced at creation (`max_personal_access_tokens_per_user`, default 25, via `RESOURCE_LIMIT_MAX_PERSONAL_ACCESS_TOKENS_PER_USER`); creation requires an authenticated user session and tokens remain user-owned/revocable. Operators tune the cap or clean up excessive tokens if they need stricter controls. | **ACCEPTED** |
 | TM-DOS-012 | Source-backed Volume repository storage abuse | Medium | Volume source sync performs shallow clones without tags, skips symlinks, excludes `.git`, and enforces configurable file-count, per-file byte, and total byte limits before replacing `volume_files`. Failed sync keeps the previous readable snapshot. | MITIGATED |
 | TM-DOS-013 | Hidden Agent snapshot storage growth | Medium | Automatic Agent draft snapshots are active only when `FEATURE_AGENT_VERSIONS` is enabled, skipped when the latest stored config hash already matches the draft, and pruned to a bounded per-Agent unpublished auto-snapshot window after each write. | MITIGATED |
 | TM-DOS-014 | Tool output context growth | Medium | Read-like tools use windowed responses and truncation envelopes (`read_file`, `list_directory`, `grep_files`, browser DOM content); platform message reads cap message count and per-message content; non-image binary reads return metadata instead of base64 or lossy UTF-8; opted-in exec tools persist full output under `/outputs/` so the inline prompt payload can stay bounded and recoverable. | MITIGATED |
@@ -1362,7 +1362,7 @@ Even with per-secret scoping, an attacker who controls a previously-approved for
 
 | Control | Category | Implementation |
 |---------|----------|----------------|
-| Authentication | TM-AUTH | JWT (15 min), API keys (SHA-256), OAuth, Argon2id passwords |
+| Authentication | TM-AUTH | JWT (15 min), personal access tokens (SHA-256), OAuth, Argon2id passwords |
 | Authorization | TM-TENANT, TM-AUTHZ | Org-scoped queries, ResolvedOrg extractor, 404 on cross-org; `Command::run` enforcement via `policy.evaluate_with(ctx.permission_resolver.as_ref(), &ctx.caller)`, role→permission mapping |
 | Encryption at rest | TM-CRYPTO | AES-256-GCM envelope encryption for API keys |
 | Encryption in transit | TM-LLM | HTTPS for all external communication |
@@ -1391,7 +1391,7 @@ Even with per-secret scoping, an attacker who controls a previously-approved for
 
 ## References
 
-- `specs/authentication.md` — Authentication modes, JWT, API keys, OAuth
+- `specs/authentication.md` — Authentication modes, JWT, personal access tokens, OAuth
 - `specs/encryption.md` — Envelope encryption design
 - `specs/multitenancy.md` — Org-based isolation model
 - `specs/session-filesystem.md` — Session file storage and path validation

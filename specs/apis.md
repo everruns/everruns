@@ -101,9 +101,9 @@ Exposes Everruns as an MCP server. Tier 1 tools (`agent_run`, `session_send_mess
 | GET | `/api/v1/auth/oauth/{provider}` | Redirect to OAuth provider |
 | GET | `/api/v1/auth/callback/{provider}` | OAuth callback |
 | GET | `/api/v1/auth/me` | Get current user info |
-| GET | `/api/v1/auth/api-keys` | List user's API keys |
-| POST | `/api/v1/auth/api-keys` | Create API key |
-| DELETE | `/api/v1/auth/api-keys/{key_id}` | Delete API key |
+| GET | `/api/v1/auth/personal-access-tokens` | List user's personal access tokens |
+| POST | `/api/v1/auth/personal-access-tokens` | Create personal access token |
+| DELETE | `/api/v1/auth/personal-access-tokens/{token_id}` | Delete personal access token |
 
 See [authentication.md](authentication.md) for full authentication specification.
 

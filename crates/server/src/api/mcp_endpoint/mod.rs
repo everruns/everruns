@@ -818,8 +818,13 @@ fn enforce_org_override_auth_scope(
     auth_user: &AuthUser,
     default_org: &ResolvedOrg,
 ) -> Result<(), String> {
-    if auth_user.auth_method == AuthMethod::ApiKey && org_public_id != default_org.public_id {
-        return Err("organization_id override is not allowed for API key authentication".into());
+    if auth_user.auth_method == AuthMethod::PersonalAccessToken
+        && org_public_id != default_org.public_id
+    {
+        return Err(
+            "organization_id override is not allowed for personal access token authentication"
+                .into(),
+        );
     }
 
     Ok(())
@@ -1493,7 +1498,7 @@ mod org_override_scope_tests {
 
     #[test]
     fn api_key_auth_rejects_cross_org_override() {
-        let auth_user = test_auth_user(AuthMethod::ApiKey);
+        let auth_user = test_auth_user(AuthMethod::PersonalAccessToken);
         let result =
             enforce_org_override_auth_scope("org_other_12345678", &auth_user, &default_org());
 
@@ -1502,7 +1507,7 @@ mod org_override_scope_tests {
 
     #[test]
     fn api_key_auth_allows_default_org_override() {
-        let auth_user = test_auth_user(AuthMethod::ApiKey);
+        let auth_user = test_auth_user(AuthMethod::PersonalAccessToken);
         let org = default_org();
         let result = enforce_org_override_auth_scope(&org.public_id, &auth_user, &org);
 

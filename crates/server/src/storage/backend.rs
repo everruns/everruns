@@ -178,27 +178,36 @@ impl StorageBackend {
     }
 
     // ============================================
-    // API Keys
+    // Personal Access Tokens
     // ============================================
 
-    pub async fn create_api_key(&self, input: CreateApiKeyRow) -> Result<ApiKeyRow> {
-        dispatch!(self, create_api_key, input)
+    pub async fn create_personal_access_token(
+        &self,
+        input: CreatePersonalAccessTokenRow,
+    ) -> Result<PersonalAccessTokenRow> {
+        dispatch!(self, create_personal_access_token, input)
     }
 
-    pub async fn get_api_key_by_hash(&self, key_hash: &str) -> Result<Option<ApiKeyRow>> {
-        dispatch!(self, get_api_key_by_hash, key_hash)
+    pub async fn get_personal_access_token_by_hash(
+        &self,
+        token_hash: &str,
+    ) -> Result<Option<PersonalAccessTokenRow>> {
+        dispatch!(self, get_personal_access_token_by_hash, token_hash)
     }
 
-    pub async fn list_api_keys_for_user(&self, user_id: Uuid) -> Result<Vec<ApiKeyRow>> {
-        dispatch!(self, list_api_keys_for_user, user_id)
+    pub async fn list_personal_access_tokens_for_user(
+        &self,
+        user_id: Uuid,
+    ) -> Result<Vec<PersonalAccessTokenRow>> {
+        dispatch!(self, list_personal_access_tokens_for_user, user_id)
     }
 
-    pub async fn update_api_key_last_used(&self, id: Uuid) -> Result<()> {
-        dispatch!(self, update_api_key_last_used, id)
+    pub async fn update_personal_access_token_last_used(&self, id: Uuid) -> Result<()> {
+        dispatch!(self, update_personal_access_token_last_used, id)
     }
 
-    pub async fn delete_api_key(&self, id: Uuid, user_id: Uuid) -> Result<bool> {
-        dispatch!(self, delete_api_key, id, user_id)
+    pub async fn delete_personal_access_token(&self, id: Uuid, user_id: Uuid) -> Result<bool> {
+        dispatch!(self, delete_personal_access_token, id, user_id)
     }
 
     // ============================================

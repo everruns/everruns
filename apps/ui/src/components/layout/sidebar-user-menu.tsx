@@ -101,9 +101,9 @@ export function SidebarUserMenu({
                 <User className="icon-sharp mr-2 h-4 w-4" />
                 Profile
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => navigate("/settings/api-keys")}>
+              <DropdownMenuItem onClick={() => navigate("/settings/personal-access-tokens")}>
                 <Key className="icon-sharp mr-2 h-4 w-4" />
-                API Keys
+                Personal access tokens
               </DropdownMenuItem>
               <McpConnectMenuItem onSelect={() => setMcpDialogOpen(true)} />
               {renderExtraItems?.({ user, navigate })}
