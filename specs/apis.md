@@ -215,6 +215,15 @@ Key design decisions for session creation:
 - `capabilities` — **additive** to agent capabilities (agent applied first, session applied after). Enables temporarily extending an agent without modifying its configuration.
 - `hints` — session-level client hints (generic key-value pairs). Unknown keys ignored. Per-message `controls.hints` override session hints key-by-key (shallow merge). Resolution: `effective_hints = session.hints ∪ message.controls.hints` (message wins). See [client-hints.md](client-hints.md).
 
+#### Session and Turn Limits (EVE-508)
+
+`POST /sessions` and `POST /sessions/{id}/messages` enforce per-org concurrency caps, returning HTTP 400 on violation. Defaults are generous to avoid throttling legitimate long-horizon agentic workloads.
+
+- **Concurrent sessions**: at most `ORG_MAX_CONCURRENT_SESSIONS` (default 10,000) sessions may be in a non-finished state simultaneously. Checked at session creation time.
+- **Active turns**: at most `ORG_MAX_ACTIVE_TURNS` (default 1,000) sessions may be actively executing a turn simultaneously. Checked before dispatching turn execution. Error message includes "retry later" to signal the client should back off.
+
+Both limits are injectable via `SessionService::with_caps` / `MessageService::with_caps` for test isolation.
+
 Session creation and any other assignment flow must reject archived or deleted harnesses/agents with a client error. Existing sessions are preserved when dependencies are archived or deleted, but the next execution atom must fail gracefully with a user-visible explanation.
 
 #### Get or Create Chat Session

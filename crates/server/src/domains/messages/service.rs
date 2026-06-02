@@ -7,6 +7,8 @@
 
 use crate::api::messages::{ContentPart, CreateMessageRequest, Message, MessageRole};
 use crate::domains::notifications::NotificationService;
+use crate::domains::sessions::limits::OrgCaps;
+use crate::errors::BadRequestError;
 use crate::execution_metadata;
 use crate::services::{EventService, PrincipalService};
 use crate::storage::StorageBackend;
@@ -27,6 +29,7 @@ pub struct MessageService {
     notification_service: NotificationService,
     notifications_enabled: bool,
     runner: Arc<dyn AgentRunner>,
+    caps: OrgCaps,
 }
 
 pub struct CreateMessageContext {
@@ -55,7 +58,13 @@ impl MessageService {
             notification_service,
             notifications_enabled,
             runner,
+            caps: OrgCaps::from_env(),
         }
+    }
+
+    pub fn with_caps(mut self, caps: OrgCaps) -> Self {
+        self.caps = caps;
+        self
     }
 
     /// Create a user message from API request
@@ -75,6 +84,16 @@ impl MessageService {
             request_id = ?ctx.request_id,
             "Creating user message"
         );
+
+        // EVE-508: check per-org active turn cap before persisting the message.
+        let active_turns = self.db.count_active_turns_for_org(ctx.org_id).await?;
+        if active_turns >= self.caps.max_active_turns as i64 {
+            return Err(BadRequestError::new(format!(
+                "Too many active turns: org has {} turns executing (limit {}); retry later",
+                active_turns, self.caps.max_active_turns
+            ))
+            .into());
+        }
 
         // Convert InputContentPart array to ContentPart array
         let content: Vec<ContentPart> = req
@@ -358,5 +377,122 @@ impl MessageService {
             }
             _ => Err(format!("unexpected event type for message: {}", event_type)),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domains::sessions::limits::OrgCaps;
+    use crate::errors::BadRequestError;
+    use crate::storage::{StorageBackend, models::UpdateSession};
+    use async_trait::async_trait;
+    use everruns_core::typed_id::{AgentId, HarnessId, MessageId, SessionId};
+
+    struct NoopRunner;
+
+    #[async_trait]
+    impl AgentRunner for NoopRunner {
+        async fn start_run(
+            &self,
+            _org_id: i64,
+            _session_id: SessionId,
+            _harness_id: HarnessId,
+            _agent_id: Option<AgentId>,
+            _input_message_id: MessageId,
+            _request_id: Option<String>,
+        ) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        async fn resume_after_tool_results(&self, _session_id: SessionId) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        async fn cancel_run(&self, _session_id: SessionId) -> anyhow::Result<()> {
+            Ok(())
+        }
+
+        async fn is_running(&self, _session_id: SessionId) -> bool {
+            false
+        }
+
+        async fn active_count(&self) -> usize {
+            0
+        }
+    }
+
+    #[tokio::test]
+    async fn active_turn_cap_enforced() {
+        let db = Arc::new(StorageBackend::in_memory());
+        let runner: Arc<dyn AgentRunner> = Arc::new(NoopRunner);
+        let delivery = crate::event_delivery::EventDelivery::in_memory();
+
+        let svc = MessageService::new(db.clone(), runner, false, delivery).with_caps(OrgCaps {
+            max_concurrent_sessions: 10_000,
+            max_active_turns: 1,
+        });
+
+        // Seed an 'active' session so count_active_turns_for_org returns 1.
+        // max_active_turns = 1 so 1 active turn exactly hits the cap.
+        let session = db
+            .create_session(crate::storage::models::CreateSessionRow {
+                org_id: 1,
+                harness_id: None,
+                app_id: None,
+                agent_id: None,
+                agent_identity_id: None,
+                owner_principal_id: everruns_core::PrincipalId::from_seed(1),
+                resolved_owner_user_id: None,
+                title: None,
+                locale: None,
+                tags: vec![],
+                model_id: None,
+                capabilities: serde_json::json!([]),
+                tools: serde_json::json!([]),
+                mcp_servers: serde_json::json!({}),
+                system_prompt: None,
+                initial_files: serde_json::json!([]),
+                hints: None,
+                network_access: None,
+                max_iterations: None,
+                blueprint_id: None,
+                blueprint_config: None,
+            })
+            .await
+            .unwrap();
+        db.update_session(
+            1,
+            session.id,
+            UpdateSession {
+                status: Some("active".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
+        .unwrap();
+
+        let ctx = CreateMessageContext {
+            org_id: 1,
+            user_id: None,
+            harness_id: session.id.uuid(),
+            agent_id: None,
+            session_id: session.id.uuid(),
+            event_metadata: None,
+            request_id: None,
+        };
+
+        let err = svc
+            .create(ctx, CreateMessageRequest::user("hello"))
+            .await
+            .unwrap_err();
+        assert!(
+            err.downcast_ref::<BadRequestError>().is_some(),
+            "expected BadRequestError, got: {err}"
+        );
+        assert!(
+            err.to_string().contains("Too many active turns"),
+            "got: {err}"
+        );
     }
 }
