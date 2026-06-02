@@ -38,6 +38,5 @@ fn read_usize_env(var: &str, default: usize) -> usize {
     std::env::var(var)
         .ok()
         .and_then(|v| v.parse::<usize>().ok())
-        .filter(|&v| v > 0)
         .unwrap_or(default)
 }

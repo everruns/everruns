@@ -282,7 +282,7 @@ impl Database {
     /// Count non-finished sessions for an org (EVE-508 concurrent session cap).
     pub async fn count_active_sessions_for_org(&self, org_id: i64) -> Result<i64> {
         let row: (i64,) = sqlx::query_as(
-            "SELECT COUNT(*)::bigint FROM sessions WHERE org_id = $1 AND status IN ('active', 'idle', 'started', 'waiting_for_tool_results')",
+            "SELECT COUNT(*)::bigint FROM sessions WHERE org_id = $1 AND status IN ('active', 'idle', 'started', 'waiting_for_tool_results', 'paused')",
         )
         .bind(org_id)
         .fetch_one(&self.pool)

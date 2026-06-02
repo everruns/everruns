@@ -430,11 +430,11 @@ mod tests {
 
         let svc = MessageService::new(db.clone(), runner, false, delivery).with_caps(OrgCaps {
             max_concurrent_sessions: 10_000,
-            max_active_turns: 0,
+            max_active_turns: 1,
         });
 
         // Seed an 'active' session so count_active_turns_for_org returns 1.
-        // max_active_turns = 0 so even 1 active turn triggers the cap.
+        // max_active_turns = 1 so 1 active turn exactly hits the cap.
         let session = db
             .create_session(crate::storage::models::CreateSessionRow {
                 org_id: 1,

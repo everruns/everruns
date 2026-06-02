@@ -198,7 +198,7 @@ impl InMemoryDatabase {
                 s.org_id == org_id
                     && matches!(
                         s.status.as_str(),
-                        "active" | "idle" | "started" | "waiting_for_tool_results"
+                        "active" | "idle" | "started" | "waiting_for_tool_results" | "paused"
                     )
             })
             .count();
