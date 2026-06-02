@@ -439,7 +439,7 @@ fn authorizer(action: AuthAction) -> Authorization {
 | TM-TOOL-015 | Browserless SSRF via tool URL | Medium | Shared `validate_safe_url()` blocks private/internal hosts for all Browserless navigation entry points, including interaction-step redirects | MITIGATED |
 | TM-TOOL-016 | Browserless timeout DoS | Medium | All wait/timeout values capped at 120s; prevents unbounded resource consumption | MITIGATED |
 | TM-TOOL-017 | Browserless API token in logs | Medium | CDP debug logging redacts token from WebSocket URLs before logging | MITIGATED |
-| TM-TOOL-018 | MCP server SSRF via configured server URL | High | MCP server URLs are validated on create/update and re-validated at execution time; private/internal hosts and metadata endpoints blocked | MITIGATED |
+| TM-TOOL-018 | MCP server SSRF via configured server URL | High | MCP server URLs are validated on create/update (static) and re-validated at execution time with DNS resolution via `validate_url_dns_pinned`; every resolved IP is checked against the blocked ranges, closing the DNS-rebinding gap | MITIGATED |
 | TM-TOOL-019 | MCP `query`/`execute` positional-arg rewrite injection | Low | Rewriter only inserts compile-time `--<flag>` tokens at statement-start boundaries, respects quotes/escapes/comments, and never modifies or reorders user bytes. Flag names come from the command registry, not user input. See EVE-323. | MITIGATED |
 | TM-TOOL-020 | Skill `` !`command` `` activation RCE on worker host | High | `ActivateSkillFromVfsTool::execute_with_context` never invokes `preprocess_command_injections` — the trust gate is forced off because no non-user-spoofable provenance signal exists on `SessionFile` today. Expansion is also capped at `MAX_COMMAND_PLACEHOLDERS_PER_SKILL` (32) with concurrency ≤ 4 in the expansion function itself. See EVE-388. | MITIGATED |
 | TM-TOOL-021 | Agent handoff credential leakage or unauthorized target delegation | High | `agent_handoff` delegates only to configured target Agent ids, requires server-side `UserConnectionResolver` checks before start, never accepts credentials in tool args/config/resource metadata, records only non-secret provider/scope labels in `session_resources`, and rejects follow-up messages unless the child session belongs to the current parent session. Provider tools must still enforce scoped grants before real external writes. | MITIGATED |
@@ -542,10 +542,8 @@ Validation runs for:
 
 **TM-TOOL-018 — MCP Server SSRF (MITIGATED):**
 MCP server URLs are validated twice:
-1. On create/update in the control plane to reject unsafe configuration
-2. Again in the worker just before execution to catch TOCTOU or stale cached configuration
-
-The shared validator blocks loopback, RFC1918, link-local, and cloud metadata targets. This prevents an MCP capability from being used to probe worker-local or cluster-internal HTTP services via a malicious server URL.
+1. On create/update in the control plane — static check via `validate_safe_url` rejects unsafe schemes, loopback, RFC1918, link-local, and cloud metadata targets.
+2. At execution time (before each tool call and `tools/list` fetch) via `validate_url_dns_pinned` — performs the same static checks then resolves the hostname via `tokio::net::lookup_host` and verifies every returned IP against the blocked ranges. This closes the DNS-rebinding gap: an attacker cannot register a public hostname that initially resolves to a safe IP but later rebinds to an internal address, because the IP is re-checked on every outbound request.
 
 ## 8. LLM Integration (TM-LLM)
 

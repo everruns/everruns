@@ -68,6 +68,51 @@ pub fn validate_safe_url(raw_url: &str) -> Result<Url, UrlValidationError> {
     Ok(url)
 }
 
+/// Validate a URL is safe for server-side requests, including DNS resolution
+/// to catch DNS-rebinding attacks (TM-TOOL-018).
+///
+/// Performs static checks first (`validate_safe_url`), then resolves the
+/// hostname and verifies that every returned IP is in an allowed range.
+/// Use this at execution time (e.g. before making an outbound HTTP call).
+/// For write-time registration checks, `validate_safe_url` is sufficient.
+pub async fn validate_url_dns_pinned(raw_url: &str) -> Result<Url, UrlValidationError> {
+    // Static checks first — fast path for obviously bad URLs / IP literals.
+    let url = validate_safe_url(raw_url)?;
+
+    let host = url.host_str().ok_or(UrlValidationError::MissingHostname)?;
+
+    // If the host is already an IP literal the static check already validated it.
+    let bare = host
+        .strip_prefix('[')
+        .and_then(|s| s.strip_suffix(']'))
+        .unwrap_or(host);
+    if bare.parse::<std::net::IpAddr>().is_ok() {
+        return Ok(url);
+    }
+
+    // Resolve the hostname and reject if any address is in a blocked range.
+    let port = url.port_or_known_default().unwrap_or(443);
+    let addrs = tokio::net::lookup_host(format!("{host}:{port}"))
+        .await
+        .map_err(|_| UrlValidationError::BlockedHost(host.to_string()))?;
+
+    for addr in addrs {
+        if is_blocked_ip(addr.ip()) {
+            tracing::warn!(
+                host = %host,
+                resolved_ip = %addr.ip(),
+                "DNS rebinding check blocked: hostname resolves to private address"
+            );
+            return Err(UrlValidationError::BlockedHost(format!(
+                "{host} resolves to blocked address {}",
+                addr.ip()
+            )));
+        }
+    }
+
+    Ok(url)
+}
+
 /// Check if a hostname string is blocked (localhost, private IPs, metadata endpoints).
 fn is_blocked_host(host: &str) -> bool {
     let host_lower = host.to_lowercase();
@@ -419,5 +464,41 @@ mod tests {
                 .to_string()
                 .contains("http or https")
         );
+    }
+
+    // --- validate_url_dns_pinned: IP literals are caught by static pre-check ---
+    // (No real DNS calls needed; IP literal hosts skip the lookup path.)
+
+    #[tokio::test]
+    async fn dns_pinned_rejects_private_ip_literal() {
+        let result = validate_url_dns_pinned("http://10.0.0.1/mcp").await;
+        assert!(matches!(result, Err(UrlValidationError::BlockedHost(_))));
+    }
+
+    #[tokio::test]
+    async fn dns_pinned_rejects_loopback_ip_literal() {
+        let result = validate_url_dns_pinned("http://127.0.0.1/mcp").await;
+        assert!(matches!(result, Err(UrlValidationError::BlockedHost(_))));
+    }
+
+    #[tokio::test]
+    async fn dns_pinned_rejects_metadata_ip_literal() {
+        let result = validate_url_dns_pinned("http://169.254.169.254/latest/meta-data/").await;
+        assert!(matches!(result, Err(UrlValidationError::BlockedHost(_))));
+    }
+
+    #[tokio::test]
+    async fn dns_pinned_rejects_localhost_hostname() {
+        let result = validate_url_dns_pinned("http://localhost:8080/mcp").await;
+        assert!(matches!(result, Err(UrlValidationError::BlockedHost(_))));
+    }
+
+    #[tokio::test]
+    async fn dns_pinned_rejects_bad_scheme() {
+        let result = validate_url_dns_pinned("ftp://example.com/mcp").await;
+        assert!(matches!(
+            result,
+            Err(UrlValidationError::DisallowedScheme(_))
+        ));
     }
 }

@@ -28,7 +28,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
-use everruns_core::validate_safe_url;
+use everruns_core::{validate_safe_url, validate_url_dns_pinned};
 
 use crate::domains::mcp_servers::types::{CreateMcpServerRequest, UpdateMcpServerRequest};
 
@@ -624,9 +624,11 @@ pub(crate) async fn fetch_mcp_tools(
     api_key: Option<&str>,
     headers: &HashMap<String, String>,
 ) -> Result<Vec<McpToolDefinition>> {
-    // Re-validate URL at fetch time (SSRF defense-in-depth). This runs before
-    // the egress request is constructed so unsafe URLs never reach the boundary.
-    validate_safe_url(url).map_err(|e| anyhow!("MCP server URL blocked: {}", e))?;
+    // Re-validate URL at fetch time with DNS resolution to catch DNS-rebinding
+    // (TM-TOOL-018). Runs before the egress request is constructed.
+    validate_url_dns_pinned(url)
+        .await
+        .map_err(|e| anyhow!("MCP server URL blocked: {}", e))?;
 
     let request_body = serde_json::to_vec(&McpToolsListRequest::default())?;
 
