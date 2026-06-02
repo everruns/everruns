@@ -79,6 +79,14 @@ pub struct EgressRequest {
     pub network_access: Option<NetworkAccessList>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timeout_ms: Option<u64>,
+    /// Pre-resolved socket addresses for DNS pinning (TM-TOOL-018).
+    ///
+    /// When set, `DirectEgressService` builds a per-request client pinned to
+    /// these addresses via `resolve_to_addrs`, closing the TOCTOU window
+    /// between URL validation and the actual TCP connect.  Obtained from
+    /// `validate_url_dns_pinned`.  Not serialized — runtime-only hint.
+    #[serde(skip)]
+    pub pinned_addrs: Option<(String, Vec<std::net::SocketAddr>)>,
 }
 
 impl EgressRequest {
@@ -92,7 +100,23 @@ impl EgressRequest {
             signing: EgressSigning::Disabled,
             network_access: None,
             timeout_ms: None,
+            pinned_addrs: None,
         }
+    }
+
+    /// Pin the outbound connection to pre-resolved addresses (TM-TOOL-018).
+    ///
+    /// No-op when `addrs` is empty (e.g. IP-literal URLs where the static
+    /// check already validated the address).
+    pub fn pinned_addrs(
+        mut self,
+        host: impl Into<String>,
+        addrs: Vec<std::net::SocketAddr>,
+    ) -> Self {
+        if !addrs.is_empty() {
+            self.pinned_addrs = Some((host.into(), addrs));
+        }
+        self
     }
 
     pub fn header(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
@@ -232,17 +256,42 @@ impl DirectEgressService {
             return Err(EgressError::SigningUnavailable);
         }
 
-        let method = reqwest::Method::from_bytes(request.method.as_bytes())
+        let EgressRequest {
+            method,
+            url,
+            headers,
+            body,
+            timeout_ms,
+            pinned_addrs,
+            ..
+        } = request;
+
+        let method = reqwest::Method::from_bytes(method.as_bytes())
             .map_err(|error| EgressError::invalid(format!("invalid HTTP method: {error}")))?;
-        let mut builder = self.client.request(method, &request.url);
-        for (name, value) in request.headers {
+
+        // When pre-resolved addresses are provided, build a per-request client
+        // pinned to those IPs.  This closes the TOCTOU window between
+        // validate_url_dns_pinned and the actual TCP connect (TM-TOOL-018).
+        let mut builder = if let Some((ref host, ref addrs)) = pinned_addrs {
+            reqwest::Client::builder()
+                .connect_timeout(DEFAULT_CONNECT_TIMEOUT)
+                .redirect(reqwest::redirect::Policy::none())
+                .resolve_to_addrs(host, addrs)
+                .build()
+                .map_err(|e| EgressError::invalid(format!("pinned client build failed: {e}")))?
+                .request(method, &url)
+        } else {
+            self.client.request(method, &url)
+        };
+
+        for (name, value) in headers {
             builder = builder.header(name, value);
         }
-        if let Some(timeout_ms) = request.timeout_ms {
+        if let Some(timeout_ms) = timeout_ms {
             builder = builder.timeout(Duration::from_millis(timeout_ms));
         }
-        if !request.body.is_empty() {
-            builder = builder.body(request.body);
+        if !body.is_empty() {
+            builder = builder.body(body);
         }
         Ok(builder)
     }

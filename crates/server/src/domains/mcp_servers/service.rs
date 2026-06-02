@@ -28,7 +28,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
-use everruns_core::{validate_safe_url, validate_url_dns_pinned};
+use everruns_core::validate_url_dns_pinned;
 
 use crate::domains::mcp_servers::types::{CreateMcpServerRequest, UpdateMcpServerRequest};
 
@@ -624,15 +624,18 @@ pub(crate) async fn fetch_mcp_tools(
     api_key: Option<&str>,
     headers: &HashMap<String, String>,
 ) -> Result<Vec<McpToolDefinition>> {
-    // Re-validate URL at fetch time with DNS resolution to catch DNS-rebinding
-    // (TM-TOOL-018). Runs before the egress request is constructed.
-    validate_url_dns_pinned(url)
+    // Re-validate URL with DNS resolution and return resolved addrs for pinning
+    // (TM-TOOL-018). The addrs are carried into the EgressRequest so
+    // DirectEgressService connects to the validated IPs, closing the TOCTOU gap.
+    let (validated_url, resolved_addrs) = validate_url_dns_pinned(url)
         .await
         .map_err(|e| anyhow!("MCP server URL blocked: {}", e))?;
+    let pin_host = validated_url.host_str().unwrap_or("").to_string();
 
     let request_body = serde_json::to_vec(&McpToolsListRequest::default())?;
 
     let mut egress_request = EgressRequest::new("POST", url, EgressRequestKind::Mcp)
+        .pinned_addrs(pin_host, resolved_addrs)
         .header("Content-Type", "application/json")
         .header("Accept", "application/json, text/event-stream")
         .timeout_ms(MCP_CLIENT_TIMEOUT.as_millis() as u64)
