@@ -402,20 +402,6 @@ impl ServerAppBuilder {
         // Phase 2: Seed & infrastructure services
         // =====================================================================
         let auth_config = auth::AuthConfig::from_env();
-        seed::spawn_seed_task_with_platform_definition(
-            db.clone(),
-            seed::SeedAuthContext {
-                mode: auth_config.mode.clone(),
-                admin: auth_config.admin.clone(),
-            },
-            platform_definition.as_ref().clone(),
-        );
-
-        let sqldb_backend = Arc::new(everruns_session_sqldb::InMemorySqlDbBackend::new());
-        let sqldb_store: Arc<dyn everruns_core::session_sqldb::SessionSqlDbStore> = Arc::new(
-            everruns_session_sqldb::InMemorySqlDbStore::new(sqldb_backend),
-        );
-        tracing::info!("Session SQL database store initialized (in-memory)");
 
         let encryption = match EncryptionService::from_env() {
             Ok(svc) => {
@@ -430,6 +416,25 @@ impl ServerAppBuilder {
                 None
             }
         };
+
+        // Seed must run after encryption is resolved: single-tenant/dev seeding
+        // materializes DEFAULT_*_API_KEY env vars into the default org's
+        // provider rows (encrypted), which requires the encryption service.
+        seed::spawn_seed_task_with_platform_definition(
+            db.clone(),
+            seed::SeedAuthContext {
+                mode: auth_config.mode.clone(),
+                admin: auth_config.admin.clone(),
+            },
+            platform_definition.as_ref().clone(),
+            encryption.clone(),
+        );
+
+        let sqldb_backend = Arc::new(everruns_session_sqldb::InMemorySqlDbBackend::new());
+        let sqldb_store: Arc<dyn everruns_core::session_sqldb::SessionSqlDbStore> = Arc::new(
+            everruns_session_sqldb::InMemorySqlDbStore::new(sqldb_backend),
+        );
+        tracing::info!("Session SQL database store initialized (in-memory)");
 
         // =====================================================================
         // Phase 3: Valkey + Authentication

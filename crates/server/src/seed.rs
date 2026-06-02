@@ -9,10 +9,10 @@
 use crate::auth::config::{AdminConfig, AuthMode};
 use crate::org_init;
 use crate::storage::{
-    StorageBackend,
+    EncryptionService, StorageBackend,
     models::{
         CreateLlmModelRow, CreateLlmProviderRow, CreateMcpServerRow, CreateOrganizationRow,
-        CreateUserRow,
+        CreateUserRow, UpdateLlmProvider,
     },
     password::hash_password,
 };
@@ -1451,6 +1451,116 @@ async fn seed_providers_with_platform_definition(
     Ok(result)
 }
 
+/// Whether to materialize `DEFAULT_*_API_KEY` env vars into the default org's
+/// provider rows on startup.
+///
+/// This is a single-tenant / dev convenience. The tenant resolver is
+/// fail-closed (EVE-511): it only reads keys from the database and never falls
+/// back to process env during turn execution. Materializing the env keys into
+/// the default org's seed providers lets a single-org self-hosted deploy or
+/// `just start-dev` keep using `DEFAULT_*_API_KEY` without re-opening an
+/// implicit env fallback in the hot path.
+///
+/// Gated so multitenant deployments never spend platform-level keys (EVE-512):
+/// - `SEED_DEFAULT_PROVIDER_KEYS_FROM_ENV` unset  -> defaults to `grade.is_dev()`
+/// - `true`/`1`/`yes` -> enabled (set this for single-tenant prod, e.g. the
+///   example deployment)
+/// - anything else    -> disabled
+fn materialize_env_provider_keys_enabled(grade: DeploymentGrade) -> bool {
+    materialize_env_provider_keys_enabled_with(grade, |name| std::env::var(name).ok())
+}
+
+/// Testable core of [`materialize_env_provider_keys_enabled`] with an injectable
+/// env lookup.
+fn materialize_env_provider_keys_enabled_with<F>(grade: DeploymentGrade, env_lookup: F) -> bool
+where
+    F: Fn(&str) -> Option<String>,
+{
+    match env_lookup("SEED_DEFAULT_PROVIDER_KEYS_FROM_ENV") {
+        Some(v) => matches!(v.trim().to_ascii_lowercase().as_str(), "true" | "1" | "yes"),
+        None => grade.is_dev(),
+    }
+}
+
+/// Copy `DEFAULT_<PROVIDER>_API_KEY` env vars into the default org's seed
+/// provider rows (encrypted), so org-scoped execution can resolve them through
+/// the normal fail-closed DB path.
+///
+/// Only fills providers that have no key configured — an explicitly-set key
+/// (via UI/API) is never overwritten. Idempotent: a provider whose key is
+/// already set is left untouched and counted as unchanged.
+///
+/// Callers MUST gate this behind [`materialize_env_provider_keys_enabled`]; it
+/// must not run for multitenant deployments.
+async fn seed_default_provider_keys_from_env(
+    db: &StorageBackend,
+    encryption: &EncryptionService,
+    platform_definition: &PlatformDefinition,
+) -> anyhow::Result<SeedResult> {
+    seed_default_provider_keys_with_lookup(db, encryption, platform_definition, |provider_type| {
+        crate::services::llm_resolver::get_default_api_key_from_env(provider_type)
+    })
+    .await
+}
+
+/// Testable core of [`seed_default_provider_keys_from_env`] with an injectable
+/// per-provider key lookup.
+async fn seed_default_provider_keys_with_lookup<F>(
+    db: &StorageBackend,
+    encryption: &EncryptionService,
+    platform_definition: &PlatformDefinition,
+    key_lookup: F,
+) -> anyhow::Result<SeedResult>
+where
+    F: Fn(&str) -> Option<String>,
+{
+    let mut result = SeedResult::default();
+    let enabled_provider_ids = enabled_seed_provider_ids(platform_definition);
+
+    for seed in SEED_PROVIDERS {
+        if !enabled_provider_ids.contains(&seed.id) {
+            continue;
+        }
+
+        let Some(env_key) = key_lookup(seed.provider_type) else {
+            continue;
+        };
+
+        let Some(provider) = db.get_llm_provider(DEFAULT_ORG_ID, seed.id).await? else {
+            // Provider row not seeded (driver not registered for this grade).
+            continue;
+        };
+
+        // Never overwrite an explicitly-configured key — only fill empty slots.
+        if provider.api_key_encrypted.is_some() {
+            result.unchanged += 1;
+            continue;
+        }
+
+        let encrypted = encryption.encrypt_string(&env_key)?;
+        db.update_llm_provider(
+            DEFAULT_ORG_ID,
+            seed.id,
+            UpdateLlmProvider {
+                name: None,
+                provider_type: None,
+                base_url: None,
+                api_key_encrypted: Some(encrypted),
+                status: None,
+                settings: None,
+            },
+        )
+        .await?;
+        result.updated += 1;
+        tracing::info!(
+            provider = seed.name,
+            "Materialized DEFAULT_*_API_KEY into default-org provider (single-tenant/dev)"
+        );
+    }
+
+    Ok(result)
+}
+
 // ============================================
 // LLM Model Seeder
 // ============================================
@@ -2083,14 +2193,23 @@ pub fn spawn_seed_task(db: Arc<StorageBackend>, auth_ctx: SeedAuthContext) {
         db,
         auth_ctx,
         crate::platform::oss_platform_definition_for_grade(DeploymentGrade::from_env()),
+        None,
     );
 }
 
 /// Spawn seeding as a background task using an explicit platform definition.
+///
+/// When `encryption` is available and env-key materialization is enabled for
+/// this deployment grade (see [`materialize_env_provider_keys_enabled`]), the
+/// default org's provider rows are seeded with the `DEFAULT_*_API_KEY` env
+/// values so single-tenant/dev execution can resolve them via the fail-closed
+/// DB path. Multitenant deployments leave this disabled and never spend
+/// platform-level keys.
 pub fn spawn_seed_task_with_platform_definition(
     db: Arc<StorageBackend>,
     auth_ctx: SeedAuthContext,
     platform_definition: PlatformDefinition,
+    encryption: Option<Arc<EncryptionService>>,
 ) {
     let grade = DeploymentGrade::from_env();
     tracing::info!(deployment_grade = %grade, "Starting seeding task");
@@ -2115,6 +2234,38 @@ pub fn spawn_seed_task_with_platform_definition(
                         deployment_grade = %grade,
                         "Seeding complete (all items up to date)"
                     );
+                }
+
+                // Single-tenant / dev convenience: materialize DEFAULT_*_API_KEY
+                // env vars into the default org's providers. Runs after seed so
+                // the provider rows exist; gated so multitenant prod never does
+                // this (EVE-511/EVE-512).
+                if materialize_env_provider_keys_enabled(grade) {
+                    match &encryption {
+                        Some(encryption) => {
+                            match seed_default_provider_keys_from_env(
+                                &db,
+                                encryption,
+                                &platform_definition,
+                            )
+                            .await
+                            {
+                                Ok(r) if r.updated > 0 => tracing::info!(
+                                    updated = r.updated,
+                                    "Materialized DEFAULT_*_API_KEY into default-org providers"
+                                ),
+                                Ok(_) => {}
+                                Err(e) => tracing::warn!(
+                                    error = %e,
+                                    "Failed to materialize DEFAULT_*_API_KEY env keys (non-fatal)"
+                                ),
+                            }
+                        }
+                        None => tracing::warn!(
+                            "DEFAULT_*_API_KEY materialization enabled but encryption is not \
+                             configured (set SECRETS_ENCRYPTION_KEY); skipping"
+                        ),
+                    }
                 }
 
                 // After seed succeeds, reconcile built-in harnesses for ALL orgs.
@@ -2402,6 +2553,160 @@ mod tests {
 
     fn lock_env() -> std::sync::MutexGuard<'static, ()> {
         ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    // --- DEFAULT_*_API_KEY materialization (single-tenant/dev) ---
+
+    fn test_encryption() -> EncryptionService {
+        EncryptionService::new("kek-v1:8B3uCQ4Znx45hl5nB+PKVriRrj/KtEVM+wBZ2VGa9vY=", &[]).unwrap()
+    }
+
+    #[test]
+    fn materialize_gate_defaults_to_dev_only() {
+        // Unset: enabled in dev, disabled otherwise.
+        assert!(materialize_env_provider_keys_enabled_with(
+            DeploymentGrade::Dev,
+            |_| None
+        ));
+        assert!(!materialize_env_provider_keys_enabled_with(
+            DeploymentGrade::Prod,
+            |_| None
+        ));
+        assert!(!materialize_env_provider_keys_enabled_with(
+            DeploymentGrade::Preview,
+            |_| None
+        ));
+    }
+
+    #[test]
+    fn materialize_gate_explicit_opt_in_overrides_grade() {
+        // Single-tenant prod opts in explicitly.
+        assert!(materialize_env_provider_keys_enabled_with(
+            DeploymentGrade::Prod,
+            |_| Some("true".to_string())
+        ));
+        assert!(materialize_env_provider_keys_enabled_with(
+            DeploymentGrade::Prod,
+            |_| Some("1".to_string())
+        ));
+        // Explicit opt-out wins even in dev.
+        assert!(!materialize_env_provider_keys_enabled_with(
+            DeploymentGrade::Dev,
+            |_| Some("false".to_string())
+        ));
+    }
+
+    /// Materialization fills an empty default-org provider with the env key,
+    /// and the key is resolvable through the normal fail-closed DB path.
+    #[tokio::test]
+    async fn materialize_fills_empty_provider_and_resolves() {
+        let db = make_db();
+        let encryption = test_encryption();
+        let platform = crate::platform::oss_platform_definition_for_grade(DeploymentGrade::Dev);
+
+        // Seed the bare provider rows (no keys).
+        seed_providers_with_platform_definition(&db, &platform)
+            .await
+            .unwrap();
+
+        let result = seed_default_provider_keys_with_lookup(&db, &encryption, &platform, |ty| {
+            (ty == "openai").then(|| "sk-from-env".to_string())
+        })
+        .await
+        .unwrap();
+        assert_eq!(result.updated, 1, "exactly the openai provider is filled");
+
+        // The key round-trips through the same decrypt path the resolver uses.
+        let provider = db
+            .get_llm_provider(DEFAULT_ORG_ID, seed_ids::OPENAI_PROVIDER)
+            .await
+            .unwrap()
+            .expect("openai provider seeded");
+        assert!(provider.api_key_set);
+        let resolved = crate::services::llm_resolver::resolve_provider_api_key(
+            &db,
+            Some(&encryption),
+            &provider,
+        )
+        .unwrap();
+        assert_eq!(resolved, Some("sk-from-env".to_string()));
+    }
+
+    /// Materialization never overwrites an explicitly-configured key.
+    #[tokio::test]
+    async fn materialize_does_not_clobber_existing_key() {
+        let db = make_db();
+        let encryption = test_encryption();
+        let platform = crate::platform::oss_platform_definition_for_grade(DeploymentGrade::Dev);
+        seed_providers_with_platform_definition(&db, &platform)
+            .await
+            .unwrap();
+
+        // User configures their own key.
+        let user_key = encryption.encrypt_string("sk-user-set").unwrap();
+        db.update_llm_provider(
+            DEFAULT_ORG_ID,
+            seed_ids::OPENAI_PROVIDER,
+            UpdateLlmProvider {
+                name: None,
+                provider_type: None,
+                base_url: None,
+                api_key_encrypted: Some(user_key),
+                status: None,
+                settings: None,
+            },
+        )
+        .await
+        .unwrap();
+
+        let result = seed_default_provider_keys_with_lookup(&db, &encryption, &platform, |ty| {
+            (ty == "openai").then(|| "sk-from-env".to_string())
+        })
+        .await
+        .unwrap();
+        assert_eq!(result.updated, 0);
+        assert_eq!(result.unchanged, 1);
+
+        let provider = db
+            .get_llm_provider(DEFAULT_ORG_ID, seed_ids::OPENAI_PROVIDER)
+            .await
+            .unwrap()
+            .unwrap();
+        let resolved = crate::services::llm_resolver::resolve_provider_api_key(
+            &db,
+            Some(&encryption),
+            &provider,
+        )
+        .unwrap();
+        assert_eq!(
+            resolved,
+            Some("sk-user-set".to_string()),
+            "user key must be preserved"
+        );
+    }
+
+    /// With no env key set, nothing is materialized (multitenant-safe default
+    /// even if the gate were somehow on).
+    #[tokio::test]
+    async fn materialize_no_env_key_is_noop() {
+        let db = make_db();
+        let encryption = test_encryption();
+        let platform = crate::platform::oss_platform_definition_for_grade(DeploymentGrade::Dev);
+        seed_providers_with_platform_definition(&db, &platform)
+            .await
+            .unwrap();
+
+        let result = seed_default_provider_keys_with_lookup(&db, &encryption, &platform, |_| None)
+            .await
+            .unwrap();
+        assert_eq!(result.updated, 0);
+
+        let provider = db
+            .get_llm_provider(DEFAULT_ORG_ID, seed_ids::OPENAI_PROVIDER)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(!provider.api_key_set);
     }
 
     // --- Harness seed data ---
