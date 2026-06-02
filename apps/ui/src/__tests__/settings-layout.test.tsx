@@ -123,7 +123,7 @@ describe("SettingsLayout", () => {
     expect(membersLink).toHaveClass("border-accent");
   });
 
-  it("has exactly 7 navigation items", () => {
+  it("has exactly 8 navigation items", () => {
     render(
       <SettingsLayout>
         <div>Test Content</div>
@@ -131,7 +131,7 @@ describe("SettingsLayout", () => {
     );
 
     const navLinks = screen.getAllByRole("link");
-    expect(navLinks).toHaveLength(7);
+    expect(navLinks).toHaveLength(8);
   });
 
   it("groups items under correct sections", () => {
@@ -152,6 +152,7 @@ describe("SettingsLayout", () => {
     expect(orgSection).toHaveTextContent("Organization");
     expect(orgSection).toHaveTextContent("LLM Providers");
     expect(orgSection).toHaveTextContent("Members");
+    expect(orgSection).toHaveTextContent("Features");
     expect(orgSection).toHaveTextContent("Payments");
     expect(orgSection).not.toHaveTextContent("Connections");
     expect(orgSection).not.toHaveTextContent("API Keys");
