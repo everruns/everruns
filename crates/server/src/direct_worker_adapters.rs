@@ -281,6 +281,7 @@ pub struct DirectWorkerAdapters {
     virtual_registry:
         Option<Arc<crate::domains::session_files::virtual_mount_registry::VirtualMountRegistry>>,
     org_rate_limiter: Option<Arc<crate::auth::rate_limit::OrgRateLimiter>>,
+    quota: crate::domains::session_files::limits::QuotaLimits,
 }
 
 impl DirectWorkerAdapters {
@@ -313,6 +314,7 @@ impl DirectWorkerAdapters {
             permission_resolver: Arc::new(everruns_core::DefaultPermissionResolver),
             virtual_registry: None,
             org_rate_limiter: None,
+            quota: crate::domains::session_files::limits::QuotaLimits::from_env(),
         }
     }
 
@@ -847,6 +849,16 @@ impl WorkerAdapters for DirectWorkerAdapters {
                 tracing::error!("Failed to check existing file: {}", e);
                 store_error("Failed to write file")
             })?;
+
+        // Quota check (TM-FS-008 / TM-DOS-005)
+        {
+            use crate::domains::session_files::limits::check_write_quota;
+            let incoming = content_bytes.len() as i64;
+            let existing_size = existing.as_ref().map(|f| f.size_bytes).unwrap_or(0);
+            check_write_quota(&self.db, session_id, incoming, existing_size, &self.quota)
+                .await
+                .map_err(|e| store_error(e.to_string()))?;
+        }
 
         let row = if existing.is_some() {
             let update = UpdateSessionFile {

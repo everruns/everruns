@@ -1662,6 +1662,11 @@ impl StorageBackend {
         dispatch!(self, session_directory_has_children, session_id, path)
     }
 
+    /// Sum of size_bytes for all non-directory files in a session.
+    pub async fn total_session_file_bytes(&self, session_id: Uuid) -> Result<i64> {
+        dispatch!(self, total_session_file_bytes, session_id)
+    }
+
     /// Load all non-directory files with content for a session (single query, for git commit).
     pub async fn load_all_session_files_with_content(
         &self,

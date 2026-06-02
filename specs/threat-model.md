@@ -356,7 +356,7 @@ Code references:
 | TM-FS-005 | Readonly file modification or deletion | Medium | `is_readonly` flag enforced; readonly files cannot be modified or deleted; recursive directory deletion blocked if subtree contains readonly files | MITIGATED |
 | TM-FS-006 | File content unencrypted at rest | Low | Stored as BYTEA in PostgreSQL; relies on infrastructure-level encryption (disk, TDE) | **ACCEPTED** |
 | TM-FS-007 | No file access audit log | Low | File reads/writes not logged; privacy tradeoff | **ACCEPTED** |
-| TM-FS-008 | Large file storage abuse | Medium | No per-session storage quota enforced at application level | **OPEN** |
+| TM-FS-008 | Large file storage abuse | Medium | Per-session and per-file byte quotas enforced in `SessionFileService` and `DirectWorkerAdapters`; configurable via `SESSION_FILE_MAX_BYTES` / `SESSION_FILE_SINGLE_MAX_BYTES` env vars (defaults: 500 MB/session, 100 MB/file) | MITIGATED |
 | TM-FS-009 | CLI `initial_files` hidden-path exfiltration | High | Three-layer policy in `crates/cli/src/commands/agents.rs`: hard-deny floor (`DENIED_DOT_ENTRIES`) blocks `.env`, `.ssh`, `.aws`, `.gnupg`, `.git`, etc. unconditionally; built-in `ALLOWED_DOT_ENTRIES` permits common dev assets (`.github`, `.vscode`, `.claude`, `.mcp.json`, etc.); per-agent `initial_files_allow_hidden` manifest field extends the allowlist but cannot bypass the hard-deny floor. Skipped paths emit a stderr warning. See `specs/cli.md` (Initial Files Hidden Path Policy). | MITIGATED |
 
 ### Mitigation Details
@@ -367,10 +367,12 @@ Path validated at three layers:
 2. **Database constraint:** `session_files_path_check` CHECK constraint
 3. **Unique constraint:** `(session_id, path)` prevents collision
 
-**TM-FS-008 — Storage Quota (OPEN):**
-No per-session or per-org storage limit on session files. An agent could create many large files.
-- **Recommendation:** Enforce per-session file count and total size limits.
-- **Priority:** Medium
+**TM-FS-008 — Storage Quota:**
+Per-session and per-file byte quotas are enforced at the application layer in both the HTTP API path (`SessionFileService::create_file` / `update_file`) and the agent tool path (`DirectWorkerAdapters::write_file`). Limits are configurable via env:
+- `SESSION_FILE_MAX_BYTES` — total bytes per session (default 500 MB)
+- `SESSION_FILE_SINGLE_MAX_BYTES` — per-file ceiling (default 100 MB)
+
+Writes that would exceed either limit fail with a clear error before any DB insert.
 
 ## 6. Session SQL Database (TM-SQL)
 
@@ -872,7 +874,7 @@ Everruns uses [bashkit](https://github.com/everruns/bashkit) (v0.2.1) as a sandb
 | TM-BASH-013 | eval/bash re-invocation escape | Medium | `eval` and `bash`/`sh` commands re-invoke the sandboxed interpreter, not real shell | MITIGATED |
 | TM-BASH-014 | File permission bypass | Low | `chmod` is a no-op; session filesystem has no permission model | **BY DESIGN** |
 | TM-BASH-015 | Host information disclosure | Low | `hostname` → "everruns"; `whoami` → "everruns"; `uname` returns sandboxed values | MITIGATED |
-| TM-BASH-016 | Write amplification via bash | Medium | No per-session storage quota on files written by bash (see TM-FS-008) | **OPEN** (see TM-FS-008) |
+| TM-BASH-016 | Write amplification via bash | Medium | Per-session and per-file byte quotas enforced in `DirectWorkerAdapters::write_file` (see TM-FS-008) | MITIGATED |
 
 ### Mitigation Details
 
@@ -935,7 +937,7 @@ When a bash script calls `bash` or `sh` or uses `eval`, bashkit re-invokes its o
 | TM-DOS-002 | Agent loop infinite iteration | High | Max 10 iterations per turn; configurable | MITIGATED |
 | TM-DOS-003 | SSE connection exhaustion | Medium | Global (10k), per-org (1k), per-session (5) RAII connection limits via `SseConnectionTracker`; HTTP/2 flow control windows tuned (2 MB/stream, 16 MB/connection) with adaptive sizing; connection cycling with ±20% jitter prevents thundering herd; HTTP/2 PING keepalive detects dead connections | MITIGATED |
 | TM-DOS-004 | Database connection pool exhaustion | Medium | sqlx connection pool with max_connections; timeouts on acquisition | MITIGATED |
-| TM-DOS-005 | Session file storage abuse | Medium | No per-session storage quota; large files stored as PostgreSQL BYTEA | **OPEN** (see TM-FS-008) |
+| TM-DOS-005 | Session file storage abuse | Medium | Per-session and per-file byte quotas enforced at the application layer (see TM-FS-008) | MITIGATED |
 | TM-DOS-006 | Durable task queue flooding | Medium | Per-workflow pending task limit (see TM-DURABLE-004) | MITIGATED |
 | TM-DOS-007 | Nested JSON depth in API input | Medium | Input validation rejects deeply nested structures | MITIGATED |
 | TM-DOS-008 | ReDoS via file grep endpoint | Medium | Regex pattern and path_pattern length capped (1 000 chars); NFA size capped via `RegexBuilder::size_limit` (512 KB); storage backends skip files > 512 KB before scanning; total request scan aborted above 5 MB | MITIGATED |
@@ -1308,7 +1310,7 @@ Even with per-secret scoping, an attacker who controls a previously-approved for
 | ~~TM-DOS-008~~ | ~~ReDoS via file grep endpoint~~ | ~~Medium~~ | Mitigated: pattern length capped at 1 000 chars; NFA compiled size capped at 512 KB via `RegexBuilder::size_limit`; per-file scan skipped above 512 KB; total scan aborted above 5 MB per request (`grep_session_files`, `service.rs`) |
 | TM-AGENT-007 | No per-iteration tool call limit | Medium | Cap tool calls per LLM response |
 | ~~TM-AGENT-012~~ | ~~Tool result size amplification~~ | ~~Medium~~ | Mitigated: 64 KiB hard limit via `OutputHardLimitHook` (EVE-225) |
-| TM-FS-008 | No session storage quota | Medium | Enforce per-session file size limits |
+| ~~TM-FS-008~~ | ~~No session storage quota~~ | ~~Medium~~ | Mitigated: per-session (500 MB) and per-file (100 MB) byte quotas enforced in `SessionFileService` and `DirectWorkerAdapters`; env-configurable (EVE-510) |
 | TM-TOOL-008 | Tool approval not enforced | Low | Implement HITL approval for requires_approval policy |
 | ~~TM-TOOL-009~~ | ~~No tool rate limiting~~ | ~~Medium~~ | Mitigated: per-org 1000 RPM via `OutboundToolRateLimiter` in `ActAtom` (EVE-514) |
 | TM-DOS-003 | SSE connection exhaustion | Medium | Global (10k), per-org (1k), per-session (5) limits enforced |
