@@ -24,6 +24,7 @@ mod llm;
 mod mcp_servers;
 mod memories;
 mod notifications;
+mod org_feature_flags;
 mod organizations;
 mod payments;
 mod principals;
@@ -139,6 +140,7 @@ pub struct InMemoryDatabase {
     agent_identity_connections: RwLock<HashMap<Uuid, AgentIdentityConnectionRow>>,
     // Organization settings (default model, etc.)
     org_settings: RwLock<HashMap<i64, OrganizationSettingsRow>>,
+    org_feature_flags: RwLock<HashMap<i64, HashMap<String, bool>>>,
     // Evals (user-facing behavioral tests)
     evals: RwLock<HashMap<Uuid, EvalRow>>,
     eval_cases: RwLock<HashMap<Uuid, EvalCaseRow>>,
@@ -226,6 +228,7 @@ impl Default for InMemoryDatabase {
             principals: RwLock::new(HashMap::new()),
             agent_identity_connections: RwLock::new(HashMap::new()),
             org_settings: RwLock::new(HashMap::new()),
+            org_feature_flags: RwLock::new(HashMap::new()),
             evals: RwLock::new(HashMap::new()),
             eval_cases: RwLock::new(HashMap::new()),
             eval_runs: RwLock::new(HashMap::new()),

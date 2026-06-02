@@ -3,7 +3,16 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { Server, Key, Users, Building2, Cable, User, WalletCards } from "lucide-react";
+import {
+  Server,
+  Key,
+  Users,
+  Building2,
+  Cable,
+  User,
+  WalletCards,
+  FlaskConical,
+} from "lucide-react";
 
 interface NavItem {
   name: string;
@@ -38,6 +47,12 @@ const settingsSections: NavSection[] = [
         href: "/settings/members",
         icon: Users,
         description: "View and manage team members",
+      },
+      {
+        name: "Features",
+        href: "/settings/features",
+        icon: FlaskConical,
+        description: "Enable optional and experimental capabilities",
       },
       {
         name: "Payments",

@@ -70,6 +70,46 @@ async fn test_feature_flags_endpoint() {
 }
 
 #[tokio::test]
+async fn test_org_feature_flags_opt_in() {
+    let server = TestServer::new().await;
+    let org_id = "org_00000000000000000000000000000001";
+
+    let settings: serde_json::Value = server
+        .get(&format!("/v1/orgs/{org_id}/feature-flags/settings"))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+
+    let flags = settings["flags"].as_array().expect("flags array");
+    let notifications = flags
+        .iter()
+        .find(|f| f["name"] == "notifications")
+        .expect("notifications flag");
+    assert_eq!(
+        notifications["system_enabled"],
+        serde_json::Value::Bool(false)
+    );
+    assert_eq!(notifications["org_enabled"], serde_json::Value::Bool(false));
+
+    let patched: serde_json::Value = server
+        .patch(
+            &format!("/v1/orgs/{org_id}/feature-flags"),
+            serde_json::json!({ "flags": { "notifications": true } }),
+        )
+        .await
+        .assert_status(StatusCode::BAD_REQUEST)
+        .json();
+    assert!(patched.get("detail").is_some());
+
+    let effective: serde_json::Value = server
+        .get(&format!("/v1/orgs/{org_id}/feature-flags"))
+        .await
+        .assert_status(StatusCode::OK)
+        .json();
+    assert_eq!(effective["notifications"], serde_json::Value::Bool(false));
+}
+
+#[tokio::test]
 async fn test_notifications_routes_disabled_by_default() {
     let server = TestServer::new().await;
 

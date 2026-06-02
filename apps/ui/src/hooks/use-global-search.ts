@@ -212,6 +212,12 @@ const NAVIGATION_PAGES: NavigationPage[] = [
     keywords: ["team", "invite"],
   },
   {
+    title: "Settings > Features",
+    href: "/settings/features",
+    icon: Settings,
+    keywords: ["feature", "flags", "experimental", "opt-in", "beta"],
+  },
+  {
     title: "Durable Execution",
     href: "/durable",
     icon: Cog,

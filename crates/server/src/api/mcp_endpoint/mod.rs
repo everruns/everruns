@@ -851,6 +851,19 @@ async fn resolve_org_by_id(
 
     let role = org_row.role.parse::<OrgRole>().unwrap_or(OrgRole::Member);
 
+    let feature_flags = crate::services::org_feature_flags::resolve_org_feature_flags(
+        &state.db,
+        org_row.org_id,
+        &state.auth.system_feature_flags,
+    )
+    .await
+    .unwrap_or_else(|_| {
+        everruns_core::FeatureFlags::for_org(
+            &state.auth.system_feature_flags,
+            &std::collections::HashMap::new(),
+        )
+    });
+
     Ok(ResolvedOrg {
         org_id: org_row.org_id,
         public_id: org_row.public_id.clone(),
@@ -858,6 +871,7 @@ async fn resolve_org_by_id(
         user_id: Some(auth_user.id),
         role,
         is_platform_user: auth_user.is_platform_user,
+        feature_flags,
     })
 }
 
@@ -1473,6 +1487,7 @@ mod org_override_scope_tests {
             user_id: Some(Uuid::new_v4()),
             role: OrgRole::Member,
             is_platform_user: false,
+            feature_flags: everruns_core::FeatureFlags::default(),
         }
     }
 

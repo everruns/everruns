@@ -477,10 +477,11 @@ impl ServerAppBuilder {
                 }
             }
         };
-        let auth_state =
-            auth::AuthState::new(auth_config.clone(), auth_backend.clone()).with_db(db.clone());
         let deployment_grade = everruns_core::DeploymentGrade::from_env();
         let feature_flags = everruns_core::FeatureFlags::from_env(&deployment_grade);
+        let auth_state = auth::AuthState::new(auth_config.clone(), auth_backend.clone())
+            .with_db(db.clone())
+            .with_system_feature_flags(feature_flags.clone());
         let internal_feature_flags = everruns_core::InternalFeatureFlags::from_env();
         let notifications_enabled = feature_flags.notifications;
         tracing::info!(?feature_flags, "Feature flags computed");
@@ -1161,6 +1162,13 @@ impl ServerAppBuilder {
             })
             .merge(api::skills::routes(skills_state))
             .merge(api::organizations::routes(organizations_state))
+            .merge(api::org_feature_flags::routes(
+                api::org_feature_flags::AppState::new(
+                    db.clone(),
+                    auth_state.clone(),
+                    feature_flags.clone(),
+                ),
+            ))
             .merge(api::volumes::routes(volumes_state))
             .merge(api::memory_stores::routes(memory_stores_state))
             .merge(api::knowledge_bases::routes(knowledge_bases_state))
