@@ -1,6 +1,6 @@
 # MCP Server Specification
 
-> Part of the [MCP spec family](mcp.md). This document covers MCP server registration, CRUD API, tool naming, discovery, and execution.
+> Part of the [MCP spec family](mcp.md). This document covers MCP server registration, CRUD API, tool naming, discovery, and execution. For MCP-client support in the in-process runtime (shared `everruns-mcp` crate, HTTP + optional stdio transport, pluggable auth), see [runtime-mcp.md](runtime-mcp.md).
 
 ## Abstract
 
