@@ -2405,6 +2405,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-mcp"
+version = "0.8.36"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "everruns-core",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "wiremock",
+]
+
+[[package]]
 name = "everruns-openai"
 version = "0.8.36"
 dependencies = [
