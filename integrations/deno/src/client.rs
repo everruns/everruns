@@ -507,7 +507,22 @@ impl DenoClient {
             "wss://{}.{}/api/v3/sandbox/{}/connect",
             region, self.sandbox_base_domain, sandbox_id
         );
-        self.connect_websocket(url, None).await
+        // Retry on 404: Deno Deploy may not expose the sandbox immediately after
+        // the creation websocket closes, returning DEPLOYMENT_NOT_FOUND transiently.
+        let mut last_err = String::new();
+        let mut delay_ms = 500u64;
+        for attempt in 0..3u8 {
+            if attempt > 0 {
+                tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+                delay_ms *= 2;
+            }
+            match self.connect_websocket(url.clone(), None).await {
+                Ok(session) => return Ok(session),
+                Err(e) if e.contains("HTTP error: 404") => last_err = e,
+                Err(e) => return Err(e),
+            }
+        }
+        Err(last_err)
     }
 
     async fn connect_websocket(
