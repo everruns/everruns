@@ -2039,6 +2039,7 @@ dependencies = [
  "everruns-runtime",
  "ratatui",
  "ratatui-textarea",
+ "serde",
  "serde_json",
  "similar 3.1.1",
  "tempfile",

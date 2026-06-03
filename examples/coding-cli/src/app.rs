@@ -100,6 +100,11 @@ const COMMANDS: &[CommandSpec] = &[
         description: "show workspace root",
     },
     CommandSpec {
+        name: "mcp",
+        usage: "/mcp",
+        description: "list configured MCP servers (.mcp.json)",
+    },
+    CommandSpec {
         name: "clear",
         usage: "/clear",
         description: "clear in-memory transcript (not terminal scrollback)",
@@ -515,6 +520,18 @@ impl App {
                     "workspace root: {}",
                     self.startup.workspace_root.display()
                 ));
+            }
+            "mcp" => {
+                if self.startup.mcp_server_names.is_empty() {
+                    self.push_system(
+                        "no MCP servers configured (add an .mcp.json to the workspace root)".into(),
+                    );
+                } else {
+                    self.push_system(format!(
+                        "MCP servers: {}",
+                        self.startup.mcp_server_names.join(", ")
+                    ));
+                }
             }
             "clear" => {
                 self.lines.clear();

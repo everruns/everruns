@@ -61,7 +61,25 @@ and OpenAI both do). No capability needed.
   Ollama (`llama3.2`), otherwise falls back to `llmsim` (offline). OpenAI is
   preferred when multiple provider env vars are present so the default model
   stays `gpt-5.5`.
-- **Slash commands** (TUI): `/help`, `/tools`, `/cwd`, `/model <provider>/<id>`, `/clear`, `/quit`.
+- **MCP servers** via a workspace `.mcp.json` (remote HTTP). Tools from each
+  configured server are discovered and become available to the agent with
+  `mcp_<server>__<tool>` names. Example `.mcp.json` at the workspace root:
+
+  ```json
+  {
+    "mcpServers": {
+      "docs": {
+        "type": "http",
+        "url": "https://example.com/mcp",
+        "headers": { "Authorization": "Bearer <token>" }
+      }
+    }
+  }
+  ```
+
+  See `specs/runtime-mcp.md`. The CLI builds with the runtime's `mcp-stdio`
+  feature so local-process MCP servers can be added as that path lands.
+- **Slash commands** (TUI): `/help`, `/tools`, `/cwd`, `/mcp`, `/model <provider>/<id>`, `/clear`, `/quit`.
   Typing `/` opens suggestions; Tab accepts the first suggestion. `/model`
   with no argument shows the current model and suggested model IDs, while
   `/model openai/gpt-5.5`, `/model anthropic/claude-sonnet-4-5`,

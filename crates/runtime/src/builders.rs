@@ -690,6 +690,13 @@ impl SingleSessionBuilder {
         self
     }
 
+    /// Configure session-scoped MCP servers (specs/runtime-mcp.md). Discovered
+    /// and executed by the runtime alongside built-in tools.
+    pub fn session_mcp_servers(mut self, mcp_servers: ScopedMcpServers) -> Self {
+        self.session = self.session.mcp_servers(mcp_servers);
+        self
+    }
+
     pub fn harness_display_name(mut self, display_name: impl Into<String>) -> Self {
         self.harness = self.harness.display_name(display_name);
         self
