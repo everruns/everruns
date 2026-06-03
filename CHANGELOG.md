@@ -9,9 +9,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
-### Changed
+## [0.8.37] - 2026-06-03
 
-- **API keys renamed to personal access tokens** - User-scoped auth credentials are now consistently called "personal access tokens" across the table (`personal_access_tokens`), API (`/v1/auth/personal-access-tokens`), UI (Settings > Personal access tokens), CLI, specs, and docs, making it explicit they are tied to a user (not an organization). Tokens are now prefixed `evr_pat_` instead of `evr_`; existing tokens are invalidated and must be re-created (re-run `everruns login`).
+### Highlights
+
+- **MCP client in the runtime** - New `everruns-mcp` crate ships a first-class MCP client with stdio transport, wired into the runtime and coding-CLI ([#2045](https://github.com/everruns/everruns/pull/2045)).
+- **API keys renamed to personal access tokens** - User-scoped auth credentials are now consistently called "personal access tokens" across the table (`personal_access_tokens`), API (`/v1/auth/personal-access-tokens`), UI (Settings > Personal access tokens), CLI, specs, and docs. Tokens are now prefixed `evr_pat_` instead of `evr_`; existing tokens are invalidated and must be re-created (re-run `everruns login`) ([#2043](https://github.com/everruns/everruns/pull/2043)).
+- **Security hardening** - SSRF DNS pinning for MCP server execution (EVE-516), ReDoS hardening for grep-based tool call regex (EVE-517), distributed + per-account rate limiting (EVE-513), and fail-closed LLM key resolution with env fallback removed (EVE-511).
+- **Org-level controls** - Feature flags with opt-in UI and API, per-org soft caps on concurrent sessions and active turns (EVE-508), per-org outbound tool-call rate limiting, and concurrency/volume caps for eval runs (EVE-509).
+- **User-defined hooks** - Composable bash executor for lifecycle hooks; `user_prompt_submit` and `turn_end` events now available ([#2022](https://github.com/everruns/everruns/pull/2022)).
+- **Session file quotas** - Per-file and per-session byte quotas enforced (EVE-510).
+
+### What's Changed
+
+- feat(mcp): MCP client in the runtime (everruns-mcp crate, stdio, coding-CLI) ([#2045](https://github.com/everruns/everruns/pull/2045)) by [@chaliy](https://github.com/chaliy)
+- fix(deno): retry connect_sandbox on 404 DEPLOYMENT_NOT_FOUND ([#2044](https://github.com/everruns/everruns/pull/2044)) by [@chaliy](https://github.com/chaliy)
+- refactor(auth): rename API keys to personal access tokens ([#2043](https://github.com/everruns/everruns/pull/2043)) by [@chaliy](https://github.com/chaliy)
+- feat(seed): materialize DEFAULT_*_API_KEY for single-tenant/dev ([#2042](https://github.com/everruns/everruns/pull/2042)) by [@chaliy](https://github.com/chaliy)
+- feat(feature-flags): org-level feature flag opt-in UI and API by [@chaliy](https://github.com/chaliy)
+- feat(sessions): add per-org soft cap on concurrent sessions and active turns (EVE-508) by [@chaliy](https://github.com/chaliy)
+- docs(user-hooks): add user_prompt_submit and turn_end examples by [@chaliy](https://github.com/chaliy)
+- fix(runtime): keep OpenAI tool call/result pairs during history trimming (EVE-519) by [@chaliy](https://github.com/chaliy)
+- feat(evals): concurrency and volume caps for eval runs (EVE-509) by [@chaliy](https://github.com/chaliy)
+- feat(session-files): enforce per-file and per-session byte quotas (EVE-510) by [@chaliy](https://github.com/chaliy)
+- feat(capabilities): wire the four remaining user-hook lifecycle events ([#2032](https://github.com/everruns/everruns/pull/2032)) by [@chaliy](https://github.com/chaliy)
+- feat(security): SSRF DNS pinning for MCP server execution (EVE-516) by [@chaliy](https://github.com/chaliy)
+- fix(security): harden grep-based tool call regex against ReDoS (EVE-517) by [@chaliy](https://github.com/chaliy)
+- feat(e2b,deno): BYO-only sandbox credentials (EVE-505) ([#2033](https://github.com/everruns/everruns/pull/2033)) by [@chaliy](https://github.com/chaliy)
+- feat(rate-limit): per-org outbound tool-call rate limiting (TM-TOOL-009) by [@chaliy](https://github.com/chaliy)
+- feat(apps): schedule channel rate limits (EVE-507) by [@chaliy](https://github.com/chaliy)
+- feat(feature-flags): agent_delegation feature flag (EVE-506) by [@chaliy](https://github.com/chaliy)
+- feat(security): distributed + per-account rate limiting (EVE-513) by [@chaliy](https://github.com/chaliy)
+- feat(llm): fail-closed key resolution, remove env fallback (EVE-511) by [@chaliy](https://github.com/chaliy)
+- feat(capabilities): user-defined hooks via composable bash executor ([#2022](https://github.com/everruns/everruns/pull/2022)) by [@chaliy](https://github.com/chaliy)
+- feat(plugin): add production everruns plugin by [@chaliy](https://github.com/chaliy)
+- feat(core): class-aware tool execution scheduler for ActAtom ([#2020](https://github.com/everruns/everruns/pull/2020)) by [@chaliy](https://github.com/chaliy)
+- feat(ui): smooth chat streaming text by [@chaliy](https://github.com/chaliy)
+- test(runtime): end-to-end ActAtom scheduler integration tests ([#2021](https://github.com/everruns/everruns/pull/2021)) by [@chaliy](https://github.com/chaliy)
+- fix(openapi): preserve enum refs for schema examples ([#2014](https://github.com/everruns/everruns/pull/2014)) by [@chaliy](https://github.com/chaliy)
+- fix(events): correct SSE id cursor and voice event docs ([#2012](https://github.com/everruns/everruns/pull/2012)) by [@chaliy](https://github.com/chaliy)
+- fix(api): fail-close llm metadata defaults ([#2008](https://github.com/everruns/everruns/pull/2008)) by [@chaliy](https://github.com/chaliy)
+- fix(voice): bridge realtime speech to durable chat by [@chaliy](https://github.com/chaliy)
+- fix(ui): hide work log for direct answers by [@chaliy](https://github.com/chaliy)
+- fix(mcp): extract JSON from SSE response body on tools fetch by [@chaliy](https://github.com/chaliy)
+- fix(core): disable direct egress redirect following by [@chaliy](https://github.com/chaliy)
+- fix(api): align session cancel action with command behavior by [@chaliy](https://github.com/chaliy)
+- fix(api): delegate allowed_actions from ResourceWithCounts by [@chaliy](https://github.com/chaliy)
+- fix(api): correct cancel turn OpenAPI success example by [@chaliy](https://github.com/chaliy)
+- fix(core): avoid unwrapping user _raw_output_scalar keys by [@chaliy](https://github.com/chaliy)
+- fix(coding-cli): replay reason.item signatures on resume by [@chaliy](https://github.com/chaliy)
+- fix(cli): clarify /clear command scope in description by [@chaliy](https://github.com/chaliy)
+- fix(plugin): use neutral Codex marketplace label by [@chaliy](https://github.com/chaliy)
+- chore(specs): resolve TM-TENANT-008 — GET /v1/users already org-scoped (EVE-515) by [@chaliy](https://github.com/chaliy)
+- chore(rust): upgrade toolchain to 1.96 by [@chaliy](https://github.com/chaliy)
 
 ## [0.8.36] - 2026-05-29
 
