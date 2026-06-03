@@ -2,8 +2,14 @@
 name = "everruns-mcp"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository.workspace = true
+documentation = "https://docs.rs/everruns-mcp"
 description = "Transport-agnostic MCP (Model Context Protocol) client shared by the Everruns runtime, worker, and server."
+readme = "README.md"
 
 [features]
 default = []
@@ -13,7 +19,8 @@ default = []
 stdio = []
 
 [dependencies]
-everruns-core = { path = "../core" }
+# Versioned workspace dep (not a bare path) so the crate is publishable.
+everruns-core.workspace = true
 tokio.workspace = true
 serde.workspace = true
 serde_json.workspace = true

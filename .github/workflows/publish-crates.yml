@@ -136,6 +136,9 @@ jobs:
                   "everruns-openui",
                   "everruns-a2ui",
               ],
+              "crates/mcp/Cargo.toml": [
+                  "everruns-core",
+              ],
               "crates/runtime/Cargo.toml": [
                   "everruns-core",
               ],
@@ -185,6 +188,7 @@ jobs:
             everruns-openui
             everruns-a2ui
             everruns-core
+            everruns-mcp
             everruns-openai
             everruns-anthropic
             everruns-integrations-duckduckgo
