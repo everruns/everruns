@@ -2517,6 +2517,7 @@ dependencies = [
  "everruns-integrations-parallel",
  "everruns-integrations-sprites",
  "everruns-internal-protocol",
+ "everruns-mcp",
  "everruns-sdk",
  "everruns-session-sqldb",
  "everruns-worker",

@@ -10,7 +10,7 @@ This document defines the data model and API for MCP (Model Context Protocol) se
 
 ### McpServer
 
-Configuration for a remote MCP server connection. Currently supports only HTTP (Streamable HTTP) transport.
+Configuration for an organization-managed remote MCP server connection. Organization MCP servers are always remote HTTP (Streamable HTTP); stdio is rejected on create/update and is only available to single-tenant runtime/CLI hosts (see [runtime-mcp.md](runtime-mcp.md)).
 
 See `crates/core/src/mcp_server.rs` for the full `McpServer` struct definition.
 
@@ -25,14 +25,14 @@ See `crates/core/src/mcp_server.rs` for the full `McpServer` struct definition.
 
 ### Transport Types
 
-Currently supported transport types:
+Supported transport types:
 
 | Type | Description |
 |------|-------------|
 | `http` | HTTP-based MCP transport (Streamable HTTP) |
+| `stdio` | Local-process transport — runtime/CLI hosts only; rejected by the hosted control plane (see [runtime-mcp.md](runtime-mcp.md)) |
 
 Future transport types (not yet implemented):
-- `stdio` - Local process with stdio communication
 - `websocket` - WebSocket-based transport
 
 ### Scoped `mcpServers`
@@ -59,7 +59,7 @@ The shape matches the remote-server subset of `.mcp.json`:
 ```
 
 Constraints:
-- Only remote HTTP MCP servers are supported in scoped config.
+- In the hosted control plane, only remote HTTP scoped servers are accepted; stdio scoped servers are rejected by validation. Single-tenant runtime/CLI hosts may also use stdio (see [runtime-mcp.md](runtime-mcp.md)).
 - Names must be unique after Everruns MCP tool-name sanitization.
 - URLs use the same SSRF-safe validation as organization-managed MCP servers.
 - Scoped servers are not stored as org capabilities and do not appear in org MCP CRUD APIs.

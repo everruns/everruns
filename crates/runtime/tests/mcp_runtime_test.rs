@@ -12,8 +12,8 @@ use everruns_core::llm_driver_registry::DriverRegistry;
 use everruns_core::llmsim_driver::LlmSimConfig;
 use everruns_core::{
     CapabilityRegistry, EgressRequest, EgressResponse, EgressResult, EgressService,
-    EgressStreamResponse, LlmProviderType, McpServerAuthMode, McpServerTransportType,
-    ModelWithProvider, PlatformDefinition, ScopedMcpServer, ScopedMcpServers, ToolCall,
+    EgressStreamResponse, LlmProviderType, ModelWithProvider, PlatformDefinition, ScopedMcpServer,
+    ScopedMcpServers, ToolCall,
 };
 use everruns_runtime::{AgentBuilder, HarnessBuilder, InProcessRuntimeBuilder, SessionBuilder};
 use serde_json::{Value, json};
@@ -90,12 +90,8 @@ fn scoped_servers() -> ScopedMcpServers {
     servers.insert(
         "docs".to_string(),
         ScopedMcpServer {
-            transport_type: McpServerTransportType::Http,
             url: FAKE_URL.to_string(),
-            headers: Default::default(),
-            auth_mode: McpServerAuthMode::None,
-            oauth_provider_id: None,
-            tool_discovery: true,
+            ..Default::default()
         },
     );
     servers

@@ -11,8 +11,8 @@ use std::sync::Arc;
 
 use everruns_core::capabilities::Capability;
 use everruns_core::{
-    Agent, Harness, McpCapability, ScopedMcpServer, ScopedMcpServers, Session, ToolDefinition,
-    merge_scoped_mcp_servers,
+    Agent, Harness, McpCapability, McpServerTransportType, ScopedMcpServer, ScopedMcpServers,
+    Session, ToolDefinition, merge_scoped_mcp_servers,
 };
 use everruns_mcp::{McpClient, McpConnection, McpEndpoint, McpExecutor, StaticConnectionResolver};
 use uuid::Uuid;
@@ -43,25 +43,55 @@ struct ResolvedServer {
 fn resolve_servers(servers: &ScopedMcpServers) -> Vec<ResolvedServer> {
     servers
         .iter()
-        .map(|(name, server)| ResolvedServer {
-            name: name.clone(),
-            connection: McpConnection {
+        .filter_map(|(name, server)| {
+            let endpoint = endpoint_for(name, server)?;
+            Some(ResolvedServer {
                 name: name.clone(),
-                endpoint: endpoint_for(server),
-                auth_mode: server.auth_mode.clone(),
-                oauth_provider_id: server.oauth_provider_id.clone(),
-            },
-            tool_discovery: server.tool_discovery,
+                connection: McpConnection {
+                    name: name.clone(),
+                    endpoint,
+                    auth_mode: server.auth_mode.clone(),
+                    oauth_provider_id: server.oauth_provider_id.clone(),
+                },
+                tool_discovery: server.tool_discovery,
+            })
         })
         .collect()
 }
 
-fn endpoint_for(server: &ScopedMcpServer) -> McpEndpoint {
-    // `ScopedMcpServer.transport_type` only has an HTTP variant today.
-    McpEndpoint::Http {
-        url: server.url.clone(),
-        headers: server.headers.clone(),
+/// Map a scoped server to a transport endpoint. Returns `None` (and logs) for
+/// servers this build cannot serve — e.g. a stdio server when the `mcp-stdio`
+/// feature is off, keeping stdio out of hosted builds (specs/runtime-mcp.md D2).
+fn endpoint_for(name: &str, server: &ScopedMcpServer) -> Option<McpEndpoint> {
+    match server.transport_type {
+        McpServerTransportType::Http => Some(McpEndpoint::Http {
+            url: server.url.clone(),
+            headers: server.headers.clone(),
+        }),
+        McpServerTransportType::Stdio => stdio_endpoint(name, server),
     }
+}
+
+#[cfg(feature = "mcp-stdio")]
+fn stdio_endpoint(name: &str, server: &ScopedMcpServer) -> Option<McpEndpoint> {
+    let Some(command) = server.command.clone() else {
+        tracing::warn!(server = %name, "stdio MCP server ignored: missing `command`");
+        return None;
+    };
+    Some(McpEndpoint::Stdio {
+        command,
+        args: server.args.clone(),
+        env: server.env.clone(),
+    })
+}
+
+#[cfg(not(feature = "mcp-stdio"))]
+fn stdio_endpoint(name: &str, _server: &ScopedMcpServer) -> Option<McpEndpoint> {
+    tracing::warn!(
+        server = %name,
+        "stdio MCP server ignored: runtime built without the `mcp-stdio` feature"
+    );
+    None
 }
 
 /// Discover tool definitions for all scoped servers with `tool_discovery`
@@ -110,4 +140,83 @@ pub(crate) fn build_executor(
     }
     let resolver = Arc::new(StaticConnectionResolver::from_connections(connections));
     Some(Arc::new(McpExecutor::new(client, resolver)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn servers_with(name: &str, server: ScopedMcpServer) -> ScopedMcpServers {
+        let mut servers = ScopedMcpServers::default();
+        servers.insert(name.to_string(), server);
+        servers
+    }
+
+    #[test]
+    fn http_server_maps_to_http_endpoint() {
+        let servers = servers_with(
+            "docs",
+            ScopedMcpServer {
+                url: "https://example.com/mcp".into(),
+                ..Default::default()
+            },
+        );
+        let resolved = resolve_servers(&servers);
+        assert_eq!(resolved.len(), 1);
+        assert!(matches!(
+            resolved[0].connection.endpoint,
+            McpEndpoint::Http { .. }
+        ));
+    }
+
+    #[cfg(feature = "mcp-stdio")]
+    #[test]
+    fn stdio_server_maps_to_stdio_endpoint_when_feature_enabled() {
+        let servers = servers_with(
+            "fs",
+            ScopedMcpServer {
+                transport_type: McpServerTransportType::Stdio,
+                command: Some("mcp-server-filesystem".into()),
+                args: vec!["/work".into()],
+                ..Default::default()
+            },
+        );
+        let resolved = resolve_servers(&servers);
+        assert_eq!(resolved.len(), 1);
+        match &resolved[0].connection.endpoint {
+            McpEndpoint::Stdio { command, args, .. } => {
+                assert_eq!(command, "mcp-server-filesystem");
+                assert_eq!(args, &["/work".to_string()]);
+            }
+            other => panic!("expected stdio endpoint, got {other:?}"),
+        }
+    }
+
+    #[cfg(feature = "mcp-stdio")]
+    #[test]
+    fn stdio_server_without_command_is_skipped() {
+        let servers = servers_with(
+            "fs",
+            ScopedMcpServer {
+                transport_type: McpServerTransportType::Stdio,
+                command: None,
+                ..Default::default()
+            },
+        );
+        assert!(resolve_servers(&servers).is_empty());
+    }
+
+    #[cfg(not(feature = "mcp-stdio"))]
+    #[test]
+    fn stdio_server_is_skipped_without_feature() {
+        let servers = servers_with(
+            "fs",
+            ScopedMcpServer {
+                transport_type: McpServerTransportType::Stdio,
+                command: Some("mcp-server-filesystem".into()),
+                ..Default::default()
+            },
+        );
+        assert!(resolve_servers(&servers).is_empty());
+    }
 }

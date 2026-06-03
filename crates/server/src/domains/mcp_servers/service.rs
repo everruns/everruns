@@ -18,9 +18,8 @@ use anyhow::{Result, anyhow};
 use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 use chrono::{DateTime, Utc};
 use everruns_core::{
-    Caller, DirectEgressService, EgressRequest, EgressRequestKind, EgressService, McpServer,
-    McpServerAuthMode, McpServerStatus, McpServerTransportType, McpToolDefinition,
-    McpToolsListRequest, McpToolsListResponse, mcp_oauth_provider_id_for_uuid,
+    Caller, DirectEgressService, EgressService, McpServer, McpServerAuthMode, McpServerStatus,
+    McpServerTransportType, McpToolDefinition, mcp_oauth_provider_id_for_uuid,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -28,15 +27,10 @@ use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
 
-use everruns_core::validate_url_dns_pinned;
-
 use crate::domains::mcp_servers::types::{CreateMcpServerRequest, UpdateMcpServerRequest};
 
 /// How long cached tools are considered fresh (1 hour)
 const TOOL_CACHE_TTL: Duration = Duration::from_secs(3600);
-
-/// HTTP client timeout for MCP server calls
-const MCP_CLIENT_TIMEOUT: Duration = Duration::from_secs(30);
 
 pub struct McpServerService {
     db: Arc<StorageBackend>,
@@ -143,6 +137,11 @@ impl McpServerService {
     }
 
     pub async fn create(&self, caller: &Caller, req: CreateMcpServerRequest) -> Result<McpServer> {
+        // Org-managed MCP servers are always remote; stdio is reserved for
+        // single-tenant runtime/CLI hosts (specs/runtime-mcp.md D2).
+        if req.transport_type.is_local() {
+            anyhow::bail!("stdio MCP servers are not supported for organization MCP servers");
+        }
         let auth_mode = req.auth_mode.clone().unwrap_or_else(|| {
             if req.api_key.is_some() {
                 McpServerAuthMode::ApiKey
@@ -265,6 +264,9 @@ impl McpServerService {
             && !matches!(existing.status.as_str(), "active" | "disabled")
         {
             anyhow::bail!("Archived or deleted MCP servers cannot be edited");
+        }
+        if req.transport_type.as_ref().is_some_and(|t| t.is_local()) {
+            anyhow::bail!("stdio MCP servers are not supported for organization MCP servers");
         }
         let existing_row = self.db.get_mcp_server(caller.org_id, id).await?;
         let existing_row = existing_row.ok_or_else(|| anyhow!("MCP server not found"))?;
@@ -616,79 +618,17 @@ pub struct McpServerResolved {
     pub headers: HashMap<String, String>,
 }
 
-/// Fetch tools from an MCP server using JSON-RPC over HTTP via the platform
-/// `EgressService` (spec: `specs/egress.md`).
+/// Fetch tools from an MCP server using JSON-RPC over HTTP. Delegates to the
+/// shared `everruns-mcp` client so SSRF validation and SSE/JSON handling are
+/// not duplicated (specs/runtime-mcp.md D5).
 pub(crate) async fn fetch_mcp_tools(
     egress_service: &dyn EgressService,
     url: &str,
     api_key: Option<&str>,
     headers: &HashMap<String, String>,
 ) -> Result<Vec<McpToolDefinition>> {
-    // Re-validate URL with DNS resolution and return resolved addrs for pinning
-    // (TM-TOOL-018). The addrs are carried into the EgressRequest so
-    // DirectEgressService connects to the validated IPs, closing the TOCTOU gap.
-    let (validated_url, resolved_addrs) = validate_url_dns_pinned(url)
-        .await
-        .map_err(|e| anyhow!("MCP server URL blocked: {}", e))?;
-    let pin_host = validated_url.host_str().unwrap_or("").to_string();
-
-    let request_body = serde_json::to_vec(&McpToolsListRequest::default())?;
-
-    let mut egress_request = EgressRequest::new("POST", url, EgressRequestKind::Mcp)
-        .pinned_addrs(pin_host, resolved_addrs)
-        .header("Content-Type", "application/json")
-        .header("Accept", "application/json, text/event-stream")
-        .timeout_ms(MCP_CLIENT_TIMEOUT.as_millis() as u64)
-        .body(request_body);
-
-    if let Some(key) = api_key {
-        egress_request = egress_request.header("Authorization", format!("Bearer {}", key));
-    }
-    for (name, value) in headers {
-        egress_request = egress_request.header(name, value);
-    }
-
-    let response = egress_service
-        .send(egress_request)
-        .await
-        .map_err(|e| anyhow!("MCP server egress error: {}", e))?;
-
-    if !(200..300).contains(&response.status) {
-        return Err(anyhow!(
-            "MCP server returned error status: {}",
-            response.status
-        ));
-    }
-
-    let response_text = String::from_utf8(response.body)?;
-    let json_str = extract_json_from_response(&response_text)
-        .ok_or_else(|| anyhow!("SSE response missing data line"))?;
-    let mcp_response: McpToolsListResponse = serde_json::from_str(json_str)?;
-
-    if let Some(error) = mcp_response.error {
-        return Err(anyhow!(
-            "MCP server error: {} ({})",
-            error.message,
-            error.code
-        ));
-    }
-
-    let result = mcp_response
-        .result
-        .ok_or_else(|| anyhow!("MCP server returned empty result"))?;
-
-    Ok(result.tools)
-}
-
-fn extract_json_from_response(response_text: &str) -> Option<&str> {
-    if response_text.starts_with("event:") || response_text.contains("\ndata:") {
-        response_text
-            .lines()
-            .find(|line| line.starts_with("data:"))
-            .map(|line| line.trim_start_matches("data:").trim())
-    } else {
-        Some(response_text.trim())
-    }
+    let credential = api_key.map(everruns_mcp::McpCredential::bearer);
+    everruns_mcp::http_list_tools(egress_service, url, headers, credential.as_ref()).await
 }
 
 #[cfg(test)]
@@ -715,23 +655,8 @@ mod tests {
         )
     }
 
-    #[test]
-    fn extract_json_from_sse_response() {
-        let response =
-            "event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[]}}\n\n";
-        let extracted = super::extract_json_from_response(response).unwrap();
-        assert!(extracted.starts_with("{\"jsonrpc\""));
-    }
-
-    #[test]
-    fn extract_json_from_plain_json_response() {
-        let response = " {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[]}} ";
-        let extracted = super::extract_json_from_response(response).unwrap();
-        assert_eq!(
-            extracted,
-            "{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[]}}"
-        );
-    }
+    // SSE/JSON extraction is now covered by `everruns-mcp` (the shared client);
+    // see crates/mcp/src/result.rs tests.
 
     #[tokio::test]
     async fn decrypt_api_key_returns_none_when_no_key_set() {

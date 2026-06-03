@@ -264,7 +264,33 @@ same shape) so users configure MCP the way every other MCP client expects.
 | Scoped types (`command`/`args`/`env`, `Stdio` variant) | `crates/core/src/mcp_server.rs` |
 | Runtime discovery | `crates/runtime/src/runtime.rs` (replace `vec![]`), new `RuntimeMcpRegistry` |
 | Runtime execution | `crates/runtime/src/host.rs::execute_act_activity` (composite executor) |
-| Adapter hook | `RuntimeHostAdapter::mcp_runtime()` |
+| Adapter hook | `RuntimeHostAdapter::mcp_executor()` |
 | Coding CLI | `examples/coding-cli` (`.mcp.json`, `/mcp`, auth provider) |
-</content>
-</invoke>
+
+## Implementation status
+
+Landed:
+
+- `everruns-mcp` crate: `McpTransport` (HTTP always-on; stdio behind `stdio`),
+  `McpAuthProvider`, `McpClient`, `McpExecutor`/`CompositeToolExecutor`, and
+  free `http_*` functions for `&dyn EgressService` callers.
+- Runtime (D4): `InProcessRuntime` discovers scoped MCP tools in
+  `load_turn_context` and routes `mcp_*` calls via the `mcp_executor()` adapter
+  hook (default `None` → unchanged for the worker). Builder
+  `mcp_auth_provider()`; off-by-default `mcp-stdio` feature.
+- stdio scoped config (D2): `ScopedMcpServer` gained `command`/`args`/`env` and
+  `McpServerTransportType::Stdio`; the runtime maps stdio servers under
+  `mcp-stdio`, and the hosted server rejects stdio in scoped-config validation
+  and org MCP-server create/update.
+- Dedup (D5/goal 6): the worker's local JSON-RPC client was removed (only
+  `McpServerInfo` remains); the control plane's `fetch_mcp_tools` delegates to
+  `everruns-mcp::http_list_tools`.
+- Coding CLI (D8): reads `.mcp.json` (HTTP + stdio), wires servers into the
+  session, adds a `/mcp` command.
+
+Remaining follow-up:
+
+- Wire hosted (worker) remote-MCP **execution** through `everruns-mcp` via a
+  gRPC-backed `McpConnectionResolver` + web-OAuth `McpAuthProvider`. Discovery
+  is shared today; execution still needs this adapter (the worker's old
+  executor was already dead code).

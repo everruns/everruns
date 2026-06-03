@@ -11,9 +11,8 @@ pub mod connection;
 
 use everruns_core::capabilities::{Capability, CapabilityStatus, IntegrationPlugin};
 use everruns_core::connection_provider::ConnectionProviderPlugin;
-use everruns_core::{McpServerAuthMode, McpServerTransportType, ScopedMcpServer, ScopedMcpServers};
+use everruns_core::{McpServerAuthMode, ScopedMcpServer, ScopedMcpServers};
 use serde_json::{Value, json};
-use std::collections::HashMap;
 
 use connection::ParallelConnectionProvider;
 
@@ -220,9 +219,7 @@ For Parallel tool calls, generate one stable `session_id` for the conversation a
         servers.insert(
             PARALLEL_SERVER_NAME.to_string(),
             ScopedMcpServer {
-                transport_type: McpServerTransportType::Http,
                 url: Self::mcp_url(config).to_string(),
-                headers: HashMap::new(),
                 auth_mode: if Self::use_connection(config) {
                     McpServerAuthMode::OAuth
                 } else {
@@ -230,7 +227,7 @@ For Parallel tool calls, generate one stable `session_id` for the conversation a
                 },
                 oauth_provider_id: Self::use_connection(config)
                     .then(|| PARALLEL_PROVIDER_ID.to_string()),
-                tool_discovery: true,
+                ..Default::default()
             },
         );
         servers

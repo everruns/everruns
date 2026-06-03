@@ -111,4 +111,27 @@ mod tests {
         write(dir.path(), "{}");
         assert!(load_mcp_servers(dir.path()).unwrap().is_empty());
     }
+
+    #[test]
+    fn parses_stdio_server() {
+        let dir = tempfile::tempdir().unwrap();
+        write(
+            dir.path(),
+            r#"{ "mcpServers": {
+                "fs": {
+                    "type": "stdio",
+                    "command": "mcp-server-filesystem",
+                    "args": ["/work"],
+                    "env": { "RUST_LOG": "info" }
+                }
+            }}"#,
+        );
+
+        let servers = load_mcp_servers(dir.path()).unwrap();
+        let fs = servers.get("fs").expect("fs server");
+        assert_eq!(fs.transport_type, McpServerTransportType::Stdio);
+        assert_eq!(fs.command.as_deref(), Some("mcp-server-filesystem"));
+        assert_eq!(fs.args, vec!["/work".to_string()]);
+        assert_eq!(fs.env.get("RUST_LOG").map(String::as_str), Some("info"));
+    }
 }

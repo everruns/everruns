@@ -19,14 +19,25 @@ use crate::typed_id::McpServerId;
 use utoipa::ToSchema;
 
 /// MCP Server transport type.
-/// Currently only HTTP is supported.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(feature = "openapi", derive(ToSchema))]
 #[cfg_attr(feature = "openapi", schema(example = "http"))]
 #[serde(rename_all = "lowercase")]
 pub enum McpServerTransportType {
-    /// HTTP (Streamable HTTP) transport
+    /// HTTP (Streamable HTTP) transport.
     Http,
+    /// Local-process transport over stdio. Only usable by single-tenant
+    /// runtime/CLI hosts (e.g. the example coding CLI); the hosted product
+    /// rejects it during scoped-config validation (see specs/runtime-mcp.md).
+    Stdio,
+}
+
+impl McpServerTransportType {
+    /// Whether this transport spawns/contacts a local process rather than a
+    /// remote endpoint.
+    pub fn is_local(&self) -> bool {
+        matches!(self, McpServerTransportType::Stdio)
+    }
 }
 
 /// MCP server authentication mode.
@@ -74,6 +85,7 @@ impl std::fmt::Display for McpServerTransportType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             McpServerTransportType::Http => write!(f, "http"),
+            McpServerTransportType::Stdio => write!(f, "stdio"),
         }
     }
 }
@@ -81,8 +93,9 @@ impl std::fmt::Display for McpServerTransportType {
 impl From<&str> for McpServerTransportType {
     fn from(s: &str) -> Self {
         match s {
-            "http" => McpServerTransportType::Http,
-            _ => McpServerTransportType::Http, // Default to HTTP
+            "stdio" => McpServerTransportType::Stdio,
+            // Default to HTTP for "http" and any unknown value.
+            _ => McpServerTransportType::Http,
         }
     }
 }
@@ -196,11 +209,22 @@ pub struct ScopedMcpServer {
         alias = "transport_type"
     )]
     pub transport_type: McpServerTransportType,
-    /// URL of the remote MCP server endpoint.
+    /// URL of the remote MCP server endpoint. Required for HTTP transport;
+    /// empty/ignored for stdio.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub url: String,
-    /// Additional HTTP headers sent on MCP requests.
+    /// Additional HTTP headers sent on MCP requests (HTTP transport only).
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub headers: HashMap<String, String>,
+    /// Executable to spawn for a stdio transport server.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
+    /// Arguments passed to the stdio `command`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub args: Vec<String>,
+    /// Environment variables set for the stdio `command`.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub env: HashMap<String, String>,
     /// Authentication mode used when executing tools from this scoped server.
     #[serde(default, skip_serializing_if = "McpServerAuthMode::is_none")]
     pub auth_mode: McpServerAuthMode,
@@ -213,6 +237,22 @@ pub struct ScopedMcpServer {
         skip_serializing_if = "is_true"
     )]
     pub tool_discovery: bool,
+}
+
+impl Default for ScopedMcpServer {
+    fn default() -> Self {
+        Self {
+            transport_type: McpServerTransportType::Http,
+            url: String::new(),
+            headers: HashMap::new(),
+            auth_mode: McpServerAuthMode::None,
+            oauth_provider_id: None,
+            tool_discovery: true,
+            command: None,
+            args: Vec::new(),
+            env: HashMap::new(),
+        }
+    }
 }
 
 pub type ScopedMcpServers = BTreeMap<String, ScopedMcpServer>;

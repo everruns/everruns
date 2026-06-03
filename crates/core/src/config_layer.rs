@@ -227,7 +227,7 @@ impl From<&Session> for AgentConfigOverlay {
 mod tests {
     use super::*;
     use crate::capability_types::AgentCapabilityConfig;
-    use crate::mcp_server::{McpServerTransportType, ScopedMcpServer};
+    use crate::mcp_server::ScopedMcpServer;
     use crate::network_access::NetworkAccessList;
     use crate::session_file::InitialFile;
 
@@ -461,12 +461,8 @@ mod tests {
         base_servers.insert(
             "docs".to_string(),
             ScopedMcpServer {
-                transport_type: McpServerTransportType::Http,
                 url: "https://base.example.com/mcp".to_string(),
-                headers: Default::default(),
-                auth_mode: crate::McpServerAuthMode::None,
-                oauth_provider_id: None,
-                tool_discovery: true,
+                ..Default::default()
             },
         );
 
@@ -474,23 +470,15 @@ mod tests {
         overlay_servers.insert(
             "docs".to_string(),
             ScopedMcpServer {
-                transport_type: McpServerTransportType::Http,
                 url: "https://overlay.example.com/mcp".to_string(),
-                headers: Default::default(),
-                auth_mode: crate::McpServerAuthMode::None,
-                oauth_provider_id: None,
-                tool_discovery: true,
+                ..Default::default()
             },
         );
         overlay_servers.insert(
             "search".to_string(),
             ScopedMcpServer {
-                transport_type: McpServerTransportType::Http,
                 url: "https://search.example.com/mcp".to_string(),
-                headers: Default::default(),
-                auth_mode: crate::McpServerAuthMode::None,
-                oauth_provider_id: None,
-                tool_discovery: true,
+                ..Default::default()
             },
         );
 

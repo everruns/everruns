@@ -271,6 +271,16 @@ pub fn validate_scoped_mcp_servers(servers: &ScopedMcpServers) -> Result<()> {
         if name.trim().is_empty() {
             return Err(anyhow!("Scoped MCP server name cannot be empty"));
         }
+        // Local-process (stdio) transport is hard-off in the hosted product;
+        // it is only available to single-tenant runtime/CLI hosts
+        // (specs/runtime-mcp.md D2). Reject it here so it can never be
+        // configured on an organization's harness/agent/session.
+        if server.transport_type.is_local() {
+            return Err(anyhow!(
+                "Scoped MCP server '{name}' uses an unsupported transport: \
+                 stdio MCP servers are not allowed in this deployment"
+            ));
+        }
         validate_safe_url(&server.url)
             .map_err(|e| anyhow!("Invalid scoped MCP server URL for '{name}': {e}"))?;
         let prefix = sanitize_mcp_server_name(name);
@@ -305,22 +315,16 @@ mod tests {
 
     fn scoped_server(url: &str) -> ScopedMcpServer {
         ScopedMcpServer {
-            transport_type: everruns_core::McpServerTransportType::Http,
             url: url.to_string(),
-            headers: Default::default(),
-            auth_mode: McpServerAuthMode::None,
-            oauth_provider_id: None,
-            tool_discovery: true,
+            ..Default::default()
         }
     }
     fn oauth_scoped_server(url: &str, provider: &str) -> ScopedMcpServer {
         ScopedMcpServer {
-            transport_type: everruns_core::McpServerTransportType::Http,
             url: url.to_string(),
-            headers: Default::default(),
             auth_mode: McpServerAuthMode::OAuth,
             oauth_provider_id: Some(provider.to_string()),
-            tool_discovery: true,
+            ..Default::default()
         }
     }
 
@@ -583,6 +587,25 @@ mod tests {
         assert_eq!(
             merged.get("search").map(|server| server.url.as_str()),
             Some("https://agent-search.example.com/mcp")
+        );
+    }
+
+    #[test]
+    fn validate_scoped_mcp_servers_rejects_stdio_transport() {
+        let mut servers = ScopedMcpServers::default();
+        servers.insert(
+            "fs".to_string(),
+            ScopedMcpServer {
+                transport_type: everruns_core::McpServerTransportType::Stdio,
+                command: Some("mcp-server-filesystem".to_string()),
+                ..Default::default()
+            },
+        );
+
+        let error = validate_scoped_mcp_servers(&servers).unwrap_err();
+        assert!(
+            error.to_string().contains("stdio"),
+            "expected stdio rejection, got: {error}"
         );
     }
 

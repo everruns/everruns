@@ -3,7 +3,8 @@
 //! Lifted from `worker/src/mcp_executor.rs::call_mcp_tool` and
 //! `server/.../service.rs::fetch_mcp_tools` so the DNS-pinned SSRF contract
 //! (TM-TOOL-018) and SSE/JSON handling are shared, not duplicated
-//! (specs/runtime-mcp.md D1/D5).
+//! (specs/runtime-mcp.md D1/D5). The free functions let callers that only hold
+//! a `&dyn EgressService` (e.g. the control plane) reuse the exact same path.
 
 use crate::auth::McpCredential;
 use crate::result::extract_json_from_response;
@@ -21,6 +22,109 @@ use std::sync::Arc;
 use std::time::Duration;
 
 const MCP_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// Send one MCP JSON-RPC request over HTTP and return the (possibly SSE-framed)
+/// response body. Performs DNS-pinned SSRF validation (TM-TOOL-018).
+pub async fn http_send_rpc(
+    egress: &dyn EgressService,
+    url: &str,
+    headers: &HashMap<String, String>,
+    credential: Option<&McpCredential>,
+    body: Vec<u8>,
+) -> Result<String> {
+    let (validated_url, resolved_addrs) = validate_url_dns_pinned(url).await.map_err(|e| {
+        tracing::warn!(url = %url, error = %e, "Blocked MCP request: URL failed SSRF validation");
+        anyhow!("MCP server URL blocked: {}", e)
+    })?;
+    let pin_host = validated_url.host_str().unwrap_or("").to_string();
+
+    let mut request = EgressRequest::new("POST", url, EgressRequestKind::Mcp)
+        .pinned_addrs(pin_host, resolved_addrs)
+        .header("Content-Type", "application/json")
+        .header("Accept", "application/json, text/event-stream")
+        .timeout_ms(MCP_TIMEOUT.as_millis() as u64)
+        .body(body);
+
+    for (name, value) in headers {
+        request = request.header(name, value);
+    }
+    if let Some(credential) = credential {
+        if let Some(auth) = &credential.authorization {
+            request = request.header("Authorization", auth.clone());
+        }
+        for (name, value) in &credential.headers {
+            request = request.header(name, value.clone());
+        }
+    }
+
+    let response = egress
+        .send(request)
+        .await
+        .map_err(|e| anyhow!("Failed to call MCP server: {}", e))?;
+
+    if !(200..300).contains(&response.status) {
+        let body = String::from_utf8_lossy(&response.body).into_owned();
+        return Err(anyhow!(
+            "MCP server returned error: {} - {}",
+            response.status,
+            body
+        ));
+    }
+
+    String::from_utf8(response.body).map_err(|e| anyhow!("Failed to read MCP response body: {}", e))
+}
+
+/// Discover a server's tools via `tools/list`.
+pub async fn http_list_tools(
+    egress: &dyn EgressService,
+    url: &str,
+    headers: &HashMap<String, String>,
+    credential: Option<&McpCredential>,
+) -> Result<Vec<McpToolDefinition>> {
+    let body = serde_json::to_vec(&McpToolsListRequest::default())?;
+    let text = http_send_rpc(egress, url, headers, credential, body).await?;
+    let json_str = extract_json_from_response(&text)
+        .ok_or_else(|| anyhow!("SSE response missing data line"))?;
+    let response: McpToolsListResponse = serde_json::from_str(json_str)?;
+    if let Some(error) = response.error {
+        return Err(anyhow!(
+            "MCP server error: {} ({})",
+            error.message,
+            error.code
+        ));
+    }
+    Ok(response
+        .result
+        .ok_or_else(|| anyhow!("MCP server returned empty result"))?
+        .tools)
+}
+
+/// Execute a tool via `tools/call`.
+pub async fn http_call_tool(
+    egress: &dyn EgressService,
+    url: &str,
+    headers: &HashMap<String, String>,
+    tool_name: &str,
+    arguments: Value,
+    credential: Option<&McpCredential>,
+) -> Result<McpToolCallResult> {
+    let request = McpToolCallRequest::new(1, tool_name.to_string(), Some(arguments));
+    let body = serde_json::to_vec(&request)?;
+    let text = http_send_rpc(egress, url, headers, credential, body).await?;
+    let json_str = extract_json_from_response(&text)
+        .ok_or_else(|| anyhow!("SSE response missing data line"))?;
+    let response: McpToolCallResponse = serde_json::from_str(json_str)?;
+    if let Some(error) = response.error {
+        return Err(anyhow!(
+            "MCP tool error: {} (code: {})",
+            error.message,
+            error.code
+        ));
+    }
+    response
+        .result
+        .ok_or_else(|| anyhow!("MCP server returned empty result"))
+}
 
 /// MCP transport over the platform [`EgressService`] boundary.
 pub struct HttpTransport {
@@ -50,61 +154,6 @@ impl HttpTransport {
             )),
         }
     }
-
-    async fn send_rpc(
-        &self,
-        connection: &McpConnection,
-        body: Vec<u8>,
-        credential: Option<&McpCredential>,
-    ) -> Result<String> {
-        let (url, headers) = Self::http_parts(connection)?;
-
-        // Re-validate with DNS resolution and pin the connection to the
-        // resolved IPs (TM-TOOL-018).
-        let (validated_url, resolved_addrs) = validate_url_dns_pinned(url).await.map_err(|e| {
-            tracing::warn!(mcp_server = %connection.name, url = %url, error = %e,
-                "Blocked MCP request: URL failed SSRF validation");
-            anyhow!("MCP server URL blocked: {}", e)
-        })?;
-        let pin_host = validated_url.host_str().unwrap_or("").to_string();
-
-        let mut request = EgressRequest::new("POST", url, EgressRequestKind::Mcp)
-            .pinned_addrs(pin_host, resolved_addrs)
-            .header("Content-Type", "application/json")
-            .header("Accept", "application/json, text/event-stream")
-            .timeout_ms(MCP_TIMEOUT.as_millis() as u64)
-            .body(body);
-
-        for (name, value) in headers {
-            request = request.header(name, value);
-        }
-        if let Some(credential) = credential {
-            if let Some(auth) = &credential.authorization {
-                request = request.header("Authorization", auth.clone());
-            }
-            for (name, value) in &credential.headers {
-                request = request.header(name, value.clone());
-            }
-        }
-
-        let response = self
-            .egress
-            .send(request)
-            .await
-            .map_err(|e| anyhow!("Failed to call MCP server: {}", e))?;
-
-        if !(200..300).contains(&response.status) {
-            let body = String::from_utf8_lossy(&response.body).into_owned();
-            return Err(anyhow!(
-                "MCP server returned error: {} - {}",
-                response.status,
-                body
-            ));
-        }
-
-        String::from_utf8(response.body)
-            .map_err(|e| anyhow!("Failed to read MCP response body: {}", e))
-    }
 }
 
 #[async_trait]
@@ -114,22 +163,8 @@ impl McpTransport for HttpTransport {
         connection: &McpConnection,
         credential: Option<&McpCredential>,
     ) -> Result<Vec<McpToolDefinition>> {
-        let body = serde_json::to_vec(&McpToolsListRequest::default())?;
-        let text = self.send_rpc(connection, body, credential).await?;
-        let json_str = extract_json_from_response(&text)
-            .ok_or_else(|| anyhow!("SSE response missing data line"))?;
-        let response: McpToolsListResponse = serde_json::from_str(json_str)?;
-        if let Some(error) = response.error {
-            return Err(anyhow!(
-                "MCP server error: {} ({})",
-                error.message,
-                error.code
-            ));
-        }
-        Ok(response
-            .result
-            .ok_or_else(|| anyhow!("MCP server returned empty result"))?
-            .tools)
+        let (url, headers) = Self::http_parts(connection)?;
+        http_list_tools(self.egress.as_ref(), url, headers, credential).await
     }
 
     async fn call_tool(
@@ -139,21 +174,15 @@ impl McpTransport for HttpTransport {
         arguments: Value,
         credential: Option<&McpCredential>,
     ) -> Result<McpToolCallResult> {
-        let request = McpToolCallRequest::new(1, tool_name.to_string(), Some(arguments));
-        let body = serde_json::to_vec(&request)?;
-        let text = self.send_rpc(connection, body, credential).await?;
-        let json_str = extract_json_from_response(&text)
-            .ok_or_else(|| anyhow!("SSE response missing data line"))?;
-        let response: McpToolCallResponse = serde_json::from_str(json_str)?;
-        if let Some(error) = response.error {
-            return Err(anyhow!(
-                "MCP tool error: {} (code: {})",
-                error.message,
-                error.code
-            ));
-        }
-        response
-            .result
-            .ok_or_else(|| anyhow!("MCP server returned empty result"))
+        let (url, headers) = Self::http_parts(connection)?;
+        http_call_tool(
+            self.egress.as_ref(),
+            url,
+            headers,
+            tool_name,
+            arguments,
+            credential,
+        )
+        .await
     }
 }
