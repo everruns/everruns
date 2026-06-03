@@ -325,6 +325,35 @@ pub trait ToolExecutor: Send + Sync {
     }
 }
 
+/// Delegating impl so callers can hold a `ToolExecutor` as a trait object
+/// (e.g. to choose between a plain registry and an MCP-routing composite at
+/// runtime without monomorphizing the consumer).
+#[async_trait]
+impl ToolExecutor for std::sync::Arc<dyn ToolExecutor> {
+    async fn execute(&self, tool_call: &ToolCall, tool_def: &ToolDefinition) -> Result<ToolResult> {
+        (**self).execute(tool_call, tool_def).await
+    }
+
+    async fn execute_with_context(
+        &self,
+        tool_call: &ToolCall,
+        tool_def: &ToolDefinition,
+        context: &ToolContext,
+    ) -> Result<ToolResult> {
+        (**self)
+            .execute_with_context(tool_call, tool_def, context)
+            .await
+    }
+
+    async fn execute_batch(
+        &self,
+        tool_calls: &[ToolCall],
+        tool_defs: &[ToolDefinition],
+    ) -> Result<Vec<ToolResult>> {
+        (**self).execute_batch(tool_calls, tool_defs).await
+    }
+}
+
 // ============================================================================
 // SessionFileSystem - For session filesystem operations
 // ============================================================================

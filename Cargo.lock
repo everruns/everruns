@@ -2449,6 +2449,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "everruns-core",
+ "everruns-mcp",
  "ignore",
  "serde",
  "serde_json",
