@@ -1,0 +1,33 @@
+[package]
+name = "everruns-mcp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Transport-agnostic MCP (Model Context Protocol) client shared by the Everruns runtime, worker, and server."
+
+[features]
+default = []
+# Local-process MCP transport (stdio). Intentionally NOT enabled by the hosted
+# server/worker builds — see specs/runtime-mcp.md (D2). Runtime and CLI hosts
+# opt in.
+stdio = []
+
+[dependencies]
+everruns-core = { path = "../core" }
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+async-trait.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+wiremock = "0.6"
+tokio = { workspace = true }
+
+# Minimal MCP stdio server used only by the stdio integration test. Compiled
+# only when the `stdio` feature is enabled so it never ships in default builds.
+[[bin]]
+name = "mcp_stdio_echo"
+path = "src/bin/mcp_stdio_echo.rs"
+required-features = ["stdio"]

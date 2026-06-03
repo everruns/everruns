@@ -5,6 +5,7 @@ members = [
     "crates/server",
     "crates/worker",
     "crates/core",
+    "crates/mcp",
     "crates/llm-tests",
     "crates/runtime",
     "crates/macros",
@@ -135,6 +136,7 @@ futures-util = "0.3"
 # Everruns SDK
 everruns-sdk = "0.1.9"
 everruns-core = { path = "crates/core", version = "0.8.36" }
+everruns-mcp = { path = "crates/mcp", version = "0.8.36" }
 
 # A2A protocol
 a2a = { package = "a2a-lf", version = "0.3" }

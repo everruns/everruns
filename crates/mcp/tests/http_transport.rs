@@ -1,0 +1,156 @@
+//! HTTP transport integration tests.
+//!
+//! The happy paths drive a fake [`EgressService`] so they run offline and
+//! still exercise the real transport: DNS-pinned SSRF validation (public
+//! IP-literal URLs pass without DNS), auth-header forwarding, SSE/JSON
+//! parsing, result mapping, and executor routing. Loopback URLs are used to
+//! assert the SSRF block (wiremock binds loopback, which is correctly
+//! rejected, so a real server can't be used for the happy path).
+
+use async_trait::async_trait;
+use everruns_core::{
+    EgressRequest, EgressResponse, EgressResult, EgressService, EgressStreamResponse,
+    McpServerAuthMode, ToolCall,
+};
+use everruns_mcp::{
+    McpClient, McpConnection, McpExecutor, StaticAuthProvider, StaticConnectionResolver,
+};
+use serde_json::json;
+use std::sync::{Arc, Mutex};
+
+/// Fake egress that records the last request and returns a canned body.
+struct FakeEgress {
+    body: Vec<u8>,
+    last_authorization: Arc<Mutex<Option<String>>>,
+}
+
+impl FakeEgress {
+    fn new(body: impl Into<Vec<u8>>) -> (Arc<Self>, Arc<Mutex<Option<String>>>) {
+        let last_authorization = Arc::new(Mutex::new(None));
+        let egress = Arc::new(Self {
+            body: body.into(),
+            last_authorization: last_authorization.clone(),
+        });
+        (egress, last_authorization)
+    }
+}
+
+#[async_trait]
+impl EgressService for FakeEgress {
+    async fn send(&self, request: EgressRequest) -> EgressResult<EgressResponse> {
+        *self.last_authorization.lock().unwrap() = request.headers.get("Authorization").cloned();
+        Ok(EgressResponse {
+            status: 200,
+            headers: Default::default(),
+            body: self.body.clone(),
+        })
+    }
+
+    async fn send_stream(&self, _request: EgressRequest) -> EgressResult<EgressStreamResponse> {
+        unimplemented!("not used by MCP transport")
+    }
+}
+
+// A public, non-blocked IP literal: passes SSRF validation without DNS and is
+// never actually connected to because egress is faked.
+const FAKE_URL: &str = "http://8.8.8.8/mcp";
+
+#[tokio::test]
+async fn discovers_tools_over_http_plain_json() {
+    let (egress, _) = FakeEgress::new(
+        serde_json::to_vec(&json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": { "tools": [
+                { "name": "search", "description": "Search docs", "inputSchema": { "type": "object" } }
+            ]}
+        }))
+        .unwrap(),
+    );
+
+    let client = McpClient::new(egress, Arc::new(everruns_mcp::NoAuthProvider));
+    let tools = client
+        .discover(&McpConnection::http("docs", FAKE_URL))
+        .await
+        .unwrap();
+
+    assert_eq!(tools.len(), 1);
+    assert_eq!(tools[0].name, "search");
+}
+
+#[tokio::test]
+async fn calls_tool_over_sse_with_resolved_auth() {
+    let (egress, last_auth) = FakeEgress::new(
+        "event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"hi\"}],\"isError\":false}}\n",
+    );
+
+    let auth = Arc::new(StaticAuthProvider::new().with_bearer("docs", "t0ken"));
+    let client = McpClient::new(egress, auth);
+    let mut connection = McpConnection::http("docs", FAKE_URL);
+    connection.auth_mode = McpServerAuthMode::ApiKey;
+
+    let result = client.call(&connection, "echo", json!({})).await.unwrap();
+    assert!(!result.is_error);
+    assert_eq!(
+        last_auth.lock().unwrap().as_deref(),
+        Some("Bearer t0ken"),
+        "resolved credential must reach the transport"
+    );
+}
+
+#[tokio::test]
+async fn executor_routes_and_maps_mcp_tool_call() {
+    let (egress, _) = FakeEgress::new(
+        serde_json::to_vec(&json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": { "content": [{ "type": "text", "text": "routed" }], "isError": false }
+        }))
+        .unwrap(),
+    );
+
+    let client = Arc::new(McpClient::new(
+        egress,
+        Arc::new(everruns_mcp::NoAuthProvider),
+    ));
+    let resolver =
+        Arc::new(StaticConnectionResolver::new().with(McpConnection::http("docs", FAKE_URL)));
+    let executor = McpExecutor::new(client, resolver);
+
+    let tool_call = ToolCall {
+        id: "call_1".into(),
+        name: "mcp_docs__echo".into(),
+        arguments: json!({ "message": "hi" }),
+    };
+    let result = executor.execute_mcp_tool(&tool_call).await.unwrap();
+
+    assert_eq!(result.tool_call_id, "call_1");
+    assert_eq!(result.result.unwrap(), json!({ "result": "routed" }));
+}
+
+#[tokio::test]
+async fn ssrf_blocks_localhost_discovery() {
+    // Real direct egress; the URL must be rejected before any connect.
+    let client = McpClient::direct();
+    let connection = McpConnection::http("evil", "http://localhost:9999/mcp");
+    let error = client.discover(&connection).await.unwrap_err();
+    assert!(
+        error.to_string().contains("blocked"),
+        "expected SSRF block, got: {error}"
+    );
+}
+
+#[tokio::test]
+async fn unresolved_server_prefix_errors() {
+    let executor = McpExecutor::new(
+        Arc::new(McpClient::direct()),
+        Arc::new(StaticConnectionResolver::new()),
+    );
+    let tool_call = ToolCall {
+        id: "call_1".into(),
+        name: "mcp_missing__tool".into(),
+        arguments: json!({}),
+    };
+    let error = executor.execute_mcp_tool(&tool_call).await.unwrap_err();
+    assert!(error.to_string().contains("MCP server not found"));
+}
