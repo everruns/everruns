@@ -270,6 +270,31 @@ pub struct ExecOutput {
     pub stderr: String,
 }
 
+/// Retry `connect_fn` up to 3 times when it returns an HTTP 404 handshake
+/// error, using exponential backoff (500 ms → 1 s). Non-404 errors propagate
+/// immediately. Extracted so the retry logic can be unit-tested without real
+/// network I/O.
+async fn retry_on_404<T, F, Fut>(mut connect_fn: F) -> Result<T, String>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<T, String>>,
+{
+    let mut last_err = String::new();
+    let mut delay_ms = 500u64;
+    for attempt in 0..3u8 {
+        if attempt > 0 {
+            tokio::time::sleep(Duration::from_millis(delay_ms)).await;
+            delay_ms *= 2;
+        }
+        match connect_fn().await {
+            Ok(val) => return Ok(val),
+            Err(e) if e.starts_with("Deno sandbox websocket HTTP error: 404") => last_err = e,
+            Err(e) => return Err(e),
+        }
+    }
+    Err(last_err)
+}
+
 pub struct DenoClient {
     http: reqwest::Client,
     token: String,
@@ -509,20 +534,7 @@ impl DenoClient {
         );
         // Retry on 404: Deno Deploy may not expose the sandbox immediately after
         // the creation websocket closes, returning DEPLOYMENT_NOT_FOUND transiently.
-        let mut last_err = String::new();
-        let mut delay_ms = 500u64;
-        for attempt in 0..3u8 {
-            if attempt > 0 {
-                tokio::time::sleep(Duration::from_millis(delay_ms)).await;
-                delay_ms *= 2;
-            }
-            match self.connect_websocket(url.clone(), None).await {
-                Ok(session) => return Ok(session),
-                Err(e) if e.contains("HTTP error: 404") => last_err = e,
-                Err(e) => return Err(e),
-            }
-        }
-        Err(last_err)
+        retry_on_404(|| self.connect_websocket(url.clone(), None)).await
     }
 
     async fn connect_websocket(
@@ -1210,6 +1222,118 @@ mod tests {
         assert!(
             !request.contains("Proxy-Authorization"),
             "should not contain Proxy-Authorization: {request}"
+        );
+    }
+
+    // --- retry_on_404 unit tests ---
+    // Time is paused so tokio::time::sleep advances instantly without real wall-clock delay.
+
+    #[tokio::test(start_paused = true)]
+    async fn retry_on_404_exhausts_three_attempts_on_all_404s() {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicU8, Ordering},
+        };
+        let attempts = Arc::new(AtomicU8::new(0));
+        let c = attempts.clone();
+        let result: Result<u32, String> = retry_on_404(|| {
+            let c = c.clone();
+            async move {
+                c.fetch_add(1, Ordering::Relaxed);
+                Err(
+                    "Deno sandbox websocket HTTP error: 404 Not Found — DEPLOYMENT_NOT_FOUND"
+                        .to_string(),
+                )
+            }
+        })
+        .await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("404"));
+        assert_eq!(
+            attempts.load(Ordering::Relaxed),
+            3,
+            "should try exactly 3 times"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn retry_on_404_fails_fast_on_non_404_error() {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicU8, Ordering},
+        };
+        let attempts = Arc::new(AtomicU8::new(0));
+        let c = attempts.clone();
+        let result: Result<u32, String> = retry_on_404(|| {
+            let c = c.clone();
+            async move {
+                c.fetch_add(1, Ordering::Relaxed);
+                Err("Deno sandbox websocket HTTP error: 503 Service Unavailable".to_string())
+            }
+        })
+        .await;
+        assert!(result.is_err());
+        assert_eq!(
+            attempts.load(Ordering::Relaxed),
+            1,
+            "non-404 should not be retried"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn retry_on_404_succeeds_after_one_404() {
+        use std::sync::{
+            Arc,
+            atomic::{AtomicU8, Ordering},
+        };
+        let attempts = Arc::new(AtomicU8::new(0));
+        let c = attempts.clone();
+        let result: Result<u32, String> = retry_on_404(|| {
+            let c = c.clone();
+            async move {
+                let n = c.fetch_add(1, Ordering::Relaxed);
+                if n == 0 {
+                    Err(
+                        "Deno sandbox websocket HTTP error: 404 Not Found — DEPLOYMENT_NOT_FOUND"
+                            .to_string(),
+                    )
+                } else {
+                    Ok(42u32)
+                }
+            }
+        })
+        .await;
+        assert_eq!(result, Ok(42));
+        assert_eq!(
+            attempts.load(Ordering::Relaxed),
+            2,
+            "should succeed on second attempt"
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn retry_on_404_body_containing_404_string_does_not_trigger_retry() {
+        // A non-404 HTTP error whose body happens to contain "404" should not be retried.
+        use std::sync::{
+            Arc,
+            atomic::{AtomicU8, Ordering},
+        };
+        let attempts = Arc::new(AtomicU8::new(0));
+        let c = attempts.clone();
+        let result: Result<u32, String> = retry_on_404(|| {
+            let c = c.clone();
+            async move {
+                c.fetch_add(1, Ordering::Relaxed);
+                // 500 error whose body mentions "404" — must NOT be retried
+                Err("Deno sandbox websocket HTTP error: 500 Internal Server Error — error code 404 in upstream".to_string())
+            }
+        })
+        .await;
+        assert!(result.is_err());
+        assert_eq!(
+            attempts.load(Ordering::Relaxed),
+            1,
+            "500 with 404 in body must not retry"
         );
     }
 }
