@@ -12512,17 +12512,38 @@
         "additionalProperties": {
           "type": "object",
           "description": "Session-, agent-, or harness-scoped remote MCP server configuration.\n\nThis intentionally mirrors the `mcpServers` object shape used by common MCP\nclient config files while staying within Everruns' current remote-HTTP-only\nsupport.",
-          "required": [
-            "url"
-          ],
           "properties": {
+            "args": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Arguments passed to the stdio `command`."
+            },
             "auth_mode": {
               "$ref": "#/components/schemas/McpServerAuthMode",
               "description": "Authentication mode used when executing tools from this scoped server."
             },
+            "command": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "description": "Executable to spawn for a stdio transport server."
+            },
+            "env": {
+              "type": "object",
+              "description": "Environment variables set for the stdio `command`.",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "propertyNames": {
+                "type": "string"
+              }
+            },
             "headers": {
               "type": "object",
-              "description": "Additional HTTP headers sent on MCP requests.",
+              "description": "Additional HTTP headers sent on MCP requests (HTTP transport only).",
               "additionalProperties": {
                 "type": "string"
               },
@@ -12547,7 +12568,7 @@
             },
             "url": {
               "type": "string",
-              "description": "URL of the remote MCP server endpoint."
+              "description": "URL of the remote MCP server endpoint. Required for HTTP transport;\nempty/ignored for stdio."
             }
           }
         },
@@ -21707,9 +21728,10 @@
       },
       "McpServerTransportType": {
         "type": "string",
-        "description": "MCP Server transport type.\nCurrently only HTTP is supported.",
+        "description": "MCP Server transport type.",
         "enum": [
-          "http"
+          "http",
+          "stdio"
         ],
         "example": "http"
       },

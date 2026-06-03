@@ -73,6 +73,7 @@ Specs capture the "why" and "what", not exhaustive source detail. Link to code f
 
 - `specs/mcp.md` - MCP server endpoint, OAuth 2.1 authentication, protocol, security
 - `specs/mcp-servers.md` - MCP client remote server registration, CRUD API, tool naming, execution
+- `specs/runtime-mcp.md` - MCP client in the in-process runtime: shared `everruns-mcp` crate, transport abstraction (HTTP + optional stdio), pluggable auth
 - `specs/integrations.md` - Integration specs index
 - `specs/apps.md` - Apps system
 - `specs/app-invocation-channels.md` - App schedule/webhook invocation channels

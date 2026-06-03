@@ -172,6 +172,7 @@ pub struct InProcessRuntimeBuilder {
     sessions: Vec<Session>,
     default_session_id: Option<SessionId>,
     seeded_files: Vec<(SessionId, InitialFile)>,
+    mcp_auth_provider: Option<Arc<dyn everruns_mcp::McpAuthProvider>>,
 }
 
 impl Default for InProcessRuntimeBuilder {
@@ -203,7 +204,16 @@ impl InProcessRuntimeBuilder {
             sessions: Vec::new(),
             default_session_id: None,
             seeded_files: Vec::new(),
+            mcp_auth_provider: None,
         }
+    }
+
+    /// Set the auth provider used to acquire credentials for scoped MCP
+    /// servers (specs/runtime-mcp.md D3). Defaults to no credentials, suitable
+    /// for unauthenticated servers or servers carrying literal auth headers.
+    pub fn mcp_auth_provider(mut self, provider: Arc<dyn everruns_mcp::McpAuthProvider>) -> Self {
+        self.mcp_auth_provider = Some(provider);
+        self
     }
 
     /// Replace the platform definition used by the runtime.
@@ -395,6 +405,9 @@ impl InProcessRuntimeBuilder {
             file_store,
             storage_store: backends.storage_store,
             memory_store: backends.memory_store,
+            mcp_auth_provider: self
+                .mcp_auth_provider
+                .unwrap_or_else(|| Arc::new(everruns_mcp::NoAuthProvider)),
         })
     }
 }
@@ -432,9 +445,32 @@ pub struct InProcessRuntime {
     file_store: Arc<dyn SessionFileSystem>,
     storage_store: Arc<dyn SessionStorageStore>,
     memory_store: Arc<dyn MemoryStoreBackend>,
+    mcp_auth_provider: Arc<dyn everruns_mcp::McpAuthProvider>,
 }
 
 impl InProcessRuntime {
+    /// Build the shared MCP client over the platform egress boundary and the
+    /// configured auth provider.
+    fn mcp_client(&self) -> Arc<everruns_mcp::McpClient> {
+        Arc::new(everruns_mcp::McpClient::new(
+            self.platform_definition.egress_service(),
+            self.mcp_auth_provider.clone(),
+        ))
+    }
+
+    /// Resolve the effective scoped MCP servers for a session.
+    async fn session_mcp_servers(
+        &self,
+        session: &Session,
+        agent: Option<&Agent>,
+    ) -> everruns_core::ScopedMcpServers {
+        let harness_chain = self
+            .harness_store
+            .get_harness_chain(session.harness_id)
+            .await
+            .unwrap_or_default();
+        crate::mcp::merge_session_scoped_servers(&harness_chain, agent, session)
+    }
     /// Create a builder for the in-process runtime.
     pub fn builder() -> InProcessRuntimeBuilder {
         InProcessRuntimeBuilder::new()
@@ -778,13 +814,42 @@ impl RuntimeHostAdapter for InProcessRuntime {
         };
         let messages = self.message_store.load(session_id).await?;
         let model = self.provider_store.get_default_model().await?;
+
+        // Discover tools from the session's scoped MCP servers so they appear
+        // to the LLM alongside built-in tools (specs/runtime-mcp.md D4).
+        let scoped_servers = self.session_mcp_servers(&session, agent.as_ref()).await;
+        let mcp_tool_definitions = if scoped_servers.is_empty() {
+            vec![]
+        } else {
+            crate::mcp::discover_tool_definitions(
+                &self.mcp_client(),
+                session_id.uuid(),
+                &scoped_servers,
+            )
+            .await
+        };
+
         Ok(RuntimeHostTurnContext {
             agent,
             session,
             messages,
             model,
-            mcp_tool_definitions: vec![],
+            mcp_tool_definitions,
         })
+    }
+
+    async fn mcp_executor(
+        &self,
+        _org_id: i64,
+        session_id: SessionId,
+    ) -> Option<Arc<everruns_mcp::McpExecutor>> {
+        let session = self.session_store.get_session(session_id).await.ok()??;
+        let agent = match session.agent_id {
+            Some(agent_id) => self.agent_store.get_agent(agent_id).await.ok().flatten(),
+            None => None,
+        };
+        let scoped_servers = self.session_mcp_servers(&session, agent.as_ref()).await;
+        crate::mcp::build_executor(self.mcp_client(), &scoped_servers)
     }
 
     fn capability_registry(&self) -> CapabilityRegistry {

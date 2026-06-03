@@ -6,6 +6,7 @@ mod app;
 mod approval;
 mod capabilities;
 mod diff;
+mod mcp_config;
 mod runtime;
 mod session_log;
 mod tools;
@@ -190,7 +191,16 @@ async fn main() -> Result<()> {
         Some(p) => p,
         None => session_log::default_sessions_dir()?,
     };
-    let runtime = runtime::build(cwd, provider, gate, resume_session_id, sessions_dir).await?;
+    let mcp_servers = mcp_config::load_mcp_servers(&cwd)?;
+    let runtime = runtime::build(
+        cwd,
+        provider,
+        gate,
+        resume_session_id,
+        sessions_dir,
+        mcp_servers,
+    )
+    .await?;
 
     if let Some(prompt) = cli.print {
         return run_print_mode(runtime, prompt).await;

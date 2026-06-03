@@ -179,6 +179,17 @@ pub trait RuntimeHostAdapter: Send + Sync + Clone + 'static {
     ) -> Option<Arc<dyn everruns_core::OutboundToolRateLimiter>> {
         None
     }
+
+    /// MCP executor routing `mcp_*` tool calls for this session, if the host
+    /// configures MCP (specs/runtime-mcp.md D4). Default: `None`, so hosts
+    /// without scoped MCP servers keep the plain tool registry unchanged.
+    async fn mcp_executor(
+        &self,
+        _org_id: i64,
+        _session_id: SessionId,
+    ) -> Option<Arc<everruns_mcp::McpExecutor>> {
+        None
+    }
 }
 
 struct RuntimeExecutionCapabilities {
@@ -949,8 +960,17 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
     let tool_registry = execution_capabilities.tool_registry;
     let builtin_tool_registry = Arc::new(tool_registry.clone());
 
+    // Route `mcp_*` tool calls to the host's MCP executor when configured.
+    // Hosts that don't (default `None`, e.g. the worker) keep the plain
+    // registry, so their behavior is unchanged (specs/runtime-mcp.md D4).
+    let executor: Arc<dyn everruns_core::traits::ToolExecutor> =
+        match adapter.mcp_executor(org_id, input.context.session_id).await {
+            Some(mcp) => Arc::new(everruns_mcp::CompositeToolExecutor::new(tool_registry, mcp)),
+            None => Arc::new(tool_registry),
+        };
+
     let mut atom =
-        ActAtom::with_file_store(tool_registry, adapter.event_emitter(), adapter.file_store())
+        ActAtom::with_file_store(executor, adapter.event_emitter(), adapter.file_store())
             .with_session_store(adapter.session_store(org_id))
             .with_session_mutator(adapter.session_mutator(org_id))
             .with_agent_store(adapter.agent_store(org_id))

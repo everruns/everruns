@@ -12,7 +12,7 @@ Routing is intentionally split:
 - OAuth discovery metadata lives at `/.well-known/oauth-authorization-server`
 - Protected-resource metadata lives at `/.well-known/oauth-protected-resource/mcp` (RFC 9728 §3.1 path-derived for the `/mcp` resource)
 
-Everruns also acts as an **MCP client** (connecting to remote MCP servers). That side is covered in [`specs/mcp-servers.md`](mcp-servers.md).
+Everruns also acts as an **MCP client** (connecting to remote MCP servers). That side is covered in [`specs/mcp-servers.md`](mcp-servers.md), with the in-process runtime path (shared `everruns-mcp` crate, HTTP + optional stdio transport, pluggable auth) in [`specs/runtime-mcp.md`](runtime-mcp.md).
 
 ## Protocol
 

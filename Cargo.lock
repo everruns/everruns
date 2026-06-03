@@ -2039,6 +2039,7 @@ dependencies = [
  "everruns-runtime",
  "ratatui",
  "ratatui-textarea",
+ "serde",
  "serde_json",
  "similar 3.1.1",
  "tempfile",
@@ -2405,6 +2406,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "everruns-mcp"
+version = "0.8.36"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "everruns-core",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "wiremock",
+]
+
+[[package]]
 name = "everruns-openai"
 version = "0.8.36"
 dependencies = [
@@ -2435,6 +2450,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "everruns-core",
+ "everruns-mcp",
  "ignore",
  "serde",
  "serde_json",
@@ -2501,6 +2517,7 @@ dependencies = [
  "everruns-integrations-parallel",
  "everruns-integrations-sprites",
  "everruns-internal-protocol",
+ "everruns-mcp",
  "everruns-sdk",
  "everruns-session-sqldb",
  "everruns-worker",

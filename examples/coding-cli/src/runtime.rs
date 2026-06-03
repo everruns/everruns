@@ -29,8 +29,8 @@ use everruns_core::session_file::{FileInfo, FileStat, GrepMatch, InitialFile, Se
 use everruns_core::typed_id::SessionId;
 use everruns_core::{
     AgentCapabilityConfig, CapabilityRegistry, Controls, InputMessage, ModelWithProvider,
-    PlatformDefinition, ReasoningConfig, SessionFileSystem, SessionFileSystemFactory,
-    SessionFileSystemFactoryContext,
+    PlatformDefinition, ReasoningConfig, ScopedMcpServers, SessionFileSystem,
+    SessionFileSystemFactory, SessionFileSystemFactoryContext,
 };
 use everruns_integrations_duckduckgo::DuckDuckGoCapability;
 use everruns_runtime::{
@@ -745,6 +745,8 @@ pub struct StartupInfo {
     /// How many events were replayed from disk into the new session.
     /// Zero for fresh sessions; used by the startup banner.
     pub replayed_events: usize,
+    /// Names of scoped MCP servers configured from `.mcp.json` (specs/runtime-mcp.md D8).
+    pub mcp_server_names: Vec<String>,
 }
 
 #[derive(Clone)]
@@ -781,6 +783,7 @@ pub async fn build(
     gate: Arc<ApprovalGate>,
     resume_session_id: Option<SessionId>,
     sessions_dir: PathBuf,
+    mcp_servers: ScopedMcpServers,
 ) -> Result<BuiltRuntime> {
     let canonical_root = std::fs::canonicalize(&workspace_root)
         .with_context(|| format!("canonicalize workspace: {}", workspace_root.display()))?;
@@ -908,6 +911,8 @@ pub async fn build(
     // to the same JSONL log (filename encodes the id).
     let session_title = format!("coding-cli @ {}", canonical_root.display());
     let harness_capabilities = coding_harness_capabilities();
+    let mcp_server_names: Vec<String> = mcp_servers.keys().cloned().collect();
+    let session_mcp_servers = mcp_servers.clone();
 
     let mut builder = InProcessRuntimeBuilder::new()
         .platform_definition(platform)
@@ -923,6 +928,7 @@ pub async fn build(
                 .agent_description("Reads, edits, and runs commands inside a project workspace.")
                 .session_id(session_id)
                 .session_title(session_title.clone())
+                .session_mcp_servers(session_mcp_servers)
                 .tag("example")
                 .tag("coding");
             for cap in harness_capabilities {
@@ -962,6 +968,7 @@ pub async fn build(
             session_log_path: log_path,
             session_dir,
             replayed_events: replayed_events_count,
+            mcp_server_names,
         },
         model: ModelState::new(provider_state),
     })
@@ -1066,6 +1073,34 @@ mod tests {
         let next = provider.resolve_model_spec("openai/gpt-5.5 high").unwrap();
 
         assert_eq!(next.label(), "openai/gpt-5.5 high");
+    }
+
+    #[tokio::test]
+    async fn build_wires_mcp_servers_from_dot_mcp_json() {
+        // A workspace `.mcp.json` should flow through build() into the session
+        // and surface in startup info (the source for `/mcp`). build() does not
+        // perform discovery, so an unreachable URL is fine here.
+        let workspace = tempfile::tempdir().expect("workspace");
+        let sessions = tempfile::tempdir().expect("sessions");
+        std::fs::write(
+            workspace.path().join(".mcp.json"),
+            r#"{ "mcpServers": { "docs": { "type": "http", "url": "https://example.com/mcp" } } }"#,
+        )
+        .expect("write .mcp.json");
+
+        let mcp_servers = crate::mcp_config::load_mcp_servers(workspace.path()).expect("load");
+        let built = build(
+            workspace.path().to_path_buf(),
+            ProviderChoice::Sim,
+            crate::approval::ApprovalGate::auto(),
+            None,
+            sessions.path().to_path_buf(),
+            mcp_servers,
+        )
+        .await
+        .expect("runtime builds");
+
+        assert_eq!(built.startup.mcp_server_names, vec!["docs".to_string()]);
     }
 
     #[tokio::test]

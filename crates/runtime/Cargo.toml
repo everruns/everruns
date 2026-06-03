@@ -15,6 +15,13 @@ documentation = "https://docs.rs/everruns-runtime"
 description = "Public in-process runtime for embedding Everruns harnesses"
 readme = "README.md"
 
+[features]
+default = []
+# Enable local-process (stdio) MCP servers. Off by default so the hosted
+# server/worker (which depend on this crate transitively) never compile stdio
+# in — see specs/runtime-mcp.md (D2). Embedders like the coding CLI opt in.
+mcp-stdio = ["everruns-mcp/stdio"]
+
 [dependencies]
 async-trait.workspace = true
 chrono.workspace = true
@@ -27,7 +34,9 @@ tracing.workspace = true
 uuid.workspace = true
 
 everruns-core.workspace = true
+everruns-mcp.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
 tokio = { workspace = true, features = ["full", "test-util"] }
+async-trait.workspace = true
