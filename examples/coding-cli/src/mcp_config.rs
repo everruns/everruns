@@ -11,8 +11,9 @@
 //! }
 //! ```
 //!
-//! Missing file → no servers. Only the remote-HTTP subset is wired today; see
-//! the spec for the stdio plan.
+//! Missing file → no servers. Both remote HTTP and local stdio
+//! (`{ "type": "stdio", "command": ..., "args": [...] }`) servers are
+//! supported; the CLI builds with the runtime's `mcp-stdio` feature.
 
 use std::path::Path;
 

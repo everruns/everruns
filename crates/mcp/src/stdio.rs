@@ -40,6 +40,9 @@ impl StdioTransport {
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::null())
+            // Kill the child if this future is dropped/cancelled (e.g. on a
+            // timeout) so it cannot outlive the call.
+            .kill_on_drop(true)
             .spawn()
             .map_err(|e| anyhow!("Failed to spawn MCP server '{}': {e}", connection.name))?;
 
@@ -86,7 +89,11 @@ impl StdioTransport {
         })
         .await;
 
+        // Terminate and reap the child so each invocation fully cleans up
+        // (no lingering process, no zombie). `start_kill` sends SIGKILL, so
+        // `wait` returns promptly.
         let _ = child.start_kill();
+        let _ = child.wait().await;
 
         outcome.map_err(|_| anyhow!("MCP stdio server '{}' timed out", connection.name))?
     }

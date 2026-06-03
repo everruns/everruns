@@ -21,7 +21,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-const MCP_TIMEOUT: Duration = Duration::from_secs(60);
+/// Timeout for tool discovery (`tools/list`). Kept shorter than execution so a
+/// slow server doesn't stall turn-context assembly.
+const DISCOVERY_TIMEOUT: Duration = Duration::from_secs(30);
+/// Timeout for tool execution (`tools/call`).
+const CALL_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Send one MCP JSON-RPC request over HTTP and return the (possibly SSE-framed)
 /// response body. Performs DNS-pinned SSRF validation (TM-TOOL-018).
@@ -31,6 +35,7 @@ pub async fn http_send_rpc(
     headers: &HashMap<String, String>,
     credential: Option<&McpCredential>,
     body: Vec<u8>,
+    timeout: Duration,
 ) -> Result<String> {
     let (validated_url, resolved_addrs) = validate_url_dns_pinned(url).await.map_err(|e| {
         tracing::warn!(url = %url, error = %e, "Blocked MCP request: URL failed SSRF validation");
@@ -42,7 +47,7 @@ pub async fn http_send_rpc(
         .pinned_addrs(pin_host, resolved_addrs)
         .header("Content-Type", "application/json")
         .header("Accept", "application/json, text/event-stream")
-        .timeout_ms(MCP_TIMEOUT.as_millis() as u64)
+        .timeout_ms(timeout.as_millis() as u64)
         .body(body);
 
     for (name, value) in headers {
@@ -82,7 +87,7 @@ pub async fn http_list_tools(
     credential: Option<&McpCredential>,
 ) -> Result<Vec<McpToolDefinition>> {
     let body = serde_json::to_vec(&McpToolsListRequest::default())?;
-    let text = http_send_rpc(egress, url, headers, credential, body).await?;
+    let text = http_send_rpc(egress, url, headers, credential, body, DISCOVERY_TIMEOUT).await?;
     let json_str = extract_json_from_response(&text)
         .ok_or_else(|| anyhow!("SSE response missing data line"))?;
     let response: McpToolsListResponse = serde_json::from_str(json_str)?;
@@ -110,7 +115,7 @@ pub async fn http_call_tool(
 ) -> Result<McpToolCallResult> {
     let request = McpToolCallRequest::new(1, tool_name.to_string(), Some(arguments));
     let body = serde_json::to_vec(&request)?;
-    let text = http_send_rpc(egress, url, headers, credential, body).await?;
+    let text = http_send_rpc(egress, url, headers, credential, body, CALL_TIMEOUT).await?;
     let json_str = extract_json_from_response(&text)
         .ok_or_else(|| anyhow!("SSE response missing data line"))?;
     let response: McpToolCallResponse = serde_json::from_str(json_str)?;

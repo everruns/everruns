@@ -3,9 +3,9 @@
 //! Resolves the effective scoped MCP servers for a session (harness chain →
 //! agent → session, last wins), turns them into transport connections, and
 //! drives discovery + execution through the shared `everruns-mcp` client.
-//! Only HTTP scoped servers are wired today; stdio scoped config awaits the
-//! core `ScopedMcpServer` command/args/env fields (the stdio transport itself
-//! already exists behind the `mcp-stdio` feature).
+//! HTTP scoped servers are always wired; stdio scoped servers are wired only
+//! when the crate is built with the `mcp-stdio` feature (off in hosted
+//! builds), and are otherwise skipped with a warning.
 
 use std::sync::Arc;
 

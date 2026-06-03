@@ -149,17 +149,19 @@ Two integration points in `crates/runtime`:
    applied in `config_layer.rs`), runs `everruns-mcp` discovery for each server
    with `tool_discovery = true`, builds `McpCapability` tool definitions
    (existing `crates/core/src/capabilities/mcp.rs`), and feeds them into
-   `ReasonInput.mcp_tool_definitions`. A small `RuntimeMcpRegistry` caches
-   discovered tools per session with the same hybrid TTL contract as the
-   control plane.
+   `ReasonInput.mcp_tool_definitions`. Discovery is **live** per turn (a
+   `tools/list` per server), matching the control plane's scoped-server
+   behavior, which keeps no persisted cache. A per-session TTL cache is a
+   listed follow-up.
 2. **Execution** — in `execute_act_activity` (`host.rs:907`), when scoped MCP
    servers are present, wrap the builtin `ToolRegistry` in the `everruns-mcp`
    composite executor (built-in tools route to the registry, `mcp_*` tools
    route to the MCP executor). `ActAtom` is already generic over
    `ToolExecutor`, so this is a constructor swap, not an atom change.
 
-Both points hang off a new optional adapter capability
-(`RuntimeHostAdapter::mcp_runtime()` returning `Option<Arc<dyn McpRuntime>>`),
+Both points hang off a new optional adapter hook
+(`RuntimeHostAdapter::mcp_executor()` returning
+`Option<Arc<everruns_mcp::McpExecutor>>`),
 default `None`, so hosts that don't configure MCP pay nothing and behavior is
 unchanged.
 
@@ -208,7 +210,7 @@ same shape) so users configure MCP the way every other MCP client expects.
 - Loads `mcpServers` from workspace `.mcp.json` (and/or a `--mcp` flag) and
   passes them to the single-session builder.
 - Injects a static/env `McpAuthProvider` for authenticated servers.
-- Adds a `/mcp` slash command listing configured servers and discovered tools.
+- Adds a `/mcp` slash command listing configured MCP servers.
 - One-shot smoke: `ercode --print "use the docs MCP tool to ..."` resolves and
   calls an MCP tool.
 
@@ -262,7 +264,7 @@ same shape) so users configure MCP the way every other MCP client expects.
 | stdio transport | `everruns-mcp`, `#[cfg(feature = "stdio")]` |
 | Auth provider trait | `everruns-mcp`; web-OAuth adapter in `server`/`worker` |
 | Scoped types (`command`/`args`/`env`, `Stdio` variant) | `crates/core/src/mcp_server.rs` |
-| Runtime discovery | `crates/runtime/src/runtime.rs` (replace `vec![]`), new `RuntimeMcpRegistry` |
+| Runtime discovery | `crates/runtime/src/runtime.rs` (replace `vec![]`), `crates/runtime/src/mcp.rs` (live per-turn discovery) |
 | Runtime execution | `crates/runtime/src/host.rs::execute_act_activity` (composite executor) |
 | Adapter hook | `RuntimeHostAdapter::mcp_executor()` |
 | Coding CLI | `examples/coding-cli` (`.mcp.json`, `/mcp`, auth provider) |
@@ -294,3 +296,5 @@ Remaining follow-up:
   gRPC-backed `McpConnectionResolver` + web-OAuth `McpAuthProvider`. Discovery
   is shared today; execution still needs this adapter (the worker's old
   executor was already dead code).
+- Per-session TTL cache for runtime tool discovery (currently live per turn,
+  matching the control plane's scoped-server behavior).
