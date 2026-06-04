@@ -2,28 +2,32 @@
 //!
 //! Decision: expose only Parallel-specific tools. Payment mechanics stay inside
 //! `PaymentAuthority`, so the model cannot initiate arbitrary paid HTTP calls.
+//! Decision: this lives in the Parallel integration crate, not core. Core owns the
+//! payment trust boundary (`PaymentAuthority`, payment DTOs, `ToolContext`); the
+//! vendor-specific paid adapter is a plugin gated by the `machine_payments`
+//! internal feature flag.
 
-use super::{Capability, CapabilityStatus, RiskLevel};
-use crate::payment::{MachinePaymentRequest, PaymentMethod, PaymentRail};
-use crate::tool_types::ToolHints;
-use crate::tools::{Tool, ToolExecutionResult};
-use crate::traits::ToolContext;
 use async_trait::async_trait;
+use everruns_core::ToolHints;
+use everruns_core::capabilities::{Capability, CapabilityStatus, RiskLevel};
+use everruns_core::payment::{MachinePaymentRequest, PaymentMethod, PaymentRail};
+use everruns_core::tools::{Tool, ToolExecutionResult};
+use everruns_core::traits::ToolContext;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
 const PARALLEL_BASE_URL: &str = "https://parallelmpp.dev";
 
-pub struct ParallelCapability;
+pub struct ParallelPaymentsCapability;
 
 #[async_trait]
-impl Capability for ParallelCapability {
+impl Capability for ParallelPaymentsCapability {
     fn id(&self) -> &str {
         "parallel"
     }
 
     fn name(&self) -> &str {
-        "Parallel"
+        "Parallel (Machine Payments)"
     }
 
     fn description(&self) -> &str {
@@ -424,4 +428,28 @@ fn missing_payment_authority() -> ToolExecutionResult {
 
 fn invalid_args(error: serde_json::Error) -> ToolExecutionResult {
     ToolExecutionResult::tool_error(format!("Invalid arguments: {error}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn metadata() {
+        let cap = ParallelPaymentsCapability;
+        assert_eq!(cap.id(), "parallel");
+        assert_eq!(cap.category(), Some("Machine Payments"));
+        assert_eq!(cap.risk_level(), RiskLevel::High);
+        assert_eq!(cap.tools().len(), 4);
+        assert_eq!(cap.features(), vec!["machine_payments"]);
+    }
+
+    #[tokio::test]
+    async fn paid_tools_fail_closed_without_authority() {
+        // No payment authority wired -> the paid tools must refuse, not spend.
+        let result = ParallelSearchTool
+            .execute(json!({ "query": "hello" }))
+            .await;
+        assert!(result.is_error());
+    }
 }

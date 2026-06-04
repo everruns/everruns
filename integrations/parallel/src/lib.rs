@@ -8,6 +8,7 @@
 //! OAuth-compatible MCP endpoint.
 
 pub mod connection;
+pub mod payments;
 
 use everruns_core::capabilities::{Capability, CapabilityStatus, IntegrationPlugin};
 use everruns_core::connection_provider::ConnectionProviderPlugin;
@@ -15,12 +16,25 @@ use everruns_core::{McpServerAuthMode, ScopedMcpServer, ScopedMcpServers};
 use serde_json::{Value, json};
 
 use connection::ParallelConnectionProvider;
+pub use payments::ParallelPaymentsCapability;
 
 inventory::submit! {
     IntegrationPlugin {
         experimental_only: true,
         feature_flag: None,
         factory: || Box::new(ParallelCapability),
+    }
+}
+
+// Paid Parallel tools route spend through the core `PaymentAuthority`. Gated by
+// the `machine_payments` internal feature flag (off by default on all envs,
+// including dev, because spend is irreversible) rather than the experimental
+// grade gate, so it can be enabled deliberately in any environment.
+inventory::submit! {
+    IntegrationPlugin {
+        experimental_only: false,
+        feature_flag: Some("machine_payments"),
+        factory: || Box::new(ParallelPaymentsCapability),
     }
 }
 

@@ -44,6 +44,42 @@ fn parallel_not_registered_in_prod_registry() {
     assert!(!registry.has("parallel_search"));
 }
 
+// Env-var-mutating tests must not run in parallel with each other.
+static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+#[test]
+fn payments_plugin_is_flag_gated_not_experimental() {
+    let plugins: Vec<&IntegrationPlugin> = inventory::iter::<IntegrationPlugin>().collect();
+    let plugin = plugins
+        .iter()
+        .find(|p| (p.factory)().id() == "parallel")
+        .expect("Parallel payments plugin not found");
+
+    // Gated by the machine_payments flag rather than the experimental grade, so it
+    // can be enabled deliberately in any environment but never registers by default.
+    assert!(!plugin.experimental_only);
+    assert_eq!(plugin.feature_flag, Some("machine_payments"));
+}
+
+#[test]
+fn payments_capability_disabled_by_default() {
+    let _lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    unsafe { std::env::remove_var("FEATURE_MACHINE_PAYMENTS") };
+    // Off by default even in dev: spend is irreversible.
+    let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Dev);
+    assert!(!registry.has("parallel"));
+}
+
+#[test]
+fn payments_capability_enabled_by_flag() {
+    let _lock = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    unsafe { std::env::set_var("FEATURE_MACHINE_PAYMENTS", "true") };
+    // Deliberate enablement works in any grade, including prod.
+    let registry = CapabilityRegistry::with_builtins_for_grade(DeploymentGrade::Prod);
+    assert!(registry.has("parallel"));
+    unsafe { std::env::remove_var("FEATURE_MACHINE_PAYMENTS") };
+}
+
 #[test]
 fn connection_provider_is_submitted() {
     let plugins: Vec<&ConnectionProviderPlugin> =
