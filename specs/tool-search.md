@@ -52,7 +52,7 @@ Model emits `tool_search_call` → client responds with `tool_search_output` con
 There are two capabilities, chosen by provider:
 
 - **`openai_tool_search`** — uses OpenAI's hosted tool_search (namespaces + `defer_loading` + `{"type":"tool_search"}`). Gated on `LlmModelProfile.tool_search`; cleared for unsupported models in `RuntimeAgentBuilder::build()`. Hosted mode only. See `crates/core/src/capabilities/openai_tool_search.rs`.
-- **`tool_search`** — generic, provider-agnostic client-side deferral that works with any model (Anthropic, Gemini, OpenAI Completions, ...). See `crates/core/src/capabilities/generic_tool_search.rs` and below.
+- **`tool_search`** — generic, provider-agnostic client-side deferral that works with any model (Anthropic, Gemini, OpenAI Completions, ...). See `crates/core/src/capabilities/tool_search.rs` and below.
 
 ### Generic (client-side) tool_search
 

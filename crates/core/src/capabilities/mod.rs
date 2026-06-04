@@ -99,7 +99,6 @@ mod fake_crm;
 mod fake_financial;
 mod fake_warehouse;
 mod file_system;
-mod generic_tool_search;
 mod human_intent;
 mod infinity_context;
 mod knowledge_base;
@@ -128,6 +127,7 @@ mod system_commands;
 mod test_math;
 mod test_weather;
 mod tool_output_persistence;
+mod tool_search;
 pub mod user_hooks;
 mod virtual_bash;
 mod web_fetch;
@@ -200,9 +200,6 @@ pub use file_system::{
     DeleteFileTool, EditFileTool, FileSystemCapability, GrepFilesTool, ListDirectoryTool,
     ReadFileTool, StatFileTool, WriteFileTool,
 };
-pub use generic_tool_search::{
-    GenericToolSearchCapability, TOOL_SEARCH_CAPABILITY_ID, TOOL_SEARCH_TOOL_NAME, ToolSearchTool,
-};
 pub use human_intent::{HUMAN_INTENT_CAPABILITY_ID, HumanIntentCapability};
 pub use infinity_context::{
     INFINITY_CONTEXT_CAPABILITY_ID, InfinityContextCapability, QueryHistoryTool,
@@ -260,6 +257,9 @@ pub use system_commands::{SYSTEM_COMMANDS_CAPABILITY_ID, SystemCommandsCapabilit
 pub use test_math::{AddTool, DivideTool, MultiplyTool, SubtractTool, TestMathCapability};
 pub use test_weather::{GetForecastTool, GetWeatherTool, TestWeatherCapability};
 pub use tool_output_persistence::{PersistOutputHook, ToolOutputPersistenceCapability};
+pub use tool_search::{
+    GenericToolSearchCapability, TOOL_SEARCH_CAPABILITY_ID, TOOL_SEARCH_TOOL_NAME, ToolSearchTool,
+};
 pub use user_hooks::UserHooksCapability;
 pub use virtual_bash::{BashTool, SessionFileSystemAdapter, VirtualBashCapability};
 pub use web_fetch::{
