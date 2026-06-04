@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- New changes go here. Use `/prepare-release X.Y.Z` to generate draft from commits. -->
 
+- feat(capabilities): generic provider-agnostic `tool_search` capability for client-side deferred tool loading on any model (Anthropic, Gemini, ...)
+
 ## [0.8.37] - 2026-06-03
 
 ### Highlights

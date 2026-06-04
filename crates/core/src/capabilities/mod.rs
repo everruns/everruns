@@ -99,6 +99,7 @@ mod fake_crm;
 mod fake_financial;
 mod fake_warehouse;
 mod file_system;
+mod generic_tool_search;
 mod human_intent;
 mod infinity_context;
 mod knowledge_base;
@@ -198,6 +199,9 @@ pub use fake_warehouse::{
 pub use file_system::{
     DeleteFileTool, EditFileTool, FileSystemCapability, GrepFilesTool, ListDirectoryTool,
     ReadFileTool, StatFileTool, WriteFileTool,
+};
+pub use generic_tool_search::{
+    GenericToolSearchCapability, TOOL_SEARCH_CAPABILITY_ID, TOOL_SEARCH_TOOL_NAME, ToolSearchTool,
 };
 pub use human_intent::{HUMAN_INTENT_CAPABILITY_ID, HumanIntentCapability};
 pub use infinity_context::{
@@ -905,6 +909,8 @@ impl CapabilityRegistry {
 
         // OpenAI tool_search (deferred tool loading, all environments)
         registry.register(OpenAiToolSearchCapability::new());
+        // Generic, provider-agnostic tool_search (client-side deferred loading)
+        registry.register(GenericToolSearchCapability::new());
         registry.register(PromptCachingCapability::new());
 
         // Skills (filesystem-based discovery + activation, all environments)
@@ -2049,6 +2055,7 @@ mod tests {
             "compaction",
             "memory",
             "openai_tool_search",
+            "tool_search",
             "prompt_caching",
             "skills",
             "subagents",

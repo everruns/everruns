@@ -17,8 +17,9 @@ mod llm_test_matrix;
 use llm_test_matrix::*;
 
 use everruns_core::capabilities::{
-    CurrentTimeCapability, FileSystemCapability, OpenAiToolSearchCapability, SessionCapability,
-    StatelessTodoListCapability, TestMathCapability, TestWeatherCapability,
+    CurrentTimeCapability, FileSystemCapability, GenericToolSearchCapability,
+    OpenAiToolSearchCapability, SessionCapability, StatelessTodoListCapability, TestMathCapability,
+    TestWeatherCapability,
 };
 use everruns_core::in_memory_loop::InMemoryAgenticLoop;
 
@@ -85,6 +86,81 @@ async fn test_gpt54_tool_search_low_threshold() {
         // Low threshold: tool_search activates even with few tools (5 > 3)
         .capability(OpenAiToolSearchCapability::with_threshold(3))
         .max_iterations(5)
+        .build()
+        .await
+        .unwrap();
+
+    let result = runner.run_turn("What is 7 + 3?").await.unwrap();
+
+    assert!(result.success, "Turn should succeed: {:?}", result.error);
+    assert!(
+        result.tool_calls_count > 0,
+        "Model should call add tool even with deferred schemas"
+    );
+}
+
+// ============================================================================
+// Scenario: generic (provider-agnostic) tool_search with a non-GPT model
+// ============================================================================
+
+/// Tests the generic `tool_search` capability end-to-end with Anthropic Haiku
+/// (no native tool_search). Schemas are deferred client-side and the model
+/// loads them via the `tool_search` tool before calling the real tool.
+#[tokio::test]
+async fn test_anthropic_generic_tool_search() {
+    let Some(model) = ANTHROPIC_HAIKU.model() else {
+        eprintln!("Skipping: {} not set", ANTHROPIC_HAIKU.label());
+        return;
+    };
+
+    let runner = InMemoryAgenticLoop::builder()
+        .agent_name("Generic Tool Search Agent")
+        .system_prompt(
+            "You are a helpful assistant. When asked to add numbers, use the add tool.",
+        )
+        .model(model)
+        .driver_registry(all_providers_registry())
+        // Many tools to exceed the default threshold (16 total).
+        .capability(CurrentTimeCapability) // 1 tool
+        .capability(TestMathCapability) // 4 tools
+        .capability(TestWeatherCapability) // 2 tools
+        .capability(FileSystemCapability) // 6 tools
+        .capability(SessionCapability) // 2 tools
+        .capability(StatelessTodoListCapability) // 1 tool
+        // Generic, provider-agnostic deferred loading (works on Anthropic).
+        .capability(GenericToolSearchCapability::new())
+        .max_iterations(6)
+        .build()
+        .await
+        .unwrap();
+
+    let result = runner.run_turn("What is 21 + 21?").await.unwrap();
+
+    assert!(result.success, "Turn should succeed: {:?}", result.error);
+    assert!(
+        result.tool_calls_count > 0,
+        "Model should load and call the add tool via generic tool_search"
+    );
+}
+
+/// Tests generic tool_search with a low threshold so it activates with few tools.
+#[tokio::test]
+async fn test_anthropic_generic_tool_search_low_threshold() {
+    let Some(model) = ANTHROPIC_HAIKU.model() else {
+        eprintln!("Skipping: {} not set", ANTHROPIC_HAIKU.label());
+        return;
+    };
+
+    let runner = InMemoryAgenticLoop::builder()
+        .agent_name("Generic Low Threshold Agent")
+        .system_prompt("When asked to add numbers, use the add tool.")
+        .model(model)
+        .driver_registry(all_providers_registry())
+        .capability(TestMathCapability)
+        .capability(CurrentTimeCapability)
+        // Low threshold: deferral activates even with few tools (6 > 3).
+        .capability(GenericToolSearchCapability::with_threshold(3))
+        .max_iterations(6)
         .build()
         .await
         .unwrap();
