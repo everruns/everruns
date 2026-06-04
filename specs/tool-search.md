@@ -62,7 +62,10 @@ Implemented entirely in core, with no driver or agent-loop changes:
 2. A real `tool_search` tool is registered. On call it reads sibling tool schemas from `ToolContext::tool_registry` (the same mechanism `spawn_background` uses) and returns the full schemas of tools matching the query.
 3. A system-prompt note tells the model to call `tool_search` before using a tool whose parameters it has not yet loaded.
 
-Because the underlying tools stay registered and executable, tool calls and results are unchanged — only how schemas reach the model differs. The search reads schemas from the worker-side registry, so it covers built-in tools; client-side-only tools are still listed (stubbed) but their schemas are not returned.
+Because the underlying tools stay registered and executable, tool calls and results are unchanged — only how schemas reach the model differs. The search reads schemas from the worker-side registry, so it covers built-in tools and MCP tools. Two interactions matter:
+
+- **Mutually exclusive with hosted `openai_tool_search`.** `DeferSchemaHook` opts out of running when native hosted tool_search is configured (`ToolDefinitionHook::applies_with_native_tool_search()` → `false`), so the two never both strip schemas. `RuntimeAgentBuilder::build()` enforces this before the model-support check, so configuring `openai_tool_search` wins regardless of model.
+- **MCP tools keep full schemas.** MCP tool definitions become registry proxies in the act path; the hook does not strip them (else the proxy, and thus `tool_search` results, would only carry the stub). MCP tools are therefore searchable and executable but not themselves deferred under the generic capability. Deferring them would require plumbing full MCP schemas to the act path separately (follow-up).
 
 ## Design: Capability-Driven Tool Search
 

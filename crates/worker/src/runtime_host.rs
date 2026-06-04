@@ -10,8 +10,8 @@ use everruns_core::traits::{
 };
 use everruns_core::typed_id::{AgentId, HarnessId, SessionId};
 use everruns_core::{
-    Agent, CapabilityRegistry, DriverRegistry, EgressService, Harness, McpServerAuthMode, Session,
-    SessionStatus, UtilityLlmService,
+    Agent, CapabilityRegistry, DriverRegistry, EgressService, Harness, Session, SessionStatus,
+    UtilityLlmService,
 };
 use everruns_mcp::{
     McpClient, McpConnection, McpConnectionResolver, McpEndpoint, McpExecutor, NoAuthProvider,
@@ -28,10 +28,19 @@ use crate::worker_adapters::{
 
 /// Resolves an `mcp_*` server prefix to a connection by asking the control
 /// plane over gRPC (`get_mcp_server_by_prefix`). The control plane returns a
-/// fully resolved descriptor: API-key servers carry the decrypted key, OAuth
-/// servers arrive with the token already injected as an `Authorization` header
-/// (auth mode downgraded to none). We bake any API key in as a `Bearer` header,
-/// so the MCP client needs no auth provider.
+/// fully resolved descriptor.
+///
+/// Credential handling:
+/// - **API-key** servers carry the decrypted key, which we bake in as a
+///   `Bearer` Authorization header.
+/// - **OAuth** servers resolved via the *session-scoped* path arrive with the
+///   token already injected into `headers` (control plane downgrades auth mode).
+/// - We preserve `auth_mode`/`oauth_provider_id` on the connection so a future
+///   worker `McpAuthProvider` can resolve tokens. Until then, OAuth servers
+///   resolved via the non-scoped `resolve_by_prefix` fallback (which returns the
+///   OAuth metadata but no token in `headers`) are not authenticated — see the
+///   PR follow-up. The client uses `NoAuthProvider`, so auth must be expressed
+///   via `headers`.
 struct WorkerMcpResolver<A: WorkerAdapters> {
     adapters: A,
     org_id: i64,
@@ -63,10 +72,8 @@ impl<A: WorkerAdapters> McpConnectionResolver for WorkerMcpResolver<A> {
                 url: info.url,
                 headers,
             },
-            // Credentials are baked into `headers` above, so no further auth
-            // resolution is needed on the transport.
-            auth_mode: McpServerAuthMode::None,
-            oauth_provider_id: None,
+            auth_mode: info.auth_mode,
+            oauth_provider_id: info.oauth_provider_id,
         }))
     }
 }

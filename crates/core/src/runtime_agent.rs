@@ -416,7 +416,16 @@ impl RuntimeAgentBuilder {
             self.runtime_agent.tools = deduped;
         }
 
+        // When hosted tool_search is configured (set by the openai_tool_search
+        // capability), client-side deferral hooks must not run — otherwise they
+        // strip schemas the hosted index needs. Evaluated before the
+        // model-support clearing below, so configuring openai_tool_search wins
+        // over the generic tool_search capability regardless of model support.
+        let native_tool_search = self.runtime_agent.tool_search.is_some();
         for hook in &self.tool_definition_hooks {
+            if native_tool_search && !hook.applies_with_native_tool_search() {
+                continue;
+            }
             self.runtime_agent.tools =
                 hook.transform(std::mem::take(&mut self.runtime_agent.tools));
         }
@@ -949,6 +958,60 @@ mod tests {
         assert!(
             agent.tool_search.is_some(),
             "tool_search should be kept for gpt-5.4 (supported)"
+        );
+    }
+
+    #[test]
+    fn test_build_skips_client_side_hook_when_native_tool_search_configured() {
+        use crate::tool_types::{BuiltinTool, ToolPolicy};
+        use std::sync::Arc;
+
+        // A hook that would clear all tools if it ran, but opts out of coexisting
+        // with native tool_search (like the generic tool_search DeferSchemaHook).
+        struct ClearAllHook;
+        impl ToolDefinitionHook for ClearAllHook {
+            fn transform(&self, _tools: Vec<ToolDefinition>) -> Vec<ToolDefinition> {
+                vec![]
+            }
+            fn applies_with_native_tool_search(&self) -> bool {
+                false
+            }
+        }
+
+        let tool = ToolDefinition::Builtin(BuiltinTool {
+            name: "read_file".to_string(),
+            display_name: None,
+            description: "read".to_string(),
+            parameters: serde_json::json!({}),
+            policy: ToolPolicy::Auto,
+            category: None,
+            deferrable: Default::default(),
+            hints: Default::default(),
+        });
+
+        // Native tool_search configured → opt-out hook is skipped (tools kept).
+        let mut builder = RuntimeAgentBuilder::new()
+            .model("gpt-5.4")
+            .tools(vec![tool.clone()])
+            .tool_search(ToolSearchConfig {
+                enabled: true,
+                threshold: 15,
+            });
+        builder.tool_definition_hooks.push(Arc::new(ClearAllHook));
+        assert_eq!(
+            builder.build().tools.len(),
+            1,
+            "opt-out hook must be skipped when native tool_search is configured"
+        );
+
+        // No native tool_search → the same hook runs and clears the tools.
+        let mut builder = RuntimeAgentBuilder::new()
+            .model("claude-sonnet-4-5-20250514")
+            .tools(vec![tool]);
+        builder.tool_definition_hooks.push(Arc::new(ClearAllHook));
+        assert!(
+            builder.build().tools.is_empty(),
+            "opt-out hook runs when native tool_search is not configured"
         );
     }
 

@@ -25,6 +25,7 @@
 // model. No driver or agent-loop changes are required.
 
 use super::{Capability, CapabilityStatus, ToolDefinitionHook};
+use crate::mcp_server::is_mcp_tool;
 use crate::tool_types::{DeferrablePolicy, ToolDefinition, ToolHints};
 use crate::tools::{Tool, ToolExecutionResult};
 use crate::traits::ToolContext;
@@ -146,15 +147,26 @@ impl ToolDefinitionHook for DeferSchemaHook {
         tools
             .into_iter()
             .map(|tool| {
-                // Never defer the search tool itself, or tools that opt out.
+                // Keep full schemas for: the search tool itself, tools that opt
+                // out, and MCP tools. MCP tools are executed via registry proxies
+                // built from these definitions in the act path; stripping them
+                // here would leave the proxy (and therefore tool_search results)
+                // with only the stub schema. Deferring MCP tools would require
+                // plumbing their full schemas to the act path separately.
                 if tool.name() == TOOL_SEARCH_TOOL_NAME
                     || matches!(tool.deferrable(), DeferrablePolicy::Never)
+                    || is_mcp_tool(tool.name())
                 {
                     return tool;
                 }
                 strip_parameters(tool)
             })
             .collect()
+    }
+
+    // Mutually exclusive with hosted (openai) tool_search — see build().
+    fn applies_with_native_tool_search(&self) -> bool {
+        false
     }
 }
 
@@ -431,6 +443,39 @@ mod tests {
         // Deferrable tools were stripped.
         let deferred = out.iter().find(|t| t.name() == "tool_0").unwrap();
         assert!(deferred.parameters().get("properties").is_none());
+    }
+
+    #[test]
+    fn test_hook_preserves_mcp_tools() {
+        // MCP tools must keep full schemas: they become registry proxies in the
+        // act path, and stripping them would leave tool_search unable to return
+        // their parameters.
+        let hook = DeferSchemaHook { threshold: 3 };
+        let mut tools = many_tools(3);
+        tools.push(builtin(
+            "mcp_docs__search",
+            "search docs",
+            DeferrablePolicy::Automatic,
+        ));
+
+        let out = hook.transform(tools);
+
+        let mcp = out.iter().find(|t| t.name() == "mcp_docs__search").unwrap();
+        assert!(
+            mcp.parameters().get("properties").is_some(),
+            "MCP tool keeps full schema"
+        );
+        // Non-MCP deferrable tools are still stripped.
+        let deferred = out.iter().find(|t| t.name() == "tool_0").unwrap();
+        assert!(deferred.parameters().get("properties").is_none());
+    }
+
+    #[test]
+    fn test_hook_opts_out_of_native_tool_search() {
+        // Generic (client-side) deferral is mutually exclusive with hosted
+        // tool_search; build() uses this to skip the hook when native is active.
+        let hook = DeferSchemaHook { threshold: 15 };
+        assert!(!hook.applies_with_native_tool_search());
     }
 
     #[test]

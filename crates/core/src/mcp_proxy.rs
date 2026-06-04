@@ -61,9 +61,11 @@ impl McpProxyTool {
         };
         match self.invoker.invoke(&call).await {
             Ok(result) => tool_result_to_execution(result),
-            // Transport/connection failures are internal: hide details from the
-            // model but log them upstream (the act loop logs InternalError).
-            Err(error) => ToolExecutionResult::internal_error_msg(error.to_string()),
+            // Surface MCP failures to the model as a tool error (matching the
+            // prior executor-based routing), so it sees actionable messages like
+            // "MCP server not found" and can refine or recover. The invoker maps
+            // transport errors to `AgentLoopError::tool` and logs details upstream.
+            Err(error) => ToolExecutionResult::tool_error(error.to_string()),
         }
     }
 }
@@ -280,6 +282,33 @@ mod tests {
         );
         let result = tool.execute(serde_json::json!({})).await;
         assert!(matches!(result, ToolExecutionResult::ToolError(ref m) if m == "boom"));
+    }
+
+    #[tokio::test]
+    async fn proxy_maps_invoker_error_to_tool_error() {
+        // Connection/transport failures must reach the model as an actionable
+        // tool error (not a generic internal error), matching prior routing.
+        struct FailingInvoker;
+        #[async_trait]
+        impl McpToolInvoker for FailingInvoker {
+            async fn invoke(&self, _tool_call: &ToolCall) -> Result<ToolResult> {
+                Err(crate::error::AgentLoopError::tool(
+                    "MCP server not found for prefix: docs",
+                ))
+            }
+        }
+        let tool = McpProxyTool::new(
+            match mcp_def("mcp_docs__search") {
+                ToolDefinition::Builtin(b) => b,
+                _ => unreachable!(),
+            },
+            Arc::new(FailingInvoker),
+        );
+        let result = tool.execute(serde_json::json!({})).await;
+        match result {
+            ToolExecutionResult::ToolError(m) => assert!(m.contains("MCP server not found")),
+            other => panic!("expected ToolError, got {other:?}"),
+        }
     }
 
     #[test]

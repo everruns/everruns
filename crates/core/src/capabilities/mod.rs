@@ -732,6 +732,14 @@ pub trait Capability: Send + Sync {
 
 pub trait ToolDefinitionHook: Send + Sync {
     fn transform(&self, tools: Vec<ToolDefinition>) -> Vec<ToolDefinition>;
+
+    /// Whether this hook should still run when the agent's model uses native
+    /// (hosted) tool_search. Client-side deferral hooks return `false` so they
+    /// don't strip schemas the hosted tool_search index needs (the two are
+    /// mutually exclusive). Defaults to `true`.
+    fn applies_with_native_tool_search(&self) -> bool {
+        true
+    }
 }
 
 pub trait ToolCallHook: Send + Sync {
