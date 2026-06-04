@@ -393,36 +393,71 @@ impl LlmDriver for OpenAIProtocolLlmDriver {
             None
         };
 
-        let converted_stream: LlmResponseStream = Box::pin(event_stream.then(move |result| {
-            let model = model.clone();
-            let total_tokens = Arc::clone(&total_tokens);
-            let prompt_tokens = Arc::clone(&prompt_tokens);
-            let cache_read_tokens = Arc::clone(&cache_read_tokens);
-            let accumulated_tool_calls = Arc::clone(&accumulated_tool_calls);
-            let finish_reason = Arc::clone(&finish_reason);
-            let retry_metadata_for_done = shared_retry_metadata.clone();
+        // Each SSE event maps to zero-or-more stream events (the [DONE] marker can
+        // emit a flushed ToolCalls plus Done), so the closure yields a Vec that is
+        // flattened back into the stream.
+        let converted_stream: LlmResponseStream = Box::pin(
+            event_stream
+                .then(move |result| {
+                    let model = model.clone();
+                    let total_tokens = Arc::clone(&total_tokens);
+                    let prompt_tokens = Arc::clone(&prompt_tokens);
+                    let cache_read_tokens = Arc::clone(&cache_read_tokens);
+                    let accumulated_tool_calls = Arc::clone(&accumulated_tool_calls);
+                    let finish_reason = Arc::clone(&finish_reason);
+                    let retry_metadata_for_done = shared_retry_metadata.clone();
 
-            async move {
-                match result {
-                    Ok(event) => {
+                    async move {
+                        let event = match result {
+                            Ok(event) => event,
+                            Err(e) => {
+                                return vec![Ok(LlmStreamEvent::Error(format!(
+                                    "Stream error: {}",
+                                    e
+                                )))];
+                            }
+                        };
+
                         if event.data == "[DONE]" {
                             let output_tokens = *total_tokens.lock().unwrap();
                             let input_tokens = *prompt_tokens.lock().unwrap();
                             let cached = *cache_read_tokens.lock().unwrap();
                             let reason = finish_reason.lock().unwrap().clone();
 
-                            return Ok(LlmStreamEvent::Done(Box::new(LlmCompletionMetadata {
-                                total_tokens: Some(input_tokens + output_tokens),
-                                prompt_tokens: Some(input_tokens),
-                                completion_tokens: Some(output_tokens),
-                                cache_read_tokens: cached,
-                                cache_creation_tokens: None,
-                                model: Some(model),
-                                finish_reason: reason.or_else(|| Some("stop".to_string())),
-                                retry_metadata: retry_metadata_for_done.map(|arc| (*arc).clone()),
-                                response_id: None,
-                                phase: None,
-                            })));
+                            let mut events = Vec::new();
+
+                            // Defense in depth (EVE-522): if the turn finished with
+                            // tool_calls but no chunk ever emitted them (e.g. a
+                            // provider whose finish chunk never reached the handler),
+                            // flush the accumulated calls before Done so they are
+                            // never silently dropped.
+                            {
+                                let mut acc = accumulated_tool_calls.lock().unwrap();
+                                if reason.as_deref() == Some("tool_calls") && !acc.is_empty() {
+                                    let calls = std::mem::take(&mut *acc);
+                                    events.push(Ok(LlmStreamEvent::ToolCalls(
+                                        finalize_tool_calls(calls),
+                                    )));
+                                }
+                            }
+
+                            events.push(Ok(LlmStreamEvent::Done(Box::new(
+                                LlmCompletionMetadata {
+                                    total_tokens: Some(input_tokens + output_tokens),
+                                    prompt_tokens: Some(input_tokens),
+                                    completion_tokens: Some(output_tokens),
+                                    cache_read_tokens: cached,
+                                    cache_creation_tokens: None,
+                                    model: Some(model),
+                                    finish_reason: reason.or_else(|| Some("stop".to_string())),
+                                    retry_metadata: retry_metadata_for_done
+                                        .map(|arc| (*arc).clone()),
+                                    response_id: None,
+                                    phase: None,
+                                },
+                            ))));
+
+                            return events;
                         }
 
                         match serde_json::from_str::<OpenAiStreamChunk>(&event.data) {
@@ -444,89 +479,24 @@ impl LlmDriver for OpenAIProtocolLlmDriver {
                                 }
 
                                 if let Some(choice) = chunk.choices.first() {
-                                    // Handle tool calls
-                                    if let Some(tool_calls) = &choice.delta.tool_calls {
-                                        let mut acc = accumulated_tool_calls.lock().unwrap();
-
-                                        for tc in tool_calls {
-                                            let idx = tc.index as usize;
-                                            while acc.len() <= idx {
-                                                acc.push(ToolCall {
-                                                    id: String::new(),
-                                                    name: String::new(),
-                                                    arguments: json!(""),
-                                                });
-                                            }
-
-                                            if let Some(id) = &tc.id {
-                                                acc[idx].id = id.clone();
-                                            }
-                                            if let Some(function) = &tc.function {
-                                                if let Some(name) = &function.name {
-                                                    acc[idx].name = name.clone();
-                                                }
-                                                if let Some(args) = &function.arguments {
-                                                    let current =
-                                                        acc[idx].arguments.as_str().unwrap_or("");
-                                                    let combined = format!("{}{}", current, args);
-                                                    acc[idx].arguments = json!(combined);
-                                                }
-                                            }
-                                        }
-                                        return Ok(LlmStreamEvent::TextDelta(String::new()));
-                                    }
-
-                                    // Handle content delta
-                                    if let Some(content) = &choice.delta.content {
-                                        *total_tokens.lock().unwrap() += 1;
-                                        return Ok(LlmStreamEvent::TextDelta(content.clone()));
-                                    }
-
-                                    // Handle finish reason
-                                    // Note: Don't return Done here - wait for [DONE] marker
-                                    // OpenAI sends usage in a separate chunk AFTER finish_reason
-                                    if let Some(fr) = &choice.finish_reason {
-                                        // Store finish_reason for the [DONE] handler
-                                        *finish_reason.lock().unwrap() = Some(fr.clone());
-
-                                        // For tool_calls, emit ToolCalls event immediately
-                                        // so the agent can start processing tools
-                                        if fr == "tool_calls" {
-                                            let tool_calls =
-                                                accumulated_tool_calls.lock().unwrap().clone();
-                                            if !tool_calls.is_empty() {
-                                                let parsed_calls: Vec<ToolCall> = tool_calls
-                                                    .into_iter()
-                                                    .map(|mut tc| {
-                                                        if let Some(args_str) =
-                                                            tc.arguments.as_str()
-                                                        {
-                                                            tc.arguments =
-                                                                serde_json::from_str(args_str)
-                                                                    .unwrap_or(json!({}));
-                                                        }
-                                                        tc
-                                                    })
-                                                    .collect();
-                                                return Ok(LlmStreamEvent::ToolCalls(parsed_calls));
-                                            }
-                                        }
-                                        // For other finish reasons (stop, length, etc.),
-                                        // just continue - [DONE] will return Done with usage
-                                    }
+                                    let mut tt = total_tokens.lock().unwrap();
+                                    let mut acc = accumulated_tool_calls.lock().unwrap();
+                                    let mut fr = finish_reason.lock().unwrap();
+                                    let stream_event =
+                                        process_stream_choice(choice, &mut tt, &mut acc, &mut fr);
+                                    return vec![Ok(stream_event)];
                                 }
-                                Ok(LlmStreamEvent::TextDelta(String::new()))
+                                vec![Ok(LlmStreamEvent::TextDelta(String::new()))]
                             }
-                            Err(e) => Ok(LlmStreamEvent::Error(format!(
+                            Err(e) => vec![Ok(LlmStreamEvent::Error(format!(
                                 "Failed to parse chunk: {}",
                                 e
-                            ))),
+                            )))],
                         }
                     }
-                    Err(e) => Ok(LlmStreamEvent::Error(format!("Stream error: {}", e))),
-                }
-            }
-        }));
+                })
+                .flat_map(futures::stream::iter),
+        );
 
         Ok(converted_stream)
     }
@@ -776,6 +746,88 @@ struct OpenAiStreamToolCall {
 struct OpenAiStreamFunction {
     name: Option<String>,
     arguments: Option<String>,
+}
+
+/// Parses each accumulated tool call's argument string (assembled from streamed
+/// fragments) into JSON, falling back to an empty object on parse failure.
+fn finalize_tool_calls(tool_calls: Vec<ToolCall>) -> Vec<ToolCall> {
+    tool_calls
+        .into_iter()
+        .map(|mut tc| {
+            if let Some(args_str) = tc.arguments.as_str() {
+                tc.arguments = serde_json::from_str(args_str).unwrap_or(json!({}));
+            }
+            tc
+        })
+        .collect()
+}
+
+/// Processes a single chat-completion stream choice, updating the running
+/// accumulators and returning the event to emit.
+///
+/// EVE-522: some OpenAI-compatible providers (OpenRouter/DeepInfra) send an
+/// empty `content: ""` delta in the *same* chunk that carries
+/// `finish_reason: "tool_calls"`. The content branch must therefore ignore
+/// empty content, otherwise it short-circuits before the finish handler and the
+/// accumulated tool calls are silently dropped. Emitting drains the accumulator
+/// so a repeated finish chunk does not re-emit the same calls.
+fn process_stream_choice(
+    choice: &OpenAiStreamChoice,
+    total_tokens: &mut u32,
+    accumulated_tool_calls: &mut Vec<ToolCall>,
+    finish_reason: &mut Option<String>,
+) -> LlmStreamEvent {
+    // Accumulate streamed tool-call fragments.
+    if let Some(tool_calls) = &choice.delta.tool_calls {
+        for tc in tool_calls {
+            let idx = tc.index as usize;
+            while accumulated_tool_calls.len() <= idx {
+                accumulated_tool_calls.push(ToolCall {
+                    id: String::new(),
+                    name: String::new(),
+                    arguments: json!(""),
+                });
+            }
+
+            if let Some(id) = &tc.id {
+                accumulated_tool_calls[idx].id = id.clone();
+            }
+            if let Some(function) = &tc.function {
+                if let Some(name) = &function.name {
+                    accumulated_tool_calls[idx].name = name.clone();
+                }
+                if let Some(args) = &function.arguments {
+                    let current = accumulated_tool_calls[idx].arguments.as_str().unwrap_or("");
+                    let combined = format!("{}{}", current, args);
+                    accumulated_tool_calls[idx].arguments = json!(combined);
+                }
+            }
+        }
+        return LlmStreamEvent::TextDelta(String::new());
+    }
+
+    // Content delta. Guard on non-empty: an empty-content delta that rides along
+    // with finish_reason must not short-circuit the finish handler below.
+    if let Some(content) = &choice.delta.content
+        && !content.is_empty()
+    {
+        *total_tokens += 1;
+        return LlmStreamEvent::TextDelta(content.clone());
+    }
+
+    // Finish reason. Store it for the [DONE] handler; for tool_calls, emit the
+    // accumulated calls immediately so the agent can start working. Draining the
+    // accumulator prevents a second finish chunk from re-emitting the calls.
+    if let Some(fr) = &choice.finish_reason {
+        *finish_reason = Some(fr.clone());
+
+        if fr == "tool_calls" && !accumulated_tool_calls.is_empty() {
+            let calls = std::mem::take(accumulated_tool_calls);
+            return LlmStreamEvent::ToolCalls(finalize_tool_calls(calls));
+        }
+    }
+
+    LlmStreamEvent::TextDelta(String::new())
 }
 
 // ============================================================================
@@ -1136,5 +1188,137 @@ mod tests {
 
         let json = serde_json::to_value(&request).unwrap();
         assert_eq!(json["reasoning_effort"], "high");
+    }
+
+    // ------------------------------------------------------------------
+    // EVE-522: streaming chunk handling (process_stream_choice)
+    // ------------------------------------------------------------------
+
+    fn choice(json_str: &str) -> OpenAiStreamChoice {
+        serde_json::from_str(json_str).unwrap()
+    }
+
+    /// EVE-522 regression: providers such as OpenRouter/DeepInfra send an empty
+    /// `content: ""` in the same chunk that carries `finish_reason: "tool_calls"`.
+    /// The accumulated tool calls must still be emitted exactly once.
+    #[test]
+    fn test_empty_content_finish_chunk_still_emits_tool_calls() {
+        let mut total_tokens = 0u32;
+        let mut acc: Vec<ToolCall> = Vec::new();
+        let mut finish_reason: Option<String> = None;
+
+        // Chunk 2: tool_calls delta opens the call (id + name).
+        let e = process_stream_choice(
+            &choice(
+                r#"{"delta":{"content":null,"tool_calls":[{"index":0,"id":"call_1","function":{"name":"read_file","arguments":""}}]},"finish_reason":null}"#,
+            ),
+            &mut total_tokens,
+            &mut acc,
+            &mut finish_reason,
+        );
+        assert!(matches!(e, LlmStreamEvent::TextDelta(s) if s.is_empty()));
+
+        // Chunk 3: tool_calls delta streams the arguments.
+        let e = process_stream_choice(
+            &choice(
+                r#"{"delta":{"content":null,"tool_calls":[{"index":0,"function":{"arguments":"{\"path\":\"Cargo.toml\"}"}}]},"finish_reason":null}"#,
+            ),
+            &mut total_tokens,
+            &mut acc,
+            &mut finish_reason,
+        );
+        assert!(matches!(e, LlmStreamEvent::TextDelta(s) if s.is_empty()));
+
+        // Chunk 4: content:"" alongside finish_reason:"tool_calls" — must NOT
+        // short-circuit; emits the accumulated call with parsed JSON arguments.
+        let e = process_stream_choice(
+            &choice(r#"{"delta":{"content":""},"finish_reason":"tool_calls"}"#),
+            &mut total_tokens,
+            &mut acc,
+            &mut finish_reason,
+        );
+        match e {
+            LlmStreamEvent::ToolCalls(calls) => {
+                assert_eq!(calls.len(), 1);
+                assert_eq!(calls[0].id, "call_1");
+                assert_eq!(calls[0].name, "read_file");
+                assert_eq!(calls[0].arguments, json!({"path": "Cargo.toml"}));
+            }
+            other => panic!("expected ToolCalls, got {:?}", other),
+        }
+        assert_eq!(finish_reason.as_deref(), Some("tool_calls"));
+
+        // Chunk 5: second finish chunk with content:"" — the accumulator was
+        // drained, so the same call must not be emitted again.
+        let e = process_stream_choice(
+            &choice(r#"{"delta":{"content":""},"finish_reason":"tool_calls"}"#),
+            &mut total_tokens,
+            &mut acc,
+            &mut finish_reason,
+        );
+        assert!(
+            matches!(e, LlmStreamEvent::TextDelta(s) if s.is_empty()),
+            "tool calls must only be emitted once"
+        );
+    }
+
+    /// Non-empty content deltas are still emitted and counted as output tokens.
+    #[test]
+    fn test_non_empty_content_is_emitted() {
+        let mut total_tokens = 0u32;
+        let mut acc: Vec<ToolCall> = Vec::new();
+        let mut finish_reason: Option<String> = None;
+
+        let e = process_stream_choice(
+            &choice(r#"{"delta":{"content":"hello"},"finish_reason":null}"#),
+            &mut total_tokens,
+            &mut acc,
+            &mut finish_reason,
+        );
+        assert!(matches!(e, LlmStreamEvent::TextDelta(s) if s == "hello"));
+        assert_eq!(total_tokens, 1);
+    }
+
+    /// OpenAI's native path sends `delta: {}` (no content key) in the finish
+    /// chunk; the existing behavior of emitting tool calls there is preserved.
+    #[test]
+    fn test_finish_chunk_without_content_emits_tool_calls() {
+        let mut total_tokens = 0u32;
+        let mut acc: Vec<ToolCall> = Vec::new();
+        let mut finish_reason: Option<String> = None;
+
+        process_stream_choice(
+            &choice(
+                r#"{"delta":{"tool_calls":[{"index":0,"id":"call_9","function":{"name":"list_dir","arguments":"{}"}}]},"finish_reason":null}"#,
+            ),
+            &mut total_tokens,
+            &mut acc,
+            &mut finish_reason,
+        );
+
+        let e = process_stream_choice(
+            &choice(r#"{"delta":{},"finish_reason":"tool_calls"}"#),
+            &mut total_tokens,
+            &mut acc,
+            &mut finish_reason,
+        );
+        match e {
+            LlmStreamEvent::ToolCalls(calls) => {
+                assert_eq!(calls.len(), 1);
+                assert_eq!(calls[0].name, "list_dir");
+            }
+            other => panic!("expected ToolCalls, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_finalize_tool_calls_parses_arguments() {
+        let calls = vec![ToolCall {
+            id: "call_1".to_string(),
+            name: "read_file".to_string(),
+            arguments: json!(r#"{"path":"src/main.rs"}"#),
+        }];
+        let finalized = finalize_tool_calls(calls);
+        assert_eq!(finalized[0].arguments, json!({"path": "src/main.rs"}));
     }
 }
