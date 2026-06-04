@@ -1921,12 +1921,15 @@ impl ReasonAtom {
         // 15. Convert completion metadata to TokenUsage
         let usage = completion_metadata.as_ref().and_then(|meta| {
             match (meta.prompt_tokens, meta.completion_tokens) {
-                (Some(input), Some(output)) => Some(TokenUsage::with_cache(
-                    input,
-                    output,
-                    meta.cache_read_tokens,
-                    meta.cache_creation_tokens,
-                )),
+                (Some(input), Some(output)) => Some(
+                    TokenUsage::with_cache(
+                        input,
+                        output,
+                        meta.cache_read_tokens,
+                        meta.cache_creation_tokens,
+                    )
+                    .with_cost_usd(meta.provider_cost_usd),
+                ),
                 _ => None,
             }
         });

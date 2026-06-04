@@ -576,6 +576,7 @@ impl InMemoryDatabase {
         _output_tokens: i64,
         _cache_read_tokens: i64,
         _cache_creation_tokens: i64,
+        _cost_usd: Option<f64>,
         _duration_ms: Option<i32>,
         _finish_reason: Option<String>,
         _created_at: chrono::DateTime<chrono::Utc>,

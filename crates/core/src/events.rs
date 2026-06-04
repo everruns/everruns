@@ -530,6 +530,14 @@ pub struct TokenUsage {
     /// Number of tokens written to cache (Anthropic-specific)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cache_creation_tokens: Option<u32>,
+
+    /// Authoritative cost of this generation in USD, as reported by the
+    /// provider (e.g. OpenRouter's `usage.cost`). `None` for providers that do
+    /// not return a cost; callers fall back to a price-table estimate. This is
+    /// the real, post-routing charge and accounts for provider routing, BYOK
+    /// upstream pricing, and cache discounts.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cost_usd: Option<f64>,
 }
 
 impl TokenUsage {
@@ -540,6 +548,7 @@ impl TokenUsage {
             output_tokens,
             cache_read_tokens: None,
             cache_creation_tokens: None,
+            cost_usd: None,
         }
     }
 
@@ -555,7 +564,14 @@ impl TokenUsage {
             output_tokens,
             cache_read_tokens,
             cache_creation_tokens,
+            cost_usd: None,
         }
+    }
+
+    /// Set the provider-reported cost in USD, returning `self` for chaining.
+    pub fn with_cost_usd(mut self, cost_usd: Option<f64>) -> Self {
+        self.cost_usd = cost_usd;
+        self
     }
 
     /// Get total tokens (input + output)
@@ -572,6 +588,9 @@ impl TokenUsage {
         }
         if let Some(cache) = other.cache_creation_tokens {
             *self.cache_creation_tokens.get_or_insert(0) += cache;
+        }
+        if let Some(cost) = other.cost_usd {
+            *self.cost_usd.get_or_insert(0.0) += cost;
         }
     }
 }
@@ -2915,6 +2934,7 @@ mod tests {
                 output_tokens: 5,
                 cache_read_tokens: None,
                 cache_creation_tokens: None,
+                cost_usd: None,
             }),
             Some(100),
             Some(25), // time_to_first_token_ms
@@ -2949,6 +2969,7 @@ mod tests {
                 output_tokens: 3,
                 cache_read_tokens: None,
                 cache_creation_tokens: None,
+                cost_usd: None,
             }),
             Some(50),
             Some(25), // time_to_first_token_ms
@@ -3316,6 +3337,7 @@ mod tests {
                 output_tokens: 5,
                 cache_read_tokens: None,
                 cache_creation_tokens: None,
+                cost_usd: None,
             }),
             Some(500), // duration_ms
             Some(120), // time_to_first_token_ms

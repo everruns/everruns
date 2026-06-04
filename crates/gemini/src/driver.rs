@@ -478,6 +478,7 @@ impl LlmDriver for GeminiLlmDriver {
                                     completion_tokens: Some(out_tokens),
                                     cache_read_tokens: cached,
                                     cache_creation_tokens: None,
+                                    provider_cost_usd: None,
                                     model: Some(model.clone()),
                                     finish_reason: Some("stop".to_string()),
                                     retry_metadata: retry_metadata
@@ -611,6 +612,7 @@ impl LlmDriver for GeminiLlmDriver {
                                                     completion_tokens: Some(out_tokens),
                                                     cache_read_tokens: cached,
                                                     cache_creation_tokens: None,
+                                                    provider_cost_usd: None,
                                                     model: Some(model.clone()),
                                                     finish_reason: Some(finish.to_string()),
                                                     retry_metadata: retry_metadata
@@ -710,6 +712,7 @@ impl LlmDriver for GeminiLlmDriver {
                                     completion_tokens: Some(out_tokens),
                                     cache_read_tokens: cached,
                                     cache_creation_tokens: None,
+                                    provider_cost_usd: None,
                                     model: Some(model.clone()),
                                     finish_reason: Some("stop".to_string()),
                                     retry_metadata: retry_metadata

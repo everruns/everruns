@@ -28,6 +28,17 @@ export function formatCountLabel(count: number, singular: string, plural?: strin
 export const formatTokens = formatCompactNumber;
 
 /**
+ * Format a USD cost. Uses up to 4 significant fraction digits so that small
+ * per-request costs (e.g. $0.0009) remain visible while larger ones stay
+ * readable (e.g. $1.23).
+ * @param usd Cost in US dollars
+ */
+export function formatCostUsd(usd: number): string {
+  const digits = usd !== 0 && Math.abs(usd) < 0.01 ? 4 : 2;
+  return `$${usd.toFixed(digits)}`;
+}
+
+/**
  * Format milliseconds duration as human-readable string
  * @param ms Duration in milliseconds
  * @returns Formatted string (e.g., "1.23s", "456ms")

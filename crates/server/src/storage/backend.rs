@@ -2024,6 +2024,7 @@ impl StorageBackend {
         output_tokens: i64,
         cache_read_tokens: i64,
         cache_creation_tokens: i64,
+        cost_usd: Option<f64>,
         duration_ms: Option<i32>,
         finish_reason: Option<String>,
         created_at: chrono::DateTime<chrono::Utc>,
@@ -2041,6 +2042,7 @@ impl StorageBackend {
             output_tokens,
             cache_read_tokens,
             cache_creation_tokens,
+            cost_usd,
             duration_ms,
             finish_reason,
             created_at

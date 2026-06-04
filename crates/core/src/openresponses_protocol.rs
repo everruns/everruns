@@ -1035,6 +1035,9 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
                                         // Response completed - extract usage
                                         let response_obj = json.get("response").unwrap_or(&json);
 
+                                        // Authoritative per-request cost from OpenAI-compatible
+                                        // gateways (e.g. OpenRouter `usage.cost`, in USD credits).
+                                        let mut provider_cost_usd: Option<f64> = None;
                                         if let Some(usage) = response_obj.get("usage") {
                                             if let Some(input) =
                                                 usage.get("input_tokens").and_then(|t| t.as_u64())
@@ -1055,6 +1058,8 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
                                                 *cache_read_tokens.lock().unwrap() =
                                                     Some(cached as u32);
                                             }
+                                            provider_cost_usd =
+                                                usage.get("cost").and_then(|c| c.as_f64());
                                         }
 
                                         // Determine finish reason from status
@@ -1115,6 +1120,7 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
                                             completion_tokens: Some(output),
                                             cache_read_tokens: cached,
                                             cache_creation_tokens: None,
+                                            provider_cost_usd,
                                             model: Some(model),
                                             finish_reason: Some(reason),
                                             retry_metadata: retry_metadata_for_done
@@ -1368,6 +1374,7 @@ fn handle_streaming_event(
             let input = *input_tokens.lock().unwrap();
             let output = *output_tokens.lock().unwrap();
             let cached = *cache_read_tokens.lock().unwrap();
+            let provider_cost_usd = response.usage.as_ref().and_then(|u| u.cost);
 
             LlmStreamEvent::Done(Box::new(LlmCompletionMetadata {
                 total_tokens: Some(input + output),
@@ -1375,6 +1382,7 @@ fn handle_streaming_event(
                 completion_tokens: Some(output),
                 cache_read_tokens: cached,
                 cache_creation_tokens: None,
+                provider_cost_usd,
                 model: Some(model),
                 finish_reason: Some(reason),
                 retry_metadata: retry_metadata.map(|arc| (*arc).clone()),

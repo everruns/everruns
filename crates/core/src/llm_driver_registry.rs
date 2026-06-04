@@ -113,6 +113,10 @@ pub struct LlmCompletionMetadata {
     pub cache_read_tokens: Option<u32>,
     /// Tokens written to cache (Anthropic-specific)
     pub cache_creation_tokens: Option<u32>,
+    /// Authoritative cost of this generation in USD, when the provider reports
+    /// it inline (e.g. OpenRouter's `usage.cost`). `None` for providers that do
+    /// not return a cost.
+    pub provider_cost_usd: Option<f64>,
     /// Model used
     pub model: Option<String>,
     /// Finish reason

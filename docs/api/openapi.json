@@ -26880,6 +26880,14 @@
             "description": "Number of tokens read from cache (reduces cost)",
             "minimum": 0
           },
+          "cost_usd": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Authoritative cost of this generation in USD, as reported by the\nprovider (e.g. OpenRouter's `usage.cost`). `None` for providers that do\nnot return a cost; callers fall back to a price-table estimate. This is\nthe real, post-routing charge and accounts for provider routing, BYOK\nupstream pricing, and cache discounts."
+          },
           "input_tokens": {
             "type": "integer",
             "format": "int32",

@@ -232,6 +232,7 @@ impl BudgetService {
 
     /// Process an LLM generation event: meter tokens, record ledger entries,
     /// evaluate rules, and return the most restrictive action.
+    #[allow(clippy::too_many_arguments)]
     async fn process_llm_generation(
         &self,
         event: &Event,
@@ -239,6 +240,7 @@ impl BudgetService {
         provider: Option<&str>,
         input_tokens: i64,
         output_tokens: i64,
+        provider_cost_usd: Option<f64>,
         finish_reasons: Option<&[String]>,
     ) {
         // Get session to find subject hierarchy
@@ -311,6 +313,7 @@ impl BudgetService {
                     "input_tokens": input_tokens,
                     "output_tokens": output_tokens,
                     "total_tokens": total_tokens,
+                    "provider_cost_usd": provider_cost_usd,
                 }),
                 metadata: serde_json::json!({
                     "model": model,
@@ -340,6 +343,7 @@ impl BudgetService {
                 output_tokens,
                 model,
                 provider,
+                provider_cost_usd,
             );
 
             if debit <= 0.0 {
@@ -433,6 +437,7 @@ impl BudgetService {
     }
 
     /// Compute the debit amount in the budget's currency.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn compute_debit(
         &self,
         currency: &str,
@@ -441,10 +446,18 @@ impl BudgetService {
         output_tokens: i64,
         model: Option<&str>,
         provider: Option<&str>,
+        provider_cost_usd: Option<f64>,
     ) -> f64 {
         match currency {
             "tokens" => total_tokens as f64,
             "usd" => {
+                // Prefer the provider's authoritative cost when present (e.g.
+                // OpenRouter's usage.cost). It accounts for provider routing,
+                // BYOK pricing, and cache discounts, and covers the long tail of
+                // models we do not maintain price profiles for.
+                if let Some(cost) = provider_cost_usd.filter(|c| *c > 0.0) {
+                    return cost;
+                }
                 // Look up model cost from profiles
                 let provider_type = provider
                     .and_then(|p| p.parse::<LlmProviderType>().ok())
@@ -688,6 +701,7 @@ impl EventListener for BudgetService {
             data.metadata.provider.as_deref(),
             input_tokens,
             output_tokens,
+            usage.cost_usd,
             data.metadata.finish_reasons.as_deref(),
         )
         .await;

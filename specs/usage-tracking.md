@@ -109,6 +109,7 @@ CREATE TABLE llm_generations (
     output_tokens BIGINT NOT NULL DEFAULT 0,
     cache_read_tokens BIGINT NOT NULL DEFAULT 0,
     cache_creation_tokens BIGINT NOT NULL DEFAULT 0,
+    cost_usd DOUBLE PRECISION,  -- Authoritative provider cost (e.g. OpenRouter usage.cost); NULL when not reported
     duration_ms INTEGER,
     finish_reason TEXT,
     created_at TIMESTAMPTZ NOT NULL
@@ -269,6 +270,10 @@ Display usage statistics card in configuration section:
 ## Future Considerations
 
 1. **Daily aggregations**: Pre-computed daily usage for dashboard
-2. **Cost estimation**: Map tokens to estimated costs per provider/model
+2. **Cost estimation**: Map tokens to estimated costs per provider/model. When a
+   provider reports an authoritative per-request cost inline (e.g. OpenRouter's
+   `usage.cost`), it is captured on `llm_generations.cost_usd` and preferred over
+   the token-based estimate; denormalized cost totals on sessions/agents are a
+   follow-up.
 3. **Usage limits**: Configurable limits per agent/session
 4. **Usage alerts**: Notifications when approaching limits

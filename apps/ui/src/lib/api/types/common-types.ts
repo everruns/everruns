@@ -119,6 +119,12 @@ export interface TokenUsage {
   cache_read_tokens?: number;
   /** Tokens written to cache (Anthropic-specific) */
   cache_creation_tokens?: number;
+  /**
+   * Authoritative cost of this generation in USD, when the provider reports it
+   * inline (e.g. OpenRouter's `usage.cost`). Absent for providers that do not
+   * return a cost.
+   */
+  cost_usd?: number;
 }
 
 export interface ContextReportSection {
