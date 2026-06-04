@@ -115,9 +115,7 @@ async fn test_anthropic_generic_tool_search() {
 
     let runner = InMemoryAgenticLoop::builder()
         .agent_name("Generic Tool Search Agent")
-        .system_prompt(
-            "You are a helpful assistant. When asked to add numbers, use the add tool.",
-        )
+        .system_prompt("You are a helpful assistant. When asked to add numbers, use the add tool.")
         .model(model)
         .driver_registry(all_providers_registry())
         // Many tools to exceed the default threshold (16 total).
