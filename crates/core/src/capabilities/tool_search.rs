@@ -137,12 +137,6 @@ pub(crate) struct DeferSchemaHook {
     threshold: usize,
 }
 
-impl DeferSchemaHook {
-    pub(crate) fn new(threshold: usize) -> Self {
-        Self { threshold }
-    }
-}
-
 impl ToolDefinitionHook for DeferSchemaHook {
     fn transform(&self, tools: Vec<ToolDefinition>) -> Vec<ToolDefinition> {
         // Below the threshold full schemas fit comfortably; don't defer.

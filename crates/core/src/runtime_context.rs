@@ -208,10 +208,14 @@ async fn assemble_turn_context_with_mode(
     .await?;
 
     let resolved_locale = extract_locale_override(&messages).or_else(|| session.locale.clone());
+    // The resolved model is known here, so model-adaptive capabilities (e.g.
+    // `auto_tool_search`) can pick the right mechanism during collection in
+    // `build_runtime_agent` below.
     let prompt_ctx = SystemPromptContext {
         session_id,
         locale: resolved_locale.clone(),
         file_store,
+        model: Some(model_with_provider.model.clone()),
     };
 
     let compaction_config = effective_overlay

@@ -218,6 +218,7 @@ pub use mcp::{
 pub use noop::NoopCapability;
 pub use openai_tool_search::{
     DEFAULT_TOOL_SEARCH_THRESHOLD, OPENAI_TOOL_SEARCH_CAPABILITY_ID, OpenAiToolSearchCapability,
+    model_supports_native_tool_search,
 };
 #[cfg(feature = "ui-capabilities")]
 pub use openui::{OPENUI_CAPABILITY_ID, OpenUiCapability};
@@ -285,6 +286,12 @@ pub struct SystemPromptContext {
     pub locale: Option<String>,
     /// Optional file store for reading session files (e.g., AGENTS.md)
     pub file_store: Option<Arc<dyn SessionFileSystem>>,
+    /// The model the agent will run on, when known at collection time.
+    ///
+    /// Enables model-adaptive capabilities (see [`Capability::resolve_for_model`],
+    /// e.g. `auto_tool_search`). `None` when the model is not yet resolved; such
+    /// capabilities then fall back to their provider-agnostic behavior.
+    pub model: Option<String>,
 }
 
 impl SystemPromptContext {
@@ -294,7 +301,14 @@ impl SystemPromptContext {
             session_id,
             locale: None,
             file_store: None,
+            model: None,
         }
+    }
+
+    /// Set the model the agent will run on (drives model-adaptive capabilities).
+    pub fn with_model(mut self, model: impl Into<String>) -> Self {
+        self.model = Some(model.into());
+        self
     }
 }
 
@@ -367,6 +381,20 @@ pub trait Capability: Send + Sync {
 
     /// Returns the category for grouping in UI (optional)
     fn category(&self) -> Option<&str> {
+        None
+    }
+
+    /// Model-adaptive dispatch: delegate this capability's contributions to a
+    /// different underlying capability based on the agent's model.
+    ///
+    /// Capability collection (which knows the model via
+    /// [`SystemPromptContext::model`]) calls this and, when it returns `Some`,
+    /// collects the returned capability's contributions in place of this one's.
+    /// The default returns `None` (no delegation). `auto_tool_search` overrides
+    /// it to pick hosted vs client-side tool search. `model` is `None` when not
+    /// yet resolved; implementations should choose a safe provider-agnostic
+    /// default in that case.
+    fn resolve_for_model(&self, _model: Option<&str>) -> Option<&dyn Capability> {
         None
     }
 
@@ -1775,8 +1803,23 @@ pub async fn collect_capabilities_with_configs(
                 continue;
             }
 
+            // Model-adaptive dispatch: a capability may delegate its contributions
+            // to a different underlying capability based on the agent's model
+            // (e.g. `auto_tool_search` picks hosted vs client-side tool search).
+            // Collect from the resolved capability; for the common non-delegating
+            // case `effective` is just `capability`. The tool_search special case
+            // below therefore keys on `effective.id()` rather than the configured
+            // `cap_id`, so a resolved `auto_tool_search` is treated as whichever
+            // mechanism it became.
+            let effective: &dyn Capability =
+                match capability.resolve_for_model(ctx.model.as_deref()) {
+                    Some(inner) => inner,
+                    None => capability.as_ref(),
+                };
+            let effective_id = effective.id();
+
             // Collect dynamic system prompt contribution (config-aware, may read from filesystem)
-            if let Some(contribution) = capability
+            if let Some(contribution) = effective
                 .system_prompt_contribution_with_config(ctx, &cap_config.config)
                 .await
             {
@@ -1788,15 +1831,15 @@ pub async fn collect_capabilities_with_configs(
             }
 
             // Collect tools (config-aware: capabilities can adapt based on per-agent config)
-            tools.extend(capability.tools_with_config(&cap_config.config));
-            tool_definition_hooks.extend(capability.tool_definition_hooks());
-            tool_call_hooks.extend(capability.tool_call_hooks());
+            tools.extend(effective.tools_with_config(&cap_config.config));
+            tool_definition_hooks.extend(effective.tool_definition_hooks());
+            tool_call_hooks.extend(effective.tool_call_hooks());
             // Output guardrails are NOT collected here — see CollectedCapabilities
             // for rationale. ReasonAtom re-derives them at stream-arming time.
 
             // Collect tool definitions, propagating capability category if not already set
-            let cap_category = capability.category();
-            for def in capability.tool_definitions() {
+            let cap_category = effective.category();
+            for def in effective.tool_definitions() {
                 let def = match (def.category(), cap_category) {
                     (None, Some(cat)) => def.with_category(cat),
                     _ => def,
@@ -1805,13 +1848,11 @@ pub async fn collect_capabilities_with_configs(
                 tool_definitions.push(def);
             }
 
-            // Detect tool_search configuration capabilities. Both set a hosted
-            // ToolSearchConfig; `auto_tool_search` additionally marks it `auto`
-            // so build() falls back to client-side deferral (its hook + tool)
-            // on models without native support instead of disabling deferral.
-            if cap_id == OPENAI_TOOL_SEARCH_CAPABILITY_ID
-                || cap_id == AUTO_TOOL_SEARCH_CAPABILITY_ID
-            {
+            // Detect the hosted tool_search mechanism. `auto_tool_search` resolves
+            // to `openai_tool_search` (this id) only on models with native support;
+            // on every other model it resolves to the generic `tool_search`, which
+            // sets no hosted config and instead contributes the hook + tool above.
+            if effective_id == OPENAI_TOOL_SEARCH_CAPABILITY_ID {
                 // Parse threshold from config, fall back to default
                 let threshold = cap_config
                     .config
@@ -1822,7 +1863,6 @@ pub async fn collect_capabilities_with_configs(
                 tool_search = Some(crate::llm_driver_registry::ToolSearchConfig {
                     enabled: true,
                     threshold,
-                    auto: cap_id == AUTO_TOOL_SEARCH_CAPABILITY_ID,
                 });
             }
 
@@ -3924,7 +3964,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_collect_capabilities_auto_tool_search() {
+    async fn test_collect_capabilities_auto_tool_search_resolves_to_generic_off_native() {
         let registry = CapabilityRegistry::with_builtins();
 
         let configs = vec![AgentCapabilityConfig {
@@ -3932,16 +3972,15 @@ mod tests {
             config: serde_json::json!({"threshold": 7}),
         }];
 
-        let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
+        // No native support → resolves to the generic client-side mechanism: no
+        // hosted config, but the tool_search tool + DeferSchemaHook are collected.
+        let ctx = test_ctx().with_model("claude-sonnet-4-5-20250514");
+        let collected = collect_capabilities_with_configs(&configs, &registry, &ctx).await;
 
-        // Sets a hosted config flagged `auto` so build() can fall back to the
-        // client-side path on models without native support.
-        let ts = collected.tool_search.as_ref().unwrap();
-        assert!(ts.enabled);
-        assert!(ts.auto, "auto_tool_search must mark the config as auto");
-        assert_eq!(ts.threshold, 7);
-
-        // Also contributes the client-side fallback (tool + DeferSchemaHook).
+        assert!(
+            collected.tool_search.is_none(),
+            "auto_tool_search must not set a hosted config on a non-native model"
+        );
         assert!(
             collected
                 .tools
@@ -3952,6 +3991,39 @@ mod tests {
         assert!(
             !collected.tool_definition_hooks.is_empty(),
             "auto_tool_search must contribute a client-side deferral hook"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_collect_capabilities_auto_tool_search_resolves_to_hosted_on_native() {
+        let registry = CapabilityRegistry::with_builtins();
+
+        let configs = vec![AgentCapabilityConfig {
+            capability_ref: CapabilityId::new("auto_tool_search"),
+            config: serde_json::json!({"threshold": 7}),
+        }];
+
+        // Native support → resolves to the hosted OpenAI mechanism: a hosted
+        // config (honoring the configured threshold) and no client-side tool/hook.
+        let ctx = test_ctx().with_model("gpt-5.4");
+        let collected = collect_capabilities_with_configs(&configs, &registry, &ctx).await;
+
+        let ts = collected
+            .tool_search
+            .as_ref()
+            .expect("auto_tool_search must set a hosted config on a native model");
+        assert!(ts.enabled);
+        assert_eq!(ts.threshold, 7);
+        assert!(
+            !collected
+                .tools
+                .iter()
+                .any(|t| t.name() == TOOL_SEARCH_TOOL_NAME),
+            "hosted mechanism must not contribute the client-side tool_search tool"
+        );
+        assert!(
+            collected.tool_definition_hooks.is_empty(),
+            "hosted mechanism must not contribute a client-side deferral hook"
         );
     }
 

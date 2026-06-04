@@ -282,7 +282,6 @@ impl SessionCommandService {
             .tool_search(ToolSearchConfig {
                 enabled: false,
                 threshold: usize::MAX,
-                auto: false,
             })
             .previous_response_id(None);
 

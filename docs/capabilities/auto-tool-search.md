@@ -23,11 +23,11 @@ This is the recommended default for harnesses that may run on different models. 
 - **Models with native tool search** (OpenAI GPT-5.4 and newer) → the hosted mechanism described in [OpenAI Tool Search](/capabilities/openai-tool-search/): namespaces + `defer_loading` + a `{"type": "tool_search"}` activator. No extra tool is added; the provider handles search server-side.
 - **All other models** (Anthropic, Gemini, OpenAI Completions, …) → the client-side mechanism described in [Tool Search](/capabilities/generic-tool-search/): schemas are stripped to stubs and a `tool_search` tool loads them back on demand.
 
-The choice is made at agent build time, when the model is known. You don't have to know in advance which provider an agent will use.
+The choice is made when the agent's capabilities are assembled, once the model is known. You don't have to know in advance which provider an agent will use.
 
 ## Tools
 
-One — the client-side `tool_search` tool, used only on models without native support. On models with native tool search, this tool is removed and the provider's hosted search is used instead.
+One — the client-side `tool_search` tool, used only on models without native support. On models with native tool search, no client-side tool is added and the provider's hosted search is used instead.
 
 ## Configuration
 

@@ -416,28 +416,24 @@ impl RuntimeAgentBuilder {
             self.runtime_agent.tools = deduped;
         }
 
-        // Resolve tool_search (deferred tool loading). A ToolSearchConfig can be
-        // set by `openai_tool_search` (hosted only) or `auto_tool_search`
-        // (hosted on capable models, client-side fallback elsewhere). The
-        // client-side path is carried by `tool_definition_hooks` (DeferSchemaHook)
-        // plus a `tool_search` tool, contributed by `tool_search`/`auto_tool_search`.
-        let auto = self
-            .runtime_agent
-            .tool_search
-            .as_ref()
-            .is_some_and(|c| c.auto);
+        // Resolve tool_search (deferred tool loading). The mechanism is already
+        // chosen at capability-collection time (see `Capability::resolve_for_model`
+        // and `auto_tool_search`): a hosted `ToolSearchConfig` means the hosted
+        // (native) mechanism; client-side deferral arrives as `DeferSchemaHook`
+        // plus a `tool_search` tool. This step only reconciles a hosted config
+        // with the model — collection may have set one (via a direct
+        // `openai_tool_search` capability) that the model can't honor.
         let model_supports_native =
             get_model_profile(&LlmProviderType::Openai, &self.runtime_agent.model)
                 .is_some_and(|p| p.tool_search);
 
         // Hosted (native) deferral hides schemas server-side, so client-side
-        // deferral hooks that opt out must be skipped while it is active. A
-        // non-`auto` config keeps native "active" here even on unsupported
-        // models (it is disabled below, with no client-side fallback). An
-        // `auto` config on an unsupported model is treated as inactive so the
-        // client-side hook runs instead.
-        let native_tool_search =
-            self.runtime_agent.tool_search.is_some() && (model_supports_native || !auto);
+        // opt-out hooks (DeferSchemaHook) must be skipped while a hosted config
+        // is present — even on an unsupported model, where the hosted config is
+        // disabled below (full schemas, no client-side fallback). This is what
+        // makes a hand-configured `openai_tool_search` win over a separately
+        // configured `tool_search`.
+        let native_tool_search = self.runtime_agent.tool_search.is_some();
         for hook in &self.tool_definition_hooks {
             if native_tool_search && !hook.applies_with_native_tool_search() {
                 continue;
@@ -446,27 +442,16 @@ impl RuntimeAgentBuilder {
                 hook.transform(std::mem::take(&mut self.runtime_agent.tools));
         }
 
-        // Clear the hosted config when the model can't honor it. For `auto`
-        // this hands off to the client-side hook applied above; for
-        // `openai_tool_search` it simply sends full schemas.
+        // Clear a hosted config the model can't honor (a direct `openai_tool_search`
+        // on an unsupported model): it simply sends full schemas. `auto_tool_search`
+        // never reaches here on an unsupported model — it resolves to the generic
+        // client-side mechanism at collection time and sets no hosted config.
         if self.runtime_agent.tool_search.is_some() && !model_supports_native {
             tracing::debug!(
                 model = %self.runtime_agent.model,
-                auto,
-                "hosted tool_search not supported by model; \
-                 falling back to client-side deferral (auto) or disabling"
+                "hosted tool_search not supported by model; disabling (full schemas)"
             );
             self.runtime_agent.tool_search = None;
-        }
-
-        // Hosted deferral survived → it is the active mechanism. When the
-        // (auto) capability also contributed the client-side `tool_search`
-        // tool, drop it: the provider hides schemas itself, so the tool would
-        // be a redundant second search path in front of the model.
-        if auto && self.runtime_agent.tool_search.is_some() {
-            self.runtime_agent
-                .tools
-                .retain(|t| t.name() != crate::capabilities::TOOL_SEARCH_TOOL_NAME);
         }
 
         self.runtime_agent
@@ -962,7 +947,6 @@ mod tests {
             .tool_search(ToolSearchConfig {
                 enabled: true,
                 threshold: 15,
-                auto: false,
             })
             .build();
 
@@ -979,7 +963,6 @@ mod tests {
             .tool_search(ToolSearchConfig {
                 enabled: true,
                 threshold: 15,
-                auto: false,
             })
             .build();
 
@@ -1024,7 +1007,6 @@ mod tests {
             .tool_search(ToolSearchConfig {
                 enabled: true,
                 threshold: 15,
-                auto: false,
             });
         builder.tool_definition_hooks.push(Arc::new(ClearAllHook));
         assert_eq!(
@@ -1051,7 +1033,6 @@ mod tests {
             .tool_search(ToolSearchConfig {
                 enabled: true,
                 threshold: 15,
-                auto: false,
             })
             .build();
 
@@ -1082,7 +1063,6 @@ mod tests {
             .tool_search(ToolSearchConfig {
                 enabled: true,
                 threshold: 5,
-                auto: false,
             })
             .build();
 
@@ -1096,99 +1076,10 @@ mod tests {
         );
     }
 
-    // A client-side deferral hook standing in for the generic DeferSchemaHook:
-    // it opts out of coexisting with native tool_search and, when it does run,
-    // removes the `read_file` tool so the test can observe whether it executed.
-    struct RemoveReadFileHook;
-    impl ToolDefinitionHook for RemoveReadFileHook {
-        fn transform(&self, tools: Vec<ToolDefinition>) -> Vec<ToolDefinition> {
-            tools
-                .into_iter()
-                .filter(|t| t.name() != "read_file")
-                .collect()
-        }
-        fn applies_with_native_tool_search(&self) -> bool {
-            false
-        }
-    }
-
-    // Builds an agent configured exactly as `auto_tool_search` collection would:
-    // an `auto` hosted config plus the client-side hook and a `tool_search` tool.
-    fn auto_tool_search_builder(model: &str) -> RuntimeAgentBuilder {
-        use crate::tool_types::{BuiltinTool, ToolPolicy};
-        use std::sync::Arc;
-
-        let tool = |name: &str| {
-            ToolDefinition::Builtin(BuiltinTool {
-                name: name.to_string(),
-                display_name: None,
-                description: "t".to_string(),
-                parameters: serde_json::json!({}),
-                policy: ToolPolicy::Auto,
-                category: None,
-                deferrable: Default::default(),
-                hints: Default::default(),
-            })
-        };
-
-        let mut builder = RuntimeAgentBuilder::new()
-            .model(model)
-            .tools(vec![tool("read_file"), tool("tool_search")])
-            .tool_search(ToolSearchConfig {
-                enabled: true,
-                threshold: 15,
-                auto: true,
-            });
-        builder
-            .tool_definition_hooks
-            .push(Arc::new(RemoveReadFileHook));
-        builder
-    }
-
-    #[test]
-    fn test_build_auto_tool_search_uses_hosted_on_supported_model() {
-        let agent = auto_tool_search_builder("gpt-5.4").build();
-
-        // Hosted deferral wins, so the config is preserved...
-        assert!(
-            agent.tool_search.is_some(),
-            "hosted config must be kept on a model with native support"
-        );
-        let names: Vec<&str> = agent.tools.iter().map(|t| t.name()).collect();
-        // ...the client-side hook is skipped (read_file survives)...
-        assert!(
-            names.contains(&"read_file"),
-            "client-side deferral hook must be skipped when hosted wins"
-        );
-        // ...and the redundant client-side tool_search tool is dropped.
-        assert!(
-            !names.contains(&"tool_search"),
-            "client-side tool_search must be removed when hosted deferral is active"
-        );
-    }
-
-    #[test]
-    fn test_build_auto_tool_search_falls_back_on_unsupported_model() {
-        let agent = auto_tool_search_builder("claude-sonnet-4-5-20250514").build();
-
-        // No native support: hand off to the client-side path by clearing the
-        // hosted config...
-        assert!(
-            agent.tool_search.is_none(),
-            "hosted config must be cleared on a model without native support"
-        );
-        let names: Vec<&str> = agent.tools.iter().map(|t| t.name()).collect();
-        // ...the client-side hook runs (it removed read_file)...
-        assert!(
-            !names.contains(&"read_file"),
-            "client-side deferral hook must run as the fallback"
-        );
-        // ...and the tool_search tool is retained for that fallback.
-        assert!(
-            names.contains(&"tool_search"),
-            "client-side tool_search must be retained on the fallback path"
-        );
-    }
+    // Note: `auto_tool_search`'s hosted-vs-client-side selection now happens at
+    // capability-collection time (see `Capability::resolve_for_model` and the
+    // collection tests in `capabilities::mod`), not in `build()`. `build()` only
+    // reconciles a hosted config with the model, covered by the tests above.
 
     #[test]
     fn test_build_preserves_prompt_cache_for_supported_provider() {

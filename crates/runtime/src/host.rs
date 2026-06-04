@@ -340,10 +340,17 @@ async fn load_execution_capabilities<A: RuntimeHostAdapter>(
         &session,
         &capability_registry,
     );
+    // Executor (act) path: this builds the worker-side tool registry, not the
+    // model-visible tool list. The model is left unset, so a model-adaptive
+    // capability like `auto_tool_search` resolves to its provider-agnostic
+    // client-side mechanism here. That registers the `tool_search` tool in the
+    // executor, which is a harmless superset: on native models the reason path
+    // never shows that tool to the model, so it is simply never called.
     let prompt_ctx = SystemPromptContext {
         session_id,
         locale: locale.or(session.locale.clone()),
         file_store: Some(adapter.file_store()),
+        model: None,
     };
     let collected = collect_capabilities_with_configs(
         &resolved.resolved_capability_configs,

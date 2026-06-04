@@ -1672,6 +1672,7 @@ mod tests {
             session_id,
             locale: None,
             file_store: Some(store),
+            model: None,
         };
 
         let result = cap.system_prompt_contribution(&ctx).await.unwrap();
@@ -1702,6 +1703,7 @@ mod tests {
             session_id: SessionId::new(),
             locale: None,
             file_store: Some(store),
+            model: None,
         };
 
         let result = cap.system_prompt_contribution(&ctx).await.unwrap();
@@ -1767,6 +1769,7 @@ mod tests {
             session_id,
             locale: None,
             file_store: Some(store),
+            model: None,
         };
 
         let result = cap.system_prompt_contribution(&ctx).await.unwrap();
@@ -1806,6 +1809,7 @@ mod tests {
             session_id,
             locale: None,
             file_store: Some(store),
+            model: None,
         };
 
         let result = cap.system_prompt_contribution(&ctx).await.unwrap();
@@ -1839,6 +1843,7 @@ mod tests {
             session_id,
             locale: None,
             file_store: Some(store.clone()),
+            model: None,
         };
 
         let result = cap.system_prompt_contribution(&ctx).await.unwrap();
@@ -2069,6 +2074,7 @@ mod tests {
             session_id,
             locale: None,
             file_store: Some(store),
+            model: None,
         };
         let result = skills_cap.system_prompt_contribution(&ctx).await.unwrap();
         assert!(result.contains("pdf-tool"));
@@ -2318,6 +2324,7 @@ mod tests {
             session_id,
             locale: None,
             file_store: Some(store),
+            model: None,
         };
 
         let result = cap.system_prompt_contribution(&ctx).await.unwrap();
@@ -2348,6 +2355,7 @@ mod tests {
             session_id,
             locale: None,
             file_store: Some(store),
+            model: None,
         };
 
         let result = cap.system_prompt_contribution(&ctx).await.unwrap();
