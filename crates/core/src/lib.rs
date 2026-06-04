@@ -91,6 +91,7 @@ pub mod harness;
 pub mod leased_resource;
 pub mod llm_model_profiles;
 pub mod llm_models;
+pub mod mcp_proxy;
 pub mod mcp_server;
 pub mod memory_store;
 pub mod model_router;
@@ -391,6 +392,7 @@ pub use llm_models::{
     LlmModelSource, LlmModelWithProvider, LlmProviderStatus, LlmProviderType, Modality,
     ReasoningEffort, ReasoningEffortConfig, ReasoningEffortValue,
 };
+pub use mcp_proxy::{McpProxyTool, McpToolInvoker, build_mcp_proxy_tools};
 pub use mcp_server::{
     McpContent, McpError, McpServer, McpServerAuthMode, McpServerStatus, McpServerTransportType,
     McpToolAnnotations, McpToolCallParams, McpToolCallRequest, McpToolCallResponse,

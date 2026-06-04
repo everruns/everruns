@@ -56,7 +56,7 @@ The activation threshold defaults to 15 tools (`DEFAULT_TOOL_SEARCH_THRESHOLD`).
 
 ## Limitations
 
-- **Built-in (server-executed) tools** — the search reads schemas from the worker-side tool registry. Client-side tools that are not registered worker-side are not returned by `tool_search` (their stripped definition is still sent so the model knows they exist).
+- **Server-executed tools** — the search reads schemas from the worker-side tool registry. This includes built-in tools and MCP server tools (MCP tools are registered as first-class registry tools). Client-side tools that are not registered worker-side are not returned by `tool_search` (their stripped definition is still sent so the model knows they exist).
 - **Extra round-trip** — loading a schema costs one `tool_search` call before the first use of a deferred tool. The token savings outweigh this for agents with many tools.
 
 ## See Also

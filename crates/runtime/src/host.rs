@@ -975,17 +975,23 @@ pub async fn execute_act_activity<A: RuntimeHostAdapter>(
         input.blueprint_id.as_deref(),
     )
     .await?;
-    let tool_registry = execution_capabilities.tool_registry;
-    let builtin_tool_registry = Arc::new(tool_registry.clone());
+    let mut tool_registry = execution_capabilities.tool_registry;
 
-    // Route `mcp_*` tool calls to the host's MCP executor when configured.
-    // Hosts that don't (default `None`, e.g. the worker) keep the plain
-    // registry, so their behavior is unchanged (specs/runtime-mcp.md D4).
-    let executor: Arc<dyn everruns_core::traits::ToolExecutor> =
-        match adapter.mcp_executor(org_id, input.context.session_id).await {
-            Some(mcp) => Arc::new(everruns_mcp::CompositeToolExecutor::new(tool_registry, mcp)),
-            None => Arc::new(tool_registry),
-        };
+    // Register the session's MCP tools as first-class registry tools, so they
+    // execute through the regular `ToolExecutor` path and are visible to
+    // everything that introspects the registry (spawn_background, tool_search,
+    // openai_tool_search namespaces, ...). The turn's tool definitions already
+    // include the discovered MCP tools, so no re-discovery is needed; the host's
+    // MCP executor supplies execution (specs/runtime-mcp.md D5).
+    if let Some(mcp) = adapter.mcp_executor(org_id, input.context.session_id).await {
+        let invoker: Arc<dyn everruns_core::McpToolInvoker> = mcp;
+        for tool in everruns_core::build_mcp_proxy_tools(&input.tool_definitions, invoker) {
+            tool_registry.register_boxed(tool);
+        }
+    }
+
+    let builtin_tool_registry = Arc::new(tool_registry.clone());
+    let executor: Arc<dyn everruns_core::traits::ToolExecutor> = Arc::new(tool_registry);
 
     let mut atom =
         ActAtom::with_file_store(executor, adapter.event_emitter(), adapter.file_store())

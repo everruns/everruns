@@ -153,25 +153,36 @@ Two integration points in `crates/runtime`:
    `tools/list` per server), matching the control plane's scoped-server
    behavior, which keeps no persisted cache. A per-session TTL cache is a
    listed follow-up.
-2. **Execution** — in `execute_act_activity` (`host.rs:907`), when scoped MCP
-   servers are present, wrap the builtin `ToolRegistry` in the `everruns-mcp`
-   composite executor (built-in tools route to the registry, `mcp_*` tools
-   route to the MCP executor). `ActAtom` is already generic over
-   `ToolExecutor`, so this is a constructor swap, not an atom change.
+2. **Execution** — in `execute_act_activity` (`host.rs`), register the turn's
+   MCP tools as first-class `Tool`s in the builtin `ToolRegistry` via
+   `everruns_core::build_mcp_proxy_tools(&input.tool_definitions, invoker)`. Each
+   `McpProxyTool` delegates execution to the host's `McpExecutor` (which
+   implements `everruns_core::McpToolInvoker`). The turn's tool definitions
+   already include the discovered MCP tools, so no re-discovery is needed, and
+   because MCP tools live in the regular registry they are visible to everything
+   that introspects it (`spawn_background`, `tool_search`, openai_tool_search
+   namespaces, ...). The executor passed to `ActAtom` is just the registry.
 
-Both points hang off a new optional adapter hook
+Both points hang off an optional adapter hook
 (`RuntimeHostAdapter::mcp_executor()` returning
 `Option<Arc<everruns_mcp::McpExecutor>>`),
 default `None`, so hosts that don't configure MCP pay nothing and behavior is
 unchanged.
 
+> Historical note: an earlier design routed `mcp_*` calls through a separate
+> `CompositeToolExecutor` wrapper instead of registering MCP tools in the
+> registry. That kept MCP tools invisible to registry-introspecting tools and
+> has been replaced by the registry-proxy model above.
+
 ### D5 — Reuse in worker/server (no duplication)
 
 `worker`/`server` switch their MCP call sites to `everruns-mcp`:
 
-- `CompositeToolExecutor` / `McpToolExecutor` become thin adapters that supply
-  the gRPC-backed server resolution and the web-OAuth `McpAuthProvider`, then
-  delegate to `everruns-mcp`.
+- The worker supplies gRPC-backed server resolution (a `McpConnectionResolver`
+  over `get_mcp_server_by_prefix`) and builds an `everruns-mcp` `McpExecutor`
+  from its `mcp_executor()` hook; MCP tools then register into the registry like
+  any other host. Resolved credentials are baked into the connection headers, so
+  the shared client needs no auth provider.
 - `build_scoped_mcp_tool_definitions` calls `everruns-mcp` discovery instead of
   the local `fetch_mcp_tools`.
 

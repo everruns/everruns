@@ -1,20 +1,18 @@
-//! MCP tool execution and routing.
+//! MCP tool execution.
 //!
 //! [`McpExecutor`] resolves a tool call's server prefix to a [`McpConnection`]
-//! and executes it via [`McpClient`]. [`CompositeToolExecutor`] routes
-//! `mcp_*` tool calls to it and everything else to a builtin executor, so a
-//! host's [`ToolExecutor`] transparently gains MCP support. This is the shared
-//! replacement for `worker/src/mcp_executor.rs` (specs/runtime-mcp.md D5).
+//! and executes it via [`McpClient`]. It implements [`McpToolInvoker`] so hosts
+//! register MCP tools as first-class [`everruns_core::tools::Tool`] entries in
+//! the regular `ToolRegistry` (via `everruns_core::build_mcp_proxy_tools`),
+//! instead of routing `mcp_*` calls through a separate executor
+//! (specs/runtime-mcp.md D5).
 
 use crate::client::McpClient;
 use crate::transport::McpConnection;
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use everruns_core::mcp_server::sanitize_mcp_server_name;
-use everruns_core::traits::{ToolContext, ToolExecutor};
-use everruns_core::{
-    AgentLoopError, ToolCall, ToolDefinition, ToolResult, is_mcp_tool, parse_mcp_tool_name,
-};
+use everruns_core::{AgentLoopError, McpToolInvoker, ToolCall, ToolResult, parse_mcp_tool_name};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -79,10 +77,6 @@ impl McpExecutor {
         Self { client, resolver }
     }
 
-    pub fn is_mcp_tool(tool_name: &str) -> bool {
-        is_mcp_tool(tool_name)
-    }
-
     pub async fn execute_mcp_tool(&self, tool_call: &ToolCall) -> Result<ToolResult> {
         let (server_prefix, original_tool_name) = parse_mcp_tool_name(&tool_call.name)
             .ok_or_else(|| anyhow!("Invalid MCP tool name: {}", tool_call.name))?;
@@ -104,50 +98,12 @@ impl McpExecutor {
     }
 }
 
-/// Routes tool execution between a builtin executor and the MCP executor.
-pub struct CompositeToolExecutor<B: ToolExecutor> {
-    builtin: B,
-    mcp: Arc<McpExecutor>,
-}
-
-impl<B: ToolExecutor> CompositeToolExecutor<B> {
-    pub fn new(builtin: B, mcp: Arc<McpExecutor>) -> Self {
-        Self { builtin, mcp }
-    }
-}
-
 #[async_trait]
-impl<B: ToolExecutor> ToolExecutor for CompositeToolExecutor<B> {
-    async fn execute(
-        &self,
-        tool_call: &ToolCall,
-        tool_def: &ToolDefinition,
-    ) -> everruns_core::Result<ToolResult> {
-        if McpExecutor::is_mcp_tool(&tool_call.name) {
-            self.mcp.execute_mcp_tool(tool_call).await.map_err(|e| {
-                tracing::error!(error = %e, "MCP tool execution failed");
-                AgentLoopError::tool(e.to_string())
-            })
-        } else {
-            self.builtin.execute(tool_call, tool_def).await
-        }
-    }
-
-    async fn execute_with_context(
-        &self,
-        tool_call: &ToolCall,
-        tool_def: &ToolDefinition,
-        context: &ToolContext,
-    ) -> everruns_core::Result<ToolResult> {
-        if McpExecutor::is_mcp_tool(&tool_call.name) {
-            self.mcp.execute_mcp_tool(tool_call).await.map_err(|e| {
-                tracing::error!(error = %e, "MCP tool execution failed");
-                AgentLoopError::tool(e.to_string())
-            })
-        } else {
-            self.builtin
-                .execute_with_context(tool_call, tool_def, context)
-                .await
-        }
+impl McpToolInvoker for McpExecutor {
+    async fn invoke(&self, tool_call: &ToolCall) -> everruns_core::Result<ToolResult> {
+        self.execute_mcp_tool(tool_call).await.map_err(|e| {
+            tracing::error!(error = %e, "MCP tool execution failed");
+            AgentLoopError::tool(e.to_string())
+        })
     }
 }
