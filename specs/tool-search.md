@@ -166,7 +166,7 @@ A model's `tool_search: true` flag must be backed by a verified end-to-end round
 request-shaping unit tests. The `gpt-5.5` family is gated `false` because the live
 round-trip fails with a `server_error` during the reasoning phase (EVE-521), even
 though the unit tests pass. Keep the flag off until a live tool-using turn succeeds
-on that model; `gpt-5.4` is the currently verified family (see
+on that model; the `gpt-5.4*` family is the currently verified one (see
 `crates/llm-tests/tests/tool_search_test.rs`).
 
 ## OpenAI Driver Changes
