@@ -647,6 +647,20 @@ fn finalize_input_for_request(
     }
 }
 
+/// Whether the endpoint at `api_url` persists responses server-side and honors
+/// `previous_response_id` for stateful continuation.
+///
+/// Only OpenAI's hosted API and Azure OpenAI are known to store responses.
+/// OpenAI-compatible gateways that expose a stateless `/responses` shim — e.g.
+/// OpenRouter and Google Gemini's compat endpoint — *accept* `previous_response_id`
+/// but silently ignore it (`store: false`). Chaining against those drops the
+/// conversation from turn 2 onward, so they must get the full transcript replayed
+/// in `input` each turn instead (EVE-523).
+fn endpoint_persists_responses(api_url: &str) -> bool {
+    crate::openai_protocol::is_openai_api_url(api_url)
+        || crate::openai_protocol::is_azure_openai_api_url(api_url)
+}
+
 #[async_trait]
 impl LlmDriver for OpenResponsesProtocolLlmDriver {
     async fn chat_completion_stream(
@@ -664,11 +678,23 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
 
         let (instructions, input_items) = Self::build_input(&messages, supports_phases);
 
+        // Only chain via `previous_response_id` when the endpoint actually persists
+        // responses server-side. Stateless OpenAI-compatible gateways (OpenRouter,
+        // Gemini compat, …) accept the field but ignore it, so chaining there drops
+        // the conversation from turn 2 onward (EVE-523). For those we send no
+        // continuation handle and replay the full transcript in `input` below.
+        let previous_response_id = if endpoint_persists_responses(&self.api_url) {
+            config.previous_response_id.clone()
+        } else {
+            None
+        };
+
         // Stateful Responses continuations must not mix `previous_response_id` with
         // the prior transcript input the provider already holds server-side. When a
         // continuation handle is present, trim `input_items` to the delta window so
-        // the request only carries new tool results / user messages.
-        let input_items = finalize_input_for_request(input_items, &config.previous_response_id);
+        // the request only carries new tool results / user messages. With no handle
+        // (incl. stateless gateways), the full transcript is kept.
+        let input_items = finalize_input_for_request(input_items, &previous_response_id);
 
         let tools = if config.tools.is_empty() {
             None
@@ -710,7 +736,7 @@ impl LlmDriver for OpenResponsesProtocolLlmDriver {
             model: config.model.clone(),
             input: input_items,
             instructions,
-            previous_response_id: config.previous_response_id.clone(),
+            previous_response_id,
             temperature: config.temperature,
             max_output_tokens: config.max_tokens,
             stream: true,
@@ -2603,6 +2629,204 @@ mod tests {
         assert!(
             out.is_empty(),
             "empty delta is valid — the provider can resume purely from the response id"
+        );
+    }
+
+    // ========================================================================
+    // Stateless-gateway detection (EVE-523)
+    // ========================================================================
+
+    #[test]
+    fn endpoint_persists_responses_for_openai_and_azure() {
+        // OpenAI hosted API — stateful.
+        assert!(endpoint_persists_responses(
+            "https://api.openai.com/v1/responses"
+        ));
+        assert!(endpoint_persists_responses(
+            "https://api.openai.com:443/v1/responses"
+        ));
+        // Azure OpenAI — stateful.
+        assert!(endpoint_persists_responses(
+            "https://my-resource.openai.azure.com/openai/v1/responses"
+        ));
+        assert!(endpoint_persists_responses(
+            "https://my-resource.services.ai.azure.com/openai/v1/responses"
+        ));
+    }
+
+    #[test]
+    fn endpoint_does_not_persist_for_stateless_gateways() {
+        // OpenRouter and Gemini's compat shim accept `previous_response_id` but
+        // ignore it — they must be treated as stateless so we replay the full
+        // transcript each turn (EVE-523).
+        assert!(!endpoint_persists_responses(
+            "https://openrouter.ai/api/v1/responses"
+        ));
+        assert!(!endpoint_persists_responses(
+            "https://generativelanguage.googleapis.com/v1beta/openai/responses"
+        ));
+        // A host that merely contains "openai" in its name must not be trusted.
+        assert!(!endpoint_persists_responses(
+            "https://api.openai.example.com/v1/responses"
+        ));
+    }
+
+    /// End-to-end shape of the call path: against a stateless gateway, a request
+    /// that carries a `previous_response_id` in config must still send the FULL
+    /// transcript in `input` (no trim) because the gateway will not have stored
+    /// the prior response. This is the core EVE-523 regression guard.
+    #[test]
+    fn stateless_gateway_replays_full_transcript_despite_previous_response_id() {
+        let api_url = "https://openrouter.ai/api/v1/responses";
+        let prev_id: Option<String> = Some("gen-turn-1".to_string());
+
+        // Mirror the gating the call path performs.
+        let effective_prev_id = if endpoint_persists_responses(api_url) {
+            prev_id.clone()
+        } else {
+            None
+        };
+        assert!(
+            effective_prev_id.is_none(),
+            "stateless gateway must not chain via previous_response_id"
+        );
+
+        let items = sample_full_transcript_items();
+        let original_len = items.len();
+        let out = finalize_input_for_request(items, &effective_prev_id);
+        assert_eq!(
+            out.len(),
+            original_len,
+            "stateless gateway must replay the full transcript so the model keeps context"
+        );
+    }
+
+    /// The same transcript against OpenAI's hosted API trims to the delta window
+    /// and keeps the continuation handle — confirming the optimization is intact
+    /// for genuinely stateful endpoints.
+    #[test]
+    fn stateful_endpoint_still_trims_and_chains() {
+        let api_url = "https://api.openai.com/v1/responses";
+        let prev_id: Option<String> = Some("resp_turn_1".to_string());
+
+        let effective_prev_id = if endpoint_persists_responses(api_url) {
+            prev_id.clone()
+        } else {
+            None
+        };
+        assert_eq!(
+            effective_prev_id, prev_id,
+            "stateful endpoint keeps the continuation handle"
+        );
+
+        let out = finalize_input_for_request(sample_full_transcript_items(), &effective_prev_id);
+        assert_eq!(out.len(), 1, "stateful endpoint trims to the delta window");
+    }
+
+    /// Wire-level EVE-523 reproducer: drive the real `chat_completion_stream`
+    /// against a mock endpoint on a non-OpenAI host. Even with a
+    /// `previous_response_id` in config, the request on the wire must omit it and
+    /// carry the FULL transcript (user task + assistant turn + tool result), so a
+    /// stateless gateway that ignores `previous_response_id` still sees the task.
+    #[tokio::test]
+    async fn stateless_gateway_request_replays_full_transcript_on_the_wire() {
+        use crate::tool_types::ToolCall;
+        use serde_json::json;
+        use wiremock::matchers::method;
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let server = MockServer::start().await;
+        // Any 200 lets the request through; we inspect the captured request, not
+        // the (empty) streamed body.
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(""))
+            .mount(&server)
+            .await;
+
+        // server.uri() is a 127.0.0.1 host — not OpenAI/Azure — so it is treated
+        // as a stateless gateway.
+        let api_url = format!("{}/v1/responses", server.uri());
+        let driver = OpenResponsesProtocolLlmDriver::with_base_url("test-key", api_url);
+
+        let messages = vec![
+            LlmMessage::text(LlmMessageRole::System, "You are helpful"),
+            LlmMessage::text(LlmMessageRole::User, "upgrade dependencies"),
+            LlmMessage {
+                role: LlmMessageRole::Assistant,
+                content: LlmMessageContent::Text("Let me look.".to_string()),
+                tool_calls: Some(vec![ToolCall {
+                    id: "call_1".to_string(),
+                    name: "read_file".to_string(),
+                    arguments: json!({"path": "Cargo.toml"}),
+                }]),
+                tool_call_id: None,
+                phase: None,
+                thinking: None,
+                thinking_signature: None,
+            },
+            LlmMessage {
+                role: LlmMessageRole::Tool,
+                content: LlmMessageContent::Text("[package]…".to_string()),
+                tool_calls: None,
+                tool_call_id: Some("call_1".to_string()),
+                phase: None,
+                thinking: None,
+                thinking_signature: None,
+            },
+        ];
+
+        let config = LlmCallConfig {
+            model: "some/model".to_string(),
+            temperature: None,
+            max_tokens: None,
+            tools: vec![],
+            reasoning_effort: None,
+            metadata: std::collections::HashMap::new(),
+            // Continuation handle from a prior turn — must be ignored on a
+            // stateless gateway.
+            previous_response_id: Some("gen-turn-1".to_string()),
+            tool_search: None,
+            prompt_cache: None,
+        };
+
+        // Fire the request. The stream body is irrelevant for this assertion.
+        let _ = driver.chat_completion_stream(messages, &config).await;
+
+        let requests = server
+            .received_requests()
+            .await
+            .expect("mock server recorded requests");
+        assert_eq!(requests.len(), 1, "exactly one request should be sent");
+        let body: serde_json::Value = requests[0].body_json().expect("request body is JSON");
+
+        // previous_response_id must be absent (skipped) — the gateway would ignore it.
+        assert!(
+            body.get("previous_response_id").is_none(),
+            "stateless gateway request must omit previous_response_id; body: {body}"
+        );
+
+        // The full transcript must be replayed: user message, assistant message,
+        // function_call, and function_call_output (instructions carry the system msg).
+        let input = body["input"].as_array().expect("input is an array");
+        assert_eq!(
+            input.len(),
+            4,
+            "full transcript must be replayed on a stateless gateway; got {input:?}"
+        );
+        assert_eq!(body["instructions"], "You are helpful");
+        let has_user_task = input
+            .iter()
+            .any(|item| item["type"] == "message" && item["role"] == "user");
+        assert!(
+            has_user_task,
+            "the original user task must be replayed; got {input:?}"
+        );
+        let has_tool_output = input
+            .iter()
+            .any(|item| item["type"] == "function_call_output");
+        assert!(
+            has_tool_output,
+            "the latest tool result must still be present; got {input:?}"
         );
     }
 

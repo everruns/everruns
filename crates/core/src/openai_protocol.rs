@@ -55,6 +55,16 @@ pub fn is_azure_openai_api_url(api_url: &str) -> bool {
         })
 }
 
+/// Whether `api_url` points at OpenAI's hosted API (`api.openai.com`).
+///
+/// Host-based (not prefix-based) so it tolerates ports and trailing paths.
+pub fn is_openai_api_url(api_url: &str) -> bool {
+    Url::parse(api_url)
+        .ok()
+        .and_then(|url| url.host_str().map(|host| host.to_ascii_lowercase()))
+        .is_some_and(|host| host == "api.openai.com")
+}
+
 /// OpenAI Protocol LLM Driver
 ///
 /// Base implementation of `LlmDriver` for OpenAI-compatible APIs.
