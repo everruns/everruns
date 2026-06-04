@@ -264,7 +264,7 @@ This pattern is intended for tools that must call an external API directly while
 
 ### PreToolUseHook (per-tool hooks)
 
-`PreToolUseHook` is an async hook that runs before each individual tool is executed — for *every* tool the agent calls (built-in, MCP, or client-side). A hook can mutate the `ToolCall` (returning `Continue`) or block it (returning `Block`, which skips execution and returns the hook's reason as the tool error). Hooks chain sequentially; the first `Block` wins.
+`PreToolUseHook` is an async hook that runs before an individual tool is executed. For sessions that load execution capabilities the same chain runs uniformly for every tool the agent calls (built-in, MCP, or client-side); blueprint sessions resolve their tools directly and do not run these hooks. A hook can mutate the `ToolCall` (returning `Continue`) or block it (returning `Block`, which skips execution and surfaces the hook's reason as the tool error, prefixed with `blocked by pre_tool_use hook:`). Hooks chain sequentially; the first `Block` wins.
 
 Two sources feed the chain, in this order:
 1. **Capability hooks** — from active capabilities via `Capability::pre_tool_use_hooks()`. This is the seam for in-process, cross-cutting policy such as approval gating (consult an approval gate, honoring each tool's `ToolHints`).

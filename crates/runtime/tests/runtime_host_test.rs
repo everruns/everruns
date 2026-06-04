@@ -280,6 +280,33 @@ impl Capability for GateCapability {
     }
 }
 
+/// Same blocking pre-tool hook as `GateCapability`, but the capability reports
+/// a non-`Available` status. Used to assert hooks from unavailable capabilities
+/// are not collected (mirrors `collect_capabilities_with_configs`).
+struct ComingSoonGateCapability;
+
+impl Capability for ComingSoonGateCapability {
+    fn id(&self) -> &str {
+        "coming_soon_gate"
+    }
+
+    fn name(&self) -> &str {
+        "Coming Soon Gate"
+    }
+
+    fn description(&self) -> &str {
+        "Unavailable test capability contributing a blocking pre-tool hook."
+    }
+
+    fn status(&self) -> CapabilityStatus {
+        CapabilityStatus::ComingSoon
+    }
+
+    fn pre_tool_use_hooks(&self) -> Vec<Arc<dyn everruns_core::atoms::PreToolUseHook>> {
+        vec![Arc::new(BlockEchoHook)]
+    }
+}
+
 struct BlockEchoHook;
 
 #[async_trait]
@@ -911,6 +938,81 @@ async fn act_activity_runs_capability_pre_tool_hook_and_blocks() {
     assert!(
         error.contains("denied by test policy"),
         "error should carry the hook's reason: {error}"
+    );
+}
+
+#[tokio::test]
+async fn act_activity_skips_pre_tool_hooks_from_unavailable_capability() {
+    let mut adapter = mock_host();
+    adapter.capability_registry.register(OverlayEchoCapability);
+    adapter
+        .capability_registry
+        .register(ComingSoonGateCapability);
+    set_default_model(&adapter).await;
+
+    let harness_id = HarnessId::from_uuid(Uuid::now_v7());
+    let session_id = SessionId::from_uuid(Uuid::now_v7());
+    let agent_id = AgentId::from_uuid(Uuid::now_v7());
+    let input_message_id = MessageId::from_uuid(Uuid::now_v7());
+
+    adapter
+        .harness_store
+        .add_harness(Harness {
+            capabilities: vec![
+                AgentCapabilityConfig::new("overlay_echo"),
+                AgentCapabilityConfig::new("coming_soon_gate"),
+            ],
+            ..harness(harness_id)
+        })
+        .await;
+    adapter.agent_store.add_agent(agent(agent_id, vec![])).await;
+    adapter
+        .session_store
+        .insert(Session {
+            agent_id: Some(agent_id),
+            ..session(session_id, harness_id)
+        })
+        .await;
+
+    let result = execute_act_activity(
+        &adapter,
+        ActInput {
+            org_id: Some(1),
+            context: AtomContext::new(
+                session_id,
+                TurnId::from_uuid(Uuid::now_v7()),
+                input_message_id,
+            ),
+            harness_id,
+            agent_id: Some(agent_id),
+            tool_calls: vec![ToolCall {
+                id: "call_unavailable_gate".into(),
+                name: "overlay_echo".into(),
+                arguments: json!({"value": "hook"}),
+            }],
+            tool_definitions: reason_tool_definitions(
+                &adapter,
+                session_id,
+                harness_id,
+                Some(agent_id),
+            )
+            .await,
+            locale: None,
+            blueprint_id: None,
+            network_access: None,
+            parallel_tool_calls: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    // The gating capability is `ComingSoon`, so its pre-tool hook must not be
+    // collected: the tool executes normally instead of being blocked.
+    assert_eq!(result.success_count, 1);
+    assert_eq!(result.error_count, 0);
+    assert_eq!(
+        result.results[0].result.result.as_ref().unwrap()["hooked"],
+        true
     );
 }
 
