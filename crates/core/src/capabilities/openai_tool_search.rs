@@ -47,6 +47,7 @@ impl OpenAiToolSearchCapability {
         ToolSearchConfig {
             enabled: true,
             threshold: self.threshold,
+            auto: false,
         }
     }
 }

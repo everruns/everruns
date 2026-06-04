@@ -26,7 +26,7 @@ pub fn definition() -> BuiltInHarnessDefinition {
         BuiltInCapabilityDefinition::new("agent_instructions"),
         BuiltInCapabilityDefinition::new("skills"),
         BuiltInCapabilityDefinition::new("infinity_context"),
-        BuiltInCapabilityDefinition::new("openai_tool_search"),
+        BuiltInCapabilityDefinition::new("auto_tool_search"),
         BuiltInCapabilityDefinition::new("budgeting"),
         BuiltInCapabilityDefinition::new("self_budget"),
         BuiltInCapabilityDefinition::new("loop_detection"),

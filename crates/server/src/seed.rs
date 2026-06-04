@@ -2807,7 +2807,7 @@ mod tests {
         assert!(cap_ids.contains(&"agent_instructions"));
         assert!(cap_ids.contains(&"skills"));
         assert!(cap_ids.contains(&"infinity_context"));
-        assert!(cap_ids.contains(&"openai_tool_search"));
+        assert!(cap_ids.contains(&"auto_tool_search"));
         assert!(cap_ids.contains(&"budgeting"));
         assert!(cap_ids.contains(&"self_budget"));
         assert!(cap_ids.contains(&"loop_detection"));

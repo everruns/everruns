@@ -461,6 +461,12 @@ pub struct ToolSearchConfig {
     /// Minimum number of tools before activating tool_search.
     /// Below this threshold, full schemas are sent even when enabled.
     pub threshold: usize,
+    /// When true, the config was contributed by `auto_tool_search`: use hosted
+    /// (native) deferral on models that support it, and fall back to the
+    /// generic client-side deferral on models that don't, rather than disabling
+    /// deferral entirely. See `RuntimeAgentBuilder::build`.
+    #[serde(default)]
+    pub auto: bool,
 }
 
 /// Strategy for prompt caching.

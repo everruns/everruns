@@ -87,6 +87,7 @@ mod a2ui;
 mod agent_handoff;
 mod agent_instructions;
 pub mod attach_skill;
+mod auto_tool_search;
 mod background_execution;
 mod btw;
 mod budgeting;
@@ -154,6 +155,7 @@ pub use attach_skill::{
     SkillInstructions, SkillMeta, SkillSource, discover_skills_from_entries, is_skill_capability,
     parse_skill_capability_id, reconstruct_skill_md, skill_capability_id,
 };
+pub use auto_tool_search::{AUTO_TOOL_SEARCH_CAPABILITY_ID, AutoToolSearchCapability};
 pub use background_execution::{BACKGROUND_EXECUTION_CAPABILITY_ID, BackgroundExecutionCapability};
 pub use btw::{BTW_CAPABILITY_ID, BtwCapability};
 pub use budgeting::BudgetingCapability;
@@ -919,6 +921,8 @@ impl CapabilityRegistry {
         registry.register(OpenAiToolSearchCapability::new());
         // Generic, provider-agnostic tool_search (client-side deferred loading)
         registry.register(GenericToolSearchCapability::new());
+        // Model-adaptive tool_search (hosted on capable models, generic elsewhere)
+        registry.register(AutoToolSearchCapability::new());
         registry.register(PromptCachingCapability::new());
 
         // Skills (filesystem-based discovery + activation, all environments)
@@ -1801,8 +1805,13 @@ pub async fn collect_capabilities_with_configs(
                 tool_definitions.push(def);
             }
 
-            // Detect OpenAI tool_search capability
-            if cap_id == OPENAI_TOOL_SEARCH_CAPABILITY_ID {
+            // Detect tool_search configuration capabilities. Both set a hosted
+            // ToolSearchConfig; `auto_tool_search` additionally marks it `auto`
+            // so build() falls back to client-side deferral (its hook + tool)
+            // on models without native support instead of disabling deferral.
+            if cap_id == OPENAI_TOOL_SEARCH_CAPABILITY_ID
+                || cap_id == AUTO_TOOL_SEARCH_CAPABILITY_ID
+            {
                 // Parse threshold from config, fall back to default
                 let threshold = cap_config
                     .config
@@ -1813,6 +1822,7 @@ pub async fn collect_capabilities_with_configs(
                 tool_search = Some(crate::llm_driver_registry::ToolSearchConfig {
                     enabled: true,
                     threshold,
+                    auto: cap_id == AUTO_TOOL_SEARCH_CAPABILITY_ID,
                 });
             }
 
@@ -2064,6 +2074,7 @@ mod tests {
             "memory",
             "openai_tool_search",
             "tool_search",
+            "auto_tool_search",
             "prompt_caching",
             "skills",
             "subagents",
@@ -3431,7 +3442,7 @@ mod tests {
             "agent_instructions".to_string(),
             "skills".to_string(),
             "infinity_context".to_string(),
-            "openai_tool_search".to_string(),
+            "auto_tool_search".to_string(),
         ];
 
         let registry = CapabilityRegistry::with_builtins();
@@ -3910,6 +3921,38 @@ mod tests {
         let ts = collected.tool_search.as_ref().unwrap();
         assert!(ts.enabled);
         assert_eq!(ts.threshold, 5);
+    }
+
+    #[tokio::test]
+    async fn test_collect_capabilities_auto_tool_search() {
+        let registry = CapabilityRegistry::with_builtins();
+
+        let configs = vec![AgentCapabilityConfig {
+            capability_ref: CapabilityId::new("auto_tool_search"),
+            config: serde_json::json!({"threshold": 7}),
+        }];
+
+        let collected = collect_capabilities_with_configs(&configs, &registry, &test_ctx()).await;
+
+        // Sets a hosted config flagged `auto` so build() can fall back to the
+        // client-side path on models without native support.
+        let ts = collected.tool_search.as_ref().unwrap();
+        assert!(ts.enabled);
+        assert!(ts.auto, "auto_tool_search must mark the config as auto");
+        assert_eq!(ts.threshold, 7);
+
+        // Also contributes the client-side fallback (tool + DeferSchemaHook).
+        assert!(
+            collected
+                .tools
+                .iter()
+                .any(|t| t.name() == TOOL_SEARCH_TOOL_NAME),
+            "auto_tool_search must contribute the client-side tool_search tool"
+        );
+        assert!(
+            !collected.tool_definition_hooks.is_empty(),
+            "auto_tool_search must contribute a client-side deferral hook"
+        );
     }
 
     #[tokio::test]
